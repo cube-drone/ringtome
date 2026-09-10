@@ -8937,3 +8937,27 @@ under its parent's seal names the parent, and so does every twin it bakes; the b
 reads the statement instead of walking to the parent's header, and the publish flags carry
 it from the mint through the bake. The suite's picture claim flipped from "refused for now"
 to a picture the author's trusted reader opens and the commenter's own follower cannot.
+
+## 2026-09-10: sealed labels (ruling 7)
+
+Asked what a stranger sees of a sealed post: the surfaces show nothing, but the header and
+the public annotations lane travel in the clear to anyone holding the chain - and the lane
+is the leak: tags, buckets, mentions and provenance were published plainly about a post
+whose title and words were sealed. Curtis weighed sealing them properly against the tangle
+and chose properly: "the 'divorce' tag is probably too juicy to leak, even if only malicious
+clients would ever display it." Built as one statement kind on the lane, `sealed=<hex>`,
+the real statement encrypted under the post's key; every writer seals when the subject is
+sealed (the publish path, the door for labelling someone else's post, the book rollout,
+all through one restater that judges "already said" on the opened statements, since the
+nonces are fresh); the memo folds a sealed statement raw until the key is held and opens
+it in place, with the body door opening a post's labels the moment it serves the words;
+and every reader filters opened rows by the viewer's standing with the seal's holder. The
+`doc_annotations` memo gained `sealed`, `holder_root` and `sealed_as` (node schema 42), the
+last so a retraction of the ciphertext finds the opened row. A mention inside a sealed
+post notifies only someone the holder trusts - and the first cut's bell never rang: the
+recipient's door verified that the mention statement names them, which ciphertext cannot
+show, and the bell's fold derives mention rows from the author's chain, where the name was
+sealed. The door now takes a sealed mention as the sender's word about their own post, and
+the fold opens sealed statements with the post's key, fetched over the key lane when a
+hosted reader follows the author. The suites that read a sealed post's labels as a
+stranger read them as the author now.

@@ -167,6 +167,12 @@ async fn refresh_from_inner(
     } else {
         Vec::new()
     };
+    // Sealed statements (PROJECT_PLAN's Replies under the author's seal, ruling 7) open
+    // here with the post's key - held, or fetched over the key lane for the author's own
+    // sealed post when a hosted reader follows them, which is exactly the fetch the reader's
+    // body door would make on opening it. A mention inside a sealed post is otherwise a
+    // bell that never rings: the statement naming the reader is ciphertext on the chain.
+    let labels = open_sealed_statements(state, author_root, labels).await;
     let replies = if comment_leg || has_shares {
         crate::record::documents::public_replies(&db)
             .await
@@ -543,6 +549,59 @@ pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<Not
             },
         )
         .collect())
+}
+
+/// Every statement with its sealed ones opened where a key is to be had (ruling 7): the
+/// key memo first; the lane for the author's own sealed post when somebody hosted here
+/// follows the author. Statements that stay sealed are dropped - a raw ciphertext is no
+/// label and no mention.
+async fn open_sealed_statements(
+    state: &AppState,
+    author_root: &str,
+    labels: Vec<crate::record::imaol::AnnotationRow>,
+) -> Vec<crate::record::imaol::AnnotationRow> {
+    let mut out = Vec::with_capacity(labels.len());
+    let mut keys: std::collections::HashMap<(String, [u8; 16]), Option<[u8; 32]>> = Default::default();
+    let mut any_follower: Option<bool> = None;
+    for l in labels {
+        if l.key != crate::annotations::SEALED_KEY {
+            out.push(l);
+            continue;
+        }
+        let at = (l.target_author.clone(), l.target_doc);
+        let key = match keys.get(&at) {
+            Some(k) => *k,
+            None => {
+                let doc_hex = hex::encode(l.target_doc);
+                let mut k = crate::postkeys::lookup(&state.node_db, &l.target_author, &doc_hex).await.ok().flatten();
+                if k.is_none() && l.target_author == author_root {
+                    let followed = match any_follower {
+                        Some(f) => f,
+                        None => {
+                            let f = crate::net::subscriptions::followers_of(&state.node_db, author_root)
+                                .await
+                                .map(|v| !v.is_empty())
+                                .unwrap_or(false);
+                            any_follower = Some(f);
+                            f
+                        }
+                    };
+                    if followed {
+                        if let Some(author) = hex::decode(author_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) {
+                            k = crate::net::fragment::fetch_key(state, &author, &l.target_doc).await;
+                        }
+                    }
+                }
+                keys.insert(at, k);
+                k
+            }
+        };
+        let Some(key) = key else { continue };
+        if let Some((k, v)) = crate::annotations::open_statement(&l.value, &key) {
+            out.push(crate::record::imaol::AnnotationRow { key: k, value: v, ..l });
+        }
+    }
+    out
 }
 
 #[cfg(test)]

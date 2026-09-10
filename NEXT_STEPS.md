@@ -36,6 +36,10 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   count) until that node ever meets the replier's chain or fragment. Surfaced 2026-08-27
   by the count acceptance; candidates: revalidate evidence on the fragment ALPN like a
   fragment, or age it on the door's own beat.
+* A sealed label rides the chain only (2026-09-10): the fragment road's proofs never carry
+  one, so a reader who learns a sealed post by fragment holds its labels only once the
+  annotator's chain reaches them. Fine while chains sync; revisit if fragments become the
+  main road for sealed posts.
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")

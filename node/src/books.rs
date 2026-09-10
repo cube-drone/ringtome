@@ -442,7 +442,7 @@ async fn rollout(
     }
     // The book's labels (ruling 11): every tag on every page, as one union, plus the
     // notebook as its bucket - restated the way a post's own draft labels are.
-    if let Err(e) = restate_book_labels(data, root, &minted, bucket, &pages).await {
+    if let Err(e) = restate_book_labels(data, root, &minted, bucket, &pages, book_key).await {
         tracing::warn!(error = ?e, "the book's labels could not be restated; the book stands");
     }
     if !facts.published {
@@ -595,6 +595,8 @@ async fn restate_book_labels(
     book: &[u8; 16],
     bucket: &str,
     pages: &[[u8; 16]],
+    // A sealed book's labels seal under its key (ruling 7).
+    book_key: Option<[u8; 32]>,
 ) -> Result<()> {
     const CAP: usize = 32;
     let root_key = crate::pubkey::decode(root).ok_or_else(|| anyhow!("bad root"))?;
@@ -614,19 +616,9 @@ async fn restate_book_labels(
     if bucket.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN {
         desired.insert(("bucket".into(), bucket.to_string()));
     }
-    let stated: BTreeSet<(String, String)> = data
-        .public_annotations()
-        .of(root, book)
-        .await?
-        .into_iter()
-        .map(|r| (r.key, r.value))
-        .collect();
-    for (k, v) in desired.difference(&stated) {
-        data.public_annotations().say(&root_key, book, k, v, true).await?;
-    }
-    for (k, v) in stated.difference(&desired) {
-        data.public_annotations().say(&root_key, book, k, v, false).await?;
-    }
+    crate::identity::restate_labels(data, &root_key, book, &desired, book_key)
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
     Ok(())
 }
 

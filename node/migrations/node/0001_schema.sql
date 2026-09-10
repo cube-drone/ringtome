@@ -801,9 +801,21 @@ CREATE TABLE doc_annotations (
     -- annotator's own synced chain, 'relay:<endpoint>' naming the peer whose fragment
     -- carried the proof in - the vector a harassed author reverse-engineers.
     learned_via   TEXT    NOT NULL DEFAULT 'chain',
+    -- Sealed labels (PROJECT_PLAN's Replies under the author's seal, ruling 7, 2026-09-10):
+    -- a statement about a sealed post rides the lane as `sealed=<hex>`, the real
+    -- `key=value` encrypted under the post's key. Folded raw (key 'sealed') until this
+    -- node holds the key, then opened in place: the row becomes the plain key and value
+    -- with `sealed` = 1, `holder_root` = whose trust opens it, and `sealed_as` = the
+    -- ciphertext it came as, so a retraction of the ciphertext finds the opened row.
+    -- Every reader filters sealed rows by the viewer's standing with the holder; a raw
+    -- 'sealed' row is never served to anyone.
+    sealed        INTEGER NOT NULL DEFAULT 0,
+    holder_root   TEXT,
+    sealed_as     TEXT,
     PRIMARY KEY (target_author, target_doc, annotator, key, value)
 );
 CREATE INDEX doc_annotations_by_annotator ON doc_annotations (annotator);
+CREATE INDEX doc_annotations_sealed_as ON doc_annotations (target_author, target_doc, sealed_as);
 
 -- The author's thread door, three tables (COMMENTS.md slice 6).
 --

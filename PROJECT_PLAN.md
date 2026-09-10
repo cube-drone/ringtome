@@ -4095,6 +4095,30 @@ A sealed conversation stays pinned to the context it began in. Two rulings, one 
    author's gate, which trusts the persona, not the device. A sealed reply to a sealed reply
    chains to the root post's key: one key per conversation.
 
+7. **The labels are sealed too (settled 2026-09-10).** "The 'divorce' tag is probably too
+   juicy to leak, even if only malicious clients would ever display it." Every public
+   statement about a sealed post - the author's tags, buckets, mentions and provenance, a
+   trusted reader's tag, a book's union - rides the annotations lane as `sealed=<hex>`, the
+   real `key=value` encrypted under the post's key with a fresh nonce; whoever labels a
+   sealed post must hold its key, which is to say they must be able to read the words, and
+   the door says so ("you can't label words you can't read"). The statement's SUBJECT stays
+   in the clear, as a reply's link does: that someone annotated that document is visible,
+   what they said is not. The memo folds a sealed statement raw until the node holds the
+   key, then opens it in place - the body door opens a post's labels with the key it just
+   used, so the moment a reader is proven entitled to the words is the moment their node
+   may hold the labels open - and every reader (facets, narrowing, the cards, content
+   warnings, the copy door) filters opened rows by the viewer's standing with the seal's
+   holder, judged once per holder per request; a raw row is served to nobody. One decrypt
+   point, every consumer unchanged. A mention inside a sealed post notifies only someone
+   the seal's holder trusts, and its notice is the sender's word: the recipient's door
+   cannot read a name out of ciphertext, so it verifies the statement is the sender's own
+   about their own sealed post and tiers it by sender like any notice; the bell's own
+   fold opens sealed statements with the post's key, fetching it over the key lane for an
+   author a hosted reader follows - the same fetch that reader's body door would make.
+   Two things are accepted: a labeller's untrusted followers see
+   a statement they cannot open and never count it, and a sealed label rides the chain
+   only, never a fragment's proofs (the residual).
+
 Both slices built 2026-09-08: (1) replies under the seal - the mint, the doors, the feed,
 shelf and thread filters, the reply box, the suite; (2) sealed titles - the mint writes the
 meta line and blanks the header, the card and the mini-card read it back, the copy door

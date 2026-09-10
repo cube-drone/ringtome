@@ -11,6 +11,14 @@
 //! reader sees - that is the display register's, applied at read - so it holds everything
 //! it can verify, blocked annotators included (a block stays home).
 //!
+//! Sealed labels (PROJECT_PLAN's Replies under the author's seal, ruling 7, 2026-09-10): a
+//! statement about a sealed post rides the lane as `sealed=<hex>` - the real `key=value`
+//! encrypted under the post's key, so "divorce" never leaves the room. The fold notes it raw
+//! until this node holds the key, then opens it in place (`open_sealed`, which the body door
+//! calls with the key in hand); every reader filters opened rows by the viewer's standing
+//! with the seal's holder, and a raw row is never served. One decrypt point, every consumer
+//! unchanged.
+//!
 //! Owns the `doc_annotations` SQL (tests/conventions.rs).
 
 use anyhow::{Context, Result};
@@ -25,6 +33,202 @@ pub struct KnownAnnotation {
     pub annotator: String,
     pub key: String,
     pub value: String,
+}
+
+/// The lane's key for a sealed statement: its value is the ciphertext, hex.
+pub const SEALED_KEY: &str = "sealed";
+
+/// Seal one statement under a post's key: `key=value` encrypted, as the lane carries it.
+pub fn seal_statement(post_key: &[u8; 32], key: &str, value: &str) -> Result<String> {
+    let plain = format!("{key}={value}");
+    let sealed = crate::record::private::seal_post_body(post_key, plain.as_bytes())
+        .map_err(|e| anyhow::anyhow!("sealing a label: {e}"))?;
+    Ok(hex::encode(sealed))
+}
+
+/// Open one sealed statement with the post's key: the `(key, value)` it carries, or None
+/// when the key is wrong or the bytes are not a statement.
+pub fn open_statement(sealed_hex: &str, post_key: &[u8; 32]) -> Option<(String, String)> {
+    let bytes = hex::decode(sealed_hex).ok()?;
+    let plain = crate::record::private::open_post_body(&bytes, post_key)?;
+    let text = String::from_utf8(plain).ok()?;
+    let (k, v) = text.split_once('=')?;
+    if k.is_empty() {
+        return None;
+    }
+    Some((k.to_string(), v.to_string()))
+}
+
+/// Who may see an opened sealed row: the holder themself, or anyone the holder publishes
+/// trust for (the body door's rule, PROJECT_PLAN's Replies under the author's seal).
+async fn holder_admits(state: &AppState, holder: &str, viewer: Option<&str>) -> bool {
+    let Some(v) = viewer else { return false };
+    if v == holder {
+        return true;
+    }
+    match state.user_dbs.get(holder).await {
+        Ok(Some(db)) => crate::record::imaol::published_edges(&db)
+            .await
+            .map(|edges| edges.get(v).is_some_and(|e| e.edge.trust.is_some()))
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+/// Which of these rows the viewer may see: every open row, and a sealed row only when its
+/// holder admits the viewer - judged once per holder. Raw `sealed` rows never.
+async fn admitted(
+    state: &AppState,
+    rows: Vec<MemoRow>,
+    viewer: Option<&str>,
+) -> Vec<MemoRow> {
+    let mut verdicts: std::collections::HashMap<String, bool> = Default::default();
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        if r.key == SEALED_KEY {
+            continue;
+        }
+        if r.sealed {
+            let Some(holder) = r.holder.clone() else { continue };
+            let ok = match verdicts.get(&holder) {
+                Some(v) => *v,
+                None => {
+                    let v = holder_admits(state, &holder, viewer).await;
+                    verdicts.insert(holder.clone(), v);
+                    v
+                }
+            };
+            if !ok {
+                continue;
+            }
+        }
+        out.push(r);
+    }
+    out
+}
+
+/// The memo's rows for these documents (hex, quoted for SQL), the author's own first.
+async fn fetch_rows(node_db: &Db, docs: &[String]) -> Result<Vec<MemoRow>> {
+    let rows: Vec<MemoTuple> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root FROM doc_annotations
+                 WHERE target_doc IN ({}) ORDER BY (annotator = target_author) DESC, noted_ms",
+                docs.join(",")
+            ),
+            (),
+        )
+        .await
+        .context("reading known annotations")?;
+    Ok(rows.into_iter().map(memo_row).collect())
+}
+
+/// A memo row as the readers fetch it.
+struct MemoRow {
+    target_author: String,
+    target_doc: String,
+    annotator: String,
+    key: String,
+    value: String,
+    sealed: bool,
+    holder: Option<String>,
+}
+
+type MemoTuple = (String, String, String, String, String, i64, Option<String>);
+
+fn memo_row((ta, td, annotator, key, value, sealed, holder): MemoTuple) -> MemoRow {
+    MemoRow { target_author: ta, target_doc: td, annotator, key, value, sealed: sealed != 0, holder }
+}
+
+/// Open every raw sealed statement about one post with its key, in place: the row becomes
+/// the plain label, marked sealed, naming the holder whose trust admits readers. The body
+/// door calls this with the key it just used - the moment a reader is proven entitled to
+/// the words is the moment their node may hold the labels open.
+pub async fn open_sealed(
+    node_db: &Db,
+    target_author: &str,
+    target_doc: &str,
+    holder: &str,
+    post_key: &[u8; 32],
+) -> Result<()> {
+    let raw: Vec<(String, String, i64, String)> = node_db
+        .fetch_all(
+            "SELECT annotator, value, noted_ms, learned_via FROM doc_annotations
+             WHERE target_author = ?1 AND target_doc = ?2 AND key = ?3",
+            (target_author, target_doc, SEALED_KEY),
+        )
+        .await
+        .context("reading raw sealed labels")?;
+    for (annotator, sealed_hex, noted_ms, learned_via) in raw {
+        let Some((k, v)) = open_statement(&sealed_hex, post_key) else { continue };
+        node_db
+            .execute(
+                "INSERT INTO doc_annotations
+                   (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, sealed_as)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9)
+                 ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
+                   sealed = 1, holder_root = excluded.holder_root, sealed_as = excluded.sealed_as",
+                (target_author, target_doc, annotator.as_str(), k.as_str(), v.as_str(), noted_ms, learned_via.as_str(), holder, sealed_hex.as_str()),
+            )
+            .await
+            .context("opening a sealed label")?;
+        node_db
+            .execute(
+                "DELETE FROM doc_annotations
+                 WHERE target_author = ?1 AND target_doc = ?2 AND annotator = ?3 AND key = ?4 AND value = ?5",
+                (target_author, target_doc, annotator.as_str(), SEALED_KEY, sealed_hex.as_str()),
+            )
+            .await
+            .context("retiring a raw sealed label")?;
+    }
+    Ok(())
+}
+
+/// Note a sealed statement as the fold meets it: opened when this node already holds the
+/// post's own key (the author's node, or a reader who has read it), else raw, to be opened
+/// by `open_sealed` when the key arrives.
+async fn note_sealed(
+    node_db: &Db,
+    target_author: &str,
+    target_doc: &str,
+    annotator: &str,
+    sealed_hex: &str,
+    learned_via: &str,
+) -> Result<()> {
+    let opened = match crate::postkeys::lookup(node_db, target_author, target_doc).await? {
+        Some(key) => open_statement(sealed_hex, &key),
+        None => None,
+    };
+    match opened {
+        Some((k, v)) => {
+            node_db
+                .execute(
+                    "INSERT INTO doc_annotations
+                       (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, sealed_as)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?1, ?8)
+                     ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
+                       noted_ms = excluded.noted_ms, learned_via = excluded.learned_via,
+                       sealed = 1, holder_root = excluded.holder_root, sealed_as = excluded.sealed_as",
+                    (target_author, target_doc, annotator, k.as_str(), v.as_str(), now_ms(), learned_via, sealed_hex),
+                )
+                .await
+                .context("noting an opened sealed label")?;
+        }
+        None => {
+            node_db
+                .execute(
+                    "INSERT INTO doc_annotations
+                       (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, sealed_as)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, NULL, ?5)
+                     ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
+                       noted_ms = excluded.noted_ms, learned_via = excluded.learned_via",
+                    (target_author, target_doc, annotator, SEALED_KEY, sealed_hex, now_ms(), learned_via),
+                )
+                .await
+                .context("noting a raw sealed label")?;
+        }
+    }
+    Ok(())
 }
 
 /// The fold-lane hook: fold one annotator's statements past the mark.
@@ -53,7 +257,9 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
             }
         }
         let doc_hex = hex::encode(r.target_doc);
-        if r.present {
+        if r.present && r.key == SEALED_KEY {
+            note_sealed(&state.node_db, &r.target_author, &doc_hex, annotator, &r.value, "chain").await?;
+        } else if r.present {
             note(&state.node_db, &r.target_author, &doc_hex, annotator, &r.key, &r.value, "chain")
                 .await?;
         } else {
@@ -106,6 +312,17 @@ pub async fn forget(
         )
         .await
         .context("forgetting an annotation")?;
+    if key == SEALED_KEY {
+        // The lane retracts the ciphertext; the memo may hold it opened.
+        node_db
+            .execute(
+                "DELETE FROM doc_annotations
+                 WHERE target_author = ?1 AND target_doc = ?2 AND annotator = ?3 AND sealed_as = ?4",
+                (target_author, target_doc, annotator, value),
+            )
+            .await
+            .context("forgetting an opened sealed annotation")?;
+    }
     Ok(())
 }
 
@@ -116,8 +333,9 @@ pub async fn forget(
 /// way the cards show them (Curtis, 2026-09-07: the list had counted only the author's).
 /// Sorted by count, then by value, buckets and tags apart. One IN query, like `for_posts`.
 pub async fn label_counts(
-    node_db: &Db,
+    state: &AppState,
     posts: &[(String, String)],
+    viewer: Option<&str>,
 ) -> Result<(Vec<(String, i64)>, Vec<(String, i64)>)> {
     let docs: Vec<String> = posts
         .iter()
@@ -131,10 +349,11 @@ pub async fn label_counts(
         return Ok((Vec::new(), Vec::new()));
     }
     let wanted: std::collections::HashSet<&(String, String)> = posts.iter().collect();
-    let rows: Vec<(String, String, String, String, String)> = node_db
+    let rows: Vec<MemoTuple> = state
+        .node_db
         .fetch_all(
             &format!(
-                "SELECT target_author, target_doc, annotator, key, value FROM doc_annotations
+                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root FROM doc_annotations
                  WHERE target_doc IN ({}) AND key IN ('bucket', 'tag')",
                 docs.join(",")
             ),
@@ -142,10 +361,11 @@ pub async fn label_counts(
         )
         .await
         .context("counting labels")?;
+    let rows = admitted(state, rows.into_iter().map(memo_row).collect(), viewer).await;
     let mut seen: std::collections::HashSet<(String, String, String, String)> = Default::default();
     let mut buckets: std::collections::BTreeMap<String, i64> = Default::default();
     let mut tags: std::collections::BTreeMap<String, i64> = Default::default();
-    for (ta, td, annotator, key, value) in rows {
+    for MemoRow { target_author: ta, target_doc: td, annotator, key, value, .. } in rows {
         if !wanted.contains(&(ta.clone(), td.clone())) {
             continue;
         }
@@ -170,8 +390,29 @@ pub async fn label_counts(
 /// author's own first (they filed it), then others by arrival; the display register
 /// decides at the client which of the others render.
 pub async fn for_posts(
-    node_db: &Db,
+    state: &AppState,
     posts: &[(String, String)],
+    viewer: Option<&str>,
+) -> Result<std::collections::HashMap<(String, String), Vec<KnownAnnotation>>> {
+    for_posts_inner(state, posts, Some(viewer)).await
+}
+
+/// `for_posts` for a caller the BODY DOOR has already admitted to one sealed post (the copy
+/// door, which just read the words): every opened label, no viewer asked. Never for a
+/// listing.
+pub async fn for_post_admitted(
+    state: &AppState,
+    author: &str,
+    doc: &str,
+) -> Result<Vec<KnownAnnotation>> {
+    let mut known = for_posts_inner(state, &[(author.to_string(), doc.to_string())], None).await?;
+    Ok(known.remove(&(author.to_string(), doc.to_string())).unwrap_or_default())
+}
+
+async fn for_posts_inner(
+    state: &AppState,
+    posts: &[(String, String)],
+    viewer: Option<Option<&str>>,
 ) -> Result<std::collections::HashMap<(String, String), Vec<KnownAnnotation>>> {
     let docs: Vec<String> = posts
         .iter()
@@ -184,20 +425,14 @@ pub async fn for_posts(
     if docs.is_empty() {
         return Ok(Default::default());
     }
-    let rows: Vec<(String, String, String, String, String)> = node_db
-        .fetch_all(
-            &format!(
-                "SELECT target_author, target_doc, annotator, key, value FROM doc_annotations
-                 WHERE target_doc IN ({}) ORDER BY (annotator = target_author) DESC, noted_ms",
-                docs.join(",")
-            ),
-            (),
-        )
-        .await
-        .context("reading known annotations")?;
+    let rows = fetch_rows(&state.node_db, &docs).await?;
+    let rows = match viewer {
+        Some(v) => admitted(state, rows, v).await,
+        None => rows.into_iter().filter(|r| r.key != SEALED_KEY).collect(),
+    };
     let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> =
         Default::default();
-    for (ta, td, annotator, key, value) in rows {
+    for MemoRow { target_author: ta, target_doc: td, annotator, key, value, .. } in rows {
         if posts.contains(&(ta.clone(), td.clone())) {
             out.entry((ta, td)).or_default().push(KnownAnnotation {
                 annotator,
@@ -313,9 +548,12 @@ pub async fn proofs_for(
     target_author: &str,
     target_doc: &str,
 ) -> Vec<ringtome_proto::fragment::AnnotationProof> {
+    // A stranger's view: no sealed label rides a fragment (a raw ciphertext could, but the
+    // memo's raw rows are retired as they open, so the lane is the sealed road for now).
     let rows = match for_posts(
-        &state.node_db,
+        state,
         &[(target_author.to_string(), target_doc.to_string())],
+        None,
     )
     .await
     {
@@ -480,6 +718,10 @@ mod tests {
 
     /// Noted, re-noted (idempotent), read page-scoped with the author's own first, and
     /// forgotten on retraction.
+    async fn rows_of(db: &Db, d: &str) -> Vec<MemoRow> {
+        fetch_rows(db, &[format!("'{d}'")]).await.unwrap()
+    }
+
     #[tokio::test]
     async fn noted_read_and_forgotten() {
         let db = crate::db::test_node_db().await;
@@ -487,12 +729,37 @@ mod tests {
         note(&db, &a, &d, &"bb".repeat(32), "tag", "goopy", "chain").await.unwrap();
         note(&db, &a, &d, &a, "tag", "saucy", "chain").await.unwrap();
         note(&db, &a, &d, &a, "tag", "saucy", "chain").await.unwrap();
-        let known = for_posts(&db, &[(a.clone(), d.clone())]).await.unwrap();
-        let labels = known.get(&(a.clone(), d.clone())).unwrap();
+        let labels = rows_of(&db, &d).await;
         assert_eq!(labels.len(), 2, "idempotent: one row per statement");
         assert_eq!(labels[0].annotator, a, "the author's own label comes first");
         forget(&db, &a, &d, &"bb".repeat(32), "tag", "goopy").await.unwrap();
-        let known = for_posts(&db, &[(a.clone(), d.clone())]).await.unwrap();
-        assert_eq!(known.get(&(a, d)).unwrap().len(), 1, "a retraction takes its row");
+        assert_eq!(rows_of(&db, &d).await.len(), 1, "a retraction takes its row");
+    }
+
+    /// The sealed road (ruling 7): a statement rides as ciphertext, folds raw where the key
+    /// is not held, opens in place once it is, and a retraction of the ciphertext takes the
+    /// opened row with it.
+    #[tokio::test]
+    async fn a_sealed_label_folds_raw_opens_with_the_key_and_retracts_by_its_ciphertext() {
+        let db = crate::db::test_node_db().await;
+        let (a, d) = ("aa".repeat(32), "11".repeat(16));
+        let key = [7u8; 32];
+        let sealed = seal_statement(&key, "tag", "divorce").unwrap();
+        assert_eq!(open_statement(&sealed, &key), Some(("tag".into(), "divorce".into())));
+        assert_eq!(open_statement(&sealed, &[8u8; 32]), None, "the wrong key opens nothing");
+        note_sealed(&db, &a, &d, &a, &sealed, "chain").await.unwrap();
+        let raw = rows_of(&db, &d).await;
+        assert_eq!((raw[0].key.as_str(), raw[0].sealed, raw[0].holder.is_none()), (SEALED_KEY, true, true), "folded raw");
+        open_sealed(&db, &a, &d, &a, &key).await.unwrap();
+        let opened = rows_of(&db, &d).await;
+        assert_eq!(opened.len(), 1, "the raw row retired as it opened");
+        assert_eq!((opened[0].key.as_str(), opened[0].value.as_str(), opened[0].sealed, opened[0].holder.as_deref()), ("tag", "divorce", true, Some(a.as_str())));
+        forget(&db, &a, &d, &a, SEALED_KEY, &sealed).await.unwrap();
+        assert!(rows_of(&db, &d).await.is_empty(), "retracting the ciphertext takes the opened row");
+        // Held key at fold time: opened on the spot.
+        crate::postkeys::remember(&db, &a, &d, &key).await.unwrap();
+        note_sealed(&db, &a, &d, &"bb".repeat(32), &sealed, "chain").await.unwrap();
+        let now = rows_of(&db, &d).await;
+        assert_eq!((now[0].key.as_str(), now[0].value.as_str()), ("tag", "divorce"), "opened as it folded");
     }
 }

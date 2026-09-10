@@ -169,7 +169,7 @@ fn user_db_opens_are_deliberate() {
         ("fanout.rs", 3),          // journal_page + retract_vanished: ONE author per public-move edge
                                   // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
         ("identity.rs", 4),
-        ("idface.rs", 17), // 17: the body door's "held at all?" probe before a fetch (2026-09-08), once per request; 13: the whole-shelf read behind a search or the facets (2026-09-07); 14: the shares count for the kind row (2026-09-08); 15-16: the seal's holder (`sealed_here`, `trusted_viewer`) - once per request, and once per sealed REPLY on a shelf page (a page, never a persona loop)          // + stored_tree_leaves: ONE mirror per revalidation;
+        ("idface.rs", 18), // 18: `seal_key_for` reads a sealed subject's header for whose seal it wears, once per label written (2026-09-10); 17: the body door's "held at all?" probe before a fetch (2026-09-08), once per request; 13: the whole-shelf read behind a search or the facets (2026-09-07); 14: the shares count for the kind row (2026-09-08); 15-16: the seal's holder (`sealed_here`, `trusted_viewer`) - once per request, and once per sealed REPLY on a shelf page (a page, never a persona loop)          // + stored_tree_leaves: ONE mirror per revalidation;
                                   // + id_post annotations: one shelf open per permalink read (2026-08-29)
                                    // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
@@ -215,13 +215,13 @@ fn user_db_opens_are_deliberate() {
         ("record/documents.rs", 1),
         ("record/store.rs", 3), // + open_agented: the sweeps' session-free door, per agented persona once a minute - the journal-fill pass's own cadence
         ("identity/adoption.rs", 2),
-        ("identity/routes.rs", 9),
+        ("identity/routes.rs", 10), // 10: the mention gate on a sealed publish reads the seal holder's edges once (2026-09-10)
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 4),
         // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request
         // budget, never per candidate; currency is the listing's own stamp.
         ("search.rs", 1),
-        ("annotations.rs", 2),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
+        ("annotations.rs", 3), // 3: `holder_admits` - once per DISTINCT seal holder among a page's sealed labels, memoised per request (2026-09-10),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
                                   // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
                                   // root being folded - serialized per root, never a persona loop (2026-08-26)
                                   // + curation_refresh_inner: one ledger unseal per ledger-leg fold (2026-08-27)

@@ -866,7 +866,7 @@ async fn feed_labels_handler(
     // The dial (2026-09-08): the lists count only what the feed at this stop shows.
     let rows = rows_at_stop(&state, &owned, &root, rows, q.stop.as_deref()).await?;
     let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
+    let (buckets, tags) = crate::annotations::label_counts(&state, &pairs, Some(&root))
         .await
         .map_err(AppError::Internal)?;
     let kinds = crate::search::kind_counts(feed_kinds(&state, &rows).await?.into_iter());
@@ -928,7 +928,7 @@ async fn feed_handler(
                 kind,
             })
             .collect();
-        let keep = crate::search::matching(&state, &candidates, &narrow)
+        let keep = crate::search::matching(&state, &candidates, &narrow, Some(&root))
             .await
             .map_err(AppError::Internal)?;
         let mut all = all;
@@ -978,7 +978,7 @@ async fn feed_handler(
         .iter()
         .map(|r| (r.author_root.clone(), r.doc_id.clone()))
         .collect();
-    let known_labels = crate::annotations::for_posts(&state.node_db, &page_pairs)
+    let known_labels = crate::annotations::for_posts(&state, &page_pairs, Some(&root))
         .await
         .map_err(AppError::Internal)?;
     let reply_counts = crate::replies::known_counts(
@@ -1546,7 +1546,7 @@ pub(crate) async fn after_posted(
     reply: Option<crate::record::documents::ReplyLinks>,
     // The mint flags ride along for symmetry with the handler; nothing here reads them
     // any more - the key memo asks the draft, not the request.
-    _flags: crate::record::documents::PublishFlags,
+    flags: crate::record::documents::PublishFlags,
 ) -> Result<(), AppError> {
     let doc_id = *draft_id;
     let state = state.clone();
@@ -1681,7 +1681,7 @@ pub(crate) async fn after_posted(
     // slice 1) - best-effort, like the pins: a label must not unsay the words.
     {
         let self_root = hex_fixed::<32>(&root, "root")?;
-        match replicate_annotations(data, &self_root, &doc_id, &post_id).await {
+        match replicate_annotations(&state, data, &self_root, &doc_id, &post_id, flags.seal_of).await {
             Ok(mentions) => mention_notices(&state, data, &root, mentions).await,
             Err(e) => tracing::warn!(error = ?e, "annotation replication failed; the post stands"),
         }
@@ -2371,9 +2371,18 @@ async fn public_annotation_put_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let target_author = hex_fixed::<32>(&author, "author root")?;
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    // A label on a sealed post seals under the post's key (ruling 7) - the labeller must
+    // hold it, which is to say they must be able to read the words.
+    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc).await? {
+        Some((_, post_key)) => (
+            crate::annotations::SEALED_KEY.to_string(),
+            crate::annotations::seal_statement(&post_key, req.key.trim(), req.value.trim()).map_err(AppError::Internal)?,
+        ),
+        None => (req.key.trim().to_string(), req.value.trim().to_string()),
+    };
     let signed = data
         .public_annotations()
-        .say(&target_author, &target_doc, req.key.trim(), req.value.trim(), true)
+        .say(&target_author, &target_doc, &key, &value, true)
         .await?;
     // The 200 means the label SHOWS (Curtis, 2026-08-31: a tag on someone else's post
     // vanished on refresh): the memo every surface reads is fed by the fold lane, and
@@ -2424,6 +2433,23 @@ async fn public_annotation_delete_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let target_author = hex_fixed::<32>(&author, "author root")?;
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    // A sealed label is retracted by the ciphertext it was said as (ruling 7): find it by
+    // opening what this persona said about the post.
+    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc).await? {
+        Some((_, post_key)) => {
+            let said = data.public_annotations().of(&author, &target_doc).await?;
+            let sealed = said
+                .into_iter()
+                .filter(|r| r.key == crate::annotations::SEALED_KEY)
+                .find(|r| crate::annotations::open_statement(&r.value, &post_key).is_some_and(|(k, v)| k == key && v == value))
+                .map(|r| r.value);
+            match sealed {
+                Some(sealed) => (crate::annotations::SEALED_KEY.to_string(), sealed),
+                None => (key, value),
+            }
+        }
+        None => (key, value),
+    };
     let signed = data
         .public_annotations()
         .say(&target_author, &target_doc, &key, &value, false)
@@ -2453,11 +2479,81 @@ const REPLICATED_TAGS_CAP: usize = 32;
 /// Returns the mention statements this pass minted fresh - `(mentioned root hex, the
 /// signed statement)` - for the envelope road to announce; a re-publish that keeps its
 /// cards mints none and rings nobody twice.
+/// Say what `desired` says about `target` and retract what it no longer says - sealed under
+/// `post_key` when the target is sealed (ruling 7), plain otherwise. The lane holds
+/// ciphertexts with fresh nonces, so "already said" is judged on the OPENED statements, and
+/// a post that changed its seal (an open edit of a sealed post, or the reverse) sheds every
+/// statement of the other kind. Returns the freshly said `(key, value, entry)` triples.
+pub(crate) async fn restate_labels(
+    data: &store::Store,
+    self_root: &[u8; 32],
+    target: &[u8; 16],
+    desired: &std::collections::BTreeSet<(String, String)>,
+    post_key: Option<[u8; 32]>,
+) -> Result<Vec<(String, String, ringtome_proto::SignedEntry)>, AppError> {
+    use crate::annotations::{open_statement, seal_statement, SEALED_KEY};
+    let self_hex = hex::encode(self_root);
+    let mut plain: std::collections::BTreeSet<(String, String)> = Default::default();
+    let mut opened: std::collections::BTreeMap<(String, String), String> = Default::default();
+    let mut unopenable: Vec<String> = Vec::new();
+    for r in data.public_annotations().of(&self_hex, target).await? {
+        if r.key == SEALED_KEY {
+            match post_key.and_then(|k| open_statement(&r.value, &k)) {
+                Some(kv) => {
+                    opened.insert(kv, r.value);
+                }
+                None => unopenable.push(r.value),
+            }
+        } else {
+            plain.insert((r.key, r.value));
+        }
+    }
+    let mut fresh = Vec::new();
+    match post_key {
+        Some(key) => {
+            for (k, v) in desired {
+                if opened.contains_key(&(k.clone(), v.clone())) {
+                    continue;
+                }
+                let sealed = seal_statement(&key, k, v).map_err(AppError::Internal)?;
+                let signed = data.public_annotations().say(self_root, target, SEALED_KEY, &sealed, true).await?;
+                fresh.push((k.clone(), v.clone(), signed));
+            }
+            for (kv, sealed) in &opened {
+                if !desired.contains(kv) {
+                    data.public_annotations().say(self_root, target, SEALED_KEY, sealed, false).await?;
+                }
+            }
+            for (k, v) in &plain {
+                data.public_annotations().say(self_root, target, k, v, false).await?;
+            }
+        }
+        None => {
+            for (k, v) in desired.difference(&plain) {
+                let signed = data.public_annotations().say(self_root, target, k, v, true).await?;
+                fresh.push((k.clone(), v.clone(), signed));
+            }
+            for (k, v) in plain.difference(desired) {
+                data.public_annotations().say(self_root, target, k, v, false).await?;
+            }
+            for sealed in opened.values() {
+                data.public_annotations().say(self_root, target, SEALED_KEY, sealed, false).await?;
+            }
+        }
+    }
+    for sealed in &unopenable {
+        data.public_annotations().say(self_root, target, SEALED_KEY, sealed, false).await?;
+    }
+    Ok(fresh)
+}
+
 async fn replicate_annotations(
+    state: &AppState,
     data: &store::Store,
     self_root: &[u8; 32],
     draft_id: &[u8; 16],
     post_id: &[u8; 16],
+    seal_of: Option<([u8; 32], [u8; 16])>,
 ) -> Result<Vec<(String, ringtome_proto::SignedEntry)>, AppError> {
     // Refuse, never truncate (2026-08-31): a label past its cap is skipped with a warning
     // rather than quietly shortened - the draft's word is the author's word or nothing.
@@ -2483,7 +2579,14 @@ async fn replicate_annotations(
             desired.insert(("tag".into(), tag.clone()));
         }
     }
-    for (field, value) in data.annotations().fields(draft_id).await? {
+    let fields = data.annotations().fields(draft_id).await?;
+    // A sealed post's labels seal under its key (ruling 7): the mint left the key on the
+    // draft, the parent's for a reply under the parent's seal.
+    let post_key: Option<[u8; 32]> = fields
+        .iter()
+        .find(|(f, _)| f.as_str() == store::TRUSTED_KEY)
+        .and_then(|(_, v)| hex_fixed::<32>(v, "post key").ok());
+    for (field, value) in fields {
         // `published_as` is the draft's private bookkeeping (which post it minted) - a
         // fact about the draft, not a label on the post.
         if field == store::PROVENANCE {
@@ -2540,22 +2643,40 @@ async fn replicate_annotations(
             }
         }
     }
-    let stated: std::collections::BTreeSet<(String, String)> = data
-        .public_annotations()
-        .of(&hex::encode(self_root), post_id)
-        .await?
-        .into_iter()
-        .map(|r| (r.key, r.value))
-        .collect();
+    let fresh = restate_labels(data, self_root, post_id, &desired, post_key).await?;
+    // A mention inside a sealed post reaches only someone who could read it (ruling 7):
+    // the seal's holder must publish trust for them, or the notice would say "you were
+    // mentioned somewhere you cannot go".
+    let admits: Option<std::collections::HashSet<String>> = if post_key.is_some() {
+        let self_hex = hex::encode(self_root);
+        let holder_hex = seal_of.map(|(a, _)| hex::encode(a)).unwrap_or_else(|| self_hex.clone());
+        let edges = if holder_hex == self_hex {
+            crate::record::imaol::published_edges(data.db()).await.ok()
+        } else {
+            match state.user_dbs.get(&holder_hex).await {
+                Ok(Some(db)) => crate::record::imaol::published_edges(&db).await.ok(),
+                _ => None,
+            }
+        };
+        Some(
+            edges
+                .map(|e| e.into_iter().filter(|(_, v)| v.edge.trust.is_some()).map(|(k, _)| k).collect())
+                .unwrap_or_default(),
+        )
+    } else {
+        None
+    };
     let mut fresh_mentions = Vec::new();
-    for (k, v) in desired.difference(&stated) {
-        let signed = data.public_annotations().say(self_root, post_id, k, v, true).await?;
-        if k == ringtome_proto::PublicAnnotation::MENTION_KEY {
-            fresh_mentions.push((v.clone(), signed));
+    for (k, v, signed) in fresh {
+        if k != ringtome_proto::PublicAnnotation::MENTION_KEY {
+            continue;
         }
-    }
-    for (k, v) in stated.difference(&desired) {
-        data.public_annotations().say(self_root, post_id, k, v, false).await?;
+        if let Some(admits) = &admits {
+            if !admits.contains(&v) {
+                continue;
+            }
+        }
+        fresh_mentions.push((v, signed));
     }
     Ok(fresh_mentions)
 }
@@ -2964,13 +3085,12 @@ async fn read_public_source(
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the source body: {e}")))?
         .to_vec();
-    let known = crate::annotations::for_posts(&state.node_db, &[(author_hex.to_string(), doc_hex.to_string())])
+    // The body door just admitted this reader to the words, so the sealed labels are
+    // theirs to copy too (ruling 7).
+    let known = crate::annotations::for_post_admitted(state, author_hex, doc_hex)
         .await
         .map_err(AppError::Internal)?;
-    let own: Vec<&crate::annotations::KnownAnnotation> = known
-        .get(&(author_hex.to_string(), doc_hex.to_string()))
-        .map(|v| v.iter().filter(|a| a.annotator == author_hex).collect())
-        .unwrap_or_default();
+    let own: Vec<&crate::annotations::KnownAnnotation> = known.iter().filter(|a| a.annotator == author_hex).collect();
     let tags = own.iter().filter(|a| a.key == "tag").map(|a| a.value.clone()).collect();
     let inherited = own.iter().filter(|a| a.key == store::PROVENANCE).map(|a| a.value.clone()).collect();
     Ok(PublicSource { title, body, format, tags, inherited, sealed })

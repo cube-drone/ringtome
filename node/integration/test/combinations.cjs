@@ -189,8 +189,10 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             const head = await (await dana(`api/id/${adaRoot}/posts/${book}`)).json();
             assert.equal(head.trusted_only, true, "the book wears the seal");
             assert.equal(head.title, "", "no title on a sealed post's public face (ruling 5); the tree carries it, for the trusted");
-            const tags = (head.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort();
-            assert.deepEqual(tags, ["alpha", "video"], "the union of the published pages' tags, never the hidden page's");
+            assert.deepEqual((head.annotations || []).filter((a) => a.key === "tag"), [], "a stranger sees no label on a sealed book (ruling 7)");
+            const ownHead = await (await ada(`api/id/${adaRoot}/posts/${book}?as=${adaRoot}`)).json();
+            const tags = (ownHead.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort();
+            assert.deepEqual(tags, ["alpha", "video"], "the union of the published pages' tags, never the hidden page's - sealed, for the author");
             const body = await grimoire.payload(book);
             assert.deepEqual(body.pages.map((x) => x.title), ["on squirrels"]);
             assert.deepEqual(body.sections.map((s) => s.title), ["part one"]);

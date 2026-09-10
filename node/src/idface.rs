@@ -1497,6 +1497,11 @@ pub(crate) async fn public_doc_bytes(
                 title_header = Some(hex::encode(t));
             }
         }
+        // And the labels (ruling 7): a reader proven entitled to the words is entitled to
+        // what is said about them - open the raw sealed statements this node holds, once.
+        if let Err(e) = crate::annotations::open_sealed(&state.node_db, &hex::encode(root), &hex::encode(doc_id), &holder_hex, &key).await {
+            tracing::debug!(error = ?e, "opening sealed labels failed");
+        }
         plain
     } else {
         bytes
@@ -1608,6 +1613,56 @@ pub(crate) async fn sealed_here(state: &AppState, author_hex: &str, doc_id: &[u8
         .ok()
         .flatten()
         .map(|h| h.trusted_only)
+}
+
+/// The key a statement about `(author, doc)` must be sealed under, when the subject is
+/// sealed (ruling 7): `Some((holder, key))` for a sealed post whose key this node holds or
+/// can fetch, `None` when the subject is open (label it plainly) - and an error when it is
+/// sealed and the key is not to be had: you cannot label words you cannot read. Reads the
+/// held header for the seal's holder, the user db first, the fragment store second.
+pub(crate) async fn seal_key_for(
+    state: &AppState,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> Result<Option<(String, [u8; 32])>, AppError> {
+    if sealed_here(state, author_hex, doc_id).await != Some(true) {
+        return Ok(None);
+    }
+    let doc_hex = hex::encode(doc_id);
+    let Some(author) = hex::decode(author_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else {
+        return Ok(None);
+    };
+    // user-db open 18 of 18 (tests/conventions.rs): the subject's own header, for whose
+    // seal it wears.
+    let seal_of = match state.user_dbs.get(author_hex).await {
+        Ok(Some(db)) => match crate::record::documents::public_header_entry(&db, doc_id).await? {
+            Some(entry) => match &entry.entry().payload {
+                ringtome_proto::Payload::Inline(payload) => {
+                    ringtome_proto::registry::DocHeaderPlain::decode(payload).ok().and_then(|h| h.seal_of)
+                }
+                _ => None,
+            },
+            None => None,
+        },
+        _ => crate::fragments::held_header(&state.node_db, author_hex, &doc_hex)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|h| h.seal_of),
+    };
+    let (holder, key_doc) = seal_holder(&author, doc_id, seal_of);
+    let holder_hex = hex::encode(holder);
+    let key = match crate::postkeys::lookup(&state.node_db, &holder_hex, &hex::encode(key_doc)).await? {
+        Some(k) => Some(k),
+        None => crate::net::fragment::fetch_key(state, &holder, &key_doc).await,
+    };
+    match key {
+        Some(k) => Ok(Some((holder_hex, k))),
+        None => Err(AppError::Forbidden(crate::msg!(
+            "idface.cant-label-words-you-cant-read",
+            "you can't label words you can't read"
+        ))),
+    }
 }
 
 /// Whose seal a sealed document wears (PROJECT_PLAN's Replies under the author's seal): the
@@ -1771,7 +1826,7 @@ pub async fn id_labels(
     let mut posts = whole_shelf(&state, &root_hex).await;
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
     let pairs: Vec<(String, String)> = posts.iter().map(|p| (root_hex.clone(), hex::encode(p.doc_id))).collect();
-    let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
+    let (buckets, tags) = crate::annotations::label_counts(&state, &pairs, query.as_root.as_deref())
         .await
         .map_err(AppError::Internal)?;
     // The kind row: the posts by their shape, plus every share the persona passed along.
@@ -1863,7 +1918,7 @@ pub async fn id_posts(
                 kind: post_kind(p),
             })
             .collect();
-        let keep = crate::search::matching(&state, &candidates, &narrow)
+        let keep = crate::search::matching(&state, &candidates, &narrow, query.as_root.as_deref())
             .await
             .map_err(AppError::Internal)?;
         all.into_iter()
@@ -1997,7 +2052,7 @@ pub async fn id_posts(
             }
         });
     }
-    attach_annotations(&state, &root_hex, &mut items).await;
+    attach_annotations(&state, &root_hex, &mut items, query.as_root.as_deref()).await;
     // Replies say what they answer (Curtis, 2026-09-02: the list "doesn't make it obvious
     // what the replies are replies to"): dress each reply's parent link with a title and a
     // byline - the author's own shelf for same-shelf parents, the fragment shelf for
@@ -2094,12 +2149,13 @@ async fn attach_annotations(
     state: &AppState,
     root_hex: &str,
     posts: &mut [serde_json::Value],
+    viewer: Option<&str>,
 ) {
     let pairs: Vec<(String, String)> = posts
         .iter()
         .filter_map(|v| v["doc_id"].as_str().map(|d| (root_hex.to_string(), d.to_string())))
         .collect();
-    let Ok(known) = crate::annotations::for_posts(&state.node_db, &pairs).await else {
+    let Ok(known) = crate::annotations::for_posts(state, &pairs, viewer).await else {
         return;
     };
     if known.is_empty() {
@@ -2174,6 +2230,7 @@ pub async fn id_post(
     session: Option<Session>,
     State(state): State<AppState>,
     Path((seg, doc)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-8", "no such persona here")));
@@ -2267,8 +2324,9 @@ pub async fn id_post(
                 labels.extend(rows.into_iter().map(|r| (root_hex.clone(), r.key, r.value)));
             }
             if let Ok(known) = crate::annotations::for_posts(
-                &state.node_db,
+                &state,
                 &[(root_hex.clone(), doc_hex.clone())],
+                query.as_root.as_deref(),
             )
             .await
             {
@@ -2696,9 +2754,9 @@ pub async fn id_profile(
             post_json(p, n)
         })
         .collect();
-    attach_annotations(&state, &root_hex, &mut profile_posts).await;
+    attach_annotations(&state, &root_hex, &mut profile_posts, query.as_root.as_deref()).await;
     let mut pinned_posts: Vec<serde_json::Value> = pinned.iter().map(|p| post_json(p, 0)).collect();
-    attach_annotations(&state, &root_hex, &mut pinned_posts).await;
+    attach_annotations(&state, &root_hex, &mut pinned_posts, query.as_root.as_deref()).await;
 
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,

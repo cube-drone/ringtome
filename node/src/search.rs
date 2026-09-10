@@ -245,12 +245,12 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
 /// Judge `candidates` (newest first) against `narrow`: the indices of those that match, at
 /// most `RESULTS_CAP`. Labels first (one memo read for the whole set), then the words -
 /// indexing bodies on the way within `INDEX_PER_QUERY`, spent only on label survivors.
-pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narrow) -> Result<Vec<usize>> {
+pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>) -> Result<Vec<usize>> {
     let labelled = if narrow.buckets.is_empty() && narrow.tags.is_empty() {
         None
     } else {
         let pairs: Vec<(String, String)> = candidates.iter().map(|c| (c.author_root.clone(), c.doc_hex.clone())).collect();
-        Some(crate::annotations::for_posts(&state.node_db, &pairs).await?)
+        Some(crate::annotations::for_posts(state, &pairs, viewer).await?)
     };
     let mut budget = INDEX_PER_QUERY;
     let mut out = Vec::new();

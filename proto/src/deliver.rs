@@ -683,7 +683,14 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                     "the mention is on somebody else's post",
                 ));
             }
-            if a.mentioned() != Some(envelope.recipient_root) {
+            // A sealed post's mention rides the lane as ciphertext (PROJECT_PLAN's Replies
+            // under the author's seal, ruling 7): the statement is sealed under the post's
+            // key, which the recipient may not hold yet, so "names me" cannot be checked
+            // here. The claim is then the sender's word about their own sealed post - the
+            // sender's node sent it only to someone the seal's holder trusts, and the
+            // recipient tiers it by sender like any notice. The open form checks the name.
+            let sealed = a.key == "sealed";
+            if !sealed && a.mentioned() != Some(envelope.recipient_root) {
                 return Err(ProtoError::ChainViolation(
                     "the mention names somebody else",
                 ));
@@ -1153,6 +1160,12 @@ mod tests {
         assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention([8u8; 32], recipient, true))).is_err(), "on somebody else's post");
         assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, recipient, false))).is_err(), "withdrawn");
         assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, annotation_entry(&leaf, (me, post), true))).is_err(), "a tag is not a mention");
+        // A sealed mention (ruling 7): the sender's word about their own sealed post.
+        let sealed = |target: [u8; 32], present: bool| statement_entry(&leaf, (target, post), "sealed", "deadbeef", present);
+        let claim = verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, sealed(me, true))).unwrap();
+        assert_eq!(claim.doc_id, Some(post), "a sealed mention points at the sender's post");
+        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, sealed([8u8; 32], true))).is_err(), "still on somebody else's post");
+        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, sealed(me, false))).is_err(), "still withdrawn");
     }
 
     fn comment_notice(
