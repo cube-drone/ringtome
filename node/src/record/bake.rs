@@ -335,7 +335,7 @@ pub async fn publish(
                 }
                 // Private twins bake inline: the bytes are local and already crushed, so this
                 // is decrypt-and-remint - milliseconds, no queue, no modal dwell.
-                match docs.bake_private_media(media, post_key).await {
+                match docs.bake_private_media(media, post_key, flags.seal_of).await {
                     Ok((public, fmt, anim)) => {
                         swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, anim)));
                         baked.push(public);
@@ -657,7 +657,7 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
     // The source URL is the title: v1's provenance-on-the-artifact, until the public header
     // grows a real field at the next deliberate wire break (the registry row is the durable
     // record meanwhile).
-    crate::record::documents::save_public_media(&db, &leaf, &state.files, url, crushed, None)
+    crate::record::documents::save_public_media(&db, &leaf, &state.files, url, crushed, None, None)
         .await
         .map_err(|e| format!("minting: {e}"))
 }

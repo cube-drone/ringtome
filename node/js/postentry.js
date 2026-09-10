@@ -17,7 +17,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api, apiText } from './net.js';
+import { api, apiText, apiTextTitled } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
@@ -454,7 +454,18 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
                     if (live) setWords(said);
                     return;
                 }
-                if (head.format === 'book' || head.trusted_only) return; // a table, or sealed: no peeking
+                // Sealed: the title travels with the words, for whoever may have them
+                // (ruling 5) - ask the body door and stay a link when it refuses.
+                if (head.trusted_only) {
+                    try {
+                        const { title } = await apiTextTitled(`/id/${author}/docs/${doc_id}/body`);
+                        if (live && title) setWords(title);
+                    } catch {
+                        /* not for us: the mini-card stays a link */
+                    }
+                    return;
+                }
+                if (head.format === 'book') return; // a table: no peeking
                 const body = await apiText(`/id/${author}/docs/${doc_id}/body`);
                 if (live) setWords(excerpt(body, head.format));
             } catch {
@@ -529,6 +540,7 @@ const BookCard = ({ book, author }) => {
 
 export const PostEntry = ({ item, current, interest, editing, quote, standalone = false }) => {
     const [body, setBody] = useState(undefined);
+    const [sealedWords, setSealedWords] = useState('');
     const [wholeThing, setWholeThing] = useState(false);
     const [open, setOpen] = useState(false);
     // Why the last in-place publish was refused, rendered under the composer - see the
@@ -561,8 +573,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         const bodyUrl = item.private_doc
             ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
             : `/id/${item.author}/docs/${item.doc_id}/body${item.kind === 'share' && item.via ? `?via=${item.via}` : ''}`;
-        apiText(bodyUrl)
-            .then((t) => live && setBody(t))
+        apiTextTitled(bodyUrl)
+            .then(({ text, title }) => {
+                if (!live) return;
+                setBody(text);
+                if (title) setSealedWords(title);
+            })
             .catch(() => live && setBody(null));
         return () => {
             live = false;
@@ -607,8 +623,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
     // refetch of what they typed. The item prop's copies are snapshots; a page refresh
     // reconciles everything against the canonical fold anyway.
+    // A sealed post's title travels with its words (PROJECT_PLAN's Replies under the
+    // author's seal, ruling 5): the public header carries none, and the body door hands
+    // the title to whoever it hands the body - so the card knows it the moment the words
+    // arrive, and never before.
     const shownBody = amended ? amended.body : body;
-    const title = amended ? amended.title : item.title;
+    const title = amended ? amended.title : item.title || sealedWords || '';
     const tlProfile = useTurbolinks(shownBody || '', item.format);
     const { lead, cut } = leadOf(shownBody || '', emphasis);
     // A book's body is its tree, never prose: no lead cut, the card draws the whole table.

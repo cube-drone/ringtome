@@ -1873,6 +1873,8 @@ mod tests {
                 genesis_ms,
                 reply_to: None,
                 thread_root: None,
+            sealed_title: None,
+            seal_of: None,
             },
         }
     }

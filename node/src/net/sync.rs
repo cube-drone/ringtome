@@ -3365,6 +3365,8 @@ mod tests {
                 genesis_ms: None,
                 reply_to: None,
                 thread_root: None,
+            sealed_title: None,
+            seal_of: None,
             };
             chain.append(entry_type::DOC_HEADER, header.encode().unwrap())
         }

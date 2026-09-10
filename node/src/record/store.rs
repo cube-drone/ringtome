@@ -1064,7 +1064,7 @@ impl Documents<'_> {
         reply: Option<crate::record::documents::ReplyLinks>,
         flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
-        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of } = flags;
+        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of } = flags;
         let view = self.all().await?;
         let doc = view
             .docs
@@ -1164,6 +1164,7 @@ impl Documents<'_> {
                 settled,
                 trusted_only,
                 post_key,
+                seal_of,
                 dated_ms,
                 part_of,
             },
@@ -1246,6 +1247,9 @@ impl Documents<'_> {
         &self,
         media_doc: &[u8; 16],
         post_key: Option<[u8; 32]>,
+        // The post whose key sealed this twin, when that is not this author's own post:
+        // a reply under its parent's seal (PROJECT_PLAN's Replies under the author's seal).
+        seal_of: Option<([u8; 32], [u8; 16])>,
     ) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
         let view = self.all().await?;
         let doc = view
@@ -1312,6 +1316,7 @@ impl Documents<'_> {
             &head.header.title,
             ingested,
             post_key,
+            seal_of,
         )
         .await?;
         if post_key.is_none() {

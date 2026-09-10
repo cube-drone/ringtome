@@ -1034,6 +1034,8 @@ mod tests {
             genesis_ms: Some(7),
             reply_to,
             thread_root: reply_to,
+        sealed_title: None,
+        seal_of: None,
         }
         .encode()
         .unwrap();

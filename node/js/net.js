@@ -57,6 +57,30 @@ export async function api(path, options = {}) {
  * contract with `err.status` - only the parse differs, which is exactly why this lives here
  * beside `api()` rather than as a bare `fetch` in whichever module wanted text this week.
  */
+/// The words, and a sealed post's title beside them (PROJECT_PLAN's Replies under the
+/// author's seal, ruling 5): the body door hands the title back to whoever it hands the
+/// words, hex-encoded, so no surface needs a key. `{ text, title }`, the title null unless
+/// the post is sealed and this reader may have it.
+export async function apiTextTitled(path, options = {}) {
+    const res = await fetch(path, { credentials: 'same-origin', ...options });
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+        const err = new Error(`request failed (${res.status})`);
+        err.status = res.status;
+        throw err;
+    }
+    const hex = res.headers.get('x-post-title-hex');
+    let title = null;
+    if (hex && /^[0-9a-f]*$/i.test(hex) && hex.length % 2 === 0) {
+        try {
+            title = new TextDecoder().decode(Uint8Array.from(hex.match(/../g) || [], (b) => parseInt(b, 16)));
+        } catch {
+            title = null;
+        }
+    }
+    return { text, title };
+}
+
 export async function apiText(path, options = {}) {
     const res = await fetch(path, { credentials: 'same-origin', ...options });
     const text = await res.text().catch(() => '');

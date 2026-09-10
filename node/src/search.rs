@@ -146,11 +146,14 @@ struct BodyFacts {
     file_hash: [u8; 32],
     format: Option<u64>,
     trusted_only: bool,
+    /// A sealed post's title, sealed under the post key (PROJECT_PLAN's Replies under the
+    /// author's seal, ruling 5): indexed with the words, for the readers who have both.
+    sealed_title: Option<Vec<u8>>,
 }
 
 async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<BodyFacts> {
     if let Ok(Some(h)) = crate::fragments::serving_header(&state.node_db, author_hex, doc_id).await {
-        return Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only });
+        return Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only, sealed_title: h.sealed_title });
     }
     let db = state.user_dbs.get(author_hex).await.ok().flatten()?;
     let entry = crate::record::documents::public_header_entry(&db, doc_id).await.ok().flatten()?;
@@ -158,7 +161,7 @@ async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Op
         return None;
     };
     let h = ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()?;
-    Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only })
+    Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only, sealed_title: h.sealed_title })
 }
 
 async fn stored(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<(i64, String)>> {
@@ -185,7 +188,7 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     }
     let Ok(raw) = hex::decode(&c.doc_hex) else { return Ok(None) };
     let Ok(doc_id) = <[u8; 16]>::try_from(raw.as_slice()) else { return Ok(None) };
-    let Some(BodyFacts { file_hash: hash, format, trusted_only }) = body_facts(state, &c.author_root, &doc_id).await else {
+    let Some(BodyFacts { file_hash: hash, format, trusted_only, sealed_title }) = body_facts(state, &c.author_root, &doc_id).await else {
         return Ok(None);
     };
     let blob = iroh_blobs::Hash::from_bytes(hash);
@@ -218,7 +221,15 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     } else {
         String::new()
     };
-    let tokens = tokens_of(&c.title, &body);
+    // A sealed post's title is sealed too: index it beside the words, for the node that
+    // holds the key (ruling 5).
+    let title = match (&key, &sealed_title) {
+        (Some(k), Some(sealed)) => crate::record::private::open_post_body(sealed, k)
+            .and_then(|t| String::from_utf8(t).ok())
+            .unwrap_or_else(|| c.title.clone()),
+        _ => c.title.clone(),
+    };
+    let tokens = tokens_of(&title, &body);
     state
         .node_db
         .execute(

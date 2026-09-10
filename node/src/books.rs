@@ -307,6 +307,7 @@ async fn rollout(
         let flags = crate::record::documents::PublishFlags {
             settled: plan.settled,
             trusted_only: plan.trusted_only,
+            seal_of: None, // a book and its pages wear their own author's seal
             dated_ms: None,
             part_of: Some(book_id),
         };
@@ -427,6 +428,7 @@ async fn rollout(
             reply: None,
             settled: plan.settled,
             trusted_only: plan.trusted_only,
+            seal_of: None, // a book and its pages wear their own author's seal
             post_key: book_key,
             dated_ms: None,
             part_of: None,
@@ -490,6 +492,7 @@ async fn rollout(
                 reply: Some((target, target)),
                 settled: plan.settled,
                 trusted_only: plan.trusted_only,
+            seal_of: None, // a book and its pages wear their own author's seal
                 post_key: book_key,
                 dated_ms: None,
                 part_of: None,

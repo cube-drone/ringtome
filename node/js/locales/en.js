@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 699 phrases across 52 files.
+// 698 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -657,7 +657,6 @@ export default {
     'identity.routes.cant-reply-to-words-you-cant-read': "you can't reply to words the author doesn't share with you",
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
-    'identity.routes.a-sealed-reply-carries-words-only': "a reply under the author's seal carries words only, for now - no pictures",
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",

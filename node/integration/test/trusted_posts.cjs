@@ -48,7 +48,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         draft = made.doc_id;
         // The public face, for an untrusted reader: existence, title, date - and the flag.
         const head = await (await bea(`api/id/${adaRoot}/posts/${post}`)).json();
-        assert.equal(head.title, "for my people", "the title is the post's public face");
+        assert.equal(head.title, "", "the title is sealed too (ruling 5): the header carries none");
         assert.equal(head.trusted_only, true);
     });
 
@@ -58,7 +58,13 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         assert.match(await no.text(), /people they trust/);
         const own = await ada(`id/${adaRoot}/docs/${post}/body`);
         assert.equal(own.status, 200, await own.clone().text());
-        assert.equal(await own.text(), "the quiet words");
+        const ownText = await own.text();
+        assert.equal(ownText, "the quiet words", "the body is byte-exactly what the author wrote");
+        assert.equal(
+            Buffer.from(own.headers.get("x-post-title-hex") || "", "hex").toString(),
+            "for my people",
+            "and the title travels beside the words (ruling 5)"
+        );
     });
 
     it("publishing trust opens the door - at serve time, no re-publication", async () => {
@@ -69,7 +75,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         await beat(undefined, "mint", adaRoot);
         const yes = await bea(`id/${adaRoot}/docs/${post}/body`);
         assert.equal(yes.status, 200, await yes.clone().text());
-        assert.equal(await yes.text(), "the quiet words");
+        assert.equal((await yes.text()), "the quiet words");
     });
 
     it("across nodes, the body is ciphertext and the KEY travels the trusted lane", async function () {
@@ -104,7 +110,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         let got = null;
         for (let i = 0; i < 40 && got !== "the quiet words"; i++) {
             const r = await cara(`id/${adaRoot}/docs/${post}/body`);
-            if (r.status === 200) got = await r.text();
+            if (r.status === 200) got = (await r.text());
             else await new Promise((res) => setTimeout(res, 400));
         }
         assert.equal(got, "the quiet words", "the key lane opened the sealed body");
@@ -190,7 +196,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         const head2 = await (await ada(`api/id/${adaRoot}/posts/${pub}`)).json();
         const twin2 = (head2.refs || [])[0];
         assert.ok(twin2, "the re-said header names a twin");
-        const words = await (await ada(`id/${adaRoot}/docs/${pub}/body`)).text();
+        const words = (await (await ada(`id/${adaRoot}/docs/${pub}/body`)).text());
         assert.match(words, /^edited/, "the new words landed");
         assert.ok(words.includes(`/docs/${twin2}/body/`), "and they name the twin the header names");
         const adaTwin = await ada(`id/${adaRoot}/docs/${twin2}/body`);
@@ -270,8 +276,8 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         const stranger = await makeUserFetch({ prefix: "truststranger" });
         const no = await stranger(`id/${adaRoot}/docs/${post}/body`);
         assert.equal(no.status, 403, "still sealed to a stranger");
-        assert.equal(await (await bea(`id/${adaRoot}/docs/${post}/body`)).text(), "the quieter words", "the trusted reader gets the new words");
+        assert.equal((await (await bea(`id/${adaRoot}/docs/${post}/body`)).text()), "the quieter words", "the trusted reader gets the new words");
         const own = await ada(`id/${adaRoot}/docs/${post}/body`);
-        assert.equal(await own.text(), "the quieter words", "and the author reads the new words");
+        assert.equal((await own.text()), "the quieter words", "and the author reads the new words");
     });
 });

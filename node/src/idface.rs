@@ -1264,7 +1264,12 @@ pub(crate) async fn public_doc_bytes(
         thumb_hash: Option<[u8; 32]>,
         format: Option<u64>,
         trusted_only: bool,
-        reply_to: Option<([u8; 32], [u8; 16])>,
+        /// Whose seal these bytes wear, as the header says (PROJECT_PLAN's Replies under
+        /// the author's seal): absent means this document's own author.
+        seal_of: Option<([u8; 32], [u8; 16])>,
+        /// The title, sealed under the post key (ruling 5) - handed back beside the words,
+        /// to whoever gets the words.
+        sealed_title: Option<Vec<u8>>,
     }
     let from_fragments = || async {
         Result::<Option<ServeFacts>, AppError>::Ok(
@@ -1276,7 +1281,8 @@ pub(crate) async fn public_doc_bytes(
                     thumb_hash: h.thumb_hash,
                     format: h.format,
                     trusted_only: h.trusted_only,
-                    reply_to: h.reply_to,
+                    seal_of: h.seal_of,
+                    sealed_title: h.sealed_title,
                 }),
         )
     };
@@ -1329,18 +1335,18 @@ pub(crate) async fn public_doc_bytes(
                         // filtered out of `public_doc` by format, which left sealed
                         // pictures serving their ciphertext ungated (caught by the twins
                         // acceptance - 200 of sealed bytes for the untrusted).
-                        let (gated, reply_to) = match crate::record::documents::public_header_entry(&db, &doc_id)
+                        let (gated, seal_of, sealed_title) = match crate::record::documents::public_header_entry(&db, &doc_id)
                             .await?
                         {
                             Some(entry) => match &entry.entry().payload {
                                 ringtome_proto::Payload::Inline(payload) => {
                                     ringtome_proto::registry::DocHeaderPlain::decode(payload)
-                                        .map(|h| (h.trusted_only, h.reply_to))
-                                        .unwrap_or((false, None))
+                                        .map(|h| (h.trusted_only, h.seal_of, h.sealed_title))
+                                        .unwrap_or((false, None, None))
                                 }
-                                _ => (false, None),
+                                _ => (false, None, None),
                             },
-                            None => (false, None),
+                            None => (false, None, None),
                         };
                         crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
                             ServeFacts {
@@ -1348,7 +1354,8 @@ pub(crate) async fn public_doc_bytes(
                                 thumb_hash: h.thumb_hash,
                                 format: h.format,
                                 trusted_only: gated,
-                                reply_to,
+                                seal_of,
+                                sealed_title,
                             }
                         })
                     }
@@ -1385,7 +1392,7 @@ pub(crate) async fn public_doc_bytes(
         }
         None => None,
     };
-    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only, reply_to }) = facts else {
+    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only, seal_of, sealed_title }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
     // The trusted-readers gate (PROJECT_PLAN's Post visibility slice 2). The BODY is the gated thing; the
@@ -1399,7 +1406,7 @@ pub(crate) async fn public_doc_bytes(
     // The seal's holder (PROJECT_PLAN's Replies under the author's seal): a reply to a sealed
     // parent wears the parent's seal, so the parent's author's trust is the gate and the
     // parent's key is the key.
-    let (holder, key_doc) = seal_holder(state, &root, &doc_id, reply_to).await;
+    let (holder, key_doc) = seal_holder(&root, &doc_id, seal_of);
     let holder_hex = hex::encode(holder);
     if trusted_only {
         let allowed = trusted_viewer(state, session, &holder_hex).await?;
@@ -1410,6 +1417,7 @@ pub(crate) async fn public_doc_bytes(
             )));
         }
     }
+    let mut title_header: Option<String> = None;
     let (hash, mime) = if thumb {
         let Some(t) = thumb_hash else {
             return Err(AppError::NotFound(crate::msg!("idface.this-document-has-no-thumbnail", "this document has no thumbnail")));
@@ -1480,11 +1488,20 @@ pub(crate) async fn public_doc_bytes(
                 "a sealed body would not open with its own key"
             )));
         };
+        // The title travels with the words (PROJECT_PLAN's Replies under the author's seal,
+        // ruling 5): whoever may read the body may read the title, and they are asking for
+        // the body right now - so no surface needs a key of its own. Hex, because a header
+        // is ASCII and a title is not.
+        if let Some(sealed) = &sealed_title {
+            if let Some(t) = crate::record::private::open_post_body(sealed, &key) {
+                title_header = Some(hex::encode(t));
+            }
+        }
         plain
     } else {
         bytes
     };
-    Ok((
+    let mut response = (
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, mime),
@@ -1496,8 +1513,19 @@ pub(crate) async fn public_doc_bytes(
         ],
         bytes,
     )
-        .into_response())
+        .into_response();
+    if let Some(t) = title_header {
+        if let Ok(v) = axum::http::HeaderValue::from_str(&t) {
+            response.headers_mut().insert(SEALED_TITLE_HEADER, v);
+        }
+    }
+    Ok(response)
 }
+
+/// Where a sealed post's title rides back to a reader who may have it: hex-encoded UTF-8,
+/// beside the words it belongs to.
+pub const SEALED_TITLE_HEADER: axum::http::HeaderName =
+    axum::http::HeaderName::from_static("x-post-title-hex");
 
 pub async fn public_body_route(
     State(state): State<AppState>,
@@ -1582,22 +1610,18 @@ pub(crate) async fn sealed_here(state: &AppState, author_hex: &str, doc_id: &[u8
         .map(|h| h.trusted_only)
 }
 
-/// Whose seal a sealed post wears (PROJECT_PLAN's Replies under the author's seal): a reply
-/// to a sealed parent is sealed under the PARENT's key, so the parent's author is the one
-/// whose trust opens it - and their key is the one to look for. Anything else wears its own
-/// author's seal. `(holder author, key document)`.
-pub(crate) async fn seal_holder(
-    state: &AppState,
+/// Whose seal a sealed document wears (PROJECT_PLAN's Replies under the author's seal): the
+/// header SAYS it - `seal_of` names the post whose key seals these bytes and whose author's
+/// trust opens them - and absent means this document's own author and id. Stated rather
+/// than inferred since 2026-09-09, because a media twin cannot name the post that embeds
+/// it: without the statement a picture inside a sealed reply would be gated by the
+/// commenter's trust rather than the author's. `(holder author, key document)`.
+pub(crate) fn seal_holder(
     author: &[u8; 32],
     doc_id: &[u8; 16],
-    reply_to: Option<([u8; 32], [u8; 16])>,
+    seal_of: Option<([u8; 32], [u8; 16])>,
 ) -> ([u8; 32], [u8; 16]) {
-    if let Some((pa, pd)) = reply_to {
-        if sealed_here(state, &hex::encode(pa), &pd).await == Some(true) {
-            return (pa, pd);
-        }
-    }
-    (*author, *doc_id)
+    seal_of.unwrap_or((*author, *doc_id))
 }
 
 /// Does the session hold a persona the seal's holder trusts - or the holder themselves?
@@ -1665,7 +1689,15 @@ async fn hide_sealed(
             let d = hex::decode(d).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())?;
             Some((a, d))
         });
-        let (holder, _) = seal_holder(state, &author, &p.doc_id, reply_to).await;
+        // The shelf's rows carry no seal statement (the header does, and this view is
+        // folded), so a sealed reply's holder is inferred from its parent here: the same
+        // answer the header states, for the one shape a listing can see.
+        let mut holder = author;
+        if let Some((pa, pd)) = reply_to {
+            if sealed_here(state, &hex::encode(pa), &pd).await == Some(true) {
+                holder = pa;
+            }
+        }
         let holder_hex = hex::encode(holder);
         let ok = if holder_hex == author_hex {
             trusted

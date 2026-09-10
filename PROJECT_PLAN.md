@@ -4061,11 +4061,15 @@ A sealed conversation stays pinned to the context it began in. Two rulings, one 
    sealed post's own. Composed with private audiences (tags on acquaintances, when they
    come): my brother's reply to a family post is readable by my mother and never by his
    colleagues, whatever he dials for them.
-2. **The parent's seal says so - no new wire.** A sealed reply whose parent is sealed wears
-   the parent's seal; a sealed reply to an open parent wears its own, as before. Every door
-   resolves the seal's holder from the two headers it already holds: the body door looks
-   for the parent's key and applies the parent author's trust, and readers never ask the
-   commenter's node for a key at all - they ask the parent's author, as for the post.
+2. **The header names the seal's holder.** A sealed document says whose key seals it and
+   whose author's trust opens it; absent means its own author, which is every ordinary
+   sealed post. A reply under its parent's seal names the parent, and so does every media
+   twin that reply bakes - a twin cannot name the post that embeds it, and without the
+   statement a picture inside a sealed reply would be gated by the commenter's trust
+   rather than the author's (stated rather than inferred, 2026-09-09). The body door looks
+   for the named post's key and applies that author's trust; readers never ask the
+   commenter's node for a key at all. The shelf, which reads a folded view rather than the
+   header, infers a reply's holder from its parent and lands on the same answer.
 3. **No key, no reply.** The mint reads the parent's key from the key memo; a replier who
    never could read the parent has none, and the door refuses with words. The reply box
    under a sealed parent says the reply will wear the author's seal, and offers no toggle:
@@ -4074,21 +4078,27 @@ A sealed conversation stays pinned to the context it began in. Two rulings, one 
    whom the original author does not trust sees nothing - no hollow card - exactly as for
    the sealed post itself. Threads hide what the reader cannot open the same way.
 5. **The title is sealed too.** "TALKIN BOUT MY BUTT MEDICINE" is personal before a word of
-   the body is read. A sealed post's public header carries no title; the title rides inside
-   the sealed words as the document's own meta, and every surface that would show a sealed
-   post's title - the card, the mini-card, the bell, the shelf, a book's table - reads it
-   from the decrypted words, which only the trusted have. The untrusted see nothing, since
-   the surfaces already hide what they cannot open; the one honest line ("the author shares
-   these words only with people they trust") carries no title.
+   the body is read. A sealed post's public header carries no title: the title is sealed
+   under the same post key, with its own nonce, and rides the header beside the body - so
+   the BODY stays byte-exactly what the author wrote in every format (a plaintext post is
+   still plain text) and no surface has to strip anything. The body door, which already
+   decrypts for a reader who may, hands the title back beside the words in a response
+   header; the card and the mini-card take it from there, the copy door takes it for the
+   copy's title, and the text index reads it with the key it already has. Sealed media
+   twins seal their titles too: a picture called "ultrasound" is as personal as its post.
+   The untrusted see nothing, since the surfaces already hide what they cannot open; the
+   one honest line ("the author shares these words only with people they trust") carries
+   no title.
 6. **The edges, named.** A takedown of the parent leaves its replies sealed under a key
    nobody hands out any more: they go dark with it, the pinned behaviour taken to its end.
    The commenter's other computers read their own reply as anyone does, by asking the
    author's gate, which trusts the persona, not the device. A sealed reply to a sealed reply
    chains to the root post's key: one key per conversation.
 
-Slices: (1) replies under the seal - the header flag, the mint, the doors, the feed and
-thread filters, the reply box, the suite; (2) sealed titles - the header, the meta, every
-title surface, the suite.
+Both slices built 2026-09-08: (1) replies under the seal - the mint, the doors, the feed,
+shelf and thread filters, the reply box, the suite; (2) sealed titles - the mint writes the
+meta line and blanks the header, the card and the mini-card read it back, the copy door
+takes it back out, the suites read the words unsealed.
 
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 

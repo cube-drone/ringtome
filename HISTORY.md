@@ -8904,3 +8904,36 @@ history dig's claim, red for the third time in a pack and green every time alone
 the load: the text index's backlog walk had been riding the journal fill's beat, a second
 on the rig, so a body-reading pass ran beside every dig. The index walks on its own slow
 beat now; the test door rings it when a claim wants it.
+
+## 2026-09-08: sealed titles (slice 2)
+
+Built twice. The first cut put the title inside the sealed words as Marquee's own
+`:::meta title=...` line; Curtis asked what that means for a plaintext post, and it has no
+answer - the line is a directive only where the format has directives, so a plaintext body
+came back with a stray line at the top and every surface had to strip it forever. Rebuilt
+as a sealed field on the header: the title is encrypted under the same post key with its own
+nonce (a fresh nonce per call, so a second ciphertext is safe) and rides beside the body, so
+the body stays byte-exactly what the author wrote in every format. The body door, which
+already decrypts for a reader who may, hands the title back in a response header, and the
+card, the mini-card and the copy door take it from there; the text index reads it with the
+key it already holds; sealed media twins seal their titles too. The wire's map keys must
+ascend, and the first draft wrote the new key out of order, which silently broke every field
+after it - ten acceptance claims found that within the hour.
+
+"TALKIN BOUT MY BUTT MEDICINE is pretty personal without even going into the document." A
+sealed post's public header now carries no title, and the mini-card, which used to refuse to
+peek at a sealed post and said "link", asks the body door and stays a link when refused. The
+suites that read a sealed title off the header expect none now, and one reads the title out
+of the body response's own header.
+
+## 2026-09-09: the seal's holder, stated
+
+The sealed-reply slice left one residual: a picture in a sealed reply was refused, because
+a media twin cannot name the post that embeds it, so the door had no way to know whose key
+opens it and would have gated the picture by the commenter's trust. Closed by saying it
+rather than inferring it: a header now carries `seal_of`, the post whose key seals these
+bytes and whose author's trust opens them, absent for every ordinary sealed post. A reply
+under its parent's seal names the parent, and so does every twin it bakes; the body door
+reads the statement instead of walking to the parent's header, and the publish flags carry
+it from the mint through the bake. The suite's picture claim flipped from "refused for now"
+to a picture the author's trusted reader opens and the commenter's own follower cannot.

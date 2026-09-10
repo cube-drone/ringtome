@@ -80,6 +80,7 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
             let flags = crate::record::documents::PublishFlags {
                 settled: plan.settled,
                 trusted_only: plan.trusted_only,
+                seal_of: None, // a scheduled post is its own author's
                 dated_ms: Some(plan.at),
                 part_of: None,
             };

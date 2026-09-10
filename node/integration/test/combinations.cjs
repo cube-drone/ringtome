@@ -185,10 +185,10 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             assert.equal(p.total, 2, "two pages, the hidden one never counted");
             book = p.book;
             const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
-            assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`), ["book:on squirrels"], "one book on the shelf, titled by its title page");
+            assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`), ["book:"], "one book on the shelf, its title sealed with its table (ruling 5)");
             const head = await (await dana(`api/id/${adaRoot}/posts/${book}`)).json();
             assert.equal(head.trusted_only, true, "the book wears the seal");
-            assert.equal(head.title, "on squirrels", "the title is the public face");
+            assert.equal(head.title, "", "no title on a sealed post's public face (ruling 5); the tree carries it, for the trusted");
             const tags = (head.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort();
             assert.deepEqual(tags, ["alpha", "video"], "the union of the published pages' tags, never the hidden page's");
             const body = await grimoire.payload(book);
@@ -223,13 +223,13 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
                 items = ((await (await bea(`api/identity/${beaRoot}/feed`)).json()).items || []).filter((it) => it.author === adaRoot);
                 if (!items.some((it) => it.doc_id === book)) await sleep(300);
             }
-            assert.deepEqual(items.map((it) => `${it.format}:${it.title}:${it.trusted_only}`), ["book:on squirrels:true"], "one sealed book, no pages");
+            assert.deepEqual(items.map((it) => `${it.format}:${it.title}:${it.trusted_only}`), ["book::true"], "one sealed book, no pages - and no title on its public face (ruling 5)");
             const tree = await opens(bea, `id/${adaRoot}/docs/${book}/body`);
             assert.ok(tree, "the key lane opened the table of contents");
             assert.equal(JSON.parse(await tree.text()).title, "on squirrels");
             const page = await opens(bea, `id/${adaRoot}/docs/${chapterPost}/body`);
             assert.ok(page, "a page opens from the book");
-            assert.equal(await page.text(), "the first words");
+            assert.equal((await page.text()), "the first words");
             const video = await opens(bea, `id/${adaRoot}/docs/${twin}/body`);
             assert.ok(video, "the video opens for the trusted");
             assert.equal(video.headers.get("content-type"), "video/webm");
@@ -264,7 +264,7 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             assert.equal(body.title, "on squirrels");
             const page = await opens(eve, `id/${adaRoot}/docs/${body.sections[0].pages[0].post}/body`);
             assert.ok(page, "and a page");
-            assert.equal(await page.text(), "the first words");
+            assert.equal((await page.text()), "the first words");
             const video = await opens(eve, `id/${adaRoot}/docs/${twin}/body`);
             assert.ok(video, "and the sealed video");
             assert.equal(video.headers.get("content-type"), "video/webm");
@@ -286,7 +286,7 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             for (let i = 0; i < 40 && words !== "the first words, revised"; i++) {
                 await pullAndFold(HOST_B, adaRoot);
                 const r = await bea(`id/${adaRoot}/docs/${chapterPost}/body`);
-                if (r.status === 200) words = await r.text();
+                if (r.status === 200) words = (await r.text());
                 if (words !== "the first words, revised") await sleep(400);
             }
             assert.equal(words, "the first words, revised", "the trusted follower reads the new words under the same key");
@@ -355,10 +355,12 @@ describe("combinations 2: a scheduled post that is settled, trusted-only and car
 
     it("[scheduled x edit] an edit before the day is what the sweep mints - with every wish and the picture intact", async () => {
         await editDraft(ada, adaRoot, draft, `edited words\n\n![p](/api/identity/${adaRoot}/docs/${media}/body/p.avif)`);
+        // A sealed post's shelf entry carries no title (ruling 5) - the shelf holds this
+        // one post and nothing else, so its arrival is the whole shelf appearing.
         let minted = [];
         for (let i = 0; i < 30 && !minted.length; i++) {
             assert.equal((await ringDue(at + 1000)).status, 200);
-            minted = (await shelf()).filter((p) => p.title === "for my people, later");
+            minted = await shelf();
             if (!minted.length) await sleep(400);
         }
         assert.equal(minted.length, 1, "minted once the day came");
@@ -371,12 +373,12 @@ describe("combinations 2: a scheduled post that is settled, trusted-only and car
         assert.equal(head.trusted_only, true, "and the seal");
         twin = (head.refs || [])[0];
         assert.ok(twin, "the header names the picture's twin");
-        const own = await (await ada(`id/${adaRoot}/docs/${post}/body`)).text();
+        const own = (await (await ada(`id/${adaRoot}/docs/${post}/body`)).text());
         assert.match(own, /^edited words/, "the words minted are the edited ones");
         assert.ok(own.includes(`/docs/${twin}/body/`), "and they name the twin");
         const beaWords = await opens(bea, `id/${adaRoot}/docs/${post}/body`);
         assert.ok(beaWords, "the trusted reader gets the words");
-        assert.match(await beaWords.text(), /^edited words/);
+        assert.match((await beaWords.text()), /^edited words/);
         const beaPic = await opens(bea, `id/${adaRoot}/docs/${twin}/body`);
         assert.ok(beaPic, "and the picture");
         assert.equal(beaPic.headers.get("content-type"), "image/avif");
@@ -445,7 +447,7 @@ describe("combinations 3: a page that was a sealed post of its own before its no
         const head = await (await dana(`api/id/${adaRoot}/posts/${standalone}`)).json();
         assert.equal(head.trusted_only, true);
         assert.equal(head.part_of, undefined, "no book yet");
-        assert.deepEqual(((await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || []).map((p) => `${p.format}:${p.title}`), ["marquee:the sealed chapter"]);
+        assert.deepEqual(((await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || []).map((p) => `${p.format}:${p.title}`), ["marquee:"], "a sealed post's public face carries no title (ruling 5)");
     });
 
     it("[book x publish] the open rollout adopts the standing post as a page: same id, now part of the book, off the shelf; the tags union", async () => {
@@ -476,6 +478,6 @@ describe("combinations 3: a page that was a sealed post of its own before its no
         assert.equal((await dana(`id/${adaRoot}/docs/${standalone}/body`)).status, 403, "and refuses the stranger");
         const quiet = await opens(bea, `id/${adaRoot}/docs/${standalone}/body`);
         assert.ok(quiet, "the trusted reader still opens it");
-        assert.equal(await quiet.text(), "quiet chapter words");
+        assert.equal((await quiet.text()), "quiet chapter words");
     });
 });

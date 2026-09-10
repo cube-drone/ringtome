@@ -1888,20 +1888,13 @@ async fn publish_handler(
     };
     if let Some(key) = parent_sealed {
         data.annotations().set_field(&doc_id, store::TRUSTED_KEY, &hex::encode(key)).await?;
-        let docs = data.documents();
-        let view = docs.all().await?;
-        if let Some(d) = view.docs.get(&doc_id) {
-            if let Some(body) = docs.resolved(d).await?.body {
-                if !crate::record::bake::media_refs(&body, &root).is_empty() {
-                    return Err(AppError::BadRequest(crate::msg!(
-                        "identity.routes.a-sealed-reply-carries-words-only",
-                        "a reply under the author's seal carries words only, for now - no pictures"
-                    )));
-                }
-            }
-        }
     }
     let trusted_only = trusted_only || parent_sealed.is_some();
+    // Whose seal the reply wears, stated on its header and on every twin it bakes
+    // (PROJECT_PLAN's Replies under the author's seal): the parent post, so a door judging
+    // the reply - or a picture inside it, which cannot name the post that embeds it - asks
+    // the parent author's trust and looks for the parent's key.
+    let seal_of = parent_sealed.and(reply.map(|(parent, _)| parent));
     // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
     // the request's timezone offset - re-read at every publish, so a date changed inside the
     // edit window re-sorts the post everywhere.
@@ -1914,7 +1907,7 @@ async fn publish_handler(
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None };
+    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of };
     // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
     // until the day. The plan lives on the draft's private meta - device-durable - naming
     // this device's leaf as the one that mints, and the sweep does the rest.
@@ -2959,6 +2952,14 @@ async fn read_public_source(
     if resp.status() != StatusCode::OK {
         return Err(AppError::BadRequest(crate::msg!("identity.routes.those-words-arent-readable-here", "those words aren't readable here yet")));
     }
+    // A sealed post's title rides beside its words (ruling 5): take it for the copy.
+    let title = resp
+        .headers()
+        .get(crate::idface::SEALED_TITLE_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|b| String::from_utf8(b).ok())
+        .unwrap_or(title);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the source body: {e}")))?
@@ -3582,7 +3583,7 @@ async fn set_avatar_handler(
     let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
         .await?;
     let doc_id =
-        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested, None)
+        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested, None, None)
             .await?;
     data.profile().set("avatar", &hex::encode(doc_id)).await?;
     Ok(Json(AvatarResponse {
@@ -5355,6 +5356,8 @@ mod media_info_tests {
                 genesis_ms: None,
                 reply_to: None,
                 thread_root: None,
+                sealed_title: None,
+            seal_of: None,
             },
         }
     }

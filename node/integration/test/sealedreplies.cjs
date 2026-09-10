@@ -66,7 +66,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await ada(`api/id/${beaRoot}/profile?via=${await base58(bea)}`);
         await pullAndFold(HOST, beaRoot);
         await pullAndFold(HOST_B, adaRoot);
-        assert.equal(await opens(bea, `id/${adaRoot}/docs/${post}/body`, 40), "the family news", "the trusted reader opens the parent");
+        assert.equal((await opens(bea, `id/${adaRoot}/docs/${post}/body`, 40)), "the family news", "the trusted reader opens the parent");
         if (!(await meet(cal, calRoot, beaRoot, bea))) this.skip();
     });
 
@@ -110,18 +110,38 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await ada(`api/id/${calRoot}/profile?via=${await base58(cal)}`);
         await pullAndFold(HOST, calRoot);
         await pullAndFold(HOST_C, adaRoot);
-        assert.equal(await opens(cal, `id/${adaRoot}/docs/${post}/body`, 40), "the family news", "the parent opens");
+        assert.equal((await opens(cal, `id/${adaRoot}/docs/${post}/body`, 40)), "the family news", "the parent opens");
         assert.equal(await opens(cal, `id/${beaRoot}/docs/${reply}/body?via=${beaRoot}`, 40), "so glad she is home", "and so does the reply");
     });
 
-    it("a picture in a sealed reply is refused for now", async () => {
+    it("a picture in a sealed reply wears the author's seal too: the header names whose, and an untrusted follower is refused", async () => {
         const up = await (await bea(`api/identity/${beaRoot}/docs/binary?title=plate`, { method: "POST", body: makePng(24, 24), file: true })).json();
         for (let i = 0; i < 100; i++) {
             if ((await bea(`api/identity/${beaRoot}/docs/${up.doc_id}/body`)).status === 200) break;
             await wait(400);
         }
-        const r = await publish(bea, beaRoot, "", `look\n\n![p](/api/identity/${beaRoot}/docs/${up.doc_id}/body/p.avif)`, { reply_to: { author: adaRoot, doc_id: post } });
-        assert.equal(r.status, 400, r.text);
-        assert.match(r.text, /words only/);
+        let pictured = null;
+        for (let i = 0; i < 40 && !pictured; i++) {
+            const r = await publish(bea, beaRoot, "", `look\n\n![p](/api/identity/${beaRoot}/docs/${up.doc_id}/body/p.avif)`, { reply_to: { author: adaRoot, doc_id: post } });
+            if (r.status === 200 && JSON.parse(r.text).post_id) pictured = JSON.parse(r.text).post_id;
+            else await wait(500);
+        }
+        assert.ok(pictured, "the pictured reply published");
+        const head = await (await bea(`api/id/${beaRoot}/posts/${pictured}?as=${beaRoot}`)).json();
+        assert.equal(head.trusted_only, true, "sealed like its parent");
+        const twin = (head.refs || [])[0];
+        assert.ok(twin, "the reply names its picture's twin");
+        // The twin wears ada's seal, not bea's: dana follows bea and ada does not trust her.
+        const dana = await makeUserFetch({ prefix: "sealdana", host: HOST_C });
+        const danaRoot = (await (await dana("api/identity", { method: "POST" })).json()).root_pubkey;
+        await dana(`api/identity/${danaRoot}/serve`, { method: "POST" });
+        if (!(await meet(dana, danaRoot, beaRoot, bea))) this.skip();
+        await pullAndFold(HOST_C, beaRoot);
+        assert.notEqual((await dana(`id/${beaRoot}/docs/${twin}/body?via=${beaRoot}`)).status, 200, "bea's own follower cannot open the picture");
+        assert.notEqual((await dana(`id/${beaRoot}/docs/${pictured}/body?via=${beaRoot}`)).status, 200, "nor the words");
+        // cal, whom ada trusts by now, opens both.
+        assert.ok(await opens(cal, `id/${beaRoot}/docs/${pictured}/body?via=${beaRoot}`, 40), "the author's trusted reader opens the reply");
+        const pic = await opens(cal, `id/${beaRoot}/docs/${twin}/body?via=${beaRoot}`, 40);
+        assert.ok(pic, "and its picture");
     });
 });

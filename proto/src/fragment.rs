@@ -807,6 +807,8 @@ mod tests {
             genesis_ms: Some(9),
             reply_to,
             thread_root: reply_to,
+        sealed_title: None,
+        seal_of: None,
         };
         let entry = crate::Entry {
             v: crate::ENTRY_VERSION,

@@ -511,6 +511,8 @@ pub async fn save_version(
         genesis_ms: None, // the edit window is a PUBLIC posture; private notes edit forever
         reply_to: None, // replies are public speech; the link enters at publish (PROJECT_PLAN's Replies)
         thread_root: None,
+    sealed_title: None,
+    seal_of: None,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -584,6 +586,8 @@ pub async fn retitle(
         reply_to: head.header.reply_to,
         thread_root: head.header.thread_root,
         genesis_ms: head.header.genesis_ms,
+    sealed_title: None,
+    seal_of: None,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -605,6 +609,7 @@ pub async fn retitle(
 /// publication mint later (drafts are notes; this path is for things whose upload IS the
 /// deliberate public act). No epoch, no encryption, no parents (v1: replace-by-new-doc; the
 /// version DAG is there when public edits earn it).
+#[allow(clippy::too_many_arguments)] // a twin IS these facts
 pub async fn save_public_media(
     db: &Db,
     signer: &SigningKey,
@@ -612,6 +617,10 @@ pub async fn save_public_media(
     title: &str,
     ingested: crate::media::Ingested,
     post_key: Option<[u8; 32]>,
+    // Whose seal this twin wears when it is not its own author's: the post whose key
+    // sealed it (a reply under its parent's seal, PROJECT_PLAN's Replies under the
+    // author's seal). A twin cannot name the post that embeds it, so the mint says it.
+    seal_of: Option<([u8; 32], [u8; 16])>,
 ) -> Result<[u8; 16], AppError> {
     let doc_id = new_doc_id();
     // A trusted-only post's pictures seal under the SAME per-post key as its words
@@ -644,6 +653,18 @@ pub async fn save_public_media(
                 .as_bytes(),
         );
     }
+    // A sealed twin's title is sealed too (ruling 5): a picture called "ultrasound" is
+    // as personal as the post it belongs to. Sealed under the same post key, beside the
+    // bytes, and blank on the public face.
+    let (title, sealed_title) = match &post_key {
+        Some(key) => {
+            let sealed = (!title.trim().is_empty())
+                .then(|| crate::record::private::seal_post_body(key, title.as_bytes()))
+                .transpose()?;
+            ("", sealed)
+        }
+        None => (title, None),
+    };
     let header = DocHeaderPlain {
         dated_ms: None,
         doc_id,
@@ -667,6 +688,8 @@ pub async fn save_public_media(
         thread_root: None,
         settled: false, // the post carries the wish; its media twins are plumbing
         trusted_only: post_key.is_some(),
+        sealed_title,
+        seal_of,
     };
     let payload = header
         .encode()
@@ -721,6 +744,9 @@ pub struct PublicText<'a> {
     /// `file_hash` names the CIPHERTEXT; `body_hash` keeps the keyed plaintext
     /// fingerprint so trusted readers still verify the words against the signature.
     pub post_key: Option<[u8; 32]>,
+    /// Whose seal these words wear when it is not this author's own: the post whose key
+    /// seals them (a reply under its parent's seal). Absent for an ordinary sealed post.
+    pub seal_of: Option<([u8; 32], [u8; 16])>,
     /// A reply's links, FIRST publication only: (parent, thread root), each (author root,
     /// doc id) - resolved by the publish path from the parent's own held header
     /// (PROJECT_PLAN's Replies). Ignored on re-publication, where the previous header's claims carry
@@ -734,7 +760,7 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, dated_ms, part_of } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, seal_of, dated_ms, part_of } = text;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
@@ -811,6 +837,22 @@ pub async fn save_public_text(
         .put_public(&stored)
         .await
         .map_err(AppError::Internal)?;
+    // The sealed title (PROJECT_PLAN's Replies under the author's seal, ruling 5): a sealed
+    // post's public header carries no title. The words the reader would see are sealed
+    // under the same post key, with their own nonce, and ride the header beside the body -
+    // so the BODY stays byte-exactly what the author wrote, in every format (a plaintext
+    // post is still plain text), and no surface has to strip anything.
+    let (title, sealed_title) = if trusted_only {
+        let key = post_key.ok_or_else(|| {
+            AppError::Internal(anyhow!("a trusted-only mint arrived without its key"))
+        })?;
+        let sealed = (!title.trim().is_empty())
+            .then(|| crate::record::private::seal_post_body(&key, title.as_bytes()))
+            .transpose()?;
+        ("", sealed)
+    } else {
+        (title, None)
+    };
     let header = DocHeaderPlain {
         doc_id,
         parents,
@@ -819,6 +861,7 @@ pub async fn save_public_text(
         // honest fingerprint. Sealed bodies carry the keyed plaintext fingerprint instead.
         body_hash,
         title: title.to_string(),
+        sealed_title,
         format: format.to_wire(),
         width: None,
         height: None,
@@ -834,6 +877,7 @@ pub async fn save_public_text(
         dated_ms,
         animation: false, // words, never a loop
         part_of: part_of.or(inherited_part_of),
+    seal_of,
     };
     let payload = header
         .encode()
@@ -856,6 +900,11 @@ pub async fn save_public_text(
 pub struct PublishFlags {
     pub settled: bool,
     pub trusted_only: bool,
+    /// The post whose key seals this one, when that is not this author's own: a reply
+    /// under its parent's seal (PROJECT_PLAN's Replies under the author's seal). The
+    /// header states it so every door - and a media twin, which cannot name the post that
+    /// embeds it - knows whose trust opens the bytes.
+    pub seal_of: Option<([u8; 32], [u8; 16])>,
     pub dated_ms: Option<i64>,
     /// The book this publish is a page of (PROJECT_PLAN's Books, ruling 4); the rollout sets it.
     pub part_of: Option<[u8; 16]>,
@@ -2164,6 +2213,8 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         reply_to,
         thread_root,
         settled: settled != 0,
+    sealed_title: None,
+    seal_of: None,
     };
     Ok((
         doc_id,
@@ -3325,6 +3376,8 @@ mod tests {
             genesis_ms: None,
         reply_to: None,
         thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         crate::record::imaol::append(
             db,
@@ -5631,6 +5684,8 @@ mod tests {
                 genesis_ms: None,
             reply_to: None,
             thread_root: None,
+            sealed_title: None,
+            seal_of: None,
             },
         };
         let build = |lane: &str, edit_at: i64| {
@@ -5663,4 +5718,5 @@ mod tests {
         let doc = build("private", 1_000 + day * 400);
         assert_eq!(doc.display_head().unwrap().header.title, "v2");
     }
+
 }

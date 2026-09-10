@@ -589,6 +589,20 @@ pub struct DocHeaderPlain {
     /// post's public face by ruling. A wish enforced at every honest serving edge, like
     /// `settled`. Absent when false; carried forward on re-publication.
     pub trusted_only: bool,
+    /// The title, sealed under the post key, when `trusted_only` (PROJECT_PLAN's Replies
+    /// under the author's seal, ruling 5): a sealed post's plain `title` is EMPTY and the
+    /// words the reader would see ride here instead, so "TALKIN BOUT MY BUTT MEDICINE" is
+    /// as private as the paragraph under it. Sealed separately from the body, under the
+    /// same key with its own nonce, so the body stays byte-exactly the author's words in
+    /// every format - a plaintext post is still plain text. Absent when the post is open.
+    pub sealed_title: Option<Vec<u8>>,
+    /// Whose seal this document wears (PROJECT_PLAN's Replies under the author's seal): the
+    /// post whose key seals these bytes and whose AUTHOR's trust opens them. Absent means
+    /// this document's own author and id, which is every ordinary sealed post and its own
+    /// twins. Present on a reply sealed under its parent, and on that reply's media twins -
+    /// a twin cannot name the post that embeds it, so without this the door would gate a
+    /// reply's picture by the commenter's trust rather than the author's.
+    pub seal_of: Option<([u8; 32], [u8; 16])>,
     /// The author's PREFERRED date (PUBLISH.md, 2026-09-02): what the post sorts and reads
     /// by everywhere - a diary entry written up years later files under its own day. Never
     /// the edit window's anchor; that stays `genesis_ms`, when it was minted. Absent = "the
@@ -628,6 +642,9 @@ impl DocHeaderPlain {
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        if self.sealed_title.as_ref().is_some_and(|t| t.len() > Self::MAX_TITLE_LEN + 128) {
+            return Err(ProtoError::BadEntry("sealed title too long"));
+        }
         if self.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
         }
@@ -653,6 +670,8 @@ impl DocHeaderPlain {
             + self.thread_root.is_some() as u64
             + self.settled as u64
             + self.trusted_only as u64
+            + self.sealed_title.is_some() as u64
+            + self.seal_of.is_some() as u64
             + self.dated_ms.is_some() as u64
             + self.animation as u64
             + self.part_of.is_some() as u64;
@@ -746,6 +765,16 @@ impl DocHeaderPlain {
             w.uint(19);
             w.bytes(book);
         }
+        if let Some(sealed) = &self.sealed_title {
+            w.uint(20);
+            w.bytes(sealed);
+        }
+        if let Some((author, doc)) = &self.seal_of {
+            w.uint(21);
+            w.array(2);
+            w.bytes(author);
+            w.bytes(doc);
+        }
         Ok(w.into_bytes())
     }
 
@@ -762,6 +791,8 @@ impl DocHeaderPlain {
         let mut thread_root: Option<([u8; 32], [u8; 16])> = None;
         let mut settled = false;
         let mut trusted_only = false;
+        let mut sealed_title: Option<Vec<u8>> = None;
+        let mut seal_of: Option<([u8; 32], [u8; 16])> = None;
         let mut dated_ms: Option<i64> = None;
         let mut animation = false;
         let mut part_of: Option<[u8; 16]> = None;
@@ -828,6 +859,13 @@ impl DocHeaderPlain {
                 }
                 15 => settled = map.uint()? != 0,
                 16 => trusted_only = map.uint()? != 0,
+                20 => sealed_title = Some(map.bytes()?.to_vec()),
+                21 => {
+                    if map.array()? != 2 {
+                        return Err(ProtoError::BadEntry("a seal holder is an author and a document"));
+                    }
+                    seal_of = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
+                }
                 17 => {
                     let d = map.uint()?;
                     dated_ms = Some(
@@ -858,10 +896,15 @@ impl DocHeaderPlain {
             thread_root,
             settled,
             trusted_only,
+            sealed_title,
+            seal_of,
             dated_ms,
             animation,
             part_of,
         };
+        if out.sealed_title.as_ref().is_some_and(|t| t.len() > Self::MAX_TITLE_LEN + 128) {
+            return Err(ProtoError::BadEntry("sealed title too long"));
+        }
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
         }
@@ -1394,6 +1437,8 @@ mod tests {
             reply_to: None,
             thread_root: None,
             settled: true,
+        sealed_title: None,
+        seal_of: None,
         };
         let settled = DocHeaderPlain::decode(&h.encode().unwrap()).unwrap();
         assert!(settled.settled, "the wish survives the wire");
@@ -1719,6 +1764,8 @@ mod tests {
             genesis_ms: Some(7),
             reply_to: None,
             thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         let reply = DocHeaderPlain {
             dated_ms: None,
@@ -1774,6 +1821,8 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
@@ -1852,6 +1901,8 @@ mod tests {
                 genesis_ms: None,
                 reply_to: None,
                 thread_root: None,
+            sealed_title: None,
+            seal_of: None,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -1877,6 +1928,8 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -1901,6 +1954,8 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
@@ -1925,6 +1980,8 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -1952,6 +2009,8 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
+        sealed_title: None,
+        seal_of: None,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
