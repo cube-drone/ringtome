@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 699 phrases across 52 files.
+// 698 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -35,8 +35,8 @@ export default {
     'apps.feed.further-back': 'further back',
     'apps.feed.write': 'write',
     'apps.feed.write-2': 'write',
-    'apps.feed.settled-means-no-replies': 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist',
-    'apps.feed.settled-no-replies-no': 'turn off rebroadcast and comment',
+    'apps.feed.settled-means-no-replies': 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist',
+    'apps.feed.settled-no-replies-no': 'turn off comments',
     'apps.feed.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
     'apps.feed.only-show-to-people': 'only show to people I trust',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
@@ -199,8 +199,8 @@ export default {
     'doc.bookcol.sections': 'sections',
     'doc.bookcol.unticked-a-hidden-section': 'unticked: a hidden section - it and every page beneath it stay out of the book',
     'doc.bookcol.untitled-section': '(untitled section)',
-    'doc.bookcol.settled-means': 'turns off comments and rebroadcasts for the book, as far as this network can honor it',
-    'doc.bookcol.turn-off-rebroadcast-and-comment': 'turn off rebroadcast and comment',
+    'doc.bookcol.settled-means': 'turns off comments for the book, as far as this network can honor it',
+    'doc.bookcol.turn-off-rebroadcast-and-comment': 'turn off comments',
     'doc.bookcol.trusted-only-means': 'the pages go only to readers you have published trust for',
     'doc.bookcol.trusted-only': 'trusted only',
     'doc.bookcol.roll-out-the-changes-the': "roll out the changes: the new and changed pages, and the book's tree as it is now",
@@ -261,8 +261,8 @@ export default {
     'doc.editor.scheduled-for': 'scheduled for {when}',
     'doc.editor.live-on-your-public-feed': 'live on your public feed',
     'doc.editor.private': 'private',
-    'doc.editor.settled-means': 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist',
-    'doc.editor.turn-off-rebroadcast-and-comment': 'turn off rebroadcast and comment',
+    'doc.editor.settled-means': 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist',
+    'doc.editor.turn-off-rebroadcast-and-comment': 'turn off comments',
     'doc.editor.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
     'doc.editor.trusted-only': 'trusted only',
     'doc.editor.publish---makes-this-content': 'publish - makes this content available on your public feed',
@@ -539,8 +539,8 @@ export default {
     'postentry.pinned': 'pinned',
     'postentry.trusted-only-chip-title': 'the author shares these words only with people they trust',
     'postentry.trusted-only': 'trusted only',
-    'postentry.settled-chip-title': 'the author turned off rebroadcast and comment on this post',
-    'postentry.no-rebroadcast-or-comment': 'no rebroadcast or comment',
+    'postentry.settled-chip-title': 'the author turned off comments on this post',
+    'postentry.no-rebroadcast-or-comment': 'comments off',
     'postentry.click-to-agree': 'said by {names} - click to agree, with your own name on it',
     'postentry.the-authors-label': "the author's label",
     'postentry.label-by-name': 'label by {name}',
@@ -563,7 +563,7 @@ export default {
     'postpage.that-isnt-an-address': "that isn't an address this app knows how to read",
     'postpage.looking-for-the-post': 'looking for the post…',
     'postpage.no-such-post-is-held': 'no such post is held here - it may be private, taken down, or its author unreachable',
-    'postpage.the-author-settled-this': 'the author turned off comments and rebroadcasts for this post',
+    'postpage.the-author-settled-this': 'the author turned off comments for this post',
     'postpage.replies-known-here': 'replies known here',
     'postpage.ask-the-author-again': "ask the author's computer again - a hot thread is worth a second glance",
     'postpage.refresh': 'refresh',
@@ -662,7 +662,6 @@ export default {
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
     'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
-    'identity.routes.settled-no-shares': 'the author turned off rebroadcasts for this post',
     'identity.routes.sealed-no-shares': 'a post shared only with people the author trusts is not passed along',
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',

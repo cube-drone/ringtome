@@ -68,21 +68,19 @@ describe("settled posts: the author's wish, honored", function () {
         assert.match(text, /settled/, "the refusal has the word");
     });
 
-    it("a rebroadcast of a settled post is refused; the open control passes along fine", async () => {
+    it("a settled post passes along like any other (Curtis, 2026-09-10: the wish is comments off; only the seal stops a share)", async () => {
         // bea's node (this same node) holds ada's chains, so the header - and its wish -
-        // is visible at the mint.
-        const no = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
+        // is visible at the mint; the wish no longer speaks to a share.
+        const yes = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
             method: "POST",
             body: JSON.stringify({ author: adaRoot, doc_id: settled }),
         });
-        const noText = await no.text();
-        assert.equal(no.status, 400, noText);
-        assert.match(noText, /settled/);
-        const yes = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
+        assert.equal(yes.status, 200, await yes.text());
+        const also = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
             method: "POST",
             body: JSON.stringify({ author: adaRoot, doc_id: open }),
         });
-        assert.equal(yes.status, 200, await yes.text());
+        assert.equal(also.status, 200, await also.text());
     });
 
     it("the thread door is shut: the replies read serves nothing and says why", async () => {

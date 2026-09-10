@@ -389,7 +389,7 @@ describe("combinations 2: a scheduled post that is settled, trusted-only and car
         assert.equal((await dana(`id/${adaRoot}/docs/${twin}/thumb`)).status, 403, "and its thumbnail");
     });
 
-    it("[settled x trusted x feed] the trusted follower's feed row wears both wishes; a reply and a share are refused with the word", async () => {
+    it("[settled x trusted x feed] the trusted follower's feed row wears both wishes; a reply is refused with the word, a share by the seal", async () => {
         let row = null;
         for (let i = 0; i < 30 && !row; i++) {
             await pullAndFold(undefined, adaRoot);
@@ -408,7 +408,7 @@ describe("combinations 2: a scheduled post that is settled, trusted-only and car
         const share = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: post });
         const shareText = await share.text();
         assert.equal(share.status, 400, shareText);
-        assert.match(shareText, /settled/, "the share refusal has the word");
+        assert.match(shareText, /trusts/, "the share refusal is the seal's - settled means comments off (2026-09-10)");
     });
 
     it("[takedown x trusted x picture] the takedown takes the sealed picture with the words, and the note is a draft again", async () => {

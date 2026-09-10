@@ -8961,3 +8961,18 @@ sealed. The door now takes a sealed mention as the sender's word about their own
 the fold opens sealed statements with the post's key, fetched over the key lane when a
 hosted reader follows the author. The suites that read a sealed post's labels as a
 stranger read them as the author now.
+
+## 2026-09-10: settled means comments off
+
+"Because 'no rebroadcast' is implied and fully provided, now, by 'trusted only', it might
+make more sense to take 'no rebroadcast or comment' and just make it 'disable comments'
+while still allowing rebroadcast." The two halves of the wish answered different worries,
+and only one of them ever held: comments off is about not hosting a conversation under your
+words; no rebroadcast on an open post was a request any relay could ignore, and on a sealed
+post the seal already refuses the share. So the wish narrowed: the share door's settled
+refusal went, the share button shows on a settled post again, the copy says "turn off
+comments" everywhere it said "rebroadcast and comment", and the wire field keeps its name.
+The settled suite's share claim flipped from refused to passed along; the combinations
+claim that shared a sealed-and-settled post now reads the seal's refusal. A collision this
+fixes for free: "settled" was also the store's word for a post whose edit window has
+closed, and the reader now meets only that one.

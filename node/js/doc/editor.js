@@ -654,13 +654,13 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                 </span>
                 <span class="publish-bar-acts">
                 ${standing === 'private' &&
-                html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist')}>
+                html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist')}>
                         <input
                             type="checkbox"
                             checked=${wishes.settled}
                             onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))}
                         />
-                        ${t('doc.editor.turn-off-rebroadcast-and-comment', 'turn off rebroadcast and comment')}
+                        ${t('doc.editor.turn-off-rebroadcast-and-comment', 'turn off comments')}
                     </label>
                     <label class="publish-bar-wish" title=${t('doc.editor.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}>
                         <input

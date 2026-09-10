@@ -853,7 +853,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           : html`<span class="feed-entry-when">${when}</span>`}
                     ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
                         never the key, and that is not what the button promises. */ ''}
-                    ${!item.mine && !!current && !item.settled && !item.trusted_only && html`<${ShareButton} item=${item} current=${current} />`}
+                    ${!item.mine && !!current && !item.trusted_only && html`<${ShareButton} item=${item} current=${current} />`}
                     ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
                         that note in Writer, and the publish bar there says the changes again.
@@ -939,7 +939,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 ${item.trusted_only &&
                 html`<span class="label-chip label-chip-flag" title=${t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}><${Icons.trustPrivate} /> ${t('postentry.trusted-only', 'trusted only')}</span>`}
                 ${item.settled &&
-                html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off rebroadcast and comment on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'no rebroadcast or comment')}</span>`}
+                html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`}
                 ${groupLabels(shownLabels, { author: item.author }).map((g) => {
                     // One chip per (key, value), worn by everyone who said it: most-agreed
                     // first, names smashed ("Jeff Dorp and 3 others"), and the chip itself

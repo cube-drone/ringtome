@@ -276,9 +276,9 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   </div>`}
                   <div class="book-block">
                   ${!published &&
-                  html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turns off comments and rebroadcasts for the book, as far as this network can honor it')}>
+                  html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turns off comments for the book, as far as this network can honor it')}>
                           <input type="checkbox" checked=${wishes.settled} onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))} />
-                          ${t('doc.bookcol.turn-off-rebroadcast-and-comment', 'turn off rebroadcast and comment')}
+                          ${t('doc.bookcol.turn-off-rebroadcast-and-comment', 'turn off comments')}
                       </label>
                       <label class="book-switch" title=${t('doc.bookcol.trusted-only-means', 'the pages go only to readers you have published trust for')}>
                           <input type="checkbox" checked=${wishes.trusted_only} onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))} />

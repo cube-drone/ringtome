@@ -2223,24 +2223,16 @@ async fn rebroadcast_handler(
             })?),
         }
     };
-    // A settled post is not passed along (PROJECT_PLAN's Post visibility): every honest node that can see
-    // the header refuses the mint with words. A node that holds nothing of the post already
-    // refused above; malicious clients exist, and this door is not for them.
+    // A sealed post is not passed along (Curtis, 2026-09-08): a share moves the pointer and
+    // the carriage, never the key, so it means less than a share usually does - "it won't
+    // work the way users expect it to". The button is gone; the door refuses what no button
+    // reaches. (The settled wish used to refuse here too; since 2026-09-10 it means comments
+    // off and nothing else - "no rebroadcast" on an open post was a request any relay could
+    // ignore, and on a sealed one the seal already holds.)
     if version.is_some() {
         if let Some(h) =
             held_public_header(&state, &hex::encode(author), &hex::encode(doc_id)).await?
         {
-
-            if h.settled {
-                return Err(AppError::BadRequest(crate::msg!(
-                    "identity.routes.settled-no-shares",
-                    "the author turned off rebroadcasts for this post"
-                )));
-            }
-            // A sealed post is not passed along either (Curtis, 2026-09-08): a share moves the
-            // pointer and the carriage, never the key, so it means less than a share usually
-            // does - "it won't work the way users expect it to". The button is gone; the door
-            // refuses what no button reaches.
             if h.trusted_only {
                 return Err(AppError::BadRequest(crate::msg!(
                     "identity.routes.sealed-no-shares",

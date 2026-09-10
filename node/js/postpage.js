@@ -147,7 +147,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
             ${item &&
             item.settled &&
             html`<p class="thread-settled">
-                ${t('postpage.the-author-settled-this', 'the author turned off comments and rebroadcasts for this post')}
+                ${t('postpage.the-author-settled-this', 'the author turned off comments for this post')}
             </p>`}
             ${item &&
             !item.settled &&

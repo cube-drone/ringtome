@@ -697,14 +697,14 @@ export const FeedApp = ({ current, searchQuery }) => {
                                     />
                                     <label
                                         class="feed-settle"
-                                        title=${t('apps.feed.settled-means-no-replies', 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist')}
+                                        title=${t('apps.feed.settled-means-no-replies', 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist')}
                                     >
                                         <input
                                             type="checkbox"
                                             checked=${settleNext}
                                             onChange=${(e) => setSettleNext(e.currentTarget.checked)}
                                         />
-                                        ${t('apps.feed.settled-no-replies-no', 'turn off rebroadcast and comment')}
+                                        ${t('apps.feed.settled-no-replies-no', 'turn off comments')}
                                     </label>
                                     <label
                                         class="feed-settle"

@@ -3690,14 +3690,20 @@ holder checks them offline (keys 15 and 16, absent when false, carried forward o
 re-publication like `genesis_ms`), both persisted on the doc memos and the feed journal.
 Folded here from VISIBILITY.md when the arc closed (2026-09-02).
 
-**"Settled" - rebroadcast and comment turned off.** A wish, not cryptography: malicious
-clients and screenshots exist, and from this network's own point of view a settled post is
-settled. Every honest door honors it - a reply publish naming a settled parent refuses with
-words, a rebroadcast mint refuses on any node that can see the header (mirror shelf first,
-fragment shelf second), the author's thread door serves nothing, and the card drops the
-share button and the whole thread section for one quiet line. Tags stay allowed: a label is
-the labeller's speech about the post, not participation inside it. The user-facing language
-is "turn off rebroadcast and comment"; "settled" is internal only.
+**"Settled" - comments turned off (narrowed 2026-09-10).** A wish, not cryptography:
+malicious clients and screenshots exist, and from this network's own point of view a
+settled post is settled. Every honest door honors it - a reply publish naming a settled
+parent refuses with words, the author's thread door serves nothing, and the card drops the
+whole thread section for one quiet line. It used to refuse a rebroadcast too; Curtis took
+that half out once the seal existed: "no rebroadcast" on an open post was a request any
+relay could ignore, and on a sealed post the seal already holds - "'no rebroadcast' is
+implied and fully provided, now, by 'trusted only'". So sealing controls spread and this
+wish controls comments, and a settled post passes along like any other, its chip riding the
+share card so the reader knows the post will not take their reply. Tags stay allowed: a
+label is the labeller's speech about the post, not participation inside it. The user-facing
+language is "turn off comments"; "settled" is internal only - and it is also the store's
+word for a post whose edit window has closed, which this narrowing leaves as the only
+"settled" a reader ever meets.
 
 **"Trusted only" - the body goes to readers the author publishes trust for.** The rulings:
 title, date, and format are the post's public face (the header must travel for the chain to
