@@ -58,7 +58,8 @@
     gap: 0.05rem;
     padding: 0.3rem 0.6rem;
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
     --j: 4px;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -155,7 +156,9 @@
     color: var(--ink-soft);
     margin-top: 1rem;
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 5px;
     clip-path: var(--jag);
     padding: 0.7rem 0.9rem;
@@ -212,7 +215,9 @@
     align-items: center;
     gap: 0.7rem;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 5px;
     clip-path: var(--jag);
     padding: 0.6rem 0.9rem;

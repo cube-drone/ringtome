@@ -4,7 +4,9 @@
     display: inline-flex;
     align-items: center;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -23,7 +25,9 @@
 }
 .copy-bucket {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     font: inherit;

@@ -39,7 +39,9 @@
 
 .ceremony-download {
     background: none;
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -74,7 +76,9 @@
 
 .name-input {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -101,7 +105,9 @@
 
 .spare-paste {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--sea);
@@ -185,7 +191,9 @@
 .persona-address-copy {
     flex-shrink: 0;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -210,7 +218,9 @@
     align-items: center;
     gap: 0.8rem;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 5px;
     clip-path: var(--jag);
     padding: 0.9rem 1rem;
@@ -268,7 +278,9 @@
 
 .profile-bio {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -318,7 +330,9 @@
     justify-content: space-between;
     align-items: baseline;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     padding: 0.5rem 0.8rem;
@@ -371,7 +385,9 @@
     width: 100%;
     text-align: left;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     padding: 0.6rem 0.8rem;
@@ -496,7 +512,9 @@
 
 .profile-save {
     background: var(--teal);
-    border: 1px solid var(--teal);
+    border: 1px solid transparent;
+    --line: var(--teal);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--surface);
@@ -567,7 +585,9 @@
     align-items: center;
     gap: 0.4rem;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     padding: 0.2rem 0.7rem;
@@ -617,7 +637,9 @@
 .ledger-block {
     align-self: flex-start;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--coral);
@@ -667,7 +689,9 @@
 
 .ledger-select {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -706,7 +730,9 @@
 
 .people-sort {
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -730,7 +756,9 @@
     align-self: center;
     margin-top: 0.5rem;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -749,7 +777,9 @@
 
 .ledger-nick {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -790,7 +820,9 @@
     --j: 6px;
     clip-path: var(--jag);
     object-fit: cover;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     display: block;
 }
 
@@ -846,7 +878,9 @@
     flex-direction: column;
     gap: 0.5rem;
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 6px;
     clip-path: var(--jag);
     padding: 0.9rem 1rem;
@@ -874,7 +908,9 @@
 
 .feed-item {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 5px;
     clip-path: var(--jag);
     padding: 0.7rem 1rem;
@@ -903,7 +939,9 @@
 
 .feed-post {
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--sea);
@@ -929,7 +967,9 @@
     display: inline-flex;
     align-items: center;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -943,7 +983,9 @@
 }
 .feed-edit {
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -962,7 +1004,9 @@
    a small destructive act, dressed as one. */
 .feed-discard {
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -1088,7 +1132,8 @@ article:has(.label-emoji-strip) {
     overflow-y: auto;
     padding: 0.4rem;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
     --j: 0.3rem;
     clip-path: var(--jag);
     box-shadow: 0 6px 18px var(--shadow-drop);
@@ -1179,7 +1224,9 @@ article:has(.label-emoji-strip) {
     font-size: 0.78rem;
     width: 7rem;
     padding: 0.1rem 0.55rem;
-    border: 1px solid var(--teal);
+    border: 1px solid transparent;
+    --line: var(--teal);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     background: var(--surface);
@@ -1221,7 +1268,9 @@ article:has(.label-emoji-strip) {
 .public-posts-more {
     align-self: center;
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--sea);
@@ -1303,7 +1352,9 @@ article:has(.label-emoji-strip) {
 .feed-entry {
     font-size: calc(1rem * var(--post-scale, 1));
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 5px;
     clip-path: var(--jag);
     padding: 0.7em 1em;
@@ -1381,7 +1432,8 @@ article:has(.label-emoji-strip) {
     flex-wrap: wrap;
     gap: 0.25em 0.6em;
     padding: 0.5em 0.6em;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
     --j: 0.2em;
     clip-path: var(--jag-1);
     margin-bottom: 0.25em;
@@ -1414,7 +1466,9 @@ article:has(.label-emoji-strip) {
     display: inline-flex;
     align-items: center;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -1451,7 +1505,9 @@ article:has(.label-emoji-strip) {
 .feed-unpublish-go,
 .feed-unpublish-no {
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     font: inherit;
@@ -1473,7 +1529,9 @@ article:has(.label-emoji-strip) {
     display: inline-flex;
     align-items: center;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -1644,7 +1702,9 @@ article:has(.label-emoji-strip) {
 .feed-more {
     align-self: center;
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--sea);
@@ -1678,7 +1738,9 @@ article:has(.label-emoji-strip) {
 
 .feed-fresh-btn {
     background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     color: var(--sea);
@@ -1706,7 +1768,9 @@ article:has(.label-emoji-strip) {
 
 .bake-modal {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 6px;
     clip-path: var(--jag);
     padding: 1.1rem 1.3rem;
@@ -1787,7 +1851,8 @@ article:has(.label-emoji-strip) {
     display: inline-flex;
     align-items: center;
     background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -1847,7 +1912,9 @@ article:has(.label-emoji-strip) {
     display: inline-flex;
     align-items: center;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -1900,7 +1967,8 @@ article:has(.label-emoji-strip) {
     width: fit-content;
     height: fit-content;
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
     --j: 0.25em;
     clip-path: var(--jag-1);
     color: var(--ink);
@@ -1925,7 +1993,9 @@ article:has(.label-emoji-strip) {
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
     padding: 0.1rem 0.3rem 0.1rem 0.6rem;

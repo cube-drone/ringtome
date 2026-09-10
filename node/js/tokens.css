@@ -59,6 +59,16 @@
         100% calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) 100%,
         calc(2 * var(--j)) 100%, calc(2 * var(--j)) calc(100% - var(--j)), var(--j) calc(100% - var(--j)), var(--j) calc(100% - 2 * var(--j)), 0 calc(100% - 2 * var(--j))
     );
+    /* The jagged LINE (Curtis, 2026-09-10: the corners of anything with a thin border
+       showed "simply no corners"): a clip cuts a border at the corners, so a bordered box
+       keeps a transparent border for its geometry and draws the line as a ring instead -
+       its `::after`, painted `--line`, clipped to the jag with the same jag one line-width
+       (`--lw`) inside it cut out, evenodd. The ring follows every step, so the corner is a
+       jagged line rather than a gap. Solid lines only: a dashed border stays a border, its
+       corner gap reading as one more gap. The half-jags (a tab, a footer) keep theirs too. */
+    --lw: 1px;
+    --ring-1: polygon(evenodd, 0px var(--j), var(--j) 0px, calc(100% - var(--j)) 0px, 100% var(--j), 100% calc(100% - var(--j)), calc(100% - var(--j)) 100%, var(--j) 100%, 0px calc(100% - var(--j)), 0px var(--j), var(--lw) calc(var(--lw) + var(--j)), calc(var(--lw) + var(--j)) var(--lw), calc(100% - var(--lw) - var(--j)) var(--lw), calc(100% - var(--lw)) calc(var(--lw) + var(--j)), calc(100% - var(--lw)) calc(100% - var(--lw) - var(--j)), calc(100% - var(--lw) - var(--j)) calc(100% - var(--lw)), calc(var(--lw) + var(--j)) calc(100% - var(--lw)), var(--lw) calc(100% - var(--lw) - var(--j)), var(--lw) calc(var(--lw) + var(--j)));
+    --ring: polygon(evenodd, 0px calc(2 * var(--j)), var(--j) calc(2 * var(--j)), var(--j) var(--j), calc(2 * var(--j)) var(--j), calc(2 * var(--j)) 0px, calc(100% - 2 * var(--j)) 0px, calc(100% - 2 * var(--j)) var(--j), calc(100% - var(--j)) var(--j), calc(100% - var(--j)) calc(2 * var(--j)), 100% calc(2 * var(--j)), 100% calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) 100%, calc(2 * var(--j)) 100%, calc(2 * var(--j)) calc(100% - var(--j)), var(--j) calc(100% - var(--j)), var(--j) calc(100% - 2 * var(--j)), 0px calc(100% - 2 * var(--j)), 0px calc(2 * var(--j)), var(--lw) calc(var(--lw) + 2 * var(--j)), calc(var(--lw) + var(--j)) calc(var(--lw) + 2 * var(--j)), calc(var(--lw) + var(--j)) calc(var(--lw) + var(--j)), calc(var(--lw) + 2 * var(--j)) calc(var(--lw) + var(--j)), calc(var(--lw) + 2 * var(--j)) var(--lw), calc(100% - var(--lw) - 2 * var(--j)) var(--lw), calc(100% - var(--lw) - 2 * var(--j)) calc(var(--lw) + var(--j)), calc(100% - var(--lw) - var(--j)) calc(var(--lw) + var(--j)), calc(100% - var(--lw) - var(--j)) calc(var(--lw) + 2 * var(--j)), calc(100% - var(--lw)) calc(var(--lw) + 2 * var(--j)), calc(100% - var(--lw)) calc(100% - var(--lw) - 2 * var(--j)), calc(100% - var(--lw) - var(--j)) calc(100% - var(--lw) - 2 * var(--j)), calc(100% - var(--lw) - var(--j)) calc(100% - var(--lw) - var(--j)), calc(100% - var(--lw) - 2 * var(--j)) calc(100% - var(--lw) - var(--j)), calc(100% - var(--lw) - 2 * var(--j)) calc(100% - var(--lw)), calc(var(--lw) + 2 * var(--j)) calc(100% - var(--lw)), calc(var(--lw) + 2 * var(--j)) calc(100% - var(--lw) - var(--j)), calc(var(--lw) + var(--j)) calc(100% - var(--lw) - var(--j)), calc(var(--lw) + var(--j)) calc(100% - var(--lw) - 2 * var(--j)), var(--lw) calc(100% - var(--lw) - 2 * var(--j)), var(--lw) calc(var(--lw) + 2 * var(--j)));
     --dot-clip: polygon(
         30% 0, 70% 0, 85% 15%, 100% 30%, 100% 70%, 85% 85%, 70% 100%, 30% 100%, 15% 85%, 0 70%, 0 30%, 15% 15%
     );
@@ -90,4 +100,70 @@
     --scrim: rgba(43, 38, 34, 0.45);        /* behind a modal */
     --shadow-drop: rgba(43, 38, 34, 0.35);  /* panels floating over content (menus, tooltips) */
     --shadow-punch: rgba(51, 40, 20, 0.28); /* inset: a hole punched through the ink chrome */
+}
+
+/* The jagged line's ring (see --ring above): every box that wears it. */
+.welcome-form input::after,
+.feed-copy::after,
+.copy-bucket::after,
+.minipost::after,
+.person-chip-label::after,
+.ceremony-download::after,
+.name-input::after,
+.spare-paste::after,
+.persona-address-copy::after,
+.profile-bio::after,
+.computer-row::after,
+.removal-option::after,
+.profile-save::after,
+.ledger-glance::after,
+.ledger-block::after,
+.ledger-select::after,
+.people-sort::after,
+.people-more::after,
+.ledger-nick::after,
+.feed-post::after,
+.feed-edit-writer::after,
+.feed-edit::after,
+.feed-discard::after,
+.label-add-input::after,
+.public-posts-more::after,
+.feed-entry-via-roster::after,
+.feed-unpublish::after,
+.feed-unpublish-no::after,
+.feed-share::after,
+.feed-more::after,
+.feed-fresh-btn::after,
+.seal-lock::after,
+.feed-pin::after,
+.feed-entry-unveil::after,
+.warn-chip::after,
+.bucket-name::after,
+.bucket-menu::after,
+.search-opts-menu::after,
+.search-opts-kind::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--line);
+    clip-path: var(--ring-1);
+}
+
+/* The jagged line's ring (see --ring above): every box that wears it. */
+.person-card-bio::after,
+.person-row::after,
+.persona-menu-item::after,
+.profile-avatar::after,
+.feed-composer::after,
+.feed-item::after,
+.label-emoji-strip::after,
+.feed-entry::after,
+.bake-modal::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--line);
+    clip-path: var(--ring);
 }

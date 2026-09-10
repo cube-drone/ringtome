@@ -61,7 +61,9 @@
 
 .welcome-form input {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--ink);
