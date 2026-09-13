@@ -8989,3 +8989,39 @@ every tag the persona has used; the People page wears the feed's facet widget, t
 picks AND, kept for the session. No Rust moved - the private KV door already took any
 register in a contact's bag. The plan gained a Contact tags section; the audience itself
 is its ruling 4, not built.
+
+## 2026-09-10: the audience - sealing a post to a contact tag
+
+"Let's let users post to just their 'family'." The payoff of the seal, the holder field,
+the sealed title and labels, and the contact tags: a publish may name an audience, a
+contact tag, and the post is sealed for the people who wear it. The tag rides the draft
+and is noted beside the key on the author's node (post_keys.audience, node schema 43);
+nothing about it reaches the wire. The many trust checks the sealed doors had grown were
+folded into one question, `seal_admits(holder, key document, subject)`, which answers by
+audience when the post has one and by published trust when it does not - the key lane,
+the body door, the shelf, the feed, the thread, the sealed labels (which now note the key
+document beside the holder) and the mention notice all ask it. A trusted reader outside
+the audience holds a header they cannot open; their node's fruitless key fetch is now
+remembered as a refusal for ten minutes (post_key_refusals), and the feed and the shelf
+hide what the door would refuse, retrying after that - the door itself never honours the
+memo (the first cut did, and a reader refused before being trusted stayed refused for ten
+minutes; the sealed-replies suite caught it in one run). The suite: ada trusts bea and cal
+and tags only bea "family"; her family post opens for bea, who replies under its seal;
+cal cannot open the post or the reply, is told the thread is sealed, and the post leaves
+his feed once his node was refused; a stranger sees nothing.
+
+## 2026-09-12: one distribution list
+
+"I had kind of imagined it as only show to (people I trust / family / friends / ...) with
+'people I trust' as the default distribution list." The composer's seal had grown as a
+checkbox with an "and only" select under it, which read as family on top of trust. Now it
+is one control: "only show to" with everyone, people I trust, and each contact tag; the
+seal is on whenever the choice is not everyone, and the trust list is the seal's default.
+The gate did not change - a tag was already the whole answer, not trust and the tag.
+
+## 2026-09-13: the card names the list
+
+"The post, in my feed, has an annotation reading 'trusted only'." Your own sealed cards now
+say which list they are for - "only family" - on the feed and on your shelf, from the
+audience your node noted beside the key; anyone else's sealed card still says "trusted
+only", since the tag is the author's private business and never travels.

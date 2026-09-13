@@ -614,6 +614,11 @@ struct FeedItem {
     author: String,
     doc_id: String,
     title: String,
+    /// The list a sealed post of YOUR OWN is for (PROJECT_PLAN's Contact tags, ruling 4):
+    /// the contact tag, or absent for everyone you trust - and absent on anyone else's
+    /// post, whose audience is the author's private business.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audience: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     format: Option<String>,
     published_ms: i64,
@@ -808,7 +813,7 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
     } else {
         crate::replies::links_for(&state.node_db, &sealed_pairs).await.unwrap_or_default()
     };
-    let mut trusted_here: std::collections::HashMap<String, bool> = Default::default();
+    let mut trusted_here: std::collections::HashMap<(String, String), bool> = Default::default();
     let mut keep = Vec::with_capacity(rows.len());
     for r in rows {
         if !r.trusted_only {
@@ -816,11 +821,13 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
             continue;
         }
         let mut holder = r.author_root.clone();
+        let mut key_doc = r.doc_id.clone();
         if let Some(l) = links.get(&(r.author_root.clone(), r.doc_id.clone())) {
             let (pa, pd) = &l.parent;
             if let Ok(Ok(pd)) = hex::decode(pd).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
                 if crate::idface::sealed_here(state, pa, &pd).await == Some(true) {
                     holder = pa.clone();
+                    key_doc = hex::encode(pd);
                 }
             }
         }
@@ -828,17 +835,14 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
             keep.push(r);
             continue;
         }
-        let ok = match trusted_here.get(&holder) {
+        // The one gate (`seal_admits`), once per (holder, key document); a key this node
+        // was refused hides the row too (Contact tags, ruling 4).
+        let at = (holder.clone(), key_doc.clone());
+        let ok = match trusted_here.get(&at) {
             Some(v) => *v,
             None => {
-                let v = match state.user_dbs.get(&holder).await {
-                    Ok(Some(db)) => crate::record::imaol::published_edges(&db)
-                        .await
-                        .map(|e| e.get(root).is_some_and(|row| row.edge.trust.is_some()))
-                        .unwrap_or(false),
-                    _ => false,
-                };
-                trusted_here.insert(holder.clone(), v);
+                let v = crate::idface::seal_lists(state, &at.0, &at.1, root).await;
+                trusted_here.insert(at, v);
                 v
             }
         };
@@ -1018,6 +1022,14 @@ async fn feed_handler(
         Default::default()
     };
 
+    // Your own sealed posts name their list (Contact tags, ruling 4): fetched before the
+    // dressing below, which is not async.
+    let mut own_audiences: std::collections::HashMap<String, String> = Default::default();
+    for r in rows.iter().filter(|r| r.trusted_only && r.author_root == root) {
+        if let Ok(Some(tag)) = crate::postkeys::audience(&state.node_db, &r.author_root, &r.doc_id).await {
+            own_audiences.insert(r.doc_id.clone(), tag);
+        }
+    }
     let items: Vec<FeedItem> = rows
         .into_iter()
         .map(|r| {
@@ -1106,12 +1118,14 @@ async fn feed_handler(
             let thread_root = links
                 .filter(|l| l.root != l.parent)
                 .map(|l| dress(&l.root));
+            let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             FeedItem {
                 mine,
                 author_name: byline.name,
                 author_avatar: byline.avatar,
                 author: r.author_root,
                 doc_id: r.doc_id,
+                audience,
                 title: r.title,
                 format: r.format,
                 published_ms: r.published_ms,
@@ -1495,6 +1509,10 @@ struct PublishRequest {
     settled: Option<bool>,
     /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2), carried the same way.
     trusted_only: Option<bool>,
+    /// The audience (PROJECT_PLAN's Contact tags, ruling 4): a contact tag - "family" - the
+    /// sealed post is for, instead of everyone the author trusts. Implies the seal. Kept
+    /// on the draft, noted beside the key on this node, never on the wire. `""` clears.
+    audience: Option<String>,
     /// The browser's `getTimezoneOffset()` at publish (PUBLISH.md): the preferred date is
     /// the author's LOCAL claim, and this is what makes it one stamp for every reader.
     tz_offset_min: Option<i32>,
@@ -1652,6 +1670,17 @@ pub(crate) async fn after_posted(
             {
                 tracing::warn!(error = ?e, "post key memo write failed");
             }
+            // The audience beside the key (Contact tags, ruling 4): the draft's tag, or none.
+            let audience = data
+                .annotations()
+                .field(&doc_id, store::AUDIENCE)
+                .await
+                .ok()
+                .flatten()
+                .filter(|a| !a.trim().is_empty());
+            if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(post_id), audience.as_deref()).await {
+                tracing::warn!(error = ?e, "post audience memo write failed");
+            }
             // The twins seal under the same key: memo it under THEIR ids too,
             // so the key doors (HTTP and WantKey alike) answer for a picture
             // exactly as they answer for the words.
@@ -1670,6 +1699,9 @@ pub(crate) async fn after_posted(
                             .await
                             {
                                 tracing::warn!(error = ?e, "twin key memo write failed");
+                            }
+                            if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(r), audience.as_deref()).await {
+                                tracing::warn!(error = ?e, "twin audience memo write failed");
                             }
                         }
                     }
@@ -1865,6 +1897,17 @@ async fn publish_handler(
         None => None,
     };
     let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
+    // The audience rides the draft (Contact tags, ruling 4): asked for on this publish, or
+    // standing from the last one; an audience is a sealed post by definition.
+    if let Some(a) = req.as_ref().and_then(|b| b.audience.as_deref()) {
+        let a = a.trim().to_lowercase();
+        data.annotations().set_field(&doc_id, store::AUDIENCE, &a).await?;
+    }
+    let audience = data
+        .annotations()
+        .field(&doc_id, store::AUDIENCE)
+        .await?
+        .filter(|a| !a.trim().is_empty());
     // The draft's seal wish (a copy of a sealed post, PROJECT_PLAN's Copying a post) holds
     // when the request names no wish of its own; a named wish, either way, is the word.
     let trusted_only = match req.as_ref().and_then(|b| b.trusted_only) {
@@ -1874,7 +1917,7 @@ async fn publish_handler(
             .field(&doc_id, store::SEAL_WISH)
             .await?
             .is_some_and(|v| v.trim() == "yes"),
-    };
+    } || audience.is_some();
     // A reply to a sealed parent is sealed under the PARENT's key (PROJECT_PLAN's Replies
     // under the author's seal): the key comes from the memo - a replier who never could
     // read the parent has none, and is refused with words - and rides the draft as its
@@ -2641,20 +2684,27 @@ async fn replicate_annotations(
     // mentioned somewhere you cannot go".
     let admits: Option<std::collections::HashSet<String>> = if post_key.is_some() {
         let self_hex = hex::encode(self_root);
-        let holder_hex = seal_of.map(|(a, _)| hex::encode(a)).unwrap_or_else(|| self_hex.clone());
-        let edges = if holder_hex == self_hex {
-            crate::record::imaol::published_edges(data.db()).await.ok()
-        } else {
-            match state.user_dbs.get(&holder_hex).await {
-                Ok(Some(db)) => crate::record::imaol::published_edges(&db).await.ok(),
-                _ => None,
+        let (holder_hex, key_doc_hex) = seal_of
+            .map(|(a, d)| (hex::encode(a), hex::encode(d)))
+            .unwrap_or_else(|| (self_hex.clone(), hex::encode(post_id)));
+        // The seal's audience if it has one (Contact tags, ruling 4), else the holder's trust.
+        let members = match crate::postkeys::audience(&state.node_db, &holder_hex, &key_doc_hex).await.ok().flatten() {
+            Some(tag) => crate::idface::audience_members(state, &holder_hex, &tag).await,
+            None => {
+                let edges = if holder_hex == self_hex {
+                    crate::record::imaol::published_edges(data.db()).await.ok()
+                } else {
+                    match state.user_dbs.get(&holder_hex).await {
+                        Ok(Some(db)) => crate::record::imaol::published_edges(&db).await.ok(),
+                        _ => None,
+                    }
+                };
+                edges
+                    .map(|e| e.into_iter().filter(|(_, v)| v.edge.trust.is_some()).map(|(k, _)| k).collect())
+                    .unwrap_or_default()
             }
         };
-        Some(
-            edges
-                .map(|e| e.into_iter().filter(|(_, v)| v.edge.trust.is_some()).map(|(k, _)| k).collect())
-                .unwrap_or_default(),
-        )
+        Some(members)
     } else {
         None
     };

@@ -1097,6 +1097,20 @@ article:has(.label-emoji-strip) {
     font-size: 0.78rem;
     color: var(--ink-soft);
 }
+/* The audience select beside the seal wish (2026-09-10). */
+.feed-audience {
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.05rem 0.3rem;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
+    background: var(--surface);
+    color: var(--ink);
+}
+
 .thread-settled {
     color: var(--faint);
     font-size: 0.85rem;

@@ -137,15 +137,23 @@ async fn answer_key(
     };
     let dialer = conn.remote_id().to_string();
     // Who may receive: the author's own devices, and nodes serving any trusted subject.
+    // Who may ask: the seal's audience when it has one (PROJECT_PLAN's Contact tags, ruling
+    // 4 - "family", judged from the author's private contact bag, here and only here), else
+    // everyone the author publishes trust for.
     let mut allowed_roots = vec![author_hex.clone()];
-    if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
-        if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
-            allowed_roots.extend(
-                edges
-                    .into_iter()
-                    .filter(|(_, r)| r.edge.trust.is_some())
-                    .map(|(subject, _)| subject),
-            );
+    match crate::postkeys::audience(&state.node_db, &author_hex, &doc_hex).await.ok().flatten() {
+        Some(tag) => allowed_roots.extend(crate::idface::audience_members(state, &author_hex, &tag).await),
+        None => {
+            if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
+                if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
+                    allowed_roots.extend(
+                        edges
+                            .into_iter()
+                            .filter(|(_, r)| r.edge.trust.is_some())
+                            .map(|(subject, _)| subject),
+                    );
+                }
+            }
         }
     }
     let mut ok = crate::net::sync::endpoint_serves_any(&state.node_db, &allowed_roots, &dialer)
@@ -259,6 +267,7 @@ pub async fn fetch_key(
         }
     }
     tracing::debug!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
+    let mut refused_by_someone = false;
     for endpoint_id in endpoints {
         match tokio::time::timeout(FETCH_TIMEOUT, ask_key(state, &endpoint_id, author, doc_id))
             .await
@@ -270,12 +279,22 @@ pub async fn fetch_key(
                 {
                     tracing::debug!(error = ?e, "fetched key not remembered");
                 }
+                let _ = crate::postkeys::unrefuse(&state.node_db, &author_hex, &hex::encode(doc_id)).await;
                 return Some(key);
             }
-            Ok(Ok(None)) => continue,
+            Ok(Ok(None)) => {
+                refused_by_someone = true;
+                continue;
+            }
             Ok(Err(e)) => tracing::debug!(endpoint = %endpoint_id, error = ?e, "key ask failed"),
             Err(_) => tracing::debug!(endpoint = %endpoint_id, "key ask timed out"),
         }
+    }
+    // Every endpoint that answered said no (Contact tags, ruling 4): the author's node holds
+    // the key and would not give it to this one - remember that, so the feed and the shelf
+    // stop showing a card the door would refuse. A transport failure remembers nothing.
+    if refused_by_someone {
+        let _ = crate::postkeys::refuse(&state.node_db, &author_hex, &hex::encode(doc_id)).await;
     }
     None
 }

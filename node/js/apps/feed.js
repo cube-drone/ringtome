@@ -65,6 +65,7 @@ import {
     publishWithBaking,
     BakeModal,
 } from '../postentry.js';
+import { tagCounts } from '../pure/contacttags.js';
 
 const html = htm.bind(h);
 
@@ -535,7 +536,14 @@ export const FeedApp = ({ current, searchQuery }) => {
     // per post and cleared after - not a standing preference.
     const [settleNext, setSettleNext] = useState(false);
     // Trusted-readers-only for the NEXT post (PROJECT_PLAN's Post visibility slice 2), same discipline.
-    const [trustNext, setTrustNext] = useState(false);
+    // Who the NEXT post is for (PROJECT_PLAN's Post visibility slice 2; Contact tags, ruling
+    // 4): one distribution list - '' is everyone (an open post), 'trusted' is everyone I
+    // trust (the seal's default list), 'tag:<tag>' is a contact tag - "family" - narrower
+    // than trust (Curtis, 2026-09-12: one control, "people I trust" as the default list).
+    const [audienceNext, setAudienceNext] = useState('');
+    const trustNext = audienceNext !== '';
+    const audienceTag = audienceNext.startsWith('tag:') ? audienceNext.slice(4) : '';
+    const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
 
     const post = async (docId) => {
         const posted = docId || draftId;
@@ -571,11 +579,12 @@ export const FeedApp = ({ current, searchQuery }) => {
                     ? {
                           ...(settleNext ? { settled: true } : {}),
                           ...(trustNext ? { trusted_only: true } : {}),
+                          ...(audienceTag ? { audience: audienceTag } : {}),
                       }
                     : undefined
             );
             setSettleNext(false);
-            setTrustNext(false);
+            setAudienceNext('');
             if (!made.post_id) {
                 // Scheduled (PUBLISH.md): nothing public yet. The mirror row's plan puts it
                 // at the top of the stream with its badge; nothing more to say here.
@@ -708,14 +717,18 @@ export const FeedApp = ({ current, searchQuery }) => {
                                     </label>
                                     <label
                                         class="feed-settle"
-                                        title=${t('apps.feed.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}
+                                        title=${t('apps.feed.trusted-only-means', 'sealed: the words go only to the people on the list - everyone else sees that a post exists, and its date')}
                                     >
-                                        <input
-                                            type="checkbox"
-                                            checked=${trustNext}
-                                            onChange=${(e) => setTrustNext(e.currentTarget.checked)}
-                                        />
-                                        ${t('apps.feed.only-show-to-people', 'only show to people I trust')}
+                                        ${t('apps.feed.only-show-to', 'only show to')}
+                                        <select
+                                            class="feed-audience"
+                                            value=${audienceNext}
+                                            onChange=${(e) => setAudienceNext(e.currentTarget.value)}
+                                        >
+                                            <option value="">${t('apps.feed.everyone', 'everyone')}</option>
+                                            <option value="trusted">${t('apps.feed.people-i-trust', 'people I trust')}</option>
+                                            ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
+                                        </select>
                                     </label>`
                                   : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`}
                               ${/* Beside the button that caused it. This used to sit above the

@@ -1409,7 +1409,7 @@ pub(crate) async fn public_doc_bytes(
     let (holder, key_doc) = seal_holder(&root, &doc_id, seal_of);
     let holder_hex = hex::encode(holder);
     if trusted_only {
-        let allowed = trusted_viewer(state, session, &holder_hex).await?;
+        let allowed = trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false).await?;
         if !allowed {
             return Err(AppError::Forbidden(crate::msg!(
                 "idface.for-trusted-readers-only",
@@ -1499,7 +1499,7 @@ pub(crate) async fn public_doc_bytes(
         }
         // And the labels (ruling 7): a reader proven entitled to the words is entitled to
         // what is said about them - open the raw sealed statements this node holds, once.
-        if let Err(e) = crate::annotations::open_sealed(&state.node_db, &hex::encode(root), &hex::encode(doc_id), &holder_hex, &key).await {
+        if let Err(e) = crate::annotations::open_sealed(&state.node_db, &hex::encode(root), &hex::encode(doc_id), &holder_hex, &hex::encode(key_doc), &key).await {
             tracing::debug!(error = ?e, "opening sealed labels failed");
         }
         plain
@@ -1680,19 +1680,77 @@ pub(crate) fn seal_holder(
 }
 
 /// Does the session hold a persona the seal's holder trusts - or the holder themselves?
-pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str) -> Result<bool, AppError> {
+/// THE seal's question (PROJECT_PLAN's Replies under the author's seal; Contact tags, ruling
+/// 4): does the holder of `(holder, key_doc)` admit `subject` to the words? The holder
+/// themself, always. A post sealed to an audience - a contact tag the author put on people,
+/// known only on the author's own node - admits whoever wears the tag; any other sealed
+/// post admits whoever the holder publishes trust for. Every sealed door asks this and
+/// nothing else, so an audience is one narrower answer, not a new mechanism.
+pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str) -> bool {
+    if subject_hex == holder_hex {
+        return true;
+    }
+    match crate::postkeys::audience(&state.node_db, holder_hex, key_doc_hex).await.ok().flatten() {
+        Some(tag) => audience_members(state, holder_hex, &tag).await.contains(subject_hex),
+        None => match state.user_dbs.get(holder_hex).await {
+            Ok(Some(db)) => crate::record::imaol::published_edges(&db)
+                .await
+                .map(|edges| edges.get(subject_hex).is_some_and(|e| e.edge.trust.is_some()))
+                .unwrap_or(false),
+            _ => false,
+        },
+    }
+}
+
+/// The LISTING's question: `seal_admits`, minus what the holder's node has refused. Away
+/// from the holder's node the audience is unknown, and published trust would say yes to a
+/// reader the author tagged out; the holder's refusal of the key, remembered for a while,
+/// is the word for the shelf, the feed, the thread and the labels (Contact tags, ruling 4).
+/// Never for the body door: the door is what asks for the key, and a refusal must not stop
+/// it asking again once trust or the audience has changed - a key's arrival clears it.
+pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str) -> bool {
+    if subject_hex != holder_hex
+        && crate::postkeys::refused(&state.node_db, holder_hex, key_doc_hex).await.unwrap_or(false)
+    {
+        return false;
+    }
+    seal_admits(state, holder_hex, key_doc_hex, subject_hex).await
+}
+
+/// Everyone the holder has put `tag` on, from the holder's private contact bag - readable
+/// only where the holder is hosted, which is the only place an audience is ever judged.
+pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, tag: &str) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    let Ok(data) = crate::record::store::open_agented(state, holder_hex).await else { return out };
+    let Ok(contacts) = data.contacts().await else { return out };
+    let want = tag.trim().to_lowercase();
+    for (root, facts) in contacts {
+        let Some(raw) = facts.get("tags") else { continue };
+        let Ok(serde_json::Value::Array(list)) = serde_json::from_str::<serde_json::Value>(raw) else { continue };
+        if list.iter().any(|v| v.as_str().is_some_and(|t| t.trim().to_lowercase() == want)) {
+            out.insert(root);
+        }
+    }
+    out
+}
+
+/// The viewer's standing with a seal: any of the session's personas the holder admits -
+/// `for_listing` honours a remembered refusal (`seal_lists`), the body door does not.
+pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str, key_doc_hex: &str, for_listing: bool) -> Result<bool, AppError> {
     let Some(sess) = session else { return Ok(false) };
     let mine: Vec<String> = crate::identity::list_for_account(&state.node_db, &sess.account.id)
         .await?
         .into_iter()
         .map(|i| i.root_pubkey)
         .collect();
-    if mine.iter().any(|r| r == holder_hex) {
-        return Ok(true);
-    }
-    if let Ok(Some(db)) = state.user_dbs.get(holder_hex).await {
-        if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
-            return Ok(mine.iter().any(|r| edges.get(r).is_some_and(|e| e.edge.trust.is_some())));
+    for r in &mine {
+        let ok = if for_listing {
+            seal_lists(state, holder_hex, key_doc_hex, r).await
+        } else {
+            seal_admits(state, holder_hex, key_doc_hex, r).await
+        };
+        if ok {
+            return Ok(true);
         }
     }
     Ok(false)
@@ -1713,26 +1771,18 @@ async fn hide_sealed(
     if !posts.iter().any(|p| p.trusted_only) || viewer == Some(author_hex) {
         return;
     }
-    // No viewer named, a member session, and the author lives here: the author's own
-    // reads (their page, their shelf) name no viewer and must see their own sealed posts.
     if viewer.is_none() && session.is_some() && hosted_here(state, author_hex).await.unwrap_or(false) {
         return;
     }
-    let trusted = match (viewer, state.user_dbs.get(author_hex).await) {
-        (Some(v), Ok(Some(db))) => crate::record::imaol::published_edges(&db)
-            .await
-            .map(|e| e.get(v).is_some_and(|row| row.edge.trust.is_some()))
-            .unwrap_or(false),
-        _ => false,
-    };
-    // A sealed reply to a sealed parent wears the parent's seal: judged by the parent's
-    // author, whoever's shelf it sits on (PROJECT_PLAN's Replies under the author's seal).
     let Ok(author) = hex_fixed_root(author_hex) else {
-        if !trusted {
-            posts.retain(|p| !p.trusted_only);
-        }
+        posts.retain(|p| !p.trusted_only);
         return;
     };
+    // Each sealed post through the one gate (`seal_admits`), judged once per (holder,
+    // key document): a plain sealed post is its own; a reply under its parent's seal is
+    // the parent's. A key this node was refused hides the post too (Contact tags, ruling
+    // 4): the author trusts the viewer but sealed the post to an audience they are not in.
+    let mut verdicts: std::collections::HashMap<(String, String), bool> = Default::default();
     let mut kept = Vec::with_capacity(posts.len());
     for p in posts.drain(..) {
         if !p.trusted_only {
@@ -1744,27 +1794,21 @@ async fn hide_sealed(
             let d = hex::decode(d).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())?;
             Some((a, d))
         });
-        // The shelf's rows carry no seal statement (the header does, and this view is
-        // folded), so a sealed reply's holder is inferred from its parent here: the same
-        // answer the header states, for the one shape a listing can see.
-        let mut holder = author;
+        let (mut holder, mut key_doc) = (author, p.doc_id);
         if let Some((pa, pd)) = reply_to {
             if sealed_here(state, &hex::encode(pa), &pd).await == Some(true) {
                 holder = pa;
+                key_doc = pd;
             }
         }
-        let holder_hex = hex::encode(holder);
-        let ok = if holder_hex == author_hex {
-            trusted
-        } else if viewer == Some(holder_hex.as_str()) {
-            true
-        } else {
-            match (viewer, state.user_dbs.get(&holder_hex).await) {
-                (Some(v), Ok(Some(db))) => crate::record::imaol::published_edges(&db)
-                    .await
-                    .map(|e| e.get(v).is_some_and(|row| row.edge.trust.is_some()))
-                    .unwrap_or(false),
-                _ => trusted_viewer(state, session, &holder_hex).await.unwrap_or(false),
+        let at = (hex::encode(holder), hex::encode(key_doc));
+        let ok = match (viewer, verdicts.get(&at)) {
+            (_, Some(v)) => *v,
+            (None, None) => false,
+            (Some(v), None) => {
+                let admitted = seal_lists(state, &at.0, &at.1, v).await;
+                verdicts.insert(at.clone(), admitted);
+                admitted
             }
         };
         if ok {
@@ -2151,6 +2195,18 @@ async fn attach_annotations(
     posts: &mut [serde_json::Value],
     viewer: Option<&str>,
 ) {
+    // The author's own shelf names the list a sealed post is for (Contact tags, ruling 4).
+    if viewer == Some(root_hex) {
+        for v in posts.iter_mut() {
+            if v["trusted_only"].as_bool() != Some(true) {
+                continue;
+            }
+            let Some(doc) = v["doc_id"].as_str().map(str::to_string) else { continue };
+            if let Ok(Some(tag)) = crate::postkeys::audience(&state.node_db, root_hex, &doc).await {
+                v["audience"] = serde_json::Value::String(tag);
+            }
+        }
+    }
     let pairs: Vec<(String, String)> = posts
         .iter()
         .filter_map(|v| v["doc_id"].as_str().map(|d| (root_hex.to_string(), d.to_string())))
@@ -2401,7 +2457,7 @@ pub async fn id_post_replies(
     // than a thread of hollow cards.
     if let Ok(Ok(doc_id)) = hex::decode(&doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
         if sealed_here(&state, &root_hex, &doc_id).await == Some(true)
-            && !trusted_viewer(&state, &session, &root_hex).await?
+            && !trusted_viewer(&state, &session, &root_hex, &doc, true).await?
         {
             return Ok(axum::Json(serde_json::json!({
                 "replies": [], "more": false, "seeking": false, "sealed": true,

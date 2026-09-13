@@ -529,6 +529,23 @@ CREATE TABLE post_keys (
     doc_id      TEXT NOT NULL,   -- the PUBLIC post, hex
     key         BLOB NOT NULL,   -- 32 bytes
     noted_ms    INTEGER NOT NULL,
+    -- The audience (PROJECT_PLAN's Contact tags, ruling 4, 2026-09-10): a contact tag the
+    -- author sealed this post to, on the AUTHOR's own node only - "family" - so the key goes
+    -- to readers who wear it rather than to everyone the author trusts. NULL = everyone
+    -- trusted. Never on the wire: the tag is private.
+    audience    TEXT,
+    PRIMARY KEY (author_root, doc_id)
+);
+
+-- A key the author's node would not give this one (2026-09-10): the reader's node holds a
+-- sealed header it cannot open - the author trusts the reader, but sealed the post to an
+-- audience they are not in. Remembered so the feed and the shelf hide what the door would
+-- refuse; forgotten after a while, so a wrongful refusal (a peer ledger not yet derived)
+-- is retried, and cleared the moment a key arrives.
+CREATE TABLE post_key_refusals (
+    author_root TEXT NOT NULL,
+    doc_id      TEXT NOT NULL,
+    noted_ms    INTEGER NOT NULL,
     PRIMARY KEY (author_root, doc_id)
 );
 
@@ -811,6 +828,9 @@ CREATE TABLE doc_annotations (
     -- 'sealed' row is never served to anyone.
     sealed        INTEGER NOT NULL DEFAULT 0,
     holder_root   TEXT,
+    -- The document whose key opened it (the post, or a sealed reply's parent): with the
+    -- holder, the pair the audience is asked about (Contact tags, ruling 4).
+    holder_doc    TEXT,
     sealed_as     TEXT,
     PRIMARY KEY (target_author, target_doc, annotator, key, value)
 );

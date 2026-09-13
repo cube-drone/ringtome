@@ -61,18 +61,9 @@ pub fn open_statement(sealed_hex: &str, post_key: &[u8; 32]) -> Option<(String, 
 
 /// Who may see an opened sealed row: the holder themself, or anyone the holder publishes
 /// trust for (the body door's rule, PROJECT_PLAN's Replies under the author's seal).
-async fn holder_admits(state: &AppState, holder: &str, viewer: Option<&str>) -> bool {
+async fn holder_admits(state: &AppState, holder: &str, holder_doc: &str, viewer: Option<&str>) -> bool {
     let Some(v) = viewer else { return false };
-    if v == holder {
-        return true;
-    }
-    match state.user_dbs.get(holder).await {
-        Ok(Some(db)) => crate::record::imaol::published_edges(&db)
-            .await
-            .map(|edges| edges.get(v).is_some_and(|e| e.edge.trust.is_some()))
-            .unwrap_or(false),
-        _ => false,
-    }
+    crate::idface::seal_lists(state, holder, holder_doc, v).await
 }
 
 /// Which of these rows the viewer may see: every open row, and a sealed row only when its
@@ -90,11 +81,13 @@ async fn admitted(
         }
         if r.sealed {
             let Some(holder) = r.holder.clone() else { continue };
-            let ok = match verdicts.get(&holder) {
+            let holder_doc = r.holder_doc.clone().unwrap_or_else(|| r.target_doc.clone());
+            let at = format!("{holder}/{holder_doc}");
+            let ok = match verdicts.get(&at) {
                 Some(v) => *v,
                 None => {
-                    let v = holder_admits(state, &holder, viewer).await;
-                    verdicts.insert(holder.clone(), v);
+                    let v = holder_admits(state, &holder, &holder_doc, viewer).await;
+                    verdicts.insert(at, v);
                     v
                 }
             };
@@ -112,7 +105,7 @@ async fn fetch_rows(node_db: &Db, docs: &[String]) -> Result<Vec<MemoRow>> {
     let rows: Vec<MemoTuple> = node_db
         .fetch_all(
             &format!(
-                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root FROM doc_annotations
+                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc FROM doc_annotations
                  WHERE target_doc IN ({}) ORDER BY (annotator = target_author) DESC, noted_ms",
                 docs.join(",")
             ),
@@ -132,12 +125,13 @@ struct MemoRow {
     value: String,
     sealed: bool,
     holder: Option<String>,
+    holder_doc: Option<String>,
 }
 
-type MemoTuple = (String, String, String, String, String, i64, Option<String>);
+type MemoTuple = (String, String, String, String, String, i64, Option<String>, Option<String>);
 
-fn memo_row((ta, td, annotator, key, value, sealed, holder): MemoTuple) -> MemoRow {
-    MemoRow { target_author: ta, target_doc: td, annotator, key, value, sealed: sealed != 0, holder }
+fn memo_row((ta, td, annotator, key, value, sealed, holder, holder_doc): MemoTuple) -> MemoRow {
+    MemoRow { target_author: ta, target_doc: td, annotator, key, value, sealed: sealed != 0, holder, holder_doc }
 }
 
 /// Open every raw sealed statement about one post with its key, in place: the row becomes
@@ -149,6 +143,7 @@ pub async fn open_sealed(
     target_author: &str,
     target_doc: &str,
     holder: &str,
+    holder_doc: &str,
     post_key: &[u8; 32],
 ) -> Result<()> {
     let raw: Vec<(String, String, i64, String)> = node_db
@@ -164,11 +159,11 @@ pub async fn open_sealed(
         node_db
             .execute(
                 "INSERT INTO doc_annotations
-                   (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, sealed_as)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9)
+                   (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, holder_doc, sealed_as)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10)
                  ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
-                   sealed = 1, holder_root = excluded.holder_root, sealed_as = excluded.sealed_as",
-                (target_author, target_doc, annotator.as_str(), k.as_str(), v.as_str(), noted_ms, learned_via.as_str(), holder, sealed_hex.as_str()),
+                   sealed = 1, holder_root = excluded.holder_root, holder_doc = excluded.holder_doc, sealed_as = excluded.sealed_as",
+                (target_author, target_doc, annotator.as_str(), k.as_str(), v.as_str(), noted_ms, learned_via.as_str(), holder, holder_doc, sealed_hex.as_str()),
             )
             .await
             .context("opening a sealed label")?;
@@ -204,11 +199,11 @@ async fn note_sealed(
             node_db
                 .execute(
                     "INSERT INTO doc_annotations
-                       (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, sealed_as)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?1, ?8)
+                       (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, holder_doc, sealed_as)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?1, ?2, ?8)
                      ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
                        noted_ms = excluded.noted_ms, learned_via = excluded.learned_via,
-                       sealed = 1, holder_root = excluded.holder_root, sealed_as = excluded.sealed_as",
+                       sealed = 1, holder_root = excluded.holder_root, holder_doc = excluded.holder_doc, sealed_as = excluded.sealed_as",
                     (target_author, target_doc, annotator, k.as_str(), v.as_str(), now_ms(), learned_via, sealed_hex),
                 )
                 .await
@@ -353,7 +348,7 @@ pub async fn label_counts(
         .node_db
         .fetch_all(
             &format!(
-                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root FROM doc_annotations
+                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc FROM doc_annotations
                  WHERE target_doc IN ({}) AND key IN ('bucket', 'tag')",
                 docs.join(",")
             ),
@@ -750,7 +745,7 @@ mod tests {
         note_sealed(&db, &a, &d, &a, &sealed, "chain").await.unwrap();
         let raw = rows_of(&db, &d).await;
         assert_eq!((raw[0].key.as_str(), raw[0].sealed, raw[0].holder.is_none()), (SEALED_KEY, true, true), "folded raw");
-        open_sealed(&db, &a, &d, &a, &key).await.unwrap();
+        open_sealed(&db, &a, &d, &a, &d, &key).await.unwrap();
         let opened = rows_of(&db, &d).await;
         assert_eq!(opened.len(), 1, "the raw row retired as it opened");
         assert_eq!((opened[0].key.as_str(), opened[0].value.as_str(), opened[0].sealed, opened[0].holder.as_deref()), ("tag", "divorce", true, Some(a.as_str())));

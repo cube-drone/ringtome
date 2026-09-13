@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 703 phrases across 52 files.
+// 707 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -37,8 +37,10 @@ export default {
     'apps.feed.write-2': 'write',
     'apps.feed.settled-means-no-replies': 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist',
     'apps.feed.settled-no-replies-no': 'turn off comments',
-    'apps.feed.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
-    'apps.feed.only-show-to-people': 'only show to people I trust',
+    'apps.feed.trusted-only-means': 'sealed: the words go only to the people on the list - everyone else sees that a post exists, and its date',
+    'apps.feed.only-show-to': 'only show to',
+    'apps.feed.everyone': 'everyone',
+    'apps.feed.people-i-trust': 'people I trust',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
     'apps.feed.older-drafts': 'older drafts',
 
@@ -542,7 +544,9 @@ export default {
     'postentry.in-reply-to': 'in reply to',
     'postentry.pinned-chip-title': 'the author pinned this to the top of their page',
     'postentry.pinned': 'pinned',
+    'postentry.audience-chip-title': 'you share these words only with the people you tagged {audience}',
     'postentry.trusted-only-chip-title': 'the author shares these words only with people they trust',
+    'postentry.only-audience': 'only {audience}',
     'postentry.trusted-only': 'trusted only',
     'postentry.settled-chip-title': 'the author turned off comments on this post',
     'postentry.no-rebroadcast-or-comment': 'comments off',

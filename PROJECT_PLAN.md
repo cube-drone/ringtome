@@ -4074,9 +4074,32 @@ computers.
 3. **The People page filters by them.** The same facet widget the feed wears, tags only:
    every tag on the roster with how many people wear it, picks AND, kept for the browser
    session like the feed's picks. Nothing picked shows everyone.
-4. **The audience arc builds on them.** A sealed post will name a tag rather than "everyone I
-   trust", and the key door will ask whether the asker wears it - the same question every
-   sealed surface already asks of the seal's holder, with a narrower answer. Not built.
+4. **The audience (built 2026-09-10).** A sealed post may name a contact tag - "family" -
+   and then it is for the people who wear it rather than for everyone the author trusts.
+   The tag rides the draft as its `audience` field, never the wire: the public header is
+   an ordinary sealed header, and the audience is noted beside the post's key on the
+   author's own node, the only place it is ever judged. Every sealed door asks one
+   question, `seal_admits(holder, key document, subject)`: the holder themself, always;
+   with an audience, whoever the holder has tagged so, read from the holder's private
+   contact bag; without one, whoever the holder publishes trust for. The key lane, the
+   body door, the shelf, the feed, the thread, the sealed labels and the mention notice
+   all ask it, so an audience is one narrower answer and not a new mechanism. A reply
+   under the post's seal inherits the audience with the key: the family member's reply is
+   for the family. A reader the author trusts but did not tag holds a header they cannot
+   open; their node asks for the key, is refused, and remembers the refusal for ten minutes
+   so the feed, the shelf, the thread and the labels stop showing what the door would refuse
+   - the body door itself never honours a refusal, since it is what asks for the key and
+   must ask again the moment trust or the audience changes; a key's arrival clears the
+   memo, and a wrongful refusal (a peer ledger not yet derived) is retried after ten
+   minutes regardless.
+   In the composer it is one control (Curtis, 2026-09-12): "only show to" everyone, people
+   I trust, or a contact tag - the seal is on whenever the choice is not everyone, and the
+   trust list is the seal's default. A tag is the whole answer: a person tagged "family" is
+   in the audience whether or not the author has published trust for them.
+   Your own card says the list ("only family", 2026-09-13); anyone else's says "trusted
+   only", since the tag is the author's private business.
+   Residuals: a book seals to everyone the author trusts, not to an audience; the copy
+   of an audience post keeps the seal but not the audience.
 
 ### Replies under the author's seal, and sealed titles (settled 2026-09-08)
 

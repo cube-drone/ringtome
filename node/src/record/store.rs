@@ -82,6 +82,9 @@ pub const PROVENANCE: &str = "provenance";
 /// that names no wish of its own seals the post - so a trusted reader's copy stays for
 /// trusted readers by default. Private on the draft; never restated in public.
 pub const SEAL_WISH: &str = "seal";
+/// The audience a sealed draft is for (PROJECT_PLAN's Contact tags, ruling 4): a contact tag
+/// - "family" - carried on the draft, never on the wire; the mint notes it beside the key.
+pub const AUDIENCE: &str = "audience";
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar"];
