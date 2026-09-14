@@ -942,7 +942,11 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     title=${item.audience
                         ? t('postentry.audience-chip-title', 'you share these words only with the people you tagged {audience}', { audience: item.audience })
                         : t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}
-                ><${Icons.trustPrivate} /> ${item.audience ? t('postentry.only-audience', 'only {audience}', { audience: item.audience }) : t('postentry.trusted-only', 'trusted only')}</span>`}
+                ><${Icons.trustPrivate} /> ${item.audience === '@mentioned'
+                    ? t('postentry.only-the-people-mentioned', 'only the people mentioned')
+                    : item.audience
+                      ? t('postentry.only-audience', 'only {audience}', { audience: item.audience })
+                      : t('postentry.trusted-only', 'trusted only')}</span>`}
                 ${item.settled &&
                 html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`}
                 ${groupLabels(shownLabels, { author: item.author }).map((g) => {

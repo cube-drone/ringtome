@@ -4100,6 +4100,30 @@ computers.
    only", since the tag is the author's private business.
    Residuals: a book seals to everyone the author trusts, not to an audience; the copy
    of an audience post keeps the seal but not the audience.
+5. **The people mentioned (built 2026-09-14).** "We're very close to being able to support
+   messages directly to a person." A post may be for the people its user cards name: the
+   audience memo says `@mentioned` and a member list beside it says who, fixed at publish
+   and re-said on every re-publish, minus the author. Everything else is the seal as it
+   stands - the one gate answers from the member list, a reply under the post's seal
+   inherits the room, the mention notice already goes only to people the seal admits, so
+   the named people are told and can open the card, and a trusted-but-unnamed reader is
+   refused and hides it. A post for the people mentioned that names nobody is refused at
+   publish ("mention someone first"). What the public record shows: that the author
+   published something sealed and when, and - from a reply's header - who answered; the
+   mention statements are sealed labels, so not who was named. Not the sealed pair: no
+   forward secrecy, and the key lives on the author's node. The composer offers "the
+   people mentioned" whenever the seal is on; the client does not parse mentions, so the
+   node's refusal is the check.
+6. **The lane admits people, not machines (2026-09-14).** The messages suite found it in
+   its first run: cal and dana share a node, cal's fetch put the key in that node's memo,
+   and dana - trusted, unnamed - read the post off it. A key request now names the persona
+   asking; the author's lane releases only when that persona is admitted AND the dialing
+   endpoint serves it; the reader's node remembers grants and refusals per persona, and
+   its door serves a sealed body to a persona with a grant or asks the lane for that
+   persona and is granted or refused. Away from the holder's node the gate's word is the
+   grant, with published trust as the fallback for a persona the lane has not yet been
+   asked about. The reply mint, the label doors and the bell's fold ask for the persona
+   at hand too.
 
 ### Replies under the author's seal, and sealed titles (settled 2026-09-08)
 

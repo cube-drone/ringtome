@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 707 phrases across 52 files.
+// 710 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -41,6 +41,7 @@ export default {
     'apps.feed.only-show-to': 'only show to',
     'apps.feed.everyone': 'everyone',
     'apps.feed.people-i-trust': 'people I trust',
+    'apps.feed.the-people-mentioned': 'the people mentioned',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
     'apps.feed.older-drafts': 'older drafts',
 
@@ -546,6 +547,7 @@ export default {
     'postentry.pinned': 'pinned',
     'postentry.audience-chip-title': 'you share these words only with the people you tagged {audience}',
     'postentry.trusted-only-chip-title': 'the author shares these words only with people they trust',
+    'postentry.only-the-people-mentioned': 'only the people mentioned',
     'postentry.only-audience': 'only {audience}',
     'postentry.trusted-only': 'trusted only',
     'postentry.settled-chip-title': 'the author turned off comments on this post',
@@ -666,6 +668,7 @@ export default {
     'identity.routes.cant-reply-to-words-you-cant-read': "you can't reply to words the author doesn't share with you",
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
+    'identity.routes.mention-someone-first': 'mention someone first - a post for the people mentioned needs a user card in the words',
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",

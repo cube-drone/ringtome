@@ -542,7 +542,9 @@ export const FeedApp = ({ current, searchQuery }) => {
     // than trust (Curtis, 2026-09-12: one control, "people I trust" as the default list).
     const [audienceNext, setAudienceNext] = useState('');
     const trustNext = audienceNext !== '';
-    const audienceTag = audienceNext.startsWith('tag:') ? audienceNext.slice(4) : '';
+    // 'mentioned' is the post's own room (Contact tags, ruling 5): the people its user
+    // cards name; the node refuses it when the words name nobody.
+    const audienceTag = audienceNext === 'mentioned' ? '@mentioned' : audienceNext.startsWith('tag:') ? audienceNext.slice(4) : '';
     const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
 
     const post = async (docId) => {
@@ -554,13 +556,21 @@ export const FeedApp = ({ current, searchQuery }) => {
         // A draft's own seal wish (a copy of a sealed post, copyinto.js) holds unless the
         // toggle says otherwise - the toggle is the composer's, not this draft's.
         let wished = false;
+        let standingAudience = '';
         try {
             const row = await openMirror(root).docs.get(posted);
             wished = !!(row && row.fields && row.fields.seal === 'yes');
+            standingAudience = (row && row.fields && row.fields.audience) || '';
         } catch {
             /* no mirror row: no wish */
         }
-        const wishes = { settled: settleNext, trusted_only: trustNext || wished };
+        // The list too (Curtis, 2026-09-14: a fresh card read "trusted only" until the
+        // reload): chosen now, or standing on the draft from its last publish.
+        const wishes = {
+            settled: settleNext,
+            trusted_only: trustNext || wished || !!standingAudience,
+            audience: audienceTag || standingAudience || undefined,
+        };
         setPosting(true);
         setError(null);
         // Only the open draft moves the slot along. Re-posting something already in the stack
@@ -609,6 +619,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                 // Bookkeeping never becomes a chip: where the draft went public, the key
                 // it sealed under, and a schedule this very mint just spent.
                 if (field === PUBLISHED_AS || field === 'trusted_key' || field === 'publish_plan') continue;
+                if (field === 'seal' || field === 'audience') continue; // the wishes wear their own chip
                 if (field === DISPLAY_DATE_FIELD) continue; // rides the header as the post's date
                 if (!(value || '').trim()) continue;
                 overlayLabels.push({ annotator: root, key: field, value });
@@ -629,6 +640,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                 fresh: true,
                 settled: wishes.settled,
                 trusted_only: wishes.trusted_only,
+                audience: wishes.audience,
                 updated_ms: Date.now(),
                 arrived_ms: Date.now(),
                 annotations: overlayLabels,
@@ -727,6 +739,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                         >
                                             <option value="">${t('apps.feed.everyone', 'everyone')}</option>
                                             <option value="trusted">${t('apps.feed.people-i-trust', 'people I trust')}</option>
+                                            <option value="mentioned">${t('apps.feed.the-people-mentioned', 'the people mentioned')}</option>
                                             ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
                                         </select>
                                     </label>`

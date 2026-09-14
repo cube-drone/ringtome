@@ -1681,6 +1681,24 @@ pub(crate) async fn after_posted(
             if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(post_id), audience.as_deref()).await {
                 tracing::warn!(error = ?e, "post audience memo write failed");
             }
+            // The post's own audience (ruling 5): the people its user cards name, minus the
+            // author, noted for the post and for every twin the door may be asked about.
+            let members: Vec<String> = if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
+                draft_mentions(data, &doc_id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(hex::encode)
+                    .filter(|m| m != &root)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
+                if let Err(e) = crate::postkeys::set_members(&state.node_db, &root, &hex::encode(post_id), &members).await {
+                    tracing::warn!(error = ?e, "post audience members memo write failed");
+                }
+            }
             // The twins seal under the same key: memo it under THEIR ids too,
             // so the key doors (HTTP and WantKey alike) answer for a picture
             // exactly as they answer for the words.
@@ -1702,6 +1720,11 @@ pub(crate) async fn after_posted(
                             }
                             if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(r), audience.as_deref()).await {
                                 tracing::warn!(error = ?e, "twin audience memo write failed");
+                            }
+                            if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
+                                if let Err(e) = crate::postkeys::set_members(&state.node_db, &root, &hex::encode(r), &members).await {
+                                    tracing::warn!(error = ?e, "twin audience members memo write failed");
+                                }
                             }
                         }
                     }
@@ -1805,19 +1828,13 @@ async fn book_takedown_handler(
 /// The parent's key when the parent is sealed (PROJECT_PLAN's Replies under the author's
 /// seal): from the memo, else over the key lane; a sealed parent this node cannot open
 /// refuses the reply. `None` for an open parent.
-async fn sealed_parent_key(state: &AppState, parent: &([u8; 32], [u8; 16])) -> Result<Option<[u8; 32]>, AppError> {
+async fn sealed_parent_key(state: &AppState, parent: &([u8; 32], [u8; 16]), replier_hex: &str) -> Result<Option<[u8; 32]>, AppError> {
     let (author, doc) = parent;
     let author_hex = hex::encode(author);
     if crate::idface::sealed_here(state, &author_hex, doc).await != Some(true) {
         return Ok(None);
     }
-    let key = match crate::postkeys::lookup(&state.node_db, &author_hex, &hex::encode(doc))
-        .await
-        .map_err(AppError::Internal)?
-    {
-        Some(k) => Some(k),
-        None => crate::net::fragment::fetch_key(state, author, doc).await,
-    };
+    let key = crate::idface::key_for(state, &author_hex, doc, replier_hex).await;
     match key {
         Some(k) => Ok(Some(k)),
         None => Err(AppError::BadRequest(crate::msg!(
@@ -1908,6 +1925,14 @@ async fn publish_handler(
         .field(&doc_id, store::AUDIENCE)
         .await?
         .filter(|a| !a.trim().is_empty());
+    // "Only show to the people mentioned" (Contact tags, ruling 5) needs somebody mentioned:
+    // a room with nobody in it is a mistake, not a post.
+    if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) && draft_mentions(&data, &doc_id).await?.is_empty() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.mention-someone-first",
+            "mention someone first - a post for the people mentioned needs a user card in the words"
+        )));
+    }
     // The draft's seal wish (a copy of a sealed post, PROJECT_PLAN's Copying a post) holds
     // when the request names no wish of its own; a named wish, either way, is the word.
     let trusted_only = match req.as_ref().and_then(|b| b.trusted_only) {
@@ -1926,7 +1951,7 @@ async fn publish_handler(
     // reply is refused for now: a twin's key is looked up by the twin's own id, and a twin
     // cannot name the parent whose key it would need (a residual).
     let parent_sealed = match &reply {
-        Some((parent, _)) => sealed_parent_key(&state, parent).await?,
+        Some((parent, _)) => sealed_parent_key(&state, parent, &root).await?,
         None => None,
     };
     if let Some(key) = parent_sealed {
@@ -2408,7 +2433,7 @@ async fn public_annotation_put_handler(
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
     // A label on a sealed post seals under the post's key (ruling 7) - the labeller must
     // hold it, which is to say they must be able to read the words.
-    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc).await? {
+    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc, &root).await? {
         Some((_, post_key)) => (
             crate::annotations::SEALED_KEY.to_string(),
             crate::annotations::seal_statement(&post_key, req.key.trim(), req.value.trim()).map_err(AppError::Internal)?,
@@ -2470,7 +2495,7 @@ async fn public_annotation_delete_handler(
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
     // A sealed label is retracted by the ciphertext it was said as (ruling 7): find it by
     // opening what this persona said about the post.
-    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc).await? {
+    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc, &root).await? {
         Some((_, post_key)) => {
             let said = data.public_annotations().of(&author, &target_doc).await?;
             let sealed = said
@@ -2514,6 +2539,25 @@ const REPLICATED_TAGS_CAP: usize = 32;
 /// Returns the mention statements this pass minted fresh - `(mentioned root hex, the
 /// signed statement)` - for the envelope road to announce; a re-publish that keeps its
 /// cards mints none and rings nobody twice.
+/// The roots a draft's user cards name (`bake::mentions`), for a post sealed to the people
+/// mentioned (Contact tags, ruling 5). Marquee only: plain text has no cards.
+async fn draft_mentions(data: &store::Store, draft_id: &[u8; 16]) -> Result<Vec<[u8; 32]>, AppError> {
+    let docs = data.documents();
+    let view = docs.all().await?;
+    let Some(doc) = view.docs.get(draft_id) else { return Ok(Vec::new()) };
+    let format = doc
+        .display_head()
+        .map(|h| crate::record::documents::Format::from_wire(h.header.format))
+        .unwrap_or(crate::record::documents::Format::Plaintext);
+    if format != crate::record::documents::Format::Marquee {
+        return Ok(Vec::new());
+    }
+    Ok(match docs.resolved(doc).await?.body {
+        Some(body) => crate::record::bake::mentions(&body),
+        None => Vec::new(),
+    })
+}
+
 /// Say what `desired` says about `target` and retract what it no longer says - sealed under
 /// `post_key` when the target is sealed (ruling 7), plain otherwise. The lane holds
 /// ciphertexts with fresh nonces, so "already said" is judged on the OPENED statements, and
@@ -2689,7 +2733,7 @@ async fn replicate_annotations(
             .unwrap_or_else(|| (self_hex.clone(), hex::encode(post_id)));
         // The seal's audience if it has one (Contact tags, ruling 4), else the holder's trust.
         let members = match crate::postkeys::audience(&state.node_db, &holder_hex, &key_doc_hex).await.ok().flatten() {
-            Some(tag) => crate::idface::audience_members(state, &holder_hex, &tag).await,
+            Some(tag) => crate::idface::audience_members(state, &holder_hex, &key_doc_hex, &tag).await,
             None => {
                 let edges = if holder_hex == self_hex {
                     crate::record::imaol::published_edges(data.db()).await.ok()

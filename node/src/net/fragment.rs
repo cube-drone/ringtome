@@ -91,8 +91,8 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             answer_for(&state, &author, &doc_id).await
         }
         Some(FragmentMessage::WantDeaths { since }) => deaths_page(&state, since).await,
-        Some(FragmentMessage::WantKey { author, doc_id }) => {
-            answer_key(&state, &conn, &author, &doc_id).await
+        Some(FragmentMessage::WantKey { author, doc_id, for_root }) => {
+            answer_key(&state, &conn, &author, &doc_id, &for_root).await
         }
         Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
             // The author's thread door (PROJECT_PLAN's Replies slice 6): claims, never words, curated
@@ -127,6 +127,7 @@ async fn answer_key(
     conn: &Connection,
     author: &[u8; 32],
     doc_id: &[u8; 16],
+    for_root: &[u8; 32],
 ) -> FragmentMessage {
     let refused = FragmentMessage::Key { key: Vec::new() };
     let author_hex = hex::encode(author);
@@ -142,7 +143,7 @@ async fn answer_key(
     // everyone the author publishes trust for.
     let mut allowed_roots = vec![author_hex.clone()];
     match crate::postkeys::audience(&state.node_db, &author_hex, &doc_hex).await.ok().flatten() {
-        Some(tag) => allowed_roots.extend(crate::idface::audience_members(state, &author_hex, &tag).await),
+        Some(tag) => allowed_roots.extend(crate::idface::audience_members(state, &author_hex, &doc_hex, &tag).await),
         None => {
             if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
                 if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
@@ -156,6 +157,14 @@ async fn answer_key(
             }
         }
     }
+    // The persona asking must be admitted, AND the dialing endpoint must serve that
+    // persona (2026-09-14): a node hosts many, and the seal admits people, not machines.
+    let for_hex = hex::encode(for_root);
+    if !allowed_roots.contains(&for_hex) {
+        tracing::debug!(author = %author_hex, %dialer, asking = %for_hex, "key release refused: the persona asking is not admitted");
+        return refused;
+    }
+    let allowed_roots = vec![for_hex];
     let mut ok = crate::net::sync::endpoint_serves_any(&state.node_db, &allowed_roots, &dialer)
         .await
         .unwrap_or(false);
@@ -186,6 +195,7 @@ async fn ask_key(
     endpoint_id: &str,
     author: &[u8; 32],
     doc_id: &[u8; 16],
+    for_root: &[u8; 32],
 ) -> Result<Option<[u8; 32]>> {
     let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
     let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
@@ -197,6 +207,7 @@ async fn ask_key(
         &FragmentMessage::WantKey {
             author: *author,
             doc_id: *doc_id,
+            for_root: *for_root,
         },
     )
     .await?;
@@ -216,7 +227,9 @@ pub async fn fetch_key(
     state: &AppState,
     author: &[u8; 32],
     doc_id: &[u8; 16],
+    for_root: &[u8; 32],
 ) -> Option<[u8; 32]> {
+    let for_hex = hex::encode(for_root);
     let author_hex = hex::encode(author);
     // The endpoints this node ACTUALLY dials for the author - the same peer rows every
     // pull walks - first; the delivery-candidate ladder only as a fallback (its leaf
@@ -269,7 +282,7 @@ pub async fn fetch_key(
     tracing::debug!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
     let mut refused_by_someone = false;
     for endpoint_id in endpoints {
-        match tokio::time::timeout(FETCH_TIMEOUT, ask_key(state, &endpoint_id, author, doc_id))
+        match tokio::time::timeout(FETCH_TIMEOUT, ask_key(state, &endpoint_id, author, doc_id, for_root))
             .await
         {
             Ok(Ok(Some(key))) => {
@@ -279,7 +292,8 @@ pub async fn fetch_key(
                 {
                     tracing::debug!(error = ?e, "fetched key not remembered");
                 }
-                let _ = crate::postkeys::unrefuse(&state.node_db, &author_hex, &hex::encode(doc_id)).await;
+                let _ = crate::postkeys::grant(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex).await;
+                let _ = crate::postkeys::unrefuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex).await;
                 return Some(key);
             }
             Ok(Ok(None)) => {
@@ -294,7 +308,7 @@ pub async fn fetch_key(
     // the key and would not give it to this one - remember that, so the feed and the shelf
     // stop showing a card the door would refuse. A transport failure remembers nothing.
     if refused_by_someone {
-        let _ = crate::postkeys::refuse(&state.node_db, &author_hex, &hex::encode(doc_id)).await;
+        let _ = crate::postkeys::refuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex).await;
     }
     None
 }

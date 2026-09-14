@@ -9025,3 +9025,37 @@ The gate did not change - a tag was already the whole answer, not trust and the 
 say which list they are for - "only family" - on the feed and on your shelf, from the
 audience your node noted beside the key; anyone else's sealed card still says "trusted
 only", since the tag is the author's private business and never travels.
+
+## 2026-09-14: a post for the people mentioned
+
+"It feels like we're very close to being able to support messages directly to a person."
+Built as one more audience: `@mentioned`, with a per-post member list on the author's node
+(post_audience_members, node schema 44) written at every publish from the user cards the
+words name, minus the author. The gate, the key lane, the reply inheritance, the sealed
+labels and the mention notice were all already in place, so the slice was the member memo,
+one branch in the member lookup, a refusal for a room with nobody in it, an option in the
+composer and a word on the card. The suite: ada names bea and cal; both open the post;
+bea's reply reaches cal and ada; dana, trusted but unnamed, is refused the post and the
+reply and is told the thread is sealed; a post for the people mentioned that names nobody
+is refused at publish.
+
+## 2026-09-14: the lane admits people, not machines
+
+The messages suite's first run: cal and dana share a node, cal's fetch put ada's key in
+that node's memo, and dana - trusted, unnamed - read the post off it. The key lane had
+identified the asking NODE, by the personas its endpoint serves; a node hosts many. The
+key request now names the persona asking (`for_root` on the wire); the author's lane
+releases only when that persona is admitted and the endpoint serves it; the reader's node
+keeps grants and refusals per persona (post_key_grants, node schema 45), and its door
+serves a sealed body to a persona with a grant or asks the lane for that persona. The
+gate's word away from the holder's node is the grant. The reply mint, the label doors and
+the bell's fold ask for the persona at hand.
+
+## 2026-09-14: no ciphertext chips
+
+"It has a few visible annotations like 'ffffffff…' which seem to me like they should
+probably be hidden." Two roads showed them: the post page merged the author's own raw chain
+statements as chips, sealed ciphertext included, and the fresh card's overlay turned every
+draft field into a chip, the seal and audience wishes among them. The post page skips
+sealed statements now (the memo carries them opened, for whoever may see them), and the
+overlay skips the wishes, which wear their own chip.

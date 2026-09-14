@@ -68,7 +68,10 @@ pub enum FragmentMessage {
     /// the body is ciphertext anywhere it travels; THIS is the gated thing). Only nodes
     /// holding the key can answer, and they answer only dialers whose endpoint resolves -
     /// through signed serving records - to a persona the author publishes trust for.
-    WantKey { author: [u8; 32], doc_id: [u8; 16] },
+    /// `for_root` (2026-09-14): the PERSONA asking, not just the node - a node hosts many,
+    /// and the seal admits people, not machines. The answering node checks both: the
+    /// persona is admitted, and the dialing endpoint serves that persona.
+    WantKey { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32] },
     /// The answer: 32 key bytes, or empty for "not here" and "not for you" alike - a
     /// refusal deliberately indistinguishable from absence.
     Key { key: Vec<u8> },
@@ -265,11 +268,12 @@ impl FragmentMessage {
                 w.bytes(doc_id);
                 w.uint(*since);
             }
-            Self::WantKey { author, doc_id } => {
-                w.array(3);
+            Self::WantKey { author, doc_id, for_root } => {
+                w.array(4);
                 w.uint(TAG_WANT_KEY);
                 w.bytes(author);
                 w.bytes(doc_id);
+                w.bytes(for_root);
             }
             Self::Key { key } => {
                 w.array(2);
@@ -384,9 +388,10 @@ impl FragmentMessage {
                     cursor: r.uint()?,
                 }
             }
-            (TAG_WANT_KEY, 3) => Self::WantKey {
+            (TAG_WANT_KEY, 4) => Self::WantKey {
                 author: r.bytes_fixed::<32>()?,
                 doc_id: r.bytes_fixed::<16>()?,
+                for_root: r.bytes_fixed::<32>()?,
             },
             (TAG_KEY, 2) => {
                 let key = r.bytes()?.to_vec();

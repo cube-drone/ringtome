@@ -16,7 +16,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Private Notes
 
 * Import/export bucket or whole persona
-* Cross-bucket document transfer.
 * Document history: let me go back in time
 * GC: clean up unused docs and files (first customer: blank drafts - untitled, empty, unposted - which the feed stack now hides rather than lists, 2026-08-28)
 * Document: list attached files (informs GC)

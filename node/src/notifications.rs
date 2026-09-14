@@ -562,7 +562,7 @@ async fn open_sealed_statements(
 ) -> Vec<crate::record::imaol::AnnotationRow> {
     let mut out = Vec::with_capacity(labels.len());
     let mut keys: std::collections::HashMap<(String, [u8; 16]), Option<[u8; 32]>> = Default::default();
-    let mut any_follower: Option<bool> = None;
+    let mut followers: Option<Vec<String>> = None;
     for l in labels {
         if l.key != crate::annotations::SEALED_KEY {
             out.push(l);
@@ -575,20 +575,26 @@ async fn open_sealed_statements(
                 let doc_hex = hex::encode(l.target_doc);
                 let mut k = crate::postkeys::lookup(&state.node_db, &l.target_author, &doc_hex).await.ok().flatten();
                 if k.is_none() && l.target_author == author_root {
-                    let followed = match any_follower {
-                        Some(f) => f,
-                        None => {
-                            let f = crate::net::subscriptions::followers_of(&state.node_db, author_root)
+                    // Asked FOR each hosted follower in turn (2026-09-14: the lane admits
+                    // personas, not nodes) until one is granted; refusals are remembered
+                    // per persona, so the next fold asks only for those not yet refused.
+                    if followers.is_none() {
+                        followers = Some(
+                            crate::net::subscriptions::followers_of(&state.node_db, author_root)
                                 .await
-                                .map(|v| !v.is_empty())
-                                .unwrap_or(false);
-                            any_follower = Some(f);
-                            f
-                        }
-                    };
-                    if followed {
-                        if let Some(author) = hex::decode(author_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) {
-                            k = crate::net::fragment::fetch_key(state, &author, &l.target_doc).await;
+                                .unwrap_or_default(),
+                        );
+                    }
+                    if let Some(author) = hex::decode(author_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) {
+                        for f in followers.as_deref().unwrap_or(&[]) {
+                            if crate::postkeys::refused(&state.node_db, author_root, &doc_hex, f).await.unwrap_or(false) {
+                                continue;
+                            }
+                            let Some(reader) = hex::decode(f).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else { continue };
+                            k = crate::net::fragment::fetch_key(state, &author, &l.target_doc, &reader).await;
+                            if k.is_some() {
+                                break;
+                            }
                         }
                     }
                 }

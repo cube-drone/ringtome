@@ -1408,9 +1408,10 @@ pub(crate) async fn public_doc_bytes(
     // parent's key is the key.
     let (holder, key_doc) = seal_holder(&root, &doc_id, seal_of);
     let holder_hex = hex::encode(holder);
+    let mut viewer_hex: Option<String> = None;
     if trusted_only {
-        let allowed = trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false).await?;
-        if !allowed {
+        viewer_hex = trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false).await?;
+        if viewer_hex.is_none() {
             return Err(AppError::Forbidden(crate::msg!(
                 "idface.for-trusted-readers-only",
                 "the author shares these words only with people they trust"
@@ -1468,13 +1469,10 @@ pub(crate) async fn public_doc_bytes(
             .ok()
             .and_then(|b| b.try_into().ok())
             .expect("checked above");
-        let key_doc_hex = hex::encode(key_doc);
-        let key = match crate::postkeys::lookup(&state.node_db, &holder_hex, &key_doc_hex)
-            .await
-            .map_err(AppError::Internal)?
-        {
-            Some(k) => Some(k),
-            None => crate::net::fragment::fetch_key(state, &holder, &key_doc).await,
+        // The key for THIS persona (2026-09-14): a grant, or the lane asked for them.
+        let key = match viewer_hex.as_deref() {
+            Some(v) => key_for(state, &holder_hex, &key_doc, v).await,
+            None => None,
         };
         let _ = doc_bytes;
         let Some(key) = key else {
@@ -1624,6 +1622,7 @@ pub(crate) async fn seal_key_for(
     state: &AppState,
     author_hex: &str,
     doc_id: &[u8; 16],
+    labeller_hex: &str,
 ) -> Result<Option<(String, [u8; 32])>, AppError> {
     if sealed_here(state, author_hex, doc_id).await != Some(true) {
         return Ok(None);
@@ -1652,10 +1651,7 @@ pub(crate) async fn seal_key_for(
     };
     let (holder, key_doc) = seal_holder(&author, doc_id, seal_of);
     let holder_hex = hex::encode(holder);
-    let key = match crate::postkeys::lookup(&state.node_db, &holder_hex, &hex::encode(key_doc)).await? {
-        Some(k) => Some(k),
-        None => crate::net::fragment::fetch_key(state, &holder, &key_doc).await,
-    };
+    let key = key_for(state, &holder_hex, &key_doc, labeller_hex).await;
     match key {
         Some(k) => Ok(Some((holder_hex, k))),
         None => Err(AppError::Forbidden(crate::msg!(
@@ -1690,8 +1686,23 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
     if subject_hex == holder_hex {
         return true;
     }
+    // Away from the holder's node (2026-09-14) the audience is unknown, and the word is
+    // the holder's own: a grant the lane gave this persona says yes; nothing yet falls back
+    // to published trust, and the door's fetch for the persona settles it either way.
+    if !hosted_here(state, holder_hex).await.unwrap_or(false) {
+        if crate::postkeys::granted(&state.node_db, holder_hex, key_doc_hex, subject_hex).await.unwrap_or(false) {
+            return true;
+        }
+        return match state.user_dbs.get(holder_hex).await {
+            Ok(Some(db)) => crate::record::imaol::published_edges(&db)
+                .await
+                .map(|edges| edges.get(subject_hex).is_some_and(|e| e.edge.trust.is_some()))
+                .unwrap_or(false),
+            _ => false,
+        };
+    }
     match crate::postkeys::audience(&state.node_db, holder_hex, key_doc_hex).await.ok().flatten() {
-        Some(tag) => audience_members(state, holder_hex, &tag).await.contains(subject_hex),
+        Some(tag) => audience_members(state, holder_hex, key_doc_hex, &tag).await.contains(subject_hex),
         None => match state.user_dbs.get(holder_hex).await {
             Ok(Some(db)) => crate::record::imaol::published_edges(&db)
                 .await
@@ -1710,17 +1721,41 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
 /// it asking again once trust or the audience has changed - a key's arrival clears it.
 pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str) -> bool {
     if subject_hex != holder_hex
-        && crate::postkeys::refused(&state.node_db, holder_hex, key_doc_hex).await.unwrap_or(false)
+        && crate::postkeys::refused(&state.node_db, holder_hex, key_doc_hex, subject_hex).await.unwrap_or(false)
     {
         return false;
     }
     seal_admits(state, holder_hex, key_doc_hex, subject_hex).await
 }
 
+/// The key for `viewer` to open `(holder, key_doc)`, or None: on the holder's own node the
+/// memo (the gate already judged the viewer); elsewhere the memo only on a grant to this
+/// persona, else the lane is asked FOR this persona and grants or refuses (2026-09-14: a
+/// node hosts many personas, and a key one fetched is not the others' to use).
+pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 16], viewer_hex: &str) -> Option<[u8; 32]> {
+    let key_doc_hex = hex::encode(key_doc);
+    let held = crate::postkeys::lookup(&state.node_db, holder_hex, &key_doc_hex).await.ok().flatten();
+    if viewer_hex == holder_hex || hosted_here(state, holder_hex).await.unwrap_or(false) {
+        return held;
+    }
+    if held.is_some() && crate::postkeys::granted(&state.node_db, holder_hex, &key_doc_hex, viewer_hex).await.unwrap_or(false) {
+        return held;
+    }
+    let holder = hex::decode(holder_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
+    let viewer = hex::decode(viewer_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
+    crate::net::fragment::fetch_key(state, &holder, key_doc, &viewer).await
+}
+
 /// Everyone the holder has put `tag` on, from the holder's private contact bag - readable
 /// only where the holder is hosted, which is the only place an audience is ever judged.
-pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, tag: &str) -> std::collections::HashSet<String> {
+/// The post's own audience (`@mentioned`, Contact tags ruling 5) is the member list noted
+/// for that key document instead.
+pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, key_doc_hex: &str, tag: &str) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
+    if tag == crate::postkeys::MENTIONED_AUDIENCE {
+        out.extend(crate::postkeys::members(&state.node_db, holder_hex, key_doc_hex).await.unwrap_or_default());
+        return out;
+    }
     let Ok(data) = crate::record::store::open_agented(state, holder_hex).await else { return out };
     let Ok(contacts) = data.contacts().await else { return out };
     let want = tag.trim().to_lowercase();
@@ -1734,26 +1769,27 @@ pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, tag: &s
     out
 }
 
-/// The viewer's standing with a seal: any of the session's personas the holder admits -
-/// `for_listing` honours a remembered refusal (`seal_lists`), the body door does not.
-pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str, key_doc_hex: &str, for_listing: bool) -> Result<bool, AppError> {
-    let Some(sess) = session else { return Ok(false) };
+/// The viewer's standing with a seal: the first of the session's personas the holder
+/// admits, by root - `for_listing` honours a remembered refusal (`seal_lists`), the body
+/// door does not.
+pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str, key_doc_hex: &str, for_listing: bool) -> Result<Option<String>, AppError> {
+    let Some(sess) = session else { return Ok(None) };
     let mine: Vec<String> = crate::identity::list_for_account(&state.node_db, &sess.account.id)
         .await?
         .into_iter()
         .map(|i| i.root_pubkey)
         .collect();
-    for r in &mine {
+    for r in mine {
         let ok = if for_listing {
-            seal_lists(state, holder_hex, key_doc_hex, r).await
+            seal_lists(state, holder_hex, key_doc_hex, &r).await
         } else {
-            seal_admits(state, holder_hex, key_doc_hex, r).await
+            seal_admits(state, holder_hex, key_doc_hex, &r).await
         };
         if ok {
-            return Ok(true);
+            return Ok(Some(r));
         }
     }
-    Ok(false)
+    Ok(None)
 }
 
 /// The feed's sealed-post rule, on the shelf (Curtis, 2026-09-05: a trusted-only post from
@@ -2377,7 +2413,13 @@ pub async fn id_post(
             if let Ok(rows) =
                 crate::record::imaol::annotations_of(&db_for_labels, &root_hex, &p.doc_id).await
             {
-                labels.extend(rows.into_iter().map(|r| (root_hex.clone(), r.key, r.value)));
+                // A sealed statement is ciphertext on the chain (ruling 7): never a chip -
+                // the memo below carries it opened, for whoever may see it.
+                labels.extend(
+                    rows.into_iter()
+                        .filter(|r| r.key != crate::annotations::SEALED_KEY)
+                        .map(|r| (root_hex.clone(), r.key, r.value)),
+                );
             }
             if let Ok(known) = crate::annotations::for_posts(
                 &state,
@@ -2457,7 +2499,7 @@ pub async fn id_post_replies(
     // than a thread of hollow cards.
     if let Ok(Ok(doc_id)) = hex::decode(&doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
         if sealed_here(&state, &root_hex, &doc_id).await == Some(true)
-            && !trusted_viewer(&state, &session, &root_hex, &doc, true).await?
+            && trusted_viewer(&state, &session, &root_hex, &doc, true).await?.is_none()
         {
             return Ok(axum::Json(serde_json::json!({
                 "replies": [], "more": false, "seeking": false, "sealed": true,

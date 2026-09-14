@@ -542,11 +542,35 @@ CREATE TABLE post_keys (
 -- audience they are not in. Remembered so the feed and the shelf hide what the door would
 -- refuse; forgotten after a while, so a wrongful refusal (a peer ledger not yet derived)
 -- is retried, and cleared the moment a key arrives.
+-- The members of a post's own audience (PROJECT_PLAN's Contact tags, ruling 5, 2026-09-14):
+-- "only show to the people mentioned" seals a post to the roots its user cards name, fixed
+-- at publish (re-said on every re-publish) - the audience memo says `@mentioned`, and this
+-- is who that is. On the author's own node only, like the audience itself.
+CREATE TABLE post_audience_members (
+    author_root TEXT NOT NULL,
+    doc_id      TEXT NOT NULL,
+    member_root TEXT NOT NULL,
+    PRIMARY KEY (author_root, doc_id, member_root)
+);
+
 CREATE TABLE post_key_refusals (
     author_root TEXT NOT NULL,
     doc_id      TEXT NOT NULL,
+    reader_root TEXT NOT NULL,   -- the PERSONA refused (2026-09-14): a node hosts many
     noted_ms    INTEGER NOT NULL,
-    PRIMARY KEY (author_root, doc_id)
+    PRIMARY KEY (author_root, doc_id, reader_root)
+);
+
+-- Who on THIS node the author's lane released a key to (2026-09-14): a node hosts many
+-- personas, and a key one of them fetched is not the others' to use - the seal admits
+-- people, not machines. The door serves a sealed body to a persona with a grant; without
+-- one it asks the author's lane for that persona, and is granted or refused.
+CREATE TABLE post_key_grants (
+    author_root TEXT NOT NULL,
+    doc_id      TEXT NOT NULL,
+    reader_root TEXT NOT NULL,
+    noted_ms    INTEGER NOT NULL,
+    PRIMARY KEY (author_root, doc_id, reader_root)
 );
 
 -- The outbox: envelopes this node owes to strangers (PROJECT_PLAN, Arrival and Attention -
