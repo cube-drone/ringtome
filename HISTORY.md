@@ -9059,3 +9059,19 @@ statements as chips, sealed ciphertext included, and the fresh card's overlay tu
 draft field into a chip, the seal and audience wishes among them. The post page skips
 sealed statements now (the memo carries them opened, for whoever may see them), and the
 overlay skips the wishes, which wear their own chip.
+
+## 2026-09-14: the room's own word
+
+"What User B sees is 'trusted only' rather than 'just people mentioned'." A reader's card
+cannot know the author's private list - but a post for the people mentioned is different:
+the reader was named. The publish now says `audience=@mentioned` as one more sealed label,
+so the people in the room open it with the key they hold and their card reads "only the
+people mentioned", while nobody else can read the statement at all. A contact-tag audience
+still says nothing to the room: the tag is the author's private business.
+
+## 2026-09-14: the post page asks as the viewer
+
+"It's 'only the people mentioned' in the feed, but 'trusted only' in its post page." The
+feed asked for labels as the reader; the post page and the thread's reply cards asked for
+the head with no viewer, and a sealed label is shown to nobody in particular. Both pass
+`?as=` now, so a named reader's post page reads the room's word like their feed does.
