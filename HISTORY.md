@@ -9075,3 +9075,15 @@ still says nothing to the room: the tag is the author's private business.
 feed asked for labels as the reader; the post page and the thread's reply cards asked for
 the head with no viewer, and a sealed label is shown to nobody in particular. Both pass
 `?as=` now, so a named reader's post page reads the room's word like their feed does.
+
+## 2026-09-15: the node's public face, slice 1 - the doors
+
+UNAUTHED.md's first slice. A node-level memo, `node_shelf`, folded from each hosted
+persona's own shelf and live shares when their chain moves (the annotations memo's
+discipline: one user-db open per move, none per request), and three doors a stranger may
+ask with no session: the node feed, paged and narrowed like a reader's feed with no
+viewer, its labels, and the personas the node lists. Beside them the one authenticated
+door: "listed on this node's front page", a node fact in `node_listing`, on unless the
+persona turns it off. The doors read the memos every other listing reads and never open a
+user database, so the seal's stranger rule holds by construction: no sealed post, no
+sealed label, no key.

@@ -284,6 +284,9 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
     if has(service::ANNOTATIONS_PUBLIC) {
         crate::annotations::refresh_from(state, root, force).await;
     }
+    if has(service::POSTS) || has(service::REBROADCASTS) {
+        crate::nodeshelf::refresh_from(state, root, force).await;
+    }
     let t_replies = t.elapsed();
     let t = std::time::Instant::now();
     if ledger {

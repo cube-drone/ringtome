@@ -42,6 +42,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
         ("post_search", vec!["search.rs"]),
+        ("node_shelf", vec!["nodeshelf.rs"]),
+        ("node_listing", vec!["nodeshelf.rs"]),
         ("feed_shares", vec!["fanout.rs"]),
         ("notifications", vec!["notifications.rs"]),
         ("outbound_notices", vec!["outbox.rs"]),
@@ -174,6 +176,7 @@ fn user_db_opens_are_deliberate() {
                                    // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
         ("profiles.rs", 2),        // refresh: ONE persona per claim-change edge
+        ("nodeshelf.rs", 2), // the fold's re-say of a hosted persona's shelf (once per move of their chain) and a shared original hosted here (once per distinct original per fold) - UNAUTHED.md slice 1, 2026-09-15
         ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge
         ("inbox.rs", 1),           // accept: ONE recipient per delivered envelope
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute

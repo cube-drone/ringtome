@@ -553,6 +553,39 @@ CREATE TABLE post_audience_members (
     PRIMARY KEY (author_root, doc_id, member_root)
 );
 
+-- The node's public face (UNAUTHED.md, slice 1, 2026-09-15): every public post and every
+-- live share by every persona hosted here, folded on the fold lane when a hosted persona's
+-- POSTS or REBROADCASTS chain moves - so the anonymous feed pages and narrows out of one
+-- node table and never opens a user database per request. A share is a row for the
+-- ORIGINAL (author_root, doc_id) with the sharer as via_root; a post's via_root is ''.
+-- Sealed rows are folded (the author's own listing may want them) and filtered at read:
+-- a stranger sees none.
+CREATE TABLE node_shelf (
+    author_root     TEXT    NOT NULL,
+    doc_id          TEXT    NOT NULL,
+    via_root        TEXT    NOT NULL DEFAULT '',
+    title           TEXT    NOT NULL,
+    format          TEXT,
+    published_ms    INTEGER NOT NULL,
+    updated_ms      INTEGER NOT NULL,
+    settled         INTEGER NOT NULL DEFAULT 0,
+    trusted_only    INTEGER NOT NULL DEFAULT 0,
+    dated_ms        INTEGER,
+    reply_to_author TEXT,
+    reply_to_doc    TEXT,
+    PRIMARY KEY (author_root, doc_id, via_root)
+);
+CREATE INDEX node_shelf_by_time ON node_shelf (published_ms DESC, doc_id DESC);
+
+-- "Listed on this node's front page" (UNAUTHED.md, ruling 3): a node fact, not the
+-- persona's - it does not travel. Absent means listed; a row with listed = 0 is the switch
+-- turned off. Set through an authenticated door, read by the anonymous doors.
+CREATE TABLE node_listing (
+    root_pubkey TEXT    NOT NULL PRIMARY KEY,
+    listed      INTEGER NOT NULL DEFAULT 1,
+    noted_ms    INTEGER NOT NULL
+);
+
 CREATE TABLE post_key_refusals (
     author_root TEXT NOT NULL,
     doc_id      TEXT NOT NULL,

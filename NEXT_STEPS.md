@@ -40,7 +40,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   annotator's chain reaches them. Fine while chains sync; revisit if fragments become the
   main road for sealed posts.
 * Save to bucket
-* Node feed ("here's everything public hosted on this node")
+* The node's public face (UNAUTHED.md, settled 2026-09-14): the node feed and people page for
+  strangers on the same Preact surfaces, the "listed on this node" switch, node slugs (`/@name`).
 * Node-observed feed ("here's everything public that anybody is looking at")
 * more granular or time-limited blocks? ("block for 6 months")
 

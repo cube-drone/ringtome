@@ -33,6 +33,8 @@ mod loops;
 mod media;
 mod message;
 mod net;
+mod nodeface;
+mod nodeshelf;
 mod notifications;
 mod outbox;
 mod search;
@@ -612,6 +614,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(health))
         .route("/api/config", get(get_config))
         .route("/api/node", get(node_info))
+        // The node's public face (UNAUTHED.md): a stranger's doors, no session.
+        .route("/api/node/feed", get(nodeface::node_feed))
+        .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
+        .route("/api/node/personas", get(nodeface::node_personas))
+        .route(
+            "/api/identity/{root}/listed",
+            get(nodeface::listed_get).put(nodeface::listed_put),
+        )
         .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
         .merge(identity::router(body_limits));
