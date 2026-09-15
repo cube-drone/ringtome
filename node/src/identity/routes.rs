@@ -2665,6 +2665,17 @@ async fn replicate_annotations(
         .iter()
         .find(|(f, _)| f.as_str() == store::TRUSTED_KEY)
         .and_then(|(_, v)| hex_fixed::<32>(v, "post key").ok());
+    // A post for the people mentioned says so, as a sealed label (Contact tags, ruling 5;
+    // Curtis, 2026-09-14: the named reader's card read "trusted only"): the people in the
+    // room can open it and see why they are there, and nobody else can read it at all. A
+    // contact-tag audience says nothing - the tag is the author's private business.
+    if post_key.is_some()
+        && fields
+            .iter()
+            .any(|(f, v)| f.as_str() == store::AUDIENCE && v.trim() == crate::postkeys::MENTIONED_AUDIENCE)
+    {
+        desired.insert((store::AUDIENCE.into(), crate::postkeys::MENTIONED_AUDIENCE.into()));
+    }
     for (field, value) in fields {
         // `published_as` is the draft's private bookkeeping (which post it minted) - a
         // fact about the draft, not a label on the post.

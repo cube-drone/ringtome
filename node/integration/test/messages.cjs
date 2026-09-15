@@ -96,6 +96,8 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await pullAndFold(HOST_B, adaRoot);
         await pullAndFold(HOST_C, adaRoot);
         assert.ok((await opens(bea, `id/${adaRoot}/docs/${post}/body`, 40)) !== null, "bea, named, opens it");
+        const seen = await (await bea(`api/id/${adaRoot}/posts/${post}?as=${beaRoot}`)).json();
+        assert.ok((seen.annotations || []).some((a) => a.key === "audience" && a.value === "@mentioned"), "and her card can say why she is in the room");
         assert.ok((await opens(cal, `id/${adaRoot}/docs/${post}/body`, 40)) !== null, "cal, named, opens it");
     });
 

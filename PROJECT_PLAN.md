@@ -4113,7 +4113,9 @@ computers.
    mention statements are sealed labels, so not who was named. Not the sealed pair: no
    forward secrecy, and the key lives on the author's node. The composer offers "the
    people mentioned" whenever the seal is on; the client does not parse mentions, so the
-   node's refusal is the check.
+   node's refusal is the check. The publish also says `audience=@mentioned` as a sealed
+   label, so a named reader's card reads "only the people mentioned" (a contact-tag
+   audience says nothing to the room: the tag is the author's private business).
 6. **The lane admits people, not machines (2026-09-14).** The messages suite found it in
    its first run: cal and dana share a node, cal's fetch put the key in that node's memo,
    and dana - trusted, unnamed - read the post off it. A key request now names the persona

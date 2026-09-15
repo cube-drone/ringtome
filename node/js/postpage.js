@@ -61,6 +61,10 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     // refresh=1, the deliberate re-ask past the door's cooldown.
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // `?as=`: the viewing persona, so the labels a sealed post shows are the ones its
+    // holder admits THIS reader to (ruling 7; Curtis, 2026-09-14: the post page read
+    // "trusted only" where the feed read "only the people mentioned").
+    const viewer = current ? current.root : null;
     useEffect(() => {
         if (!root || !doc) return;
         let live = true;
@@ -70,13 +74,13 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
         const url = `/api/id/${root}/profile${via ? `?via=${encodeURIComponent(via)}` : ''}`;
         api(url)
             .catch(() => {}) // the shelf read below gives the honest answer either way
-            .then(() => api(`/api/id/${root}/posts/${doc}`))
+            .then(() => api(`/api/id/${root}/posts/${doc}${viewer ? `?as=${viewer}` : ''}`))
             .then((p) => live && setPost(p))
             .catch(() => live && setPost(null));
         return () => {
             live = false;
         };
-    }, [root, doc, via]);
+    }, [root, doc, via, viewer]);
 
     useEffect(() => {
         if (onTitle) onTitle(post && post.title ? post.title : t('postpage.a-post', 'a post'));
@@ -519,15 +523,16 @@ const ThreadReply = ({ author, doc, byline, current, depth }) => {
     // undefined = loading, null = not readable here (the memo knew it, the shelf moved -
     // a takedown between fold and render), object = the reply's header.
     const [post, setPost] = useState(undefined);
+    const viewer = current ? current.root : null;
     useEffect(() => {
         let live = true;
-        api(`/api/id/${author}/posts/${doc}`)
+        api(`/api/id/${author}/posts/${doc}${viewer ? `?as=${viewer}` : ''}`)
             .then((p) => live && setPost(p))
             .catch(() => live && setPost(null));
         return () => {
             live = false;
         };
-    }, [author, doc]);
+    }, [author, doc, viewer]);
     if (post === undefined) return null;
     if (post === null) {
         // The memo knows the claim; the shelf cannot answer for it right now - deleted

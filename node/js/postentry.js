@@ -772,7 +772,15 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         .filter((a) => a.key !== 'mention')
         // The copy chain (2026-09-08) is a list on the post's page, under the replies -
         // never a chip.
-        .filter((a) => a.key !== 'provenance');
+        .filter((a) => a.key !== 'provenance')
+        // The room's own word (Contact tags, ruling 5): "@mentioned", said by the author as
+        // a sealed label so the people in the room see why they are there - it dresses
+        // the wish chip below, never a chip of its own.
+        .filter((a) => a.key !== 'audience');
+    // The list a sealed post is for: the server says it for your own posts; for a post
+    // sealed to the people mentioned, the author's own sealed label says it to the room.
+    const saidAudience = ((item.annotations || []).find((a) => a.key === 'audience' && a.annotator === item.author) || {}).value;
+    const audience = item.audience || saidAudience || '';
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
@@ -939,13 +947,15 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 ${item.trusted_only &&
                 html`<span
                     class="label-chip label-chip-flag"
-                    title=${item.audience
-                        ? t('postentry.audience-chip-title', 'you share these words only with the people you tagged {audience}', { audience: item.audience })
-                        : t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}
-                ><${Icons.trustPrivate} /> ${item.audience === '@mentioned'
+                    title=${audience === '@mentioned'
+                        ? t('postentry.mentioned-chip-title', 'these words are for the people named in them')
+                        : audience
+                          ? t('postentry.audience-chip-title', 'you share these words only with the people you tagged {audience}', { audience })
+                          : t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}
+                ><${Icons.trustPrivate} /> ${audience === '@mentioned'
                     ? t('postentry.only-the-people-mentioned', 'only the people mentioned')
-                    : item.audience
-                      ? t('postentry.only-audience', 'only {audience}', { audience: item.audience })
+                    : audience
+                      ? t('postentry.only-audience', 'only {audience}', { audience })
                       : t('postentry.trusted-only', 'trusted only')}</span>`}
                 ${item.settled &&
                 html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`}

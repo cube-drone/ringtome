@@ -61,16 +61,6 @@ beside derived. What is left:
 * **The transport tier**: pricing connection admission by shared public-edge standing.
 * Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately)
 
-### Friends & Groups
-
-A new kind of document that's held in an unencrypted chain that's not public,
-but only shared with folks who match a predicate (either "friend" or "in a group").
-
-Does a mutual follow+trust make a "friend"?
-
-* Audience residuals (PROJECT_PLAN's Contact tags, ruling 4, 2026-09-10): a book seals to
-  everyone trusted, not to an audience; a copy keeps the seal but not the audience.
-
 ### Public means public (Gateway)
 * the public-HTML browser for this repo
 
