@@ -84,14 +84,19 @@ const EMBEDDED_FONTS: &[(&str, &[u8])] = &[
 
 /// Render the SPA shell, replacing `$VERSION$` with the running app version.
 pub async fn homepage(State(state): State<AppState>) -> Html<String> {
+    Html(app_page(&state, "<title>Ringtome</title>"))
+}
+
+/// The app's page with a head of the caller's choosing (UNAUTHED.md, ruling 8): the title
+/// and the OpenGraph meta a crawler or a link unfurler reads, with the app taking the body -
+/// one rendering path for signed-in readers and strangers alike.
+pub fn app_page(state: &AppState, head: &str) -> String {
     let version = &state.config.app_version;
     let environment = if state.config.is_dev() { "dev" } else { "prod" };
-
-    let page = HOME_PAGE
+    HOME_PAGE
+        .replace("$HEAD$", head)
         .replace("$VERSION$", version)
-        .replace("$ENVIRONMENT$", environment);
-
-    Html(page)
+        .replace("$ENVIRONMENT$", environment)
 }
 
 /// Serve the JS bundle. Only versions ≤ current are served (see module doc).

@@ -46,6 +46,8 @@ import { Icons, IconContext, iconFor } from './icons.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
 import { speakable } from './speakable.js';
+import { NodeFeed } from './nodefeed.js';
+import { NodePeople } from './nodepeople.js';
 
 const html = htm.bind(h);
 
@@ -418,6 +420,7 @@ const Inside = ({ session }) => {
     // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
     const routed = html`
         <${Router}>
+            <${HomeBounce} path="/" />
             <${Console}
                 path="/home"
                 onLaunch=${(id) => loc.route('/home/' + id)}
@@ -442,6 +445,74 @@ const Inside = ({ session }) => {
     return inApp ? shell(routed) : stage(routed);
 };
 
+/// Root, signed in: the console lives at /home (UNAUTHED.md, 2026-09-15 - root is the
+/// stranger's front page, and a reader who lands there goes on to their own).
+const HomeBounce = () => {
+    const loc = useLocation();
+    useEffect(() => {
+        loc.route('/home', true);
+    }, [loc]);
+    return null;
+};
+
+/// The stranger's shell: the app's header with the search box and a sign-in button, and
+/// the public routes. Everything session-bound stays out; the persona pages take a null
+/// viewer and answer as they do for anyone.
+const Outside = ({ session }) => {
+    const loc = useLocation();
+    const [query, setQuery] = useState('');
+    const [idTitle, setIdTitle] = useState(null);
+    const signingIn = loc.path === '/home' || loc.path.startsWith('/home/') || loc.path.startsWith('/in/');
+    const onPeople = loc.path === '/people';
+    const title = loc.path.startsWith('/id/') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
+    const header = html`<header class="app-header">
+        <span class="app-header-lead">
+            <a class="app-header-title app-header-link" href="/">${title}</a>
+        </span>
+        ${!signingIn &&
+        html`<span class="app-header-search-box">
+            <input
+                class="app-header-search"
+                type="search"
+                placeholder=${t('index.search-this-node', 'search this node…')}
+                value=${query}
+                onInput=${(e) => setQuery(e.currentTarget.value)}
+            />
+        </span>`}
+        <span class="app-header-actions">
+            <button
+                class="app-header-btn"
+                title=${t('index.feed', 'feed')}
+                onClick=${() => loc.route('/')}
+            ><${Icons.feed} /></button>
+            <button
+                class="app-header-btn"
+                title=${t('index.people', 'people')}
+                onClick=${() => loc.route('/people')}
+            ><${Icons.people} /></button>
+            <button
+                class="app-header-btn"
+                title=${t('index.sign-in', 'sign in')}
+                onClick=${() => loc.route('/home')}
+            ><${Icons.signIn} /></button>
+        </span>
+    </header>`;
+    return html`<div class="app-frame">
+        ${header}
+        <div class="app-frame-inner">
+            <${Router}>
+                <${NodeFeed} path="/" current=${null} searchQuery=${query} />
+                <${NodePeople} path="/people" current=${null} searchQuery=${query} />
+                <${PostPage} path="/id/:seg/post/:doc/:page" current=${null} onTitle=${setIdTitle} />
+                <${PostPage} path="/id/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />
+                <${IdPage} path="/id/:seg" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${IdPage} path="/id/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${Welcome} default session=${session} />
+            </${Router}>
+        </div>
+    </div>`;
+};
+
 const App = () => {
     const session = useSession();
 
@@ -450,8 +521,19 @@ const App = () => {
         return html`<div class="app-main"><div class="loading-shell"><p>${t('index.loading-2', 'Loading…')}</p></div></div>`;
     }
 
+    // No session: the node's public face (UNAUTHED.md, ruling 8) - the front page, the
+    // people page and every persona's page, with a sign-in affordance where the persona
+    // menu sits; the sign-in itself lives at /home, where every app URL lands a stranger.
     if (!session.account) {
-        return html`<div class="app-main"><${Welcome} session=${session} /></div>`;
+        return html`
+            <${LocationProvider}>
+                <${ErrorBoundary} onError=${error => console.error(error)}>
+                    <div class="app-main">
+                        <${Outside} session=${session} />
+                    </div>
+                </${ErrorBoundary}>
+            </${LocationProvider}>
+        `;
     }
 
     return html`

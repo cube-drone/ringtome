@@ -115,6 +115,22 @@ describe("the node's public face: a stranger's doors", function () {
         assert.ok(items.includes(open2), "and so is cal's post");
     });
 
+    it("the pages are the app: the front page, the people page and a persona's page serve the app with a meta head (slice 2)", async () => {
+        const { speakable } = await import("../../js/speakable.js");
+        for (const path of ["", "people", "home"]) {
+            const r = await stranger(path);
+            assert.equal(r.status, 200, path);
+            const body = await r.text();
+            assert.ok(body.includes("/static/") && body.includes("app.js"), `${path || "/"} serves the app`);
+        }
+        const r = await stranger(`id/${speakable(adaRoot)}`);
+        assert.equal(r.status, 200);
+        const body = await r.text();
+        assert.ok(body.includes("<title>Ada Face</title>"), "the head carries the name");
+        assert.ok(body.includes('property="og:title" content="Ada Face"'), "and the OpenGraph title");
+        assert.ok(body.includes("app.js"), "and the app takes the body");
+    });
+
     it("a stranger's shelf door still answers, and a session is not needed anywhere here", async () => {
         const r = await stranger("api/node/feed");
         assert.equal(r.status, 200);

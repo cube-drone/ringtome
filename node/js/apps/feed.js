@@ -213,7 +213,15 @@ export function scheduledPlan(doc) {
     }
 }
 
-const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery }) => {
+// One body for two roads (UNAUTHED.md, ruling 1): the reader's feed, and the node's front
+// page for a stranger - the same cards, facets, search and paging over a different door.
+// `feedUrl`/`labelsUrl` default to the reader's; `dial` is the reader's selectivity, off
+// for the node (there is no reader to have interest); `picksKey` keeps the facet picks
+// apart per road. Without a root there is no composer, no fresh bar, no editing.
+export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery, feedUrl, labelsUrl, dial = true, picksKey }) => {
+    const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
+    const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
+    const edit = editingFor || (() => null);
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -231,7 +239,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
             const qs = cursor
                 ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}`
                 : '';
-            const page = await api(`/api/identity/${root}/feed${qs}`);
+            const page = await api(`${feedDoor}${qs}`);
             setItems((have) => mergeFeed(cursor ? have : [], page.items));
             setMore(!!page.more);
         } catch {
@@ -242,19 +250,19 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
         setLoading(false);
     };
     useEffect(() => {
-        if (root) loadPage(null);
+        if (feedDoor) loadPage(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root]);
+    }, [feedDoor]);
 
     // Notice new arrivals without showing them: poll the head page on a slow beat (and on
     // window focus - coming back to the tab is when "anything new?" is the live question),
     // and count what isn't already on screen.
     useEffect(() => {
-        if (!root) return;
+        if (!feedDoor) return;
         let live = true;
         const look = async () => {
             try {
-                const page = await api(`/api/identity/${root}/feed`);
+                const page = await api(feedDoor);
                 if (!live) return;
                 setPending((cur) => {
                     const shown = new Set(items.map(feedKey));
@@ -272,7 +280,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
             clearInterval(timer);
             window.removeEventListener('focus', look);
         };
-    }, [root, items]);
+    }, [root, items, feedDoor]);
 
     // A fresh post of your own joins the stream immediately - your attention is already at
     // the top, so the popping-in objection doesn't apply to the thing you just did. The
@@ -314,7 +322,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
     // at the persisted stop rather than flashing Explorer and narrowing.
     const [stop, setStop] = useState(null);
     useEffect(() => {
-        if (!root) return undefined;
+        if (!root || !dial) return undefined;
         let live = true;
         api(`/api/identity/${root}/private/kv/feed_selectivity`)
             .then((r) => {
@@ -327,7 +335,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
         return () => {
             live = false;
         };
-    }, [root]);
+    }, [root, dial]);
     const moveStop = (key) => {
         setStop(key);
         api(`/api/identity/${root}/private/kv/feed_selectivity/stop`, {
@@ -349,14 +357,14 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
         return item.suggested_via ? 'low' : undefined;
     };
 
-    const stopKey = stop || DEFAULT_STOP;
+    const stopKey = dial ? stop || DEFAULT_STOP : null;
     // Your own posts always show: the slider curates OTHER people's claims on your
     // attention, and hiding your words from yourself at "high interest only" would read as
     // loss, not selectivity.
     // The share/reply pair collapses at render (pure/feed.js): when a reply and the
     // parent row its pin journaled are both on screen, the quote-card says it once.
     const visible = collapseReplyPairs(
-        items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
+        dial ? items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot)) : items
     );
     // Your scheduled posts ride at the TOP (Curtis, 2026-09-02): a future time sorts later
     // than anything that exists, and the badge says why nobody else sees them yet.
@@ -365,14 +373,14 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
     // the interest dials still shape them, and your own posts still bypass.
     // The facet strip (facets.js): the whole journal's buckets and tags, picks narrowing
     // the stream through the same door as the words.
-    const [picks, setPicks] = usePicks(root ? `feed:${root}` : null);
+    const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null));
     // The dial narrows the lists and the search too (Curtis, 2026-09-08): the node counts
     // and matches only what the feed at this stop shows.
     const stopParam = stopKey && stopKey !== 'explorer' ? `?stop=${encodeURIComponent(stopKey)}` : '';
-    const labels = useLabels(root ? `/api/identity/${root}/feed/labels${stopParam}` : null, items.length);
-    const search = useSearch(root ? `/api/identity/${root}/feed` : null, searchQuery, picks, { stop: stopKey });
+    const labels = useLabels(labelsDoor ? `${labelsDoor}${stopParam}` : null, items.length);
+    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey });
     const shown = search.active
-        ? mergeFeed([], search.results || []).filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
+        ? mergeFeed([], search.results || []).filter((item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot))
         : [...(scheduled || []), ...visible];
 
     return html`
@@ -407,7 +415,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
                     item=${item}
                     interest=${emphasisBand(item)}
                     current=${current}
-                    editing=${item.mine ? editingFor(item.doc_id) : null}
+                    editing=${item.mine ? edit(item.doc_id) : null}
                 />`
             )}
             ${items.length === 0 &&
@@ -424,7 +432,8 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
             html`<p class="null-sub">
                 ${search.error || t('apps.feed.nothing-in-your-feed-says-that', 'nothing in your feed says that.')}
             </p>`}
-            ${items.length > 0 &&
+            ${dial &&
+            items.length > 0 &&
             visible.length === 0 &&
             !loading &&
             html`<p class="null-sub">

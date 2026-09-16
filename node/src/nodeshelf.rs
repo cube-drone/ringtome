@@ -74,29 +74,40 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         )
         .await
         .context("clearing a persona's node shelf rows")?;
-    for p in posts.iter().filter(|p| p.part_of.is_none()) {
-        let format = p.format.map(|f| crate::record::documents::Format::from_wire(Some(f)).as_str().to_string());
-        node_db
-            .execute(
-                "INSERT INTO node_shelf
-                   (author_root, doc_id, via_root, title, format, published_ms, updated_ms, settled, trusted_only, dated_ms, reply_to_author, reply_to_doc)
-                 VALUES (?1, ?2, '', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                (
-                    root,
-                    hex::encode(p.doc_id),
-                    p.title.as_str(),
-                    format,
-                    p.dated_ms.unwrap_or(p.genesis_ms),
-                    p.head_ms,
-                    p.settled as i64,
-                    p.trusted_only as i64,
-                    p.dated_ms,
-                    p.reply_to.as_ref().map(|(a, _)| a.clone()),
-                    p.reply_to.as_ref().map(|(_, d)| d.clone()),
-                ),
-            )
-            .await
-            .context("noting a node shelf post")?;
+    // One statement per chunk, not per post (2026-09-15): a whole re-fold of a long shelf
+    // is a few round trips, not thousands - the fold lane is shared with the feed's own
+    // digging, and the history-dig suite felt every extra statement under a full gate.
+    let rows: Vec<crate::record::documents::PublicDoc> = posts.into_iter().filter(|p| p.part_of.is_none()).collect();
+    for chunk in rows.chunks(100) {
+        let mut sql = String::from(
+            "INSERT INTO node_shelf
+               (author_root, doc_id, via_root, title, format, published_ms, updated_ms, settled, trusted_only, dated_ms, reply_to_author, reply_to_doc)
+             VALUES ",
+        );
+        let mut params: Vec<turso::Value> = Vec::with_capacity(chunk.len() * 12);
+        for (i, p) in chunk.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(", ");
+            }
+            let base = i * 12;
+            sql.push('(');
+            sql.push_str(&(1..=12).map(|k| format!("?{}", base + k)).collect::<Vec<_>>().join(", "));
+            sql.push(')');
+            let format = p.format.map(|f| crate::record::documents::Format::from_wire(Some(f)).as_str().to_string());
+            params.push(root.into());
+            params.push(hex::encode(p.doc_id).into());
+            params.push("".into());
+            params.push(p.title.clone().into());
+            params.push(format.map(turso::Value::from).unwrap_or(turso::Value::Null));
+            params.push(p.dated_ms.unwrap_or(p.genesis_ms).into());
+            params.push(p.head_ms.into());
+            params.push((p.settled as i64).into());
+            params.push((p.trusted_only as i64).into());
+            params.push(p.dated_ms.map(turso::Value::from).unwrap_or(turso::Value::Null));
+            params.push(p.reply_to.as_ref().map(|(a, _)| turso::Value::from(a.clone())).unwrap_or(turso::Value::Null));
+            params.push(p.reply_to.as_ref().map(|(_, d)| turso::Value::from(d.clone())).unwrap_or(turso::Value::Null));
+        }
+        node_db.execute(&sql, params).await.context("noting node shelf posts")?;
     }
     for s in shares.iter().filter(|s| s.version_seen.is_some()) {
         // The original's header, as this node holds it: a hosted original's own user db

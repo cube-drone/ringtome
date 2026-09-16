@@ -863,6 +863,14 @@
     overflow: hidden;
 }
 
+/* The node's front page (UNAUTHED.md, slice 2): one column on the post measure, centred
+   like the people page (Curtis, 2026-09-15). */
+.node-feed {
+    max-width: var(--post-measure);
+    width: 100%;
+    margin: 3vh auto 0;
+}
+
 .feed-columns {
     display: flex;
     gap: 1rem;

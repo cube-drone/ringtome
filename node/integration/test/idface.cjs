@@ -1,10 +1,12 @@
 /*
     The /id surface (src/idface.rs): one URL, two audiences.
 
-    Anonymous gets the server-rendered face in its three v1 shapes - the shelf (a hosted
-    persona's public profile), the warm tombstone (a root nobody here carries), and the
-    checksum refusal (worded address whose words lie). A session gets the SPA shell instead.
-    The /api/id JSON face follows the same shelf rule, anonymously.
+    Anonymous gets the app with a meta head (UNAUTHED.md, ruling 8, 2026-09-15): the title,
+    the OpenGraph meta and the reachable address in the head, the app in the body - 200 for
+    a hosted persona, the same page under a 404 for a root nobody here carries (the app says
+    so), and the checksum refusal (a worded address whose words lie) stays a raw page, having
+    no persona. A session gets the same shell. The /api/id JSON face follows the shelf rule,
+    anonymously.
 */
 const assert = require("node:assert");
 const { makeFetch, sql } = require("./fetch.cjs");
@@ -37,14 +39,13 @@ describe("the /id face", () => {
         const resp = await anon(`id/${root}`); // the hex escape hatch
         assert.equal(resp.status, 200);
         assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
-        assert.match(resp.headers.get("content-security-policy"), /default-src 'none'/);
         const body = await resp.text();
-        assert.ok(body.includes("Idface Test Persona"), "profile name renders");
+        assert.ok(body.includes("<title>Idface Test Persona</title>"), "the head carries the name");
         assert.ok(
             body.includes("&lt;with&gt; markup &amp; edges"),
             "profile text is escaped, never trusted"
         );
-        assert.ok(!body.includes("app.js"), "the face is static HTML, not the SPA");
+        assert.ok(body.includes("app.js"), "the app takes the body (UNAUTHED.md, ruling 8)");
         assert.ok(body.includes("?via="), "the address is the full shareable form, hints and all");
         assert.ok(
             body.indexOf("?via=") < body.indexOf("&lt;with&gt;"),
@@ -52,15 +53,10 @@ describe("the /id face", () => {
         );
     });
 
-    it("draws the identicon for a persona with no picture - inline, no CSP loosening", async () => {
+    it("a persona with no picture offers no og:image - the app draws the face", async () => {
         const body = await (await anon(`id/${root}`)).text();
-        assert.ok(body.includes("<svg"), "the identicon is inlined into the face");
-        assert.ok(body.includes('viewBox="0 0 5 5"'), "the twinned identicon, not some other art");
-        // The console draws this exact string from the same bytes (pure/identicon.js and
-        // src/identicon.rs share goldens) - one persona, one face, everywhere.
-        const { identiconSvg } = await import("../../js/pure/identicon.js");
-        assert.ok(body.includes(identiconSvg(root)), "byte-identical to the console's");
-        assert.ok(!body.includes("data:image"), "inlined, so img-src stays 'self'");
+        assert.ok(!body.includes("og:image"), "no picture, no image meta");
+        assert.ok(body.includes("app.js"), "the identicon is the app's, drawn from the same bytes as the console's");
     });
 
     it("serves the same face at the speakable spelling, words verified", async () => {
@@ -85,7 +81,7 @@ describe("the /id face", () => {
         const resp = await anon(`id/${stranger}`);
         assert.equal(resp.status, 404);
         const body = await resp.text();
-        assert.ok(body.includes("quiet side"), "the tombstone is warm, not blank");
+        assert.ok(body.includes("app.js"), "the same page, under a 404 - the app says nothing is here");
         assert.ok(body.includes("/id/"), "it hands over the re-homeable address");
     });
 
@@ -254,7 +250,7 @@ const { HOST_B } = require("./fetch.cjs");
         assert.equal(json.status, 404, "the JSON face refuses strangers the fetch served");
         const face = await anonB(`id/${aRoot}`);
         assert.equal(face.status, 404, "the HTML face still tombstones - no durable shelf growth");
-        assert.ok((await face.text()).includes("quiet side"));
+        assert.ok((await face.text()).includes("app.js"));
     });
 
     it("a hintless ask about an unknown root fails honestly", async () => {

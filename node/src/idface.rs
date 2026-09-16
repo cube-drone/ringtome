@@ -92,14 +92,6 @@ fn page(title: &str, card: String) -> String {
     )
 }
 
-/// The persona's colour dot beside their name - the same hue their identicon and the
-/// console's heptagon ring wear (crate::identicon::hue is the one source).
-fn chip(root: &[u8; 32]) -> String {
-    format!(
-        r#"<span class="chip" style="background: hsl({}, 60%, 55%)"></span>"#,
-        crate::identicon::hue(root)
-    )
-}
 
 /// Is this root hosted by any account on this node? (The shelf, v1: hosting is the only
 /// demand edge that exists - member follows join it when follows do.) The identities table
@@ -140,7 +132,7 @@ pub async fn idface_deep(
 
 /// GET `/id/{seg}`: the one URL, both audiences.
 pub async fn idface(
-    session: Option<Session>,
+    _session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
 ) -> Result<Response, AppError> {
@@ -187,32 +179,22 @@ pub async fn idface(
     let words = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
 
     // A session gets the SPA - the lens is the console's job, and the app router owns /id.
-    if session.is_some() {
-        return Ok(crate::ui::homepage(State(state)).await.into_response());
-    }
-
-    if hosted_here(&state, &root_hex).await? {
-        // The shelf: this node chose to host the persona, so its public face serves. The
-        // address is the FULL shareable form - origin (when declared), `?via=` hints (this
-        // node first, then the persona's liveliest peers, up to ten, base58-dressed - the
-        // SPA row's rule; the wide list keeps fast-moving identities alive) - shown above
-        // the bio and linked to itself, exactly as the lens shows it. No separate words
-        // line: the words are the address's own prefix.
-        let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
-        let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
-        let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
-        // Leaves first ("hints become leaves"): our own leaf for this persona, then the
-        // liveliest sibling leaves by serving-record freshness. Endpoint-id peers remain as
-        // filler for rows whose leaf was never learned - the resolver tries each hint as a
-        // leaf and falls back to dialing it as an endpoint, so a mixed list is fine.
-        let mut via = Vec::new();
+    // The app for everyone (UNAUTHED.md, ruling 8): the server's part is the head - the
+    // title and the OpenGraph meta a crawler or a link unfurler reads, the URL carrying the
+    // via hints that say where this persona can be reached - and the app takes the body,
+    // signed in or not. A hosted persona is 200; anything else is the same page under a
+    // 404, since nothing about it is served here and the app says so. The raw card page
+    // retired here on 2026-09-15.
+    let hosted = hosted_here(&state, &root_hex).await?;
+    let fields = if hosted { public_profile(&state, &root_hex).await.unwrap_or_default() } else { Vec::new() };
+    let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
+    let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
+    let mut via = Vec::new();
+    if hosted {
         if let Ok(Some(own_leaf)) = crate::identity::leaf_hex_of(&state.node_db, &root_hex).await {
             via.push(own_leaf);
         }
-        for leaf in crate::net::sync::liveliest_leaves(&state.node_db, &root_hex, 16)
-            .await
-            .unwrap_or_default()
-        {
+        for leaf in crate::net::sync::liveliest_leaves(&state.node_db, &root_hex, 16).await.unwrap_or_default() {
             if via.len() >= 10 {
                 break;
             }
@@ -223,10 +205,7 @@ pub async fn idface(
         if via.is_empty() {
             via.push(state.endpoint.id().to_string());
         }
-        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16)
-            .await
-            .unwrap_or_default()
-        {
+        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16).await.unwrap_or_default() {
             if via.len() >= 10 {
                 break;
             }
@@ -234,66 +213,29 @@ pub async fn idface(
                 via.push(peer);
             }
         }
-        let via: Vec<String> = via
-            .iter()
-            .map(|k| speakable::node_key_b58(k).unwrap_or_else(|| k.clone()))
-            .collect();
-        let base = state.config.public_url.clone().unwrap_or_default();
-        let addr = format!("{base}/id/{speak}?via={}", via.join(","));
-        // Their picture if they chose one, else their identicon - the same glyph the
-        // console draws (crate::identicon and its JS twin). Inlined, not linked: the face's
-        // CSP allows no data: images, and an inline <svg> needs no permission at all.
-        let avatar = match profile_value(&fields, "avatar") {
-            Some(doc) => format!(
-                "<img class=\"avatar\" src=\"/id/{speak}/docs/{}/thumb\" alt=\"\">",
-                esc(doc)
-            ),
-            None => format!(
-                "<span class=\"avatar\">{}</span>",
-                crate::identicon::identicon_svg(&root)
-            ),
-        };
-        return Ok(face(
-            StatusCode::OK,
-            page(
-                &name,
-                format!(
-                    "{avatar}<h1>{chip}{name}</h1>\
-                     <p class=\"addr\"><a href=\"{addr}\">{addr}</a></p>\
-                     {bio}\
-                     <p class=\"foot\">a persona on ringtome, served from this node</p>",
-                    chip = chip(&root),
-                    name = esc(&name),
-                    bio = if bio.is_empty() {
-                        String::new()
-                    } else {
-                        format!("<p class=\"bio\">{}</p>", esc(&bio))
-                    },
-                    addr = esc(&addr),
-                ),
-            ),
-        ));
     }
-
-    // The warm tombstone: not carried here, and (until serving records carry public web
-    // URLs - the signpost rung) nowhere to point. An honest dead end with directions.
-    Ok(face(
-        StatusCode::NOT_FOUND,
-        page(
-            &words,
-            format!(
-                "<h1>{chip}{words}</h1>\
-                 <p>This persona lives on the quiet side of ringtome - it isn't served from \
-                 this node, and it hasn't told the web where else to find it.</p>\
-                 <p>If you're on ringtome, open it from your own node:</p>\
-                 <p class=\"addr\">/id/{speak}</p>\
-                 <p class=\"foot\">nothing about this persona is hosted here</p>",
-                chip = chip(&root),
-                words = esc(&words),
-                speak = esc(&speak),
-            ),
-        ),
-    ))
+    let via: Vec<String> = via.iter().map(|k| speakable::node_key_b58(k).unwrap_or_else(|| k.clone())).collect();
+    let base = state.config.public_url.clone().unwrap_or_default();
+    let url = if via.is_empty() { format!("{base}/id/{speak}") } else { format!("{base}/id/{speak}?via={}", via.join(",")) };
+    let mut head = format!(
+        "<title>{}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"profile\">\n<meta property=\"og:url\" content=\"{}\">",
+        esc(&name),
+        esc(&name),
+        esc(&url)
+    );
+    if !bio.is_empty() {
+        head.push_str(&format!("\n<meta property=\"og:description\" content=\"{}\">\n<meta name=\"description\" content=\"{}\">", esc(&bio), esc(&bio)));
+    }
+    if let Some(doc) = profile_value(&fields, "avatar") {
+        head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}/id/{}/docs/{}/thumb\">", esc(&base), esc(&speak), esc(doc)));
+    }
+    let status = if hosted { StatusCode::OK } else { StatusCode::NOT_FOUND };
+    Ok((
+        status,
+        [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
+        axum::response::Html(crate::ui::app_page(&state, &head)),
+    )
+        .into_response())
 }
 
 /// How long a fetched foreign profile is served without even trying to revalidate.

@@ -54,7 +54,6 @@ mod semver;
 mod eviction;
 mod speculative;
 mod idface;
-mod identicon;
 mod speakable;
 mod test_endpoints;
 mod ui;
@@ -579,10 +578,10 @@ async fn main() -> anyhow::Result<()> {
         // same HTML, the client router sorts out which screen). Root bounces there for now, and
         // stays free for the API and a future public face - a temporary redirect so it is never
         // cached as permanent against that day.
-        .route(
-            "/",
-            get(|| async { axum::response::Redirect::temporary("/home") }),
-        )
+        // The public face arrived (UNAUTHED.md, 2026-09-15): root is the app, which shows a
+        // stranger the node's front page and sends a signed-in reader on to /home.
+        .route("/", get(ui::homepage))
+        .route("/people", get(ui::homepage))
         .route("/home", get(ui::homepage))
         // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
         // deeper resource paths; the segment parser only reads the first segment for now.

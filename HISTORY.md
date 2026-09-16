@@ -9087,3 +9087,20 @@ door: "listed on this node's front page", a node fact in `node_listing`, on unle
 persona turns it off. The doors read the memos every other listing reads and never open a
 user database, so the seal's stranger rule holds by construction: no sealed post, no
 sealed label, no key.
+
+## 2026-09-15: the node's public face, slice 2 - the shell
+
+Without a session the app now serves the node's front page, the people page, every
+persona's page and every post page, with a header carrying the node's search box and a
+sign-in button; the sign-in lives at /home, where every app URL lands a stranger. The
+feed's stream took its doors as props - one body for the reader's feed and the node's
+front page, the dial off for the node since there is no reader to have interest - and the
+people page reuses the person row over the personas door. On the server, the `/id/` page
+is the app with a meta head (the title and the OpenGraph meta a crawler reads) for every
+persona outcome; the raw card page and its Rust identicon retired, and `/` and `/people`
+serve the app. The import-graph cop moved the node pages out of `apps/`: they are the
+stranger's pages, not registry apps, and an app may not import an app. The id-face suite's
+four claims about the raw card became claims about the app page and its head. And the
+node shelf's re-fold went from one statement per post to one per hundred: the history-dig
+claim, which digs on the same fold lane under a full gate, went red twice with the fold
+doing a statement per post for every hosted persona's every move.

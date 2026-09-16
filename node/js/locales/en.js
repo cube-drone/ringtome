@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 711 phrases across 52 files.
+// 720 phrases across 54 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -394,10 +394,23 @@ export default {
     'index.back-to-the-list': 'back to the list',
     'index.close-this-app': 'close this app',
     'index.loading': 'Loading…',
+    'index.people': 'people',
+    'index.this-node': 'this node',
+    'index.search-this-node': 'search this node…',
+    'index.feed': 'feed',
+    'index.sign-in': 'sign in',
     'index.loading-2': 'Loading…',
 
     // --- node/js/modal.js ---
     'modal.close': 'close',
+
+    // --- node/js/nodefeed.js ---
+    'apps.nodefeed.on-this-node': 'on this node',
+
+    // --- node/js/nodepeople.js ---
+    'apps.nodepeople.hosted-here': 'hosted here',
+    'apps.nodepeople.loading': 'looking…',
+    'apps.nodepeople.nobody-listed': 'nobody is listed on this node.',
 
     // --- node/js/panes.js ---
     'panes.drag-to-resize': 'drag to resize',

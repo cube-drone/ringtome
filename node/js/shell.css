@@ -108,6 +108,12 @@ body {
     min-width: 0;
 }
 
+/* The stranger's shell (UNAUTHED.md, slice 2): the title is a link home, dressed as the title. */
+.app-header-link {
+    color: inherit;
+    text-decoration: none;
+}
+
 .app-header-title {
     flex-shrink: 1;
     min-width: 0;

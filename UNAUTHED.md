@@ -70,9 +70,16 @@ have said, as one feed; and a hosted persona may claim a short address on this n
    with no session sees two listed personas' open posts newest first with their labels,
    never a sealed post or an unlisted persona's; narrows by tag, kind and words; the switch
    is the persona's own and takes effect at once.
-2. **The shell.** The public router and the sign-in affordance; the feed's rendering pulled
-   out from its data source so the reader's feed and the node feed share one body; the
-   people page likewise; the `/id/` meta head. JS; UI tests.
+2. **The shell (built 2026-09-15).** Without a session the app serves the front page at
+   `/`, the people page at `/people`, every `/id/` page and every post page, under a
+   header with the node's search box, a "people" button and "sign in", which lives at
+   `/home` where every app URL lands a stranger. The feed's stream took its doors as
+   props (`feedUrl`, `labelsUrl`, no dial, its own facet picks), so the reader's feed and
+   the node's front page are one body over two doors; the people page reuses the person
+   row over the personas door. The server's `/id/` page is the app with a head - the
+   title and the OpenGraph meta - for hosted, peeked and unknown personas alike (the
+   malformed-address pages stay raw, having no persona); the raw card and its identicon
+   retired. The node pages live beside the shell, not among the registry's apps.
 3. **Slugs.** The table, the claim door and its rules, the `/@slug` route and the redirect
    from the last slug, the slug on the people page and beside the address, the settings
    control. Rust and JS; a suite for the claim rules.
