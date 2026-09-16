@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 720 phrases across 54 files.
+// 722 phrases across 54 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -405,6 +405,8 @@ export default {
     'modal.close': 'close',
 
     // --- node/js/nodefeed.js ---
+    'nodefeed.nobody-has-said-anything': 'nobody has said anything on this node yet.',
+    'nodefeed.sign-in-or-make-a-persona': 'sign in, or make a persona here',
     'apps.nodefeed.on-this-node': 'on this node',
 
     // --- node/js/nodepeople.js ---

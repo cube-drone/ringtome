@@ -218,7 +218,7 @@ export function scheduledPlan(doc) {
 // `feedUrl`/`labelsUrl` default to the reader's; `dial` is the reader's selectivity, off
 // for the node (there is no reader to have interest); `picksKey` keeps the facet picks
 // apart per road. Without a root there is no composer, no fresh bar, no editing.
-export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery, feedUrl, labelsUrl, dial = true, picksKey }) => {
+export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery, feedUrl, labelsUrl, dial = true, picksKey, nullState }) => {
     const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
     const edit = editingFor || (() => null);
@@ -420,9 +420,10 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
             )}
             ${items.length === 0 &&
             !loading &&
+            (nullState ||
             html`<p class="null-sub">
                 ${t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
-            </p>`}
+            </p>`)}
             ${search.active &&
             search.searching &&
             html`<p class="null-sub"><span class="waiting-dot"></span> ${t('apps.feed.searching', 'searching…')}</p>`}
