@@ -586,6 +586,18 @@ CREATE TABLE node_listing (
     noted_ms    INTEGER NOT NULL
 );
 
+-- Node slugs (UNAUTHED.md, rulings 6 and 7, 2026-09-16): a short address a hosted persona
+-- claims on THIS node - `@cube-drone` - first come first served, meaning nothing on any
+-- other node. A persona holds at most two: its current (standing = 1) and the last it
+-- claimed (standing = 0), which redirects to the current and which nobody else may take.
+CREATE TABLE node_slugs (
+    slug        TEXT    NOT NULL PRIMARY KEY,
+    root_pubkey TEXT    NOT NULL,
+    standing    INTEGER NOT NULL,
+    noted_ms    INTEGER NOT NULL
+);
+CREATE INDEX node_slugs_by_root ON node_slugs (root_pubkey);
+
 CREATE TABLE post_key_refusals (
     author_root TEXT NOT NULL,
     doc_id      TEXT NOT NULL,

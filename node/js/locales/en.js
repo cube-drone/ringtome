@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 722 phrases across 54 files.
+// 739 phrases across 56 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -422,6 +422,8 @@ export default {
     'person.see-this-personas-page': "see this persona's page",
     'person.copied': 'copied!',
     'person.copy': 'copy',
+    'person.on-this-node': 'on this node',
+    'person.this-nodes-short-name': "this node's short name for them - the same name elsewhere is somebody else",
     'person.trust-none': 'Never heard of them',
     'person.trust-low': 'Not very confident',
     'person.trust-medium': 'Pretty confident',
@@ -509,6 +511,15 @@ export default {
     'persona.a-line-or-two-about': 'a line or two about you (optional)',
     'persona.save': 'Save',
     'persona.saved---on-all-your': 'saved - on all your computers in a moment',
+    'persona.this-node-knows-you-as': 'this node knows you as @{slug}',
+    'persona.name-given-up': 'name given up',
+    'persona.that-name-did-not-take': 'that name did not take',
+    'persona.your-name-on-this-node': 'your name on this node',
+    'persona.slug-hint': 'a short address, @name, on this node only - first come, first served',
+    'persona.a-name': 'a-name',
+    'persona.change': 'change',
+    'persona.claim': 'claim',
+    'persona.also-answers-to': 'also answers to @{last}, which sends readers to your current name',
 
     // --- node/js/persondemo.js ---
     'persondemo.the-gallery-needs-a-persona': 'the gallery needs a persona',
@@ -620,6 +631,11 @@ export default {
     'posts.nothing-they-said-says-that': 'nothing they said says that.',
     'posts.reading-further-back': 'reading further back…',
     'posts.load-more': 'load more',
+
+    // --- node/js/slugpage.js ---
+    'slugpage.looking': 'looking…',
+    'slugpage.nobody-here-by-that-name': 'nobody on this node goes by that name',
+    'slugpage.a-name-is-this-nodes': "a short name is this node's own - the same name on another node is somebody else, or nobody. A persona's real address starts with /id/.",
 
     // --- node/js/warnings.js ---
     'warnings.remove': 'remove',
@@ -777,6 +793,11 @@ export default {
     'net.unfurl.host-does-not-resolve': 'host does not resolve',
     'net.unfurl.host-does-not-resolve-2': 'host does not resolve',
     'net.unfurl.address-is-not-public-2': 'address is not public',
+
+    // --- node/src/nodeface.rs ---
+    'nodeface.somebody-here-already-has-that-name': 'somebody on this node already has that name',
+    'nodeface.a-name-is-three-to-thirty-two': 'a name is three to thirty-two lowercase letters, digits and hyphens',
+    'nodeface.nobody-here-by-that-name': 'nobody on this node goes by that name',
 
     // --- node/src/pubkey.rs ---
     'pubkey.bad-what': 'bad {what}',

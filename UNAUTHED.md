@@ -80,9 +80,14 @@ have said, as one feed; and a hosted persona may claim a short address on this n
    title and the OpenGraph meta - for hosted, peeked and unknown personas alike (the
    malformed-address pages stay raw, having no persona); the raw card and its identicon
    retired. The node pages live beside the shell, not among the registry's apps.
-3. **Slugs.** The table, the claim door and its rules, the `/@slug` route and the redirect
-   from the last slug, the slug on the people page and beside the address, the settings
-   control. Rust and JS; a suite for the claim rules.
+3. **Slugs (built 2026-09-16).** `node_slugs` (node schema 47) and a module that owns the
+   rules - the grammar, first come first served, the current and the last, the swap, the
+   drop of the oldest, release on leaving; the claim door on the persona (`""` gives the
+   current one up) and the anonymous resolve door; `/@slug` serving the persona page with
+   its meta head, the last slug redirecting to the current, an unknown one the app under a
+   404; the short name on the people page, beside the real address on the persona page,
+   and in the profile answer; "your name on this node" on the profile settings page. A
+   suite for every rule, and unit tests for the grammar and the ledger.
 
 ## Residuals
 

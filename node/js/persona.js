@@ -727,6 +727,7 @@ export const Profile = ({ current }) => {
                     placeholder=${t('persona.what-people-call-you-here', 'what people call you here')}
                 />
             </label>
+            <${NodeSlug} root=${root} />
             <label class="profile-field">
                 <${FieldLabel} label=${t('persona.bio', 'bio')} field=${bio} />
                 <textarea
@@ -748,5 +749,70 @@ export const Profile = ({ current }) => {
                 </span>
             </div>
         </div>
+    `;
+};
+
+/// Your short name on this node (UNAUTHED.md, rulings 6 and 7): `@cube-drone`, first come
+/// first served here and meaning nothing anywhere else. You keep the one before it too,
+/// which sends readers on to the current one; changing again drops the older.
+const NodeSlug = ({ root }) => {
+    const [held, setHeld] = useState(null); // { slug, last }
+    const [draft, setDraft] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState(null);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/slug`)
+            .then((r) => {
+                if (!live) return;
+                setHeld(r);
+                setDraft(r.slug || '');
+            })
+            .catch(() => live && setHeld({ slug: null, last: null }));
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    const claim = async () => {
+        setBusy(true);
+        setNote(null);
+        try {
+            const r = await api(`/api/identity/${root}/slug`, { method: 'PUT', body: JSON.stringify({ slug: draft }) });
+            setHeld(r);
+            setDraft(r.slug || '');
+            setNote(r.slug ? t('persona.this-node-knows-you-as', 'this node knows you as @{slug}', { slug: r.slug }) : t('persona.name-given-up', 'name given up'));
+        } catch (e) {
+            setNote(e.message || t('persona.that-name-did-not-take', 'that name did not take'));
+        }
+        setBusy(false);
+    };
+    if (!held) return null;
+    const same = (draft || '').trim().replace(/^@/, '').toLowerCase() === (held.slug || '');
+    return html`
+        <label class="profile-field profile-slug">
+            <span class="profile-field-label">
+                ${t('persona.your-name-on-this-node', 'your name on this node')}
+                <small>${t('persona.slug-hint', 'a short address, @name, on this node only - first come, first served')}</small>
+            </span>
+            <span class="profile-slug-row">
+                <span class="profile-slug-at">@</span>
+                <input
+                    class="profile-slug-input"
+                    type="text"
+                    maxlength="32"
+                    placeholder=${t('persona.a-name', 'a-name')}
+                    value=${draft}
+                    onInput=${(e) => setDraft(e.currentTarget.value)}
+                    onKeyDown=${(e) => e.key === 'Enter' && !same && claim()}
+                />
+                <button class="profile-save" disabled=${busy || same} onClick=${claim}>
+                    ${held.slug ? t('persona.change', 'change') : t('persona.claim', 'claim')}
+                </button>
+            </span>
+            ${held.last &&
+            html`<small class="profile-slug-last">${t('persona.also-answers-to', 'also answers to @{last}, which sends readers to your current name', { last: held.last })}</small>`}
+            ${note && html`<span class="profile-flash">${note}</span>`}
+        </label>
     `;
 };

@@ -35,6 +35,7 @@ mod message;
 mod net;
 mod nodeface;
 mod nodeshelf;
+mod slugs;
 mod notifications;
 mod outbox;
 mod search;
@@ -617,6 +618,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
         .route("/api/node/personas", get(nodeface::node_personas))
+        .route("/api/node/slugs/{slug}", get(nodeface::slug_resolve))
+        .route("/@{slug}", get(nodeface::slug_page))
+        .route(
+            "/api/identity/{root}/slug",
+            get(nodeface::slug_get).put(nodeface::slug_put),
+        )
         .route(
             "/api/identity/{root}/listed",
             get(nodeface::listed_get).put(nodeface::listed_put),

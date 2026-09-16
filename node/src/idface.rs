@@ -174,19 +174,22 @@ pub async fn idface(
             ));
         }
     };
+    persona_page(&state, root).await
+}
+
+/// The persona's page: the app with a meta head (UNAUTHED.md, ruling 8). The server's part
+/// is the head - the title and the OpenGraph meta a crawler or a link unfurler reads, the
+/// URL carrying the via hints that say where this persona can be reached - and the app takes
+/// the body, signed in or not. A hosted persona is 200; anything else is the same page under
+/// a 404, since nothing about it is served here and the app says so. Served at `/id/<addr>`
+/// and, for a hosted persona with a slug, at `/@<slug>` (ruling 6). The raw card page
+/// retired here on 2026-09-15.
+pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Response, AppError> {
     let root_hex = hex::encode(root);
     let speak = speakable::speakable(&root);
     let words = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
-
-    // A session gets the SPA - the lens is the console's job, and the app router owns /id.
-    // The app for everyone (UNAUTHED.md, ruling 8): the server's part is the head - the
-    // title and the OpenGraph meta a crawler or a link unfurler reads, the URL carrying the
-    // via hints that say where this persona can be reached - and the app takes the body,
-    // signed in or not. A hosted persona is 200; anything else is the same page under a
-    // 404, since nothing about it is served here and the app says so. The raw card page
-    // retired here on 2026-09-15.
-    let hosted = hosted_here(&state, &root_hex).await?;
-    let fields = if hosted { public_profile(&state, &root_hex).await.unwrap_or_default() } else { Vec::new() };
+    let hosted = hosted_here(state, &root_hex).await?;
+    let fields = if hosted { public_profile(state, &root_hex).await.unwrap_or_default() } else { Vec::new() };
     let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
     let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
     let mut via = Vec::new();
@@ -233,7 +236,7 @@ pub async fn idface(
     Ok((
         status,
         [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
-        axum::response::Html(crate::ui::app_page(&state, &head)),
+        axum::response::Html(crate::ui::app_page(state, &head)),
     )
         .into_response())
 }
@@ -2812,6 +2815,8 @@ pub async fn id_profile(
         // actually serves. A foreign persona's address mints origin-free, which re-homes at
         // whatever node the reader has.
         "hosted": hosted,
+        // The short name this node gave them (UNAUTHED.md, ruling 6), for a persona it hosts.
+        "slug": if hosted { crate::slugs::of_root(&state.node_db, &root_hex).await.ok().and_then(|(c, _)| c) } else { None },
         "via": via,
         // A refresh is running behind this answer: what you are reading may be a moment old,
         // and asking again shortly will say so honestly either way.

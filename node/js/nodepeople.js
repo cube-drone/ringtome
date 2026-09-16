@@ -43,7 +43,7 @@ export const NodePeople = ({ current, searchQuery }) => {
                             ...(p.name ? [{ field: 'name', value: p.name }] : []),
                             ...(p.avatar ? [{ field: 'avatar', value: p.avatar }] : []),
                         ] }}
-                        aside=${p.speakable || ''}
+                        aside=${p.slug ? `@${p.slug}` : p.speakable || ''}
                     />`
                 )}
             </div>

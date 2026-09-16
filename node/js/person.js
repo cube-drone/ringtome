@@ -108,6 +108,8 @@ export function usePerson(root, { current, profile: given } = {}) {
     const blocked = facts.blocked === 'yes';
     const hosted = source ? !!source.hosted : isYou;
     const via = (source && source.via) || null;
+    // The node's short name for them (UNAUTHED.md, ruling 6), when the profile names one.
+    const slug = (source && source.slug) || null;
 
     const names = displayNames({ nickname: facts.nickname, name, words });
     return {
@@ -115,6 +117,7 @@ export function usePerson(root, { current, profile: given } = {}) {
         isYou,
         hosted,
         via,
+        slug,
         facts,
         blocked,
         knownToYou: !!contactRow,
@@ -248,7 +251,7 @@ export const PersonCard = ({ root, current, profile, you, children }) => {
             html`<p class="person-card-others">${person.others.join(' · ')}</p>`}
             ${person.isYou && you}
             ${children}
-            <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} />
+            <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} slug=${person.slug} />
             ${/* Your relationship sits above their bio: how you stand with someone is the
                 first thing you want when you arrive on their page, and the bio is what you
                 read once you have it. */ ''}
@@ -314,7 +317,7 @@ function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
 // The row explains nothing - the whole string, a quiet "address" tag, a copy button. The
 // link IS the displayed address, whole (what you see is what you click is what you copy);
 // the /id surface simply ignores the query it doesn't need.
-export const AddressRow = ({ root, via, hosted }) => {
+export const AddressRow = ({ root, via, hosted, slug }) => {
     const address = useIdentityAddress(root, { via, hosted });
     const [copied, setCopied] = useState(false);
     if (!address) return null;
@@ -337,6 +340,13 @@ export const AddressRow = ({ root, via, hosted }) => {
                 ${copied ? t('person.copied', 'copied!') : t('person.copy', 'copy')}
             </button>
         </div>
+        ${slug &&
+        html`<div class="persona-address persona-slug">
+            <span class="persona-address-label">${t('person.on-this-node', 'on this node')}</span>
+            <a class="persona-address-value" href=${`/@${slug}`} title=${t('person.this-nodes-short-name', "this node's short name for them - the same name elsewhere is somebody else")}>
+                <code>@${slug}</code>
+            </a>
+        </div>`}
     `;
 };
 

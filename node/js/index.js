@@ -48,6 +48,7 @@ import { DiffPage } from './doc/diffpage.js';
 import { speakable } from './speakable.js';
 import { NodeFeed } from './nodefeed.js';
 import { NodePeople } from './nodepeople.js';
+import { SlugPage } from './slugpage.js';
 
 const html = htm.bind(h);
 
@@ -113,6 +114,14 @@ const SearchOptions = ({ kind, onKind }) => {
         </div>`}
     </span>`;
 };
+
+/// A first segment that starts with `@` is a node slug (UNAUTHED.md, ruling 6): the
+/// router cannot say `/@:slug` - a parameter is a whole segment - so this route takes the
+/// segment and dispatches, handing anything else to the shell's own default.
+const AtRoute = ({ at, fallback: Fallback, ...props }) =>
+    at && at.startsWith('@')
+        ? html`<${SlugPage} slug=${at.slice(1)} ...${props} />`
+        : html`<${Fallback} ...${props} />`;
 
 const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
     const loc = useLocation();
@@ -186,7 +195,7 @@ const Inside = ({ session }) => {
     // headless, so it gets the band with the viewed persona's name, reported upward by the
     // page once it knows it. (The structural question from 2026-08-01, settled by building
     // the rolodex.)
-    const inId = loc.path.startsWith('/id/');
+    const inId = loc.path.startsWith('/id/') || loc.path.startsWith('/@');
     const [idTitle, setIdTitle] = useState(null);
 
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
@@ -439,6 +448,7 @@ const Inside = ({ session }) => {
             <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
             <${IdPage} path="/id/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+            <${AtRoute} path="/:at" fallback=${SlugRoute} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
         </${Router}>
     `;
@@ -464,7 +474,7 @@ const Outside = ({ session }) => {
     const [idTitle, setIdTitle] = useState(null);
     const signingIn = loc.path === '/home' || loc.path.startsWith('/home/') || loc.path.startsWith('/in/');
     const onPeople = loc.path === '/people';
-    const title = loc.path.startsWith('/id/') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
+    const title = loc.path.startsWith('/id/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
     const header = html`<header class="app-header">
         <span class="app-header-lead">
             <a class="app-header-title app-header-link" href="/">${title}</a>
@@ -507,6 +517,7 @@ const Outside = ({ session }) => {
                 <${PostPage} path="/id/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />
                 <${IdPage} path="/id/:seg" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
                 <${IdPage} path="/id/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
                 <${Welcome} default session=${session} />
             </${Router}>
         </div>

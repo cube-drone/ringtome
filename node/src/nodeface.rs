@@ -31,18 +31,18 @@ fn decode_root(hex_root: &str) -> Option<[u8; 32]> {
 pub async fn node_personas(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
     let roots = crate::nodeshelf::listed_roots(&state.node_db).await.map_err(AppError::Internal)?;
     let bylines = crate::profiles::bylines(&state.node_db, &roots).await.unwrap_or_default();
-    let mut people: Vec<serde_json::Value> = roots
-        .iter()
-        .map(|r| {
-            let b = bylines.get(r).cloned().unwrap_or_default();
-            serde_json::json!({
-                "root": r,
-                "speakable": decode_root(r).map(|k| crate::speakable::speakable(&k)),
-                "name": b.name,
-                "avatar": b.avatar,
-            })
-        })
-        .collect();
+    let mut people: Vec<serde_json::Value> = Vec::with_capacity(roots.len());
+    for r in &roots {
+        let b = bylines.get(r).cloned().unwrap_or_default();
+        let (slug, _) = crate::slugs::of_root(&state.node_db, r).await.map_err(AppError::Internal)?;
+        people.push(serde_json::json!({
+            "root": r,
+            "speakable": decode_root(r).map(|k| crate::speakable::speakable(&k)),
+            "name": b.name,
+            "avatar": b.avatar,
+            "slug": slug,
+        }));
+    }
     people.sort_by(|a, b| {
         let name = |v: &serde_json::Value| v["name"].as_str().unwrap_or("").to_lowercase();
         name(a).cmp(&name(b)).then_with(|| a["root"].as_str().cmp(&b["root"].as_str()))
@@ -139,6 +139,98 @@ pub async fn node_feed_labels(State(state): State<AppState>) -> Result<Json<serd
         v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
     };
     Ok(Json(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) })))
+}
+
+#[derive(Deserialize)]
+pub struct SlugPut {
+    slug: String,
+}
+
+/// `GET /api/identity/{root}/slug`: the persona's current and last slug on this node.
+pub async fn slug_get(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::record::store::open(&state, &session.account.id, &root).await?;
+    let (current, last) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "slug": current, "last": last })))
+}
+
+/// `PUT /api/identity/{root}/slug`: claim one (ruling 7); `""` gives the current one up.
+pub async fn slug_put(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<SlugPut>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::record::store::open(&state, &session.account.id, &root).await?;
+    if req.slug.trim().is_empty() {
+        crate::slugs::drop_current(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    } else {
+        match crate::slugs::claim(&state.node_db, &root, &req.slug).await.map_err(AppError::Internal)? {
+            crate::slugs::Outcome::Claimed => {}
+            crate::slugs::Outcome::Taken => {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "nodeface.somebody-here-already-has-that-name",
+                    "somebody on this node already has that name"
+                )))
+            }
+            crate::slugs::Outcome::Invalid => {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "nodeface.a-name-is-three-to-thirty-two",
+                    "a name is three to thirty-two lowercase letters, digits and hyphens"
+                )))
+            }
+        }
+    }
+    let (current, last) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "slug": current, "last": last })))
+}
+
+/// `GET /api/node/slugs/{slug}`: who a slug names here, and whether it is their current one.
+pub async fn slug_resolve(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
+        Some((root, current)) => {
+            let (now, _) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+            Ok(Json(serde_json::json!({
+                "root": root,
+                "speakable": decode_root(&root).map(|k| crate::speakable::speakable(&k)),
+                "current": current,
+                "slug": now,
+            })))
+        }
+        None => Err(AppError::NotFound(crate::msg!("nodeface.nobody-here-by-that-name", "nobody on this node goes by that name"))),
+    }
+}
+
+/// `GET /@{slug}`: the persona's page under its short name (ruling 6); the last slug sends
+/// the reader on to the current; an unknown one is the app under a 404, which says so.
+pub async fn slug_page(State(state): State<AppState>, Path(slug): Path<String>) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
+    match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
+        Some((root, true)) => {
+            let Some(key) = decode_root(&root) else {
+                return Err(AppError::NotFound(crate::msg!("nodeface.nobody-here-by-that-name", "nobody on this node goes by that name")));
+            };
+            crate::idface::persona_page(&state, key).await
+        }
+        Some((root, false)) => {
+            let (current, _) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+            match current {
+                Some(c) => Ok(axum::response::Redirect::temporary(&format!("/@{c}")).into_response()),
+                None => Err(AppError::NotFound(crate::msg!("nodeface.nobody-here-by-that-name", "nobody on this node goes by that name"))),
+            }
+        }
+        None => Ok((
+            axum::http::StatusCode::NOT_FOUND,
+            axum::response::Html(crate::ui::app_page(&state, "<title>nobody here by that name</title>")),
+        )
+            .into_response()),
+    }
 }
 
 #[derive(Deserialize)]

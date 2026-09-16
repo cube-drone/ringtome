@@ -9104,3 +9104,16 @@ four claims about the raw card became claims about the app page and its head. An
 node shelf's re-fold went from one statement per post to one per hundred: the history-dig
 claim, which digs on the same fold lane under a full gate, went red twice with the fold
 doing a statement per post for every hosted persona's every move.
+
+## 2026-09-16: the node's public face, slice 3 - slugs
+
+"Let node users claim slugs." A short address on this node - `@cube-drone` - first come
+first served, meaning nothing on any other node, since two nodes can each hand the same
+name to different people and nothing in a system with no centre could referee it. A
+persona holds at most two: the current, and the last it claimed, which redirects to the
+current and which nobody else may take; changing again drops the older, retaking one's own
+last swaps the two, and leaving the node releases both. One module owns the rules with
+unit tests for the grammar and the ledger; the claim door lives on the persona and the
+resolve door is anonymous; `/@slug` serves the persona page the `/id/` route does, factored
+for the purpose; the people page, the persona page's address block and the profile answer
+carry the short name; the profile settings page grew "your name on this node".

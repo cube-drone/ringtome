@@ -276,6 +276,32 @@
     font-size: 0.85rem;
 }
 
+/* Your name on this node (UNAUTHED.md, ruling 6). */
+.profile-slug-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.profile-slug-at {
+    color: var(--ink-soft);
+}
+.profile-slug-input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    padding: 0.35rem 0.5rem;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
+    background: var(--surface);
+    color: var(--ink);
+}
+.profile-slug-last {
+    color: var(--ink-soft);
+}
+
 .profile-bio {
     background: var(--surface);
     border: 1px solid transparent;
