@@ -74,9 +74,17 @@ pub async fn pass(state: AppState) -> Result<()> {
     Ok(())
 }
 
+/// One rollout at a time, process-wide (2026-09-17): the periodic pass and a test beat
+/// once advanced the same pending plan together - both read "pending", both walked the
+/// pages, and the one that found every page already at its head wrote its plan last,
+/// so the rollout that minted the changed page reported nothing changed. The lane is
+/// short and the plans are few; serialising is cheaper than a per-plan claim.
+static ROLLOUT_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Advance every pending plan this device owns, for one persona or all. Returns how many
 /// plans were touched.
 pub async fn rollout_due(state: &AppState, only_root: Option<&str>) -> Result<usize> {
+    let _lane = ROLLOUT_LANE.lock().await;
     let roots: Vec<String> = match only_root {
         Some(r) => vec![r.to_string()],
         None => crate::identity::hosted_roots(&state.node_db).await?,

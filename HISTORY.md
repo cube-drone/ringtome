@@ -9227,3 +9227,12 @@ held", which nineteen of the window plus the pin satisfies with the deep post on
 asks the fragment ledger's count and claims only past twenty. And the peek footprint's
 ceiling claim read a body the look was still fetching as a refusal with the wrong word; it
 waits for the body to land or the ceiling to bite, whichever the door says.
+
+## 2026-09-17: one rollout at a time
+
+The combinations suite's sealed-book update reported "changed: 0" once in a gate: alpha's log
+showed "book rolled out" twice in the same millisecond, once from the periodic pass and once
+from the test beat. Both read the plan as pending, both walked the pages, the first minted
+the revised page, the second found every page at its head and wrote its plan - nothing
+changed - last. `rollout_due` now takes a process-wide lane, so a second pass waits and then
+finds the plan done.
