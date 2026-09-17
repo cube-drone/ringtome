@@ -533,6 +533,9 @@ export const PersonaHome = ({ persona }) => {
 /// profile, your computers, log out - folded into the disclosure that sits where "this is
 /// you" used to be a link (Curtis, 2026-09-05), under a gear and "your settings". Only the
 /// person in question ever sees it.
+// The account tag the node hands its administrators (src/auth.rs) - a key, never a phrase.
+const NODE_ADMIN_TAG = 'node_admin';
+
 export const PersonaMenu = ({ persona, session }) => {
     const logout = async () => {
         // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
@@ -547,6 +550,10 @@ export const PersonaMenu = ({ persona, session }) => {
                 <span class="persona-menu-icon"><${Icons.settings} /></span>
                 ${t('persona.your-settings', 'your settings')}
             </summary>
+            ${/* An administrator is told so (Curtis, 2026-09-16): the account's tags ride
+                the session's whoami answer. */ ''}
+            ${session && session.account && (session.account.tags || []).includes(NODE_ADMIN_TAG) &&
+            html`<p class="persona-menu-note">${t('persona.you-administer-this-node', 'you administer this node')}</p>`}
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">
                     <span class="persona-menu-icon"><${Icons.profile} /></span>

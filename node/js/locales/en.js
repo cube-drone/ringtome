@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 739 phrases across 56 files.
+// 740 phrases across 56 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -490,6 +490,7 @@ export default {
     'persona.maybe-later': 'maybe later',
     'persona.log-out-of-this-browser': 'Log out of this browser? You will sign in again to come back.',
     'persona.your-settings': 'your settings',
+    'persona.you-administer-this-node': 'you administer this node',
     'persona.profile': 'profile',
     'persona.your-name-and-how-you': 'your name and how you appear',
     'persona.your-computers-2': 'your computers',

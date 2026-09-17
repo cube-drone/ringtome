@@ -474,6 +474,7 @@ pub async fn complete(
         &code.root_pubkey,
         &code.leaf_pubkey,
         created_at_ms,
+        state.config.admin_persona
     )
     .await?;
     state

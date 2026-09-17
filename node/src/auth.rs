@@ -157,6 +157,9 @@ pub async fn register(
     password: &str,
     min_password_len: usize,
     local_test: bool,
+    // The old rule, on unless an intended administrator is named at boot
+    // (`RINGTOME_ADMIN_PERSONA_ID`, config.rs): the first account is `node_admin`.
+    first_account_admin: bool,
 ) -> Result<Account, AppError> {
     let username = normalize_username(username)?;
     check_password_len(password, min_password_len)?;
@@ -188,7 +191,7 @@ pub async fn register(
             .await
             .context("counting accounts")
             .map_err(AppError::Internal)?;
-        if account_count == 1 {
+        if account_count == 1 && first_account_admin {
             add_tag(db, &id, TAG_NODE_ADMIN).await?;
             tracing::info!(username = %username, "first account created; granted node_admin");
         }
@@ -383,6 +386,27 @@ pub async fn has_tag(db: &Db, account_id: &Uuid, tag: &str) -> Result<bool, AppE
 }
 
 /// All tags on an account.
+/// The intended administrator arrived (`RINGTOME_ADMIN_PERSONA_ID`): the account that now
+/// hosts that persona is `node_admin`. Called wherever a persona becomes hosted; a no-op
+/// for every other persona, and idempotent for the one.
+pub async fn promote_intended_admin(
+    db: &Db,
+    intended: Option<[u8; 32]>,
+    root_hex: &str,
+    account_id: &Uuid,
+) -> Result<bool, AppError> {
+    let Some(intended) = intended else { return Ok(false) };
+    if hex::encode(intended) != root_hex {
+        return Ok(false);
+    }
+    if has_tag(db, account_id, TAG_NODE_ADMIN).await? {
+        return Ok(true);
+    }
+    add_tag(db, account_id, TAG_NODE_ADMIN).await?;
+    tracing::info!(account = %account_id, root = %root_hex, "the intended administrator's persona is hosted here; granted node_admin");
+    Ok(true)
+}
+
 pub async fn tags_for(db: &Db, account_id: &Uuid) -> Result<Vec<String>, AppError> {
     let rows: Vec<(String,)> = db
         .fetch_all(
@@ -446,14 +470,14 @@ mod tests {
         let pool = crate::db::test_node_db().await;
 
         // The network-facing floor: 8, with the count in the message.
-        let err = register(&pool, "cautious", "pin", 8, true).await.unwrap_err();
+        let err = register(&pool, "cautious", "pin", 8, true, true).await.unwrap_err();
         assert!(err.to_string().contains("8 characters"), "{err}");
 
         // The loopback floor: a short PIN is an honest posture on a machine you can touch...
-        register(&pool, "cozy", "1234", 1, true).await.unwrap();
+        register(&pool, "cozy", "1234", 1, true, true).await.unwrap();
 
         // ...but an empty password is confusion, not a posture.
-        let err = register(&pool, "voidling", "", 1, true).await.unwrap_err();
+        let err = register(&pool, "voidling", "", 1, true, true).await.unwrap_err();
         assert!(err.to_string().contains("empty"), "{err}");
 
         // The config derivation itself: loopback relaxes, anything else doesn't - including
@@ -473,10 +497,10 @@ mod tests {
     async fn first_account_becomes_node_admin() {
         let pool = crate::db::test_node_db().await;
 
-        let first = register(&pool, "founder", "password123", 8, false)
+        let first = register(&pool, "founder", "password123", 8, false, true)
             .await
             .unwrap();
-        let second = register(&pool, "latecomer", "password123", 8, false)
+        let second = register(&pool, "latecomer", "password123", 8, false, true)
             .await
             .unwrap();
 
@@ -484,12 +508,28 @@ mod tests {
         assert!(!has_tag(&pool, &second.id, TAG_NODE_ADMIN).await.unwrap());
     }
 
+    /// With an intended administrator named at boot, nobody is promoted for being first;
+    /// the account that comes to host the named persona is, once, whoever they are.
+    #[tokio::test]
+    async fn an_intended_administrator_displaces_the_first_account_rule() {
+        let pool = crate::db::test_node_db().await;
+        let intended = [9u8; 32];
+        let first = register(&pool, "founder", "password123", 8, false, false).await.unwrap();
+        assert!(!has_tag(&pool, &first.id, TAG_NODE_ADMIN).await.unwrap(), "first, but not named");
+        let later = register(&pool, "named", "password123", 8, false, false).await.unwrap();
+        assert!(!promote_intended_admin(&pool, Some(intended), &hex::encode([1u8; 32]), &later.id).await.unwrap(), "some other persona");
+        assert!(promote_intended_admin(&pool, Some(intended), &hex::encode(intended), &later.id).await.unwrap());
+        assert!(has_tag(&pool, &later.id, TAG_NODE_ADMIN).await.unwrap(), "the named persona's account");
+        assert!(promote_intended_admin(&pool, Some(intended), &hex::encode(intended), &later.id).await.unwrap(), "idempotent");
+        assert!(!promote_intended_admin(&pool, None, &hex::encode(intended), &first.id).await.unwrap(), "nothing intended, nothing promoted");
+    }
+
     #[tokio::test]
     async fn tags_round_trip() {
         let pool = crate::db::test_node_db().await;
 
         // Skip the admin bootstrap so this account starts with a clean tag set.
-        let account = register(&pool, "tag_tester", "password123", 8, true)
+        let account = register(&pool, "tag_tester", "password123", 8, true, true)
             .await
             .unwrap();
 

@@ -218,6 +218,13 @@
     gap: 0.6rem;
 }
 
+/* The administrator's line on the settings hub (2026-09-16). */
+.persona-menu-note {
+    margin: 0.2rem 0 0.4rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
 .persona-menu-item {
     display: flex;
     align-items: center;

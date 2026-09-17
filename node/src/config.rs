@@ -24,6 +24,15 @@ pub enum Tenancy {
     Single,
 }
 
+/// The intended administrator's address (`RINGTOME_ADMIN_PERSONA_ID`): a speakable address
+/// whose words check out, or a bare hex root; anything else is None.
+pub fn parse_admin_persona(raw: &str) -> Option<[u8; 32]> {
+    match crate::speakable::parse(raw.trim()) {
+        Some(crate::speakable::Parsed::Ok(root)) => Some(root),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub app_version: String,
@@ -158,6 +167,14 @@ pub struct Config {
     /// Purely a label: it appears only as private register values on identities this node
     /// hosts, never in any public surface, and it confers no authority anywhere.
     pub node_name: String,
+    /// `RINGTOME_ADMIN_PERSONA_ID`: the persona the operator means to administer this node,
+    /// by its speakable address (`serve-gush-7hyc…`). When set, the account that comes to
+    /// host that persona - by minting it here, adopting it, or being re-homed with it - is
+    /// made `node_admin` the moment it does, and the first account created on the node is
+    /// NOT made an administrator by default. When unset, the first account is (the old rule).
+    /// A value that is not a ringtome address refuses to boot: a typo must not quietly hand
+    /// the node to whoever signs up first.
+    pub admin_persona: Option<[u8; 32]>,
     /// `RINGTOME_PUBLIC_URL`: the base URL this node is publicly reachable at
     /// (`https://my-node.ca`), declared by the operator - the node cannot verify its own
     /// reachability, so this is an assertion, not a discovery. When set, minted identity
@@ -324,6 +341,16 @@ impl Config {
             .ok()
             .map(|s| s.trim().trim_end_matches('/').to_string())
             .filter(|s| !s.is_empty());
+        let admin_persona = match env::var("RINGTOME_ADMIN_PERSONA_ID").ok().filter(|s| !s.trim().is_empty()) {
+            None => None,
+            Some(raw) => match parse_admin_persona(&raw) {
+                Some(root) => Some(root),
+                None => {
+                    eprintln!("RINGTOME_ADMIN_PERSONA_ID is not a ringtome address: {raw:?} - refusing to boot rather than guess who administers this node");
+                    std::process::exit(2);
+                }
+            },
+        };
 
         Self {
             app_version,
@@ -357,6 +384,7 @@ impl Config {
             unfurl_rate_per_min,
             node_name,
             public_url,
+            admin_persona,
         }
     }
 
@@ -389,5 +417,21 @@ impl Config {
             environment: self.environment,
             public_url: self.public_url.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_intended_administrator_is_an_address_or_nothing() {
+        let root = [7u8; 32];
+        let speak = crate::speakable::speakable(&root);
+        assert_eq!(parse_admin_persona(&speak), Some(root), "a speakable address");
+        assert_eq!(parse_admin_persona(&format!("  {speak} ")), Some(root), "whitespace forgiven");
+        assert_eq!(parse_admin_persona(&hex::encode(root)), Some(root), "the hex spelling");
+        assert_eq!(parse_admin_persona("serve-gush-notakey"), None);
+        assert_eq!(parse_admin_persona(""), None);
     }
 }

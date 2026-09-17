@@ -51,6 +51,9 @@ struct Credentials {
 struct AccountInfo {
     id: String,
     username: String,
+    /// The account's tags - `node_admin`, `admin` - so the person can know what they hold
+    /// here (Curtis, 2026-09-16: an administrator had no way to know they were one).
+    tags: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -89,11 +92,13 @@ async fn register_handler(
         &creds.password,
         state.config.password_min_len(),
         state.config.local_test,
+        state.config.admin_persona.is_none()
     )
     .await?;
     Ok(Json(AccountInfo {
         id: account.id.to_string(),
         username: account.username,
+        tags: crate::auth::tags_for(&state.node_db, &account.id).await?,
     }))
 }
 
@@ -198,6 +203,7 @@ async fn login_handler(
         Json(AccountInfo {
             id: account.id.to_string(),
             username: account.username,
+            tags: crate::auth::tags_for(&state.node_db, &account.id).await?,
         }),
     ))
 }
@@ -216,11 +222,13 @@ async fn logout_handler(
     Ok(jar.remove(Cookie::from(name)))
 }
 
-async fn whoami_handler(session: Session) -> Json<AccountInfo> {
-    Json(AccountInfo {
+async fn whoami_handler(session: Session, State(state): State<AppState>) -> Result<Json<AccountInfo>, AppError> {
+    let tags = crate::auth::tags_for(&state.node_db, &session.account.id).await?;
+    Ok(Json(AccountInfo {
         id: session.account.id.to_string(),
         username: session.account.username,
-    })
+        tags,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -248,6 +256,7 @@ async fn grant_handler(
     Ok(Json(AccountInfo {
         id: target.id.to_string(),
         username: target.username,
+        tags: crate::auth::tags_for(&state.node_db, &target.id).await?,
     }))
 }
 
@@ -268,6 +277,7 @@ async fn revoke_handler(
     Ok(Json(AccountInfo {
         id: target.id.to_string(),
         username: target.username,
+        tags: crate::auth::tags_for(&state.node_db, &target.id).await?,
     }))
 }
 

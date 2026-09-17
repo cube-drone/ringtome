@@ -9117,3 +9117,16 @@ unit tests for the grammar and the ledger; the claim door lives on the persona a
 resolve door is anonymous; `/@slug` serves the persona page the `/id/` route does, factored
 for the purpose; the people page, the persona page's address block and the profile answer
 carry the short name; the profile settings page grew "your name on this node".
+
+## 2026-09-16: the intended administrator
+
+"Can we provide a persona ID as an intended admin, and if that persona ever appears on the
+server, it's automatically upgraded?" `RINGTOME_ADMIN_PERSONA_ID` names a persona by its
+speakable address at boot. When it is set, the account that comes to host that persona -
+by minting it here, adopting it, or being re-homed with it - is made `node_admin` the
+moment the persona is recorded as hosted, whichever road brought it; and the first account
+created on the node is no longer promoted for being first. A value that is not a ringtome
+address refuses to boot rather than quietly hand the node to whoever signs up first. On
+the way, the session's whoami answer (and every other account answer) now carries the
+account's tags, and the settings hub tells an administrator "you administer this node" -
+until now an administrator had no way to know they were one.

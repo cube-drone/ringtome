@@ -68,6 +68,7 @@ pub async fn create(
     user_dbs: &crate::db::UserDbManager,
     account_id: &Uuid,
     node_name: &str,
+    intended_admin: Option<[u8; 32]>,
 ) -> Result<CreatedIdentity, AppError> {
     // 1. Generate the root keypair. The public key is the identity's name.
     let signing_key = SigningKey::generate(&mut OsRng);
@@ -101,7 +102,7 @@ pub async fn create(
     // 4. Record the identity -> account link. On the creating node, the signing key *is* the
     //    root (leaf_pubkey = root_pubkey); nodes added later sign with granted leaf keys.
     let created_at_ms = now_ms();
-    record_identity(node_db, account_id, &pubkey_hex, &pubkey_hex, created_at_ms).await?;
+    record_identity(node_db, account_id, &pubkey_hex, &pubkey_hex, created_at_ms, intended_admin).await?;
 
     // 5. Materialize the per-user database (opens + migrates it).
     let user_db = user_dbs
@@ -195,6 +196,9 @@ pub async fn record_identity(
     root_pubkey: &str,
     leaf_key_name: &str,
     created_at_ms: i64,
+    // The intended administrator (`RINGTOME_ADMIN_PERSONA_ID`): becoming hosted is the
+    // moment their account is promoted, whichever road brought the persona here.
+    intended_admin: Option<[u8; 32]>,
 ) -> Result<(), AppError> {
     node_db
         .execute(
@@ -210,6 +214,7 @@ pub async fn record_identity(
         .await
         .context("recording identity")
         .map_err(AppError::Internal)?;
+    crate::auth::promote_intended_admin(node_db, intended_admin, root_pubkey, account_id).await?;
     // Hosting supersedes having FETCHED them: a persona that lives here is no longer a
     // stranger this node once reached across the network for, and leaving the row behind
     // would tell the retention accounting a stranger's story about a tenant (found
@@ -375,6 +380,7 @@ pub async fn recover_password(
             new_password,
             state.config.password_min_len(),
             state.config.local_test,
+            state.config.admin_persona.is_none()
         )
         .await?;
         state

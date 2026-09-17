@@ -301,6 +301,7 @@ async fn create_handler(
         &state.user_dbs,
         &session.account.id,
         &state.config.node_name,
+        state.config.admin_persona
     )
     .await?;
     // Participation implies locatability (the discoverability doctrine): a newborn identity
