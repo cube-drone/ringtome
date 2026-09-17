@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 751 phrases across 56 files.
+// 759 phrases across 56 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -40,6 +40,7 @@ export default {
     'apps.feed.trusted-only-means': 'sealed: the words go only to the people on the list - everyone else sees that a post exists, and its date',
     'apps.feed.only-show-to': 'only show to',
     'apps.feed.everyone': 'everyone',
+    'apps.feed.people-i-trust-and-onward': 'people I trust, and onward',
     'apps.feed.people-i-trust': 'people I trust',
     'apps.feed.the-people-mentioned': 'the people mentioned',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
@@ -465,6 +466,10 @@ export default {
     'person.block-this-persona': 'block this persona',
 
     // --- node/js/persona.js ---
+    'persona.this-computer-has-been-locked-out': 'This computer has been locked out.',
+    'persona.this-computer-has-left-the-persona': 'This computer has left the persona.',
+    'persona.the-persona-itself-is-fine': "The persona itself is fine and lives on its other computers. All that's left here is to let it go.",
+    'persona.okay-let-it-go': 'okay - let it go',
     'persona.nobody-lives-here-yet': 'Nobody lives here yet.',
     'persona.a-persona-is-who-you': 'A persona is who you are around here - your name, your pages, your stuff. You can have more than one, later.',
     'persona.create-a-persona': 'create a persona',
@@ -584,9 +589,11 @@ export default {
     'postentry.pinned-chip-title': 'the author pinned this to the top of their page',
     'postentry.pinned': 'pinned',
     'postentry.mentioned-chip-title': 'these words are for the people named in them',
+    'postentry.onward-chip-title': 'the author shares these words with people they trust, who may pass them to people they trust',
     'postentry.audience-chip-title': 'you share these words only with the people you tagged {audience}',
     'postentry.trusted-only-chip-title': 'the author shares these words only with people they trust',
     'postentry.only-the-people-mentioned': 'only the people mentioned',
+    'postentry.trusted-and-onward': 'trusted, and onward',
     'postentry.only-audience': 'only {audience}',
     'postentry.trusted-only': 'trusted only',
     'postentry.settled-chip-title': 'the author turned off comments on this post',
@@ -719,6 +726,7 @@ export default {
     'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
     'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.sealed-no-shares': 'a post shared only with people the author trusts is not passed along',
+    'identity.routes.onward-needs-the-key': 'you can only pass along words you can read',
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',

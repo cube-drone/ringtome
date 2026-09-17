@@ -323,8 +323,8 @@ export const FarewellScreen = ({ persona }) => {
         <div class="null-state">
             <p class="null-title">
                 ${lockedOut
-                    ? 'This computer has been locked out.'
-                    : 'This computer has left the persona.'}
+                    ? t('persona.this-computer-has-been-locked-out', 'This computer has been locked out.')
+                    : t('persona.this-computer-has-left-the-persona', 'This computer has left the persona.')}
             </p>
             <p class="null-sub">
                 ${lockedOut
@@ -336,12 +336,14 @@ export const FarewellScreen = ({ persona }) => {
                        counts; it just isn't part of the persona anymore.`}
             </p>
             <p class="null-sub">
-                The persona itself is fine and lives on its other computers. All that's left
-                here is to let it go.
+                ${t(
+                    'persona.the-persona-itself-is-fine',
+                    "The persona itself is fine and lives on its other computers. All that's left here is to let it go."
+                )}
             </p>
             ${error && html`<p class="form-error">${error}</p>`}
             <button class="welcome-go" disabled=${busy} onClick=${letGo}>
-                ${busy ? '…' : 'okay - let it go'}
+                ${busy ? '…' : t('persona.okay-let-it-go', 'okay - let it go')}
             </button>
         </div>
     `;

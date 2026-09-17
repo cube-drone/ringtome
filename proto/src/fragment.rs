@@ -814,6 +814,7 @@ mod tests {
             thread_root: reply_to,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         let entry = crate::Entry {
             v: crate::ENTRY_VERSION,

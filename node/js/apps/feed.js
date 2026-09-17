@@ -553,8 +553,17 @@ export const FeedApp = ({ current, searchQuery }) => {
     const [audienceNext, setAudienceNext] = useState('');
     const trustNext = audienceNext !== '';
     // 'mentioned' is the post's own room (Contact tags, ruling 5): the people its user
-    // cards name; the node refuses it when the words name nobody.
-    const audienceTag = audienceNext === 'mentioned' ? '@mentioned' : audienceNext.startsWith('tag:') ? audienceNext.slice(4) : '';
+    // cards name; the node refuses it when the words name nobody. 'onward' (ruling 7) is
+    // the trust list with the share button left on: whoever I trust may pass it to
+    // whoever they trust.
+    const audienceTag =
+        audienceNext === 'mentioned'
+            ? '@mentioned'
+            : audienceNext === 'onward'
+              ? '@onward'
+              : audienceNext.startsWith('tag:')
+                ? audienceNext.slice(4)
+                : '';
     const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
 
     const post = async (docId) => {
@@ -650,7 +659,9 @@ export const FeedApp = ({ current, searchQuery }) => {
                 fresh: true,
                 settled: wishes.settled,
                 trusted_only: wishes.trusted_only,
-                audience: wishes.audience,
+                // Onward is the header's word, not an audience (Contact tags, ruling 7).
+                onward: wishes.audience === '@onward',
+                audience: wishes.audience === '@onward' ? undefined : wishes.audience,
                 updated_ms: Date.now(),
                 arrived_ms: Date.now(),
                 annotations: overlayLabels,
@@ -748,6 +759,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                             onChange=${(e) => setAudienceNext(e.currentTarget.value)}
                                         >
                                             <option value="">${t('apps.feed.everyone', 'everyone')}</option>
+                                            <option value="onward">${t('apps.feed.people-i-trust-and-onward', 'people I trust, and onward')}</option>
                                             <option value="trusted">${t('apps.feed.people-i-trust', 'people I trust')}</option>
                                             <option value="mentioned">${t('apps.feed.the-people-mentioned', 'the people mentioned')}</option>
                                             ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}

@@ -1,0 +1,179 @@
+# CHAT - real-time rooms
+
+Curtis's brief (2026-09-18): a chat "room" is posted, as a post, with a post's visibility and
+virality - friends only, the people you trust, everyone - and whoever can see it may rebroadcast
+it where the post's rules allow, making the room visible further. The creator can delete the
+post, which removes the room for everyone. Anybody who can see the room joins a gossip space
+of the machines that are live in it and chats, live, with everyone else there, in a Slack-like
+interface using Marquee with our additions - user cards, the emoji picker. History is the hard
+part: chat is faster and more ephemeral than the rest of the application, and people expect
+instant access to all of it.
+
+The rulings below were settled with Curtis on 2026-09-18, the three open questions among
+them; what remains open is marked residual. The chain-key change comes first, as its own arc.
+
+## The shape, in one paragraph
+
+A room is a post whose format is `room`. Everything about who may see it, share it and be told
+about it is the post machinery as it stands: the seal, the audience, the mention notice, the
+share button and its refusal on sealed posts. A message is a signed entry on its author's own
+chain, on a lane that belongs to the room, so a room's history is the union of its
+participants' chains interleaved at read time - the sealed pair's design at N - and nobody
+ever writes anyone else's record. Live delivery is gossip carrying those same signed entries,
+so the fast lane and the durable lane carry one thing and the chain sync heals whatever gossip
+dropped. Retention is count-bounded per participant the way the inbox's is, and the creator's
+node keeps its own room whole, which is where "all of it" lives.
+
+## Rulings (settled 2026-09-18)
+
+1. **A room is a post.** Format `room`, minted and published like any post, carried on the
+   POSTS chain with a title (the room's name) and words (its description, Marquee). It wears
+   every post rule unchanged: open, or sealed to everyone the author trusts, a contact tag, or
+   the people mentioned (*Contact tags*, rulings 4 and 5), or to the people they trust and
+   onward (ruling 7); shares allowed on an open or onward room and refused on any other
+   sealed one (*Post visibility*); the feed, the shelf and the front page show it
+   as a card that says "a room" and opens it. Deleting the post is the takedown every post has,
+   and a room whose post is gone is gone: no surface assembles it, and clients leave the space.
+2. **Who may be in the room is who may open the post.** The seal's one question,
+   `seal_admits(holder, key document, subject)`, is the room's door: an open room admits
+   anyone; a sealed room admits whoever its seal admits, and the room's key IS the post's key.
+   A participant in a sealed room seals their messages under that key, as a reply under the
+   author's seal does (*Replies under the author's seal*). Being admitted later opens the
+   history; being tagged out closes the future, and what was already read stays read - the
+   bound every seal carries.
+3. **A message is an entry on its author's own chain, on the room's lane.** Single-writer is
+   foundational (*Chains: One Per Key, Per Service*): a room is N chains, one per participant,
+   interleaved at read by the ordering contract, exactly the sealed pair's "two chains, not
+   one" at any N. Nothing shared is ever written, so there is nothing to conflict, and the
+   creator deleting the post cannot delete a participant's words - only orphan them, as a
+   takedown orphans its replies. **The lane is per room**: a chain keyed `(author, CHAT, room
+   id)` - the first per-instance chain class, which the sealed pair needs too and does not yet
+   have (a wire change: the chain key grows a third element, absent for every existing
+   service). The alternative, one CHAT chain per author carrying every room's messages tagged
+   by room, is rejected: syncing one room would pull the author's every other room too, and a
+   sealed room's traffic would ride beside an open one's under one gate. (Open question 1.)
+4. **The room's lane is gated by the room's door.** A room chain is served to a requester who
+   proves they may open the room post: the public predicate for an open room, the seal's for a
+   sealed one - the gated lane's "predicate is the parameter" (*Lanes: Public, Gated,
+   Private*), with the room post as the parameter. Being in a room means syncing every
+   participant's room chain, which is what a follow means for posts. **There is no roster**:
+   a room's membership is the set of people who have spoken, and it is learned two ways that
+   cover each other. The creator's node is the directory of record - it archives every
+   participant's chain, so it knows everyone who has ever spoken and answers "who is in this
+   room" under the room's door. And every live node carries a **room frontier** on the gossip
+   space - the set of participant chains it holds and each one's head - merged by union, so
+   a newcomer joining while the creator's node is dark learns the set from whoever is
+   present, and a returning node learns what it missed. Chains are then fetched from any
+   peer that holds them, under the room's door at every fetch; every participant mirrors
+   every other's, so nothing depends on an author being online. The bounds: a room with
+   nobody live and the creator dark is unreachable, which is when nothing is happening in it;
+   and a lurker who never speaks has no chain and is visible only as presence.
+5. **Live is gossip, and gossip carries the same entries.** Each room has an iroh-gossip
+   topic; every live machine of every participant joins it, bootstrapped from the creator's
+   node and the peer ledger's rows for the participants it already knows. A message is signed
+   and appended to its author's room chain first, then published on the topic; a receiving
+   node verifies it as it verifies any entry (signature, chain, authorization path) and folds
+   it in place, out of order if need be, since the chain sync is what settles order. Gossip
+   may drop, duplicate or reorder and nothing is lost, because the chains are the truth and
+   sync heals the gaps at the next beat. A sealed room's topic id is derived from the room's
+   KEY (`BLAKE3("ringtome-chat/" || key)`), so only key-holders can compute it, and its
+   messages are ciphertext on the wire as they are at rest; an open room's topic derives from
+   the post id. Presence and typing are gossip only, ephemeral, never persisted - the sealed
+   pair's rule.
+6. **History: recent everywhere, whole at the creator's.** A node keeps the last ten thousand
+   messages of a room, and each participant's chain is pruned below that cutoff - the inbox's
+   suffix machinery with a floor the room sets, so a room stays cheap to hold for everyone in
+   it however many are in it (the settled question below has the numbers). **The creator's node keeps every participant's room chain
+   whole**: the room is the creator's post, the archive is the room's, and "instant access to
+   full history" is scroll-back that asks the creator's node for the prefix below the local
+   floor, served under the room's door like everything else. Any operator may press
+   **full-sync** on a room and their node holds it whole from then on - the volunteer archive;
+   a sealed room's archive stays with nodes that can evaluate its gate. The honest bound, stated once: if the creator's node is gone and nobody
+   else archived, history above everyone's floor is gone with it - which is what a room's
+   creator deleting the post does on purpose, arriving by accident.
+7. **The room view.** A Chat app at `/home/chat`: the rooms this persona may see (room posts
+   in the feed and on followed shelves, plus rooms joined by link), each with its name, who is
+   live, and an unread mark moved by a deliberate act, never by scrolling (*One Cursor*). A
+   room is the message list newest at the bottom, the composer - Marquee with the user-card
+   picker and the emoji picker, Enter sends, Shift-Enter breaks a line - and a presence rail
+   of live participants. Messages render with the card's own machinery: a mention is a user
+   card, a message that names you rings the bell as a post mention does (the mention notice,
+   scoped to the room's door). Scroll-back pulls earlier history as ruling 6 describes.
+8. **What a message is not.** Not editable and not deletable after the fact beyond the post
+   rules every entry has: an author may retract their own message (a retraction entry, honoured
+   by every honest client, the bound being what was already read). No reactions, no threads,
+   no media in the first cut - each is a slice of its own, and each is a decision (a reaction
+   is an annotation on a message; a thread is a room whose parent is a message; media rides the
+   blob lane under the room's door).
+9. **What a participant takes on, and how they leave.** To verify another participant's
+   messages a node needs their key tree, so being in a room mirrors each participant's
+   identity-public chain and profile at headers depth - small, public, the discovery
+   pipeline's own shallow mirror - and nothing else of theirs: not their posts, not their
+   follows, not another room. **Leaving is a first-class act and it is local**, since there is
+   no roster to leave: the node stops syncing the room's chains, drops its memo and the
+   mirrors it held only for that room, leaves the gossip space, and the bell stops ringing
+   for mentions there; the participant's own past messages stay on their chain, retractable
+   one by one. **Mute** keeps a room without its noise - no bell, no unread mark - for a room
+   worth coming back to. **Block** is the block the whole system has, a private fact the
+   node enforces everywhere: a blocked participant's messages are hidden, their room chain is
+   no longer mirrored here, and their mentions never ring. For an open room being flooded,
+   leaving is the reader's remedy and deleting the room is the creator's; anything finer is
+   open question 2.
+
+## Slices
+
+0. **The chain key.** `(author, service, instance)` on the wire and in the node - its own
+   arc, no chat in it, green under the existing suites before slice one.
+1. **The room post.** Format `room` on the wire, the mint, the card on the feed and the shelf,
+   the share rule, the Chat app listing the rooms a persona may see, and the room's door
+   (`seal_admits` with the room post as the key document). No messages yet: a room you can
+   enter and find empty.
+2. **The room lane.** The per-instance chain key in the proto crate and the store; the
+   `CHAT_MESSAGE` entry type; the gated sync predicate; the room-floor retention with suffix
+   admission; a `room_messages` memo folded from the chains; the door that serves a room's
+   recent history. Messages arrive by sync alone, on the beat: slow, complete, and honest.
+3. **Live.** iroh-gossip as a dependency; a topic per room; publish-after-append; verify and
+   fold on receipt; presence and typing. The room view becomes live.
+4. **History.** The creator's node as archivist; scroll-back below the room's window; the
+   full-sync button.
+5. **Mentions and the bell.** A message naming a persona rings their bell under the room's
+   door, and the user-card picker knows the room's participants.
+
+## Settled questions and residuals
+
+- **Settled 2026-09-18: the per-instance chain.** The chain key grows a third element,
+  `(author, service, instance)`, absent for every existing service and required for rooms -
+  its own arc before slice one, landing green under the existing suites with no chat in it.
+  Curtis's reason reaches past chat: "the person-to-person chat is basically just a special
+  case of chat room - we'd want those chains encrypted by a key only visible to both players,
+  but that's essentially the 'only show to [users mentioned in this post]' stack writ large."
+  So the sealed pair is a room of two, sealed to the people mentioned, and the DM section of
+  the plan is amended when that room is built rather than designed twice.
+- **Settled 2026-09-18: moderation is a published mute, and moderators are named.** "Rooms
+  need moderation, in particular ones that are publicly accessible." A mute is the creator's
+  ask, worded as the settled wish is: a public annotation on the room post naming the muted
+  persona, honoured by every honest client - their messages hidden for every reader, their
+  room chain no longer mirrored or archived - and not cryptography, since a malicious client
+  shows them anyway. The muted are told nothing (a block is the one refusal that is not
+  spoken), and the mutes travel with a share, as every annotation on the post does. A
+  **moderators list** is a second annotation the creator publishes, naming personas whose
+  mutes honest clients honour as the creator's own; it grows one persona at a time, or by a
+  contact tag from the People page - a UI nicety only, since the tag is private and never
+  travels: adding by tag resolves to the tagged roots at that moment, and the list names
+  roots. A sealed room has the seal as well: untag them, and their future closes.
+- **Settled 2026-09-18: a room budget, a speaker ceiling, and full-sync by choice.** The
+  unit of retention is the room, not the participant: a node keeps the last **ten thousand
+  messages** of a room, no knob, and each participant's chain floor is derived from that
+  cutoff (the suffix machinery prunes each chain below the room's ten-thousandth most recent
+  message), so a ten-person room keeps about a thousand of each and a ten-thousand-person
+  room keeps a few from most and many from the talkative. The budget bounds the chains synced
+  without a cap being written down - at most as many speakers as appear in the window - and a
+  ceiling of the thousand most-recently-active speakers sits under it for the one cost the
+  budget does not bound, the identity mirror each speaker needs. The creator's node keeps the
+  room whole. Any operator may press **full-sync** on a room, which tells their node to hold
+  every participant's chain whole from then on - the volunteer archive, one button, so a
+  popular room survives its creator's node going dark.
+- **Rate limits and floods.** A room's gossip topic is reachable by whoever can compute it; for
+  an open room that is everyone, and the inbound gate's stamp and standing do not apply to
+  gossip. The room's door is the gate at sync; the topic needs one of its own.
+- **The DM is a room of two** (settled with question 1): the same slices, a narrower door.

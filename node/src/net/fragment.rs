@@ -160,7 +160,21 @@ async fn answer_key(
     // The persona asking must be admitted, AND the dialing endpoint must serve that
     // persona (2026-09-14): a node hosts many, and the seal admits people, not machines.
     let for_hex = hex::encode(for_root);
-    if !allowed_roots.contains(&for_hex) {
+    let mut admitted = allowed_roots.contains(&for_hex);
+    // The onward hop (Contact tags, ruling 7): a persona hosted HERE holds the key, passed
+    // the post along, and publishes trust for the asker - this is the sharer's node, and
+    // the author asked that the sharer's trust open the seal one hop further.
+    if !admitted {
+        for sharer in crate::postkeys::grantees(&state.node_db, &author_hex, &doc_hex).await.unwrap_or_default() {
+            if crate::identity::is_hosted(&state.node_db, &sharer).await.unwrap_or(false)
+                && crate::idface::onward_sharer_admits(state, &author_hex, &doc_hex, &sharer, &for_hex).await
+            {
+                admitted = true;
+                break;
+            }
+        }
+    }
+    if !admitted {
         tracing::debug!(author = %author_hex, %dialer, asking = %for_hex, "key release refused: the persona asking is not admitted");
         return refused;
     }
@@ -222,15 +236,37 @@ async fn ask_key(
 
 /// Fetch a trusted-only post's key from whoever serves the author, remembering it on
 /// success so the next body read is a memo hit. `None` is honest: no candidate answered,
-/// or every door judged this node untrusted.
+/// or every door judged this node untrusted. `via` is the sharer a share card named: on a
+/// post sealed "people I trust, and onward" (Contact tags, ruling 7) their node holds the
+/// key and releases it to the people they trust, so it is asked first.
 pub async fn fetch_key(
     state: &AppState,
     author: &[u8; 32],
     doc_id: &[u8; 16],
     for_root: &[u8; 32],
+    via: Option<&str>,
 ) -> Option<[u8; 32]> {
     let for_hex = hex::encode(for_root);
     let author_hex = hex::encode(author);
+    let mut endpoints: Vec<String> = Vec::new();
+    if let Some(sharer_hex) = via {
+        for leaf in crate::idface::stored_tree_leaves(state, sharer_hex).await {
+            let ep = crate::idface::leaf_via_to_endpoint(state, sharer_hex, &leaf).await;
+            if ep != leaf && !endpoints.contains(&ep) {
+                endpoints.push(ep);
+            }
+        }
+        for ep in crate::net::sync::peers_for(&state.node_db, sharer_hex).await.unwrap_or_default() {
+            if !endpoints.contains(&ep) {
+                endpoints.push(ep);
+            }
+        }
+        if let Ok(Some((_, Some(v)))) = crate::idface::foreign_fetch_row(state, sharer_hex).await {
+            if !endpoints.contains(&v) {
+                endpoints.insert(0, v);
+            }
+        }
+    }
     // The endpoints this node ACTUALLY dials for the author - the same peer rows every
     // pull walks - first; the delivery-candidate ladder only as a fallback (its leaf
     // mapping needs a resolved serving record, which a fresh follower may not hold yet -
@@ -241,7 +277,6 @@ pub async fn fetch_key(
     // serving record to the endpoint actually serving them. (Chasing the bare root here
     // resolves the root-keyed record, whose endpoint field is the RECOVERY key - forty
     // polite dials at an undialable spare, in the CI artifact that taught this comment.)
-    let mut endpoints: Vec<String> = Vec::new();
     for leaf in crate::idface::stored_tree_leaves(state, &author_hex).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, &author_hex, &leaf).await;
         if ep != leaf && !endpoints.contains(&ep) {
@@ -259,9 +294,9 @@ pub async fn fetch_key(
     // The endpoint that ANSWERED for this author before - the ?via hint's memory
     // (foreign_fetches.last_via), which is how a fresh follower reached them at all -
     // outranks the ledger: it is the one address proven live for exactly this road.
-    if let Ok(Some((_, Some(via)))) = crate::idface::foreign_fetch_row(state, &author_hex).await {
-        if !endpoints.contains(&via) {
-            endpoints.insert(0, via);
+    if let Ok(Some((_, Some(last)))) = crate::idface::foreign_fetch_row(state, &author_hex).await {
+        if !endpoints.contains(&last) {
+            endpoints.insert(0, last);
         }
     }
     // An empty ledger is not "nobody serves them" - it is "not resolved yet": the pull

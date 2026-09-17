@@ -1355,7 +1355,7 @@ pub(crate) async fn public_doc_bytes(
     let holder_hex = hex::encode(holder);
     let mut viewer_hex: Option<String> = None;
     if trusted_only {
-        viewer_hex = trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false).await?;
+        viewer_hex = trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false, via).await?;
         if viewer_hex.is_none() {
             return Err(AppError::Forbidden(crate::msg!(
                 "idface.for-trusted-readers-only",
@@ -1416,7 +1416,7 @@ pub(crate) async fn public_doc_bytes(
             .expect("checked above");
         // The key for THIS persona (2026-09-14): a grant, or the lane asked for them.
         let key = match viewer_hex.as_deref() {
-            Some(v) => key_for(state, &holder_hex, &key_doc, v).await,
+            Some(v) => key_for(state, &holder_hex, &key_doc, v, via).await,
             None => None,
         };
         let _ = doc_bytes;
@@ -1542,11 +1542,22 @@ pub struct PostsQuery {
 /// Is a post sealed, as this node holds its header - the chain first, the fragment ledger
 /// second? `None` when the header is not here at all.
 pub(crate) async fn sealed_here(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<bool> {
+    held_flags(state, author_hex, doc_id).await.map(|(sealed, _)| sealed)
+}
+
+/// Is a post "people I trust, and onward" (Contact tags, ruling 7), as this node holds its
+/// header? `None` when the header is not here at all.
+pub(crate) async fn onward_here(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<bool> {
+    held_flags(state, author_hex, doc_id).await.map(|(_, onward)| onward)
+}
+
+/// `(trusted_only, onward)` off the held header - the chain first, the fragment ledger second.
+async fn held_flags(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<(bool, bool)> {
     if let Ok(Some(db)) = state.user_dbs.get(author_hex).await {
         if let Ok(Some(entry)) = crate::record::documents::public_header_entry(&db, doc_id).await {
             if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
                 if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
-                    return Some(h.trusted_only);
+                    return Some((h.trusted_only, h.onward));
                 }
             }
         }
@@ -1555,7 +1566,36 @@ pub(crate) async fn sealed_here(state: &AppState, author_hex: &str, doc_id: &[u8
         .await
         .ok()
         .flatten()
-        .map(|h| h.trusted_only)
+        .map(|h| (h.trusted_only, h.onward))
+}
+
+/// The onward hop (Contact tags, ruling 7): `sharer` passed `(holder, key_doc)` along, and
+/// their own published trust admits `subject`. Judged from the sharer's chains as this node
+/// mirrors them - the share on their shares chain, the trust on their identity chain - so
+/// a `?via=` hint nobody's record backs admits nobody. Only for a post whose header says
+/// onward; a plain sealed post has no hop, and neither the holder nor the subject is a hop.
+pub(crate) async fn onward_sharer_admits(state: &AppState, holder_hex: &str, key_doc_hex: &str, sharer_hex: &str, subject_hex: &str) -> bool {
+    if sharer_hex == holder_hex || sharer_hex == subject_hex {
+        return false;
+    }
+    let Ok(key_doc) = hex::decode(key_doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return false };
+    let Ok(key_doc) = key_doc else { return false };
+    if onward_here(state, holder_hex, &key_doc).await != Some(true) {
+        return false;
+    }
+    // user-db open 18 of 18 (tests/conventions.rs): the sharer's mirrored chains.
+    let Ok(Some(db)) = state.user_dbs.get(sharer_hex).await else { return false };
+    let shared = crate::record::imaol::rebroadcasts(&db)
+        .await
+        .map(|rows| rows.iter().any(|s| s.version_seen.is_some() && s.author_root == holder_hex && s.doc_id == key_doc))
+        .unwrap_or(false);
+    if !shared {
+        return false;
+    }
+    crate::record::imaol::published_edges(&db)
+        .await
+        .map(|edges| edges.get(subject_hex).is_some_and(|e| e.edge.trust.is_some()))
+        .unwrap_or(false)
 }
 
 /// The key a statement about `(author, doc)` must be sealed under, when the subject is
@@ -1596,7 +1636,7 @@ pub(crate) async fn seal_key_for(
     };
     let (holder, key_doc) = seal_holder(&author, doc_id, seal_of);
     let holder_hex = hex::encode(holder);
-    let key = key_for(state, &holder_hex, &key_doc, labeller_hex).await;
+    let key = key_for(state, &holder_hex, &key_doc, labeller_hex, None).await;
     match key {
         Some(k) => Ok(Some((holder_hex, k))),
         None => Err(AppError::Forbidden(crate::msg!(
@@ -1626,10 +1666,18 @@ pub(crate) fn seal_holder(
 /// themself, always. A post sealed to an audience - a contact tag the author put on people,
 /// known only on the author's own node - admits whoever wears the tag; any other sealed
 /// post admits whoever the holder publishes trust for. Every sealed door asks this and
-/// nothing else, so an audience is one narrower answer, not a new mechanism.
-pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str) -> bool {
+/// nothing else, so an audience is one narrower answer, not a new mechanism. `via` is the
+/// sharer a share card named: on a post sealed "people I trust, and onward" (ruling 7)
+/// the sharer's own trust admits the subject too - one hop, judged from the sharer's
+/// mirrored record.
+pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str, via: Option<&str>) -> bool {
     if subject_hex == holder_hex {
         return true;
+    }
+    if let Some(sharer) = via {
+        if onward_sharer_admits(state, holder_hex, key_doc_hex, sharer, subject_hex).await {
+            return true;
+        }
     }
     // Away from the holder's node (2026-09-14) the audience is unknown, and the word is
     // the holder's own: a grant the lane gave this persona says yes; nothing yet falls back
@@ -1664,20 +1712,20 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
 /// is the word for the shelf, the feed, the thread and the labels (Contact tags, ruling 4).
 /// Never for the body door: the door is what asks for the key, and a refusal must not stop
 /// it asking again once trust or the audience has changed - a key's arrival clears it.
-pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str) -> bool {
+pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str, via: Option<&str>) -> bool {
     if subject_hex != holder_hex
         && crate::postkeys::refused(&state.node_db, holder_hex, key_doc_hex, subject_hex).await.unwrap_or(false)
     {
         return false;
     }
-    seal_admits(state, holder_hex, key_doc_hex, subject_hex).await
+    seal_admits(state, holder_hex, key_doc_hex, subject_hex, via).await
 }
 
 /// The key for `viewer` to open `(holder, key_doc)`, or None: on the holder's own node the
 /// memo (the gate already judged the viewer); elsewhere the memo only on a grant to this
 /// persona, else the lane is asked FOR this persona and grants or refuses (2026-09-14: a
 /// node hosts many personas, and a key one fetched is not the others' to use).
-pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 16], viewer_hex: &str) -> Option<[u8; 32]> {
+pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 16], viewer_hex: &str, via: Option<&str>) -> Option<[u8; 32]> {
     let key_doc_hex = hex::encode(key_doc);
     let held = crate::postkeys::lookup(&state.node_db, holder_hex, &key_doc_hex).await.ok().flatten();
     if viewer_hex == holder_hex || hosted_here(state, holder_hex).await.unwrap_or(false) {
@@ -1688,7 +1736,7 @@ pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 1
     }
     let holder = hex::decode(holder_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
     let viewer = hex::decode(viewer_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
-    crate::net::fragment::fetch_key(state, &holder, key_doc, &viewer).await
+    crate::net::fragment::fetch_key(state, &holder, key_doc, &viewer, via).await
 }
 
 /// Everyone the holder has put `tag` on, from the holder's private contact bag - readable
@@ -1717,7 +1765,7 @@ pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, key_doc
 /// The viewer's standing with a seal: the first of the session's personas the holder
 /// admits, by root - `for_listing` honours a remembered refusal (`seal_lists`), the body
 /// door does not.
-pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str, key_doc_hex: &str, for_listing: bool) -> Result<Option<String>, AppError> {
+pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str, key_doc_hex: &str, for_listing: bool, via: Option<&str>) -> Result<Option<String>, AppError> {
     let Some(sess) = session else { return Ok(None) };
     let mine: Vec<String> = crate::identity::list_for_account(&state.node_db, &sess.account.id)
         .await?
@@ -1726,9 +1774,9 @@ pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, 
         .collect();
     for r in mine {
         let ok = if for_listing {
-            seal_lists(state, holder_hex, key_doc_hex, &r).await
+            seal_lists(state, holder_hex, key_doc_hex, &r, via).await
         } else {
-            seal_admits(state, holder_hex, key_doc_hex, &r).await
+            seal_admits(state, holder_hex, key_doc_hex, &r, via).await
         };
         if ok {
             return Ok(Some(r));
@@ -1787,7 +1835,7 @@ async fn hide_sealed(
             (_, Some(v)) => *v,
             (None, None) => false,
             (Some(v), None) => {
-                let admitted = seal_lists(state, &at.0, &at.1, v).await;
+                let admitted = seal_lists(state, &at.0, &at.1, v, None).await;
                 verdicts.insert(at.clone(), admitted);
                 admitted
             }
@@ -2236,6 +2284,7 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
     serde_json::json!({
         "settled": if p.settled { Some(true) } else { None },
         "trusted_only": if p.trusted_only { Some(true) } else { None },
+        "onward": if p.onward { Some(true) } else { None },
         "replies": if replies > 0 { Some(replies) } else { None },
         "reply_to": link(&p.reply_to),
         "thread_root": link(&p.thread_root),
@@ -2444,7 +2493,7 @@ pub async fn id_post_replies(
     // than a thread of hollow cards.
     if let Ok(Ok(doc_id)) = hex::decode(&doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
         if sealed_here(&state, &root_hex, &doc_id).await == Some(true)
-            && trusted_viewer(&state, &session, &root_hex, &doc, true).await?.is_none()
+            && trusted_viewer(&state, &session, &root_hex, &doc, true, None).await?.is_none()
         {
             return Ok(axum::Json(serde_json::json!({
                 "replies": [], "more": false, "seeking": false, "sealed": true,

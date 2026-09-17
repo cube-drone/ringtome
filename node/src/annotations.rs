@@ -63,7 +63,7 @@ pub fn open_statement(sealed_hex: &str, post_key: &[u8; 32]) -> Option<(String, 
 /// trust for (the body door's rule, PROJECT_PLAN's Replies under the author's seal).
 async fn holder_admits(state: &AppState, holder: &str, holder_doc: &str, viewer: Option<&str>) -> bool {
     let Some(v) = viewer else { return false };
-    crate::idface::seal_lists(state, holder, holder_doc, v).await
+    crate::idface::seal_lists(state, holder, holder_doc, v, None).await
 }
 
 /// Which of these rows the viewer may see: every open row, and a sealed row only when its

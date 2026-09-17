@@ -108,6 +108,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
         annotations: post.annotations,
         settled: !!post.settled,
         trusted_only: !!post.trusted_only,
+        onward: !!post.onward,
         mine: !!(current && current.root === root),
     };
 

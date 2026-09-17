@@ -43,6 +43,10 @@ federated, unapologetically Old Internet.
   the pragmatism rules; the patterns every new file is expected to hold.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
+- [`CHAT.md`](CHAT.md) — real-time rooms: a room is a post, a message is an entry on its author's
+  own chain on the room's lane, live is gossip carrying the same entries, history is recent
+  everywhere and whole at the creator's. Rulings settled 2026-09-18; the chain key's third
+  element comes first as its own arc, then five slices.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
   surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
   canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match

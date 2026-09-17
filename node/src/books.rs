@@ -308,6 +308,7 @@ async fn rollout(
             settled: plan.settled,
             trusted_only: plan.trusted_only,
             seal_of: None, // a book and its pages wear their own author's seal
+            onward: false,
             dated_ms: None,
             part_of: Some(book_id),
         };
@@ -429,6 +430,7 @@ async fn rollout(
             settled: plan.settled,
             trusted_only: plan.trusted_only,
             seal_of: None, // a book and its pages wear their own author's seal
+            onward: false,
             post_key: book_key,
             dated_ms: None,
             part_of: None,
@@ -493,6 +495,7 @@ async fn rollout(
                 settled: plan.settled,
                 trusted_only: plan.trusted_only,
             seal_of: None, // a book and its pages wear their own author's seal
+            onward: false,
                 post_key: book_key,
                 dated_ms: None,
                 part_of: None,

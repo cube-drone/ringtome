@@ -60,7 +60,10 @@ beside derived. What is left:
   never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
   does not (iroh QUIC already encrypts point to point).
 * **The transport tier**: pricing connection admission by shared public-edge standing.
-* Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately)
+* Real-time chat rooms (CHAT.md, settled 2026-09-18): first the chain key's third element
+  `(author, service, instance)` as its own arc, then the five slices.
+* Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately; CHAT.md
+  notes it may be a room of two)
 
 ### Public means public (Gateway)
 * the public-HTML browser for this repo

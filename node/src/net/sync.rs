@@ -3367,6 +3367,7 @@ mod tests {
                 thread_root: None,
             sealed_title: None,
             seal_of: None,
+            onward: false,
             };
             chain.append(entry_type::DOC_HEADER, header.encode().unwrap())
         }

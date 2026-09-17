@@ -40,8 +40,8 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 47; // 47: node_slugs (PROJECT_PLAN's The node's public face, 2026-09-16); 46: 46: node_shelf, node_listing - the node's public face (PROJECT_PLAN's The node's public face, 2026-09-15); 45: 45: post_key_grants, refusals per reader persona (2026-09-14); 44: 44: post_audience_members - a post sealed to the people it mentions (2026-09-14); 43: 43: audiences - post_keys.audience, post_key_refusals, doc_annotations.holder_doc (2026-09-10); 42: sealed labels on doc_annotations
-const USER_SCHEMA_GENERATION: i64 = 24; // 24: part_of on the doc memos (header key 19) - a notebook published as a book (PROJECT_PLAN's Books, 2026-09-03)
+const NODE_SCHEMA_GENERATION: i64 = 48; // 48: onward on feed_journal (Contact tags, ruling 7, 2026-09-18); 47: 47: node_slugs (PROJECT_PLAN's The node's public face, 2026-09-16); 46: 46: node_shelf, node_listing - the node's public face (PROJECT_PLAN's The node's public face, 2026-09-15); 45: 45: post_key_grants, refusals per reader persona (2026-09-14); 44: 44: post_audience_members - a post sealed to the people it mentions (2026-09-14); 43: 43: audiences - post_keys.audience, post_key_refusals, doc_annotations.holder_doc (2026-09-10); 42: sealed labels on doc_annotations
+const USER_SCHEMA_GENERATION: i64 = 25; // 25: onward on doc_versions and doc_heads (header key 22; Contact tags, ruling 7, 2026-09-18); 24: 24: part_of on the doc memos (header key 19) - a notebook published as a book (PROJECT_PLAN's Books, 2026-09-03)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -134,6 +134,7 @@ impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 
 impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S, 19 T, 20 U, 21 V, 22 W);
 impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S, 19 T, 20 U, 21 V, 22 W, 23 X);
 impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S, 19 T, 20 U, 21 V, 22 W, 23 X, 24 Y);
+impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S, 19 T, 20 U, 21 V, 22 W, 23 X, 24 Y, 25 Z);
 
 // ---------------------------------------------------------------------------------------------
 // The handle

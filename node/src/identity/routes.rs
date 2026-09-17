@@ -633,6 +633,10 @@ struct FeedItem {
     /// card says why a body will not arrive. Absent when open.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     trusted_only: bool,
+    /// Sealed "people I trust, and onward" (Contact tags, ruling 7): the card keeps its
+    /// share button, and says so. Absent otherwise.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    onward: bool,
     /// The author's claimed date (PUBLISH.md), when one was claimed - so the card can wear a
     /// backdated stamp differently. Absent otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -814,7 +818,7 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
     } else {
         crate::replies::links_for(&state.node_db, &sealed_pairs).await.unwrap_or_default()
     };
-    let mut trusted_here: std::collections::HashMap<(String, String), bool> = Default::default();
+    let mut trusted_here: std::collections::HashMap<(String, String, String), bool> = Default::default();
     let mut keep = Vec::with_capacity(rows.len());
     for r in rows {
         if !r.trusted_only {
@@ -836,13 +840,15 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
             keep.push(r);
             continue;
         }
-        // The one gate (`seal_admits`), once per (holder, key document); a key this node
-        // was refused hides the row too (Contact tags, ruling 4).
-        let at = (holder.clone(), key_doc.clone());
+        // The one gate (`seal_admits`), once per (holder, key document, sharer); a key this
+        // node was refused hides the row too (Contact tags, ruling 4). The sharer who
+        // brought the row is the gate's hint: on an onward post their trust admits the
+        // reader (ruling 7).
+        let at = (holder.clone(), key_doc.clone(), r.via_root.clone().unwrap_or_default());
         let ok = match trusted_here.get(&at) {
             Some(v) => *v,
             None => {
-                let v = crate::idface::seal_lists(state, &at.0, &at.1, root).await;
+                let v = crate::idface::seal_lists(state, &at.0, &at.1, root, r.via_root.as_deref()).await;
                 trusted_here.insert(at, v);
                 v
             }
@@ -1134,6 +1140,7 @@ async fn feed_handler(
                 arrived_ms: r.arrived_ms,
                 settled: r.settled,
                 trusted_only: r.trusted_only,
+                onward: r.onward,
                 dated_ms: r.dated_ms,
                 minted_ms: (r.minted_ms != 0).then_some(r.minted_ms),
                 via: lead,
@@ -1672,13 +1679,15 @@ pub(crate) async fn after_posted(
                 tracing::warn!(error = ?e, "post key memo write failed");
             }
             // The audience beside the key (Contact tags, ruling 4): the draft's tag, or none.
+            // "Onward" (ruling 7) is no audience - the header carries it, and the gate's
+            // list is the trust list as for any plain sealed post.
             let audience = data
                 .annotations()
                 .field(&doc_id, store::AUDIENCE)
                 .await
                 .ok()
                 .flatten()
-                .filter(|a| !a.trim().is_empty());
+                .filter(|a| !a.trim().is_empty() && a.trim() != crate::postkeys::ONWARD_AUDIENCE);
             if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(post_id), audience.as_deref()).await {
                 tracing::warn!(error = ?e, "post audience memo write failed");
             }
@@ -1835,7 +1844,7 @@ async fn sealed_parent_key(state: &AppState, parent: &([u8; 32], [u8; 16]), repl
     if crate::idface::sealed_here(state, &author_hex, doc).await != Some(true) {
         return Ok(None);
     }
-    let key = crate::idface::key_for(state, &author_hex, doc, replier_hex).await;
+    let key = crate::idface::key_for(state, &author_hex, doc, replier_hex, None).await;
     match key {
         Some(k) => Ok(Some(k)),
         None => Err(AppError::BadRequest(crate::msg!(
@@ -1964,6 +1973,9 @@ async fn publish_handler(
     // the reply - or a picture inside it, which cannot name the post that embeds it - asks
     // the parent author's trust and looks for the parent's key.
     let seal_of = parent_sealed.and(reply.map(|(parent, _)| parent));
+    // "People I trust, and onward" (Contact tags, ruling 7): the draft's audience says so, and
+    // the header carries it so every node's share door and key lane know.
+    let onward = trusted_only && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
     // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
     // the request's timezone offset - re-read at every publish, so a date changed inside the
     // edit window re-sorts the post everywhere.
@@ -1976,7 +1988,7 @@ async fn publish_handler(
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of };
+    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of, onward };
     // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
     // until the day. The plan lives on the draft's private meta - device-durable - naming
     // this device's leaf as the one that mints, and the sweep does the rest.
@@ -2298,15 +2310,31 @@ async fn rebroadcast_handler(
     // reaches. (The settled wish used to refuse here too; since 2026-09-10 it means comments
     // off and nothing else - "no rebroadcast" on an open post was a request any relay could
     // ignore, and on a sealed one the seal already holds.)
+    //
+    // Except "people I trust, and onward" (Contact tags, ruling 7): the author asked for
+    // the hop, so the share stands - by someone who can read the words, since their node
+    // will be handing the key to the people they trust. The grant notes them as a holder
+    // here, which is what the key lane's onward hop walks.
     if version.is_some() {
-        if let Some(h) =
-            held_public_header(&state, &hex::encode(author), &hex::encode(doc_id)).await?
-        {
-            if h.trusted_only {
+        let author_hex = hex::encode(author);
+        let doc_hex = hex::encode(doc_id);
+        if let Some(h) = held_public_header(&state, &author_hex, &doc_hex).await? {
+            if h.trusted_only && !h.onward {
                 return Err(AppError::BadRequest(crate::msg!(
                     "identity.routes.sealed-no-shares",
                     "a post shared only with people the author trusts is not passed along"
                 )));
+            }
+            if h.trusted_only {
+                if crate::idface::key_for(&state, &author_hex, &doc_id, &root, None).await.is_none() {
+                    return Err(AppError::BadRequest(crate::msg!(
+                        "identity.routes.onward-needs-the-key",
+                        "you can only pass along words you can read"
+                    )));
+                }
+                crate::postkeys::grant(&state.node_db, &author_hex, &doc_hex, &root)
+                    .await
+                    .map_err(AppError::Internal)?;
             }
         }
     }
@@ -3778,7 +3806,7 @@ async fn set_avatar_handler(
     let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
         .await?;
     let doc_id =
-        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested, None, None)
+        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested, None, None, false)
             .await?;
     data.profile().set("avatar", &hex::encode(doc_id)).await?;
     Ok(Json(AvatarResponse {
@@ -5561,6 +5589,7 @@ mod media_info_tests {
                 thread_root: None,
                 sealed_title: None,
             seal_of: None,
+            onward: false,
             },
         }
     }

@@ -570,10 +570,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         let live = true;
         // A scheduled draft has no public body yet: its words come from the private door.
         // A share's words may live only on the sharer's node: the hint tells the body
-        // door where to ask (2026-09-08).
+        // door where to ask (2026-09-08) - and on a post sealed "people I trust, and
+        // onward" (Contact tags, ruling 7) the sharer is whose trust opens it, so a feed
+        // row that came by a share names them too.
         const bodyUrl = item.private_doc
             ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
-            : `/id/${item.author}/docs/${item.doc_id}/body${item.kind === 'share' && item.via ? `?via=${item.via}` : ''}`;
+            : `/id/${item.author}/docs/${item.doc_id}/body${item.via ? `?via=${item.via}` : ''}`;
         apiTextTitled(bodyUrl)
             .then(({ text, title }) => {
                 if (!live) return;
@@ -782,6 +784,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // sealed to the people mentioned, the author's own sealed label says it to the room.
     const saidAudience = ((item.annotations || []).find((a) => a.key === 'audience' && a.annotator === item.author) || {}).value;
     const audience = item.audience || saidAudience || '';
+    // "People I trust, and onward" (Contact tags, ruling 7): the header says it, to everyone.
+    const onward = !!item.onward;
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
@@ -861,8 +865,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beatLabel(item.published_ms)}</span></span>`
                           : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beatLabel(item.published_ms)}</span></span>`}
                     ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
-                        never the key, and that is not what the button promises. */ ''}
-                    ${!item.mine && !!current && !item.trusted_only && html`<${ShareButton} item=${item} current=${current} />`}
+                        never the key, and that is not what the button promises - unless the
+                        author asked for the hop (Contact tags, ruling 7). */ ''}
+                    ${!item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
                     ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
                         that note in Writer, and the publish bar there says the changes again.
@@ -950,14 +955,18 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     class="label-chip label-chip-flag"
                     title=${audience === '@mentioned'
                         ? t('postentry.mentioned-chip-title', 'these words are for the people named in them')
-                        : audience
-                          ? t('postentry.audience-chip-title', 'you share these words only with the people you tagged {audience}', { audience })
-                          : t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}
+                        : onward
+                          ? t('postentry.onward-chip-title', 'the author shares these words with people they trust, who may pass them to people they trust')
+                          : audience
+                            ? t('postentry.audience-chip-title', 'you share these words only with the people you tagged {audience}', { audience })
+                            : t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}
                 ><${Icons.trustPrivate} /> ${audience === '@mentioned'
                     ? t('postentry.only-the-people-mentioned', 'only the people mentioned')
-                    : audience
-                      ? t('postentry.only-audience', 'only {audience}', { audience })
-                      : t('postentry.trusted-only', 'trusted only')}</span>`}
+                    : onward
+                      ? t('postentry.trusted-and-onward', 'trusted, and onward')
+                      : audience
+                        ? t('postentry.only-audience', 'only {audience}', { audience })
+                        : t('postentry.trusted-only', 'trusted only')}</span>`}
                 ${item.settled &&
                 html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`}
                 ${groupLabels(shownLabels, { author: item.author }).map((g) => {

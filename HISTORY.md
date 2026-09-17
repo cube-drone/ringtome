@@ -9193,3 +9193,22 @@ shadow, and beside the number a pie of the day, empty at @000 and full at @999.9
 Swatch module now serves both (a duplicate helper written that morning was folded back in),
 and the card's whole-beat label counts in integer milliseconds, since `43200 / 86.4` lands a
 hair under 500 in floating point and Biel noon read @499.
+
+## 2026-09-18: people I trust, and onward
+
+The seal's list with the share button left on, delivered as post functionality ahead of chat
+(PROJECT_PLAN's Contact tags, ruling 7). A bit in the signed header (key 22) beside the seal,
+carried through the mint, the twins, the doc memos and the feed journal (user schema 25,
+node schema 48), never an audience - the gate's list stays the trust list. The composer's
+list now runs most to least permissive, "people I trust, and onward" ahead of "people I
+trust". The share door admits a share of an onward post by someone who can read it and notes
+them a key holder; every sealed door then hears the sharer - the feed's gate by the row's
+via, the body door by the `?via=` hint a share card already carries, the key lane by the
+same - and `seal_admits` admits a reader the sharer publishes trust for, one hop, judged
+from the sharer's mirrored shares and identity chains. The sharer's node releases the key
+to their own trusted people; the lane asks it first. The `onward` suite: ada trusts bea, bea
+trusts cal, ada never met cal; bea passes the onward post along and may not pass a plain
+sealed one; cal finds the share in his feed wearing the flag, reads it through bea's node
+and then without the hint; dana, who follows bea untrusted, is refused and never sees the
+card. On the way, the strings cop caught four phrases on the "this computer has left the
+persona" page that had never gone through `t()`; wrapped.

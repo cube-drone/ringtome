@@ -3207,7 +3207,8 @@ moment trust is published; the memo keeps every row, the surface chooses. Discov
 speculative lane carries no sealed posts at all, the one surface a reader never chose. The
 permalink keeps one honest line for a direct visit: "the author shares these words only with
 people they trust". A sealed post is not passed along: a share would move the pointer and
-the carriage but never the key, so the button is gone and the door refuses.
+the carriage but never the key, so the button is gone and the door refuses - unless the
+author asked for the hop with "people I trust, and onward" (*Contact tags*, ruling 7).
 
 *Residual.* Bare media posts take no flags. A COMMENT envelope about a settled post still
 transcribes to the bell (only a malicious client sends one). A double-tapped sealed publish
@@ -3574,6 +3575,31 @@ computers.
    grant, with published trust as the fallback for a persona the lane has not yet been
    asked about. The reply mint, the label doors and the bell's fold ask for the persona
    at hand too.
+7. **People I trust, and onward (built 2026-09-18).** The seal's list, with the share button
+   left on: "I think splitting 'people I trust' into 'people I trust, and onward' and
+   'people I trust' ... is easy enough as a slam dunk." The composer's list runs from most
+   to least permissive - everyone, people I trust and onward, people I trust, the people
+   mentioned, each contact tag. Onward is a bit in the signed header (key 22, beside the
+   seal), never an audience: the gate's list is the trust list as for any plain sealed
+   post, and the card wears "trusted, and onward" from the header, to everyone. What the
+   bit changes is the hop. A trusted reader may pass the post along - the share door
+   admits the share when they hold the key, and notes them a holder - and every door then
+   hears the sharer: the feed's gate, the body door (`?via=`, the hint a share card already
+   carries) and the key lane ask `seal_admits` with the sharer named, and on an onward
+   post the sharer's own published trust admits the reader, one hop, judged from the
+   sharer's mirrored record - their share on their shares chain, their trust on their
+   identity chain - so a hint nobody's record backs admits nobody. The sharer's node is
+   the one that releases the key to the people they trust; the author's own lane still
+   answers only for the author's list, and is asked after the sharer's. Convention, not
+   cryptography: the author trusts the sharer's judgment as the sharer's node enforces it,
+   and a copy already delivered was never recallable. A reader admitted through the hop
+   is granted like any other, so the permalink, the thread and the labels open for them
+   afterwards without the hint. *Residual.* The hop is one deep by construction - a
+   re-share by the reader admits nobody further, since the door asks the sharer's trust
+   for the reader's reader and finds none - though a second sharer trusted by the author
+   admits their own people the same way. The permalink carries no sharer, so a reader who
+   reaches an onward post by its address alone, before their feed card opened it, is
+   refused until it has.
 
 ### The node's public face: strangers, listing and slugs (settled 2026-09-14; built 2026-09-16)
 

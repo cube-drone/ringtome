@@ -247,6 +247,7 @@ CREATE TABLE feed_journal (
                                      --   the journaled header (PROJECT_PLAN's Post visibility) - so the card
                                      --   can hide the share button without a second read
     trusted_only INTEGER NOT NULL DEFAULT 0, -- trusted-readers-only, same source - so the
+    onward       INTEGER NOT NULL DEFAULT 0, -- "people I trust, and onward" (Contact tags, ruling 7): the share button and the sharer's gate need it
                                      --   card can say WHY a body will not arrive
     dated_ms     INTEGER,            -- the author's CLAIMED date off the header (PUBLISH.md),
                                      --   NULL when none was claimed. published_ms already folds

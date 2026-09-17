@@ -603,6 +603,11 @@ pub struct DocHeaderPlain {
     /// a twin cannot name the post that embeds it, so without this the door would gate a
     /// reply's picture by the commenter's trust rather than the author's.
     pub seal_of: Option<([u8; 32], [u8; 16])>,
+    /// A sealed post that may be passed along (PROJECT_PLAN's Contact tags, ruling 7,
+    /// 2026-09-18): "people I trust, and onward". Sharing is allowed, and a sharer's node
+    /// becomes a key holder for the sharer's own trusted set - each hop a real share by a
+    /// real person under their own published trust. False for every other sealed post.
+    pub onward: bool,
     /// The author's PREFERRED date (PUBLISH.md, 2026-09-02): what the post sorts and reads
     /// by everywhere - a diary entry written up years later files under its own day. Never
     /// the edit window's anchor; that stays `genesis_ms`, when it was minted. Absent = "the
@@ -672,6 +677,7 @@ impl DocHeaderPlain {
             + self.trusted_only as u64
             + self.sealed_title.is_some() as u64
             + self.seal_of.is_some() as u64
+            + self.onward as u64
             + self.dated_ms.is_some() as u64
             + self.animation as u64
             + self.part_of.is_some() as u64;
@@ -775,6 +781,10 @@ impl DocHeaderPlain {
             w.bytes(author);
             w.bytes(doc);
         }
+        if self.onward {
+            w.uint(22);
+            w.uint(1);
+        }
         Ok(w.into_bytes())
     }
 
@@ -793,6 +803,7 @@ impl DocHeaderPlain {
         let mut trusted_only = false;
         let mut sealed_title: Option<Vec<u8>> = None;
         let mut seal_of: Option<([u8; 32], [u8; 16])> = None;
+        let mut onward = false;
         let mut dated_ms: Option<i64> = None;
         let mut animation = false;
         let mut part_of: Option<[u8; 16]> = None;
@@ -866,6 +877,7 @@ impl DocHeaderPlain {
                     }
                     seal_of = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
                 }
+                22 => onward = map.uint()? != 0,
                 17 => {
                     let d = map.uint()?;
                     dated_ms = Some(
@@ -898,6 +910,7 @@ impl DocHeaderPlain {
             trusted_only,
             sealed_title,
             seal_of,
+            onward,
             dated_ms,
             animation,
             part_of,
@@ -1439,6 +1452,7 @@ mod tests {
             settled: true,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         let settled = DocHeaderPlain::decode(&h.encode().unwrap()).unwrap();
         assert!(settled.settled, "the wish survives the wire");
@@ -1766,6 +1780,7 @@ mod tests {
             thread_root: None,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         let reply = DocHeaderPlain {
             dated_ms: None,
@@ -1823,6 +1838,7 @@ mod tests {
             thread_root: None,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
@@ -1903,6 +1919,7 @@ mod tests {
                 thread_root: None,
             sealed_title: None,
             seal_of: None,
+            onward: false,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -1930,6 +1947,7 @@ mod tests {
             thread_root: None,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -1956,6 +1974,7 @@ mod tests {
             thread_root: None,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
@@ -1982,6 +2001,7 @@ mod tests {
             thread_root: None,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -2011,6 +2031,7 @@ mod tests {
             thread_root: None,
         sealed_title: None,
         seal_of: None,
+        onward: false,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {

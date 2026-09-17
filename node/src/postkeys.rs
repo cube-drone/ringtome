@@ -61,6 +61,11 @@ pub async fn audience(node_db: &Db, author_root: &str, doc_hex: &str) -> Result<
 /// the memo says this, and `post_audience_members` says who.
 pub const MENTIONED_AUDIENCE: &str = "@mentioned";
 
+/// "People I trust, and onward" (PROJECT_PLAN's Contact tags, ruling 7): the author's trust
+/// opens the post, and every sharer's trust opens it one hop further. The header carries it
+/// as `onward`; this is the draft's word for it.
+pub const ONWARD_AUDIENCE: &str = "@onward";
+
 /// Replace a post's own audience with `members` (roots, hex).
 pub async fn set_members(node_db: &Db, author_root: &str, doc_hex: &str, members: &[String]) -> Result<()> {
     node_db
@@ -145,6 +150,20 @@ pub async fn grant(node_db: &Db, author_root: &str, doc_hex: &str, reader: &str)
         .await
         .context("remembering a key grant")?;
     Ok(())
+}
+
+/// Every persona this node holds a grant for on one post - the key holders here, which the
+/// onward hop (Contact tags, ruling 7) walks: a hosted holder who passed the post along
+/// admits whoever they trust.
+pub async fn grantees(node_db: &Db, author_root: &str, doc_hex: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT reader_root FROM post_key_grants WHERE author_root = ?1 AND doc_id = ?2 ORDER BY noted_ms",
+            (author_root, doc_hex),
+        )
+        .await
+        .context("reading a post's key holders")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
 pub async fn granted(node_db: &Db, author_root: &str, doc_hex: &str, reader: &str) -> Result<bool> {

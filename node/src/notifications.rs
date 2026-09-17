@@ -591,7 +591,7 @@ async fn open_sealed_statements(
                                 continue;
                             }
                             let Some(reader) = hex::decode(f).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else { continue };
-                            k = crate::net::fragment::fetch_key(state, &author, &l.target_doc, &reader).await;
+                            k = crate::net::fragment::fetch_key(state, &author, &l.target_doc, &reader, None).await;
                             if k.is_some() {
                                 break;
                             }
