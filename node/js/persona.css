@@ -188,6 +188,11 @@
 }
 
 
+/* The short name stands out of its origin (Curtis, 2026-09-16). */
+.persona-slug-name {
+    font-weight: 700;
+}
+
 .persona-address-copy {
     flex-shrink: 0;
     background: var(--surface);

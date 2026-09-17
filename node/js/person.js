@@ -272,6 +272,8 @@ export const PersonCard = ({ root, current, profile, you, children }) => {
 // `viaHints`. All fetched once per mount; none change underneath a session.
 function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
     const [address, setAddress] = useState(null);
+    // The declared public URL, when this node serves the persona - for the short name.
+    const [base, setBase] = useState('');
     const viaKey = givenVia ? givenVia.join(',') : null;
     useEffect(() => {
         let live = true;
@@ -291,6 +293,9 @@ function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
         Promise.all([api('/api/config'), hints])
             .then(([config, via]) => {
                 if (!live) return;
+                // The short name wears the declared public URL too (Curtis, 2026-09-16): it
+                // says the name belongs to THIS server and no other.
+                setBase(hosted && config.public_url ? config.public_url : '');
                 // The root travels in its speakable form (speakable.js): the checksum words
                 // are the human anchor, the base58 tail is the key, and hex stays a valid
                 // spelling everywhere addresses are parsed. Node keys wear base58 too - ten
@@ -311,14 +316,14 @@ function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
             live = false;
         };
     }, [root, viaKey, hosted]);
-    return address;
+    return { address, base };
 }
 
 // The row explains nothing - the whole string, a quiet "address" tag, a copy button. The
 // link IS the displayed address, whole (what you see is what you click is what you copy);
 // the /id surface simply ignores the query it doesn't need.
 export const AddressRow = ({ root, via, hosted, slug }) => {
-    const address = useIdentityAddress(root, { via, hosted });
+    const { address, base } = useIdentityAddress(root, { via, hosted });
     const [copied, setCopied] = useState(false);
     if (!address) return null;
     const copy = async () => {
@@ -344,7 +349,7 @@ export const AddressRow = ({ root, via, hosted, slug }) => {
         html`<div class="persona-address persona-slug">
             <span class="persona-address-label">${t('person.on-this-node', 'on this node')}</span>
             <a class="persona-address-value" href=${`/@${slug}`} title=${t('person.this-nodes-short-name', "this node's short name for them - the same name elsewhere is somebody else")}>
-                <code>@${slug}</code>
+                <code>${base}/<strong class="persona-slug-name">@${slug}</strong></code>
             </a>
         </div>`}
     `;
