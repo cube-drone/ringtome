@@ -56,3 +56,15 @@ describe('swatch beats', () => {
         assert.notEqual(beats(at(2026, 0, 1, 23, 0, 0, 0)), beats(at(2026, 0, 1, 23, 0, 8, 640)));
     });
 });
+
+describe("the beat label on a card (2026-09-17)", () => {
+    it("is the whole beat, three digits, from Biel midnight", async () => {
+        const { beatLabel } = await import("../../../js/pure/swatch.js");
+        const bielMidnight = Date.UTC(2026, 8, 17, 23, 0, 0);
+        assert.equal(beatLabel(bielMidnight), "@000");
+        assert.equal(beatLabel(bielMidnight + 86_400_000 / 2), "@500", "Biel noon");
+        assert.equal(beatLabel(bielMidnight - 1), "@999", "the last beat of the day before");
+        assert.equal(beatLabel(Date.UTC(2026, 8, 17, 12, 0, 0)), "@541", "noon UTC is 13:00 in Biel");
+        assert.equal(beatLabel(0), "@041", "1970-01-01 00:00 UTC is 01:00 in Biel");
+    });
+});

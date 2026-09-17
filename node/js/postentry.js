@@ -150,7 +150,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 // too, and doc/editor.js cannot import this module without a cycle); re-exported for the
 // surfaces that always found them here.
 import { publishWithBaking, BakeModal } from './doc/publish.js';
-import { beats } from './pure/beats.js';
+import { beatLabel } from './pure/swatch.js';
 export { publishWithBaking, BakeModal };
 
 /**
@@ -858,8 +858,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 actions=${html`${item.scheduled
                         ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
                         : backdated
-                          ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beats(item.published_ms)}</span></span>`
-                          : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beats(item.published_ms)}</span></span>`}
+                          ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beatLabel(item.published_ms)}</span></span>`
+                          : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beatLabel(item.published_ms)}</span></span>`}
                     ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
                         never the key, and that is not what the button promises. */ ''}
                     ${!item.mine && !!current && !item.trusted_only && html`<${ShareButton} item=${item} current=${current} />`}

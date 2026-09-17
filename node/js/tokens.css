@@ -92,6 +92,10 @@
 
     --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
     --dock-text: #fbf6ec;    /* light text that sits on the teal dock */
+    /* A panel sunk into the dock (the corner clock, 2026-09-17): the shadow its top edge
+       casts, and the hairline of light its bottom edge catches. */
+    --sunk-shadow: rgba(0, 0, 0, 0.45);
+    --sunk-light: rgba(255, 255, 255, 0.12);
 
     --hex-border-dark: #bf9152;   /* the outer 2px ring of an application heptagon: caramel */
     --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */

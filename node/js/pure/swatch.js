@@ -18,3 +18,11 @@ export function beats(date) {
         bmt.getUTCMilliseconds() / 1000;
     return (secs / 86.4) % 1000;
 }
+
+/// The beat as the card shows it beside a local time (2026-09-17): `@891`, whole beats. In
+/// integer milliseconds, not through the float above: one beat is exactly 86 400 ms, and the
+/// division `43200 / 86.4` lands a hair under 500 in floating point - Biel noon read @499.
+export function beatLabel(ms) {
+    const inBiel = (((ms + 3_600_000) % 86_400_000) + 86_400_000) % 86_400_000;
+    return `@${String(Math.floor(inBiel / 86_400)).padStart(3, '0')}`;
+}

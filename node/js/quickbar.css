@@ -23,6 +23,10 @@
    than bottom-aligned like the tiles. */
 .quickbar-clock {
     align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0.2em 0.55em;
     color: var(--dock-text);
     font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 0.9rem;
@@ -30,6 +34,17 @@
     opacity: 0.9;
     cursor: default;
     user-select: none;
+    /* Sunk into the bar (Curtis, 2026-09-17): a shade darker than the dock, an inner shadow
+       along the top edge, and a hairline of light along the bottom, the way a recessed panel
+       catches the room. */
+    background: color-mix(in srgb, var(--teal-deep) 82%, black);
+    box-shadow:
+        inset 0 1px 3px var(--sunk-shadow),
+        inset 0 -1px 0 var(--sunk-light);
+    /* No jag here (Curtis, 2026-09-17): a clip would cut the inset shadow that makes it
+       sunken. And the bar aligns its items to the bottom above 6px of padding, so a centred
+       item sits 3px high; a top margin equal to that padding centres it in the whole bar. */
+    margin-top: 6px;
 }
 
 /* The app dock: one heptagon per app, icon only (the console glyphs without their names), a fast
@@ -109,4 +124,10 @@
 .quickbar-hex:hover {
     opacity: 1;
     transform: translateY(-2px);
+}
+
+.quickbar-clock-pie {
+    width: 0.95em;
+    height: 0.95em;
+    flex: none;
 }

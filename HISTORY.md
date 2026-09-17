@@ -9187,4 +9187,9 @@ that arrived. No node change: the doors were all there.
 
 Beside every post's local clock reading, its Swatch beat - `@891` - the day in a thousand
 beats from Biel midnight, the same number everywhere on Earth at once, which is the point of
-it next to a local time. A pure helper with vectors, on both the dated and the plain card.
+it next to a local time, on both the dated and the plain card - and the corner clock, which
+already ticked in beats, sank into the bar: a shade darker than the dock with an inner
+shadow, and beside the number a pie of the day, empty at @000 and full at @999.99. One
+Swatch module now serves both (a duplicate helper written that morning was folded back in),
+and the card's whole-beat label counts in integer milliseconds, since `43200 / 86.4` lands a
+hair under 500 in floating point and Biel noon read @499.
