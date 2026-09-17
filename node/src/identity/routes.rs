@@ -3668,29 +3668,7 @@ async fn docs_create_binary_handler(
     // Owner gate: opening the store enforces that this account owns this identity.
     store::open(&state, &session.account.id, &root).await?;
     let doc_id = crate::record::documents::new_doc_id();
-    let job_id = state
-        .ingest
-        .enqueue(
-            &state.node_db,
-            crate::ingest::Upload {
-                account: &session.account.id.to_string(),
-                root: &root,
-                doc_id,
-                parents: &[],
-                title: &meta.title,
-                bytes: &body,
-                audio: None,
-            },
-        )
-        .await?;
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(DocQueued {
-            doc_id: hex::encode(doc_id),
-            job_id,
-            status: "pending",
-        }),
-    ))
+    queue_upload(&state, &session, &root, doc_id, &[], &meta.title, &body).await
 }
 
 /// Upload a browser-pre-encoded video (the video-ingest intermediary): multipart part `video`
@@ -3821,17 +3799,33 @@ async fn docs_save_binary_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let parents = parse_parents(&meta.parents)?;
     store::open(&state, &session.account.id, &root).await?;
+    queue_upload(&state, &session, &root, doc_id, &parents, &meta.title, &body).await
+}
+
+/// Queue a binary upload for ingest and answer 202 with its ticket - the one protocol
+/// operation behind both binary doors (create mints a fresh id and has no parents; save
+/// names an existing id and its parents; the rest is this). The ownership gate stays in
+/// each door, where a reader looks for it.
+async fn queue_upload(
+    state: &AppState,
+    session: &Session,
+    root: &str,
+    doc_id: [u8; 16],
+    parents: &[[u8; 32]],
+    title: &str,
+    bytes: &Bytes,
+) -> Result<(StatusCode, Json<DocQueued>), AppError> {
     let job_id = state
         .ingest
         .enqueue(
             &state.node_db,
             crate::ingest::Upload {
                 account: &session.account.id.to_string(),
-                root: &root,
+                root,
                 doc_id,
-                parents: &parents,
-                title: &meta.title,
-                bytes: &body,
+                parents,
+                title,
+                bytes,
                 audio: None,
             },
         )

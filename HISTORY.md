@@ -9130,3 +9130,12 @@ address refuses to boot rather than quietly hand the node to whoever signs up fi
 the way, the session's whoami answer (and every other account answer) now carries the
 account's tags, and the settings hub tells an administrator "you administer this node" -
 until now an administrator had no way to know they were one.
+
+## 2026-09-17: one operation behind the two binary doors
+
+From a code review: the create and save doors for binary documents shared their latter
+half byte for byte - the ingest enqueue, the 202 and the ticket. That is one protocol
+operation, and two copies of it are two that can drift. Now `queue_upload` is that
+operation, and each door keeps only what is its own: create mints a fresh id and has no
+parents, save names an existing id and its parents. The ownership gate stays in each door,
+where a reader looks for it; the review said not to fold it away and the house agrees.
