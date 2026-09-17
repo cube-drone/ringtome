@@ -9151,3 +9151,21 @@ nowhere in the code - and now say the twin collapse, the echo fold, the field-wi
 merge, the three-way line merge, the inline conflict, and the read-time folding, at every
 one of twenty-two sites, so a reader of any single function or test needs no forgotten
 metaphor to understand it.
+
+## 2026-09-17: the plan, tightened
+
+"Our PROJECT_PLAN.md has become absolutely huge." A pass for brevity over everything below
+Curtis's own opening pages, cutting what was superseded and compressing design conversations
+into rulings without losing one. Deleted: the retro-OS client story (struck long ago), the
+old-codebase dependency archaeology, the entry field table (the proto crate and its test
+vectors are the authority; the rulings the layout serves stayed). Rewritten: Post visibility to
+the two flags as they stand today, since it still said a sealed post could be shared; Open
+Questions to the two still open; the phones section to a pointer at MOBILE.md; the Web
+Gateway's "tombstone" to the app page it is now. Compressed: Arrival and Attention from five
+hundred lines to two hundred, every decision kept, the transcript voice gone; Groups from a
+sketch of two hundred and eighty lines to sixty, with the epoch-rotation debts it uncovered
+moved under Revocation where Open Questions sends the reader. Retired the ladders - the
+gateway's three rungs are its three answers, the expressiveness ladder is three tiers, the
+merge rungs are the merges - and the citations of documents no longer in the tree. Every
+section the code cites by name still exists under that name, and every ruling number the
+code cites is unchanged.
