@@ -61,7 +61,15 @@ const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.s
         let refused = 0;
         let firstRefusal = -1;
         for (let i = 0; i < posts.length; i++) {
-            const r = await bea(`id/${adaRoot}/docs/${posts[i].doc_id}/body`);
+            // The bodies land behind the page too (ruling 9): a body the look is still
+            // fetching answers "haven't arrived" until it lands or the ceiling bites, and
+            // under a loaded rig the claim outran the fetch (2026-09-17's CI red). Wait
+            // for either settled answer.
+            let r = await bea(`id/${adaRoot}/docs/${posts[i].doc_id}/body`);
+            for (let k = 0; k < 30 && r.status !== 200 && /haven't arrived/.test(await r.clone().text()); k++) {
+                await new Promise((res) => setTimeout(res, 400));
+                r = await bea(`id/${adaRoot}/docs/${posts[i].doc_id}/body`);
+            }
             if (r.status === 200) {
                 assert.ok(firstRefusal === -1, "bodies crossed in shelf order: none after a refusal");
                 crossed += 1;

@@ -9224,4 +9224,6 @@ suite's carrier proof asserted "relay:" on cal's node while its own header said 
 "chain", so the claim accepts either and the carrier proof moved to eve, whose node has one
 road. The pins peek claim guarded "the deep post is not on the page" with "at least twenty
 held", which nineteen of the window plus the pin satisfies with the deep post on the page; it
-asks the fragment ledger's count and claims only past twenty.
+asks the fragment ledger's count and claims only past twenty. And the peek footprint's
+ceiling claim read a body the look was still fetching as a refusal with the wrong word; it
+waits for the body to land or the ceiling to bite, whichever the door says.
