@@ -225,6 +225,61 @@
     color: var(--ink-soft);
 }
 
+/* Your personas (2026-09-17): the account's personas as rows, the browser's marked. */
+.persona-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0.5rem 0 1rem;
+}
+.persona-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.7rem;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
+    background: var(--surface);
+}
+.persona-row-current {
+    --line: var(--border-strong);
+}
+.persona-row-words {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+.persona-row-words small {
+    color: var(--ink-soft);
+}
+.persona-row-mark {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+}
+.persona-row-switch {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.25rem 0.7rem;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
+    background: var(--surface-2);
+    color: var(--ink);
+    cursor: pointer;
+}
+.persona-list-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
 .persona-menu-item {
     display: flex;
     align-items: center;

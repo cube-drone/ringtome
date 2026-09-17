@@ -121,6 +121,18 @@ export const PeopleApp = ({ current, searchQuery }) => {
     // Contact tags (2026-09-10): the row of every tag on the roster, picks AND, kept for
     // the session like the feed's facets - the same widget, tags only.
     const [picks, setPicks] = usePicks(root ? `people:${root}` : null);
+    // People who are also me (Curtis, 2026-09-17): the account's other personas on this
+    // node, above everyone else, only when there are any.
+    const [alsoMe, setAlsoMe] = useState([]);
+    useEffect(() => {
+        let live = true;
+        api('/api/identity')
+            .then((mine) => live && setAlsoMe((mine || []).filter((p) => p.root_pubkey !== root && p.standing === 'active')))
+            .catch(() => live && setAlsoMe([]));
+        return () => {
+            live = false;
+        };
+    }, [root]);
     const tagRow = tagCounts(rows);
     const sorted = sortContacts(filterContacts(rowsTagged(rows, picks.tags), filter), sortBy);
     const visible = sorted.slice(0, shown);
@@ -173,6 +185,22 @@ export const PeopleApp = ({ current, searchQuery }) => {
 
     return html`
         <div class="people-inner">
+            ${alsoMe.length > 0 &&
+            html`<div class="people-known people-also-me">
+                <div class="people-shelf-head">
+                    <span class="people-shelf-title">${t('apps.people.people-who-are-also-me', 'people who are also me')}</span>
+                </div>
+                <div class="people-list">
+                    ${alsoMe.map(
+                        (p) => html`<${PersonRow}
+                            key=${p.root_pubkey}
+                            root=${p.root_pubkey}
+                            current=${current}
+                            aside=${t('apps.people.also-you', 'also you')}
+                        />`
+                    )}
+                </div>
+            </div>`}
             <${LabelFacets} labels=${{ kinds: [], buckets: [], tags: tagRow }} picks=${picks} onPicks=${setPicks} />
             <div class="people-shelf-head">
                 <span class="people-shelf-title">${t('apps.people.everyone-you-know', 'everyone you know')}</span>

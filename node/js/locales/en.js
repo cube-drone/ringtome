@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 740 phrases across 56 files.
+// 750 phrases across 56 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -91,6 +91,8 @@ export default {
     // --- node/js/apps/people.js ---
     'apps.people.filter-or-paste-an-address': 'filter, or paste an address…',
     'apps.people.type-to-narrow-the-shelf': 'search or paste an address',
+    'apps.people.people-who-are-also-me': 'people who are also me',
+    'apps.people.also-you': 'also you',
     'apps.people.everyone-you-know': 'everyone you know',
     'apps.people.nobody-matches---try-fewer': 'nobody matches "{filter}" - try fewer letters, or their address words.',
     'apps.people.nobody-yet---open-someones': "nobody yet - open someone's page and set your relationship, and they'll appear here.",
@@ -493,6 +495,8 @@ export default {
     'persona.you-administer-this-node': 'you administer this node',
     'persona.profile': 'profile',
     'persona.your-name-and-how-you': 'your name and how you appear',
+    'persona.your-personas': 'your personas',
+    'persona.manage-who-you-appear-to-be': 'manage who you appear to be',
     'persona.your-computers-2': 'your computers',
     'persona.the-machines-that-carry-this': 'the machines that carry this persona',
     'persona.content-control': 'content control',
@@ -521,6 +525,12 @@ export default {
     'persona.change': 'change',
     'persona.claim': 'claim',
     'persona.also-answers-to': 'also answers to @{last}, which sends readers to your current name',
+    'persona.your-personas-2': 'your personas',
+    'persona.personas-hint': 'who you appear to be. Each is its own name, pages and people; this browser uses one at a time.',
+    'persona.this-browser': 'this browser',
+    'persona.switch': 'switch',
+    'persona.make-a-new-persona': 'make a new persona',
+    'persona.bring-a-persona-here-from': 'bring a persona here from another computer',
 
     // --- node/js/persondemo.js ---
     'persondemo.the-gallery-needs-a-persona': 'the gallery needs a persona',

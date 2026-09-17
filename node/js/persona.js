@@ -36,7 +36,25 @@ export function usePersona(account) {
     const [join, setJoin] = useState(null); // { requestCode } - the outbound half of adoption
     const [farewell, setFarewell] = useState(null); // { root, standing } - no longer this persona
     const [error, setError] = useState(null);
+    const [personas, setPersonas] = useState([]); // the account's, as /api/identity lists them
     const live = useRef(null); // the open persona's live-cache handle
+    // Which of the account's personas this browser was last using (Curtis, 2026-09-17: an
+    // account may carry several): a per-browser convenience, never a fact of the persona.
+    const rememberedKey = account ? `ringtome.persona.${account.id}` : null;
+    const remembered = () => {
+        try {
+            return rememberedKey ? localStorage.getItem(rememberedKey) : null;
+        } catch {
+            return null;
+        }
+    };
+    const remember = (root) => {
+        try {
+            if (rememberedKey) localStorage.setItem(rememberedKey, root);
+        } catch {
+            /* a browser without storage forgets; nothing breaks */
+        }
+    };
 
     // Opening a persona = remembering its root, fetching its public name for display, and
     // starting the live cache - from here on, the mirror stays current and every view that
@@ -80,6 +98,9 @@ export function usePersona(account) {
                 // computer was locked out (or left) gets the farewell instead - a
                 // well-intentioned node discovers its own revocation and lets go, rather
                 // than wandering a read-only ghost town (PROJECT_PLAN, Revocation).
+                setPersonas(personas);
+                const chosen = personas.find((p) => p.root_pubkey === remembered() && p.standing === 'active');
+                if (chosen) return open(chosen.root_pubkey);
                 const active = personas.find((p) => p.standing === 'active');
                 if (active) return open(active.root_pubkey);
                 // The farewell fires only on AFFIRMATIVE removal (isDeparted). "unknown" -
@@ -103,6 +124,7 @@ export function usePersona(account) {
                 setError(e.message);
                 setState('none');
             });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [account]);
 
     // The live half of the same discovery: any surface's write bouncing with "revoked-signer"
@@ -130,6 +152,23 @@ export function usePersona(account) {
         return () => window.removeEventListener('ringtome:revoked-signer', onRevoked);
          
     }, [current]);
+
+    const refreshPersonas = async () => {
+        try {
+            setPersonas(await api('/api/identity'));
+        } catch {
+            /* the list is a convenience; the next open refreshes it */
+        }
+    };
+
+    // Switch this browser to another of the account's personas: the old one's live cache
+    // stops, the new one's starts, and the choice is remembered here.
+    const switchTo = async (root) => {
+        setError(null);
+        remember(root);
+        await open(root);
+        await refreshPersonas();
+    };
 
     const create = async () => {
         setError(null);
@@ -161,7 +200,9 @@ export function usePersona(account) {
             });
         }
         setNaming(null);
+        remember(root);
         await open(root);
+        await refreshPersonas();
     };
 
     // The join flow - adoption's new-device half. This computer mints its own leaf key and
@@ -177,7 +218,8 @@ export function usePersona(account) {
 
     const cancelJoin = () => {
         setJoin(null);
-        setState('none');
+        // Back to the persona this browser had, if it had one (2026-09-17).
+        setState(current ? 'open' : 'none');
     };
 
     // While waiting in the join state, watch for the persona to arrive on its own: the granter
@@ -186,16 +228,22 @@ export function usePersona(account) {
     // signal - the live cache will replace it with a push someday.
     useEffect(() => {
         if (state !== 'join') return;
+        // The persona that ARRIVES is the one to open - not the first on the list, which
+        // may be one this account already had (2026-09-17).
+        const known = new Set(personas.map((p) => p.root_pubkey));
         const timer = setInterval(async () => {
             try {
-                const personas = await api('/api/identity');
-                if (personas.length > 0) {
+                const now = await api('/api/identity');
+                const arrived = now.find((p) => !known.has(p.root_pubkey)) || (known.size === 0 ? now[0] : null);
+                if (arrived) {
                     clearInterval(timer);
+                    setPersonas(now);
+                    remember(arrived.root_pubkey);
                     // Open FIRST, clear the join state after: `open` is async, and a render
                     // between `setJoin(null)` and its final `setState('open')` is still in
                     // the join state - JoinFlow with a null join crashed the whole render
                     // (field-found 2026-07-30: the new computer showed only the quickbar).
-                    await open(personas[0].root_pubkey);
+                    await open(arrived.root_pubkey);
                     setJoin(null);
                 }
             } catch {
@@ -203,6 +251,7 @@ export function usePersona(account) {
             }
         }, 2000);
         return () => clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [state]);
 
     const completeJoin = async (grantCode) => {
@@ -211,7 +260,9 @@ export function usePersona(account) {
             body: JSON.stringify({ code: grantCode.trim() }),
         });
         // Same ordering rule as the arrival watcher above: open, then clear.
+        remember(identity.root_pubkey);
         await open(identity.root_pubkey);
+        await refreshPersonas();
         setJoin(null);
     };
 
@@ -230,6 +281,9 @@ export function usePersona(account) {
     return {
         state,
         current,
+        personas,
+        switchTo,
+        refreshPersonas,
         ceremony,
         join,
         farewell,
@@ -562,6 +616,13 @@ export const PersonaMenu = ({ persona, session }) => {
                         <small>${t('persona.your-name-and-how-you', 'your name and how you appear')}</small>
                     </span>
                 </a>
+                <a class="persona-menu-item" href="/home/persona/personas">
+                    <span class="persona-menu-icon"><${Icons.personas} /></span>
+                    <span class="persona-menu-label">
+                        <strong>${t('persona.your-personas', 'your personas')}</strong>
+                        <small>${t('persona.manage-who-you-appear-to-be', 'manage who you appear to be')}</small>
+                    </span>
+                </a>
                 <a class="persona-menu-item" href="/home/persona/computers">
                     <span class="persona-menu-icon"><${Icons.computers} /></span>
                     <span class="persona-menu-label">
@@ -821,5 +882,82 @@ const NodeSlug = ({ root }) => {
             html`<small class="profile-slug-last">${t('persona.also-answers-to', 'also answers to @{last}, which sends readers to your current name', { last: held.last })}</small>`}
             ${note && html`<span class="profile-flash">${note}</span>`}
         </label>
+    `;
+};
+
+/// Your personas (Curtis, 2026-09-17): every persona this account carries on this node, the
+/// one this browser is using marked; switch to another, make a new one, or bring one here
+/// from another computer. Switching is a per-browser choice; each persona is its own, whole.
+export const Personas = ({ persona, current }) => {
+    const loc = useLocation();
+    const [names, setNames] = useState({});
+    const [busy, setBusy] = useState(false);
+    const list = persona.personas || [];
+    const roots = list.map((p) => p.root_pubkey).join(',');
+    useEffect(() => {
+        persona.refreshPersonas();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    useEffect(() => {
+        let live = true;
+        Promise.all(
+            list.map(async (p) => {
+                try {
+                    const profile = await api(`/api/identity/${p.root_pubkey}/profile`);
+                    return [p.root_pubkey, (profile.find((f) => f.field === 'name') || {}).value || ''];
+                } catch {
+                    return [p.root_pubkey, ''];
+                }
+            })
+        ).then((pairs) => live && setNames(Object.fromEntries(pairs)));
+        return () => {
+            live = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [roots]);
+    const run = (fn) => async () => {
+        setBusy(true);
+        try {
+            await fn();
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`
+        <div class="persona-page">
+            <div class="persona-page-head">
+                <h1 class="persona-page-title">${t('persona.your-personas-2', 'your personas')}</h1>
+                <p class="persona-page-sub">${t('persona.personas-hint', 'who you appear to be. Each is its own name, pages and people; this browser uses one at a time.')}</p>
+            </div>
+            <div class="persona-list">
+                ${list.map((p) => {
+                    const mine = current && current.root === p.root_pubkey;
+                    const words = speakable(p.root_pubkey).split('-').slice(0, 2).join('-');
+                    return html`<div class=${mine ? 'persona-row persona-row-current' : 'persona-row'} key=${p.root_pubkey}>
+                        <span class="persona-chip" style="background: hsl(${personaHue(p.root_pubkey)}, 60%, 55%)"></span>
+                        <span class="persona-row-words">
+                            <strong>${names[p.root_pubkey] || words}</strong>
+                            <small>${words}${p.standing !== 'active' ? ` · ${p.standing}` : ''}</small>
+                        </span>
+                        ${mine
+                            ? html`<span class="persona-row-mark">${t('persona.this-browser', 'this browser')}</span>`
+                            : html`<button
+                                  class="persona-row-switch"
+                                  disabled=${busy || p.standing !== 'active'}
+                                  onClick=${run(() => persona.switchTo(p.root_pubkey).then(() => loc.route('/home')))}
+                              >${t('persona.switch', 'switch')}</button>`}
+                    </div>`;
+                })}
+            </div>
+            <div class="persona-list-actions">
+                <button class="welcome-go" disabled=${busy} onClick=${run(persona.create)}>
+                    ${t('persona.make-a-new-persona', 'make a new persona')}
+                </button>
+                <button class="skip-link" disabled=${busy} onClick=${run(persona.startJoin)}>
+                    ${t('persona.bring-a-persona-here-from', 'bring a persona here from another computer')}
+                </button>
+            </div>
+            ${persona.error && html`<p class="form-error">${persona.error}</p>`}
+        </div>
     `;
 };

@@ -9169,3 +9169,16 @@ gateway's three rungs are its three answers, the expressiveness ladder is three 
 merge rungs are the merges - and the citations of documents no longer in the tree. Every
 section the code cites by name still exists under that name, and every ruling number the
 code cites is unchanged.
+
+## 2026-09-17: your personas
+
+"The UI for having a node user manage more than one persona." A new item under "your
+settings", *your personas - manage who you appear to be*: every persona the account carries
+on this node as a row, the one this browser is using marked, a switch on each of the others,
+and the two doors that already existed - make a new persona (the ceremony and the naming,
+unchanged) and bring one here from another computer (the join flow, unchanged). The persona
+hook remembers the browser's choice per account so a reload lands on the same persona, a
+switch stops one live cache and starts the next, and cancelling a join returns to the persona
+the browser had rather than to nobody. One fix on the way: the join watcher opened the first
+persona on the list, which with a second persona arriving was the wrong one; it opens the one
+that arrived. No node change: the doors were all there.

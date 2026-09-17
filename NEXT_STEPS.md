@@ -66,7 +66,6 @@ beside derived. What is left:
 * the public-HTML browser for this repo
 
 ### Node Management & Federation
-* multiple-personas per user
 * use the spare key to build a new identity, create a new spare key
 * currently spare key account recovery reveals a hugely important secret to potentially a low-level node: bad!
 * declare a "management persona"

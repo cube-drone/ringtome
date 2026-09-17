@@ -24,8 +24,7 @@ import {
     PersonaHome,
     Profile,
     usePersonaName,
-    ContentControl,
-} from './persona.js';
+    ContentControl, Personas } from './persona.js';
 import { Computers } from './computers.js';
 import { DocsApp } from './apps/notes.js';
 import { Console } from './console.js';
@@ -439,6 +438,7 @@ const Inside = ({ session }) => {
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
             <${ContentControl} path="/home/persona/content" current=${persona.current} />
+            <${Personas} path="/home/persona/personas" persona=${persona} current=${persona.current} />
             <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
             <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
