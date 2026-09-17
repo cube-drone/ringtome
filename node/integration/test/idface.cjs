@@ -1,7 +1,7 @@
 /*
     The /id surface (src/idface.rs): one URL, two audiences.
 
-    Anonymous gets the app with a meta head (UNAUTHED.md, ruling 8, 2026-09-15): the title,
+    Anonymous gets the app with a meta head (PROJECT_PLAN's The node's public face, ruling 8, 2026-09-15): the title,
     the OpenGraph meta and the reachable address in the head, the app in the body - 200 for
     a hosted persona, the same page under a 404 for a root nobody here carries (the app says
     so), and the checksum refusal (a worded address whose words lie) stays a raw page, having
@@ -45,7 +45,7 @@ describe("the /id face", () => {
             body.includes("&lt;with&gt; markup &amp; edges"),
             "profile text is escaped, never trusted"
         );
-        assert.ok(body.includes("app.js"), "the app takes the body (UNAUTHED.md, ruling 8)");
+        assert.ok(body.includes("app.js"), "the app takes the body (PROJECT_PLAN's The node's public face, ruling 8)");
         assert.ok(body.includes("?via="), "the address is the full shareable form, hints and all");
         assert.ok(
             body.indexOf("?via=") < body.indexOf("&lt;with&gt;"),

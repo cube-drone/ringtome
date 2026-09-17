@@ -1,4 +1,4 @@
-// A persona's page under its short name on this node (UNAUTHED.md, ruling 6): `/@slug`
+// A persona's page under its short name on this node (PROJECT_PLAN's The node's public face, ruling 6): `/@slug`
 // resolves through the node's slug door, then IS the persona page - the real address stays
 // the persona's name everywhere, and the page says so beside it.
 import { h } from 'preact';

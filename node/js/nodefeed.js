@@ -1,4 +1,4 @@
-// The node's front page (UNAUTHED.md, slice 2): what a stranger sees at `/` - every listed
+// The node's front page (PROJECT_PLAN's The node's public face, slice 2): what a stranger sees at `/` - every listed
 // persona's open posts and shares, newest first, on the feed's own body over the node
 // door (nodeface.rs). No composer, no fresh bar, no dial: there is no reader here.
 import { h } from 'preact';

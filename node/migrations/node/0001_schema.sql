@@ -553,7 +553,7 @@ CREATE TABLE post_audience_members (
     PRIMARY KEY (author_root, doc_id, member_root)
 );
 
--- The node's public face (UNAUTHED.md, slice 1, 2026-09-15): every public post and every
+-- The node's public face (PROJECT_PLAN's The node's public face, slice 1, 2026-09-15): every public post and every
 -- live share by every persona hosted here, folded on the fold lane when a hosted persona's
 -- POSTS or REBROADCASTS chain moves - so the anonymous feed pages and narrows out of one
 -- node table and never opens a user database per request. A share is a row for the
@@ -577,7 +577,7 @@ CREATE TABLE node_shelf (
 );
 CREATE INDEX node_shelf_by_time ON node_shelf (published_ms DESC, doc_id DESC);
 
--- "Listed on this node's front page" (UNAUTHED.md, ruling 3): a node fact, not the
+-- "Listed on this node's front page" (PROJECT_PLAN's The node's public face, ruling 3): a node fact, not the
 -- persona's - it does not travel. Absent means listed; a row with listed = 0 is the switch
 -- turned off. Set through an authenticated door, read by the anonymous doors.
 CREATE TABLE node_listing (
@@ -586,7 +586,7 @@ CREATE TABLE node_listing (
     noted_ms    INTEGER NOT NULL
 );
 
--- Node slugs (UNAUTHED.md, rulings 6 and 7, 2026-09-16): a short address a hosted persona
+-- Node slugs (PROJECT_PLAN's The node's public face, rulings 6 and 7, 2026-09-16): a short address a hosted persona
 -- claims on THIS node - `@cube-drone` - first come first served, meaning nothing on any
 -- other node. A persona holds at most two: its current (standing = 1) and the last it
 -- claimed (standing = 0), which redirects to the current and which nobody else may take.

@@ -1,4 +1,4 @@
-//! Node slugs (UNAUTHED.md, rulings 6 and 7): a short address a hosted persona claims on
+//! Node slugs (PROJECT_PLAN's The node's public face, rulings 6 and 7): a short address a hosted persona claims on
 //! this node - `@cube-drone` - first come first served, a node fact that means nothing on
 //! any other node. A persona holds at most two: the current, and the last it claimed, which
 //! redirects to the current and which nobody else may take. Changing again drops the older;

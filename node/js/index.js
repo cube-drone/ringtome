@@ -115,7 +115,7 @@ const SearchOptions = ({ kind, onKind }) => {
     </span>`;
 };
 
-/// A first segment that starts with `@` is a node slug (UNAUTHED.md, ruling 6): the
+/// A first segment that starts with `@` is a node slug (PROJECT_PLAN's The node's public face, ruling 6): the
 /// router cannot say `/@:slug` - a parameter is a whole segment - so this route takes the
 /// segment and dispatches, handing anything else to the shell's own default.
 const AtRoute = ({ at, fallback: Fallback, ...props }) =>
@@ -455,7 +455,7 @@ const Inside = ({ session }) => {
     return inApp ? shell(routed) : stage(routed);
 };
 
-/// Root, signed in: the console lives at /home (UNAUTHED.md, 2026-09-15 - root is the
+/// Root, signed in: the console lives at /home (PROJECT_PLAN's The node's public face, 2026-09-15 - root is the
 /// stranger's front page, and a reader who lands there goes on to their own).
 const HomeBounce = () => {
     const loc = useLocation();
@@ -532,7 +532,7 @@ const App = () => {
         return html`<div class="app-main"><div class="loading-shell"><p>${t('index.loading-2', 'Loading…')}</p></div></div>`;
     }
 
-    // No session: the node's public face (UNAUTHED.md, ruling 8) - the front page, the
+    // No session: the node's public face (PROJECT_PLAN's The node's public face, ruling 8) - the front page, the
     // people page and every persona's page, with a sign-in affordance where the persona
     // menu sits; the sign-in itself lives at /home, where every app URL lands a stranger.
     if (!session.account) {

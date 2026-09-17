@@ -1,4 +1,4 @@
-//! The node's public face, the data half (UNAUTHED.md, slice 1): `node_shelf`, every public
+//! The node's public face, the data half (PROJECT_PLAN's The node's public face, slice 1): `node_shelf`, every public
 //! post and live share by every persona hosted here, folded on the fold lane when a hosted
 //! persona's POSTS or REBROADCASTS chain moves; and `node_listing`, the per-persona "listed
 //! on this node's front page" switch. The anonymous doors (nodeface.rs) read these two tables

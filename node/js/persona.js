@@ -759,7 +759,7 @@ export const Profile = ({ current }) => {
     `;
 };
 
-/// Your short name on this node (UNAUTHED.md, rulings 6 and 7): `@cube-drone`, first come
+/// Your short name on this node (PROJECT_PLAN's The node's public face, rulings 6 and 7): `@cube-drone`, first come
 /// first served here and meaning nothing anywhere else. You keep the one before it too,
 /// which sends readers on to the current one; changing again drops the older.
 const NodeSlug = ({ root }) => {

@@ -40,8 +40,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   annotator's chain reaches them. Fine while chains sync; revisit if fragments become the
   main road for sealed posts.
 * Save to bucket
-* The node's public face (UNAUTHED.md, settled 2026-09-14): the node feed and people page for
-  strangers on the same Preact surfaces, the "listed on this node" switch, node slugs (`/@name`).
+* Rate limits on the anonymous doors (PROJECT_PLAN's The node's public face, residuals): the
+  front page is the first thing a scraper finds; a per-address budget beyond the paging.
 * Node-observed feed ("here's everything public that anybody is looking at")
 * more granular or time-limited blocks? ("block for 6 months")
 

@@ -87,7 +87,7 @@ pub async fn homepage(State(state): State<AppState>) -> Html<String> {
     Html(app_page(&state, "<title>Ringtome</title>"))
 }
 
-/// The app's page with a head of the caller's choosing (UNAUTHED.md, ruling 8): the title
+/// The app's page with a head of the caller's choosing (PROJECT_PLAN's The node's public face, ruling 8): the title
 /// and the OpenGraph meta a crawler or a link unfurler reads, with the app taking the body -
 /// one rendering path for signed-in readers and strangers alike.
 pub fn app_page(state: &AppState, head: &str) -> String {

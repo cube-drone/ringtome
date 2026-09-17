@@ -1,5 +1,5 @@
 /*
-    The node's public face, the doors (UNAUTHED.md, slice 1, 2026-09-15): with no session at
+    The node's public face, the doors (PROJECT_PLAN's The node's public face, slice 1, 2026-09-15): with no session at
     all, a stranger asks this node who it hosts and what they have said - the node feed,
     newest first, narrowed by tag, kind and words; its labels; and the listed personas. A
     sealed post never appears; an unlisted persona's posts and name never appear; and the

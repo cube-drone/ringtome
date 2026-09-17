@@ -177,7 +177,7 @@ pub async fn idface(
     persona_page(&state, root).await
 }
 
-/// The persona's page: the app with a meta head (UNAUTHED.md, ruling 8). The server's part
+/// The persona's page: the app with a meta head (PROJECT_PLAN's The node's public face, ruling 8). The server's part
 /// is the head - the title and the OpenGraph meta a crawler or a link unfurler reads, the
 /// URL carrying the via hints that say where this persona can be reached - and the app takes
 /// the body, signed in or not. A hosted persona is 200; anything else is the same page under
@@ -2815,7 +2815,7 @@ pub async fn id_profile(
         // actually serves. A foreign persona's address mints origin-free, which re-homes at
         // whatever node the reader has.
         "hosted": hosted,
-        // The short name this node gave them (UNAUTHED.md, ruling 6), for a persona it hosts.
+        // The short name this node gave them (PROJECT_PLAN's The node's public face, ruling 6), for a persona it hosts.
         "slug": if hosted { crate::slugs::of_root(&state.node_db, &root_hex).await.ok().and_then(|(c, _)| c) } else { None },
         "via": via,
         // A refresh is running behind this answer: what you are reading may be a moment old,

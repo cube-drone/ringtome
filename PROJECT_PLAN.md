@@ -4127,6 +4127,71 @@ computers.
    asked about. The reply mint, the label doors and the bell's fold ask for the persona
    at hand too.
 
+### The node's public face: strangers, listing and slugs (settled 2026-09-14; built 2026-09-16)
+
+"Present the public content with all the same react tools we use to present things to
+logged-in users." What a node shows to someone who is not signed in: the personas it hosts
+and everything public they have said, as one feed, on the same surfaces a reader gets, fed
+by two anonymous doors; a per-persona switch for appearing there; and a short address per
+node. (This section folded in the arc document UNAUTHED.md when the arc closed.)
+
+1. **Data versus rendering, not HTML versus Preact.** The cards, the facet rows, the search
+   and label hooks, the person row and the persona shelf adapter take their data from the
+   API and accept no current persona. What did not reuse was the feed app and the people
+   app, which read the signed-in persona's own mirror; a stranger has none. So the arc was
+   two doors and a shell, not a rewrite: the feed's stream takes its doors as props (`feedUrl`,
+   `labelsUrl`, no dial, its own facet picks), one body over two doors.
+2. **The sealed rule is already the stranger's rule.** A viewer of nobody gets no sealed
+   post, no sealed label and no key. The anonymous doors pass no viewer, read the node
+   memos every other listing reads, and never open a user database.
+3. **Listed on this node, default on.** A node's front page turns hosting into publication,
+   and someone may host a persona on a friend's node without wanting to be its front page.
+   Each hosted persona has "listed on this node's front page", on by default; the node feed
+   and the people page honour it. A node fact (`node_listing`), not the persona's - it does
+   not travel - set through an authenticated door, read by the anonymous ones.
+4. **The node feed.** Everything public by every listed hosted persona, newest first, with
+   the labels row, the kind row and the search over the whole held shelf (the reader's own
+   narrowing, viewer none), keyset paging; shares by hosted personas ride as shares. Fed by
+   `node_shelf`, folded from each hosted persona's own shelf when their chain moves (the
+   annotations memo's discipline: one user-db open per move, none per request; a hundred
+   posts per statement, since the history dig shares the fold lane). The dial does not
+   apply: there is no reader to have interest. Its null state sends a stranger to sign in.
+5. **The people page.** Every listed hosted persona with the byline the node holds, the
+   speakable address and the slug when one is claimed; no relationships, no sorts by trust.
+6. **Node slugs: a short address per node, first come first served.** A hosted persona may
+   claim `@cube-drone`, and `node.tld/@cube-drone` is its page here. A slug cannot follow the
+   persona around: two nodes can each hand the same name to different people and nothing in
+   a system with no centre could referee it - so it is a node fact, meaning nothing on any
+   other node, and the page says so beside the speakable address, which is the persona's
+   real name everywhere. A fourth address floor: `/home/` for apps, `/in/` for buckets,
+   `/id/` for personas by their real address, `/@` for personas by this node's short name.
+   The router cannot say `/@:slug` - a parameter is a whole segment - so a single-segment
+   route takes the segment and dispatches on the `@`.
+7. **Claiming, changing, holding.** Lowercase letters, digits and hyphens, three to
+   thirty-two characters, no leading or trailing hyphen; uppercase lowered and a leading `@`
+   forgiven. Claimed by a hosted persona through an authenticated door; refused when another
+   persona holds it as current OR last. A persona may change to any unclaimed slug and then
+   holds two: the current, and the last it claimed, which redirects to the current and which
+   nobody else may take. Changing again drops the older; retaking one's own last swaps the
+   two; giving the name up keeps it as the last; leaving the node releases both. An unlisted
+   persona keeps its slug: listing is about the front page, claiming a name is its own choice.
+   The address block shows the declared public URL in front of the name, `@name` in bold:
+   this server, only.
+8. **The shell.** Without a session the app serves the front page at `/`, the people page at
+   `/people`, every `/id/` and `/@` page and every post page, under a header with the node's
+   search box and three icon buttons: feed, people, sign in - the sign-in lives at `/home`,
+   where every app URL lands a stranger; a signed-in reader at `/` goes on to `/home`. The
+   server's `/id/` and `/@` pages are the app with a head - the title and the OpenGraph meta,
+   the URL carrying the via hints - for hosted, peeked and unknown personas alike (the
+   malformed-address pages stay raw, having no persona); the raw card page and its identicon
+   retired. The node pages live beside the shell, not among the registry's apps: an app may
+   not import an app.
+
+**Residuals.** Rate limits on the anonymous doors: a node's front page is the first thing a
+scraper finds; the feed door's paging bounds the damage, a per-address budget is the next
+step. A node-observed feed is a different thing and stays on NEXT_STEPS. Full pre-rendering
+of the app to HTML stays possible if crawlers ever need the words; nothing asks for it.
+
 ### Replies under the author's seal, and sealed titles (settled 2026-09-08)
 
 A sealed conversation stays pinned to the context it began in. Two rulings, one key.

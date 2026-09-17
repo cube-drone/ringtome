@@ -1,4 +1,4 @@
-//! The node's public face, the doors (UNAUTHED.md, slice 1): what a stranger may ask this
+//! The node's public face, the doors (PROJECT_PLAN's The node's public face, slice 1): what a stranger may ask this
 //! node with no session - the node feed (every listed hosted persona's open posts and live
 //! shares, newest first, narrowed and searched like a reader's feed), its labels, and the
 //! personas the node lists; and the one authenticated door beside them, the persona's own

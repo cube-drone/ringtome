@@ -1,5 +1,5 @@
 /*
-    Node slugs (UNAUTHED.md, rulings 6 and 7, 2026-09-16): a short address a hosted persona
+    Node slugs (PROJECT_PLAN's The node's public face, rulings 6 and 7, 2026-09-16): a short address a hosted persona
     claims on this node - first come first served, meaning nothing on any other node. Ada
     claims one; bea cannot take it; the grammar is enforced; ada changes it and keeps the
     old one, which redirects and which bea still cannot take; ada retakes her old one (the

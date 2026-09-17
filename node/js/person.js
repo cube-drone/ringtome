@@ -108,7 +108,7 @@ export function usePerson(root, { current, profile: given } = {}) {
     const blocked = facts.blocked === 'yes';
     const hosted = source ? !!source.hosted : isYou;
     const via = (source && source.via) || null;
-    // The node's short name for them (UNAUTHED.md, ruling 6), when the profile names one.
+    // The node's short name for them (PROJECT_PLAN's The node's public face, ruling 6), when the profile names one.
     const slug = (source && source.slug) || null;
 
     const names = displayNames({ nickname: facts.nickname, name, words });

@@ -1,4 +1,4 @@
-// The node's people page (UNAUTHED.md, slice 2): everyone this node lists, with the byline
+// The node's people page (PROJECT_PLAN's The node's public face, slice 2): everyone this node lists, with the byline
 // it holds - the People app's rows over the node door (nodeface.rs), with no relationship
 // to glance at: a stranger has none.
 import { h } from 'preact';

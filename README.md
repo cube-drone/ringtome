@@ -43,9 +43,6 @@ federated, unapologetically Old Internet.
   the pragmatism rules; the patterns every new file is expected to hold.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
-- [`UNAUTHED.md`](UNAUTHED.md) — the node's public face: what a stranger sees, the same Preact
-  surfaces fed by two anonymous doors, the "listed on this node" switch, and node slugs
-  (`/@name`, first come first served per node). Rulings settled 2026-09-14; not yet built.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
   surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
   canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match

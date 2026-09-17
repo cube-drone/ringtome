@@ -213,7 +213,7 @@ export function scheduledPlan(doc) {
     }
 }
 
-// One body for two roads (UNAUTHED.md, ruling 1): the reader's feed, and the node's front
+// One body for two roads (PROJECT_PLAN's The node's public face, ruling 1): the reader's feed, and the node's front
 // page for a stranger - the same cards, facets, search and paging over a different door.
 // `feedUrl`/`labelsUrl` default to the reader's; `dial` is the reader's selectivity, off
 // for the node (there is no reader to have interest); `picksKey` keeps the facet picks
