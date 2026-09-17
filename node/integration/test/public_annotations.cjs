@@ -221,13 +221,16 @@ describe("public annotations: the wire and the mint", function () {
             { method: "DELETE" }
         );
         assert.equal(del.status, 200, await del.text());
-        await beat(HOST, "pull", adaRoot);
-        await beat(HOST, "fold", beaRoot);
-        head = await (await ada(`api/id/${adaRoot}/posts/${post}`)).json();
-        assert.ok(
-            !(head.annotations || []).some((a) => a.value === "goopy"),
-            "a retraction on bea's chain takes the memo row with it"
-        );
+        // Bounded, because the one-beat form raced bravo's eager push: the retraction
+        // landed on ada's node 3ms after the fold beat had run (2026-09-17's CI red).
+        let gone = false;
+        for (let i = 0; i < 20 && !gone; i++) {
+            await pullAndFold(HOST, beaRoot);
+            head = await (await ada(`api/id/${adaRoot}/posts/${post}`)).json();
+            gone = !(head.annotations || []).some((a) => a.value === "goopy");
+            if (!gone) await new Promise((res) => setTimeout(res, 300));
+        }
+        assert.ok(gone, "a retraction on bea's chain takes the memo row with it");
     });
 
     it("labels ride the fragment - a node holding nothing else receives them (slice 3)", async function () {
@@ -272,7 +275,10 @@ describe("public annotations: the wire and the mint", function () {
             "ada's label arrived by fragment - her chain was never here"
         );
         // Carriage is named (Curtis, 2026-08-31: the vector must be reverse-engineerable):
-        // a proof that rode a fragment records WHICH peer handed it over.
+        // a proof that rode a fragment records WHICH peer handed it over - but on THIS
+        // topology the speculative mirror is the second road (above), and when it lands
+        // first the row honestly says "chain" (2026-09-17's CI red). Either road is a
+        // true answer here; the carrier proof is eve's, below, whose node has one road.
         {
             const { rows } = await sql(
                 `SELECT annotator, learned_via FROM doc_annotations WHERE target_doc = '${post}'`,
@@ -280,8 +286,8 @@ describe("public annotations: the wire and the mint", function () {
             );
             const rode = rows.find((r) => r.annotator === adaRoot);
             assert.ok(
-                rode && /^relay:/.test(rode.learned_via),
-                `the relayed proof names its carrier: ${rode && rode.learned_via}`
+                rode && (/^relay:/.test(rode.learned_via) || rode.learned_via === "chain"),
+                `the proof names its road: ${rode && rode.learned_via}`
             );
         }
         assert.ok(
@@ -325,5 +331,18 @@ describe("public annotations: the wire and the mint", function () {
                 labels.some((l) => l.annotator === beaRoot && l.value === "viral-goop"),
             "two hops out, both labels stand, each still signed by its own annotator"
         );
+        // The carrier proof (Curtis, 2026-08-31): eve's node holds no chain of ada's and
+        // no vouch toward her, so the only road was the relay, and the row names the peer.
+        {
+            const { rows } = await sql(
+                `SELECT annotator, learned_via FROM doc_annotations WHERE target_doc = '${post}'`,
+                HOST_E
+            );
+            const rode = rows.find((r) => r.annotator === adaRoot);
+            assert.ok(
+                rode && /^relay:/.test(rode.learned_via),
+                `the relayed proof names its carrier: ${rode && rode.learned_via}`
+            );
+        }
     });
 });

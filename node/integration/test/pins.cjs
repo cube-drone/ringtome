@@ -11,7 +11,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST_B, HOST_C } = require("./fetch.cjs");
+const { HOST_B, HOST_C, sql } = require("./fetch.cjs");
 
 const POSTS = 60;
 const DEEP = 3;
@@ -91,8 +91,11 @@ const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.s
         assert.deepEqual((prof.pinned || []).map((p) => p.doc_id), [deep], "the peek fetched the pin ahead of the window");
         // The window is the newest twenty the peek actually landed; under a loaded rig the
         // peek's own budget can cut it short (2026-09-09), and then the deep post is
-        // honestly among what is held. The claim is about the full window.
-        if ((prof.posts || []).length >= 20) {
+        // honestly among what is held. The claim is about the full window, so it asks
+        // the ledger how many it holds: nineteen of the window plus the pin is a page of
+        // exactly twenty with the deep post on it (2026-09-17's CI red), not the window.
+        const { rows } = await sql(`SELECT COUNT(*) AS n FROM fragments WHERE author_root = '${adaRoot}'`, HOST_C);
+        if (Number(rows[0].n) > 20) {
             assert.ok(!(prof.posts || []).some((p) => p.doc_id === deep), "which the full window itself never reaches");
         }
         assert.ok((prof.pinned[0].annotations || []).some((a) => a.key === "tag" && a.value === "keeper"), "labels rode the fragment");

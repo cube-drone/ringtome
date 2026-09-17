@@ -9212,3 +9212,16 @@ sealed one; cal finds the share in his feed wearing the flag, reads it through b
 and then without the hint; dana, who follows bea untrusted, is refused and never sees the
 card. On the way, the strings cop caught four phrases on the "this computer has left the
 persona" page that had never gone through `t()`; wrapped.
+
+## 2026-09-17: three rig races, settled
+
+Curtis's CI run of the onward commit went red on two claims that had passed twice here, and
+a third failed on the rerun - each a single beat racing a lane, none about the seal. The
+public annotations suite's retraction claim pulled ada's OWN root and then trusted bravo's
+eager push to have landed before one fold beat; it now pulls bea's chain, bounded. The same
+suite's carrier proof asserted "relay:" on cal's node while its own header said a second road
+- the speculative mirror - reaches cal too; when that road lands first the row honestly says
+"chain", so the claim accepts either and the carrier proof moved to eve, whose node has one
+road. The pins peek claim guarded "the deep post is not on the page" with "at least twenty
+held", which nineteen of the window plus the pin satisfies with the deep post on the page; it
+asks the fragment ledger's count and claims only past twenty.
