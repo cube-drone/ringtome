@@ -10,9 +10,11 @@ import { beats } from './pure/swatch.js';
 
 const html = htm.bind(h);
 
-// A disc whose stroke is as wide as its radius, dashed to the day's fraction, reads as a pie
-// slice with no arc arithmetic: the dash runs clockwise from twelve.
-const R = 5;
+// A circle whose stroke is twice its radius, dashed to the day's fraction, reads as a pie
+// slice with no arc arithmetic: the dash runs clockwise from twelve. The stroke reaches
+// out to 2R, so 2R is the ring's radius - any wider and the viewport clips the disc square
+// (which is what happened on 2026-09-17: the "circle" showed as a blob).
+const R = 3.5;
 const C = 2 * Math.PI * R;
 
 const DayPie = ({ fraction }) => html`<svg class="quickbar-clock-pie" viewBox="0 0 16 16" aria-hidden="true">
