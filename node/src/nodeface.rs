@@ -244,7 +244,6 @@ pub async fn listed_get(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // Opening the store proves the session owns the persona, as every identity door does.
     crate::record::store::open(&state, &session.account.id, &root).await?;
     let on = crate::nodeshelf::listed(&state.node_db, &root).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "listed": on })))

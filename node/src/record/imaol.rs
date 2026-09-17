@@ -842,17 +842,10 @@ pub async fn chain_spans(
         .collect())
 }
 
-/// Fold one `profile-set` entry into the view. Last-writer-wins on the tuple
-/// `(timestamp_ms, seq, entry_hash)`: claimed timestamps order cross-key writes (cosmetic stakes,
-/// convergence is what matters), seq breaks same-chain timestamp ties in true authoring order,
-/// and the hash makes the comparison a total order so every replica lands on the same value
-/// regardless of replay order.
-///
-/// The comparison lives *inside* the upsert's WHERE clause, so compare-and-write is one atomic
-/// statement. A check-then-act version of this (SELECT the tuple, compare in Rust, then write)
-/// has a lost-update window when a rebuild replaying old entries races a live write: both read,
-/// both "win," and the old value can land last. Statement-level atomicity closes it - the row is
-/// monotone in the tuple no matter how appliers interleave.
+/// Fold one `profile-set` entry into the view. Last-writer-wins on `(timestamp_ms, seq,
+/// entry_hash)` - the hash makes it a total order, so every replica converges whatever the
+/// replay order. The comparison stays inside the upsert's WHERE: a check-then-write has a
+/// lost-update window when a rebuild replaying old entries races a live write.
 pub(crate) async fn apply_profile_set(db: &Db, signed: &SignedEntry) -> Result<(), AppError> {
     let Payload::Inline(bytes) = &signed.entry().payload else {
         return Err(AppError::Internal(anyhow!(
@@ -2268,7 +2261,6 @@ mod tests {
 
         let before = get_profile(&db).await.unwrap();
 
-        // Sabotage the view, then rebuild from the log.
         db.execute("UPDATE profile_view SET value = 'CLOBBERED'", ())
             .await
             .unwrap();
@@ -2291,7 +2283,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Corrupt one byte of the stored envelope: rebuild must refuse, not shrug.
         let (bytes,): (Vec<u8>,) = db
             .fetch_one("SELECT bytes FROM entries LIMIT 1", ())
             .await

@@ -3665,7 +3665,6 @@ async fn docs_create_binary_handler(
     Query(meta): Query<BinaryMeta>,
     body: Bytes,
 ) -> Result<impl IntoResponse, AppError> {
-    // Owner gate: opening the store enforces that this account owns this identity.
     store::open(&state, &session.account.id, &root).await?;
     let doc_id = crate::record::documents::new_doc_id();
     queue_upload(&state, &session, &root, doc_id, &[], &meta.title, &body).await
@@ -3847,7 +3846,6 @@ async fn docs_ingest_status_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<Vec<crate::ingest::JobStatus>>, AppError> {
-    // Owner gate before exposing this account's queue.
     store::open(&state, &session.account.id, &root).await?;
     let jobs =
         crate::ingest::jobs_for_account(&state.node_db, &state.ingest, &session.account.id.to_string())
@@ -3875,7 +3873,6 @@ async fn ingest_retitle_handler(
     Path((root, job_id)): Path<(String, String)>,
     Json(req): Json<IngestRetitle>,
 ) -> Result<Json<IngestRetitled>, AppError> {
-    // Owner gate before touching this account's queue.
     store::open(&state, &session.account.id, &root).await?;
     let applied = crate::ingest::retitle_job(
         &state.node_db,
@@ -3887,23 +3884,17 @@ async fn ingest_retitle_handler(
     Ok(Json(IngestRetitled { applied }))
 }
 
-/// Serve a document body as raw bytes (the display head), with the format's Content-Type. This
-/// is how a browser fetches an image; for text docs it returns the head's bytes too.
+/// Serve a document body as raw bytes (the display head) with the format's Content-Type.
 ///
-/// **Self-describing about pending/failed ingest.** A media `doc_id` exists (returned in the
-/// upload's `202`) before its transcode lands - and may never land if the upload was bad. Rather
-/// than a bare 404 that can't tell "processing" from "impossible" from "never existed", a
-/// version-less doc_id is explained from the ingest queue: `202` while still transcoding, `422`
-/// with the tombstone message if it terminally failed, `404` only when genuinely unknown. A body
-/// whose version exists but hasn't been fetched to this node yet is still a 404.
+/// A version-less doc_id may still be queued for ingest: its queue state answers as `202`
+/// (transcoding) or `422` (terminally failed, with the tombstone's words) before a `404`. A
+/// body whose version exists but has not reached this node is a 404.
 ///
-/// **Isolation, because even a private body may be hostile.** A compromised-not-yet-revoked
-/// member can inject a polyglot claiming an image type; served same-origin and content-sniffed,
-/// an HTML polyglot could execute in the app origin - which holds signing authority. `nosniff`
-/// pins the declared type; `sandbox` gives an opaque origin if the response is ever navigated to.
-/// (The fuller measure - a separate serving origin/port and `Content-Disposition` for
-/// non-renderable types - is PROJECT_PLAN's blob-serving target, due with the render path and
-/// public media.)
+/// The bytes are treated as untrusted active content and served with isolation headers -
+/// `nosniff` pins the declared type, `sandbox` gives an opaque origin if navigated to -
+/// because a compromised member could upload an HTML polyglot claiming an image type, and
+/// the app origin holds signing authority. The fuller measure - a separate serving port and
+/// `Content-Disposition` for the non-renderable - is PROJECT_PLAN's The Media-Type Admission Test.
 async fn docs_body_handler(
     session: Session,
     State(state): State<AppState>,

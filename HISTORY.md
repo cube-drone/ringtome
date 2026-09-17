@@ -9139,3 +9139,15 @@ operation, and two copies of it are two that can drift. Now `queue_upload` is th
 operation, and each door keeps only what is its own: create mints a fresh id and has no
 parents, save names an existing id and its parents. The ownership gate stays in each door,
 where a reader looks for it; the review said not to fold it away and the house agrees.
+The same review named comments that narrated the next line - "owner gate" beside each
+store open, "sabotage the view, then rebuild" above a test that does exactly that - and
+they went; the ownership invariant lives on `store::open` itself, where it belonged. Two
+good comments that had grown into paragraphs - the LWW upsert's race, the body door's ingest
+states and isolation headers - were cut to their contract and their scar, the forward
+pointer to the fuller blob-serving measure sent to the plan section that already tracks it.
+And the ladder went: the document DAG's comments had spoken of "rung 1" through "rung 5",
+the "mop-up" and the "janitor" - names coined in the notes-app design conversation, defined
+nowhere in the code - and now say the twin collapse, the echo fold, the field-wise title
+merge, the three-way line merge, the inline conflict, and the read-time folding, at every
+one of twenty-two sites, so a reader of any single function or test needs no forgotten
+metaphor to understand it.

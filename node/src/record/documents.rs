@@ -169,7 +169,7 @@ pub struct Doc {
     /// `parents` a client's next save must list - folded heads included - so the fork heals
     /// through an ordinary write (commit-on-next-save).
     pub heads: Vec<[u8; 32]>,
-    /// The heads after read-time mop-up: identical twins collapsed, ancestor echoes folded.
+    /// The heads after read-time folding: identical twins collapsed, ancestor echoes folded.
     /// What the user sees. Divergence is judged here - a fork whose sides carry the same words
     /// is not a decision anyone should be asked to make.
     pub logical_heads: Vec<[u8; 32]>,
@@ -222,7 +222,7 @@ impl Doc {
 
     /// Thread the loaded versions into the DAG: heads are versions no other version of the same
     /// doc names as a parent (a parent hash we don't hold - retention, or not yet synced - still
-    /// counts as claimed: the child is a head either way), then the read-time mop-up decides
+    /// counts as claimed: the child is a head either way), then the read-time folding decides
     /// which heads carry distinct words.
     fn thread(&mut self) {
         let claimed: HashSet<[u8; 32]> = self
@@ -239,7 +239,7 @@ impl Doc {
         self.compute_logical_heads();
     }
 
-    /// A version's substance: what the mop-up rungs compare. Body fingerprint AND title - a
+    /// A version's substance: what the twin collapse and the echo fold compare. Body fingerprint AND title - a
     /// rename is real content, so a head that only renamed never folds.
     fn content_of(&self, hash: &[u8; 32]) -> Option<([u8; 32], &str)> {
         self.versions
@@ -267,7 +267,7 @@ impl Doc {
 
     /// The fork point(s) of two versions: their *maximal* common ancestors - common ancestors
     /// no other common ancestor descends from. Usually exactly one; criss-cross histories can
-    /// produce several, and the echo rung then requires ALL of them to match (conservative:
+    /// produce several, and the echo fold then requires ALL of them to match (conservative:
     /// when in doubt, stay diverged - keep-both never loses words).
     pub(crate) fn fork_points(&self, a: &[u8; 32], b: &[u8; 32]) -> Vec<[u8; 32]> {
         self.fork_points_of_heads(&[*a, *b])
@@ -310,12 +310,12 @@ impl Doc {
         maximal
     }
 
-    /// The read-time mop-up (NOTES_APP, The sync model): fold away DAG heads that carry no
+    /// The read-time folding (NOTES_APP, The sync model): fold away DAG heads that carry no
     /// distinct words. Deterministic over chain data alone, so every device derives the same
     /// answer; nothing is written - the DAG heals when the next ordinary save lists all DAG
     /// heads as parents.
     fn compute_logical_heads(&mut self) {
-        // Rung 1 - identical twins: heads with the same substance collapse to one
+        // The twin collapse: heads with the same substance collapse to one
         // representative (latest stamp, hash tiebreak - same cosmetic order as display).
         let mut groups: BTreeMap<([u8; 32], String), [u8; 32]> = BTreeMap::new();
         for h in &self.heads {
@@ -338,7 +338,7 @@ impl Doc {
         let mut logical: Vec<[u8; 32]> = groups.into_values().collect();
         logical.sort();
 
-        // Rung 2 - ancestor echoes: a head whose substance equals the fork point it shares
+        // The echo fold: a head whose substance equals the fork point it shares
         // with a surviving sibling contributed nothing relative to that fork - exactly diff3's
         // degenerate case - and folds away. Content matching a DEEPER ancestor than the fork
         // point does not fold: relative to the fork, that side changed something too.
@@ -2266,7 +2266,7 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
 }
 
 /// The notes view: catch the persisted fold up to the chains, then thread every stored version
-/// into per-document DAGs. All DAG judgment - heads, twin/echo folding, merge rungs - happens
+/// into per-document DAGs. All DAG judgment - heads, twin and echo folding, the merges - happens
 /// here in Rust over the fetched facts; SQL never holds an opinion.
 pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
     let undecryptable = catch_up(db, keys).await?;
@@ -2313,7 +2313,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
         }
     }
 
-    // Thread each doc's DAG - true heads, then the mop-up - with the edit window's honor rule
+    // Thread each doc's DAG - true heads, then the read-time folding - with the edit window's honor rule
     // running first, now that lanes are known.
     for doc in view.docs.values_mut() {
         doc.drop_late_public_edits();
@@ -2741,7 +2741,7 @@ pub enum Resolution {
     /// One logical head: its body, verbatim.
     Single,
     /// Divergence resolved by clean three-way merge: edits didn't overlap, every line from
-    /// both sides is present. Rung 3 rides along: a title renamed on one side while the body
+    /// both sides is present. The field-wise title merge rides along: a title renamed on one side while the body
     /// changed on the other merges field-wise.
     Merged,
     /// Genuine overlap: the body carries the conflict inline, git-style, with device labels.
@@ -3121,7 +3121,7 @@ pub async fn resolve(
                     let texts: Vec<&str> = sides.iter().map(|(_, t)| t.as_str()).collect();
                     let segments = align_heads(&base, &texts);
                     let disputed = segments.iter().any(|s| matches!(s, Segment::Disputed(_)));
-                    // Rung 3 generalizes: exactly one head renamed (relative to the fork)
+                    // The field-wise title merge, generalized: exactly one head renamed (relative to the fork)
                     // → the rename wins; otherwise the display head's title stands.
                     let renamed: Vec<&&Version> = many
                         .iter()
@@ -3183,7 +3183,7 @@ pub async fn resolve(
         });
     };
 
-    // Rung 3, field-wise title: if exactly one side renamed (relative to the fork point),
+    // The field-wise title merge: if exactly one side renamed (relative to the fork point),
     // the rename wins; if both did, the display head's title stands (recoverable - titles
     // never lose words, bodies are the guarantee).
     let fork_title = doc
@@ -3198,7 +3198,7 @@ pub async fn resolve(
         _ => display_title,
     };
 
-    // Rung 4: three-way line merge, which is format-agnostic (Marquee source is still lines).
+    // The three-way line merge, which is format-agnostic (Marquee source is still lines).
     // Clean = every line from both sides present, nobody asked anything. Overlap presents the
     // conflict per-hunk - inline markers for plaintext, `:::conflict`/`:::variant` vocabulary
     // for Marquee (its markers-are-vocabulary is the whole reason we split the formats).
@@ -3807,7 +3807,7 @@ mod tests {
             .any(|f| f.service == ringtome_proto::registry::service::DOCUMENTS_PRIVATE));
     }
 
-    /// Rung 1: the same fix made on two devices before they synced. Two DAG heads, identical
+    /// The twin collapse: the same fix made on two devices before they synced. Two DAG heads, identical
     /// words - not a decision anyone should be asked to make.
     #[tokio::test]
     async fn identical_twins_collapse_to_one_logical_head() {
@@ -3851,7 +3851,7 @@ mod tests {
         assert!(!doc.diverged());
     }
 
-    /// Rung 2: edit-then-revert on one side while the other side wrote something real. The
+    /// The echo fold: edit-then-revert on one side while the other side wrote something real. The
     /// revert equals the fork point, contributed nothing, and folds - diff3's degenerate case.
     #[tokio::test]
     async fn ancestor_echo_folds_away() {
@@ -3959,7 +3959,8 @@ mod tests {
     }
 
     /// A rename is real content: body echoing the fork point does NOT fold when the title
-    /// changed (that's rung 3's orthogonal merge, later - never the janitor's call).
+    /// changed: a rename is content, and combining it with an independent body edit is the
+    /// field-wise merge's decision, never the read-time folding's.
     #[tokio::test]
     async fn title_change_never_folds() {
         let db = test_db().await;
@@ -4025,7 +4026,7 @@ mod tests {
             .unwrap()
     }
 
-    /// Rung 4, the clean case: edits to different lines weave together with nobody asked.
+    /// The three-way line merge, the clean case: edits to different lines weave together with nobody asked.
     #[tokio::test]
     async fn non_overlapping_edits_merge_clean() {
         let db = test_db().await;
@@ -4077,7 +4078,7 @@ mod tests {
         );
     }
 
-    /// Rung 5: the same line edited both ways - the conflict rides inline, labeled, and both
+    /// The inline conflict: the same line edited both ways - the conflict rides inline, labeled, and both
     /// sides' words are in the text.
     #[tokio::test]
     async fn overlapping_edits_present_the_conflict_in_the_document() {
@@ -4136,7 +4137,7 @@ mod tests {
         );
     }
 
-    /// Rung 3: a rename on one side, a body edit on the other - orthogonal fields, both win.
+    /// The field-wise title merge: a rename on one side, a body edit on the other - orthogonal fields, both win.
     #[tokio::test]
     async fn rename_and_edit_merge_field_wise() {
         let db = test_db().await;
@@ -4499,7 +4500,7 @@ mod tests {
 
     /// Binary can't merge - divergence is keep-both. But the plaintext fingerprint still catches
     /// "secretly the same file": two devices that independently set the *same* image collapse to
-    /// one logical head (rung 1, format-agnostic). Same bytes but a different title stays diverged
+    /// one logical head (the twin collapse, format-agnostic). Same bytes but a different title stays diverged
     /// - the rename is real, exactly as for text.
     #[tokio::test]
     async fn identical_binary_saves_collapse_by_fingerprint_but_renames_stay_diverged() {
@@ -4700,7 +4701,7 @@ mod tests {
     }
 
     /// A genuine echo cascade: two reverts at DIFFERENT depths both fold, leaving the one real
-    /// head. (Same-depth echoes would be twins and collapse in rung 1 instead - a cascade only
+    /// head. (Same-depth echoes would be twins and collapse as twins instead - a cascade only
     /// exists across depths, which is the case worth stressing for termination.)
     #[tokio::test]
     async fn echo_cascade_at_different_depths_folds_to_the_real_head() {
@@ -4762,7 +4763,7 @@ mod tests {
         assert!(!doc.diverged());
     }
 
-    /// The termination guard: many same-content heads. Rung 1 collapses the twins; the fold
+    /// The termination guard: many same-content heads. The twin collapse takes them; the fold
     /// never empties the set, and picks the same survivor every run.
     #[tokio::test]
     async fn twin_storm_keeps_exactly_one_deterministically() {

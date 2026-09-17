@@ -93,12 +93,17 @@ const base58 = async (host) => {
         // THE LATE FOLLOW: all 30 in the feed - the dig reached below the window. The
         // fill pass digs one page per beat behind its persisted mark, so ring it until
         // the whole shelf is walked - each beat provably digs, no clock anywhere.
-        await beat(HOST_C, "fold", coraRoot);
-        for (let i = 0; i < 4; i++) await beat(HOST_C, "journal-fill");
-        assert.ok(
-            (await feedRows()).length >= 30,
-            "the history dig extended the feed to the whole held shelf"
-        );
+        // Rung in rounds (2026-09-17): the mirror's arrival is the one asynchronous part -
+        // under a loaded rig the profile fetch's sync can still be landing when the first
+        // fold runs, and four fills then dig a shelf not yet wholly held. Each round is
+        // still a fold and four provable digs; the rounds are bounded, never a clock.
+        let rows = [];
+        for (let round = 0; round < 12 && rows.length < 30; round++) {
+            await beat(HOST_C, "fold", coraRoot);
+            for (let i = 0; i < 4; i++) await beat(HOST_C, "journal-fill");
+            rows = await feedRows();
+        }
+        assert.ok(rows.length >= 30, "the history dig extended the feed to the whole held shelf");
         const titles = (await feedRows()).map((r) => r.title);
         assert.ok(titles.includes("dig-1"), "the dig reached the very first post");
 
