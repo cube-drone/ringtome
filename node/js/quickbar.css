@@ -46,6 +46,85 @@
     margin-top: 6px;
 }
 
+/* The app dock: one heptagon per app, icon only (the console glyphs without their names), a fast
+   switch between apps. The current app's tile sits full; the rest dim back. */
+.quickbar-apps {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4rem;
+}
+
+/* Each tile is a two-layer heptagon: the outer layer is a teal-deep rim (a border, since a
+   clip-path can't take a clean CSS border), the inner face is the app surface with the icon. The
+   rim is the SAME teal as the bar, so within the bar it vanishes into the backdrop and only the
+   part poking ABOVE the bar shows a rim (against the app behind). */
+.quickbar-hex {
+    --qh-w: 46px;
+    width: var(--qh-w);
+    height: calc(var(--qh-w) * 0.9749); /* regular pointy-top heptagon */
+    padding: 4px; /* the rim thickness */
+    border: 0;
+    background: var(--teal-deep);
+    clip-path: var(--face-clip);
+    cursor: pointer;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* The user's own tile (Persona, first) runs a little bigger than the rest. */
+.quickbar-hex-lead {
+    --qh-w: 54px;
+}
+
+/* One dock slot: the heptagon plus whatever sits over it. The badge lives here, a sibling
+   of the hex rather than a child, because the hex is clip-pathed and would cut it. */
+.quickbar-slot {
+    position: relative;
+    display: inline-flex;
+}
+
+.quickbar-badge {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    --j: 4.5px;
+    clip-path: var(--jag);
+    background: var(--coral);
+    color: var(--dock-text);
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.quickbar-hex-face {
+    width: 100%;
+    height: 100%;
+    background: var(--surface);
+    clip-path: var(--face-clip);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem; /* the icon */
+}
+
+.quickbar-hex-lead .quickbar-hex-face {
+    font-size: 1.6rem;
+}
+
+.quickbar-hex:not(.active) {
+    opacity: 0.72;
+}
+
+.quickbar-hex:hover {
+    opacity: 1;
+    transform: translateY(-2px);
+}
+
 .quickbar-clock-pie {
     width: 0.95em;
     height: 0.95em;
