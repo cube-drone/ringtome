@@ -1720,6 +1720,12 @@ article:has(.label-emoji-strip) {
 
 /* A backdated post's stamp (PUBLISH.md): the author's claim, not the moment - italic, with
  * a dotted line under it that says "hover me" and a title that gives the real moment. */
+/* Internet time beside the clock (Curtis, 2026-09-17): the same beat everywhere. */
+.feed-entry-beats {
+    color: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
 .feed-entry-dated {
     font-style: italic;
     color: var(--ink-soft);

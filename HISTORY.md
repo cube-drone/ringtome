@@ -9182,3 +9182,9 @@ switch stops one live cache and starts the next, and cancelling a join returns t
 the browser had rather than to nobody. One fix on the way: the join watcher opened the first
 persona on the list, which with a second persona arriving was the wrong one; it opens the one
 that arrived. No node change: the doors were all there.
+
+## 2026-09-17: internet time on the card
+
+Beside every post's local clock reading, its Swatch beat - `@891` - the day in a thousand
+beats from Biel midnight, the same number everywhere on Earth at once, which is the point of
+it next to a local time. A pure helper with vectors, on both the dated and the plain card.
