@@ -226,6 +226,29 @@
 }
 
 /* The floor: every line at full width, the newest at the bottom. */
+.chat-older {
+    display: block;
+    margin: 0.25rem auto;
+    font-size: 0.85em;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.1rem 0.75rem;
+    cursor: pointer;
+}
+.chat-archived {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.chat-archive {
+    font-size: 0.85em;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.05rem 0.6rem;
+    cursor: pointer;
+}
 .chat-floor {
     flex: 1;
     min-height: 0;

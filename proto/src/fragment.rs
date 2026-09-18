@@ -35,6 +35,7 @@
 
 use crate::cbor::{Reader, Writer};
 use crate::error::ProtoError;
+use crate::entry::MAX_ENTRY_BYTES;
 use crate::registry::{entry_type, service};
 use crate::{DocHeaderPlain, Payload, SignedEntry};
 
@@ -129,10 +130,26 @@ pub enum FragmentMessage {
     WantRoom { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32] },
     /// The participants' roots. Empty for "nobody yet" and "not for you" alike.
     Room { participants: Vec<[u8; 32]> },
+    /// The archive's history (CHAT.md, ruling 6): the room's messages said before
+    /// `before_ms`, newest first, at most `limit` - asked of the creator's node, which keeps
+    /// the room whole, by a reader whose own node keeps only the budget. `for_root` is the
+    /// persona asking; a sealed room answers only a dialer serving a persona its seal admits.
+    WantRoomHistory { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], before_ms: u64, limit: u64 },
+    /// One frame of the answer: `(speaker root, signed entry)` pairs, a few per frame under
+    /// the frame cap, newest first; the answer is a run of these ended by an EMPTY one. Each
+    /// entry proves itself; the root beside it is the archive's attribution, which the
+    /// reader checks against the speaker's key tree before believing.
+    RoomHistory { items: Vec<([u8; 32], Vec<u8>)> },
 }
 
 /// Cap on a room directory answer: the speaker ceiling (CHAT.md, ruling 6).
 pub const MAX_ROOM_PARTICIPANTS: usize = 1000;
+
+/// Cap on one history frame's entries: three messages of the largest size fit the frame.
+pub const MAX_ROOM_HISTORY_ITEMS: usize = 3;
+
+/// Cap on one history ask.
+pub const MAX_ROOM_HISTORY_LIMIT: u64 = 64;
 
 /// Cap on ids per shelf list, enforced at decode.
 pub const MAX_SHELF_IDS: usize = 64;
@@ -191,6 +208,8 @@ const TAG_WANT_SHELF: u64 = 10;
 const TAG_SHELF: u64 = 11;
 const TAG_WANT_ROOM: u64 = 12;
 const TAG_ROOM: u64 = 13;
+const TAG_WANT_ROOM_HISTORY: u64 = 14;
+const TAG_ROOM_HISTORY: u64 = 15;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -305,6 +324,25 @@ impl FragmentMessage {
                 w.array(participants.len() as u64);
                 for p in participants {
                     w.bytes(p);
+                }
+            }
+            Self::WantRoomHistory { author, doc_id, for_root, before_ms, limit } => {
+                w.array(6);
+                w.uint(TAG_WANT_ROOM_HISTORY);
+                w.bytes(author);
+                w.bytes(doc_id);
+                w.bytes(for_root);
+                w.uint(*before_ms);
+                w.uint(*limit);
+            }
+            Self::RoomHistory { items } => {
+                w.array(2);
+                w.uint(TAG_ROOM_HISTORY);
+                w.array(items.len() as u64);
+                for (root, entry) in items {
+                    w.array(2);
+                    w.bytes(root);
+                    w.bytes(entry);
                 }
             }
             Self::Replies { proofs, cursor } => {
@@ -442,6 +480,32 @@ impl FragmentMessage {
                     participants.push(r.bytes_fixed::<32>()?);
                 }
                 Self::Room { participants }
+            }
+            (TAG_WANT_ROOM_HISTORY, 6) => Self::WantRoomHistory {
+                author: r.bytes_fixed::<32>()?,
+                doc_id: r.bytes_fixed::<16>()?,
+                for_root: r.bytes_fixed::<32>()?,
+                before_ms: r.uint()?,
+                limit: r.uint()?,
+            },
+            (TAG_ROOM_HISTORY, 2) => {
+                let count = r.array()?;
+                if count > MAX_ROOM_HISTORY_ITEMS as u64 {
+                    return Err(ProtoError::BadEntry("room history frame too long"));
+                }
+                let mut items = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    if r.array()? != 2 {
+                        return Err(ProtoError::BadEntry("history item must be [root, entry]"));
+                    }
+                    let root = r.bytes_fixed::<32>()?;
+                    let entry = r.bytes()?;
+                    if entry.len() > MAX_ENTRY_BYTES {
+                        return Err(ProtoError::BadEntry("history entry exceeds size limit"));
+                    }
+                    items.push((root, entry.to_vec()));
+                }
+                Self::RoomHistory { items }
             }
             (TAG_WANT_REPLIES, 4) => Self::WantReplies {
                 author: r.bytes_fixed::<32>()?,

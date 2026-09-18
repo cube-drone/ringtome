@@ -228,12 +228,15 @@ const Line = ({ m, current, cont }) => {
     </li>`;
 };
 
-const Room = ({ current, author, doc, onSeen }) => {
+const Room = ({ current, author, doc, onSeen, admin }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [room, setRoom] = useState(undefined); // undefined loading, null refused, object entered
     const [refusal, setRefusal] = useState('');
-    const [history, setHistory] = useState(null); // { items, closed }
+    const [history, setHistory] = useState(null); // { items, closed, more }
+    const [older, setOlder] = useState(false); // an earlier page on its way
+    const [archiving, setArchiving] = useState(false);
+    const keepOffset = useRef(null); // the floor's height before older lines landed
     const [draft, setDraft] = useState('');
     const [sending, setSending] = useState(false);
     const [sendError, setSendError] = useState(null);
@@ -345,16 +348,54 @@ const Room = ({ current, author, doc, onSeen }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc, !!room]);
 
+    // Scroll-back (CHAT.md, ruling 6): past the top of what the floor holds, the page
+    // before it - from this node's memo, or from the room's archive when this node keeps
+    // only the budget. The floor keeps its place while the older lines land above it.
+    const readOlder = () => {
+        if (!root || older || !history || !history.more || !history.items.length) return;
+        const oldest = Math.min(...history.items.map((m) => m.said_ms));
+        setOlder(true);
+        api(`/api/identity/${root}/rooms/${author}/${doc}/messages?before_ms=${oldest}`)
+            .then((page) => {
+                const el = floor.current;
+                keepOffset.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+                const held = new Set(history.items.map((m) => m.hash));
+                const fresh = (page.items || []).filter((m) => !held.has(m.hash));
+                setHistory((h) => h && { ...h, items: [...h.items, ...fresh], more: !!page.more && fresh.length > 0 });
+            })
+            .catch(() => {})
+            .finally(() => setOlder(false));
+    };
     // The pin: at the end before the floor changed, at the end after.
     const trackEnd = () => {
         const el = floor.current;
         if (!el) return;
         atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < AT_END_PX;
+        if (el.scrollTop < AT_END_PX) readOlder();
     };
     useEffect(() => {
         const el = floor.current;
-        if (el && atEnd.current) el.scrollTop = el.scrollHeight;
+        if (!el) return;
+        if (keepOffset.current) {
+            el.scrollTop = el.scrollHeight - keepOffset.current.height + keepOffset.current.top;
+            keepOffset.current = null;
+        } else if (atEnd.current) el.scrollTop = el.scrollHeight;
     }, [history, words.body, typing]);
+    // The full-sync button (ruling 6): the node's operator makes this node keep the room
+    // whole, or lets the budget apply again.
+    const setArchive = async (on) => {
+        if (archiving) return;
+        setArchiving(true);
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/archive`, { method: on ? 'POST' : 'DELETE' });
+            setRoom((r) => r && { ...r, archived: on, archivist: on || r.mine });
+            if (on) readHistory();
+        } catch {
+            /* the header shows what stands */
+        } finally {
+            setArchiving(false);
+        }
+    };
 
     // "Typing" is said at most every two seconds while the keys move, and "stopped" three
     // seconds after they rest, or the moment the draft empties or sends.
@@ -443,9 +484,22 @@ const Room = ({ current, author, doc, onSeen }) => {
                 </ul>
             </details>
             <a class="chat-room-post" href=${`/id/${speakable(author)}/post/${doc}`}>${t('apps.chat.the-rooms-post', "the room's post")}</a>
+            ${/* The archive (ruling 6): the creator's node keeps its rooms whole unasked; any
+                other node's operator may press full-sync and keep this one whole too. */ ''}
+            ${room.archived
+                ? html`<span class="label-chip chat-archived" title=${t('apps.chat.this-node-keeps-the-whole-room', 'this node keeps the whole room, not just the latest')}>
+                      ${t('apps.chat.kept-whole-here', 'kept whole here')}
+                      ${admin && html`<button class="chat-archive" disabled=${archiving} onClick=${() => setArchive(false)}>${t('apps.chat.release', 'release')}</button>`}
+                  </span>`
+                : room.archivist
+                  ? html`<span class="label-chip chat-archived">${t('apps.chat.the-archive', 'the archive')}</span>`
+                  : admin && html`<button class="chat-archive" disabled=${archiving} onClick=${() => setArchive(true)} title=${t('apps.chat.pull-the-whole-room-and-keep-it', "pull the room's whole history from its creator's node, and keep it here from now on")}>
+                        ${archiving ? t('apps.chat.pulling', 'pulling…') : t('apps.chat.keep-whole-here', 'keep whole here')}
+                    </button>`}
             ${room.joined && html`<button class="chat-leave" onClick=${leave}>${t('apps.chat.leave', 'leave')}</button>`}
         </header>
         <div class="chat-floor" ref=${floor} onScroll=${trackEnd}>
+            ${history && history.more && html`<button class="chat-older" disabled=${older} onClick=${readOlder}>${older ? t('apps.chat.reading', 'reading…') : t('apps.chat.earlier', 'earlier…')}</button>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
                 ${lines.map((m, i) => html`<${Line} key=${m.hash} m=${m} current=${current} cont=${i > 0 && lines[i - 1].speaker === m.speaker} />`)}
@@ -501,7 +555,7 @@ const Room = ({ current, author, doc, onSeen }) => {
 /// every few seconds while the floor moves and once more when the page leaves.
 const SEEN_THROTTLE_MS = 5000;
 
-export const ChatApp = ({ current, author, doc, mode }) => {
+export const ChatApp = ({ current, author, doc, mode, admin }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [page, setPage] = useState(null);
@@ -546,6 +600,7 @@ export const ChatApp = ({ current, author, doc, mode }) => {
                             current=${current}
                             author=${author}
                             doc=${doc}
+                            admin=${admin}
                             onSeen=${(a, d, ms) =>
                                 setPage((p) =>
                                     p && {

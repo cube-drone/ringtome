@@ -543,9 +543,178 @@ pub async fn say(
     Ok((seq, said_ms))
 }
 
+/// Is this node the room's archivist (CHAT.md, ruling 6): the creator's node, which keeps its
+/// own rooms whole without being asked, or one whose operator pressed full-sync?
+pub async fn archivist_here(state: &AppState, author_hex: &str, doc_hex: &str) -> bool {
+    if crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false) {
+        return true;
+    }
+    archived(&state.node_db, author_hex, doc_hex).await.unwrap_or(false)
+}
+
+/// The full-sync mark (ruling 6).
+pub async fn archived(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT since_ms FROM room_archives WHERE room_author = ?1 AND room_doc = ?2",
+            (author_hex, doc_hex),
+        )
+        .await
+        .context("reading a room's archive mark")?;
+    Ok(row.is_some())
+}
+
+/// Press or release full-sync on a room (ruling 6): marked, the room is never pruned here;
+/// released, the budget applies again on the next fold.
+pub async fn set_archived(node_db: &Db, author_hex: &str, doc_hex: &str, on: bool) -> Result<()> {
+    if on {
+        node_db
+            .execute(
+                "INSERT OR IGNORE INTO room_archives (room_author, room_doc, since_ms) VALUES (?1, ?2, ?3)",
+                (author_hex, doc_hex, crate::clock::now_ms()),
+            )
+            .await
+            .context("marking a room archived")?;
+    } else {
+        node_db
+            .execute(
+                "DELETE FROM room_archives WHERE room_author = ?1 AND room_doc = ?2",
+                (author_hex, doc_hex),
+            )
+            .await
+            .context("releasing a room's archive mark")?;
+    }
+    Ok(())
+}
+
+/// The archive's answer (ruling 6): `(speaker root, signed entry)` for the room's messages
+/// said before `before_ms`, newest first - the entries themselves off each speaker's chain
+/// as this node holds it, for a dialer the room admits (the directory's own gate).
+/// user-db open 4 of 5 (tests/conventions.rs): one per speaker on the page.
+pub async fn answer_room_history(
+    state: &AppState,
+    conn: &iroh::endpoint::Connection,
+    author: &[u8; 32],
+    doc: &[u8; 16],
+    for_root: &[u8; 32],
+    before_ms: u64,
+    limit: u64,
+) -> Vec<([u8; 32], Vec<u8>)> {
+    let author_hex = hex::encode(author);
+    let doc_hex = hex::encode(doc);
+    let Some((head, _)) = room_head(state, &author_hex, doc).await else { return Vec::new() };
+    if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+        return Vec::new();
+    }
+    if head.trusted_only {
+        let for_hex = hex::encode(for_root);
+        if !crate::idface::seal_admits(state, &author_hex, &doc_hex, &for_hex, None).await {
+            return Vec::new();
+        }
+        let dialer = conn.remote_id().to_string();
+        if !crate::net::sync::endpoint_serves_any(&state.node_db, &[for_hex], &dialer).await.unwrap_or(false) {
+            return Vec::new();
+        }
+    }
+    let limit = limit.clamp(1, ringtome_proto::fragment::MAX_ROOM_HISTORY_LIMIT) as i64;
+    let before = i64::try_from(before_ms).unwrap_or(i64::MAX);
+    let rows: Vec<(String, Vec<u8>)> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, entry_hash FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3
+             ORDER BY said_ms DESC, seq DESC LIMIT ?4",
+            (author_hex.as_str(), doc_hex.as_str(), before, limit),
+        )
+        .await
+        .unwrap_or_default();
+    let mut out = Vec::with_capacity(rows.len());
+    let mut dbs: HashMap<String, Db> = HashMap::new();
+    for (speaker, hash) in rows {
+        let Some(root) = crate::pubkey::decode(&speaker) else { continue };
+        if !dbs.contains_key(&speaker) {
+            match state.user_dbs.get(&speaker).await {
+                Ok(Some(db)) => {
+                    dbs.insert(speaker.clone(), db);
+                }
+                _ => continue,
+            }
+        }
+        let Some(db) = dbs.get(&speaker) else { continue };
+        let Ok(hash) = <[u8; 32]>::try_from(hash.as_slice()) else { continue };
+        if let Ok(Some(entry)) = crate::record::imaol::entry_by_hash(db, &hash).await {
+            out.push((root, entry.bytes().to_vec()));
+        }
+    }
+    out
+}
+
+/// The reader's road to the archive (ruling 6): older messages than this node keeps, asked
+/// of the creator's node, each entry verified here - the signature, the room it names -
+/// and its attribution checked against the speaker's key tree as this node holds it; an
+/// entry whose speaker this node knows nothing of is dropped, never shown on a stranger's
+/// word. Served, not kept: the budget stays the budget.
+/// user-db open 5 of 5 (tests/conventions.rs): the attribution check, one per speaker.
+async fn archive_history(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+    before_ms: i64,
+    limit: i64,
+) -> Vec<(String, ringtome_proto::SignedEntry)> {
+    let Some(author) = crate::pubkey::decode(author_hex) else { return Vec::new() };
+    let Some(for_root) = crate::pubkey::decode(viewer_hex) else { return Vec::new() };
+    let mut fetched: Option<Vec<([u8; 32], Vec<u8>)>> = None;
+    for endpoint in creator_endpoints(state, author_hex).await {
+        match crate::net::fragment::fetch_room_history(state, &endpoint, &author, doc, &for_root, before_ms.max(0) as u64, limit as u64).await {
+            Ok(items) => {
+                fetched = Some(items);
+                break;
+            }
+            Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room history ask failed"),
+        }
+    }
+    let Some(items) = fetched else { return Vec::new() };
+    let mut trees: HashMap<String, Option<ringtome_proto::Crown>> = HashMap::new();
+    let mut out = Vec::with_capacity(items.len());
+    for (root, bytes) in items {
+        let root_hex = hex::encode(root);
+        let Ok(signed) = ringtome_proto::SignedEntry::decode(&bytes) else { continue };
+        if signed.verify().is_err() {
+            continue;
+        }
+        let entry = signed.entry();
+        if entry.chain.service != service::CHAT || entry.chain.instance != Some(*doc) || entry.entry_type != entry_type::CHAT_MESSAGE {
+            continue;
+        }
+        let Payload::Inline(payload) = &entry.payload else { continue };
+        let Ok(msg) = ChatMessage::decode(payload) else { continue };
+        if msg.room_author != author {
+            continue;
+        }
+        if !trees.contains_key(&root_hex) {
+            let tree = match state.user_dbs.get(&root_hex).await {
+                Ok(Some(db)) => crate::record::imaol::load_key_tree(&db, &root_hex).await.ok(),
+                _ => None,
+            };
+            trees.insert(root_hex.clone(), tree);
+        }
+        let Some(Some(tree)) = trees.get(&root_hex) else { continue };
+        if tree.status(&entry.chain.author) != ringtome_proto::KeyStatus::Active {
+            continue;
+        }
+        out.push((root_hex, signed));
+    }
+    out
+}
+
 /// The room's recent history, newest first, as this node holds it - every speaker's chain
 /// interleaved by claimed time (CHAT.md, ruling 3). A sealed message opens with the key the
-/// reader may have; a closed room serves nothing said after the close (ruling 10).
+/// reader may have; a closed room serves nothing said after the close (ruling 10). When
+/// this node keeps only the budget and the page runs past it, the archive fills the rest
+/// (ruling 6). Returns the page, whether the room is closed, and whether more may lie
+/// beneath it.
 pub async fn history(
     state: &AppState,
     viewer_hex: &str,
@@ -553,14 +722,14 @@ pub async fn history(
     doc: &[u8; 16],
     before_ms: Option<i64>,
     limit: i64,
-) -> Result<(Vec<Message>, bool), AppError> {
+) -> Result<(Vec<Message>, bool, bool), AppError> {
     let doc_hex = hex::encode(doc);
     let closed = closed_at(state, author_hex, doc).await;
     let limit = limit.clamp(1, HISTORY_PAGE);
     type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64);
     let before = before_ms.unwrap_or(i64::MAX);
     let ceiling = closed.map_or(before, |c| c.min(before));
-    let rows: Vec<Row> = state
+    let mut rows: Vec<Row> = state
         .node_db
         .fetch_all(
             "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash, body, sealed FROM room_messages
@@ -571,6 +740,29 @@ pub async fn history(
         .await
         .context("reading a room's history")
         .map_err(AppError::Internal)?;
+    // Past what this node keeps: the archive (ruling 6). Asked only when the local page
+    // came up short and this node is not the archivist itself.
+    let mut more = rows.len() as i64 >= limit;
+    if (rows.len() as i64) < limit && !archivist_here(state, author_hex, &doc_hex).await {
+        let oldest = rows.last().map(|r| r.3).unwrap_or(ceiling);
+        let want = limit - rows.len() as i64;
+        let held: std::collections::HashSet<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
+        let archived = archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
+        more = archived.len() as i64 >= want;
+        for (root, signed) in archived {
+            if held.contains(signed.hash().as_slice()) {
+                continue;
+            }
+            let entry = signed.entry();
+            let Payload::Inline(payload) = &entry.payload else { continue };
+            let Ok(msg) = ChatMessage::decode(payload) else { continue };
+            if entry.timestamp_ms >= ceiling {
+                continue;
+            }
+            rows.push((root, hex::encode(entry.chain.author), entry.seq as i64, entry.timestamp_ms, signed.hash().to_vec(), msg.body, i64::from(msg.sealed)));
+        }
+        rows.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.2.cmp(&a.2)));
+    }
     let needs_key = rows.iter().any(|r| r.6 != 0);
     let key = if needs_key { crate::idface::key_for(state, author_hex, doc, viewer_hex, None).await } else { None };
     let speakers: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
@@ -597,7 +789,7 @@ pub async fn history(
             }
         })
         .collect();
-    Ok((items, closed.is_some()))
+    Ok((items, closed.is_some(), more))
 }
 
 /// When each room this node holds last heard a message: `(room_author, room_doc) ->
@@ -680,7 +872,7 @@ pub async fn answer_room(
 /// Fold one persona's CHAT chains into the memo (the fold lane's hook, on a CHAT move):
 /// every message on every room chain this node holds of theirs, keyed by the chain and
 /// its seq so a re-fold costs nothing new. Then the room budget (ruling 6).
-/// user-db open 2 of 2 (tests/conventions.rs): one persona per CHAT-move edge.
+/// user-db open 2 of 5 (tests/conventions.rs): one persona per CHAT-move edge.
 pub async fn refresh_from(state: &AppState, root: &str, _force: bool) {
     if let Err(e) = refresh_inner(state, root).await {
         tracing::debug!(root = %root, error = ?e, "room memo refresh failed");
@@ -722,15 +914,30 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             .await
             .context("noting a room message")?;
     }
+    let mut pruned = false;
     for (room_author, room_doc) in rooms {
-        enforce_budget(state, &db, &room_author, &room_doc).await?;
+        pruned |= enforce_budget(state, &db, &room_author, &room_doc).await?;
+    }
+    // A prune moved a chain's FLOOR, which the frontier memo never raises on its own (it
+    // heals on the sweep's beat): reconcile now, so the next Hello claims the true floor
+    // and the archive can plan a backfill beneath it (ruling 6 - the full-sync pull).
+    if pruned {
+        if let Err(e) = crate::net::frontier::reconcile_from_entries(state, root).await {
+            tracing::debug!(root = %root, error = ?e, "floor reconcile after a room prune failed");
+        }
     }
     Ok(())
 }
 
 /// The room budget (CHAT.md, ruling 6): keep the newest `ROOM_BUDGET` messages of a room,
 /// prune each speaker's chain held HERE beneath the cut, and the memo rows with them.
-async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: &str) -> Result<()> {
+/// Answers whether anything was pruned.
+async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: &str) -> Result<bool> {
+    // The archivist keeps the room whole (ruling 6): the creator's node, or a node whose
+    // operator pressed full-sync.
+    if archivist_here(state, room_author, room_doc).await {
+        return Ok(false);
+    }
     let budget = room_budget() as i64;
     let cut: Option<(i64,)> = state
         .node_db
@@ -741,7 +948,7 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
         )
         .await
         .context("finding a room's budget cut")?;
-    let Some((cut_ms,)) = cut else { return Ok(()) };
+    let Some((cut_ms,)) = cut else { return Ok(false) };
     // Every chain with rows at or beneath the cut: its floor is its first row above it.
     let chains: Vec<(String, i64)> = state
         .node_db
@@ -752,8 +959,8 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
         )
         .await
         .context("finding the chains' floors")?;
-    let Ok(instance) = hex::decode(room_doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return Ok(()) };
-    let Ok(instance) = instance else { return Ok(()) };
+    let Ok(instance) = hex::decode(room_doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return Ok(false) };
+    let Ok(instance) = instance else { return Ok(false) };
     for (leaf, floor) in chains {
         crate::record::imaol::prune_chain_below(db, &leaf, service::CHAT, Some(instance), floor as u64)
             .await
@@ -767,7 +974,7 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
         )
         .await
         .context("pruning a room's memo beneath its budget")?;
-    Ok(())
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -889,6 +1096,54 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         .await
         .context("stamping a room sync")?;
     Ok(exchanged)
+}
+
+/// The full-sync pull (ruling 6): every speaker's chain walked down from this node's floor
+/// to its beginning, a budget's worth per exchange, from the creator's node - the room held
+/// whole from then on, with the archive mark keeping it so. Bounded rounds; the beat's
+/// ordinary pull keeps the top current afterwards.
+pub async fn archive_pull(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Result<usize> {
+    let for_root = crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
+    let author = crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
+    let endpoints = creator_endpoints(state, author_hex).await;
+    let mut speakers: Vec<String> = Vec::new();
+    for endpoint in &endpoints {
+        if let Ok(list) = crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root).await {
+            speakers = list.iter().map(hex::encode).collect();
+            break;
+        }
+    }
+    if !speakers.contains(&author_hex.to_string()) {
+        speakers.push(author_hex.to_string());
+    }
+    let ask = crate::net::sync::Ask { ceiling: 0, below: ROOM_BUDGET };
+    let mut pulled = 0usize;
+    for speaker in speakers {
+        if crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
+            continue;
+        }
+        for _round in 0..64 {
+            let mut received = 0u64;
+            for endpoint in &endpoints {
+                let Ok(addr) = crate::net::sync::dial_addr(state, endpoint).await else { continue };
+                match crate::net::sync::sync_with_peer_asking(state, &speaker, addr, crate::net::sync::ROOM_SCOPE, &[*doc], ask).await {
+                    Ok(stats) => {
+                        received = stats.received;
+                        break;
+                    }
+                    Err(e) => tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "archive pull failed"),
+                }
+            }
+            if received == 0 {
+                break;
+            }
+            pulled += received as usize;
+        }
+        // Forced: a backfill moves the chain's floor, not its head, and the ordinary fold's
+        // change gate watches heads.
+        crate::fold::fold_now_forced(state, &speaker).await;
+    }
+    Ok(pulled)
 }
 
 /// The beat: every room a hosted persona opened lately, pulled. Slow and bounded on

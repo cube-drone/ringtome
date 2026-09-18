@@ -430,7 +430,11 @@ async fn missing_plan(
         let claimed = peer.get(&(author, svc as u32, instance));
         let mut from_seq = claimed.map(|(head, _)| head + 1).unwrap_or(0);
         let mut backfill = None;
-        if CEILING_SERVICES.contains(&(svc as u32)) {
+        // A room chain backfills beneath its floor on the room's lane too (CHAT.md, ruling
+        // 6: the full-sync pull walks the archive's whole history down from the reader's
+        // floor, page by page, the way scrollback walks a posts chain).
+        let backfills = CEILING_SERVICES.contains(&(svc as u32)) || (svc as u32 == service::CHAT && instance.is_some());
+        if backfills {
             // The follow ceiling (PROJECT_PLAN's Peeks, slice 5): a peer holding nothing of this chain and
             // asking for a ceiling gets its newest `ceiling` entries - a suffix; a peer
             // holding a suffix and asking for `below` gets that many beneath its floor.

@@ -97,6 +97,18 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantRoom { author, doc_id, for_root }) => {
             crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root).await
         }
+        Some(FragmentMessage::WantRoomHistory { author, doc_id, for_root, before_ms, limit }) => {
+            // Streamed (CHAT.md, ruling 6): a page of history is more than one frame holds,
+            // so the answer is a run of small frames ended by an empty one.
+            let items = crate::chat::answer_room_history(&state, &conn, &author, &doc_id, &for_root, before_ms, limit).await;
+            for chunk in items.chunks(ringtome_proto::fragment::MAX_ROOM_HISTORY_ITEMS) {
+                write_frame(&mut send, &FragmentMessage::RoomHistory { items: chunk.to_vec() }).await?;
+            }
+            write_frame(&mut send, &FragmentMessage::RoomHistory { items: Vec::new() }).await?;
+            send.finish().ok();
+            conn.closed().await;
+            return Ok(());
+        }
         Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
             // The author's thread door (PROJECT_PLAN's Replies slice 6): claims, never words, curated
             // by the author's own bit. A node that does not host this author answers an
@@ -232,6 +244,45 @@ pub async fn fetch_room(
         Some(FragmentMessage::Room { participants }) => Ok(participants),
         other => Err(anyhow!("unexpected answer to a room directory ask: {other:?}")),
     }
+}
+
+/// Ask an archive for a page of a room's history (CHAT.md, ruling 6): `(speaker root,
+/// signed entry)` pairs, newest first, read frame by frame until the empty one. Nothing here
+/// is believed - the caller verifies every entry and its attribution.
+pub async fn fetch_room_history(
+    state: &AppState,
+    endpoint_id: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+    for_root: &[u8; 32],
+    before_ms: u64,
+    limit: u64,
+) -> Result<Vec<([u8; 32], Vec<u8>)>> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for room history: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(
+        &mut send,
+        &FragmentMessage::WantRoomHistory { author: *author, doc_id: *doc_id, for_root: *for_root, before_ms, limit },
+    )
+    .await?;
+    send.finish().ok();
+    let mut out = Vec::new();
+    loop {
+        let frame = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room history timed out")??;
+        match frame {
+            Some(FragmentMessage::RoomHistory { items }) if items.is_empty() => break,
+            Some(FragmentMessage::RoomHistory { items }) => out.extend(items),
+            other => return Err(anyhow!("unexpected answer to a room history ask: {other:?}")),
+        }
+        if out.len() as u64 >= limit {
+            break;
+        }
+    }
+    conn.close(0u8.into(), b"done");
+    Ok(out)
 }
 
 /// Ask one endpoint for a post key.

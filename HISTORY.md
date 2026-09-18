@@ -9353,3 +9353,27 @@ where it is unread. The rooms door now says when each room last heard a word and
 that is newer than the look, and sorts by the newest word, the room's own post standing in
 for a silent room; the column shows the time beside every room. The room lane suite's new
 claim: never looked at is unread, a look makes it read, a new word makes it unread again.
+
+## 2026-09-18: chat history - the archive and the budget
+
+CHAT.md slice 4. Ruling 6 made whole: a reader's node keeps the room's budget, the creator's
+node keeps the room whole, and any node's operator may press full-sync and keep it whole
+too (`room_archives`, node schema 51 - the retention pass skips an archived room). The
+history door pages the local memo first and, when the page runs short on a node that is
+not the archive, asks the creator's node over the fragment lane for what lies beneath:
+`WantRoomHistory` answered as a run of small `RoomHistory` frames (the frame cap is
+sixteen kilobytes, a page of messages is more) ended by an empty one. Nothing served is
+believed: each entry's signature, chain, room and payload are checked here, and a line is
+attributed to its speaker only when this node holds that speaker's key tree with the leaf
+active. Served, not kept - the budget stays the budget - and the door says whether more
+lies beneath, so the room page reads earlier pages when the floor reaches its top, keeping
+its place. Full-sync walks every speaker's chain down from this node's floor to its
+beginning, a budget's worth per exchange: room chains now backfill beneath their floor on
+the room's lane, a prune reconciles the frontier memo (which never raises a floor on its
+own, so the next Hello would have claimed the old one and no backfill would ever be
+planned), and the fold after the pull is forced, since a backfill moves a floor and the
+ordinary fold's gate watches heads. The rig runs every node with a room budget of eight;
+the new suite says the creator holds twelve lines where the reader holds eight yet reads
+all twelve, that scroll-back's second page comes from the archive, and that full-sync is
+refused to a plain user, holds the room whole as it grows, and hands it back to the budget
+when released.

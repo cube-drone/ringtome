@@ -983,6 +983,16 @@ CREATE TABLE room_messages (
 );
 CREATE INDEX room_messages_by_room ON room_messages (room_author, room_doc, said_ms);
 
+-- Rooms this node keeps WHOLE by its operator's choice (CHAT.md, ruling 6: the full-sync
+-- button) - the volunteer archive beside the creator's node, which keeps its own rooms whole
+-- without being asked. Retention never prunes an archived room.
+CREATE TABLE room_archives (
+    room_author TEXT    NOT NULL,
+    room_doc    TEXT    NOT NULL,
+    since_ms    INTEGER NOT NULL,
+    PRIMARY KEY (room_author, room_doc)
+);
+
 -- The rooms each hosted persona opened, and when: what the room-sync beat keeps pulled
 -- for a while after, and what makes an exchange naming that room one this node is in.
 CREATE TABLE rooms_open (

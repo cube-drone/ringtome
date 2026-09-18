@@ -64,6 +64,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/rooms/{author}/{doc}/live", get(room_live_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/chatters", get(room_chatters_handler))
         .route(
+            "/api/identity/{root}/rooms/{author}/{doc}/archive",
+            post(room_archive_handler).delete(room_unarchive_handler),
+        )
+        .route(
             "/api/identity/{root}/public-annotations/{author}/{doc}",
             get(public_annotations_handler).put(public_annotation_put_handler),
         )
@@ -1118,7 +1122,42 @@ async fn room_enter_handler(
         "published_ms": h.genesis_ms.unwrap_or(0),
         "mine": author == root,
         "joined": author != root,
+        // The archive (CHAT.md, ruling 6): this node keeps the room whole, as its creator's
+        // node or by its operator's full-sync.
+        "archivist": crate::chat::archivist_here(&state, &author, &doc).await,
+        "archived": crate::chat::archived(&state.node_db, &author, &doc).await.unwrap_or(false),
     })))
+}
+
+/// POST / DELETE `/api/identity/{root}/rooms/{author}/{doc}/archive` - the full-sync button
+/// (CHAT.md, ruling 6): the node's operator makes this node hold a room whole from now on,
+/// pulling its whole history from the creator's node; DELETE lets the budget apply again.
+async fn room_archive_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await? {
+        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this node's operator decides what it keeps whole")));
+    }
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    crate::chat::set_archived(&state.node_db, &author, &doc, true).await.map_err(AppError::Internal)?;
+    let pulled = crate::chat::archive_pull(&state, &root, &author, &doc_id).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "archived": true, "pulled": pulled })))
+}
+
+async fn room_unarchive_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await? {
+        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this node's operator decides what it keeps whole")));
+    }
+    crate::chat::set_archived(&state.node_db, &author, &doc, false).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "archived": false })))
 }
 
 /// DELETE `/api/identity/{root}/rooms/{author}/{doc}` - leave (CHAT.md, ruling 9): local,
@@ -1288,8 +1327,8 @@ async fn room_history_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    let (items, closed) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
-    Ok(Json(serde_json::json!({ "items": items, "closed": closed })))
+    let (items, closed, more) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
+    Ok(Json(serde_json::json!({ "items": items, "closed": closed, "more": more })))
 }
 
 /// GET `/api/identity/{root}/rooms/{author}/{doc}/chatters` - who has visibly spoken here,

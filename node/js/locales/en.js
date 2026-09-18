@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 808 phrases across 58 files.
+// 818 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -38,7 +38,16 @@ export default {
     'apps.chat.chatters': 'chatters',
     'apps.chat.nobody-has-spoken-here': 'nobody has spoken here yet',
     'apps.chat.the-rooms-post': "the room's post",
+    'apps.chat.this-node-keeps-the-whole-room': 'this node keeps the whole room, not just the latest',
+    'apps.chat.kept-whole-here': 'kept whole here',
+    'apps.chat.release': 'release',
+    'apps.chat.the-archive': 'the archive',
+    'apps.chat.pull-the-whole-room-and-keep-it': "pull the room's whole history from its creator's node, and keep it here from now on",
+    'apps.chat.pulling': 'pulling…',
+    'apps.chat.keep-whole-here': 'keep whole here',
     'apps.chat.leave': 'leave',
+    'apps.chat.reading': 'reading…',
+    'apps.chat.earlier': 'earlier…',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
     'apps.chat.is-typing': 'is typing…',
     'apps.chat.are-typing': 'are typing…',
@@ -762,6 +771,7 @@ export default {
     'identity.routes.no-such-room-is-held': 'no such room is held here - its author may be unreachable',
     'identity.routes.that-post-is-not-a-room': 'that post is not a room',
     'identity.routes.this-room-is-sealed': 'this room is sealed - its author shares it only with people they trust',
+    'identity.routes.only-the-nodes-operator-archives': "only this node's operator decides what it keeps whole",
     'identity.routes.the-room-could-not-go-live': 'the room could not go live: {why}',
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',

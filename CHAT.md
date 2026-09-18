@@ -203,7 +203,18 @@ node keeps its own room whole, which is where "all of it" lives.
    suite: two sockets hear each other arrive, a message crosses with no beat rung and the
    socket says so, and typing is a beacon.
 4. **History.** The creator's node as archivist; scroll-back below the room's window; the
-   full-sync button.
+   full-sync button. **Built 2026-09-18.** The creator's node never prunes its own rooms, and
+   neither does a node whose operator pressed full-sync (`room_archives`, node schema 51).
+   The history door pages the local memo and, when the page runs short on a node that is not
+   the archive, asks the creator's node for what lies beneath over the fragment lane
+   (`WantRoomHistory`, answered as a run of `RoomHistory` frames ended by an empty one, each
+   entry verified here and attributed only to a speaker whose tree this node holds); served,
+   not kept, so the budget stays the budget; the door says whether more lies beneath. The
+   room page reads earlier pages when the floor reaches its top, keeping its place. Full-sync
+   (`POST`/`DELETE …/archive`, the node admin's) marks the room and walks every speaker's
+   chain down from this node's floor to its beginning - a room chain now backfills beneath
+   its floor on the room's lane, and a prune reconciles the frontier memo so the next Hello
+   claims the true floor. Suite: `chat_history.cjs`, with the rig's room budget at eight.
 5. **Mentions and the bell.** A message naming a persona rings their bell under the room's
    door, and the user-card picker knows the room's participants.
 

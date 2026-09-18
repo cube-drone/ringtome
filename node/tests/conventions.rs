@@ -44,6 +44,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("post_search", vec!["search.rs"]),
         ("room_messages", vec!["chat.rs"]),
         ("rooms_open", vec!["chat.rs"]),
+        ("room_archives", vec!["chat.rs"]),
         ("node_shelf", vec!["nodeshelf.rs"]),
         ("node_listing", vec!["nodeshelf.rs"]),
         ("node_slugs", vec!["slugs.rs"]),
@@ -180,7 +181,7 @@ fn user_db_opens_are_deliberate() {
         ("ingest.rs", 1),
         ("profiles.rs", 2),        // refresh: ONE persona per claim-change edge
         ("nodeshelf.rs", 2),
-        ("chat.rs", 3), // the room post's header (once per door), the memo fold (one persona per CHAT-move edge), and the live lane's ingest of one frame into its speaker's database (CHAT.md slices 2 and 3, 2026-09-18) // the fold's re-say of a hosted persona's shelf (once per move of their chain) and a shared original hosted here (once per distinct original per fold) - PROJECT_PLAN's The node's public face slice 1, 2026-09-15
+        ("chat.rs", 5), // the room post's header (once per door), the memo fold (one persona per CHAT-move edge), the live lane's ingest of one frame into its speaker's database, the archive's answer (one open per speaker on the page) and the reader's attribution check of an archived entry (one per speaker on the page) - CHAT.md slices 2 to 4, 2026-09-18 // the fold's re-say of a hosted persona's shelf (once per move of their chain) and a shared original hosted here (once per distinct original per fold) - PROJECT_PLAN's The node's public face slice 1, 2026-09-15
         ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge
         ("inbox.rs", 1),           // accept: ONE recipient per delivered envelope
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute

@@ -187,6 +187,8 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
 // design (PROJECT_PLAN, The Client Is a Console).
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
+    // The node's operator: the only one who presses a room's full-sync (CHAT.md, ruling 6).
+    const nodeAdmin = ((session.account && session.account.tags) || []).includes('node_admin');
     const loc = useLocation();
     const open = persona.state === 'open';
     const inApp = loc.path !== '/home';
@@ -443,9 +445,9 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
             <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
-            <${ChatApp} path="/home/chat" current=${persona.current} />
-            <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} />
-            <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} />
+            <${ChatApp} path="/home/chat" current=${persona.current} admin=${nodeAdmin} />
+            <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} />
+            <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} admin=${nodeAdmin} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
             <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />
