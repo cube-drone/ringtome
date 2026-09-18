@@ -23,13 +23,14 @@ async fn chain_head(
     db: &Db,
     author_hex: &str,
     service_id: u32,
+    instance: Option<[u8; 16]>,
 ) -> Result<Option<(u64, [u8; 32], i64)>, AppError> {
     let row: Option<(i64, Vec<u8>, i64)> = db
         .fetch_optional(
             "SELECT seq, entry_hash, timestamp_ms FROM entries
-         WHERE author_pubkey = ?1 AND service = ?2
+         WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
          ORDER BY seq DESC LIMIT 1",
-            (author_hex, i64::from(service_id)),
+            (author_hex, i64::from(service_id), crate::db::instance_blob(instance)),
         )
         .await
         .context("reading chain head")
@@ -52,6 +53,19 @@ pub async fn append(
     db: &Db,
     key: &SigningKey,
     service_id: u32,
+    type_id: u32,
+    payload: Payload,
+) -> Result<SignedEntry, AppError> {
+    append_on(db, key, service_id, None, type_id, payload).await
+}
+
+/// `append`, on a per-instance chain: `(author, service, instance)` (CHAT.md slice 0 - a
+/// room's lane). `None` is every service with one chain per key, which is what `append` is.
+pub async fn append_on(
+    db: &Db,
+    key: &SigningKey,
+    service_id: u32,
+    instance: Option<[u8; 16]>,
     type_id: u32,
     payload: Payload,
 ) -> Result<SignedEntry, AppError> {
@@ -86,7 +100,7 @@ pub async fn append(
     // where this chain ENDED - lives in the flat-file checkpoint instead (record::heads).
     let ephemeral = crate::net::sync::service_allows_suffix(service_id);
 
-    let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id).await? {
+    let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id, instance).await? {
         Some((head_seq, head_hash, head_ts)) => (head_seq + 1, head_hash, head_ts),
         // The database has no head. For a durable chain that means genesis; for an ephemeral
         // one it might instead mean a REBUILT database (inbox chains were never journaled, so
@@ -95,7 +109,7 @@ pub async fn append(
         // from its head, producing a chain whose missing prefix is exactly the shape suffix
         // admission already forgives. Claimed-time clamp restarts at 0, which the max(now)
         // below handles like any cold chain.
-        None => match db.ephemeral_head(&author_hex, service_id).filter(|_| ephemeral) {
+        None => match db.ephemeral_head(&author_hex, service_id, instance).filter(|_| ephemeral) {
             Some((ckpt_seq, ckpt_hash)) => (ckpt_seq + 1, ckpt_hash, 0),
             None => (0, ZERO_HASH, 0),
         },
@@ -107,6 +121,7 @@ pub async fn append(
         chain: ChainId {
             author,
             service: service_id,
+            instance,
         },
         seq,
         prev_hash,
@@ -130,7 +145,7 @@ pub async fn append(
     // journaled: notices are forgettable by charter, and journaling a flood's worth of them
     // forever was the one unbounded artifact a stranger could still grow.
     if ephemeral {
-        db.checkpoint_ephemeral_head(&author_hex, service_id, seq, signed.hash())
+        db.checkpoint_ephemeral_head(&author_hex, service_id, instance, seq, signed.hash())
             .context("checkpointing an ephemeral head")
             .map_err(AppError::Internal)?;
     } else {
@@ -139,16 +154,17 @@ pub async fn append(
             .map_err(AppError::Internal)?;
     }
 
-    // Two concurrent appends to one chain race to the same seq; the (author, service, seq)
-    // primary key makes the loser fail loudly instead of forking the chain.
+    // Two concurrent appends to one chain race to the same seq; the (author, service,
+    // instance, seq) primary key makes the loser fail loudly instead of forking the chain.
     db.execute(
         "INSERT INTO entries
-           (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
+           (author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
             received_at_ms, bytes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         (
             author_hex.as_str(),
             i64::from(service_id),
+            crate::db::instance_blob(instance),
             seq as i64,
             signed.hash().as_slice(),
             signed.entry().prev_hash.as_slice(),
@@ -170,6 +186,7 @@ pub async fn append(
             root,
             &author_hex,
             service_id,
+            instance,
             seq,
             signed.hash(),
         )
@@ -784,17 +801,18 @@ pub async fn prune_chain_below(
     db: &Db,
     author_hex: &str,
     service_id: u32,
+    instance: Option<[u8; 16]>,
     floor_seq: u64,
 ) -> Result<u64, AppError> {
-    let Some((head_seq, _, _)) = chain_head(db, author_hex, service_id).await? else {
+    let Some((head_seq, _, _)) = chain_head(db, author_hex, service_id, instance).await? else {
         return Ok(0); // no rows, nothing to prune - and nothing to protect
     };
     let floor = floor_seq.min(head_seq);
     let pruned = db
         .execute(
             "DELETE FROM entries
-             WHERE author_pubkey = ?1 AND service = ?2 AND seq < ?3",
-            (author_hex, i64::from(service_id), floor as i64),
+             WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq < ?4",
+            (author_hex, i64::from(service_id), crate::db::instance_blob(instance), floor as i64),
         )
         .await
         .context("pruning a chain prefix")
@@ -821,16 +839,16 @@ pub(crate) async fn chain_len(
     Ok(row.map(|(n,)| n as u64).unwrap_or(0))
 }
 
-/// Every chain on one service: author, head seq, and held row count - the retention pass's
-/// worklist, one indexed GROUP BY instead of a query per author.
+/// Every chain on one service: author, instance, head seq, and held row count - the
+/// retention pass's worklist, one indexed GROUP BY instead of a query per author.
 pub async fn chain_spans(
     db: &Db,
     service_id: u32,
-) -> Result<Vec<(String, u64, u64)>, AppError> {
-    let rows: Vec<(String, i64, i64)> = db
+) -> Result<Vec<(String, Option<[u8; 16]>, u64, u64)>, AppError> {
+    let rows: Vec<(String, Vec<u8>, i64, i64)> = db
         .fetch_all(
-            "SELECT author_pubkey, MAX(seq), COUNT(*) FROM entries
-             WHERE service = ?1 GROUP BY author_pubkey",
+            "SELECT author_pubkey, instance, MAX(seq), COUNT(*) FROM entries
+             WHERE service = ?1 GROUP BY author_pubkey, instance",
             (i64::from(service_id),),
         )
         .await
@@ -838,7 +856,7 @@ pub async fn chain_spans(
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .map(|(author, head, len)| (author, head as u64, len as u64))
+        .map(|(author, instance, head, len)| (author, crate::db::instance_of(&instance), head as u64, len as u64))
         .collect())
 }
 
@@ -1050,9 +1068,10 @@ pub(crate) async fn refold_after_eviction(
 pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
     drop_views_fed_by(db, &every_service()).await?;
 
-    let rows: Vec<(String, i64, Vec<u8>)> = db
+    let rows: Vec<(String, i64, Vec<u8>, Vec<u8>)> = db
         .fetch_all(
-            "SELECT author_pubkey, service, bytes FROM entries ORDER BY author_pubkey, service, seq",
+            "SELECT author_pubkey, service, instance, bytes FROM entries
+             ORDER BY author_pubkey, service, instance, seq",
             (),
         )
         .await
@@ -1060,14 +1079,14 @@ pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
         .map_err(AppError::Internal)?;
 
     let mut prev: Option<SignedEntry> = None;
-    let mut prev_chain: Option<(String, i64)> = None;
+    let mut prev_chain: Option<(String, i64, Vec<u8>)> = None;
     let mut count = 0u64;
 
-    for (author, svc, bytes) in rows {
+    for (author, svc, instance, bytes) in rows {
         let signed = SignedEntry::decode(&bytes)
             .map_err(|e| AppError::Internal(anyhow!("stored entry fails strict decode: {e}")))?;
 
-        let chain_key = (author, svc);
+        let chain_key = (author, svc, instance);
         let prev_link = if prev_chain.as_ref() == Some(&chain_key) {
             prev.as_ref()
         } else {
@@ -1108,6 +1127,9 @@ pub struct StoredEntry {
     /// and the paging cursor needs it anyway - chains are per key, keys are per device.
     pub author: String,
     pub service: u32,
+    /// The chain's instance, hex, for a per-instance chain (CHAT.md slice 0); absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
     pub seq: u64,
     pub entry_type: u32,
     pub timestamp_ms: i64,
@@ -1291,10 +1313,10 @@ pub(crate) async fn reset_watermarks_for_test(db: &Db) {
 /// tests). Raw `entries` SQL is legal here and only here: imaol owns the table.
 #[cfg(test)]
 pub(crate) async fn clone_entries_for_test(src: &Db, dst: &Db) {
-    type Row = (String, i64, i64, Vec<u8>, Vec<u8>, i64, i64, i64, Vec<u8>);
+    type Row = (String, i64, Vec<u8>, i64, Vec<u8>, Vec<u8>, i64, i64, i64, Vec<u8>);
     let rows: Vec<Row> = src
         .fetch_all(
-            "SELECT author_pubkey, service, seq, entry_hash, prev_hash, entry_type,
+            "SELECT author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type,
                     timestamp_ms, received_at_ms, bytes
              FROM entries",
             (),
@@ -1304,9 +1326,9 @@ pub(crate) async fn clone_entries_for_test(src: &Db, dst: &Db) {
     for row in rows {
         dst.execute(
             "INSERT INTO entries
-               (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
+               (author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
                 received_at_ms, bytes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             row,
         )
         .await
@@ -1366,18 +1388,19 @@ pub async fn entries_page(
         .collect()
 }
 
-/// The stored head of every chain a key has written: `(service, seq, head_hash)` triples -
+/// The stored head of every chain a key has written: `(service, instance, seq, head_hash)` -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(
     db: &Db,
     author_hex: &str,
-) -> Result<Vec<(u32, u64, [u8; 32])>, AppError> {
-    let rows: Vec<(i64, i64, Vec<u8>)> = db
+) -> Result<Vec<(u32, Option<[u8; 16]>, u64, [u8; 32])>, AppError> {
+    let rows: Vec<(i64, Vec<u8>, i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT service, seq, entry_hash FROM entries e
+            "SELECT service, instance, seq, entry_hash FROM entries e
          WHERE author_pubkey = ?1
            AND seq = (SELECT MAX(seq) FROM entries
-                      WHERE author_pubkey = e.author_pubkey AND service = e.service)",
+                      WHERE author_pubkey = e.author_pubkey AND service = e.service
+                        AND instance = e.instance)",
             (author_hex,),
         )
         .await
@@ -1385,11 +1408,11 @@ pub async fn chain_heads_for_author(
         .map_err(AppError::Internal)?;
 
     rows.into_iter()
-        .map(|(svc, seq, hash)| {
+        .map(|(svc, instance, seq, hash)| {
             let head_hash: [u8; 32] = hash
                 .try_into()
                 .map_err(|_| AppError::Internal(anyhow!("corrupt entry hash")))?;
-            Ok((svc as u32, seq as u64, head_hash))
+            Ok((svc as u32, crate::db::instance_of(&instance), seq as u64, head_hash))
         })
         .collect()
 }
@@ -1446,16 +1469,17 @@ pub async fn entry_bytes_page(
     limit: u32,
     after: Option<&EntryCursor>,
 ) -> Result<(Vec<Vec<u8>>, Option<EntryCursor>), AppError> {
-    type Row = (String, i64, i64, Vec<u8>);
+    type Row = (String, i64, Vec<u8>, i64, Vec<u8>);
     let rows: Vec<Row> = match after {
         Some(cursor) => {
             db.fetch_all(
-                "SELECT author_pubkey, service, seq, bytes FROM entries
-                 WHERE (author_pubkey, service, seq) > (?1, ?2, ?3)
-                 ORDER BY author_pubkey, service, seq LIMIT ?4",
+                "SELECT author_pubkey, service, instance, seq, bytes FROM entries
+                 WHERE (author_pubkey, service, instance, seq) > (?1, ?2, ?3, ?4)
+                 ORDER BY author_pubkey, service, instance, seq LIMIT ?5",
                 (
                     cursor.author.as_str(),
                     i64::from(cursor.service),
+                    cursor.instance_blob(),
                     cursor.seq as i64,
                     i64::from(limit),
                 ),
@@ -1464,8 +1488,8 @@ pub async fn entry_bytes_page(
         }
         None => {
             db.fetch_all(
-                "SELECT author_pubkey, service, seq, bytes FROM entries
-                 ORDER BY author_pubkey, service, seq LIMIT ?1",
+                "SELECT author_pubkey, service, instance, seq, bytes FROM entries
+                 ORDER BY author_pubkey, service, instance, seq LIMIT ?1",
                 (i64::from(limit),),
             )
             .await
@@ -1477,24 +1501,25 @@ pub async fn entry_bytes_page(
     // The cursor advances by the last row READ, not the last row kept - filtering ephemeral
     // chains out of the payload must not make the walk step over them and loop forever.
     let next = (rows.len() as u32 == limit)
-        .then(|| rows.last().map(|(author, svc, seq, _)| EntryCursor {
+        .then(|| rows.last().map(|(author, svc, instance, seq, _)| EntryCursor {
             author: author.clone(),
             service: *svc as u32,
+            instance: crate::db::instance_of(instance).map(hex::encode),
             seq: *seq as u64,
         }))
         .flatten();
     Ok((
         rows.into_iter()
-            .filter(|(_, svc, _, _)| !crate::net::sync::service_allows_suffix(*svc as u32))
-            .map(|(_, _, _, bytes)| bytes)
+            .filter(|(_, svc, _, _, _)| !crate::net::sync::service_allows_suffix(*svc as u32))
+            .map(|(_, _, _, _, bytes)| bytes)
             .collect(),
         next,
     ))
 }
 
 /// Row shape of the raw-log query:
-/// (author_pubkey, service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes).
-type EntryRow = (String, i64, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
+/// (author_pubkey, service, instance, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes).
+type EntryRow = (String, i64, Vec<u8>, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
 
 /// The raw log, hex-encoded - the debug/inspect surface (pipe an entry into `ringtome inspect`).
 /// Where a page of the raw log stopped: the `entries` primary key, which is also the order
@@ -1504,7 +1529,20 @@ type EntryRow = (String, i64, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
 pub struct EntryCursor {
     pub author: String,
     pub service: u32,
+    /// The chain's instance, hex, for a per-instance chain; absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
     pub seq: u64,
+}
+
+impl EntryCursor {
+    /// The instance as the table stores it (`db::instance_blob`).
+    pub fn instance_blob(&self) -> Vec<u8> {
+        self.instance
+            .as_deref()
+            .and_then(|h| hex::decode(h).ok())
+            .unwrap_or_default()
+    }
 }
 
 /// Default and ceiling for one page of raw entries. Small, because each row carries the
@@ -1531,14 +1569,15 @@ pub async fn list_entries(
     let rows: Vec<EntryRow> = match after {
         Some(cursor) => {
             db.fetch_all(
-                "SELECT author_pubkey, service, seq, entry_type, timestamp_ms, received_at_ms,
+                "SELECT author_pubkey, service, instance, seq, entry_type, timestamp_ms, received_at_ms,
                         entry_hash, bytes
                  FROM entries
-                 WHERE (author_pubkey, service, seq) > (?1, ?2, ?3)
-                 ORDER BY author_pubkey, service, seq LIMIT ?4",
+                 WHERE (author_pubkey, service, instance, seq) > (?1, ?2, ?3, ?4)
+                 ORDER BY author_pubkey, service, instance, seq LIMIT ?5",
                 (
                     cursor.author.as_str(),
                     i64::from(cursor.service),
+                    cursor.instance_blob(),
                     cursor.seq as i64,
                     fetch,
                 ),
@@ -1547,9 +1586,9 @@ pub async fn list_entries(
         }
         None => {
             db.fetch_all(
-                "SELECT author_pubkey, service, seq, entry_type, timestamp_ms, received_at_ms,
+                "SELECT author_pubkey, service, instance, seq, entry_type, timestamp_ms, received_at_ms,
                         entry_hash, bytes
-                 FROM entries ORDER BY author_pubkey, service, seq LIMIT ?1",
+                 FROM entries ORDER BY author_pubkey, service, instance, seq LIMIT ?1",
                 (fetch,),
             )
             .await
@@ -1563,9 +1602,10 @@ pub async fn list_entries(
         rows.into_iter()
             .take(want as usize)
             .map(
-                |(author, svc, seq, ty, ts, received, hash, bytes)| StoredEntry {
+                |(author, svc, instance, seq, ty, ts, received, hash, bytes)| StoredEntry {
                     author,
                     service: svc as u32,
+                    instance: crate::db::instance_of(&instance).map(hex::encode),
                     seq: seq as u64,
                     entry_type: ty as u32,
                     timestamp_ms: ts,
@@ -1645,7 +1685,7 @@ mod tests {
             .unwrap();
         }
 
-        let pruned = prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, 4)
+        let pruned = prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, None, 4)
             .await
             .unwrap();
         assert_eq!(pruned, 4);
@@ -1776,6 +1816,7 @@ mod tests {
             let step = page.last().map(|last| EntryCursor {
                 author: last.author.clone(),
                 service: last.service,
+                instance: last.instance.clone(),
                 seq: last.seq,
             });
             walked.extend(page);
@@ -1923,7 +1964,7 @@ mod tests {
             .await
             .unwrap();
         }
-        prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, 3).await.unwrap();
+        prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, None, 3).await.unwrap();
 
         let replayed = rebuild_views(&db).await.unwrap();
         assert!(replayed >= 2, "the pruned chain's suffix replays instead of erroring");
@@ -2040,7 +2081,7 @@ mod tests {
             .unwrap();
         }
         // Ask for far more than exists: the floor clamps to the head.
-        prune_chain_below(&db, &author_hex, service::INBOX_TRUSTED, 9_999).await.unwrap();
+        prune_chain_below(&db, &author_hex, service::INBOX_TRUSTED, None, 9_999).await.unwrap();
         assert_eq!(chain_len(&db, &author_hex, service::INBOX_TRUSTED).await.unwrap(), 1);
         let next = append(
             &db,

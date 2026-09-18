@@ -332,7 +332,7 @@ async fn enforce_retention(db: &Db) -> Result<()> {
         service::INBOX_MURMURS,
     ] {
         let keep = keep_depth(service_id);
-        for (author_hex, head_seq, len) in crate::record::imaol::chain_spans(db, service_id)
+        for (author_hex, instance, head_seq, len) in crate::record::imaol::chain_spans(db, service_id)
             .await
             .map_err(|e| anyhow!("{e}"))?
         {
@@ -342,7 +342,7 @@ async fn enforce_retention(db: &Db) -> Result<()> {
             // Heads are dense from wherever the floor sits, so "keep the newest K" is a seq
             // arithmetic, not a scan. +1 because the floor is the oldest KEPT seq.
             let floor = head_seq.saturating_sub(keep) + 1;
-            crate::record::imaol::prune_chain_below(db, &author_hex, service_id, floor)
+            crate::record::imaol::prune_chain_below(db, &author_hex, service_id, instance, floor)
                 .await
                 .map_err(|e| anyhow!("{e}"))?;
             // The view rows those entries produced go with them: a notice whose chain entry

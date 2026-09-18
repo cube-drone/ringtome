@@ -946,6 +946,9 @@ pub enum Disposition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Anchor {
     pub service: u32,
+    /// The chain's instance, for a per-instance service (`entry::ChainId`); none otherwise.
+    /// On the wire a fourth element, absent when none.
+    pub instance: Option<[u8; 16]>,
     pub seq: u64,
     pub head_hash: [u8; 32],
 }
@@ -978,10 +981,13 @@ impl Revoke {
         w.uint(2);
         w.array(self.anchors.len() as u64);
         for a in &self.anchors {
-            w.array(3);
+            w.array(if a.instance.is_some() { 4 } else { 3 });
             w.uint(u64::from(a.service));
             w.uint(a.seq);
             w.bytes(&a.head_hash);
+            if let Some(instance) = &a.instance {
+                w.bytes(instance);
+            }
         }
         Ok(w.into_bytes())
     }
@@ -1009,17 +1015,20 @@ impl Revoke {
                     }
                     let mut list = Vec::with_capacity(len as usize);
                     for _ in 0..len {
-                        if map.array()? != 3 {
+                        let arity = map.array()?;
+                        if arity != 3 && arity != 4 {
                             return Err(ProtoError::BadEntry(
-                                "anchor must be [service, seq, head_hash]",
+                                "anchor must be [service, seq, head_hash] or that plus instance",
                             ));
                         }
                         let service = u32::try_from(map.uint()?)
                             .map_err(|_| ProtoError::BadEntry("service id out of range"))?;
                         let seq = map.uint()?;
                         let head_hash = map.bytes_fixed::<32>()?;
+                        let instance = if arity == 4 { Some(map.bytes_fixed::<16>()?) } else { None };
                         list.push(Anchor {
                             service,
+                            instance,
                             seq,
                             head_hash,
                         });
@@ -1684,13 +1693,21 @@ mod tests {
                 anchors: vec![
                     Anchor {
                         service: service::IDENTITY_PUBLIC,
+                        instance: None,
                         seq: 4,
                         head_hash: [0xaa; 32],
                     },
                     Anchor {
                         service: service::PROFILE_PUBLIC,
+                        instance: None,
                         seq: 17,
                         head_hash: [0xbb; 32],
+                    },
+                    Anchor {
+                        service: service::PROFILE_PUBLIC,
+                        instance: Some([0xcc; 16]),
+                        seq: 2,
+                        head_hash: [0xcd; 32],
                     },
                 ],
             };

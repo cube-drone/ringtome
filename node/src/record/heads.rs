@@ -66,8 +66,11 @@ struct HeadsInner {
     chains: BTreeMap<String, Head>,
 }
 
-fn key_of(author_hex: &str, service: u32) -> String {
-    format!("{author_hex}/{service}")
+fn key_of(author_hex: &str, service: u32, instance: Option<[u8; 16]>) -> String {
+    match instance {
+        Some(i) => format!("{author_hex}/{service}/{}", hex::encode(i)),
+        None => format!("{author_hex}/{service}"),
+    }
 }
 
 impl EphemeralHeads {
@@ -107,9 +110,9 @@ impl EphemeralHeads {
     /// duplicate, reordered, or replayed checkpoint can never re-arm the under-recording
     /// failure. Fsynced and renamed into place before returning - this is the write-ahead
     /// half, and the caller inserts the entry only after it succeeds.
-    pub fn record(&self, author_hex: &str, service: u32, seq: u64, hash: &[u8; 32]) -> Result<()> {
+    pub fn record(&self, author_hex: &str, service: u32, instance: Option<[u8; 16]>, seq: u64, hash: &[u8; 32]) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
-        let key = key_of(author_hex, service);
+        let key = key_of(author_hex, service, instance);
         if inner.chains.get(&key).is_some_and(|held| held.seq >= seq) {
             return Ok(());
         }
@@ -139,9 +142,9 @@ impl EphemeralHeads {
 
     /// The recorded head for one chain, if any - what `imaol::append` continues from when the
     /// database has forgotten a chain the checkpoint remembers.
-    pub fn head_of(&self, author_hex: &str, service: u32) -> Option<(u64, [u8; 32])> {
+    pub fn head_of(&self, author_hex: &str, service: u32, instance: Option<[u8; 16]>) -> Option<(u64, [u8; 32])> {
         let inner = self.inner.lock().unwrap();
-        let held = inner.chains.get(&key_of(author_hex, service))?;
+        let held = inner.chains.get(&key_of(author_hex, service, instance))?;
         let mut hash = [0u8; 32];
         hex::decode_to_slice(&held.hash, &mut hash).ok()?;
         Some((held.seq, hash))
@@ -161,14 +164,14 @@ mod tests {
         let path = temp_path("roundtrip");
         let _ = std::fs::remove_file(&path);
         let heads = EphemeralHeads::open(&path).unwrap();
-        assert_eq!(heads.head_of("aa", 9), None, "absent file, no heads");
+        assert_eq!(heads.head_of("aa", 9, None), None, "absent file, no heads");
 
-        heads.record("aa", 9, 5, &[7u8; 32]).unwrap();
-        assert_eq!(heads.head_of("aa", 9), Some((5, [7u8; 32])));
+        heads.record("aa", 9, None, 5, &[7u8; 32]).unwrap();
+        assert_eq!(heads.head_of("aa", 9, None), Some((5, [7u8; 32])));
 
         // A fresh open reads what the rename installed - the catastrophe path.
         let reopened = EphemeralHeads::open(&path).unwrap();
-        assert_eq!(reopened.head_of("aa", 9), Some((5, [7u8; 32])));
+        assert_eq!(reopened.head_of("aa", 9, None), Some((5, [7u8; 32])));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -177,10 +180,10 @@ mod tests {
         let path = temp_path("monotone");
         let _ = std::fs::remove_file(&path);
         let heads = EphemeralHeads::open(&path).unwrap();
-        heads.record("aa", 9, 5, &[7u8; 32]).unwrap();
-        heads.record("aa", 9, 3, &[9u8; 32]).unwrap(); // a stale replay
+        heads.record("aa", 9, None, 5, &[7u8; 32]).unwrap();
+        heads.record("aa", 9, None, 3, &[9u8; 32]).unwrap(); // a stale replay
         assert_eq!(
-            heads.head_of("aa", 9),
+            heads.head_of("aa", 9, None),
             Some((5, [7u8; 32])),
             "a checkpoint can advance a head, never retreat it"
         );
@@ -192,12 +195,12 @@ mod tests {
         let path = temp_path("independent");
         let _ = std::fs::remove_file(&path);
         let heads = EphemeralHeads::open(&path).unwrap();
-        heads.record("aa", 8, 2, &[1u8; 32]).unwrap();
-        heads.record("aa", 9, 7, &[2u8; 32]).unwrap();
-        heads.record("bb", 9, 1, &[3u8; 32]).unwrap();
-        assert_eq!(heads.head_of("aa", 8), Some((2, [1u8; 32])));
-        assert_eq!(heads.head_of("aa", 9), Some((7, [2u8; 32])));
-        assert_eq!(heads.head_of("bb", 9), Some((1, [3u8; 32])));
+        heads.record("aa", 8, None, 2, &[1u8; 32]).unwrap();
+        heads.record("aa", 9, None, 7, &[2u8; 32]).unwrap();
+        heads.record("bb", 9, None, 1, &[3u8; 32]).unwrap();
+        assert_eq!(heads.head_of("aa", 8, None), Some((2, [1u8; 32])));
+        assert_eq!(heads.head_of("aa", 9, None), Some((7, [2u8; 32])));
+        assert_eq!(heads.head_of("bb", 9, None), Some((1, [3u8; 32])));
         let _ = std::fs::remove_file(&path);
     }
 }

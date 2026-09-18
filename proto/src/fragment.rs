@@ -776,6 +776,7 @@ mod tests {
             chain: crate::ChainId {
                 author: key.verifying_key().to_bytes(),
                 service: service::POSTS,
+                instance: None,
             },
             seq: 4,
             prev_hash: crate::ZERO_HASH,
@@ -822,6 +823,7 @@ mod tests {
             chain: crate::ChainId {
                 author: key.verifying_key().to_bytes(),
                 service: service::POSTS,
+                instance: None,
             },
             seq: 5,
             prev_hash: crate::ZERO_HASH,
@@ -853,6 +855,7 @@ mod tests {
             chain: crate::ChainId {
                 author: signer.verifying_key().to_bytes(),
                 service: service::ANNOTATIONS_PUBLIC,
+                instance: None,
             },
             seq: 3,
             prev_hash: crate::ZERO_HASH,
@@ -951,6 +954,7 @@ mod tests {
             chain: crate::ChainId {
                 author,
                 service: service::POSTS,
+                instance: None,
             },
             seq: 4,
             prev_hash: crate::ZERO_HASH,

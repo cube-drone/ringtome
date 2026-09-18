@@ -60,8 +60,8 @@ beside derived. What is left:
   never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
   does not (iroh QUIC already encrypts point to point).
 * **The transport tier**: pricing connection admission by shared public-edge standing.
-* Real-time chat rooms (CHAT.md, settled 2026-09-18): first the chain key's third element
-  `(author, service, instance)` as its own arc, then the five slices.
+* Real-time chat rooms (CHAT.md, settled 2026-09-18): the chain key's third element landed
+  2026-09-18 (slice 0); the five slices remain.
 * Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately; CHAT.md
   notes it may be a room of two)
 

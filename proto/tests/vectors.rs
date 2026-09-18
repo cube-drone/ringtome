@@ -79,6 +79,7 @@ fn build_vectors() -> VectorFile {
             chain: ChainId {
                 author,
                 service: service_id,
+                instance: None,
             },
             seq,
             prev_hash,
@@ -181,6 +182,7 @@ fn build_vectors() -> VectorFile {
         disposition: Disposition::Retirement,
         anchors: vec![Anchor {
             service: service::IDENTITY_PUBLIC,
+            instance: None,
             seq: 0,
             head_hash: *blake3::hash(b"ringtome test-vector anchor head").as_bytes(),
         }],

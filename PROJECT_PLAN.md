@@ -1278,7 +1278,14 @@ properties of this one structure.
 
 ### Chains: One Per Key, Per Service
 
-Every key in an identity's tree maintains its own set of **chains**, one per service:
+Every key in an identity's tree maintains its own set of **chains**, one per service - and,
+for a service that keeps one chain per *thing* rather than one per key, one per thing: the
+chain key is `(author, service, instance)`, the instance a sixteen-byte id absent for every
+service below (built 2026-09-18 as CHAT.md's slice 0, for the room whose lane is `(author,
+CHAT, room id)`). Absent and none are the same chain, so nothing here re-encoded: the entry's
+chain id, the sync frontier and the revocation anchor each grew an optional last element, the
+`entries` and `chain_heads` tables an `instance` column that is the empty blob for every
+existing row, and every gate, planner, memo and fingerprint groups by the whole key.
 
 ```
 Key K1 (the leaf on your VPS) maintains:
@@ -2208,7 +2215,7 @@ the database itself encrypted, that objection is answered structurally, and view
 ordinary tables: normalized and query-shaped (per-document version facts, annotations, tag
 membership, full-text indexes over titles and descriptions), folded **incrementally** by
 statement-atomic stamp-compare upserts (the `profile_view` pattern, generalized), watermarked
-per chain (`(author, service) → seq`) so boot fast-forwards from the last fold instead of
+per chain (`(author, service, instance) → seq`) so boot fast-forwards from the last fold instead of
 replaying history. What survives untouched is the deeper invariant: **views are disposable** -
 pure functions of the log, rebuilt by drop-and-replay, never a source of truth. And version-DAG
 *resolution* (heads, logical-head folding, the merges) stays in Rust: SQL holds facts, not

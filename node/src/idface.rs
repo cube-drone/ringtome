@@ -692,8 +692,8 @@ pub(crate) async fn posts_floor(state: &AppState, root_hex: &str) -> u64 {
         .await
         .unwrap_or_default()
         .into_iter()
-        .filter(|(_, svc, _, _, _)| *svc == ringtome_proto::registry::service::POSTS)
-        .map(|(_, _, floor, _, _)| floor)
+        .filter(|(_, svc, _, _, _, _)| *svc == ringtome_proto::registry::service::POSTS)
+        .map(|(_, _, _, floor, _, _)| floor)
         .max()
         .unwrap_or(0)
 }

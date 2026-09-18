@@ -9236,3 +9236,21 @@ from the test beat. Both read the plan as pending, both walked the pages, the fi
 the revised page, the second found every page at its head and wrote its plan - nothing
 changed - last. `rollout_due` now takes a process-wide lane, so a second pass waits and then
 finds the plan done.
+
+## 2026-09-18: the chain key's third element
+
+CHAT.md's slice 0, on its own, with no chat in it: a chain is `(author, service, instance)`,
+the instance a sixteen-byte id for a service that keeps one chain per thing - a room's lane -
+and absent for every service that exists. On the wire the entry's chain id, the sync Hello's
+frontier and the revocation's anchor each grew an optional last element, written only when
+present, so no existing entry re-encodes and its hash stands. In the node the `entries`,
+`equivocations` and `chain_heads` tables gained an `instance` column (user schema 26, node
+schema 49), the empty blob for every existing row and part of each primary key; every read
+that names a chain - the append path's head, the sync planner's per-chain walk and its
+equivocation window, the gate's grouping, floor, head and suffix adoption, the ceilinged
+admission, the disproof sweeps, the chain-heads memo and its reconciler, the frontier fingerprint (which frames the instance so none and all-zeros never
+hash alike), the retention pass, the raw-entries cursor and the ephemeral heads checkpoint -
+carries it. `imaol::append_on` writes a per-instance chain; `append` is the same call with
+none. The crown keeps a ceiling per `(key, service, instance)`. The fold reads that walk a
+service's entries by `(author, seq)` are untouched: no service with instances exists yet, and
+the room's fold will design its own per-instance memo when it arrives.

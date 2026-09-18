@@ -60,6 +60,7 @@ mod tests {
             chain: ChainId {
                 author: k.verifying_key().to_bytes(),
                 service: service::PROFILE_PUBLIC,
+                instance: None,
             },
             seq,
             prev_hash,
@@ -142,6 +143,7 @@ mod tests {
                 chain: ChainId {
                     author: k.verifying_key().to_bytes(),
                     service: service::POSTS,
+                    instance: None,
                 },
                 seq: 1,
                 prev_hash: *e0.hash(),
@@ -152,6 +154,30 @@ mod tests {
         };
         assert_eq!(
             validate_next(Some(&e0), &other_chain),
+            Err(ProtoError::ChainViolation(
+                "entry belongs to a different chain"
+            ))
+        );
+
+        // Same author, same service, an INSTANCE = a different chain too (CHAT.md slice 0).
+        let room_chain = {
+            let entry = Entry {
+                v: ENTRY_VERSION,
+                entry_type: entry_type::PROFILE_SET,
+                chain: ChainId {
+                    author: k.verifying_key().to_bytes(),
+                    service: service::PROFILE_PUBLIC,
+                    instance: Some([3u8; 16]),
+                },
+                seq: 1,
+                prev_hash: *e0.hash(),
+                timestamp_ms: 1,
+                payload: Payload::Inline(vec![0xa0]),
+            };
+            SignedEntry::create(&entry, &k).unwrap()
+        };
+        assert_eq!(
+            validate_next(Some(&e0), &room_chain),
             Err(ProtoError::ChainViolation(
                 "entry belongs to a different chain"
             ))

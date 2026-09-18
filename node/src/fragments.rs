@@ -2127,6 +2127,7 @@ mod tests {
                 chain: ringtome_proto::ChainId {
                     author: key.verifying_key().to_bytes(),
                     service: ringtome_proto::registry::service::POSTS,
+                    instance: None,
                 },
                 seq,
                 prev_hash: ringtome_proto::ZERO_HASH,

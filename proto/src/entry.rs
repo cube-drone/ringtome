@@ -58,13 +58,20 @@ const K_PAYLOAD: u64 = 6;
 const PAYLOAD_INLINE: u64 = 0;
 const PAYLOAD_BLOB: u64 = 1;
 
-/// Which chain an entry belongs to: one author key, one service.
+/// Which chain an entry belongs to: one author key, one service - and, for a service that
+/// keeps one chain per thing rather than one per key, the thing (CHAT.md's slice 0,
+/// 2026-09-18: a room's lane is `(author, CHAT, room id)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChainId {
     /// The author's ed25519 public key. Only this key may append to this chain.
     pub author: [u8; 32],
     /// Service id from the registry (profile, posts, ...).
     pub service: u32,
+    /// The instance, for a per-instance service: a 16-byte id (a room's post id), or none
+    /// for every service that has one chain per key. On the wire the chain id is
+    /// `[author, service]` or `[author, service, instance]`; absent and `None` are the same
+    /// chain, so no existing entry re-encodes.
+    pub instance: Option<[u8; 16]>,
 }
 
 /// Header-vs-blob split, per entry: small values ride inline, large content is a droppable,
@@ -93,6 +100,24 @@ pub struct Entry {
     pub payload: Payload,
 }
 
+/// The chain id's wire form: `[author, service]`, or `[author, service, instance]` for a
+/// per-instance chain.
+pub(crate) fn write_chain(w: &mut Writer, chain: &ChainId) {
+    match chain.instance {
+        Some(instance) => {
+            w.array(3);
+            w.bytes(&chain.author);
+            w.uint(u64::from(chain.service));
+            w.bytes(&instance);
+        }
+        None => {
+            w.array(2);
+            w.bytes(&chain.author);
+            w.uint(u64::from(chain.service));
+        }
+    }
+}
+
 fn encode_body(entry: &Entry) -> Vec<u8> {
     let mut w = Writer::new();
     w.map(7);
@@ -101,9 +126,7 @@ fn encode_body(entry: &Entry) -> Vec<u8> {
     w.uint(K_TYPE);
     w.uint(u64::from(entry.entry_type));
     w.uint(K_CHAIN);
-    w.array(2);
-    w.bytes(&entry.chain.author);
-    w.uint(u64::from(entry.chain.service));
+    write_chain(&mut w, &entry.chain);
     w.uint(K_SEQ);
     w.uint(entry.seq);
     w.uint(K_PREV_HASH);
@@ -143,14 +166,16 @@ fn decode_body(body: &[u8]) -> Result<Entry, ProtoError> {
             K_VERSION => v = Some(map.uint()?),
             K_TYPE => entry_type = Some(map.uint()?),
             K_CHAIN => {
-                if map.array()? != 2 {
-                    return Err(ProtoError::BadEntry("chain id must be [author, service]"));
+                let arity = map.array()?;
+                if arity != 2 && arity != 3 {
+                    return Err(ProtoError::BadEntry("chain id must be [author, service] or [author, service, instance]"));
                 }
                 let author = map.bytes_fixed::<32>()?;
                 let service = map.uint()?;
                 let service = u32::try_from(service)
                     .map_err(|_| ProtoError::BadEntry("service id out of range"))?;
-                chain = Some(ChainId { author, service });
+                let instance = if arity == 3 { Some(map.bytes_fixed::<16>()?) } else { None };
+                chain = Some(ChainId { author, service, instance });
             }
             K_SEQ => seq = Some(map.uint()?),
             K_PREV_HASH => prev_hash = Some(map.bytes_fixed::<HASH_LEN>()?),
@@ -337,6 +362,7 @@ mod tests {
             chain: ChainId {
                 author: key.verifying_key().to_bytes(),
                 service: service::PROFILE_PUBLIC,
+                instance: None,
             },
             seq: 0,
             prev_hash: ZERO_HASH,
@@ -355,6 +381,25 @@ mod tests {
         assert_eq!(decoded.entry(), &entry);
         assert_eq!(decoded.hash(), signed.hash());
         decoded.verify().unwrap();
+    }
+
+    #[test]
+    fn an_instance_rides_the_chain_id_and_absent_is_none() {
+        // The third element (CHAT.md slice 0): `[author, service, instance]` on the wire,
+        // decoded back whole; a plain chain id stays the two-element array it always was.
+        let key = test_key();
+        let mut entry = test_entry(&key);
+        entry.chain.instance = Some([9u8; 16]);
+        let signed = SignedEntry::create(&entry, &key).unwrap();
+        let decoded = SignedEntry::decode(signed.bytes()).unwrap();
+        assert_eq!(decoded.entry().chain.instance, Some([9u8; 16]));
+        assert_eq!(decoded.entry(), &entry);
+        decoded.verify().unwrap();
+        // The plain id: bytes identical to a hand-written two-element chain array.
+        let plain = SignedEntry::create(&test_entry(&key), &key).unwrap();
+        let re = SignedEntry::decode(plain.bytes()).unwrap();
+        assert_eq!(re.entry().chain.instance, None);
+        assert_ne!(plain.hash(), signed.hash(), "the instance is under the signature");
     }
 
     #[test]

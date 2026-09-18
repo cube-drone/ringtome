@@ -119,19 +119,20 @@ fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32]) -> Vec<Frontier> {
 }
 
 pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
-    let rows: Vec<(String, u32, u64, u64, [u8; 32])> = match (db.memo(), db.root()) {
+    let rows: Vec<crate::net::frontier::MemoChain> = match (db.memo(), db.root()) {
         (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root).await?,
         _ => chain_ranges(db).await?,
     };
 
     rows.into_iter()
-        .filter(|(_, svc, _, _, _)| include_private || !is_private_service(*svc))
-        .map(|(author_hex, svc, floor, head, head_hash)| {
+        .filter(|(_, svc, _, _, _, _)| include_private || !is_private_service(*svc))
+        .map(|(author_hex, svc, instance, floor, head, head_hash)| {
             let author = pubkey::decode(&author_hex)
                 .ok_or_else(|| anyhow!("corrupt author pubkey in a chain record"))?;
             Ok(Frontier {
                 author,
                 service: svc,
+                instance,
                 floor,
                 head,
                 head_hash,
@@ -140,29 +141,31 @@ pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Front
         .collect()
 }
 
-/// Every chain this identity stores, as `(author_hex, service, floor, head, head_hash)` -
-/// the chain-heads memo's reconciliation read (`net::frontier::reconcile_from_entries`).
-/// Lives here because `entries` is this module's table; the memo is fed at write time and
-/// this is the recovery path that re-derives it after a crash between the dual writes.
-pub async fn chain_ranges(db: &Db) -> Result<Vec<(String, u32, u64, u64, [u8; 32])>> {
-    type Row = (String, i64, i64, i64, Vec<u8>);
+/// Every chain this identity stores, as `(author_hex, service, instance, floor, head,
+/// head_hash)` - the chain-heads memo's reconciliation read
+/// (`net::frontier::reconcile_from_entries`). Lives here because `entries` is this module's
+/// table; the memo is fed at write time and this is the recovery path that re-derives it
+/// after a crash between the dual writes.
+pub async fn chain_ranges(db: &Db) -> Result<Vec<crate::net::frontier::MemoChain>> {
+    type Row = (String, i64, Vec<u8>, i64, i64, Vec<u8>);
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT e.author_pubkey, e.service, MIN(e.seq), MAX(e.seq),
+            "SELECT e.author_pubkey, e.service, e.instance, MIN(e.seq), MAX(e.seq),
                     (SELECT entry_hash FROM entries
                       WHERE author_pubkey = e.author_pubkey AND service = e.service
+                        AND instance = e.instance
                       ORDER BY seq DESC LIMIT 1)
-             FROM entries e GROUP BY e.author_pubkey, e.service",
+             FROM entries e GROUP BY e.author_pubkey, e.service, e.instance",
             (),
         )
         .await
         .context("reading chain ranges")?;
     rows.into_iter()
-        .map(|(author_hex, svc, floor, head, hash)| {
+        .map(|(author_hex, svc, instance, floor, head, hash)| {
             let hash: [u8; 32] = hash
                 .try_into()
                 .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
-            Ok((author_hex, svc as u32, floor as u64, head as u64, hash))
+            Ok((author_hex, svc as u32, crate::db::instance_of(&instance), floor as u64, head as u64, hash))
         })
         .collect()
 }
@@ -202,9 +205,18 @@ async fn send_missing(
 
 /// One chain a peer is behind on: where its ordinary entries resume, plus the fork proof to
 /// put in front of them when there is one.
+/// One chain, whole: `(author, service, instance)` - the key every gate, planner and memo
+/// groups by since the third element (CHAT.md slice 0, 2026-09-18).
+type ChainKey = ([u8; 32], u32, Option<[u8; 16]>);
+
+/// A backfill in flight: `(author_hex, service, instance, lowest, next)`.
+type Backfill = (String, u32, Option<[u8; 16]>, u64, u64);
+
 struct ChainSend {
     author_hex: String,
     service: u32,
+    /// The chain's instance (`ChainId::instance`), none for a one-chain-per-key service.
+    instance: Option<[u8; 16]>,
     /// The EQUIVOCATION window's one entry: our own entry at the peer's claimed head, when
     /// our hash there differs from theirs. See `missing_plan`.
     evidence: Option<Vec<u8>>,
@@ -227,10 +239,10 @@ pub(crate) struct MissingEntries<'a> {
     db: &'a Db,
     chains: std::vec::IntoIter<ChainSend>,
     /// The chain being drained: `(author_hex, service, next page's first seq)`.
-    current: Option<(String, u32, u64)>,
+    current: Option<(String, u32, Option<[u8; 16]>, u64)>,
     /// The bounded range beneath the peer's floor still to send, `(lowest, next)` inclusive,
     /// walked downward from `next`.
-    backfill: Option<(String, u32, u64, u64)>,
+    backfill: Option<Backfill>,
     /// Read and not yet yielded: at most one page, plus a leading fork proof.
     page: VecDeque<Vec<u8>>,
     /// Whether the current chain may have more pages (the last one came back full).
@@ -267,11 +279,11 @@ impl<'a> MissingEntries<'a> {
             // The backfill beneath the peer's floor goes first, walked DOWNWARD from the
             // floor: a budget cut then leaves a run that still joins the floor's commitment,
             // where a cut of an upward walk would leave the genesis and no join at all.
-            if let Some((author_hex, service, lowest, next)) = self.backfill.clone() {
-                let rows = chain_page_down(self.db, &author_hex, service, next, lowest).await?;
+            if let Some((author_hex, service, instance, lowest, next)) = self.backfill.clone() {
+                let rows = chain_page_down(self.db, &author_hex, service, instance, next, lowest).await?;
                 match rows.last() {
                     Some((last_seq, _)) if *last_seq > lowest => {
-                        self.backfill = Some((author_hex, service, lowest, last_seq - 1));
+                        self.backfill = Some((author_hex, service, instance, lowest, last_seq - 1));
                     }
                     _ => self.backfill = None,
                 }
@@ -281,14 +293,14 @@ impl<'a> MissingEntries<'a> {
             // The current chain may have more: read one page. A short page (or none) means
             // this chain is finished, and the next loop turn moves on.
             if self.more {
-                if let Some((author_hex, service, from_seq)) = self.current.clone() {
-                    let rows = chain_page(self.db, &author_hex, service, from_seq).await?;
+                if let Some((author_hex, service, instance, from_seq)) = self.current.clone() {
+                    let rows = chain_page(self.db, &author_hex, service, instance, from_seq).await?;
                     self.more = rows.len() == SEND_PAGE_ENTRIES;
                     if let Some((last_seq, _)) = rows.last() {
                         // Advance by the seq actually read, never by a count: a shallow-held
                         // chain's floor is not zero, and its seqs are dense only within what
                         // is held.
-                        self.current = Some((author_hex, service, last_seq + 1));
+                        self.current = Some((author_hex, service, instance, last_seq + 1));
                     }
                     self.page.extend(rows.into_iter().map(|(_, bytes)| bytes));
                     continue;
@@ -299,8 +311,8 @@ impl<'a> MissingEntries<'a> {
                     self.page.extend(chain.evidence);
                     self.backfill = chain
                         .backfill
-                        .map(|(from, to)| (chain.author_hex.clone(), chain.service, from, to));
-                    self.current = Some((chain.author_hex, chain.service, chain.from_seq));
+                        .map(|(from, to)| (chain.author_hex.clone(), chain.service, chain.instance, from, to));
+                    self.current = Some((chain.author_hex, chain.service, chain.instance, chain.from_seq));
                     self.more = true;
                 }
                 None => return Ok(None),
@@ -333,13 +345,13 @@ async fn missing_plan(
     wanted: &[u32],
     ask: Ask,
 ) -> Result<Vec<ChainSend>> {
-    let peer: HashMap<([u8; 32], u32), (u64, [u8; 32])> = peer_frontiers
+    let peer: HashMap<ChainKey, (u64, [u8; 32])> = peer_frontiers
         .iter()
-        .map(|f| ((f.author, f.service), (f.head, f.head_hash)))
+        .map(|f| ((f.author, f.service, f.instance), (f.head, f.head_hash)))
         .collect();
-    let peer_floor: HashMap<([u8; 32], u32), u64> = peer_frontiers
+    let peer_floor: HashMap<ChainKey, u64> = peer_frontiers
         .iter()
-        .map(|f| ((f.author, f.service), f.floor))
+        .map(|f| ((f.author, f.service, f.instance), f.floor))
         .collect();
 
     // Which chains do we hold? From the MEMO (2026-08-10, the full-chain audit) - this was a
@@ -351,21 +363,22 @@ async fn missing_plan(
     // we lack costs an empty page and nothing else; a memo that missed one delays that chain
     // to the next exchange, and the memo is reconciled against the log at every database open
     // and healed by the frontier sweep. Neither direction can lose history.
-    let mut chains: Vec<(String, i64, Option<u64>)> = match (db.memo(), db.root()) {
+    type Chain = (String, i64, Option<[u8; 16]>, Option<u64>);
+    let mut chains: Vec<Chain> = match (db.memo(), db.root()) {
         (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root)
             .await?
             .into_iter()
-            .map(|(author_hex, svc, _, head, _)| (author_hex, i64::from(svc), Some(head)))
+            .map(|(author_hex, svc, instance, _, head, _)| (author_hex, i64::from(svc), instance, Some(head)))
             .collect(),
         _ => db
-            .fetch_all::<(String, i64)>(
-                "SELECT DISTINCT author_pubkey, service FROM entries",
+            .fetch_all::<(String, i64, Vec<u8>)>(
+                "SELECT DISTINCT author_pubkey, service, instance FROM entries",
                 (),
             )
             .await
             .context("listing chains")?
             .into_iter()
-            .map(|(a, s)| (a, s, None))
+            .map(|(a, s, i)| (a, s, crate::db::instance_of(&i), None))
             .collect(),
     };
     // **Identity chains strictly first** - the module's own promise, and the reason this is
@@ -373,10 +386,10 @@ async fn missing_plan(
     // to precede the content it validates, and IDENTITY_PUBLIC is service 0. The old query got
     // this from an `ORDER BY service, author_pubkey`; losing it here would break the receiving
     // gate in a way that only shows up on a first sync.
-    chains.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    chains.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)).then_with(|| a.2.cmp(&b.2)));
 
     let mut plan = Vec::new();
-    for (author_hex, svc, memo_head) in chains {
+    for (author_hex, svc, instance, memo_head) in chains {
         if !include_private && is_private_service(svc as u32) {
             continue;
         }
@@ -389,7 +402,7 @@ async fn missing_plan(
         }
         let author = pubkey::decode(&author_hex)
             .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
-        let claimed = peer.get(&(author, svc as u32));
+        let claimed = peer.get(&(author, svc as u32, instance));
         let mut from_seq = claimed.map(|(head, _)| head + 1).unwrap_or(0);
         let mut backfill = None;
         if CEILING_SERVICES.contains(&(svc as u32)) {
@@ -401,8 +414,8 @@ async fn missing_plan(
                     Some(h) => Some(h),
                     None => db
                         .fetch_optional::<(i64,)>(
-                            "SELECT MAX(seq) FROM entries WHERE author_pubkey = ?1 AND service = ?2",
-                            (author_hex.as_str(), svc),
+                            "SELECT MAX(seq) FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
+                            (author_hex.as_str(), svc, crate::db::instance_blob(instance)),
                         )
                         .await
                         .context("reading a chain's head for the ceiling")?
@@ -412,7 +425,7 @@ async fn missing_plan(
                     from_seq = from_seq.max((head + 1).saturating_sub(ask.ceiling));
                 }
             }
-            if let (Some(floor), true) = (peer_floor.get(&(author, svc as u32)), ask.below > 0) {
+            if let (Some(floor), true) = (peer_floor.get(&(author, svc as u32, instance)), ask.below > 0) {
                 if *floor > 0 {
                     backfill = Some((floor.saturating_sub(ask.below), floor - 1));
                 }
@@ -423,8 +436,8 @@ async fn missing_plan(
             let ours: Option<(Vec<u8>, Vec<u8>)> = db
                 .fetch_optional(
                     "SELECT entry_hash, bytes FROM entries
-                     WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
-                    (author_hex.as_str(), svc, *peer_head as i64),
+                     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
+                    (author_hex.as_str(), svc, crate::db::instance_blob(instance), *peer_head as i64),
                 )
                 .await
                 .context("reading our entry at the peer's claimed head")?;
@@ -438,6 +451,7 @@ async fn missing_plan(
         plan.push(ChainSend {
             author_hex,
             service: svc as u32,
+            instance,
             evidence,
             from_seq,
             backfill,
@@ -455,17 +469,19 @@ async fn chain_page_down(
     db: &Db,
     author_hex: &str,
     service: u32,
+    instance: Option<[u8; 16]>,
     from_seq: u64,
     lowest: u64,
 ) -> Result<Vec<(u64, Vec<u8>)>> {
     let rows: Vec<(i64, Vec<u8>)> = db
         .fetch_all(
             "SELECT seq, bytes FROM entries
-             WHERE author_pubkey = ?1 AND service = ?2 AND seq <= ?3 AND seq >= ?4
-             ORDER BY seq DESC LIMIT ?5",
+             WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq <= ?4 AND seq >= ?5
+             ORDER BY seq DESC LIMIT ?6",
             (
                 author_hex,
                 i64::from(service),
+                crate::db::instance_blob(instance),
                 from_seq as i64,
                 lowest as i64,
                 SEND_PAGE_ENTRIES as i64,
@@ -480,16 +496,18 @@ async fn chain_page(
     db: &Db,
     author_hex: &str,
     service: u32,
+    instance: Option<[u8; 16]>,
     from_seq: u64,
 ) -> Result<Vec<(u64, Vec<u8>)>> {
     let rows: Vec<(i64, Vec<u8>)> = db
         .fetch_all(
             "SELECT seq, bytes FROM entries
-             WHERE author_pubkey = ?1 AND service = ?2 AND seq >= ?3
-             ORDER BY seq LIMIT ?4",
+             WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq >= ?4
+             ORDER BY seq LIMIT ?5",
             (
                 author_hex,
                 i64::from(service),
+                crate::db::instance_blob(instance),
                 from_seq as i64,
                 SEND_PAGE_ENTRIES as i64,
             ),
@@ -721,6 +739,7 @@ pub(crate) async fn ingest_batch(
                 db,
                 &author,
                 service::IDENTITY_PUBLIC,
+                None,
                 &c,
                 tree.revocation_of(&author),
                 &entries,
@@ -736,7 +755,7 @@ pub(crate) async fn ingest_batch(
         }
         match tree.status(&author) {
             KeyStatus::Active => {
-                let mut prev = stored_chain_head(db, &author, service::IDENTITY_PUBLIC).await?;
+                let mut prev = stored_chain_head(db, &author, service::IDENTITY_PUBLIC, None).await?;
                 for e in entries {
                     // Already held? (Peer resent below our head.) Skip silently.
                     if let Some(p) = &prev {
@@ -768,7 +787,7 @@ pub(crate) async fn ingest_batch(
                         && e.entry().seq == 0
                         && e.entry().prev_hash == ZERO_HASH;
                     if is_founding_self_revoke {
-                        if stored_chain_head(db, &author, service::IDENTITY_PUBLIC)
+                        if stored_chain_head(db, &author, service::IDENTITY_PUBLIC, None)
                             .await?
                             .is_none()
                         {
@@ -791,17 +810,18 @@ pub(crate) async fn ingest_batch(
         (
             e.entry().chain.author,
             e.entry().chain.service,
+            e.entry().chain.instance,
             e.entry().seq,
         )
     });
-    let mut content_by_chain: BTreeMap<([u8; 32], u32), Vec<SignedEntry>> = BTreeMap::new();
+    let mut content_by_chain: BTreeMap<ChainKey, Vec<SignedEntry>> = BTreeMap::new();
     for e in content_candidates {
         content_by_chain
-            .entry((e.entry().chain.author, e.entry().chain.service))
+            .entry((e.entry().chain.author, e.entry().chain.service, e.entry().chain.instance))
             .or_default()
             .push(e);
     }
-    for ((author, svc), entries) in content_by_chain {
+    for ((author, svc, instance), entries) in content_by_chain {
         if matches!(
             tree.status(&author),
             KeyStatus::Invalid | KeyStatus::Unknown
@@ -809,9 +829,9 @@ pub(crate) async fn ingest_batch(
             rejected += entries.len() as u64;
             continue;
         }
-        if let Some(c) = tree.ceiling(&author, svc) {
+        if let Some(c) = tree.ceiling_of(&author, svc, instance) {
             let (stored_now, refused, evicted) =
-                admit_ceilinged_chain(db, &author, svc, &c, None, &entries).await?;
+                admit_ceilinged_chain(db, &author, svc, instance, &c, None, &entries).await?;
             for e in &stored_now {
                 apply_content_views(db, e).await?;
             }
@@ -828,14 +848,14 @@ pub(crate) async fn ingest_batch(
         }
         match tree.status(&author) {
             KeyStatus::Active => {
-                let mut prev = stored_chain_head(db, &author, svc).await?;
+                let mut prev = stored_chain_head(db, &author, svc, instance).await?;
                 // The follow ceiling (PROJECT_PLAN's Peeks, ruling 8): on a FOREIGN gate the posts chain may
                 // be held as a suffix - adopted from nothing at a seq above zero, or extended
                 // BENEATH its floor by a backfill whose top entry must hash-match the floor's
                 // own `prev_hash`, the commitment the suffix carried all along.
                 let suffix_ok = service_allows_suffix(svc)
                     || (identity_ceiling.is_some() && CEILING_SERVICES.contains(&svc));
-                let floor_entry = if suffix_ok { stored_chain_floor(db, &author, svc).await? } else { None };
+                let floor_entry = if suffix_ok { stored_chain_floor(db, &author, svc, instance).await? } else { None };
                 let floor_seq = floor_entry.as_ref().map(|f| f.entry().seq);
                 let mut backfill: Vec<SignedEntry> = Vec::new();
                 let mut entries = entries;
@@ -900,10 +920,11 @@ pub(crate) async fn ingest_batch(
                                 // rather than a range with a hole the pager would mis-serve.
                                 db.execute(
                                     "DELETE FROM entries
-                                     WHERE author_pubkey = ?1 AND service = ?2 AND seq < ?3",
+                                     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq < ?4",
                                     (
                                         hex::encode(author).as_str(),
                                         i64::from(svc),
+                                        crate::db::instance_blob(instance),
                                         e.entry().seq as i64,
                                     ),
                                 )
@@ -989,10 +1010,11 @@ async fn note_if_equivocation(db: &Db, arrived: &SignedEntry) -> Result<()> {
     let held: Option<(Vec<u8>, Vec<u8>)> = db
         .fetch_optional(
             "SELECT entry_hash, bytes FROM entries
-             WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
+             WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
             (
                 author_hex.as_str(),
                 i64::from(entry.chain.service),
+                crate::db::instance_blob(entry.chain.instance),
                 entry.seq as i64,
             ),
         )
@@ -1012,11 +1034,12 @@ async fn note_if_equivocation(db: &Db, arrived: &SignedEntry) -> Result<()> {
     );
     db.execute(
         "INSERT OR IGNORE INTO equivocations
-           (author_pubkey, service, seq, held_hash, other_hash, held_bytes, other_bytes, noted_ms)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+           (author_pubkey, service, instance, seq, held_hash, other_hash, held_bytes, other_bytes, noted_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         (
             author_hex.as_str(),
             i64::from(entry.chain.service),
+            crate::db::instance_blob(entry.chain.instance),
             entry.seq as i64,
             held_hash,
             arrived.hash().to_vec(),
@@ -1104,22 +1127,23 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             continue;
         }
         let author_hex = hex::encode(key);
-        let chains: Vec<(i64,)> = db
+        let chains: Vec<(i64, Vec<u8>)> = db
             .fetch_all(
-                "SELECT DISTINCT service FROM entries WHERE author_pubkey = ?1",
+                "SELECT DISTINCT service, instance FROM entries WHERE author_pubkey = ?1",
                 (author_hex.as_str(),),
             )
             .await
             .context("listing a quarantined key's stored chains")?;
-        for (svc,) in chains {
+        for (svc, instance) in chains {
             let svc = svc as u32;
-            if svc == service::IDENTITY_PUBLIC || tree.ceiling(key, svc).is_some() {
+            let instance = crate::db::instance_of(&instance);
+            if svc == service::IDENTITY_PUBLIC || tree.ceiling_of(key, svc, instance).is_some() {
                 continue;
             }
             let rows_affected = db
                 .execute(
-                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2",
-                    (author_hex.as_str(), i64::from(svc)),
+                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
+                    (author_hex.as_str(), i64::from(svc), crate::db::instance_blob(instance)),
                 )
                 .await
                 .context("evicting a quarantined key's unanchored chain")?;
@@ -1127,7 +1151,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             services.insert(svc);
             // The evicted chain's memo row is a lie now; the memo forgets with it.
             if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
-                let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, svc).await;
+                let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, svc, instance).await;
             }
             tracing::warn!(
                 author = %author_hex,
@@ -1139,17 +1163,18 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
     }
 
     // Sweep two: anchored chains whose stored prefix contradicts the anchor.
-    for ((key, svc), c) in tree.ceilings() {
+    for ((key, svc, instance), c) in tree.ceilings() {
         // A final_seq beyond i64 can have no stored row at all; nothing to disprove.
         let Ok(final_seq) = i64::try_from(c.final_seq) else {
             continue;
         };
         let author_hex = hex::encode(key);
+        let instance_blob = crate::db::instance_blob(*instance);
         let row: Option<(Vec<u8>,)> = db
             .fetch_optional(
                 "SELECT entry_hash FROM entries
-             WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
-                (author_hex.as_str(), i64::from(*svc), final_seq),
+             WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
+                (author_hex.as_str(), i64::from(*svc), instance_blob.clone(), final_seq),
             )
             .await
             .context("checking stored chain against revocation anchor")?;
@@ -1169,8 +1194,8 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             let rows_affected = db
                 .execute(
                     "DELETE FROM entries
-                     WHERE author_pubkey = ?1 AND service = ?2 AND seq > ?3 AND entry_hash != ?4",
-                    (author_hex.as_str(), i64::from(*svc), final_seq, origin),
+                     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq > ?4 AND entry_hash != ?5",
+                    (author_hex.as_str(), i64::from(*svc), instance_blob.clone(), final_seq, origin),
                 )
                 .await
                 .context("evicting rows beyond a revocation ceiling")?;
@@ -1188,12 +1213,12 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             continue;
         }
         if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
-            let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, *svc).await;
+            let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, *svc, *instance).await;
         }
         let rows_affected = db
             .execute(
-                "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2",
-                (author_hex.as_str(), i64::from(*svc)),
+                "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
+                (author_hex.as_str(), i64::from(*svc), instance_blob),
             )
             .await
             .context("evicting disproven chain")?;
@@ -1225,17 +1250,19 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
 /// [`evict_disproven_chains`].
 ///
 /// Returns (entries newly stored, incoming refused, stored rows evicted).
+#[allow(clippy::too_many_arguments)]
 async fn admit_ceilinged_chain(
     db: &Db,
     author: &[u8; 32],
     svc: u32,
+    instance: Option<[u8; 16]>,
     ceiling: &Ceiling,
     // The credited revocation's entry hash (`Crown::revocation_of`), passed only for the
     // author's identity chain - the one chain a self-revocation can live on.
     origin: Option<[u8; 32]>,
     incoming: &[SignedEntry],
 ) -> Result<(Vec<SignedEntry>, u64, u64)> {
-    let stored = stored_chain(db, author, svc).await?;
+    let stored = stored_chain(db, author, svc, instance).await?;
     let mut by_hash: HashMap<[u8; 32], &SignedEntry> = HashMap::new();
     for e in stored.iter().chain(incoming.iter()) {
         if e.entry().seq <= ceiling.final_seq {
@@ -1279,8 +1306,8 @@ async fn admit_ceilinged_chain(
             Some(held) if held.hash() == e.hash() => {} // already held
             Some(_) => {
                 db.execute(
-                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
-                    (hex::encode(author), i64::from(svc), e.entry().seq as i64),
+                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
+                    (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance), e.entry().seq as i64),
                 )
                 .await
                 .context("evicting row displaced by the sealed prefix")?;
@@ -1325,11 +1352,11 @@ async fn admit_ceilinged_chain(
 }
 
 /// Every stored entry of one chain, in seq order.
-async fn stored_chain(db: &Db, author: &[u8; 32], svc: u32) -> Result<Vec<SignedEntry>> {
+async fn stored_chain(db: &Db, author: &[u8; 32], svc: u32, instance: Option<[u8; 16]>) -> Result<Vec<SignedEntry>> {
     let rows: Vec<(Vec<u8>,)> = db
         .fetch_all(
-            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 ORDER BY seq",
-            (hex::encode(author), i64::from(svc)),
+            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq",
+            (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance)),
         )
         .await
         .context("reading stored chain")?;
@@ -1351,12 +1378,12 @@ async fn load_identity_entries(db: &Db) -> Result<Vec<SignedEntry>> {
         .collect()
 }
 
-async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32) -> Result<Option<SignedEntry>> {
+async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32, instance: Option<[u8; 16]>) -> Result<Option<SignedEntry>> {
     let row: Option<(Vec<u8>,)> = db
         .fetch_optional(
-            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2
+            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
          ORDER BY seq DESC LIMIT 1",
-            (hex::encode(author), i64::from(svc)),
+            (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance)),
         )
         .await
         .context("reading stored chain head")?;
@@ -1365,12 +1392,12 @@ async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32) -> Result<Optio
 }
 
 /// The oldest entry we hold of a chain - the floor a suffix commits from.
-async fn stored_chain_floor(db: &Db, author: &[u8; 32], svc: u32) -> Result<Option<SignedEntry>> {
+async fn stored_chain_floor(db: &Db, author: &[u8; 32], svc: u32, instance: Option<[u8; 16]>) -> Result<Option<SignedEntry>> {
     let row: Option<(Vec<u8>,)> = db
         .fetch_optional(
-            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2
+            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
          ORDER BY seq ASC LIMIT 1",
-            (hex::encode(author), i64::from(svc)),
+            (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance)),
         )
         .await
         .context("reading stored chain floor")?;
@@ -1382,6 +1409,7 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     let entry_meta = (
         hex::encode(e.entry().chain.author),
         e.entry().chain.service,
+        e.entry().chain.instance,
         e.entry().seq,
         *e.hash(),
     );
@@ -1398,12 +1426,13 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     }
     db.execute(
         "INSERT INTO entries
-           (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
+           (author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
             received_at_ms, bytes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         (
             hex::encode(e.entry().chain.author),
             i64::from(e.entry().chain.service),
+            crate::db::instance_blob(e.entry().chain.instance),
             e.entry().seq as i64,
             e.hash().as_slice(),
             e.entry().prev_hash.as_slice(),
@@ -1418,8 +1447,8 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
 
     // The memo, fed at the source (see imaol::append's twin): an ingested entry is a tip too.
     if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
-        let (author_hex, service, seq, hash) = &entry_meta;
-        if let Err(err) = crate::net::frontier::note_head(memo, root, author_hex, *service, *seq, hash).await
+        let (author_hex, service, instance, seq, hash) = &entry_meta;
+        if let Err(err) = crate::net::frontier::note_head(memo, root, author_hex, *service, *instance, *seq, hash).await
         {
             tracing::debug!(error = ?err, "noting an ingested chain head failed (sweep reconciles)");
         }
@@ -2589,6 +2618,7 @@ mod tests {
                 chain: ChainId {
                     author: self.pk(),
                     service: self.svc,
+                    instance: None,
                 },
                 seq: self.seq,
                 prev_hash: self.prev,
@@ -2644,6 +2674,7 @@ mod tests {
                 disposition: Disposition::Repudiation,
                 anchors: vec![Anchor {
                     service: service::POSTS,
+                    instance: None,
                     seq: 2,
                     head_hash: *honest[2].hash(),
                 }],
@@ -2762,7 +2793,7 @@ mod tests {
     }
 
     async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {
-        stored_chain(db, author, svc)
+        stored_chain(db, author, svc, None)
             .await
             .unwrap()
             .iter()
@@ -3029,6 +3060,7 @@ mod tests {
                 disposition: Disposition::Retirement,
                 anchors: vec![Anchor {
                     service: service::IDENTITY_PUBLIC,
+                    instance: None,
                     seq: 0,
                     head_hash: *g_auth.hash(),
                 }],
@@ -3093,6 +3125,7 @@ mod tests {
                 disposition: Disposition::Repudiation,
                 anchors: vec![Anchor {
                     service: service::POSTS,
+                    instance: None,
                     seq: 1,
                     head_hash: *s.honest[1].hash(),
                 }],
@@ -3296,6 +3329,7 @@ mod tests {
                 disposition: Disposition::Repudiation,
                 anchors: vec![Anchor {
                     service: service::IDENTITY_PUBLIC,
+                    instance: None,
                     seq: 0,
                     head_hash: *honest_auth.hash(),
                 }],
@@ -3451,6 +3485,7 @@ mod tests {
                 disposition: Disposition::Repudiation,
                 anchors: vec![Anchor {
                     service: service::POSTS,
+                    instance: None,
                     seq: left.entry().seq,
                     head_hash: *left.hash(),
                 }],
@@ -3595,9 +3630,9 @@ mod tests {
 
         let scanned = chain_ranges(&user_db).await.unwrap();
         let memoed = crate::net::frontier::memo_chains(&node_db, &root).await.unwrap();
-        let key = |v: &Vec<(String, u32, u64, u64, [u8; 32])>| {
+        let key = |v: &Vec<crate::net::frontier::MemoChain>| {
             let mut out = v.clone();
-            out.sort_by_key(|row| (row.0.clone(), row.1));
+            out.sort_by_key(|row| (row.0.clone(), row.1, row.2));
             out
         };
         assert!(!memoed.is_empty(), "the memo learned about the ingested chains");
@@ -3671,7 +3706,7 @@ mod tests {
         .await;
         assert_eq!(rejected, 0, "a suffix on an inbox chain is not a defect");
         assert_eq!(received, 4, "the authorize plus the three held entries");
-        let held = stored_chain(&db, &entries[3].entry().chain.author, service::INBOX_STRANGER)
+        let held = stored_chain(&db, &entries[3].entry().chain.author, service::INBOX_STRANGER, None)
             .await
             .unwrap();
         assert_eq!(held.first().unwrap().entry().seq, 3, "held from the peer's floor");
@@ -3689,7 +3724,7 @@ mod tests {
 
         let (received, rejected) = ingest_proven(&db, root, &entries[4..]).await;
         assert_eq!((received, rejected), (2, 0));
-        let held = stored_chain(&db, &author, service::INBOX_STRANGER).await.unwrap();
+        let held = stored_chain(&db, &author, service::INBOX_STRANGER, None).await.unwrap();
         assert_eq!(
             held.iter().map(|e| e.entry().seq).collect::<Vec<_>>(),
             vec![4, 5],
@@ -3712,7 +3747,7 @@ mod tests {
         .await;
         assert_eq!(rejected, 1, "a posts chain starting at seq 2 is refused");
         assert!(
-            stored_chain(&db, &s.k, service::POSTS).await.unwrap().is_empty(),
+            stored_chain(&db, &s.k, service::POSTS, None).await.unwrap().is_empty(),
             "nothing of the gapped chain was stored"
         );
     }
@@ -3735,7 +3770,7 @@ mod tests {
         let (received, rejected) = ingest_proven(&db, root, &batch).await;
         assert_eq!(rejected, 0);
         assert_eq!(received, 5, "authorize + two early + two adopted");
-        let held = stored_chain(&db, &author, service::INBOX_STRANGER).await.unwrap();
+        let held = stored_chain(&db, &author, service::INBOX_STRANGER, None).await.unwrap();
         assert_eq!(
             held.iter().map(|e| e.entry().seq).collect::<Vec<_>>(),
             vec![4, 5]

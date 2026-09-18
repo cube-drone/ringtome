@@ -705,11 +705,12 @@ CREATE TABLE chain_heads (
     root_pubkey   TEXT    NOT NULL,  -- whose database the chain lives in
     author_pubkey TEXT    NOT NULL,  -- the device key that signs the chain
     service       INTEGER NOT NULL,
+    instance      BLOB    NOT NULL DEFAULT X'', -- the chain's instance (entries.instance)
     floor_seq     INTEGER NOT NULL,  -- lowest stored seq (pruning/eviction moves it)
     head_seq      INTEGER NOT NULL,
     head_hash     BLOB    NOT NULL,  -- the tip entry's hash: which chain, not just how far
     updated_at_ms INTEGER NOT NULL,
-    PRIMARY KEY (root_pubkey, author_pubkey, service)
+    PRIMARY KEY (root_pubkey, author_pubkey, service, instance)
 );
 
 -- ---------------------------------------------------------------------------------------------

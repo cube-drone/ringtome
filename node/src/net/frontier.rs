@@ -32,8 +32,14 @@
 //! predicate the sync gate enforces - one definition of private, not two.
 use anyhow::{Context, Result};
 use crate::clock::now_ms;
-use crate::db::Db;
+use crate::db::{instance_blob, instance_of, Db};
 use crate::AppState;
+
+/// One chain's tip as the fingerprint sees it: `(author, service, instance, head_hash)`.
+pub type Anchor = ([u8; 32], u32, Option<[u8; 16]>, [u8; 32]);
+
+/// One chain as the memo holds it: `(author_hex, service, instance, floor, head, head_hash)`.
+pub type MemoChain = (String, u32, Option<[u8; 16]>, u64, u64, [u8; 32]);
 
 /// One persona-service row: what we hold, and how much of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,15 +64,16 @@ pub async fn note_head(
     root_hex: &str,
     author_hex: &str,
     service: u32,
+    instance: Option<[u8; 16]>,
     seq: u64,
     head_hash: &[u8; 32],
 ) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO chain_heads
-               (root_pubkey, author_pubkey, service, floor_seq, head_seq, head_hash, updated_at_ms)
-             VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6)
-             ON CONFLICT (root_pubkey, author_pubkey, service) DO UPDATE SET
+               (root_pubkey, author_pubkey, service, instance, floor_seq, head_seq, head_hash, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7)
+             ON CONFLICT (root_pubkey, author_pubkey, service, instance) DO UPDATE SET
                  head_seq = excluded.head_seq,
                  head_hash = excluded.head_hash,
                  updated_at_ms = excluded.updated_at_ms,
@@ -76,6 +83,7 @@ pub async fn note_head(
                 root_hex,
                 author_hex,
                 service as i64,
+                instance_blob(instance),
                 seq as i64,
                 head_hash.to_vec(),
                 now_ms(),
@@ -154,12 +162,13 @@ pub async fn forget_chain(
     root_hex: &str,
     author_hex: &str,
     service: u32,
+    instance: Option<[u8; 16]>,
 ) -> Result<()> {
     node_db
         .execute(
             "DELETE FROM chain_heads
-             WHERE root_pubkey = ?1 AND author_pubkey = ?2 AND service = ?3",
-            (root_hex, author_hex, service as i64),
+             WHERE root_pubkey = ?1 AND author_pubkey = ?2 AND service = ?3 AND instance = ?4",
+            (root_hex, author_hex, service as i64, instance_blob(instance)),
         )
         .await
         .context("forgetting an evicted chain")?;
@@ -168,20 +177,17 @@ pub async fn forget_chain(
 
 /// The public anchors of one persona, from the MEMO - no per-user file is opened. This is what
 /// lets both the event path and the fingerprint live entirely in node.db.
-async fn memo_public_anchors(
-    node_db: &Db,
-    root_hex: &str,
-) -> Result<Vec<([u8; 32], u32, [u8; 32])>> {
-    let rows: Vec<(String, i64, Vec<u8>)> = node_db
+async fn memo_public_anchors(node_db: &Db, root_hex: &str) -> Result<Vec<Anchor>> {
+    let rows: Vec<(String, i64, Vec<u8>, Vec<u8>)> = node_db
         .fetch_all(
-            "SELECT author_pubkey, service, head_hash FROM chain_heads
-             WHERE root_pubkey = ?1 ORDER BY author_pubkey, service",
+            "SELECT author_pubkey, service, instance, head_hash FROM chain_heads
+             WHERE root_pubkey = ?1 ORDER BY author_pubkey, service, instance",
             (root_hex,),
         )
         .await
         .context("reading the chain-heads memo")?;
     let mut out = Vec::with_capacity(rows.len());
-    for (author_hex, svc, head) in rows {
+    for (author_hex, svc, instance, head) in rows {
         if crate::net::sync::is_private_service(svc as u32) {
             continue; // the fingerprint is told to other people; the wire is the boundary
         }
@@ -190,7 +196,7 @@ async fn memo_public_anchors(
         let head: [u8; 32] = head
             .try_into()
             .map_err(|_| anyhow::anyhow!("corrupt head_hash in chain_heads"))?;
-        out.push((author, svc as u32, head));
+        out.push((author, svc as u32, instance_of(&instance), head));
     }
     Ok(out)
 }
@@ -217,14 +223,14 @@ pub async fn reconcile_rows(node_db: &Db, user_db: &Db, root_hex: &str) -> Resul
     let rows = crate::net::sync::chain_ranges(user_db).await?;
     let now = now_ms();
     let mut keep: Vec<String> = Vec::new();
-    for (author_hex, svc, floor, head, hash) in rows {
-        keep.push(format!("'{author_hex}:{svc}'"));
+    for (author_hex, svc, instance, floor, head, hash) in rows {
+        keep.push(format!("'{author_hex}:{svc}:{}'", hex::encode(instance_blob(instance))));
         node_db
             .execute(
                 "INSERT INTO chain_heads
-                   (root_pubkey, author_pubkey, service, floor_seq, head_seq, head_hash, updated_at_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                 ON CONFLICT (root_pubkey, author_pubkey, service) DO UPDATE SET
+                   (root_pubkey, author_pubkey, service, instance, floor_seq, head_seq, head_hash, updated_at_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT (root_pubkey, author_pubkey, service, instance) DO UPDATE SET
                      floor_seq = excluded.floor_seq,
                      head_seq = excluded.head_seq,
                      head_hash = excluded.head_hash,
@@ -233,6 +239,7 @@ pub async fn reconcile_rows(node_db: &Db, user_db: &Db, root_hex: &str) -> Resul
                     root_hex,
                     author_hex.as_str(),
                     svc as i64,
+                    instance_blob(instance),
                     floor as i64,
                     head as i64,
                     hash.to_vec(),
@@ -247,7 +254,7 @@ pub async fn reconcile_rows(node_db: &Db, user_db: &Db, root_hex: &str) -> Resul
         .execute(
             &format!(
                 "DELETE FROM chain_heads WHERE root_pubkey = ?1
-                   AND (author_pubkey || ':' || service) NOT IN ({})",
+                   AND (author_pubkey || ':' || service || ':' || lower(hex(instance))) NOT IN ({})",
                 if keep.is_empty() { "''".into() } else { keep.join(",") }
             ),
             (root_hex,),
@@ -267,25 +274,22 @@ pub async fn reconcile_rows(node_db: &Db, user_db: &Db, root_hex: &str) -> Resul
 /// way the memo could lead - a database that lost entries while node.db kept its rows - is
 /// closed by reconciling against the log once per persona per process, at database open
 /// (`db::UserDbManager::open`), before anything can read this.
-pub async fn memo_chains(
-    node_db: &Db,
-    root_hex: &str,
-) -> Result<Vec<(String, u32, u64, u64, [u8; 32])>> {
-    type Row = (String, i64, i64, i64, Vec<u8>);
+pub async fn memo_chains(node_db: &Db, root_hex: &str) -> Result<Vec<MemoChain>> {
+    type Row = (String, i64, Vec<u8>, i64, i64, Vec<u8>);
     let rows: Vec<Row> = node_db
         .fetch_all(
-            "SELECT author_pubkey, service, floor_seq, head_seq, head_hash FROM chain_heads
+            "SELECT author_pubkey, service, instance, floor_seq, head_seq, head_hash FROM chain_heads
              WHERE root_pubkey = ?1",
             (root_hex,),
         )
         .await
         .context("reading chain heads from the memo")?;
     rows.into_iter()
-        .map(|(author_hex, svc, floor, head, hash)| {
+        .map(|(author_hex, svc, instance, floor, head, hash)| {
             let hash: [u8; 32] = hash
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("corrupt head_hash in the chain-heads memo"))?;
-            Ok((author_hex, svc as u32, floor as u64, head as u64, hash))
+            Ok((author_hex, svc as u32, instance_of(&instance), floor as u64, head as u64, hash))
         })
         .collect()
 }
@@ -294,14 +298,24 @@ pub async fn memo_chains(
 ///
 /// Deliberately takes the anchors rather than a database: the construction is the part two
 /// nodes must agree on exactly, so it is a function with vectors rather than a query.
-pub fn fingerprint(anchors: &[([u8; 32], u32, [u8; 32])], service: u32) -> ([u8; 32], i64) {
-    let mut mine: Vec<&([u8; 32], u32, [u8; 32])> =
-        anchors.iter().filter(|(_, s, _)| *s == service).collect();
-    mine.sort_by_key(|(author, _, _)| *author);
+pub fn fingerprint(anchors: &[Anchor], service: u32) -> ([u8; 32], i64) {
+    let mut mine: Vec<&Anchor> = anchors.iter().filter(|(_, s, _, _)| *s == service).collect();
+    mine.sort_by_key(|(author, _, instance, _)| (*author, *instance));
     let mut hasher = blake3::Hasher::new();
-    for (author, svc, head) in &mine {
+    for (author, svc, instance, head) in &mine {
         hasher.update(author);
         hasher.update(&svc.to_be_bytes());
+        // The instance, framed: a flag byte then the bytes, so a chain with none and a chain
+        // whose instance is all zeros never hash alike.
+        match instance {
+            Some(i) => {
+                hasher.update(&[1]);
+                hasher.update(i);
+            }
+            None => {
+                hasher.update(&[0]);
+            }
+        }
         hasher.update(head);
     }
     (*hasher.finalize().as_bytes(), mine.len() as i64)
@@ -342,7 +356,7 @@ pub async fn refresh_moved(state: &AppState, root_hex: &str) -> Result<Vec<u32>>
     // write time (Db::memo), so the answer is already in node.db. The sweep reconciles the
     // rare crash-window drift; nothing else ever needs the encrypted file for this.
     let anchors = memo_public_anchors(&state.node_db, root_hex).await?;
-    let mut services: Vec<u32> = anchors.iter().map(|(_, s, _)| *s).collect();
+    let mut services: Vec<u32> = anchors.iter().map(|(_, s, _, _)| *s).collect();
     services.sort_unstable();
     services.dedup();
 
@@ -431,12 +445,12 @@ pub async fn held(node_db: &Db, root_hex: &str) -> Result<Vec<Held>> {
 /// `Frontier` rows carrying `(author, service, floor, head, head_hash)`; floor and head are the
 /// exchange's business and play no part here, exactly as they play no part in ours.
 pub fn claimed_fingerprint(frontiers: &[ringtome_proto::sync::Frontier]) -> [u8; 32] {
-    let anchors: Vec<([u8; 32], u32, [u8; 32])> = frontiers
+    let anchors: Vec<Anchor> = frontiers
         .iter()
         .filter(|f| !crate::net::sync::is_private_service(f.service))
-        .map(|f| (f.author, f.service, f.head_hash))
+        .map(|f| (f.author, f.service, f.instance, f.head_hash))
         .collect();
-    let mut services: Vec<u32> = anchors.iter().map(|(_, s, _)| *s).collect();
+    let mut services: Vec<u32> = anchors.iter().map(|(_, s, _, _)| *s).collect();
     services.sort_unstable();
     services.dedup();
     let rows: Vec<Held> = services
@@ -577,8 +591,21 @@ pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn anchor(author: u8, service: u32, head: u8) -> ([u8; 32], u32, [u8; 32]) {
-        ([author; 32], service, [head; 32])
+    fn anchor(author: u8, service: u32, head: u8) -> Anchor {
+        ([author; 32], service, None, [head; 32])
+    }
+
+    #[test]
+    fn an_instance_is_its_own_chain() {
+        // One key, one service, two rooms: two chains, and a room's chain is never the
+        // key's plain chain (CHAT.md slice 0).
+        let plain = [anchor(1, 7, 10)];
+        let room = [([1u8; 32], 7, Some([0u8; 16]), [10u8; 32])];
+        assert_ne!(fingerprint(&plain, 7).0, fingerprint(&room, 7).0, "a zero instance is not none");
+        let two_rooms = [([1u8; 32], 7, Some([0u8; 16]), [10u8; 32]), ([1u8; 32], 7, Some([1u8; 16]), [10u8; 32])];
+        assert_eq!(fingerprint(&two_rooms, 7).1, 2, "two chains on one service by one key");
+        let swapped = [two_rooms[1], two_rooms[0]];
+        assert_eq!(fingerprint(&two_rooms, 7).0, fingerprint(&swapped, 7).0, "a set, not an order");
     }
 
     #[test]

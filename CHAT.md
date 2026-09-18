@@ -123,7 +123,11 @@ node keeps its own room whole, which is where "all of it" lives.
 ## Slices
 
 0. **The chain key.** `(author, service, instance)` on the wire and in the node - its own
-   arc, no chat in it, green under the existing suites before slice one.
+   arc, no chat in it, green under the existing suites before slice one. **Built 2026-09-18**
+   (*Chains: One Per Key, Per Service*): `ChainId`, `Frontier` and `Anchor` each carry an
+   optional instance, absent on the wire when none; `entries`, `equivocations` and
+   `chain_heads` carry it as a column; `imaol::append_on` writes a per-instance chain and
+   the crown keeps a ceiling per instance.
 1. **The room post.** Format `room` on the wire, the mint, the card on the feed and the shelf,
    the share rule, the Chat app listing the rooms a persona may see, and the room's door
    (`seal_admits` with the room post as the key document). No messages yet: a room you can

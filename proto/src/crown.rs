@@ -154,7 +154,7 @@ pub struct Crown {
     root: Pubkey,
     nodes: BTreeMap<Pubkey, Node>,
     children: BTreeMap<Pubkey, Vec<Pubkey>>,
-    ceilings: BTreeMap<(Pubkey, u32), Ceiling>,
+    ceilings: BTreeMap<(Pubkey, u32, Option<[u8; 16]>), Ceiling>,
     forks: Vec<Fork>,
     rejected: Vec<Rejected>,
 }
@@ -374,7 +374,7 @@ impl Crown {
             // Under the ceiling is not enough, either: the revoked key is still attacker-held,
             // so the revoke must sit on the *sealed* prefix - the one culminating in the
             // anchor's hash - or it is a fresh fabrication wearing an old seq.
-            if let Some(c) = self.ceilings.get(&(signer, service::IDENTITY_PUBLIC)) {
+            if let Some(c) = self.ceilings.get(&(signer, service::IDENTITY_PUBLIC, None)) {
                 if entry_seq > c.final_seq {
                     self.rejected.push(Rejected {
                         entry_hash,
@@ -445,12 +445,13 @@ impl Crown {
             target_node.revocation = Some(entry_hash);
             for Anchor {
                 service: svc,
+                instance,
                 seq,
                 head_hash,
             } in &revocation.anchors
             {
                 self.ceilings.insert(
-                    (revocation.target, *svc),
+                    (revocation.target, *svc, *instance),
                     Ceiling {
                         final_seq: *seq,
                         disposition: revocation.disposition,
@@ -485,7 +486,7 @@ impl Crown {
     ) {
         let held = chains.get(target).map_or(&[][..], Vec::as_slice);
         let child_list = self.children.get(target).cloned().unwrap_or_default();
-        let doomed: Vec<Pubkey> = match self.ceilings.get(&(*target, service::IDENTITY_PUBLIC)) {
+        let doomed: Vec<Pubkey> = match self.ceilings.get(&(*target, service::IDENTITY_PUBLIC, None)) {
             Some(c) => match seal_state(held, c) {
                 Seal::Sealed => {
                     let final_seq = c.final_seq;
@@ -607,15 +608,21 @@ impl Crown {
         Some(stamp)
     }
 
-    /// Validity ceiling for one of the key's chains, if a revocation has sealed it.
+    /// Validity ceiling for one of the key's chains, if a revocation has sealed it - the
+    /// one-chain-per-key form; `ceiling_of` names the instance.
     pub fn ceiling(&self, key: &Pubkey, service_id: u32) -> Option<Ceiling> {
-        self.ceilings.get(&(*key, service_id)).copied()
+        self.ceiling_of(key, service_id, None)
     }
 
-    /// Every established ceiling, in (key, service) order. The node's ingest gate sweeps these
-    /// to disprove already-stored chains: a stored entry at `final_seq` that is not the anchored
-    /// one convicts the whole stored chain as fabrication.
-    pub fn ceilings(&self) -> impl Iterator<Item = (&(Pubkey, u32), &Ceiling)> {
+    /// Validity ceiling for one chain `(key, service, instance)`, if a revocation sealed it.
+    pub fn ceiling_of(&self, key: &Pubkey, service_id: u32, instance: Option<[u8; 16]>) -> Option<Ceiling> {
+        self.ceilings.get(&(*key, service_id, instance)).copied()
+    }
+
+    /// Every established ceiling, in (key, service, instance) order. The node's ingest gate
+    /// sweeps these to disprove already-stored chains: a stored entry at `final_seq` that is
+    /// not the anchored one convicts the whole stored chain as fabrication.
+    pub fn ceilings(&self) -> impl Iterator<Item = (&(Pubkey, u32, Option<[u8; 16]>), &Ceiling)> {
         self.ceilings.iter()
     }
 
@@ -687,6 +694,7 @@ mod tests {
                 chain: ChainId {
                     author: self.pk(),
                     service: service::IDENTITY_PUBLIC,
+                    instance: None,
                 },
                 seq: self.seq,
                 prev_hash: self.prev,
@@ -743,6 +751,7 @@ mod tests {
             assert!(self.seq > 0, "no head to anchor yet");
             Anchor {
                 service: service::IDENTITY_PUBLIC,
+                instance: None,
                 seq: self.seq - 1,
                 head_hash: self.prev,
             }
@@ -963,6 +972,7 @@ mod tests {
                 anchor,
                 Anchor {
                     service: service::POSTS,
+                    instance: None,
                     seq: 7,
                     head_hash: [0xEE; 32],
                 },
@@ -1067,6 +1077,7 @@ mod tests {
             Disposition::Repudiation,
             vec![Anchor {
                 service: service::IDENTITY_PUBLIC,
+                instance: None,
                 seq: 0,
                 head_hash: laptop_seq0,
             }],

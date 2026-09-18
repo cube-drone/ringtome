@@ -52,6 +52,9 @@ const TAG_DONE: u64 = 2;
 pub struct Frontier {
     pub author: [u8; 32],
     pub service: u32,
+    /// The chain's instance, for a per-instance service (`entry::ChainId`); none for every
+    /// service with one chain per key. On the wire a sixth element, absent when none.
+    pub instance: Option<[u8; 16]>,
     pub floor: u64,
     pub head: u64,
     /// The entry hash AT `head`. Seq says how far a chain goes; this says which chain it is.
@@ -178,12 +181,15 @@ impl SyncMessage {
                     if f.floor > f.head {
                         return Err(ProtoError::BadEntry("frontier floor above head"));
                     }
-                    w.array(5);
+                    w.array(if f.instance.is_some() { 6 } else { 5 });
                     w.bytes(&f.author);
                     w.uint(u64::from(f.service));
                     w.uint(f.floor);
                     w.uint(f.head);
                     w.bytes(&f.head_hash);
+                    if let Some(instance) = &f.instance {
+                        w.bytes(instance);
+                    }
                 }
                 // Proof slot: empty array = anonymous, [leaf, sig] = member claim.
                 match proof {
@@ -235,9 +241,10 @@ impl SyncMessage {
                 }
                 let mut frontiers = Vec::with_capacity(n as usize);
                 for _ in 0..n {
-                    if r.array()? != 5 {
+                    let arity = r.array()?;
+                    if arity != 5 && arity != 6 {
                         return Err(ProtoError::BadEntry(
-                            "frontier must be [author, service, floor, head, head_hash]",
+                            "frontier must be [author, service, floor, head, head_hash] or that plus instance",
                         ));
                     }
                     let author = r.bytes_fixed::<32>()?;
@@ -249,9 +256,11 @@ impl SyncMessage {
                         return Err(ProtoError::BadEntry("frontier floor above head"));
                     }
                     let head_hash = r.bytes_fixed::<32>()?;
+                    let instance = if arity == 6 { Some(r.bytes_fixed::<16>()?) } else { None };
                     frontiers.push(Frontier {
                         author,
                         service,
+                        instance,
                         floor,
                         head,
                         head_hash,
@@ -328,13 +337,23 @@ mod tests {
                 Frontier {
                     author: [7u8; 32],
                     service: 0,
+                    instance: None,
                     floor: 0,
                     head: 4,
                     head_hash: [70u8; 32],
                 },
                 Frontier {
                     author: [8u8; 32],
+                    service: 12,
+                    instance: Some([5u8; 16]),
+                    floor: 0,
+                    head: 2,
+                    head_hash: [12u8; 32],
+                },
+                Frontier {
+                    author: [8u8; 32],
                     service: 2,
+                    instance: None,
                     floor: 3,
                     head: 17,
                     head_hash: [80u8; 32],
@@ -439,6 +458,7 @@ mod tests {
             frontiers: vec![Frontier {
                 author: [1u8; 32],
                 service: 0,
+                instance: None,
                 floor: 5,
                 head: 2,
                 head_hash: [0u8; 32],

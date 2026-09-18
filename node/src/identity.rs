@@ -714,8 +714,9 @@ pub async fn revoke_key(
         Cut::Now => crate::record::imaol::chain_heads_for_author(&db, target_hex)
             .await?
             .into_iter()
-            .map(|(service, seq, head_hash)| Anchor {
+            .map(|(service, instance, seq, head_hash)| Anchor {
                 service,
+                instance,
                 seq,
                 head_hash,
             })

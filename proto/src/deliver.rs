@@ -897,6 +897,7 @@ mod tests {
                 chain: ChainId {
                     author: pubkey(parent),
                     service: service::IDENTITY_PUBLIC,
+                    instance: None,
                 },
                 seq,
                 prev_hash: ZERO_HASH,
@@ -929,6 +930,7 @@ mod tests {
                 chain: ChainId {
                     author: pubkey(signer),
                     service: service::FOLLOWS_PUBLIC,
+                    instance: None,
                 },
                 seq: 0,
                 prev_hash: ZERO_HASH,
@@ -984,6 +986,7 @@ mod tests {
                 chain: ChainId {
                     author: pubkey(signer),
                     service: service::REBROADCASTS,
+                    instance: None,
                 },
                 seq: 0,
                 prev_hash: ZERO_HASH,
@@ -1054,6 +1057,7 @@ mod tests {
                 chain: ChainId {
                     author: pubkey(signer),
                     service: service::POSTS,
+                    instance: None,
                 },
                 seq: 0,
                 prev_hash: ZERO_HASH,
@@ -1093,6 +1097,7 @@ mod tests {
                 chain: ChainId {
                     author: pubkey(signer),
                     service: service::ANNOTATIONS_PUBLIC,
+                    instance: None,
                 },
                 seq: 0,
                 prev_hash: ZERO_HASH,
@@ -1682,6 +1687,7 @@ mod tests {
                 chain: ChainId {
                     author: pubkey(&leaf),
                     service: service::PROFILE_PUBLIC,
+                    instance: None,
                 },
                 seq: 0,
                 prev_hash: ZERO_HASH,

@@ -429,6 +429,8 @@ struct EntriesQuery {
     /// surface stays curl-able.
     after_author: Option<String>,
     after_service: Option<u32>,
+    /// The chain's instance, hex, when the cursor sits on a per-instance chain.
+    after_instance: Option<String>,
     after_seq: Option<u64>,
     limit: Option<u32>,
 }
@@ -456,6 +458,7 @@ async fn entries_handler(
         (Some(author), Some(service), Some(seq)) => Some(imaol::EntryCursor {
             author,
             service,
+            instance: q.after_instance.filter(|i| !i.is_empty()),
             seq,
         }),
         _ => None,
@@ -469,6 +472,7 @@ async fn entries_handler(
     let next = items.last().map(|e| imaol::EntryCursor {
         author: e.author.clone(),
         service: e.service,
+        instance: e.instance.clone(),
         seq: e.seq,
     });
     Ok(Json(serde_json::json!({

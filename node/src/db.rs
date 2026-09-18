@@ -40,8 +40,8 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 48; // 48: onward on feed_journal (Contact tags, ruling 7, 2026-09-18); 47: 47: node_slugs (PROJECT_PLAN's The node's public face, 2026-09-16); 46: 46: node_shelf, node_listing - the node's public face (PROJECT_PLAN's The node's public face, 2026-09-15); 45: 45: post_key_grants, refusals per reader persona (2026-09-14); 44: 44: post_audience_members - a post sealed to the people it mentions (2026-09-14); 43: 43: audiences - post_keys.audience, post_key_refusals, doc_annotations.holder_doc (2026-09-10); 42: sealed labels on doc_annotations
-const USER_SCHEMA_GENERATION: i64 = 25; // 25: onward on doc_versions and doc_heads (header key 22; Contact tags, ruling 7, 2026-09-18); 24: 24: part_of on the doc memos (header key 19) - a notebook published as a book (PROJECT_PLAN's Books, 2026-09-03)
+const NODE_SCHEMA_GENERATION: i64 = 49; // 49: chain_heads.instance - the chain key's third element (CHAT.md slice 0, 2026-09-18); 48: 48: onward on feed_journal (Contact tags, ruling 7, 2026-09-18); 47: 47: node_slugs (PROJECT_PLAN's The node's public face, 2026-09-16); 46: 46: node_shelf, node_listing - the node's public face (PROJECT_PLAN's The node's public face, 2026-09-15); 45: 45: post_key_grants, refusals per reader persona (2026-09-14); 44: 44: post_audience_members - a post sealed to the people it mentions (2026-09-14); 43: 43: audiences - post_keys.audience, post_key_refusals, doc_annotations.holder_doc (2026-09-10); 42: sealed labels on doc_annotations
+const USER_SCHEMA_GENERATION: i64 = 26; // 26: entries.instance, equivocations.instance - the chain key's third element (CHAT.md slice 0, 2026-09-18); 25: 25: onward on doc_versions and doc_heads (header key 22; Contact tags, ruling 7, 2026-09-18); 24: 24: part_of on the doc memos (header key 19) - a notebook published as a book (PROJECT_PLAN's Books, 2026-09-03)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -92,6 +92,18 @@ impl<T: FromColumn> FromColumn for Option<T> {
             other => Ok(Some(T::from_column(other)?)),
         }
     }
+}
+
+/// A chain's instance as the tables store it (`entries.instance`, `chain_heads.instance`):
+/// the sixteen bytes, or the EMPTY blob for a chain with none - empty rather than NULL so the
+/// primary keys stay ordinary and every existing chain is the same row it was.
+pub fn instance_blob(instance: Option<[u8; 16]>) -> Vec<u8> {
+    instance.map(|i| i.to_vec()).unwrap_or_default()
+}
+
+/// The stored form back to the chain id's: sixteen bytes are an instance, anything else none.
+pub fn instance_of(blob: &[u8]) -> Option<[u8; 16]> {
+    <[u8; 16]>::try_from(blob).ok()
 }
 
 /// A whole row as a tuple, in SELECT order - the shape `fetch_*` extracts into.
@@ -446,11 +458,12 @@ impl Db {
         &self,
         author_hex: &str,
         service: u32,
+        instance: Option<[u8; 16]>,
         seq: u64,
         hash: &[u8; 32],
     ) -> Result<()> {
         match &self.ephemeral_heads {
-            Some(heads) => heads.record(author_hex, service, seq, hash),
+            Some(heads) => heads.record(author_hex, service, instance, seq, hash),
             None => Ok(()),
         }
     }
@@ -458,8 +471,8 @@ impl Db {
     /// The checkpointed head of an ephemeral chain, if the file remembers one - what a rebuilt
     /// database continues from when its inbox chains did not replay (they were never
     /// journaled).
-    pub fn ephemeral_head(&self, author_hex: &str, service: u32) -> Option<(u64, [u8; 32])> {
-        self.ephemeral_heads.as_ref()?.head_of(author_hex, service)
+    pub fn ephemeral_head(&self, author_hex: &str, service: u32, instance: Option<[u8; 16]>) -> Option<(u64, [u8; 32])> {
+        self.ephemeral_heads.as_ref()?.head_of(author_hex, service, instance)
     }
 
     /// This handle with the checkpoint attached (the manager's open, and tests).

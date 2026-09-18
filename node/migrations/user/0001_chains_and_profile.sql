@@ -8,6 +8,10 @@
 CREATE TABLE entries (
     author_pubkey TEXT    NOT NULL,  -- hex ed25519 public key of the chain's key
     service       INTEGER NOT NULL,  -- service id from the proto type registry
+    instance      BLOB    NOT NULL DEFAULT X'', -- the chain's instance for a per-instance
+                                     --   service (CHAT.md slice 0: a room's lane is
+                                     --   (author, CHAT, room id)); the empty blob for every
+                                     --   service with one chain per key
     seq           INTEGER NOT NULL,  -- dense per-chain sequence number
     entry_hash    BLOB    NOT NULL,  -- BLAKE3-256 of `bytes`
     prev_hash     BLOB    NOT NULL,  -- predecessor's entry_hash (zero for seq 0)
@@ -17,7 +21,7 @@ CREATE TABLE entries (
                                      --   never signed or synced; the display-layer upper bound
                                      --   on authorship (PROJECT_PLAN, Displayed vs. Claimed Time)
     bytes         BLOB    NOT NULL,  -- the author's exact envelope bytes, never re-encoded
-    PRIMARY KEY (author_pubkey, service, seq)
+    PRIMARY KEY (author_pubkey, service, instance, seq)
 );
 
 -- Entry hashes are globally unique (they hash the whole envelope, which includes the chain id
@@ -50,13 +54,14 @@ CREATE INDEX entries_by_service_type ON entries (service, entry_type, author_pub
 CREATE TABLE equivocations (
     author_pubkey TEXT    NOT NULL,  -- the double-signing key
     service       INTEGER NOT NULL,
+    instance      BLOB    NOT NULL DEFAULT X'', -- the chain's instance, as on entries
     seq           INTEGER NOT NULL,
     held_hash     BLOB    NOT NULL,  -- the branch this replica stored first
     other_hash    BLOB    NOT NULL,  -- the branch that arrived and proved the fork
     held_bytes    BLOB    NOT NULL,  -- both signed envelopes: the portable proof
     other_bytes   BLOB    NOT NULL,
     noted_ms      INTEGER NOT NULL,
-    PRIMARY KEY (author_pubkey, service, seq)
+    PRIMARY KEY (author_pubkey, service, instance, seq)
 );
 
 -- Materialized view of the identity's public profile: one row per field, last-writer-wins by
