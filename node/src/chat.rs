@@ -600,6 +600,35 @@ pub async fn history(
     Ok((items, closed.is_some()))
 }
 
+/// When each room this node holds last heard a message: `(room_author, room_doc) ->
+/// said_ms` - what the chats column sorts and bolds by (Curtis, 2026-09-18).
+pub async fn latest_by_room(node_db: &Db) -> Result<HashMap<(String, String), i64>> {
+    let rows: Vec<(String, String, i64)> = node_db
+        .fetch_all(
+            "SELECT room_author, room_doc, MAX(said_ms) FROM room_messages GROUP BY room_author, room_doc",
+            (),
+        )
+        .await
+        .context("reading each room's latest message")?;
+    Ok(rows.into_iter().map(|(a, d, ms)| ((a, d), ms)).collect())
+}
+
+/// The chatters (Curtis, 2026-09-18): everyone who has visibly spoken in a room as this
+/// node holds it, newest speaker first, each with when they last spoke. Nobody is "in" a
+/// room - people are here-and-typing, or unseen - so this is the room's only roster.
+pub async fn chatters(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Vec<(String, i64)>> {
+    let rows: Vec<(String, i64)> = node_db
+        .fetch_all(
+            "SELECT speaker_root, MAX(said_ms) AS last_ms FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2
+             GROUP BY speaker_root ORDER BY last_ms DESC LIMIT ?3",
+            (author_hex, doc_hex, ringtome_proto::fragment::MAX_ROOM_PARTICIPANTS as i64),
+        )
+        .await
+        .context("listing a room's chatters")?;
+    Ok(rows)
+}
+
 /// Who has spoken in a room, as this node holds their chains - the directory answer.
 pub async fn participants(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db

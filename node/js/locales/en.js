@@ -10,16 +10,17 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 802 phrases across 58 files.
+// 808 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
+    'apps.chat.just-now': 'just now',
     'apps.chat.a-sealed-room': 'a sealed room',
     'apps.chat.an-unnamed-room': 'an unnamed room',
-    'apps.chat.sealed-room-title': 'the author shares this room only with people they trust',
-    'apps.chat.trusted-and-onward': 'trusted, and onward',
-    'apps.chat.sealed': 'sealed',
-    'apps.chat.joined-by-link': 'joined by link',
-    'apps.chat.yours': 'yours',
+    'apps.chat.quiet': 'quiet',
+    'apps.chat.chats': 'chats',
+    'apps.chat.new-chat': '+ new chat',
+    'apps.chat.no-rooms-yet-column': 'no chats yet',
+    'apps.chat.a-new-chat': 'a new chat',
     'apps.chat.a-name-for-the-room': 'a name for the room',
     'apps.chat.what-is-it-for': 'what is it for? (optional)',
     'apps.chat.only-show-to': 'only show to',
@@ -28,19 +29,24 @@ export default {
     'apps.chat.people-i-trust': 'people I trust',
     'apps.chat.opening': 'opening…',
     'apps.chat.open-a-room': 'open a room',
-    'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
     'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
     'apps.chat.knocking': 'knocking…',
     'apps.chat.this-room-is-not-open-to-you': 'this room is not open to you',
-    'apps.chat.back-to-your-rooms': 'back to your rooms',
+    'apps.chat.trusted-and-onward': 'trusted, and onward',
+    'apps.chat.sealed': 'sealed',
+    'apps.chat.n-chatters': '{count} chatters',
+    'apps.chat.chatters': 'chatters',
+    'apps.chat.nobody-has-spoken-here': 'nobody has spoken here yet',
     'apps.chat.the-rooms-post': "the room's post",
     'apps.chat.leave': 'leave',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
+    'apps.chat.is-typing': 'is typing…',
+    'apps.chat.are-typing': 'are typing…',
     'apps.chat.this-room-is-closed': 'this room is closed - the conversation ended, and the record stands',
     'apps.chat.say-something': 'say something…',
     'apps.chat.send': 'send',
-    'apps.chat.here-now': 'here now',
-    'apps.chat.typing': 'typing…',
+    'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
+    'apps.chat.pick-a-chat': 'pick a chat on the left, or start a new one',
 
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',

@@ -1,25 +1,374 @@
-/* Chat (CHAT.md): the rooms a persona may see, the form that opens one, and one room's
- * view - a header, its words, an empty floor and a rail of who is here. */
+/* Chat (CHAT.md): Writer's columns, Slack's shape. The chats column on the left, tuckable
+ * and resizable; the chosen room on the right under a fixed header, its floor scrolling
+ * newest-at-the-bottom, the composer fixed to the bottom at full width. */
 
-.chat-app,
-.chat-room {
-    max-width: var(--post-measure);
-    margin: 0 auto;
-    padding: 1rem;
+.chat {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
+.chat-columns {
+    display: flex;
+    gap: 1rem;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+}
+
+.chat-columns .chat-rooms {
+    width: var(--w-rooms, 260px);
+}
+
+.chat-rooms {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.chat-new-btn {
+    background: none;
+    border: 1px dashed var(--border-strong);
+    --j: 3px;
+    clip-path: var(--jag-1);
+    color: var(--sea);
+    padding: 0.45rem;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.chat-new-btn:hover {
+    border-color: var(--sea);
+}
+
+.chat-rooms-empty {
+    color: var(--muted);
+    font-size: 0.85em;
+    padding: 0.5rem 0.2rem;
+    margin: 0;
+}
+
+.chat-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.4rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.chat-row:hover,
+.chat-row-selected {
+    background: var(--bg);
+}
+
+.chat-row-icon {
+    color: var(--ink-soft);
+    font-size: 1.2em;
+}
+
+.chat-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.chat-row-top {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.chat-row-name {
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Bold where something was said since this persona last looked. */
+.chat-row-unread .chat-row-name {
+    font-weight: 700;
+}
+
+.chat-row-when {
+    margin-left: auto;
+    font-size: 0.75em;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.chat-row-unread .chat-row-when {
+    color: var(--ink-soft);
+}
+
+.chat-row-by {
+    font-size: 0.8em;
+}
+
+/* The right side: a room, the new-chat form, or the null state. */
+.chat-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-room,
+.chat-new-pane {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The fixed header: the room's name, its owner, its seal, who is here. */
+.chat-room-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    border-bottom: 1px solid var(--border);
+    padding: 0.2rem 0 0.6rem;
+}
+
+.chat-room-name {
+    margin: 0;
+    font-size: 1.15em;
+}
+
+.chat-chatters {
+    position: relative;
+    font-size: 0.85em;
+}
+
+.chat-chatters-summary {
+    cursor: pointer;
+    color: var(--ink-soft);
+    border: 1px solid var(--border);
+    --j: 4px;
+    clip-path: var(--jag-1);
+    padding: 0.15rem 0.6rem;
+    list-style: none;
+}
+
+.chat-chatters-summary::-webkit-details-marker {
+    display: none;
+}
+
+.chat-chatters-list {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 5;
+    min-width: 16rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    list-style: none;
+    margin: 0;
+    padding: 0.3rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+}
+
+.chat-chatters-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0.3rem;
+}
+
+.chat-chatters-when {
+    margin-left: auto;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.chat-chatters-none {
+    color: var(--muted);
+}
+
+.chat-room-post,
+.chat-leave {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.85em;
+    color: var(--ink-soft);
+    background: none;
+    border: 1px solid var(--border);
+    --j: 4px;
+    clip-path: var(--jag-1);
+    padding: 0.2rem 0.6rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.chat-room-post + .chat-leave {
+    margin-left: 0;
+}
+
+/* The floor: every line at full width, the newest at the bottom. */
+.chat-floor {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.6rem 0;
+}
+
+.chat-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tight: a lot of conversation on one screen (Curtis, 2026-09-18). */
+.chat-line {
+    width: 100%;
+    padding: 0.05rem 0.3rem;
+    line-height: 1.3;
+}
+
+.chat-line:hover {
+    background: var(--bg);
+}
+
+.chat-line-cont {
+    padding-top: 0;
+}
+
+.chat-line-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.35rem 0 0;
+}
+
+/* The speaker's card: a hex a size up from the chip, the name beside it. */
+.chat-speaker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    text-decoration: none;
+    color: var(--ink);
+}
+
+.chat-speaker-name {
+    font-weight: 600;
+}
+
+.chat-line-when {
+    font-size: 0.75em;
+    color: var(--muted);
+}
+
+/* A run's later lines sit under the first line's words, the hex's width in from the edge. */
+.chat-line-body {
+    color: var(--ink);
+    padding-left: 2.4rem;
+}
+
+.chat-line-body p {
+    margin: 0;
+}
+
+.chat-msg-sealed {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--muted);
+    font-style: italic;
+}
+
+/* The foot: who is typing, then the composer, fixed to the bottom at full width. */
+.chat-foot {
+    flex: none;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+}
+
+.chat-typing {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.3rem 0 0;
+    padding: 0 0.3rem 0 2.4rem;
+    font-size: 0.8em;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.chat-closed {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--muted);
+    margin: 0;
+    padding: 0.6rem 0.2rem;
+}
+
+.chat-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.chat-composer-words {
+    flex: 1;
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 0.45rem 0.5rem;
+    min-height: 2.6rem;
+    max-height: 10rem;
+    resize: vertical;
+}
+
+.chat-composer-send {
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    color: var(--bg);
+    padding: 0.5rem 0.9rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-composer-send:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* The new-chat form, filling the right side. */
 .chat-new {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    background: var(--surface);
-    border: 1px solid transparent;
-    --line: var(--border-strong);
-    position: relative;
-    --j: 6px;
-    clip-path: var(--jag);
-    padding: 0.9rem 1rem;
-    margin-bottom: 1rem;
+    padding: 0.9rem 0;
+    max-width: var(--post-measure);
 }
 
 .chat-new-name,
@@ -32,7 +381,7 @@
 }
 
 .chat-new-words {
-    min-height: 3.5rem;
+    min-height: 5rem;
     resize: vertical;
 }
 
@@ -60,227 +409,17 @@
     cursor: default;
 }
 
-.chat-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.55rem 0.4rem;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-}
-
-.chat-row:hover {
-    background: var(--surface);
-}
-
-.chat-row-icon {
-    color: var(--ink-soft);
-    font-size: 1.4em;
-}
-
-.chat-row-main {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
-
-.chat-row-name {
-    color: var(--ink);
-    font-weight: 600;
-}
-
-.chat-row-by {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    font-size: 0.85em;
-}
-
 .chat-empty {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     color: var(--muted);
     padding: 2rem 0.5rem;
-}
-
-.chat-back {
-    color: var(--ink-soft);
-    text-decoration: none;
-}
-
-.chat-room-head {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.6rem;
-}
-
-.chat-room-name {
     margin: 0;
-    font-size: 1.2em;
 }
 
-.chat-room-post,
-.chat-leave {
-    margin-left: auto;
-    font: inherit;
-    font-size: 0.85em;
-    color: var(--ink-soft);
-    background: none;
-    border: 1px solid var(--border);
-    --j: 4px;
-    clip-path: var(--jag-1);
-    padding: 0.2rem 0.6rem;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.chat-room-post + .chat-leave {
-    margin-left: 0;
-}
-
-.chat-room-words {
-    padding: 0.8rem 0.2rem;
-    color: var(--ink-soft);
-}
-
-.chat-room-body {
-    display: flex;
-    gap: 1rem;
-    min-height: 12rem;
-}
-
-.chat-messages {
-    flex: 1;
-}
-
-.chat-rail {
-    width: 10rem;
-    border-left: 1px solid var(--border);
-    padding-left: 0.8rem;
-}
-
-.chat-rail-head {
-    margin: 0 0 0.4rem;
-    font-size: 0.8em;
-    color: var(--muted);
-}
-
-.chat-rail-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.chat-rail-row {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    flex-wrap: wrap;
-}
-
-.chat-rail-typing {
-    font-size: 0.75em;
-    color: var(--muted);
-    font-style: italic;
-}
-
-/* The floor: messages oldest to newest, then the composer. */
-.chat-msg-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
-.chat-msg {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-}
-
-.chat-msg-main {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    min-width: 0;
-}
-
-.chat-msg-when {
-    font-size: 0.75em;
-    color: var(--muted);
-}
-
-.chat-msg-words {
-    color: var(--ink);
-}
-
-.chat-msg-sealed {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--muted);
-    font-style: italic;
-}
-
-.chat-closed {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--muted);
-    padding: 0.8rem 0.2rem;
-}
-
-.chat-composer {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    margin-top: 0.8rem;
-}
-
-.chat-composer-words {
-    flex: 1;
-    font: inherit;
-    color: var(--ink);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 0.4rem 0.5rem;
-    min-height: 2.6rem;
-    resize: vertical;
-}
-
-.chat-composer-send {
-    background: var(--teal);
-    border: none;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--bg);
-    padding: 0.5rem 0.9rem;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.chat-composer-send:disabled {
-    opacity: 0.6;
-    cursor: default;
+.chat-refused {
+    padding: 1rem 0;
 }
 
 /* The room post's card: what it is, and the door in (postentry.js). */

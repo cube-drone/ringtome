@@ -62,6 +62,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         )
         .route("/api/identity/{root}/rooms/{author}/{doc}/sync", post(room_sync_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/live", get(room_live_handler))
+        .route("/api/identity/{root}/rooms/{author}/{doc}/chatters", get(room_chatters_handler))
         .route(
             "/api/identity/{root}/public-annotations/{author}/{doc}",
             get(public_annotations_handler).put(public_annotation_put_handler),
@@ -886,6 +887,12 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
 /// (ruling 9: leaving is a first-class, local act).
 const ROOMS_JOINED: &str = "rooms";
 
+/// The private register of what this persona has SEEN of each room (Curtis, 2026-09-18):
+/// key `<author>:<doc>`, value the stamp of the newest message read - written by the room
+/// page, synced to the persona's every computer on the private chain, so a room is bold
+/// where it is unread and nowhere else.
+const ROOMS_SEEN: &str = "rooms_seen";
+
 #[derive(serde::Serialize)]
 struct RoomItem {
     author: String,
@@ -907,6 +914,16 @@ struct RoomItem {
     /// Entered by link and not left.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     joined: bool,
+    /// When the room last heard a message, as this node holds it; absent when silent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_ms: Option<i64>,
+    /// The newest stamp this persona has read here (the `rooms_seen` register); absent when
+    /// never.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seen_ms: Option<i64>,
+    /// Something was said here since this persona last looked.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    unread: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -957,6 +974,9 @@ async fn rooms_handler(
             joined: false,
             author_name: None,
             author_avatar: None,
+            latest_ms: None,
+            seen_ms: None,
+            unread: false,
         });
     }
     // The rooms my feed carries, through the feed's own gate.
@@ -982,6 +1002,9 @@ async fn rooms_handler(
             joined: false,
             author_name: None,
             author_avatar: None,
+            latest_ms: None,
+            seen_ms: None,
+            unread: false,
         });
     }
     // The rooms I entered by link.
@@ -1010,6 +1033,9 @@ async fn rooms_handler(
             joined: true,
             author_name: None,
             author_avatar: None,
+            latest_ms: None,
+            seen_ms: None,
+            unread: false,
         });
     }
     // Bylines, one lookup for everyone named.
@@ -1023,7 +1049,27 @@ async fn rooms_handler(
             item.author_avatar = b.avatar.clone();
         }
     }
-    items.sort_by(|a, b| b.published_ms.cmp(&a.published_ms).then_with(|| a.doc_id.cmp(&b.doc_id)));
+    // What each room last heard, and what this persona last read of it (Curtis, 2026-09-18):
+    // the column sorts by the newest word and bolds what was said since the last look.
+    let latest = crate::chat::latest_by_room(&state.node_db).await.map_err(AppError::Internal)?;
+    let (seen_rows, _) = data.private_registers(ROOMS_SEEN).all().await?;
+    let seen: std::collections::HashMap<String, i64> = seen_rows
+        .into_iter()
+        .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|ms| (r.key, ms)))
+        .collect();
+    for item in items.iter_mut() {
+        item.latest_ms = latest.get(&(item.author.clone(), item.doc_id.clone())).copied();
+        item.seen_ms = seen.get(&format!("{}:{}", item.author, item.doc_id)).copied();
+        item.unread = match (item.latest_ms, item.seen_ms) {
+            (Some(l), Some(s)) => l > s,
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+    }
+    items.sort_by(|a, b| {
+        let stamp = |i: &RoomItem| i.latest_ms.unwrap_or(i.published_ms);
+        stamp(b).cmp(&stamp(a)).then_with(|| a.doc_id.cmp(&b.doc_id))
+    });
     Ok(Json(serde_json::json!({ "items": items })))
 }
 
@@ -1244,6 +1290,33 @@ async fn room_history_handler(
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
     let (items, closed) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
     Ok(Json(serde_json::json!({ "items": items, "closed": closed })))
+}
+
+/// GET `/api/identity/{root}/rooms/{author}/{doc}/chatters` - who has visibly spoken here,
+/// newest speaker first, with when (Curtis, 2026-09-18: the room's only roster).
+async fn room_chatters_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    room_admits(&state, &root, &author, &doc).await?;
+    let rows = crate::chat::chatters(&state.node_db, &author, &doc).await.map_err(AppError::Internal)?;
+    let roots: Vec<String> = rows.iter().map(|(r, _)| r.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(root, last_ms)| {
+            let b = bylines.get(&root);
+            serde_json::json!({
+                "root": root,
+                "last_ms": last_ms,
+                "name": b.and_then(|b| b.name.clone()),
+                "avatar": b.and_then(|b| b.avatar.clone()),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items })))
 }
 
 /// POST `/api/identity/{root}/rooms/{author}/{doc}/sync` - pull the room now: the directory

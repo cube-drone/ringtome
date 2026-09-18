@@ -113,21 +113,24 @@ pub struct Ask {
 /// memo_chains` carries the full "lags but never leads" argument. The scan survives as the
 /// fallback for handles with no memo attached - bare test databases, and `node.db` itself.
 /// A frontier list narrowed to a Hello's scope - empty scope means everything, unchanged.
-fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32], instances: &[[u8; 16]]) -> Vec<Frontier> {
+fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32], instances: &[[u8; 16]], member: bool) -> Vec<Frontier> {
     frontiers
         .into_iter()
         .filter(|f| wanted.is_empty() || wanted.contains(&f.service))
-        .filter(|f| instance_in_scope(f.instance, instances))
+        .filter(|f| instance_in_scope(f.instance, instances, member))
         .collect()
 }
 
-/// A per-instance chain travels only on an exchange that names its instance (CHAT.md,
-/// ruling 4 - a room's lane, never a persona's every room); a chain with none is in every
+/// A per-instance chain travels on an exchange that names its instance (CHAT.md, ruling 4 -
+/// a room's lane, never a follower's pull of a persona's every room) - and, whatever the
+/// scope, between a persona's OWN computers: a proven member replicates all of the persona's
+/// chains, rooms included, as it always has (found 2026-09-18, when a message said on one
+/// computer never reached the persona's other one). A chain with no instance is in every
 /// scope.
-fn instance_in_scope(instance: Option<[u8; 16]>, instances: &[[u8; 16]]) -> bool {
+fn instance_in_scope(instance: Option<[u8; 16]>, instances: &[[u8; 16]], member: bool) -> bool {
     match instance {
         None => true,
-        Some(i) => instances.contains(&i),
+        Some(i) => member || instances.contains(&i),
     }
 }
 
@@ -417,8 +420,9 @@ async fn missing_plan(
         if !wanted.is_empty() && !wanted.contains(&(svc as u32)) {
             continue;
         }
-        // A room's chain travels only on the room's lane (CHAT.md, ruling 4).
-        if !instance_in_scope(instance, instances) {
+        // A room's chain travels on the room's lane, or between the persona's own computers
+        // (CHAT.md, ruling 4; `include_private` is the member-proven flag).
+        if !instance_in_scope(instance, instances, include_private) {
             continue;
         }
         let author = pubkey::decode(&author_hex)
@@ -1652,7 +1656,7 @@ async fn exchange_on(
         Some(db) => local_frontiers(db, false).await?,
         None => Vec::new(),
     };
-    let frontiers = scoped_frontiers(frontiers, wanted, instances);
+    let frontiers = scoped_frontiers(frontiers, wanted, instances, false);
     write_frame(
         &mut send,
         &SyncMessage::Hello {
@@ -2059,7 +2063,7 @@ async fn serve_on(
             root,
             // Scoped to the requester's ask: a scoped exchange discloses no frontier
             // metadata beyond the services it named.
-            frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope, &instances),
+            frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope, &instances, peer_proven),
             proof: our_member_proof(&state, root, &our_id, &peer_id).await,
             wanted: scope.clone(),
             ceiling: 0,
@@ -2880,6 +2884,28 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((hosted.received, hosted.over_ceiling), (2, false));
+    }
+
+    /// A room chain (CHAT.md, ruling 4): sent on the room's lane, or to a proven member -
+    /// never to a follower's unscoped pull (2026-09-18).
+    #[tokio::test]
+    async fn a_room_chain_travels_on_its_lane_or_between_own_computers() {
+        let db = crate::db::test_user_db().await;
+        let sk = SigningKey::from_bytes(&[21u8; 32]);
+        let room = [7u8; 16];
+        let msg = ringtome_proto::registry::ChatMessage { room_author: [9u8; 32], body: b"hi".to_vec(), sealed: false };
+        crate::record::imaol::append_on(&db, &sk, service::CHAT, Some(room), entry_type::CHAT_MESSAGE, Payload::Inline(msg.encode().unwrap()))
+            .await
+            .unwrap();
+        let unscoped = missing_plan(&db, &[], false, &[], &[], Ask::default()).await.unwrap();
+        assert!(unscoped.is_empty(), "a follower's unscoped pull carries no room chain");
+        let lane = missing_plan(&db, &[], false, ROOM_SCOPE, &[room], Ask::default()).await.unwrap();
+        assert_eq!(lane.len(), 1, "the room's lane carries it");
+        assert_eq!(lane[0].instance, Some(room));
+        let other = missing_plan(&db, &[], false, ROOM_SCOPE, &[[8u8; 16]], Ask::default()).await.unwrap();
+        assert!(other.is_empty(), "another room's lane does not");
+        let mesh = missing_plan(&db, &[], true, &[], &[], Ask::default()).await.unwrap();
+        assert_eq!(mesh.len(), 1, "the persona's own computers carry it, whatever the scope");
     }
 
     async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {

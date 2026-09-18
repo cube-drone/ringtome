@@ -171,7 +171,10 @@ node keeps its own room whole, which is where "all of it" lives.
    rooms, while the identity and profile ride beside it at headers depth (ruling 9). The
    serve side accepts a room-scoped exchange for any persona when the room named is one this
    node is in, holds such a persona at the room scope, and drops a sealed room's instances
-   for a dialer serving nobody its seal admits. A participant's node pushes its chain to the
+   for a dialer serving nobody its seal admits. A persona's OWN computers carry its room
+   chains whatever the scope, as they carry everything (2026-09-18: a message said on one
+   computer never reached the persona's other one, because the device mesh's sync is
+   unscoped and the lane rule had kept room chains off it). A participant's node pushes its chain to the
    creator's node after every message; a reader's node asks the creator's node who has
    spoken (`WantRoom` on the fragment lane, under the room's door) and pulls each speaker's
    chain from it, on entering, on a slow beat for rooms opened lately, and on demand. The

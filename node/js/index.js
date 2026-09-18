@@ -34,7 +34,7 @@ import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
-import { ChatApp, RoomPage } from './apps/chat.js';
+import { ChatApp } from './apps/chat.js';
 import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
@@ -444,7 +444,8 @@ const Inside = ({ session }) => {
             <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
             <${ChatApp} path="/home/chat" current=${persona.current} />
-            <${RoomPage} path="/home/chat/:author/:doc" current=${persona.current} />
+            <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} />
+            <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
             <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />

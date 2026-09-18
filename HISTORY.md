@@ -9312,3 +9312,44 @@ re-announced, and the client never said "stopped" unless it sent. A heartbeat no
 typing alone, the socket re-reads presence on a two-second clock and speaks only when it
 changed, and the client says "stopped" three seconds after the keys rest or when the draft
 empties.
+
+## 2026-09-18: the chat app, in Slack's shape
+
+Curtis's brief: Writer's collapsible, resizable columns, a "chats" column on the left, open by
+default, holding every room a persona may see and a "new chat" button; the chosen room on
+the right under a fixed header carrying the room's name and owner; the floor scrolling with
+the newest line at the bottom and pinned to the end while the reader is there, so a live
+room updates in place; every line at full width; a speaker's run of lines attributed once,
+the rest implied; the composer fixed to the bottom at full width; "new chat" filling the
+right side with the form; and the room's own post as the first line, said by its creator.
+One app now serves `/home/chat`, `/home/chat/new` and `/home/chat/:author/:doc`; the
+column's width and tuck are the persona's preferences, as Writer's are. Who is here rides
+the header; who is typing sits above the composer. Then, the same day: nobody is "in" a room -
+the header's "here" chips went, and typing shows where the next line will land, at the end
+of the floor. A "chatters" dropdown in the header is the room's only roster: everyone who
+has visibly spoken as this node knows it, newest speaker first, each with when they last
+spoke (a `chatters` door beside history). A run's first line starts with the speaker's card,
+the hex a size up from the chip and the name this reader calls them beside it; the stack is
+much tighter, so a screen shows a lot of conversation.
+
+## 2026-09-18: a room chain rides the device mesh
+
+Curtis's second look: a persona on one computer said "potato" in a room; the same persona's
+other computer, and the room's creator there, never saw it, though everything said after
+the two pages linked on the topic crossed fine. The lane rule from slice 2 - a room chain
+travels only on an exchange naming its room - had kept room chains off the device mesh's
+unscoped sync between a persona's own computers, and with the creator hosted on both sides
+nobody pushed or pulled either. A proven member now replicates a persona's room chains
+whatever the scope, as it replicates everything; a follower's unscoped pull still carries
+none. The planner's test says all three.
+
+## 2026-09-18: the chats column knows what is new
+
+Curtis: "can we privately sync a set of the latest message we've seen in each chat, and
+display any chat that has messages in bold?" A `rooms_seen` private register per room - the
+stamp of the newest message the floor showed, written by the room page at most every few
+seconds - rides the persona's private chain to every computer, so a room is bold exactly
+where it is unread. The rooms door now says when each room last heard a word and whether
+that is newer than the look, and sorts by the newest word, the room's own post standing in
+for a silent room; the column shows the time beside every room. The room lane suite's new
+claim: never looked at is unread, a look makes it read, a new word makes it unread again.

@@ -125,6 +125,29 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.ok(wordsOf(beaHears).includes("hi all, cal here"), "bea hears cal through the creator's node");
     });
 
+    it("the chats column knows the newest word, bolds what was said since the last look, and the look syncs as a private fact", async () => {
+        const list = async () => ((await (await ada(`api/identity/${adaRoot}/rooms`)).json()).items || []);
+        let rooms = await list();
+        const row = rooms.find((r) => r.doc_id === kitchen);
+        assert.ok(row && row.latest_ms, "the kitchen names its newest word's time");
+        assert.equal(row.unread, true, "never looked at: unread");
+        assert.equal(rooms[0].doc_id, kitchen, "the room with the newest word sits first");
+        // The look: the newest stamp read, as a private register the persona's every computer shares.
+        const seen = await j(ada, `api/identity/${adaRoot}/private/kv/rooms_seen/${adaRoot}:${kitchen}`, { value: String(row.latest_ms) }, "PUT");
+        assert.equal(seen.status, 200, await seen.text());
+        rooms = await list();
+        const looked = rooms.find((r) => r.doc_id === kitchen);
+        assert.equal(!!looked.unread, false, "looked at: read (the flag is absent when false)");
+        assert.equal(looked.seen_ms, row.latest_ms);
+        // Another word makes it unread again.
+        const more = await say(cal, calRoot, adaRoot, kitchen, "one more");
+        assert.equal(more.status, 200, await more.text());
+        const again = await readAfterSync(HOST, ada, adaRoot, adaRoot, kitchen, ["one more"]);
+        assert.ok(wordsOf(again).includes("one more"));
+        rooms = await list();
+        assert.equal(rooms.find((r) => r.doc_id === kitchen).unread, true, "a new word since the look: unread");
+    });
+
     it("a sealed room's words travel as ciphertext: the trusted reader opens them, the stranger cannot enter", async () => {
         let entered = null;
         for (let i = 0; i < 30 && !entered; i++) {
