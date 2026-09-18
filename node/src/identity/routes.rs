@@ -61,6 +61,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             get(room_history_handler).post(room_say_handler),
         )
         .route("/api/identity/{root}/rooms/{author}/{doc}/sync", post(room_sync_handler))
+        .route("/api/identity/{root}/rooms/{author}/{doc}/live", get(room_live_handler))
         .route(
             "/api/identity/{root}/public-annotations/{author}/{doc}",
             get(public_annotations_handler).put(public_annotation_put_handler),
@@ -1088,7 +1089,83 @@ async fn room_leave_handler(
         data.private_registers(ROOMS_JOINED).set(&key, "").await?;
     }
     crate::chat::close_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    if let Ok(doc_id) = hex_fixed::<16>(&doc, "doc id") {
+        crate::chat::leave_live(&state, &doc_id);
+    }
     Ok(Json(serde_json::json!({ "left": true })))
+}
+
+/// GET `/api/identity/{root}/rooms/{author}/{doc}/live` - the room's live socket (CHAT.md,
+/// ruling 5): joins the room's topic for this persona, then streams `message` frames (the
+/// floor moved - re-read it) and `presence` frames (who is here, who is typing). The one
+/// inbound frame is `{"typing": bool}`, which becomes a beacon; a beacon every ten seconds
+/// says "still here" while the socket stands.
+async fn room_live_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+    ws: axum::extract::ws::WebSocketUpgrade,
+) -> Result<Response, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    let live = crate::chat::join(&state, &root, &author, &doc_id)
+        .await
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.the-room-could-not-go-live", "the room could not go live: {why}", why = e)))?;
+    Ok(ws.on_upgrade(move |socket| async move {
+        if let Err(e) = serve_room_live(socket, state, root, doc_id, live).await {
+            tracing::debug!(room = %doc, "room live socket ended: {e:#}");
+        }
+    }))
+}
+
+async fn serve_room_live(
+    mut socket: axum::extract::ws::WebSocket,
+    state: AppState,
+    root: String,
+    doc: [u8; 16],
+    live: std::sync::Arc<crate::chat::RoomLive>,
+) -> anyhow::Result<()> {
+    use axum::extract::ws::Message;
+    let mut events = live.subscribe();
+    let presence_frame = |live: &crate::chat::RoomLive| {
+        let (here, typing) = live.presence_now();
+        serde_json::json!({ "type": "presence", "here": here, "typing": typing }).to_string()
+    };
+    crate::chat::beacon(&state, &doc, &root, false).await;
+    socket.send(Message::Text(presence_frame(&live).into())).await?;
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
+    heartbeat.tick().await;
+    loop {
+        tokio::select! {
+            event = events.recv() => match event {
+                Ok(crate::chat::LiveEvent::Message) => {
+                    socket.send(Message::Text(serde_json::json!({ "type": "message" }).to_string().into())).await?;
+                }
+                Ok(crate::chat::LiveEvent::Presence) => {
+                    socket.send(Message::Text(presence_frame(&live).into())).await?;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    socket.send(Message::Text(serde_json::json!({ "type": "message" }).to_string().into())).await?;
+                }
+                Err(_) => break,
+            },
+            inbound = socket.recv() => match inbound {
+                Some(Ok(Message::Text(text))) => {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(typing) = v.get("typing").and_then(|t| t.as_bool()) {
+                            crate::chat::beacon(&state, &doc, &root, typing).await;
+                        }
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                Some(Ok(_)) => {}
+            },
+            _ = heartbeat.tick() => {
+                crate::chat::beacon(&state, &doc, &root, false).await;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The room's door, for the message doors: admitted or refused with the same words the

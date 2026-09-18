@@ -4,7 +4,7 @@
 // link. Slice 1 (2026-09-18): the rooms and their doors; a room you can enter and find
 // empty. Messages, presence and history are the slices after this one.
 import { h } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -181,7 +181,7 @@ export const ChatApp = ({ current }) => {
 /// re-read on a slow beat and after every send. Sync alone carries the messages - the
 /// node pulls the room from the creator's node when the page opens and on its own beat -
 /// so the floor is honest about its lag; live delivery is slice 3's.
-const HISTORY_POLL_MS = 4000;
+const HISTORY_POLL_MS = 15000;
 
 const MessageRow = ({ m, current }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
@@ -208,6 +208,10 @@ export const RoomPage = ({ current, author, doc }) => {
     const [draft, setDraft] = useState('');
     const [sending, setSending] = useState(false);
     const [sendError, setSendError] = useState(null);
+    const [here, setHere] = useState([]);
+    const [typing, setTyping] = useState([]);
+    const socket = useRef(null);
+    const typingSaid = useRef(0);
     const readHistory = () => {
         if (!root) return;
         api(`/api/identity/${root}/rooms/${author}/${doc}/messages`)
@@ -224,6 +228,53 @@ export const RoomPage = ({ current, author, doc }) => {
         return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc, !!room]);
+    // The live lane (CHAT.md, ruling 5): the room's socket says when the floor moved and
+    // who is here; it reconnects with backoff, and the poll above is the backstop.
+    useEffect(() => {
+        if (!root || !room) return undefined;
+        let stopped = false;
+        let retry = 1000;
+        const connect = () => {
+            if (stopped) return;
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            const ws = new WebSocket(`${proto}://${location.host}/api/identity/${root}/rooms/${author}/${doc}/live`);
+            socket.current = ws;
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'message') readHistory();
+                    if (msg.type === 'presence') {
+                        setHere(msg.here || []);
+                        setTyping((msg.typing || []).filter((r) => r !== root));
+                    }
+                    retry = 1000;
+                } catch {
+                    /* a bad frame is ignored; the poll still runs */
+                }
+            };
+            ws.onclose = () => {
+                socket.current = null;
+                if (stopped) return;
+                setTimeout(connect, retry);
+                retry = Math.min(retry * 2, 15000);
+            };
+            ws.onerror = () => ws.close();
+        };
+        connect();
+        return () => {
+            stopped = true;
+            if (socket.current) socket.current.close();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root, author, doc, !!room]);
+    const sayTyping = (on) => {
+        const ws = socket.current;
+        if (!ws || ws.readyState !== 1) return;
+        const now = Date.now();
+        if (on && now - typingSaid.current < 2000) return;
+        typingSaid.current = on ? now : 0;
+        ws.send(JSON.stringify({ typing: on }));
+    };
     const send = async () => {
         const words = draft.trim();
         if (!words || sending) return;
@@ -235,6 +286,7 @@ export const RoomPage = ({ current, author, doc }) => {
                 body: JSON.stringify({ words }),
             });
             setDraft('');
+            sayTyping(false);
             readHistory();
         } catch (e) {
             setSendError(e.message || String(e));
@@ -309,7 +361,10 @@ export const RoomPage = ({ current, author, doc }) => {
                               class="chat-composer-words"
                               placeholder=${t('apps.chat.say-something', 'say something…')}
                               value=${draft}
-                              onInput=${(e) => setDraft(e.currentTarget.value)}
+                              onInput=${(e) => {
+                                  setDraft(e.currentTarget.value);
+                                  sayTyping(e.currentTarget.value.trim().length > 0);
+                              }}
                               onKeyDown=${(e) => {
                                   // Enter sends, Shift-Enter breaks a line (CHAT.md, ruling 7).
                                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -326,7 +381,14 @@ export const RoomPage = ({ current, author, doc }) => {
             </div>
             <aside class="chat-rail">
                 <p class="chat-rail-head">${t('apps.chat.here-now', 'here now')}</p>
-                <${PersonChip} root=${root} current=${current} />
+                <ul class="chat-rail-list">
+                    ${(here.includes(root) ? here : [root, ...here]).map(
+                        (r) => html`<li key=${r} class="chat-rail-row">
+                            <${PersonChip} root=${r} current=${current} />
+                            ${typing.includes(r) && html`<span class="chat-rail-typing">${t('apps.chat.typing', 'typing…')}</span>`}
+                        </li>`
+                    )}
+                </ul>
             </aside>
         </div>
     </div>`;

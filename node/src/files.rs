@@ -529,6 +529,8 @@ mod tests {
             admission: crate::net::admission::Admission::new(Default::default()),
             behind: Default::default(),
             peeked: Default::default(),
+            gossip: iroh_gossip::net::Gossip::builder().spawn(ep_a.clone()),
+            live: Default::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

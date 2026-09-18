@@ -9290,3 +9290,17 @@ participant's push to the creator's node after every message and a reader's pull
 speaker's chain from it, on entering, on a twenty-second beat and on demand; the say,
 history and sync doors; the room's floor and composer on the client. The `chat_lane` suite
 walks a follower, the creator, a stranger by link, a sealed room and a close.
+
+## 2026-09-18: live
+
+CHAT.md's slice 3: `iroh-gossip` on the node's endpoint, one topic per room, its id derived
+from the room's key for a sealed room and from the post for an open one. A room's live
+socket on the persona joins the topic and streams two frames - the floor moved, and who is
+here or typing - and takes one, typing, which becomes a beacon. A message is appended to the
+speaker's chain, folded, then published on the topic as the same signed entry; the receiving
+node verifies it names the room, ingests it through the gate sync uses, folds, and tells its
+sockets. Anything the live lane cannot place - an unknown speaker, a gap, a lagged topic -
+sends the node back to the durable lane to pull the room. The room page opens the socket,
+lists who is here, says who is typing, and keeps a slow poll as the backstop. The
+`chat_live` suite: sockets hear each other arrive, a message crosses with no beat rung, and
+typing is a beacon on the topic.

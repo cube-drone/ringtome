@@ -53,7 +53,7 @@ describe("the transport gate (/test/unplug)", function () {
             try {
                 assert.deepEqual(
                     state.inbound.slice().sort(),
-                    ["adopt", "blob", "deliver", "fragment", "sync"],
+                    ["adopt", "blob", "deliver", "fragment", "gossip", "sync"],
                     "a bare unplug covers every protocol the node speaks"
                 );
                 assert.deepEqual(state.outbound.slice().sort(), state.inbound.slice().sort());

@@ -178,6 +178,28 @@
     color: var(--muted);
 }
 
+.chat-rail-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.chat-rail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+
+.chat-rail-typing {
+    font-size: 0.75em;
+    color: var(--muted);
+    font-style: italic;
+}
+
 /* The floor: messages oldest to newest, then the composer. */
 .chat-msg-list {
     list-style: none;

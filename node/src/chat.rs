@@ -17,9 +17,15 @@
 //! * **The budget.** A node keeps the last ten thousand messages of a room, pruning each
 //!   speaker's chain beneath that cut (ruling 6); the chains sync as suffixes.
 //!
-//! Messages arrive by sync alone, on the beat: slow, complete, honest. Live delivery is
-//! slice 3's.
+//! Sync is the durable lane; the fold heals whatever the live lane dropped. **Live** (slice 3,
+//! ruling 5) is iroh-gossip: one topic per room, its id derived from the room's key for a
+//! sealed room and from the post for an open one, carrying the same signed entries the
+//! chains carry - a message is appended to the speaker's chain first, then published on the
+//! topic, and a receiving node verifies and folds it through the very gate sync uses.
+//! Presence and typing are beacons on the same topic, ephemeral, never persisted.
 use anyhow::{anyhow, Context, Result};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use ringtome_proto::registry::{entry_type, service, ChatMessage};
 use ringtome_proto::Payload;
 
@@ -45,6 +51,289 @@ fn room_budget() -> u64 {
         }
     }
     ROOM_BUDGET
+}
+
+/// The topic id's domain (CHAT.md, ruling 5): a sealed room's topic derives from its KEY,
+/// so only key-holders can compute it; an open room's from the post's own name.
+const TOPIC_DOMAIN: &[u8] = b"ringtome-chat/";
+
+/// Frame kinds on a room's topic.
+const FRAME_ENTRY: u8 = 0;
+const FRAME_PRESENCE: u8 = 1;
+
+/// How long a presence beacon counts as "here", and a typing beacon as typing.
+const PRESENCE_TTL_MS: i64 = 30_000;
+const TYPING_TTL_MS: i64 = 6_000;
+
+/// What a room's live lane tells the sockets watching it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveEvent {
+    /// A message landed in the memo - re-read the floor.
+    Message,
+    /// Who is here, or typing, changed.
+    Presence,
+}
+
+struct Presence {
+    seen_ms: i64,
+    typing_ms: i64,
+}
+
+/// One room this node is live in.
+pub struct RoomLive {
+    room_author: String,
+    /// The hosted persona whose entering joined the topic - whose door the receive path
+    /// pulls missing speakers through.
+    viewer_root: String,
+    sender: tokio::sync::Mutex<iroh_gossip::api::GossipSender>,
+    events: tokio::sync::broadcast::Sender<LiveEvent>,
+    presence: Mutex<HashMap<String, Presence>>,
+    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl RoomLive {
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<LiveEvent> {
+        self.events.subscribe()
+    }
+
+    /// Who is here and who is typing, right now.
+    pub fn presence_now(&self) -> (Vec<String>, Vec<String>) {
+        let now = crate::clock::now_ms();
+        let map = self.presence.lock().expect("presence poisoned");
+        let mut here: Vec<String> = map.iter().filter(|(_, p)| now - p.seen_ms < PRESENCE_TTL_MS).map(|(r, _)| r.clone()).collect();
+        let mut typing: Vec<String> = map.iter().filter(|(_, p)| now - p.typing_ms < TYPING_TTL_MS).map(|(r, _)| r.clone()).collect();
+        here.sort();
+        typing.sort();
+        (here, typing)
+    }
+
+    fn note_presence(&self, root: &str, typing: bool) {
+        let now = crate::clock::now_ms();
+        let mut map = self.presence.lock().expect("presence poisoned");
+        let p = map.entry(root.to_string()).or_insert(Presence { seen_ms: now, typing_ms: 0 });
+        p.seen_ms = now;
+        if typing {
+            p.typing_ms = now;
+        } else {
+            p.typing_ms = 0;
+        }
+    }
+}
+
+/// The topics this node is in, by room.
+#[derive(Clone, Default)]
+pub struct Live(Arc<Mutex<HashMap<[u8; 16], Arc<RoomLive>>>>);
+
+impl Live {
+    pub fn get(&self, doc: &[u8; 16]) -> Option<Arc<RoomLive>> {
+        self.0.lock().expect("live rooms poisoned").get(doc).cloned()
+    }
+}
+
+/// The room's topic id (ruling 5), for a viewer: `None` for a sealed room whose key this
+/// node cannot get - no key, no topic, which is the whole point of deriving it so.
+async fn topic_id(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex: &str, sealed: bool) -> Option<iroh_gossip::TopicId> {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(TOPIC_DOMAIN);
+    if sealed {
+        let key = crate::idface::key_for(state, author_hex, doc, viewer_hex, None).await?;
+        hasher.update(&key);
+    } else {
+        hasher.update(author_hex.as_bytes());
+        hasher.update(doc);
+    }
+    Some(iroh_gossip::TopicId::from_bytes(*hasher.finalize().as_bytes()))
+}
+
+/// Join a room's topic for a hosted persona, or hand back the join already standing. The
+/// bootstrap is the creator's endpoints and every known speaker's - peers this node has
+/// dialled on the room's lane, whose paths its endpoint remembers.
+pub async fn join(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Result<Arc<RoomLive>> {
+    if let Some(live) = state.live.get(doc) {
+        return Ok(live);
+    }
+    let Some((head, _)) = room_head(state, author_hex, doc).await else {
+        return Err(anyhow!("no such room is held here"));
+    };
+    let topic = topic_id(state, author_hex, doc, viewer_hex, head.trusted_only)
+        .await
+        .ok_or_else(|| anyhow!("the room's key hasn't arrived - no topic without it"))?;
+    let doc_hex = hex::encode(doc);
+    let mut bootstrap: Vec<String> = creator_endpoints(state, author_hex).await;
+    for speaker in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+        for leaf in crate::idface::stored_tree_leaves(state, &speaker).await {
+            let ep = crate::idface::leaf_via_to_endpoint(state, &speaker, &leaf).await;
+            if ep != leaf && !bootstrap.contains(&ep) {
+                bootstrap.push(ep);
+            }
+        }
+    }
+    let ours = state.endpoint.id().to_string();
+    let bootstrap: Vec<iroh::EndpointId> = bootstrap
+        .iter()
+        .filter(|e| **e != ours)
+        .filter_map(|e| e.parse().ok())
+        .collect();
+    let sub = state
+        .gossip
+        .subscribe(topic, bootstrap)
+        .await
+        .map_err(|e| anyhow!("joining the room's topic: {e}"))?;
+    let (sender, receiver) = sub.split();
+    let (events, _) = tokio::sync::broadcast::channel(64);
+    let live = Arc::new(RoomLive {
+        room_author: author_hex.to_string(),
+        viewer_root: viewer_hex.to_string(),
+        sender: tokio::sync::Mutex::new(sender),
+        events,
+        presence: Mutex::new(HashMap::new()),
+        task: Mutex::new(None),
+    });
+    let task = tokio::spawn(run_topic(state.clone(), *doc, receiver, live.clone()));
+    *live.task.lock().expect("task poisoned") = Some(task);
+    let mut map = state.live.0.lock().expect("live rooms poisoned");
+    let live = map.entry(*doc).or_insert(live).clone();
+    tracing::info!(room = %doc_hex, "joined the room's live lane");
+    Ok(live)
+}
+
+/// Leave a room's topic: the task ends, the presence is forgotten.
+pub fn leave_live(state: &AppState, doc: &[u8; 16]) {
+    let removed = state.live.0.lock().expect("live rooms poisoned").remove(doc);
+    if let Some(live) = removed {
+        if let Some(task) = live.task.lock().expect("task poisoned").take() {
+            task.abort();
+        }
+    }
+}
+
+/// The topic's receive loop: every frame verified and folded through the gate sync uses,
+/// so the live lane can only ever hand the memo what a sync could have (ruling 5).
+async fn run_topic(state: AppState, doc: [u8; 16], mut receiver: iroh_gossip::api::GossipReceiver, live: Arc<RoomLive>) {
+    use n0_future::StreamExt;
+    while let Some(event) = receiver.next().await {
+        match event {
+            Ok(iroh_gossip::api::Event::Received(msg)) => on_frame(&state, &doc, &msg.content, &live).await,
+            Ok(iroh_gossip::api::Event::Lagged) => {
+                // Dropped frames are the sync lane's to heal: pull the room now.
+                let (viewer, author) = (live.viewer_root.clone(), live.room_author.clone());
+                let state = state.clone();
+                tokio::spawn(async move {
+                    let _ = sync_room(&state, &viewer, &author, &doc).await;
+                });
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::debug!(room = %hex::encode(doc), error = ?e, "the room's topic ended");
+                break;
+            }
+        }
+    }
+}
+
+async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<RoomLive>) {
+    let Some((&kind, rest)) = frame.split_first() else { return };
+    if rest.len() < 32 {
+        return;
+    }
+    let (root, payload) = rest.split_at(32);
+    let root_hex = hex::encode(root);
+    match kind {
+        FRAME_PRESENCE => {
+            let typing = payload.first().is_some_and(|b| *b != 0);
+            live.note_presence(&root_hex, typing);
+            let _ = live.events.send(LiveEvent::Presence);
+        }
+        FRAME_ENTRY => {
+            let Ok(signed) = ringtome_proto::SignedEntry::decode(payload) else { return };
+            let entry = signed.entry();
+            if entry.chain.service != service::CHAT || entry.chain.instance != Some(*doc) || entry.entry_type != entry_type::CHAT_MESSAGE {
+                return;
+            }
+            let Payload::Inline(bytes) = &entry.payload else { return };
+            let Ok(msg) = ChatMessage::decode(bytes) else { return };
+            if hex::encode(msg.room_author) != live.room_author {
+                return;
+            }
+            live.note_presence(&root_hex, false);
+            ingest_live(state, &root_hex, payload.to_vec(), doc, live).await;
+        }
+        _ => {}
+    }
+}
+
+/// A message off the topic, through the gate: the speaker's own database, their key tree,
+/// the chain's link - the ingest sync runs. A speaker this node holds nothing of, or a gap
+/// beneath the message, is the sync lane's to fill: pull the room and let the fold catch up.
+async fn ingest_live(state: &AppState, root_hex: &str, bytes: Vec<u8>, doc: &[u8; 16], live: &Arc<RoomLive>) {
+    let Some(root) = crate::pubkey::decode(root_hex) else { return };
+    let held = state.user_dbs.get(root_hex).await.ok().flatten();
+    let mut landed = false;
+    if let Some(db) = held {
+        let outcome = crate::net::sync::ingest_batch(
+            &db,
+            root,
+            vec![bytes],
+            false,
+            Some(state.config.identity_chain_ceiling),
+            Some(crate::net::sync::ROOM_SCOPE),
+        )
+        .await;
+        landed = matches!(outcome, Ok(o) if o.received > 0);
+    }
+    if landed {
+        crate::fold::fold_now(state, root_hex).await;
+        let _ = live.events.send(LiveEvent::Message);
+        return;
+    }
+    // Unknown speaker, or a link this node lacks: the durable lane heals it.
+    let (viewer, author) = (live.viewer_root.clone(), live.room_author.clone());
+    let state = state.clone();
+    let doc = *doc;
+    let events = live.events.clone();
+    tokio::spawn(async move {
+        if sync_room(&state, &viewer, &author, &doc).await.is_ok() {
+            let _ = events.send(LiveEvent::Message);
+        }
+    });
+}
+
+fn entry_frame(root_hex: &str, bytes: &[u8]) -> Option<bytes::Bytes> {
+    let root = crate::pubkey::decode(root_hex)?;
+    let mut frame = Vec::with_capacity(1 + 32 + bytes.len());
+    frame.push(FRAME_ENTRY);
+    frame.extend_from_slice(&root);
+    frame.extend_from_slice(bytes);
+    Some(bytes::Bytes::from(frame))
+}
+
+/// Publish a just-appended message on the room's topic (ruling 5: append first, publish
+/// after), and tell this node's own sockets.
+pub async fn broadcast_entry(state: &AppState, doc: &[u8; 16], root_hex: &str, bytes: &[u8]) {
+    let Some(live) = state.live.get(doc) else { return };
+    let _ = live.events.send(LiveEvent::Message);
+    let Some(frame) = entry_frame(root_hex, bytes) else { return };
+    let sender = live.sender.lock().await;
+    if let Err(e) = sender.broadcast(frame).await {
+        tracing::debug!(room = %hex::encode(doc), error = ?e, "publishing a message on the topic failed");
+    }
+}
+
+/// A presence beacon: "I am here" and whether I am typing, for the room's live peers and
+/// this node's own sockets.
+pub async fn beacon(state: &AppState, doc: &[u8; 16], root_hex: &str, typing: bool) {
+    let Some(live) = state.live.get(doc) else { return };
+    live.note_presence(root_hex, typing);
+    let _ = live.events.send(LiveEvent::Presence);
+    let Some(root) = crate::pubkey::decode(root_hex) else { return };
+    let mut frame = Vec::with_capacity(34);
+    frame.push(FRAME_PRESENCE);
+    frame.extend_from_slice(&root);
+    frame.push(u8::from(typing));
+    let sender = live.sender.lock().await;
+    if let Err(e) = sender.broadcast(bytes::Bytes::from(frame)).await {
+        tracing::debug!(room = %hex::encode(doc), error = ?e, "presence beacon failed");
+    }
 }
 
 /// One message as the history door serves it.
@@ -230,9 +519,11 @@ pub async fn say(
     .await?;
     let seq = signed.entry().seq;
     let said_ms = signed.entry().timestamp_ms;
-    // Fold it into the memo now - the speaker's own page shows the words at once - and
-    // push the chain to the creator's node, the room's directory of record.
-    crate::fold::nudge(state, root_hex);
+    // Fold it into the memo now - the speaker's own page shows the words at once - then
+    // publish it on the room's topic (ruling 5: append first, publish after) and push the
+    // chain to the creator's node, the room's directory of record.
+    crate::fold::fold_now(state, root_hex).await;
+    broadcast_entry(state, doc, root_hex, signed.bytes()).await;
     let push_state = state.clone();
     let (push_root, push_author, push_doc) = (root_hex.to_string(), author_hex.to_string(), *doc);
     tokio::spawn(async move {

@@ -24,12 +24,14 @@ const NODE_KEY_NAME: &str = "node_iroh";
 ///
 /// The names are spelled out rather than derived from the wire strings: the wire string is a
 /// format (frozen on ship day), the short name is a test API, and they should be free to differ.
-pub const ALPNS: [(&str, &[u8]); 5] = [
+pub const ALPNS: [(&str, &[u8]); 6] = [
     ("sync", SYNC_ALPN),
     ("blob", crate::files::BLOB_ALPN),
     ("adopt", crate::net::adopt::ADOPT_ALPN),
     ("deliver", ringtome_proto::deliver::DELIVER_ALPN),
     ("fragment", ringtome_proto::fragment::FRAGMENT_ALPN),
+    // Rooms' live lane (CHAT.md, ruling 5): iroh-gossip's own protocol, one topic per room.
+    ("gossip", iroh_gossip::ALPN),
 ];
 
 /// The short house name for a wire ALPN; `None` for an ALPN this node does not speak (which the
@@ -341,6 +343,10 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                         } else if conn.alpn() == ringtome_proto::fragment::FRAGMENT_ALPN {
                             if let Err(e) = crate::net::fragment::serve(conn, state).await {
                                 tracing::warn!(%remote, "fragment connection ended with error: {e:#}");
+                            }
+                        } else if conn.alpn() == iroh_gossip::ALPN {
+                            if let Err(e) = state.gossip.handle_connection(conn).await {
+                                tracing::debug!(%remote, "gossip connection ended with error: {e:#}");
                             }
                         } else if let Err(e) = crate::net::sync::serve(conn, state, &mut permit).await {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");

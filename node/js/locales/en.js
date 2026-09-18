@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 800 phrases across 58 files.
+// 802 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.a-sealed-room': 'a sealed room',
@@ -40,6 +40,7 @@ export default {
     'apps.chat.say-something': 'say something…',
     'apps.chat.send': 'send',
     'apps.chat.here-now': 'here now',
+    'apps.chat.typing': 'typing…',
 
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -755,6 +756,7 @@ export default {
     'identity.routes.no-such-room-is-held': 'no such room is held here - its author may be unreachable',
     'identity.routes.that-post-is-not-a-room': 'that post is not a room',
     'identity.routes.this-room-is-sealed': 'this room is sealed - its author shares it only with people they trust',
+    'identity.routes.the-room-could-not-go-live': 'the room could not go live: {why}',
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',

@@ -118,6 +118,12 @@ pub struct AppState {
     /// ruling 7): what a dial promotes, and what the wake pass treats as stale. In memory -
     /// after a boot the relationships decide the depth of the next fetch anyway.
     pub peeked: net::admission::Behind,
+    /// The rooms' live lane (CHAT.md, ruling 5): iroh-gossip on the node's endpoint, one
+    /// topic per room a hosted persona has open.
+    pub gossip: iroh_gossip::net::Gossip,
+    /// The topics this node is in right now, with their presence: in memory, since a live
+    /// space is exactly what a boot loses.
+    pub live: chat::Live,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -342,6 +348,11 @@ async fn main() -> anyhow::Result<()> {
     ingest::reconcile_on_boot(&node_db).await?;
     let unfurl = net::unfurl::Unfurler::new(config.unfurl_rate_per_min);
     let admission = net::admission::Admission::from_config(&config);
+    // A gossip frame is one signed message (16KB at most) or a presence beacon; the cap
+    // leaves headroom and refuses the rest at the door.
+    let gossip = iroh_gossip::net::Gossip::builder()
+        .max_message_size(32 * 1024)
+        .spawn(endpoint.clone());
     let state = AppState {
         config,
         node_db,
@@ -362,6 +373,8 @@ async fn main() -> anyhow::Result<()> {
         admission,
         behind: net::admission::Behind::default(),
         peeked: net::admission::Behind::default(),
+        gossip,
+        live: chat::Live::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each

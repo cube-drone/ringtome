@@ -183,7 +183,22 @@ node keeps its own room whole, which is where "all of it" lives.
    stranger may neither enter nor pull; closing refuses the next message and stands the
    record.
 3. **Live.** iroh-gossip as a dependency; a topic per room; publish-after-append; verify and
-   fold on receipt; presence and typing. The room view becomes live.
+   fold on receipt; presence and typing. The room view becomes live. **Built 2026-09-18.**
+   `iroh-gossip` on the node's endpoint, its ALPN in the one table the accept loop and the
+   test gate share. A room's topic id is blake3 over a domain and the room's KEY for a
+   sealed room - no key, no topic - and over the post's name for an open one. A hosted
+   persona's node joins the topic when the persona opens the room's live socket
+   (`GET /rooms/{author}/{doc}/live`), bootstrapped from the creator's endpoints and every
+   known speaker's, whose paths the room's sync already taught the endpoint. A message is
+   appended to the speaker's chain first, folded, then published on the topic as the same
+   signed entry; a receiving node checks the frame names the room and its author, then
+   ingests it through the gate sync uses - the speaker's own database, their key tree, the
+   chain's link - folds, and tells its sockets the floor moved. A speaker it holds nothing of,
+   a gap beneath the message, or a lagged topic is the durable lane's to heal: the node pulls
+   the room. Presence and typing are beacons on the same topic - "here" for thirty seconds,
+   "typing" for six - never persisted, and the socket says who is here. The `chat_live`
+   suite: two sockets hear each other arrive, a message crosses with no beat rung and the
+   socket says so, and typing is a beacon.
 4. **History.** The creator's node as archivist; scroll-back below the room's window; the
    full-sync button.
 5. **Mentions and the bell.** A message naming a persona rings their bell under the room's
