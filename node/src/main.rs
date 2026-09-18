@@ -22,6 +22,7 @@ mod fragments;
 mod postkeys;
 mod scheduled;
 mod books;
+mod chat;
 mod files;
 mod fold;
 mod identity;
@@ -515,6 +516,19 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
+    // The room-sync beat (CHAT.md, slice 2): every room a hosted persona opened lately,
+    // pulled from the creator's node. Slow on purpose - the beat is the honest floor,
+    // and live delivery is slice 3's.
+    let room_beat = if local_test {
+        std::env::var("RINGTOME_TEST_ROOM_SYNC_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(20))
+    } else {
+        std::time::Duration::from_secs(20)
+    };
+    loops::periodic("room-sync", room_beat, state.clone(), chat::sync_pass);
     // The public text index's backlog walk (search.rs): a bounded slice per beat, so the
     // first search over a deep journal is rarely the one that pays for reading it. Its own
     // slow beat, never the journal fill's (2026-09-08): on the rig the fill beat is a

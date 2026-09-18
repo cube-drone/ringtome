@@ -319,6 +319,7 @@ async fn rollout(
             onward: false,
             dated_ms: None,
             part_of: Some(book_id),
+            room: false,
         };
         match crate::record::bake::publish(state, data, root, doc_id, None, flags).await? {
             crate::record::bake::Outcome::Posted(post_id) => {

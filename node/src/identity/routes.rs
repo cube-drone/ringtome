@@ -51,6 +51,16 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/rebroadcasts",
             get(rebroadcasts_handler).post(rebroadcast_handler),
         )
+        .route("/api/identity/{root}/rooms", get(rooms_handler))
+        .route(
+            "/api/identity/{root}/rooms/{author}/{doc}",
+            get(room_enter_handler).delete(room_leave_handler),
+        )
+        .route(
+            "/api/identity/{root}/rooms/{author}/{doc}/messages",
+            get(room_history_handler).post(room_say_handler),
+        )
+        .route("/api/identity/{root}/rooms/{author}/{doc}/sync", post(room_sync_handler))
         .route(
             "/api/identity/{root}/public-annotations/{author}/{doc}",
             get(public_annotations_handler).put(public_annotation_put_handler),
@@ -797,6 +807,8 @@ async fn feed_kinds(state: &AppState, rows: &[crate::fanout::FeedRow]) -> Result
                 "rebroadcast"
             } else if r.format.as_deref() == Some("book") {
                 "book"
+            } else if r.format.as_deref() == Some("room") {
+                "room"
             } else if links.contains_key(&(r.author_root.clone(), r.doc_id.clone())) {
                 "reply"
             } else {
@@ -862,6 +874,296 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
         }
     }
     keep
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rooms (CHAT.md, slice 1): the rooms a persona may see, and the room's door.
+
+/// The private register that remembers the rooms this persona entered by link (CHAT.md,
+/// ruling 7: "rooms joined by link" beside the ones its feed and followed shelves show).
+/// Key `<author>:<doc>`, value a JSON note with when; an empty value is a room left
+/// (ruling 9: leaving is a first-class, local act).
+const ROOMS_JOINED: &str = "rooms";
+
+#[derive(serde::Serialize)]
+struct RoomItem {
+    author: String,
+    doc_id: String,
+    /// The room's name - empty for a sealed room, whose title travels with its words
+    /// (the body door hands it to whoever may have them).
+    title: String,
+    published_ms: i64,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    trusted_only: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    onward: bool,
+    /// Who shared it into the feed, when it came that way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via: Option<String>,
+    /// This persona's own room.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    mine: bool,
+    /// Entered by link and not left.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    joined: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_avatar: Option<String>,
+}
+
+/// The rooms this persona entered by link and has not left: `(author_hex, doc_hex)`.
+async fn joined_rooms(data: &store::Store) -> Result<Vec<(String, String)>, AppError> {
+    let (rows, _) = data.private_registers(ROOMS_JOINED).all().await?;
+    Ok(rows
+        .into_iter()
+        .filter(|r| !r.value.trim().is_empty())
+        .filter_map(|r| {
+            let (author, doc) = r.key.split_once(':')?;
+            (author.len() == 64 && doc.len() == 32).then(|| (author.to_string(), doc.to_string()))
+        })
+        .collect())
+}
+
+/// GET `/api/identity/{root}/rooms` - every room this persona may see (CHAT.md, ruling 7):
+/// its own, the ones its feed carries (a followed author's, or a share), and the ones it
+/// entered by link. One row per room, newest first; a room the feed's gate would hide is
+/// not listed.
+async fn rooms_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let mut seen: std::collections::HashSet<(String, String)> = Default::default();
+    let mut items: Vec<RoomItem> = Vec::new();
+    // My own rooms, off my own shelf.
+    for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
+        if crate::record::documents::Format::from_wire(p.format) != crate::record::documents::Format::Room {
+            continue;
+        }
+        let doc_hex = hex::encode(p.doc_id);
+        seen.insert((root.clone(), doc_hex.clone()));
+        items.push(RoomItem {
+            author: root.clone(),
+            doc_id: doc_hex,
+            title: p.title.clone(),
+            published_ms: p.display_ms(),
+            trusted_only: p.trusted_only,
+            onward: p.onward,
+            via: None,
+            mine: true,
+            joined: false,
+            author_name: None,
+            author_avatar: None,
+        });
+    }
+    // The rooms my feed carries, through the feed's own gate.
+    let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .filter(|r| r.format.as_deref() == Some("room"))
+        .collect();
+    for r in readable_feed_rows(&state, &root, rows).await {
+        if !seen.insert((r.author_root.clone(), r.doc_id.clone())) {
+            continue;
+        }
+        items.push(RoomItem {
+            author: r.author_root,
+            doc_id: r.doc_id,
+            title: r.title,
+            published_ms: r.published_ms,
+            trusted_only: r.trusted_only,
+            onward: r.onward,
+            via: r.via_root,
+            mine: false,
+            joined: false,
+            author_name: None,
+            author_avatar: None,
+        });
+    }
+    // The rooms I entered by link.
+    let joined = joined_rooms(&data).await?;
+    for (author, doc) in joined {
+        let Some(h) = held_public_header(&state, &author, &doc).await? else { continue };
+        if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+            continue;
+        }
+        if seen.contains(&(author.clone(), doc.clone())) {
+            if let Some(item) = items.iter_mut().find(|i| i.author == author && i.doc_id == doc) {
+                item.joined = true;
+            }
+            continue;
+        }
+        seen.insert((author.clone(), doc.clone()));
+        items.push(RoomItem {
+            author,
+            doc_id: doc,
+            title: h.title.clone(),
+            published_ms: h.genesis_ms.unwrap_or(0),
+            trusted_only: h.trusted_only,
+            onward: h.onward,
+            via: None,
+            mine: false,
+            joined: true,
+            author_name: None,
+            author_avatar: None,
+        });
+    }
+    // Bylines, one lookup for everyone named.
+    let authors: Vec<String> = items.iter().map(|i| i.author.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &authors)
+        .await
+        .map_err(AppError::Internal)?;
+    for item in items.iter_mut() {
+        if let Some(b) = bylines.get(&item.author) {
+            item.author_name = b.name.clone();
+            item.author_avatar = b.avatar.clone();
+        }
+    }
+    items.sort_by(|a, b| b.published_ms.cmp(&a.published_ms).then_with(|| a.doc_id.cmp(&b.doc_id)));
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+/// GET `/api/identity/{root}/rooms/{author}/{doc}` - the room's door (CHAT.md, ruling 2):
+/// who may be in the room is who may open the post. An open room admits anyone; a sealed
+/// room admits whoever its seal admits, judged by the one gate with the room post as the
+/// key document. Entering notes the room as joined by link, so it lists from now on.
+async fn room_enter_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    hex_fixed::<32>(&author, "author root")?;
+    hex_fixed::<16>(&doc, "doc id")?;
+    let Some(h) = held_public_header(&state, &author, &doc).await? else {
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.routes.no-such-room-is-held",
+            "no such room is held here - its author may be unreachable"
+        )));
+    };
+    if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
+    }
+    if h.trusted_only && !crate::idface::seal_admits(&state, &author, &doc, &root, None).await {
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.routes.this-room-is-sealed",
+            "this room is sealed - its author shares it only with people they trust"
+        )));
+    }
+    let key = format!("{author}:{doc}");
+    let already = joined_rooms(&data).await?.iter().any(|(a, d)| *a == author && *d == doc);
+    if !already && author != root {
+        data.private_registers(ROOMS_JOINED)
+            .set(&key, &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string())
+            .await?;
+    }
+    // The node keeps an opened room pulled for a while (CHAT.md, slice 2).
+    crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({
+        "author": author,
+        "doc_id": doc,
+        "title": h.title,
+        "trusted_only": if h.trusted_only { Some(true) } else { None },
+        "onward": if h.onward { Some(true) } else { None },
+        "published_ms": h.genesis_ms.unwrap_or(0),
+        "mine": author == root,
+        "joined": author != root,
+    })))
+}
+
+/// DELETE `/api/identity/{root}/rooms/{author}/{doc}` - leave (CHAT.md, ruling 9): local,
+/// first-class, and only the link-joined note to forget here; a room a followed author
+/// posted stays in the list as long as the follow does, since the list is the feed's.
+async fn room_leave_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let key = format!("{author}:{doc}");
+    if joined_rooms(&data).await?.iter().any(|(a, d)| *a == author && *d == doc) {
+        data.private_registers(ROOMS_JOINED).set(&key, "").await?;
+    }
+    crate::chat::close_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "left": true })))
+}
+
+/// The room's door, for the message doors: admitted or refused with the same words the
+/// enter door uses.
+async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> Result<[u8; 16], AppError> {
+    let doc_id = hex_fixed::<16>(doc, "doc id")?;
+    hex_fixed::<32>(author, "author root")?;
+    let Some((h, _)) = crate::chat::room_head(state, author, &doc_id).await else {
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.routes.no-such-room-is-held",
+            "no such room is held here - its author may be unreachable"
+        )));
+    };
+    if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
+    }
+    if h.trusted_only && author != root && !crate::idface::seal_admits(state, author, doc, root, None).await {
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.routes.this-room-is-sealed",
+            "this room is sealed - its author shares it only with people they trust"
+        )));
+    }
+    Ok(doc_id)
+}
+
+#[derive(Deserialize)]
+struct SayRequest {
+    words: String,
+}
+
+#[derive(Deserialize)]
+struct HistoryQuery {
+    before_ms: Option<i64>,
+    limit: Option<i64>,
+}
+
+/// POST `/api/identity/{root}/rooms/{author}/{doc}/messages` - say one thing (CHAT.md,
+/// ruling 3): an entry on this persona's own chain, on the room's lane.
+async fn room_say_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+    Json(req): Json<SayRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words).await?;
+    Ok(Json(serde_json::json!({ "seq": seq, "said_ms": said_ms })))
+}
+
+/// GET `/api/identity/{root}/rooms/{author}/{doc}/messages` - the room's recent history as
+/// this node holds it, newest first; `?before_ms=` pages back.
+async fn room_history_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+    axum::extract::Query(q): axum::extract::Query<HistoryQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    let (items, closed) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
+    Ok(Json(serde_json::json!({ "items": items, "closed": closed })))
+}
+
+/// POST `/api/identity/{root}/rooms/{author}/{doc}/sync` - pull the room now: the directory
+/// from the creator's node, then each speaker's chain (CHAT.md, ruling 4).
+async fn room_sync_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    let n = crate::chat::sync_room(&state, &root, &author, &doc_id).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "exchanged": n })))
 }
 
 /// GET `/api/identity/{root}/feed/labels` - the facets (2026-09-07): every bucket and every
@@ -1528,6 +1830,9 @@ struct PublishRequest {
     /// The browser's `getTimezoneOffset()` at publish (PUBLISH.md): the preferred date is
     /// the author's LOCAL claim, and this is what makes it one stamp for every reader.
     tz_offset_min: Option<i32>,
+    /// A ROOM (CHAT.md, ruling 1): publish this Marquee draft as a chat room - its title
+    /// the name, its words the description. Once a room, always a room.
+    room: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1992,7 +2297,14 @@ async fn publish_handler(
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of, onward };
+    let room = req.as_ref().and_then(|b| b.room).unwrap_or(false);
+    if room && reply.is_some() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-room-is-not-a-reply",
+            "a room is a post of its own, not a reply"
+        )));
+    }
+    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of, onward, room };
     // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
     // until the day. The plan lives on the draft's private meta - device-durable - naming
     // this device's leaf as the one that mints, and the sweep does the rest.

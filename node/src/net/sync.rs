@@ -72,8 +72,13 @@ pub fn is_private_service(svc: u32) -> bool {
 /// talking to each other behind the member-proof gate, and the worst a gap can hide is a
 /// notice nobody kept. Widening this list is a design act, not a convenience.
 pub fn service_allows_suffix(svc: u32) -> bool {
-    svc == service::INBOX_TRUSTED || svc == service::INBOX_STRANGER
+    svc == service::INBOX_TRUSTED || svc == service::INBOX_STRANGER || svc == service::CHAT
 }
+
+/// The services a room-scoped exchange carries (CHAT.md, rulings 4 and 9): the room chain,
+/// and the identity and profile at headers depth that its readers need to verify and name
+/// the speaker - nothing else of theirs.
+pub const ROOM_SCOPE: &[u32] = &[service::IDENTITY_PUBLIC, service::PROFILE_PUBLIC, service::CHAT];
 
 /// The content chains a FOLLOW may hold as a suffix (PROJECT_PLAN's Peeks, ruling 8, the design act the
 /// suffix list's own comment named): the posts chain, on a persona this node does not host.
@@ -108,14 +113,22 @@ pub struct Ask {
 /// memo_chains` carries the full "lags but never leads" argument. The scan survives as the
 /// fallback for handles with no memo attached - bare test databases, and `node.db` itself.
 /// A frontier list narrowed to a Hello's scope - empty scope means everything, unchanged.
-fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32]) -> Vec<Frontier> {
-    if wanted.is_empty() {
-        return frontiers;
-    }
+fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32], instances: &[[u8; 16]]) -> Vec<Frontier> {
     frontiers
         .into_iter()
-        .filter(|f| wanted.contains(&f.service))
+        .filter(|f| wanted.is_empty() || wanted.contains(&f.service))
+        .filter(|f| instance_in_scope(f.instance, instances))
         .collect()
+}
+
+/// A per-instance chain travels only on an exchange that names its instance (CHAT.md,
+/// ruling 4 - a room's lane, never a persona's every room); a chain with none is in every
+/// scope.
+fn instance_in_scope(instance: Option<[u8; 16]>, instances: &[[u8; 16]]) -> bool {
+    match instance {
+        None => true,
+        Some(i) => instances.contains(&i),
+    }
 }
 
 pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
@@ -180,17 +193,19 @@ const SEND_PAGE_ENTRIES: usize = 512;
 /// Stream every stored entry the peer's frontiers say it lacks, identity chains first (service
 /// ascending puts service 0 at the front), each chain in seq order, a page at a time. Returns
 /// entries sent. Private chains are streamed only to member-proven peers.
+#[allow(clippy::too_many_arguments)]
 async fn send_missing(
     db: &Db,
     peer_frontiers: &[Frontier],
     send: &mut SendStream,
     include_private: bool,
     wanted: &[u32],
+    instances: &[[u8; 16]],
     ask: Ask,
     budget: &mut crate::net::admission::Budget,
 ) -> Result<(u64, bool)> {
     let mut sent = 0u64;
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, ask).await?;
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, instances, ask).await?;
     while let Some(bytes) = missing.next().await? {
         // The send budget (PROJECT_PLAN's Peeks, ruling 2): short of the peer's need is a pass, not a
         // failure - they will see they are still behind and come back.
@@ -256,11 +271,12 @@ impl<'a> MissingEntries<'a> {
         peer_frontiers: &[Frontier],
         include_private: bool,
         wanted: &[u32],
+        instances: &[[u8; 16]],
         ask: Ask,
     ) -> Result<MissingEntries<'a>> {
         Ok(MissingEntries {
             db,
-            chains: missing_plan(db, peer_frontiers, include_private, wanted, ask)
+            chains: missing_plan(db, peer_frontiers, include_private, wanted, instances, ask)
                 .await?
                 .into_iter(),
             current: None,
@@ -343,6 +359,7 @@ async fn missing_plan(
     peer_frontiers: &[Frontier],
     include_private: bool,
     wanted: &[u32],
+    instances: &[[u8; 16]],
     ask: Ask,
 ) -> Result<Vec<ChainSend>> {
     let peer: HashMap<ChainKey, (u64, [u8; 32])> = peer_frontiers
@@ -398,6 +415,10 @@ async fn missing_plan(
         // because a chain the peer's scoped frontiers never mentioned would otherwise read
         // as "peer lacks everything" and ship whole.
         if !wanted.is_empty() && !wanted.contains(&(svc as u32)) {
+            continue;
+        }
+        // A room's chain travels only on the room's lane (CHAT.md, ruling 4).
+        if !instance_in_scope(instance, instances) {
             continue;
         }
         let author = pubkey::decode(&author_hex)
@@ -532,7 +553,7 @@ pub(crate) async fn missing_for_peer(
     wanted: &[u32],
 ) -> Result<Vec<Vec<u8>>> {
     let mut out = Vec::new();
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, Ask::default()).await?;
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, &[], Ask::default()).await?;
     while let Some(bytes) = missing.next().await? {
         out.push(bytes);
     }
@@ -1554,7 +1575,19 @@ pub async fn sync_with_peer_scoped(
     // The ordinary follow asks at the follow ceiling (PROJECT_PLAN's Peeks, ruling 8); a scoped exchange
     // that excludes the posts chain is unaffected by it.
     let ask = Ask { ceiling: state.config.follow_posts_ceiling, below: 0 };
-    sync_with_peer_asking(state, root_hex, addr, wanted, ask).await
+    sync_with_peer_asking(state, root_hex, addr, wanted, &[], ask).await
+}
+
+/// A room-scoped exchange (CHAT.md, ruling 4): one persona's chain for ONE room, with the
+/// identity and profile its readers need, and nothing else of theirs. Whole, never
+/// ceilinged - the room's budget is what bounds it (ruling 6).
+pub async fn sync_room_with_peer(
+    state: &AppState,
+    root_hex: &str,
+    addr: EndpointAddr,
+    room: [u8; 16],
+) -> Result<ExchangeStats> {
+    sync_with_peer_asking(state, root_hex, addr, ROOM_SCOPE, &[room], Ask::default()).await
 }
 
 /// `sync_with_peer_scoped` with the depth named (PROJECT_PLAN's Peeks, slice 5): `below` asks the peer for
@@ -1564,6 +1597,7 @@ pub async fn sync_with_peer_asking(
     root_hex: &str,
     addr: EndpointAddr,
     wanted: &[u32],
+    instances: &[[u8; 16]],
     ask: Ask,
 ) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
@@ -1579,7 +1613,7 @@ pub async fn sync_with_peer_asking(
     // their WAIT and detaches the work; this bounds the work. Over it, the connection is
     // closed - a trickle is not an exchange.
     let wall = state.admission.limits().exchange_wall_clock;
-    match tokio::time::timeout(wall, exchange_on(state, root_hex, &conn, addr, wanted, ask, root)).await {
+    match tokio::time::timeout(wall, exchange_on(state, root_hex, &conn, addr, wanted, instances, ask, root)).await {
         Ok(result) => result,
         Err(_) => {
             conn.close(2u8.into(), b"wall clock");
@@ -1590,12 +1624,14 @@ pub async fn sync_with_peer_asking(
 
 /// The exchange proper, on an open connection - see `sync_with_peer_scoped`, which owns the
 /// dial and the wall clock around this.
+#[allow(clippy::too_many_arguments)]
 async fn exchange_on(
     state: &AppState,
     root_hex: &str,
     conn: &Connection,
     addr: EndpointAddr,
     wanted: &[u32],
+    instances: &[[u8; 16]],
     ask: Ask,
     root: [u8; 32],
 ) -> Result<ExchangeStats> {
@@ -1616,7 +1652,7 @@ async fn exchange_on(
         Some(db) => local_frontiers(db, false).await?,
         None => Vec::new(),
     };
-    let frontiers = scoped_frontiers(frontiers, wanted);
+    let frontiers = scoped_frontiers(frontiers, wanted, instances);
     write_frame(
         &mut send,
         &SyncMessage::Hello {
@@ -1626,6 +1662,7 @@ async fn exchange_on(
             wanted: wanted.to_vec(),
             ceiling: ask.ceiling,
             below: ask.below,
+            instances: instances.to_vec(),
         },
     )
     .await?;
@@ -1728,7 +1765,7 @@ async fn exchange_on(
 
     // Now send what the peer lacks - private chains only to a proven member.
     let (sent, _cut_send) =
-        send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted, Ask::default(), &mut send_budget).await?;
+        send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted, instances, Ask::default(), &mut send_budget).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -1883,7 +1920,7 @@ async fn serve_on(
     // `scope` is the requester's service scope (Hello `wanted`, empty = everything) -
     // distinct from the serve-consent `wanted` gate below, which answers a different
     // question ("do we serve this persona at all").
-    let (root, peer_frontiers, peer_proof, scope, ask) = match hello {
+    let (root, peer_frontiers, peer_proof, scope, ask, instances) = match hello {
         Some(SyncMessage::Hello {
             root,
             frontiers,
@@ -1891,10 +1928,16 @@ async fn serve_on(
             wanted,
             ceiling,
             below,
-        }) => (root, frontiers, proof, wanted, Ask { ceiling, below }),
+            instances,
+        }) => (root, frontiers, proof, wanted, Ask { ceiling, below }, instances),
         other => bail!("expected Hello, got {other:?}"),
     };
     let root_hex = hex::encode(root);
+    // A room-scoped exchange (CHAT.md, ruling 4): a persona nobody here follows still has a
+    // lane here when the room named is one this node is in - a hosted persona's room, or
+    // one a hosted persona entered. That is how a participant's chain reaches the creator's
+    // node, and how a reader pulls each participant's chain from it.
+    let room_ok = !instances.is_empty() && crate::chat::rooms_here(&state, &instances).await;
 
     // Serve identities this node agents - and ACCEPT exchanges for personas someone here
     // WANTS: a followed or previously-fetched persona's updates are welcome, which is how a
@@ -1909,7 +1952,8 @@ async fn serve_on(
     let followers = crate::net::subscriptions::followers_of(&state.node_db, &root_hex).await?;
     let wanted = agented
         || !followers.is_empty()
-        || crate::idface::has_fetched(&state.node_db, &root_hex).await?;
+        || crate::idface::has_fetched(&state.node_db, &root_hex).await?
+        || room_ok;
     if !wanted {
         write_frame(
             &mut send,
@@ -1920,6 +1964,7 @@ async fn serve_on(
                 wanted: scope.clone(),
                 ceiling: 0,
                 below: 0,
+                instances: Vec::new(),
             },
         )
         .await?;
@@ -1942,7 +1987,17 @@ async fn serve_on(
     // pusher offers - the exchange narrows to the peek's chains in both directions, and the
     // gate refuses anything past them.
     let peek = crate::idface::peek_held(&state, &root_hex).await;
-    let scope: Vec<u32> = if peek {
+    // A persona held here ONLY for a room (room_ok, neither hosted nor followed) is held at
+    // the room's depth (CHAT.md, ruling 9): its identity and profile at headers depth, and
+    // the room chain - the room scope, whatever the peer offers.
+    let room_only = room_ok && !agented && followers.is_empty();
+    let scope: Vec<u32> = if room_only {
+        if scope.is_empty() {
+            ROOM_SCOPE.to_vec()
+        } else {
+            scope.into_iter().filter(|s| ROOM_SCOPE.contains(s)).collect()
+        }
+    } else if peek {
         if scope.is_empty() {
             PEEK_SCOPE.to_vec()
         } else {
@@ -1951,7 +2006,17 @@ async fn serve_on(
     } else {
         scope
     };
-    let allowed: Option<&[u32]> = if peek { Some(PEEK_SCOPE) } else { None };
+    let allowed: Option<&[u32]> = if room_only {
+        Some(ROOM_SCOPE)
+    } else if peek {
+        Some(PEEK_SCOPE)
+    } else {
+        None
+    };
+    // The room's door at the lane (CHAT.md, ruling 4): a sealed room's chains go only to a
+    // dialer serving a persona the seal admits; the instances it may not hold leave the
+    // scope, so neither side claims nor sends them.
+    let instances = crate::chat::instances_dialer_may_hold(&state, &instances, &hex::encode(peer_id)).await;
 
     // They dialed us and named this persona: that is a demand edge, recorded before anything
     // else happens because the asking is the fact, whatever the exchange goes on to transfer.
@@ -1994,17 +2059,18 @@ async fn serve_on(
             root,
             // Scoped to the requester's ask: a scoped exchange discloses no frontier
             // metadata beyond the services it named.
-            frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope),
+            frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope, &instances),
             proof: our_member_proof(&state, root, &our_id, &peer_id).await,
             wanted: scope.clone(),
             ceiling: 0,
             below: 0,
+            instances: instances.clone(),
         },
     )
     .await?;
     let mut send_budget = state.admission.budget();
     let (sent, _cut_send) =
-        send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope, ask, &mut send_budget).await?;
+        send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope, &instances, ask, &mut send_budget).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -2307,6 +2373,30 @@ pub async fn endpoint_serves_any(
 }
 
 /// Known peer endpoint ids for an identity.
+/// The personas one endpoint serves, per the peer ledger - the inverse of `peers_for`,
+/// for a gate that has the dialer in hand and asks who it speaks for (the room lane's
+/// sealed-room door, CHAT.md ruling 4).
+pub async fn roots_served_by(node_db: &Db, endpoint_id: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT root_pubkey FROM identity_peers WHERE endpoint_id = ?1",
+            (endpoint_id,),
+        )
+        .await
+        .context("listing the personas an endpoint serves")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
+/// An endpoint id as the ledger spells it, from the hex form a connection hands over.
+pub fn endpoint_to_id(peer_hex: &str) -> String {
+    hex::decode(peer_hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        .and_then(|b| iroh::PublicKey::from_bytes(&b).ok())
+        .map(|k| k.to_string())
+        .unwrap_or_default()
+}
+
 pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(
@@ -3672,8 +3762,8 @@ mod tests {
                 .map(|c| (c.author_hex.clone(), c.service, c.from_seq))
                 .collect()
         };
-        let from_memo = missing_plan(&memoed, &[], true, &[], Ask::default()).await.unwrap();
-        let from_scan = missing_plan(&bare, &[], true, &[], Ask::default()).await.unwrap();
+        let from_memo = missing_plan(&memoed, &[], true, &[], &[], Ask::default()).await.unwrap();
+        let from_scan = missing_plan(&bare, &[], true, &[], &[], Ask::default()).await.unwrap();
 
         assert!(!from_memo.is_empty(), "the memo knows which chains we hold");
         assert_eq!(

@@ -10,8 +10,37 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 759 phrases across 56 files.
+// 800 phrases across 58 files.
 export default {
+    // --- node/js/apps/chat.js ---
+    'apps.chat.a-sealed-room': 'a sealed room',
+    'apps.chat.an-unnamed-room': 'an unnamed room',
+    'apps.chat.sealed-room-title': 'the author shares this room only with people they trust',
+    'apps.chat.trusted-and-onward': 'trusted, and onward',
+    'apps.chat.sealed': 'sealed',
+    'apps.chat.joined-by-link': 'joined by link',
+    'apps.chat.yours': 'yours',
+    'apps.chat.a-name-for-the-room': 'a name for the room',
+    'apps.chat.what-is-it-for': 'what is it for? (optional)',
+    'apps.chat.only-show-to': 'only show to',
+    'apps.chat.everyone': 'everyone',
+    'apps.chat.people-i-trust-and-onward': 'people I trust, and onward',
+    'apps.chat.people-i-trust': 'people I trust',
+    'apps.chat.opening': 'opening…',
+    'apps.chat.open-a-room': 'open a room',
+    'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
+    'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
+    'apps.chat.knocking': 'knocking…',
+    'apps.chat.this-room-is-not-open-to-you': 'this room is not open to you',
+    'apps.chat.back-to-your-rooms': 'back to your rooms',
+    'apps.chat.the-rooms-post': "the room's post",
+    'apps.chat.leave': 'leave',
+    'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
+    'apps.chat.this-room-is-closed': 'this room is closed - the conversation ended, and the record stands',
+    'apps.chat.say-something': 'say something…',
+    'apps.chat.send': 'send',
+    'apps.chat.here-now': 'here now',
+
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
     'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
@@ -359,6 +388,7 @@ export default {
     'facets.kind-replies': 'replies',
     'facets.kind-rebroadcasts': 'rebroadcasts',
     'facets.kind-books': 'books',
+    'facets.kind-rooms': 'rooms',
     'facets.and-n-more': 'and {n} more…',
     'facets.fewer': 'fewer',
     'facets.kinds': 'show',
@@ -610,6 +640,8 @@ export default {
     'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
+    'postentry.a-room': 'a room',
+    'postentry.enter-the-room': 'enter the room',
     'postentry.the-whole-thing': 'the whole thing',
     'postentry.1-reply': '1 reply',
     'postentry.n-replies': '{n} replies',
@@ -688,6 +720,15 @@ export default {
     'auth.routes.only-a-nodeadmin-may-grant': 'only a node_admin may grant or revoke node_admin',
     'auth.routes.no-account-3': 'no account "{username}"',
 
+    // --- node/src/chat.rs ---
+    'chat.say-something': 'say something',
+    'chat.that-is-too-long-for-one-message': 'that is too long for one message',
+    'chat.no-such-room-is-held-here': 'no such room is held here',
+    'chat.that-post-is-not-a-room': 'that post is not a room',
+    'chat.this-room-is-closed': 'this room is closed - the conversation ended, and the record stands',
+    'chat.bad-room-author': 'bad room author',
+    'chat.the-rooms-key-hasnt-arrived': "the room's key hasn't arrived here - the words would be unreadable",
+
     // --- node/src/identity.rs ---
     'identity.recovery-failed': 'recovery failed',
     'identity.identity-not-found': 'identity not found',
@@ -711,6 +752,9 @@ export default {
 
     // --- node/src/identity/routes.rs ---
     'identity.routes.not-found': 'not found',
+    'identity.routes.no-such-room-is-held': 'no such room is held here - its author may be unreachable',
+    'identity.routes.that-post-is-not-a-room': 'that post is not a room',
+    'identity.routes.this-room-is-sealed': 'this room is sealed - its author shares it only with people they trust',
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
@@ -720,6 +764,7 @@ export default {
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
     'identity.routes.mention-someone-first': 'mention someone first - a post for the people mentioned needs a user card in the words',
+    'identity.routes.a-room-is-not-a-reply': 'a room is a post of its own, not a reply',
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",

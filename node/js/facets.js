@@ -37,6 +37,7 @@ const KIND_NAMES = {
     reply: () => t('facets.kind-replies', 'replies'),
     rebroadcast: () => t('facets.kind-rebroadcasts', 'rebroadcasts'),
     book: () => t('facets.kind-books', 'books'),
+    room: () => t('facets.kind-rooms', 'rooms'),
 };
 
 const FacetRow = ({ label, items, picked, onToggle, names }) => {

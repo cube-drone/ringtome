@@ -73,6 +73,12 @@ pub mod service {
     /// encrypted chain `service` is the only cleartext partition key, so co-located annotations
     /// would tax every small-fact read with decrypt-everything, forever.
     pub const DOC_META_PRIVATE: u32 = 7;
+    /// Chat (CHAT.md, ruling 3): a room's messages, one chain per `(key, CHAT, room id)` -
+    /// the first per-instance service, the instance being the room post's id. Public in the
+    /// gate's sense (never member-only encrypted; a sealed room's messages are ciphertext
+    /// under the room's key, as its body is), gated at the sync lane by the room's door
+    /// (ruling 4), pruned by policy to the room's budget (ruling 6) so it syncs as a suffix.
+    pub const CHAT: u32 = 13;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -89,6 +95,7 @@ pub mod service {
             GENERAL_PRIVATE => "general-private",
             DOCUMENTS_PRIVATE => "documents-private",
             DOC_META_PRIVATE => "doc-meta-private",
+            CHAT => "chat",
             _ => "unknown-service",
         }
     }
@@ -132,6 +139,8 @@ pub mod entry_type {
     pub const POST_RETRACT: u32 = 11;
     /// One public annotation statement (`PublicAnnotation`), on `ANNOTATIONS_PUBLIC`.
     pub const PUBLIC_ANNOTATION: u32 = 12;
+    /// One chat message (`ChatMessage`), on a `CHAT` chain whose instance is the room.
+    pub const CHAT_MESSAGE: u32 = 13;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -147,6 +156,7 @@ pub mod entry_type {
             PUBLIC_ANNOTATION => "public-annotation",
             PUBLIC_EDGE => "public-edge",
             INBOX_NOTICE => "inbox-notice",
+            CHAT_MESSAGE => "chat-message",
             _ => "unknown-type",
         }
     }
@@ -185,6 +195,11 @@ pub mod doc_format {
     /// composed taxonomy as JSON - sections, order, page references by public id - and the
     /// reader is a browser over it. Public only; never a private document's format.
     pub const BOOK: u64 = 6;
+    /// A ROOM (CHAT.md, ruling 1): a real-time chat room, posted as a post. The title is
+    /// the room's name and the body its description (Marquee); who may see the post may be
+    /// in the room. Public only; never a private document's format - the draft is Marquee
+    /// and the publish says "room".
+    pub const ROOM: u64 = 7;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key
@@ -1428,9 +1443,88 @@ impl PublicAnnotation {
     }
 }
 
+/// Payload of a `chat-message` entry (CHAT.md, ruling 3): one message in one room. The room
+/// is the chain's instance; the room's AUTHOR rides here, since a room id alone does not
+/// name whose post it is. The words are Marquee - or, in a sealed room, the ciphertext of
+/// the words under the room post's key (the sealed body's own sealing), which the reader
+/// opens with the key the room's door hands out.
+///
+/// Encoding: integer-keyed map `{0: bstr(32) room_author, 1: bstr body, 2: uint sealed}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatMessage {
+    pub room_author: [u8; 32],
+    pub body: Vec<u8>,
+    pub sealed: bool,
+}
+
+impl ChatMessage {
+    /// A message's words, at most: comfortably under the inline payload cap with the
+    /// sealing's overhead, and long enough for anything said in a room.
+    pub const MAX_BODY_BYTES: usize = 4096;
+
+    fn well_formed(&self) -> Result<(), ProtoError> {
+        if self.body.is_empty() {
+            return Err(ProtoError::BadEntry("a chat message says nothing"));
+        }
+        if self.body.len() > Self::MAX_BODY_BYTES + 64 {
+            return Err(ProtoError::BadEntry("a chat message is too long"));
+        }
+        Ok(())
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        self.well_formed()?;
+        let mut w = Writer::new();
+        w.map(3);
+        w.uint(0);
+        w.bytes(&self.room_author);
+        w.uint(1);
+        w.bytes(&self.body);
+        w.uint(2);
+        w.uint(u64::from(self.sealed));
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let mut room_author: Option<[u8; 32]> = None;
+        let mut body: Option<Vec<u8>> = None;
+        let mut sealed: Option<bool> = None;
+        while let Some(k) = map.next_key()? {
+            match k {
+                0 => room_author = Some(map.bytes_fixed::<32>()?),
+                1 => body = Some(map.bytes()?.to_vec()),
+                2 => sealed = Some(map.uint()? != 0),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        let out = Self {
+            room_author: room_author.ok_or(ProtoError::BadEntry("chat message missing room author"))?,
+            body: body.ok_or(ProtoError::BadEntry("chat message missing body"))?,
+            sealed: sealed.unwrap_or(false),
+        };
+        out.well_formed()?;
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_chat_message_round_trips_and_refuses_silence() {
+        let m = ChatMessage { room_author: [7u8; 32], body: b"hello the room".to_vec(), sealed: false };
+        assert_eq!(ChatMessage::decode(&m.encode().unwrap()).unwrap(), m);
+        let sealed = ChatMessage { room_author: [7u8; 32], body: vec![0xaa; 40], sealed: true };
+        assert_eq!(ChatMessage::decode(&sealed.encode().unwrap()).unwrap(), sealed);
+        let silent = ChatMessage { room_author: [7u8; 32], body: Vec::new(), sealed: false };
+        assert!(silent.encode().is_err());
+        let long = ChatMessage { room_author: [7u8; 32], body: vec![b'x'; ChatMessage::MAX_BODY_BYTES + 65], sealed: false };
+        assert!(long.encode().is_err());
+    }
 
     /// PROJECT_PLAN's Public annotations, slice 1: the statement round-trips, a retraction is the same shape
     /// absent, and the codec refuses what no well-behaved speaker could have minted.

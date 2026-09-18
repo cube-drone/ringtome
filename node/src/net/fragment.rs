@@ -94,6 +94,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantKey { author, doc_id, for_root }) => {
             answer_key(&state, &conn, &author, &doc_id, &for_root).await
         }
+        Some(FragmentMessage::WantRoom { author, doc_id, for_root }) => {
+            crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root).await
+        }
         Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
             // The author's thread door (PROJECT_PLAN's Replies slice 6): claims, never words, curated
             // by the author's own bit. A node that does not host this author answers an
@@ -200,6 +203,34 @@ async fn answer_key(
         tracing::debug!(author = %author_hex, %dialer, allowed = allowed_roots.len(),
             "key release refused: dialer not in any allowed party's peer ledger");
         refused
+    }
+}
+
+/// Ask one endpoint who has spoken in a room (CHAT.md, ruling 4): the creator's node is the
+/// directory of record. An empty list is "nobody yet" and "not for you" alike.
+pub async fn fetch_room(
+    state: &AppState,
+    endpoint_id: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+    for_root: &[u8; 32],
+) -> Result<Vec<[u8; 32]>> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for a room directory: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(
+        &mut send,
+        &FragmentMessage::WantRoom { author: *author, doc_id: *doc_id, for_root: *for_root },
+    )
+    .await?;
+    send.finish().ok();
+    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room directory timed out")??;
+    conn.close(0u8.into(), b"done");
+    match answer {
+        Some(FragmentMessage::Room { participants }) => Ok(participants),
+        other => Err(anyhow!("unexpected answer to a room directory ask: {other:?}")),
     }
 }
 

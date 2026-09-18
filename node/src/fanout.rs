@@ -1659,7 +1659,7 @@ pub async fn feed_page(
             .fetch_all(
                 "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
-                   AND format IN ('marquee', 'plaintext', 'book')
+                   AND format IN ('marquee', 'plaintext', 'book', 'room')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
                 (reader_root, limit),
             )
@@ -1671,7 +1671,7 @@ pub async fn feed_page(
             .fetch_all(
                 "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
-                   AND format IN ('marquee', 'plaintext', 'book')
+                   AND format IN ('marquee', 'plaintext', 'book', 'room')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
                  ORDER BY published_ms DESC, doc_id LIMIT ?4",
                 (reader_root, ms, doc.as_str(), limit),

@@ -41,6 +41,9 @@ pub const MAX_FRONTIERS: usize = 4096;
 /// (single digits), tight against a frame stuffed with garbage.
 pub const MAX_WANTED_SERVICES: usize = 32;
 
+/// Cap on a Hello's `instances` list: a room-scoped exchange names one room, a few at most.
+pub const MAX_WANTED_INSTANCES: usize = 32;
+
 const TAG_HELLO: u64 = 0;
 const TAG_ENTRY: u64 = 1;
 const TAG_DONE: u64 = 2;
@@ -148,6 +151,12 @@ pub enum SyncMessage {
         /// pre-ceiling shape (arity-5 Hellos decode to zeros).
         ceiling: u64,
         below: u64,
+        /// The instance scope (CHAT.md, ruling 4): when non-empty, the exchange carries a
+        /// per-instance service's chains only for these instances - a room's lane, and
+        /// nothing of the persona's other rooms - while chains with no instance (the
+        /// identity and profile the room's readers need) ride as the service scope allows.
+        /// Empty is every instance, the pre-rooms wire shape (arity-6 Hellos decode to it).
+        instances: Vec<[u8; 16]>,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -166,6 +175,7 @@ impl SyncMessage {
                 wanted,
                 ceiling,
                 below,
+                instances,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -173,7 +183,10 @@ impl SyncMessage {
                 if wanted.len() > MAX_WANTED_SERVICES {
                     return Err(ProtoError::BadEntry("too many wanted services"));
                 }
-                w.array(6);
+                if instances.len() > MAX_WANTED_INSTANCES {
+                    return Err(ProtoError::BadEntry("too many wanted instances"));
+                }
+                w.array(if instances.is_empty() { 6 } else { 7 });
                 w.uint(TAG_HELLO);
                 w.bytes(root);
                 w.array(frontiers.len() as u64);
@@ -209,6 +222,13 @@ impl SyncMessage {
                 w.array(2);
                 w.uint(*ceiling);
                 w.uint(*below);
+                // The instance slot, only when scoped: a room-scoped exchange.
+                if !instances.is_empty() {
+                    w.array(instances.len() as u64);
+                    for i in instances {
+                        w.bytes(i);
+                    }
+                }
             }
             SyncMessage::Entry(bytes) => {
                 if bytes.len() > MAX_ENTRY_BYTES {
@@ -233,7 +253,7 @@ impl SyncMessage {
         let mut r = Reader::new(bytes);
         let arity = r.array()?;
         let msg = match (r.uint()?, arity) {
-            (TAG_HELLO, arity @ 4..=6) => {
+            (TAG_HELLO, arity @ 4..=7) => {
                 let root = r.bytes_fixed::<32>()?;
                 let n = r.array()?;
                 if n > MAX_FRONTIERS as u64 {
@@ -293,13 +313,27 @@ impl SyncMessage {
                     Vec::new()
                 };
                 // Arity 6 carries the depth slot; older shapes mean "whole".
-                let (ceiling, below) = if arity == 6 {
+                let (ceiling, below) = if arity >= 6 {
                     if r.array()? != 2 {
                         return Err(ProtoError::BadEntry("depth must be [ceiling, below]"));
                     }
                     (r.uint()?, r.uint()?)
                 } else {
                     (0, 0)
+                };
+                // Arity 7 carries the instance scope (CHAT.md, ruling 4).
+                let instances = if arity == 7 {
+                    let n = r.array()?;
+                    if n > MAX_WANTED_INSTANCES as u64 {
+                        return Err(ProtoError::BadEntry("too many wanted instances"));
+                    }
+                    let mut list = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        list.push(r.bytes_fixed::<16>()?);
+                    }
+                    list
+                } else {
+                    Vec::new()
                 };
                 SyncMessage::Hello {
                     root,
@@ -308,6 +342,7 @@ impl SyncMessage {
                     wanted,
                     ceiling,
                     below,
+                    instances,
                 }
             }
             (TAG_ENTRY, 2) => {
@@ -363,6 +398,7 @@ mod tests {
             wanted: vec![],
             ceiling: 0,
             below: 0,
+            instances: vec![],
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -374,6 +410,7 @@ mod tests {
             wanted: vec![],
             ceiling: 0,
             below: 0,
+            instances: vec![],
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
@@ -382,6 +419,7 @@ mod tests {
             wanted: vec![0, 2],
             ceiling: 0,
             below: 0,
+            instances: vec![],
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -412,6 +450,7 @@ mod tests {
                 wanted: vec![],
                 ceiling: 0,
                 below: 0,
+                instances: vec![],
             }
         );
     }
@@ -425,6 +464,7 @@ mod tests {
             wanted: (0..(MAX_WANTED_SERVICES as u32 + 1)).collect(),
             ceiling: 0,
             below: 0,
+            instances: vec![],
         };
         assert_eq!(
             msg.encode(),
@@ -467,6 +507,7 @@ mod tests {
             wanted: vec![],
             ceiling: 0,
             below: 0,
+            instances: vec![],
         };
         assert!(bad.encode().is_err());
 

@@ -1166,6 +1166,19 @@ pub async fn held(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Optio
     Ok(row.map(|(title, format, _body_hash, _origin_root)| Fragment { title, format }))
 }
 
+/// The held fragment's signed entry, whole - for a reader that needs the entry's own stamp
+/// beside its header (the room's close, CHAT.md ruling 10).
+pub async fn held_entry(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Option<ringtome_proto::SignedEntry>> {
+    let row: Option<(Vec<u8>,)> = node_db
+        .fetch_optional(
+            "SELECT entry FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id),
+        )
+        .await
+        .context("reading a fragment's entry")?;
+    Ok(row.and_then(|(entry,)| ringtome_proto::SignedEntry::decode(&entry).ok()))
+}
+
 /// A fragment we can pass along, as the bytes a fragment response carries.
 ///
 /// **Relaying is the availability story**: a node that fetched a share can answer for it, so a

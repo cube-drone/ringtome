@@ -34,6 +34,8 @@ impl ShelfRow {
             "rebroadcast"
         } else if self.format.as_deref() == Some("book") {
             "book"
+        } else if self.format.as_deref() == Some("room") {
+            "room"
         } else if self.reply_to.is_some() {
             "reply"
         } else {
@@ -162,6 +164,20 @@ pub async fn listed(node_db: &Db, root: &str) -> Result<bool> {
         .await
         .context("reading a node listing")?;
     Ok(row.map(|(l,)| l != 0).unwrap_or(true))
+}
+
+/// The author of a room a hosted persona posted (CHAT.md, slice 2): the memo already
+/// holds every hosted persona's shelf, listed or not, so a room instance resolves to its
+/// author without opening a database.
+pub async fn room_author(node_db: &Db, doc_hex: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = node_db
+        .fetch_optional(
+            "SELECT author_root FROM node_shelf WHERE doc_id = ?1 AND format = 'room' AND via_root = '' LIMIT 1",
+            (doc_hex,),
+        )
+        .await
+        .context("finding a room's author on the node shelf")?;
+    Ok(row.map(|(a,)| a))
 }
 
 pub async fn set_listed(node_db: &Db, root: &str, on: bool) -> Result<()> {

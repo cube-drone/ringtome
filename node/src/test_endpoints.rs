@@ -97,6 +97,11 @@ pub async fn beat(
             tracing::info!(root = %r, fetched, behind = state.behind.is_behind(r), "TEST BEAT: pull-once");
             Ok(())
         }
+        ("room-sync", Some(r)) => {
+            let n = crate::chat::sync_open_rooms(&state, r).await?;
+            tracing::info!(root = %r, exchanged = n, "TEST BEAT: room-sync");
+            Ok(())
+        }
         ("fold", Some(r)) => {
             // The fold lane's drainable form: nudge (ledger leg included) and await the
             // run - the chain itself now lives in fold::run_chain, serialized per root,

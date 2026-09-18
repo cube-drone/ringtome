@@ -122,7 +122,17 @@ pub enum FragmentMessage {
     /// its own labels, so the shelf answer stays kilobytes whatever the history's size.
     WantShelf { author: [u8; 32], limit: u64 },
     Shelf { posts: Vec<[u8; 16]>, pinned: Vec<[u8; 16]> },
+    /// The room's directory (CHAT.md, ruling 4): who has spoken in `(author, doc_id)`, as
+    /// the answering node holds their room chains - the creator's node is the directory of
+    /// record, archiving every participant's chain. `for_root` is the persona asking; a
+    /// sealed room answers only a dialer serving a persona its seal admits.
+    WantRoom { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32] },
+    /// The participants' roots. Empty for "nobody yet" and "not for you" alike.
+    Room { participants: Vec<[u8; 32]> },
 }
+
+/// Cap on a room directory answer: the speaker ceiling (CHAT.md, ruling 6).
+pub const MAX_ROOM_PARTICIPANTS: usize = 1000;
 
 /// Cap on ids per shelf list, enforced at decode.
 pub const MAX_SHELF_IDS: usize = 64;
@@ -179,6 +189,8 @@ const TAG_WANT_KEY: u64 = 8;
 const TAG_KEY: u64 = 9;
 const TAG_WANT_SHELF: u64 = 10;
 const TAG_SHELF: u64 = 11;
+const TAG_WANT_ROOM: u64 = 12;
+const TAG_ROOM: u64 = 13;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -279,6 +291,21 @@ impl FragmentMessage {
                 w.array(2);
                 w.uint(TAG_KEY);
                 w.bytes(key);
+            }
+            Self::WantRoom { author, doc_id, for_root } => {
+                w.array(4);
+                w.uint(TAG_WANT_ROOM);
+                w.bytes(author);
+                w.bytes(doc_id);
+                w.bytes(for_root);
+            }
+            Self::Room { participants } => {
+                w.array(2);
+                w.uint(TAG_ROOM);
+                w.array(participants.len() as u64);
+                for p in participants {
+                    w.bytes(p);
+                }
             }
             Self::Replies { proofs, cursor } => {
                 w.array(3);
@@ -399,6 +426,22 @@ impl FragmentMessage {
                     return Err(ProtoError::BadEntry("a post key is 32 bytes or absent"));
                 }
                 Self::Key { key }
+            }
+            (TAG_WANT_ROOM, 4) => Self::WantRoom {
+                author: r.bytes_fixed::<32>()?,
+                doc_id: r.bytes_fixed::<16>()?,
+                for_root: r.bytes_fixed::<32>()?,
+            },
+            (TAG_ROOM, 2) => {
+                let count = r.array()?;
+                if count > MAX_ROOM_PARTICIPANTS as u64 {
+                    return Err(ProtoError::BadEntry("room directory too long"));
+                }
+                let mut participants = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    participants.push(r.bytes_fixed::<32>()?);
+                }
+                Self::Room { participants }
             }
             (TAG_WANT_REPLIES, 4) => Self::WantReplies {
                 author: r.bytes_fixed::<32>()?,

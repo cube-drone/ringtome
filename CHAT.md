@@ -33,7 +33,8 @@ node keeps its own room whole, which is where "all of it" lives.
    onward (ruling 7); shares allowed on an open or onward room and refused on any other
    sealed one (*Post visibility*); the feed, the shelf and the front page show it
    as a card that says "a room" and opens it. Deleting the post is the takedown every post has,
-   and a room whose post is gone is gone: no surface assembles it, and clients leave the space.
+   and a room whose post is gone is gone: no surface assembles it, and clients leave the space
+   (ruling 10 has the two powers, close and delete, and what each one honestly does).
 2. **Who may be in the room is who may open the post.** The seal's one question,
    `seal_admits(holder, key document, subject)`, is the room's door: an open room admits
    anyone; a sealed room admits whoever its seal admits, and the room's key IS the post's key.
@@ -119,6 +120,23 @@ node keeps its own room whole, which is where "all of it" lives.
    no longer mirrored here, and their mentions never ring. For an open room being flooded,
    leaving is the reader's remedy and deleting the room is the creator's; anything finer is
    open question 2.
+10. **Close and delete are two powers (settled 2026-09-18).** They answer different needs
+   and the post machinery already has the shape of each. **Close is the settled wish** on
+   the room post - the same flag that turns a post's comments off, set at any time through
+   the door that exists: the post stays, the history stays, every participant may still
+   read, and no honest client appends another message to any room chain, nor serves one
+   minted after the close. A wish, not cryptography, honoured exactly by honest parties.
+   It is the lifecycle act - the conversation ended, the record stands - and ruling 6's
+   archive keeps its promise through it. **Delete is the takedown every post has**, the
+   rarer and stronger act: the creator disowns the room and no honest surface assembles
+   it. What it does to the messages is stated honestly: it ORPHANS them, as a takedown
+   orphans replies. A room of twelve is twelve chains, single-writer; the creator can
+   strand the other eleven's words, never destroy them, and each participant's own
+   messages stay on their chain, retractable one by one (ruling 8). Neither power is
+   "close" collapsed into "delete": letting one person hide a whole conversation from
+   everyone else is a bigger power than deleting one's own post, and close gives the
+   creator the moderation outcome without it. Slice 2's message gate refuses an entry
+   whose room post is settled; the takedown's own machinery does the rest.
 
 ## Slices
 
@@ -131,11 +149,39 @@ node keeps its own room whole, which is where "all of it" lives.
 1. **The room post.** Format `room` on the wire, the mint, the card on the feed and the shelf,
    the share rule, the Chat app listing the rooms a persona may see, and the room's door
    (`seal_admits` with the room post as the key document). No messages yet: a room you can
-   enter and find empty.
+   enter and find empty. **Built 2026-09-18.** `doc_format::ROOM` (7); a Marquee draft in
+   the `chat` bucket publishes with `room: true` and the mint carries the format forward,
+   so once a room, always a room; the card says "a room" and opens it; the kind row and the
+   node shelf know the word. The Chat app (`/home/chat`) opens rooms with the composer's
+   audience list and lists the rooms a persona may see: its own, the ones its feed carries
+   through the feed's gate, and the ones it entered by link (a private `rooms` register,
+   emptied by leave). The door is `GET /rooms/{author}/{doc}`: an open room admits anyone
+   who holds the post, a sealed one whoever `seal_admits` admits with the room post as the
+   key document. The `rooms` suite: ada's open and sealed rooms; bea, trusted, lists and
+   enters both; cal, a stranger by link, enters the open one, is refused the sealed one, and
+   leaves; the share rule is the post's own.
 2. **The room lane.** The per-instance chain key in the proto crate and the store; the
    `CHAT_MESSAGE` entry type; the gated sync predicate; the room-floor retention with suffix
    admission; a `room_messages` memo folded from the chains; the door that serves a room's
    recent history. Messages arrive by sync alone, on the beat: slow, complete, and honest.
+   **Built 2026-09-18.** `service::CHAT` (13, public, suffixed) and `entry_type::CHAT_MESSAGE`
+   with a payload naming the room's author and carrying the words, or their ciphertext under
+   the room's key. The Hello gained an instance scope: a per-instance chain travels only on
+   an exchange that names its instance, so a room's lane never carries a persona's other
+   rooms, while the identity and profile ride beside it at headers depth (ruling 9). The
+   serve side accepts a room-scoped exchange for any persona when the room named is one this
+   node is in, holds such a persona at the room scope, and drops a sealed room's instances
+   for a dialer serving nobody its seal admits. A participant's node pushes its chain to the
+   creator's node after every message; a reader's node asks the creator's node who has
+   spoken (`WantRoom` on the fragment lane, under the room's door) and pulls each speaker's
+   chain from it, on entering, on a slow beat for rooms opened lately, and on demand. The
+   `room_messages` memo folds from every CHAT chain a node holds on the fold lane's CHAT leg
+   and prunes to the room budget beside the chains. Doors: say, history (sealed words opened
+   with the reader's key; nothing said after a close), sync. The `chat_lane` suite: a
+   follower's words reach the creator's node and the creator answers; a stranger by link
+   pulls both and is heard back; a sealed room's words open for the trusted reader and the
+   stranger may neither enter nor pull; closing refuses the next message and stands the
+   record.
 3. **Live.** iroh-gossip as a dependency; a topic per room; publish-after-append; verify and
    fold on receipt; presence and typing. The room view becomes live.
 4. **History.** The creator's node as archivist; scroll-back below the room's window; the

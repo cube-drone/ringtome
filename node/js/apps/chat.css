@@ -1,0 +1,277 @@
+/* Chat (CHAT.md): the rooms a persona may see, the form that opens one, and one room's
+ * view - a header, its words, an empty floor and a rail of who is here. */
+
+.chat-app,
+.chat-room {
+    max-width: var(--post-measure);
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.chat-new {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--surface);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
+    --j: 6px;
+    clip-path: var(--jag);
+    padding: 0.9rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.chat-new-name,
+.chat-new-words {
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.5rem;
+}
+
+.chat-new-words {
+    min-height: 3.5rem;
+    resize: vertical;
+}
+
+.chat-new-foot {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.chat-new-go {
+    margin-left: auto;
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    color: var(--bg);
+    padding: 0.4rem 0.8rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-new-go:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.chat-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.4rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.chat-row:hover {
+    background: var(--surface);
+}
+
+.chat-row-icon {
+    color: var(--ink-soft);
+    font-size: 1.4em;
+}
+
+.chat-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.chat-row-name {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.chat-row-by {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.85em;
+}
+
+.chat-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--muted);
+    padding: 2rem 0.5rem;
+}
+
+.chat-back {
+    color: var(--ink-soft);
+    text-decoration: none;
+}
+
+.chat-room-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.6rem;
+}
+
+.chat-room-name {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.chat-room-post,
+.chat-leave {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.85em;
+    color: var(--ink-soft);
+    background: none;
+    border: 1px solid var(--border);
+    --j: 4px;
+    clip-path: var(--jag-1);
+    padding: 0.2rem 0.6rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.chat-room-post + .chat-leave {
+    margin-left: 0;
+}
+
+.chat-room-words {
+    padding: 0.8rem 0.2rem;
+    color: var(--ink-soft);
+}
+
+.chat-room-body {
+    display: flex;
+    gap: 1rem;
+    min-height: 12rem;
+}
+
+.chat-messages {
+    flex: 1;
+}
+
+.chat-rail {
+    width: 10rem;
+    border-left: 1px solid var(--border);
+    padding-left: 0.8rem;
+}
+
+.chat-rail-head {
+    margin: 0 0 0.4rem;
+    font-size: 0.8em;
+    color: var(--muted);
+}
+
+/* The floor: messages oldest to newest, then the composer. */
+.chat-msg-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.chat-msg {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.chat-msg-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.chat-msg-when {
+    font-size: 0.75em;
+    color: var(--muted);
+}
+
+.chat-msg-words {
+    color: var(--ink);
+}
+
+.chat-msg-sealed {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.chat-closed {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--muted);
+    padding: 0.8rem 0.2rem;
+}
+
+.chat-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+}
+
+.chat-composer-words {
+    flex: 1;
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.5rem;
+    min-height: 2.6rem;
+    resize: vertical;
+}
+
+.chat-composer-send {
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    color: var(--bg);
+    padding: 0.5rem 0.9rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-composer-send:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* The room post's card: what it is, and the door in (postentry.js). */
+.room-card-foot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.6rem 0 0;
+    color: var(--ink-soft);
+    font-size: 0.9em;
+}
+
+.room-card-enter {
+    margin-left: auto;
+    color: var(--teal);
+}

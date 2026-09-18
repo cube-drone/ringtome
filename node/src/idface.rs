@@ -768,6 +768,7 @@ async fn fetch_foreign_with(
                         &exchange_root,
                         addr.clone(),
                         scope,
+                        &[],
                         ask,
                     )
                     .await?;
@@ -1919,9 +1920,12 @@ pub async fn id_labels(
 /// A shelf post's kind (search.rs KINDS): a book by its format, a reply by its link, a
 /// post otherwise; shares are not posts and are counted beside them.
 fn post_kind(p: &crate::record::documents::PublicDoc) -> &'static str {
-    if crate::record::documents::Format::from_wire(p.format) == crate::record::documents::Format::Book {
-        "book"
-    } else if p.reply_to.is_some() {
+    match crate::record::documents::Format::from_wire(p.format) {
+        crate::record::documents::Format::Book => return "book",
+        crate::record::documents::Format::Room => return "room",
+        _ => {}
+    }
+    if p.reply_to.is_some() {
         "reply"
     } else {
         "post"

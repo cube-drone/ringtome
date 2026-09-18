@@ -1388,6 +1388,26 @@ pub async fn entries_page(
         .collect()
 }
 
+/// Every chat message this database holds (CHAT.md, slice 2): each CHAT chain, in seq
+/// order - bounded by the room budget the retention pass keeps, never a whole history.
+pub async fn chat_entries(db: &Db) -> Result<Vec<SignedEntry>, AppError> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
+             ORDER BY author_pubkey, instance, seq",
+            (i64::from(service::CHAT), i64::from(entry_type::CHAT_MESSAGE)),
+        )
+        .await
+        .context("reading the chat chains")
+        .map_err(AppError::Internal)?;
+    rows.into_iter()
+        .map(|(bytes,)| {
+            SignedEntry::decode(&bytes)
+                .map_err(|e| AppError::Internal(anyhow!("stored chat entry fails decode: {e}")))
+        })
+        .collect()
+}
+
 /// The stored head of every chain a key has written: `(service, instance, seq, head_hash)` -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(

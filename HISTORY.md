@@ -9254,3 +9254,39 @@ carries it. `imaol::append_on` writes a per-instance chain; `append` is the same
 none. The crown keeps a ceiling per `(key, service, instance)`. The fold reads that walk a
 service's entries by `(author, seq)` are untouched: no service with instances exists yet, and
 the room's fold will design its own per-instance memo when it arrives.
+
+## 2026-09-18: the room post
+
+CHAT.md's slice 1: a room is a post. `doc_format::ROOM` on the wire; a Marquee draft filed in
+the new Chat app's `chat` bucket publishes with `room: true`, the store swaps the post's
+format for the room's while the draft stays Marquee, and the mint carries the format forward
+on re-publication - once a room, always a room; a room that names a parent is refused. The
+public shelf's text-only filter and the feed page's clause learned the word, as did the kind
+row, the node shelf and the shelf's post kind. Three doors on the persona: the rooms it may
+see (its own, its feed's through the feed's gate, and those entered by link - a private
+`rooms` register), the room's door (`seal_admits` with the room post as the key document; an
+open room admits anyone holding the post, and entering notes the link), and leave. On the
+client a Chat app tile, a new-room form wearing the composer's audience list, the rooms
+list with each row's name fetched through the body door when sealed, and one room's page:
+its words, an empty floor and a rail with just you. The room post's card says "a room" and
+opens it. The `rooms` suite covers the author, the trusted follower, the stranger by link and
+the share rule.
+
+## 2026-09-18: close and delete, and the room lane
+
+Two powers on a room (CHAT.md, ruling 10): close is the settled wish on the room post - the
+record stands, no honest client appends - and delete is the takedown every post has, which
+orphans the messages rather than destroying them, since they live on each speaker's own
+chain. A wish-only re-publish used to bounce as "same words"; the public head now carries the
+settled wish and a newly set wish mints.
+
+Then CHAT.md's slice 2, the room lane: a message is an entry on the speaker's own chain, on
+the room's instance, sealed under the room's key when the room is. The chat service and
+message type on the wire; the Hello's instance scope, so a per-instance chain travels only
+on an exchange naming its instance; the room directory on the fragment lane; the serve
+side's room gate and the sealed-room door at the lane; the `room_messages` memo (node
+schema 50) folded on the fold lane's CHAT leg and pruned to the ten-thousand budget; a
+participant's push to the creator's node after every message and a reader's pull of every
+speaker's chain from it, on entering, on a twenty-second beat and on demand; the say,
+history and sync doors; the room's floor and composer on the client. The `chat_lane` suite
+walks a follower, the creator, a stranger by link, a sealed room and a close.

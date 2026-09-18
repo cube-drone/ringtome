@@ -39,6 +39,10 @@ pub enum Format {
     WebmAv1,
     /// Ogg Opus: the canonical audio form. `<audio>`.
     OggOpus,
+    /// A chat room (CHAT.md, ruling 1): a post whose title names the room and whose body
+    /// (Marquee) describes it. Public only, minted from a Marquee draft by a publish that
+    /// says so; text for every door that serves words.
+    Room,
     /// A notebook published whole (PROJECT_PLAN's Books): the published tree as JSON. Public only.
     Book,
 }
@@ -54,6 +58,7 @@ impl Format {
             Some(doc_format::WEBM_AV1) => Format::WebmAv1,
             Some(doc_format::OGG_OPUS) => Format::OggOpus,
             Some(doc_format::BOOK) => Format::Book,
+            Some(doc_format::ROOM) => Format::Room,
             _ => Format::Plaintext,
         }
     }
@@ -67,6 +72,7 @@ impl Format {
             Format::WebmAv1 => Some(doc_format::WEBM_AV1),
             Format::OggOpus => Some(doc_format::OGG_OPUS),
             Format::Book => Some(doc_format::BOOK),
+            Format::Room => Some(doc_format::ROOM),
         }
     }
 
@@ -79,6 +85,7 @@ impl Format {
             Format::WebmAv1 => "webm",
             Format::OggOpus => "opus",
             Format::Book => "book",
+            Format::Room => "room",
         }
     }
 
@@ -91,6 +98,7 @@ impl Format {
             "webm" => Some(Format::WebmAv1),
             "opus" => Some(Format::OggOpus),
             "book" => Some(Format::Book),
+            "room" => Some(Format::Room),
             _ => None,
         }
     }
@@ -98,7 +106,7 @@ impl Format {
     /// Text formats merge line-wise and present conflicts inline; media formats are opaque
     /// (keep-both on divergence, served as bytes). This is the behavioral fork.
     pub fn is_mergeable_text(self) -> bool {
-        matches!(self, Format::Plaintext | Format::Marquee)
+        matches!(self, Format::Plaintext | Format::Marquee | Format::Room)
     }
 
     /// The Content-Type for serving this body as bytes.
@@ -111,6 +119,7 @@ impl Format {
             Format::WebmAv1 => "video/webm",
             Format::OggOpus => "audio/ogg",
             Format::Book => "application/json",
+            Format::Room => "text/plain; charset=utf-8",
         }
     }
 }
@@ -769,6 +778,7 @@ pub async fn save_public_text(
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
     let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, seal_of, onward, dated_ms, part_of } = text;
+    let mut format = format;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
@@ -789,15 +799,20 @@ pub async fn save_public_text(
                     ringtome_proto::Payload::Inline(payload) => {
                         DocHeaderPlain::decode(payload)
                             .ok()
-                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only, h.onward, h.part_of))
+                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only, h.onward, h.part_of, h.format))
                     }
                     _ => None,
                 },
                 None => None,
             };
-            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted, carried_onward, carried_part_of) =
+            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted, carried_onward, carried_part_of, carried_format) =
                 carried.unwrap_or_default();
             inherited_part_of = carried_part_of;
+            // Once a room, always a room (CHAT.md, ruling 1): the format is the post's
+            // identity, carried like the reply link, whatever the draft says this time.
+            if carried_format == Some(ringtome_proto::registry::doc_format::ROOM) {
+                format = Format::Room;
+            }
             let genesis = match carried_genesis {
                 Some(g) => g,
                 None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
@@ -920,6 +935,9 @@ pub struct PublishFlags {
     pub dated_ms: Option<i64>,
     /// The book this publish is a page of (PROJECT_PLAN's Books, ruling 4); the rollout sets it.
     pub part_of: Option<[u8; 16]>,
+    /// A ROOM (CHAT.md, ruling 1): the Marquee draft publishes with the `room` format, its
+    /// title the room's name. Carried on re-publication: once a room, always a room.
+    pub room: bool,
 }
 
 /// The draft's `display_date` claim as the header's stamp (PUBLISH.md). The claim is in the
@@ -1097,7 +1115,7 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
     if quarantined(db).await? {
         return Ok(None);
     }
-    let text_only = format!("(format IS NULL OR format IN ({}, {}))", doc_format::MARQUEE, doc_format::BOOK);
+    let text_only = format!("(format IS NULL OR format IN ({}, {}, {}))", doc_format::MARQUEE, doc_format::BOOK, doc_format::ROOM);
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
         Vec<u8>,
@@ -1202,7 +1220,7 @@ pub async fn public_docs(
         return Ok(Vec::new());
     }
     // NULL is plaintext (absent on the wire); the only other text format is marquee.
-    let text_only = format!("(format IS NULL OR format IN ({}, {}))", doc_format::MARQUEE, doc_format::BOOK);
+    let text_only = format!("(format IS NULL OR format IN ({}, {}, {}))", doc_format::MARQUEE, doc_format::BOOK, doc_format::ROOM);
     // Retracted documents leave THIS shelf too (2026-08-14). `public_doc_ids` had the filter
     // from the day tombstones landed, and every feed reconciliation inherited it - but this
     // query is what the anonymous /id surfaces actually page, so a takedown vanished from
@@ -1317,7 +1335,7 @@ pub async fn public_docs_updated_since(
     if quarantined(db).await? {
         return Ok(Vec::new());
     }
-    let text_only = format!("(format IS NULL OR format IN ({}, {}))", doc_format::MARQUEE, doc_format::BOOK);
+    let text_only = format!("(format IS NULL OR format IN ({}, {}, {}))", doc_format::MARQUEE, doc_format::BOOK, doc_format::ROOM);
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
         Vec<u8>,
@@ -1472,9 +1490,12 @@ pub struct PublicHead {
     pub file_hash: [u8; 32],
     pub thumb_hash: Option<[u8; 32]>,
     pub title: String,
+    /// The display head's settled wish - so a re-publish that changes only the wish (a
+    /// room's close, CHAT.md ruling 10) is a new version, not the same-words no-op.
+    pub settled: bool,
 }
 
-type PublicHeadRow = (Vec<u8>, Option<i64>, Vec<u8>, Option<Vec<u8>>, String);
+type PublicHeadRow = (Vec<u8>, Option<i64>, Vec<u8>, Option<Vec<u8>>, String, i64);
 
 /// A public post's memoized genesis claim - the edit window's anchor, as `refresh_doc_heads`
 /// derived it from the chain's parentless versions. `None` when the doc has no public head row.
@@ -1505,7 +1526,7 @@ pub async fn public_head(
     // network while the author's own node kept serving the words to anyone at the direct URL.
     let row: Option<PublicHeadRow> = db
         .fetch_optional(
-            "SELECT entry_hash, format, file_hash, thumb_hash, title FROM doc_heads
+            "SELECT entry_hash, format, file_hash, thumb_hash, title, settled FROM doc_heads
              WHERE doc_id = ?1 AND lane = 'public'
                AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
             (doc_id.to_vec(),),
@@ -1513,7 +1534,7 @@ pub async fn public_head(
         .await
         .context("reading public doc head")
         .map_err(AppError::Internal)?;
-    let Some((head, format, file_hash, thumb_hash, title)) = row else {
+    let Some((head, format, file_hash, thumb_hash, title, settled)) = row else {
         return Ok(None);
     };
     let file = hash32(&file_hash)?;
@@ -1527,6 +1548,7 @@ pub async fn public_head(
         file_hash: file,
         thumb_hash: thumb,
         title,
+        settled: settled != 0,
     }))
 }
 
@@ -2988,7 +3010,7 @@ fn render_segments(
                         });
                     }
                 }
-                Format::Marquee => {
+                Format::Marquee | Format::Room => {
                     out.push_str(":::conflict\n");
                     for (side, lines) in props {
                         out.push_str(&variant_open(heads[*side], names));
@@ -3042,7 +3064,7 @@ fn whole_version_conflict(
         // `when` are advisory display text shown VERBATIM, so `when` carries civil time, not
         // epoch ms. An unknowing renderer shrugs and shows every variant's children in full -
         // the degraded conflict is still a lossless conflict.
-        Format::Marquee => {
+        Format::Marquee | Format::Room => {
             let mut out = String::from(":::conflict\n");
             for (v, body) in sides {
                 out.push_str(&variant_open(v, names));
@@ -3250,7 +3272,7 @@ pub async fn resolve(
                 Format::Plaintext => marked
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a, names)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b, names))),
-                Format::Marquee => {
+                Format::Marquee | Format::Room => {
                     let segments = align_heads(&base, &[text_a.as_str(), text_b.as_str()]);
                     render_segments(format, &segments, &[a, b], names)
                 }

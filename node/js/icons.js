@@ -6,6 +6,7 @@
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
     Archive,
+    ChatsCircle,
     Funnel,
     Path,
     NotePencil,
@@ -173,6 +174,8 @@ export const Icons = {
     // rolled out wears `pageNew` above.
     book: BookOpen,
     hidden: EyeSlash,
+    // Rooms (CHAT.md): the app tile, and the chip a room post wears.
+    chat: ChatsCircle,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

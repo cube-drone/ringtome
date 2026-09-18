@@ -97,6 +97,17 @@ export const APPS = [
         },
     },
     {
+        id: 'chat',
+        name: 'Chat',
+        icon: 'chat',
+        live: true,
+        // Real-time rooms (CHAT.md): a room is a post, and this app lists the rooms a
+        // persona may see - its own, the ones its feed carries, the ones it entered by
+        // link - and opens them. Not a documents app: rooms are minted here, in one form,
+        // and their drafts live in the eponymous `chat` bucket.
+        itemNoun: 'room',
+    },
+    {
         id: 'notifications',
         name: 'Notifications',
         icon: 'notifications',

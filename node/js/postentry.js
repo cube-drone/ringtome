@@ -632,7 +632,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // arrive, and never before.
     const shownBody = amended ? amended.body : body;
     const title = amended ? amended.title : item.title || sealedWords || '';
-    const tlProfile = useTurbolinks(shownBody || '', item.format);
+    // A room's description is Marquee (CHAT.md, ruling 1): rendered as such.
+    const bodyFormat = item.format === 'room' ? 'marquee' : item.format;
+    const tlProfile = useTurbolinks(shownBody || '', bodyFormat);
     const { lead, cut } = leadOf(shownBody || '', emphasis);
     // A book's body is its tree, never prose: no lead cut, the card draws the whole table.
     const shown = item.format === 'book' || wholeThing ? shownBody : lead;
@@ -1110,7 +1112,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                       veiled &&
                       html`<div class="feed-entry-veil">
                           <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
-                              ${item.format === 'marquee'
+                              ${bodyFormat === 'marquee'
                                   ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
                                   : html`<pre class="reader-plain">${shown}</pre>`}
                           </div>
@@ -1123,13 +1125,22 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                       html`<div class="feed-entry-body">
                           ${item.format === 'book'
                               ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
-                              : item.format === 'marquee'
+                              : bodyFormat === 'marquee'
                                 ? html`<${MarqueeBody}
                                       source=${shown}
                                       profile=${tlProfile}
                                       onUnparsable=${bareSource}
                                   />`
                                 : html`<pre class="reader-plain">${shown}</pre>`}
+                          ${/* A room (CHAT.md, ruling 1): the card says so and opens it; a
+                              stranger's shell has no rooms, so the door is the sign-in. */ ''}
+                          ${item.format === 'room' &&
+                          html`<p class="room-card-foot">
+                              <${Icons.chat} /> ${t('postentry.a-room', 'a room')}
+                              <a class="room-card-enter" href=${`/home/chat/${item.author}/${item.doc_id}`}
+                                  >${t('postentry.enter-the-room', 'enter the room')}</a
+                              >
+                          </p>`}
                           ${cut &&
                           !wholeThing &&
                           html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>

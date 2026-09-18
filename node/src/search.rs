@@ -70,17 +70,17 @@ pub struct Narrow {
     pub terms: Vec<String>,
     pub buckets: Vec<String>,
     pub tags: Vec<String>,
-    /// The kind row (2026-09-08): `post`, `reply`, `rebroadcast`, `book` - nothing picked
-    /// shows everything, picks narrow to just those kinds (OR), like the other rows.
+    /// The kind row (2026-09-08): `post`, `reply`, `rebroadcast`, `book`, `room` - nothing
+    /// picked shows everything, picks narrow to just those kinds (OR), like the other rows.
     pub kinds: Vec<String>,
 }
 
 /// The kinds a row can be, in the row's fixed order; a post is what is none of the others.
-pub const KINDS: [&str; 4] = ["post", "reply", "rebroadcast", "book"];
+pub const KINDS: [&str; 5] = ["post", "reply", "rebroadcast", "book", "room"];
 
 /// The kind row's counts over a set of kinds, in the fixed order, the absent left out.
 pub fn kind_counts<'a>(kinds: impl Iterator<Item = &'a str>) -> Vec<(String, i64)> {
-    let mut n = [0i64; 4];
+    let mut n = [0i64; 5];
     for k in kinds {
         if let Some(i) = KINDS.iter().position(|x| *x == k) {
             n[i] += 1;

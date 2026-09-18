@@ -962,6 +962,38 @@ CREATE TABLE speculative_fetches (
                                        -- pull supersedes headers and is never downgraded
 );
 
+-- Rooms (CHAT.md, slice 2, chat.rs). `room_messages` is the memo every room chain this node
+-- holds folds into - one row per message, keyed by the speaker's chain and its seq, so the
+-- room's history is the union of its participants' chains interleaved at read (ruling 3).
+-- The body is the words, or their ciphertext under the room's key for a sealed room; the
+-- reader opens it with the key the room's door hands out. Pruned to the room budget
+-- (ruling 6) beside the chains it mirrors.
+CREATE TABLE room_messages (
+    room_author  TEXT    NOT NULL,   -- the room post's author
+    room_doc     TEXT    NOT NULL,   -- the room post's id: the chain's instance
+    speaker_root TEXT    NOT NULL,   -- whose chain (the persona)
+    speaker_leaf TEXT    NOT NULL,   -- which of their keys signed it (the chain's author)
+    seq          INTEGER NOT NULL,
+    said_ms      INTEGER NOT NULL,   -- the entry's claimed stamp: what history interleaves by
+    entry_hash   BLOB    NOT NULL,
+    body         BLOB    NOT NULL,
+    sealed       INTEGER NOT NULL DEFAULT 0,
+    noted_ms     INTEGER NOT NULL,
+    PRIMARY KEY (speaker_leaf, room_doc, seq)
+);
+CREATE INDEX room_messages_by_room ON room_messages (room_author, room_doc, said_ms);
+
+-- The rooms each hosted persona opened, and when: what the room-sync beat keeps pulled
+-- for a while after, and what makes an exchange naming that room one this node is in.
+CREATE TABLE rooms_open (
+    root_pubkey TEXT    NOT NULL,
+    room_author TEXT    NOT NULL,
+    room_doc    TEXT    NOT NULL,
+    opened_ms   INTEGER NOT NULL,
+    synced_ms   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (root_pubkey, room_author, room_doc)
+);
+
 -- The public text index (2026-09-07, search.rs): one token bag per public post this node
 -- holds the words of, stamped with the post's update time as the caller's listing knows it
 -- (the journal's `updated_ms`, the shelf's head time) so an edit re-indexes, an unchanged

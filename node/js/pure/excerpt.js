@@ -34,6 +34,7 @@ export function plainWords(body) {
 /// has no words to offer (a picture alone, a book, nothing).
 export function excerpt(body, format, n = EXCERPT_WORDS) {
     if (format === 'book') return '';
+    // A room's words are its description: the excerpt is fine for those.
     const words = plainWords(body);
     if (!words.length) return '';
     const head = words.slice(0, n).join(' ');

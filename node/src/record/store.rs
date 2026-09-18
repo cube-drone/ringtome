@@ -1067,7 +1067,7 @@ impl Documents<'_> {
         reply: Option<crate::record::documents::ReplyLinks>,
         flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
-        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of, onward } = flags;
+        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of, onward, room } = flags;
         let view = self.all().await?;
         let doc = view
             .docs
@@ -1095,6 +1095,8 @@ impl Documents<'_> {
         ) {
             return Err(AppError::BadRequest(crate::msg!("record.store.media-publishes-by-its-own", "media publishes by its own door, not this one")));
         }
+        // A room (CHAT.md, ruling 1): the draft stays Marquee; the POST is a room.
+        let format = if room { crate::record::documents::Format::Room } else { format };
 
         // Already published? Then this is a new version of that post, not a new post.
         let existing = self
@@ -1118,7 +1120,9 @@ impl Documents<'_> {
             let same_words = !trusted_only
                 && head.file_hash
                     == *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes();
-            if same_words && head.title == resolved.title {
+            // A wish newly set is a new version too: closing a room (CHAT.md, ruling 10)
+            // says the same words with the settled wish on.
+            if same_words && head.title == resolved.title && head.settled == settled {
                 return Ok(existing.expect("a head implies a post"));
             }
         }

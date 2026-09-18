@@ -84,6 +84,7 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                 onward: false,
                 dated_ms: Some(plan.at),
                 part_of: None,
+                room: false,
             };
             match crate::record::bake::publish(state, &data, &root, &doc_id, None, flags).await {
                 Ok(crate::record::bake::Outcome::Posted(post_id)) => {
