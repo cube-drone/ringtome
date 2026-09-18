@@ -107,15 +107,17 @@ impl RoomLive {
         (here, typing)
     }
 
-    fn note_presence(&self, root: &str, typing: bool) {
+    /// Note a beacon: `Some(true)` typing, `Some(false)` stopped, `None` a plain "still
+    /// here" that leaves the typing state alone (a heartbeat mid-sentence must not clear it).
+    fn note_presence(&self, root: &str, typing: Option<bool>) {
         let now = crate::clock::now_ms();
         let mut map = self.presence.lock().expect("presence poisoned");
         let p = map.entry(root.to_string()).or_insert(Presence { seen_ms: now, typing_ms: 0 });
         p.seen_ms = now;
-        if typing {
-            p.typing_ms = now;
-        } else {
-            p.typing_ms = 0;
+        match typing {
+            Some(true) => p.typing_ms = now,
+            Some(false) => p.typing_ms = 0,
+            None => {}
         }
     }
 }
@@ -240,7 +242,11 @@ async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<Roo
     let root_hex = hex::encode(root);
     match kind {
         FRAME_PRESENCE => {
-            let typing = payload.first().is_some_and(|b| *b != 0);
+            let typing = match payload.first() {
+                Some(1) => Some(true),
+                Some(0) => Some(false),
+                _ => None,
+            };
             live.note_presence(&root_hex, typing);
             let _ = live.events.send(LiveEvent::Presence);
         }
@@ -255,7 +261,7 @@ async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<Roo
             if hex::encode(msg.room_author) != live.room_author {
                 return;
             }
-            live.note_presence(&root_hex, false);
+            live.note_presence(&root_hex, Some(false));
             ingest_live(state, &root_hex, payload.to_vec(), doc, live).await;
         }
         _ => {}
@@ -311,6 +317,7 @@ fn entry_frame(root_hex: &str, bytes: &[u8]) -> Option<bytes::Bytes> {
 /// after), and tell this node's own sockets.
 pub async fn broadcast_entry(state: &AppState, doc: &[u8; 16], root_hex: &str, bytes: &[u8]) {
     let Some(live) = state.live.get(doc) else { return };
+    live.note_presence(root_hex, Some(false));
     let _ = live.events.send(LiveEvent::Message);
     let Some(frame) = entry_frame(root_hex, bytes) else { return };
     let sender = live.sender.lock().await;
@@ -319,9 +326,9 @@ pub async fn broadcast_entry(state: &AppState, doc: &[u8; 16], root_hex: &str, b
     }
 }
 
-/// A presence beacon: "I am here" and whether I am typing, for the room's live peers and
-/// this node's own sockets.
-pub async fn beacon(state: &AppState, doc: &[u8; 16], root_hex: &str, typing: bool) {
+/// A presence beacon: "I am here", and typing started, stopped, or unchanged (`None` - the
+/// heartbeat), for the room's live peers and this node's own sockets.
+pub async fn beacon(state: &AppState, doc: &[u8; 16], root_hex: &str, typing: Option<bool>) {
     let Some(live) = state.live.get(doc) else { return };
     live.note_presence(root_hex, typing);
     let _ = live.events.send(LiveEvent::Presence);
@@ -329,7 +336,11 @@ pub async fn beacon(state: &AppState, doc: &[u8; 16], root_hex: &str, typing: bo
     let mut frame = Vec::with_capacity(34);
     frame.push(FRAME_PRESENCE);
     frame.extend_from_slice(&root);
-    frame.push(u8::from(typing));
+    frame.push(match typing {
+        Some(true) => 1,
+        Some(false) => 0,
+        None => 2,
+    });
     let sender = live.sender.lock().await;
     if let Err(e) = sender.broadcast(bytes::Bytes::from(frame)).await {
         tracing::debug!(room = %hex::encode(doc), error = ?e, "presence beacon failed");
@@ -803,6 +814,7 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     }
     speakers.retain(|s| s != root_hex);
     let mut exchanged = 0usize;
+    let mut landed = false;
     for speaker in speakers {
         if crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
             continue; // their chain is already here, whole
@@ -819,13 +831,24 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         for endpoint in candidates {
             let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
             match crate::net::sync::sync_room_with_peer(state, &speaker, addr, *doc).await {
-                Ok(_) => {
+                Ok(stats) => {
                     exchanged += 1;
-                    crate::fold::nudge(state, &speaker);
+                    // Awaited, so the door's answer means the floor is current (a page that
+                    // read right after the pull found nothing, 2026-09-18).
+                    crate::fold::fold_now(state, &speaker).await;
+                    if stats.received > 0 {
+                        landed = true;
+                    }
                     break;
                 }
                 Err(e) => tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "room pull failed"),
             }
+        }
+    }
+    // What the durable lane brought is news to the sockets too.
+    if landed {
+        if let Some(live) = state.live.get(doc) {
+            let _ = live.events.send(LiveEvent::Message);
         }
     }
     state

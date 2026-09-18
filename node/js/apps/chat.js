@@ -267,12 +267,23 @@ export const RoomPage = ({ current, author, doc }) => {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc, !!room]);
+    const typingIdle = useRef(null);
+    // "Typing" is said at most every two seconds while the keys move, and "stopped" three
+    // seconds after they rest, or the moment the draft empties or sends.
     const sayTyping = (on) => {
         const ws = socket.current;
         if (!ws || ws.readyState !== 1) return;
         const now = Date.now();
-        if (on && now - typingSaid.current < 2000) return;
-        typingSaid.current = on ? now : 0;
+        if (typingIdle.current) clearTimeout(typingIdle.current);
+        typingIdle.current = null;
+        if (on) {
+            typingIdle.current = setTimeout(() => sayTyping(false), 3000);
+            if (now - typingSaid.current < 2000) return;
+            typingSaid.current = now;
+        } else {
+            if (!typingSaid.current) return;
+            typingSaid.current = 0;
+        }
         ws.send(JSON.stringify({ typing: on }));
     };
     const send = async () => {

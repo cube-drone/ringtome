@@ -9303,4 +9303,12 @@ sockets. Anything the live lane cannot place - an unknown speaker, a gap, a lagg
 sends the node back to the durable lane to pull the room. The room page opens the socket,
 lists who is here, says who is typing, and keeps a slow poll as the backstop. The
 `chat_live` suite: sockets hear each other arrive, a message crosses with no beat rung, and
-typing is a beacon on the topic.
+typing is a beacon on the topic. Curtis's first look (2026-09-18): a persona
+entering a room where things had been said saw an empty floor, because the sync door
+nudged the fold and answered before it ran, and history that came by sync never told the
+socket; the door now awaits the fold and rings the socket. And typing was hit-or-miss: the
+ten-second heartbeat cleared the flag mid-sentence, an expired typing was never
+re-announced, and the client never said "stopped" unless it sent. A heartbeat now leaves
+typing alone, the socket re-reads presence on a two-second clock and speaks only when it
+changed, and the client says "stopped" three seconds after the keys rest or when the draft
+empties.

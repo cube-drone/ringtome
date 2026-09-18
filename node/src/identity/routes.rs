@@ -1131,10 +1131,15 @@ async fn serve_room_live(
         let (here, typing) = live.presence_now();
         serde_json::json!({ "type": "presence", "here": here, "typing": typing }).to_string()
     };
-    crate::chat::beacon(&state, &doc, &root, false).await;
-    socket.send(Message::Text(presence_frame(&live).into())).await?;
+    crate::chat::beacon(&state, &doc, &root, Some(false)).await;
+    let mut last_sent = presence_frame(&live);
+    socket.send(Message::Text(last_sent.clone().into())).await?;
     let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
     heartbeat.tick().await;
+    // Presence expires on its own clock (typing after six seconds, here after thirty), and
+    // nothing rings when it does: this tick re-reads it and speaks only when it changed.
+    let mut expiry = tokio::time::interval(std::time::Duration::from_secs(2));
+    expiry.tick().await;
     loop {
         tokio::select! {
             event = events.recv() => match event {
@@ -1142,7 +1147,11 @@ async fn serve_room_live(
                     socket.send(Message::Text(serde_json::json!({ "type": "message" }).to_string().into())).await?;
                 }
                 Ok(crate::chat::LiveEvent::Presence) => {
-                    socket.send(Message::Text(presence_frame(&live).into())).await?;
+                    let frame = presence_frame(&live);
+                    if frame != last_sent {
+                        last_sent = frame.clone();
+                        socket.send(Message::Text(frame.into())).await?;
+                    }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                     socket.send(Message::Text(serde_json::json!({ "type": "message" }).to_string().into())).await?;
@@ -1153,7 +1162,7 @@ async fn serve_room_live(
                 Some(Ok(Message::Text(text))) => {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                         if let Some(typing) = v.get("typing").and_then(|t| t.as_bool()) {
-                            crate::chat::beacon(&state, &doc, &root, typing).await;
+                            crate::chat::beacon(&state, &doc, &root, Some(typing)).await;
                         }
                     }
                 }
@@ -1161,7 +1170,14 @@ async fn serve_room_live(
                 Some(Ok(_)) => {}
             },
             _ = heartbeat.tick() => {
-                crate::chat::beacon(&state, &doc, &root, false).await;
+                crate::chat::beacon(&state, &doc, &root, None).await;
+            }
+            _ = expiry.tick() => {
+                let frame = presence_frame(&live);
+                if frame != last_sent {
+                    last_sent = frame.clone();
+                    socket.send(Message::Text(frame.into())).await?;
+                }
             }
         }
     }
