@@ -13,7 +13,7 @@ import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from '../net.js';
+import { api, apiTextTitled } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
@@ -34,6 +34,24 @@ const html = htm.bind(h);
 ///
 /// When neither exists, the speakable form of their key: derived, unforgeable, and the same
 /// words the chip shows on hover, so the row and the face agree.
+/// The room a mention row leads to, worn as its name: the title the door joined for an
+/// open room, else the body door's (a sealed room's travels with its words), else "a room".
+const RoomLink = ({ author, doc, title }) => {
+    const [name, setName] = useState('');
+    useEffect(() => {
+        if (!author || !doc || title) return undefined;
+        let live = true;
+        apiTextTitled(`/id/${author}/docs/${doc}/body`)
+            .then(({ title }) => live && setName(title || ''))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [author, doc, title]);
+    if (!author || !doc) return html`<span>${t('apps.notifications.a-room', 'a room')}</span>`;
+    return html`<a class="notif-room" href=${`/home/chat/${author}/${doc}`}><${Icons.chat} /> ${title || name || t('apps.notifications.a-room', 'a room')}</a>`;
+};
+
 const Subject = ({ row }) => {
     if (row.stranger && row.claimed_name) {
         return html`<q
@@ -73,6 +91,11 @@ const sentence = (r) => {
         return r.doc_id
             ? t('apps.notifications.mentioned-you-in', 'mentioned you in')
             : t('apps.notifications.mentioned-you-in-a-post', 'mentioned you in a post');
+    }
+    // A message in a room naming you (CHAT.md, slice 6): the verb, and the room itself as
+    // the object - a link into the room, worn as its name.
+    if (r.kind === 'room-mention') {
+        return html`${t('apps.notifications.mentioned-you-in', 'mentioned you in')} <${RoomLink} author=${r.detail} doc=${r.doc_id} title=${r.doc_title} />`;
     }
     if (r.kind === 'comment') {
         return r.doc_id

@@ -255,6 +255,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     const [sendError, setSendError] = useState(null);
     const [typing, setTyping] = useState([]);
     const [chatters, setChatters] = useState(null);
+    const chattersRef = useRef(null); // the `@` picker reads the latest roster per pop
     const socket = useRef(null);
     const typingSaid = useRef(0);
     const typingIdle = useRef(null);
@@ -275,8 +276,14 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         () => ({ ...tlProfile, directive: userCardHtml, span: userSpanHtml, faces: facesGen }),
         [tlProfile, facesGen]
     );
+    // The `@` picker knows the room (CHAT.md, slice 6): who has spoken here comes first.
     const completions = useMemo(
-        () => [emojiCompletions, linkCompletions(root, CHAT_BUCKET), mediaCompletions(root, CHAT_BUCKET), mentionCompletions(root)],
+        () => [
+            emojiCompletions,
+            linkCompletions(root, CHAT_BUCKET),
+            mediaCompletions(root, CHAT_BUCKET),
+            mentionCompletions(root, () => (chattersRef.current || []).map((c) => ({ root: c.root, name: c.name || '' }))),
+        ],
         [root]
     );
     const keys = useMemo(
@@ -361,7 +368,10 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             .then(setHistory)
             .catch(() => {});
         api(`/api/identity/${root}/rooms/${author}/${doc}/chatters`)
-            .then((c) => setChatters(c.items || []))
+            .then((c) => {
+                chattersRef.current = c.items || [];
+                setChatters(c.items || []);
+            })
             .catch(() => {});
     };
     useEffect(() => {

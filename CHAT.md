@@ -274,7 +274,21 @@ node keeps its own room whole, which is where "all of it" lives.
    `placeholder`), pickers and uploads into the chat bucket. Media from the open web is
    refused in a room. Suite: `chat_media.cjs`.
 6. **Mentions and the bell.** A message naming a persona rings their bell under the room's
-   door, and the user-card picker knows the room's participants.
+   door, and the user-card picker knows the room's participants. **Built 2026-09-19.**
+   `ChatMessage.mentions` (key 4, additive, capped): the personas the body's user cards
+   name, derived at say, never the speaker, and in a sealed room only those the seal admits
+   - in the clear on the chain, which travels only under the room's door, so the notice can
+   be checked without the room's key. The notice is `notice_kind::ROOM_MENTION` (6), the
+   mention's own envelope road: the message as evidence, its `doc_id` the room and its
+   `detail` the room's author. Two follow-edge exemptions, since no fold reads a room
+   chain: the inbox gate accepts it from a followed sender, and the bell keeps it. A left
+   room rings nothing - the recipient's own `rooms` register says so, and the door accepts
+   and keeps nothing. The bell's row reads "mentioned you in <room>", a link into the room
+   worn as its name. The `@` picker in the room offers who has spoken there first, then
+   contacts and the directory. Suite: the feed suite's bell claim.
+7. **Closing & Deleting Rooms**
+8. **Deleting & Editing Messags**
+9. **Emoji Responses**
 
 ## Settled questions and residuals
 

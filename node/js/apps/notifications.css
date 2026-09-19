@@ -75,6 +75,13 @@
 }
 
 /* The stranger marker: says the name beside it is a claim and nothing has been fetched. */
+.notif-room {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--teal);
+}
+
 .notif-stranger {
     margin-left: 0.4em;
     padding: 0.05em 0.4em;

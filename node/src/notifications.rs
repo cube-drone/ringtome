@@ -44,6 +44,10 @@ pub const KIND_TAGGED: &str = "tagged";
 /// The row's doc is the AUTHOR's post, the one kind whose card points away from the
 /// reader's own shelf; tiered by sender like a comment, never a murmur.
 pub const KIND_MENTIONED: &str = "mentioned";
+/// `deliver::notice_kind::ROOM_MENTION` (CHAT.md, slice 6) - a message in a room names the
+/// reader. The row's doc is the ROOM and its detail the room's author: the room's address.
+/// Envelope road only - no fold derives it, since a room chain is nobody's feed.
+pub const KIND_ROOM_MENTION: &str = "room-mention";
 
 /// One notification, as the endpoint serves it.
 #[derive(Debug, serde::Serialize)]

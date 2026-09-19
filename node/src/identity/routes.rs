@@ -1819,10 +1819,9 @@ async fn notifications_handler(
     // and their store is already open - one shelf read per doc'd row, page-bounded. The
     // one exception is a mention (2026-09-06), whose doc is the AUTHOR's post: the client's
     // card asks the author's shelf for its title itself, the way a reply's parent does.
-    for item in items
-        .iter_mut()
-        .filter(|i| !i.doc_id.is_empty() && i.kind != crate::notifications::KIND_MENTIONED)
-    {
+    for item in items.iter_mut().filter(|i| {
+        !i.doc_id.is_empty() && i.kind != crate::notifications::KIND_MENTIONED && i.kind != crate::notifications::KIND_ROOM_MENTION
+    }) {
         let Some(doc_id) = hex::decode(&item.doc_id)
             .ok()
             .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
@@ -1832,6 +1831,18 @@ async fn notifications_handler(
         if let Some(p) = crate::record::documents::public_doc(data.db(), &doc_id).await? {
             item.doc_title = Some(p.title);
             item.doc_published_ms = Some(p.genesis_ms);
+        }
+    }
+    // A room mention's room, by name (Curtis, 2026-09-19): the room post's public title off
+    // whatever this node holds of its author; a sealed room's title travels with its words,
+    // and the bell's link asks the body door for it instead.
+    for item in items.iter_mut().filter(|i| i.kind == crate::notifications::KIND_ROOM_MENTION && !i.doc_id.is_empty()) {
+        let Some(author) = item.detail.clone() else { continue };
+        if let Ok(Some(h)) = held_public_header(&state, &author, &item.doc_id).await {
+            if !h.title.trim().is_empty() {
+                item.doc_title = Some(h.title.clone());
+            }
+            item.doc_published_ms = h.genesis_ms;
         }
     }
 
@@ -1904,9 +1915,13 @@ async fn notification_items(
     // applied to the copies that got in before the follow began.
     let mut delivered_unowned = Vec::new();
     for n in delivered {
-        if !crate::net::subscriptions::follows(&state.node_db, root, &n.sender_root)
-            .await
-            .map_err(AppError::Internal)?
+        // A followed sender's delivered row yields to the fold's - except a room mention
+        // (CHAT.md, slice 6), which no fold derives: the envelope is its only road.
+        let envelope_only = n.kind == crate::notifications::KIND_ROOM_MENTION;
+        if envelope_only
+            || !crate::net::subscriptions::follows(&state.node_db, root, &n.sender_root)
+                .await
+                .map_err(AppError::Internal)?
         {
             delivered_unowned.push(n);
         }
@@ -3414,37 +3429,7 @@ async fn mention_notices(
     root: &str,
     mentions: Vec<(String, ringtome_proto::SignedEntry)>,
 ) {
-    if mentions.is_empty() {
-        return;
-    }
-    for (named_hex, signed) in mentions {
-        let Ok(named) = hex_fixed::<32>(&named_hex, "mentioned root") else {
-            continue;
-        };
-        match data
-            .notices()
-            .seal(
-                &named,
-                &signed,
-                ringtome_proto::deliver::notice_kind::MENTIONED,
-                state.config.pow_requested_bits,
-            )
-            .await
-        {
-            Ok(envelope) => {
-                if let Err(e) = crate::outbox::queue(&state.node_db, root, &named_hex, &envelope).await {
-                    tracing::warn!(named = %named_hex, error = ?e, "could not queue a mention notice");
-                }
-            }
-            Err(e) => tracing::warn!(named = %named_hex, error = ?e, "could not seal a mention notice"),
-        }
-    }
-    let eager = state.clone();
-    tokio::spawn(async move {
-        if let Err(e) = crate::outbox::sweep(eager).await {
-            tracing::debug!(error = ?e, "eager mention-notice delivery failed");
-        }
-    });
+    crate::outbox::queue_notices(state, data, root, mentions, ringtome_proto::deliver::notice_kind::MENTIONED).await;
 }
 
 #[derive(serde::Serialize)]
@@ -6352,6 +6337,7 @@ mod notification_dedup_tests {
             (crate::notifications::KIND_REBROADCAST, notice_kind::REBROADCAST),
             (crate::notifications::KIND_TAGGED, notice_kind::TAGGED),
             (crate::notifications::KIND_MENTIONED, notice_kind::MENTIONED),
+            (crate::notifications::KIND_ROOM_MENTION, notice_kind::ROOM_MENTION),
         ] {
             assert_eq!(
                 derived,

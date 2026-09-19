@@ -522,11 +522,27 @@ pub async fn say(
     if words.len() > ChatMessage::MAX_BODY_BYTES {
         return Err(AppError::BadRequest(crate::msg!("chat.that-is-too-long-for-one-message", "that is too long for one message")));
     }
+    // The people the words name (slice 6): never the speaker; in a sealed room only those
+    // the seal admits - the notice is served under the room's door, and a bell that rings
+    // for a room one may not enter would say the room exists.
+    let mut mentions: Vec<[u8; 32]> = Vec::new();
+    for named in crate::record::bake::mentions(&words) {
+        let named_hex = hex::encode(named);
+        if named_hex == root_hex || mentions.contains(&named) {
+            continue;
+        }
+        if head.trusted_only && !crate::idface::seal_admits(state, author_hex, &hex::encode(doc), &named_hex, None).await {
+            continue;
+        }
+        mentions.push(named);
+    }
+    mentions.truncate(ChatMessage::MAX_MENTIONS);
+    tracing::debug!(room = %hex::encode(doc), named = mentions.len(), "room message names people");
     let (body, sealed) = match key {
         Some(key) => (crate::record::private::seal_post_body(&key, words.as_bytes())?, true),
         None => (words.into_bytes(), false),
     };
-    let payload = ChatMessage { room_author: author, body, sealed, refs }
+    let payload = ChatMessage { room_author: author, body, sealed, refs, mentions: mentions.clone() }
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
     let signed = crate::record::imaol::append_on(
@@ -545,6 +561,12 @@ pub async fn say(
     // chain to the creator's node, the room's directory of record.
     crate::fold::fold_now(state, root_hex).await;
     broadcast_entry(state, doc, root_hex, signed.bytes()).await;
+    // The bells (slice 6): one envelope per persona named, the message as evidence, knocked
+    // eagerly - the mention's own road, under the room's door at the far end.
+    if !mentions.is_empty() {
+        let named: Vec<(String, ringtome_proto::SignedEntry)> = mentions.iter().map(|m| (hex::encode(m), signed.clone())).collect();
+        crate::outbox::queue_notices(state, data, root_hex, named, ringtome_proto::deliver::notice_kind::ROOM_MENTION).await;
+    }
     let push_state = state.clone();
     let (push_root, push_author, push_doc) = (root_hex.to_string(), author_hex.to_string(), *doc);
     tokio::spawn(async move {
@@ -1449,7 +1471,7 @@ mod tests {
     fn a_message_seals_and_opens_under_the_room_key() {
         let key = [9u8; 32];
         let sealed = crate::record::private::seal_post_body(&key, b"the quiet one").unwrap();
-        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new() };
+        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new(), mentions: Vec::new() };
         let back = ChatMessage::decode(&msg.encode().unwrap()).unwrap();
         assert_eq!(crate::record::private::open_post_body(&back.body, &key).unwrap(), b"the quiet one");
         assert!(crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(), "the wrong key opens nothing");

@@ -771,6 +771,11 @@ mod tests {
         assert_eq!(mentions(&inline), vec![other], "the span is the inline card, once");
         assert!(mentions("no cards here").is_empty());
         assert_eq!(card_root(&format!("/id/{worded}?via=abc")), Some(root), "a query is ignored");
+        // A room line often STARTS with the card (CHAT.md, slice 6): "@bea are you there?"
+        let leading = format!("[user id=/id/{worded}]bea[/user] are you there?");
+        assert_eq!(mentions(&leading), vec![root], "a span at the line's start is a mention");
+        let leading_hex = format!("[user id=/id/{}]bea[/user] are you there?", hex::encode(root));
+        assert_eq!(mentions(&leading_hex), vec![root], "spelled in hex too");
     }
 
     /// The copy door's embeds (2026-09-08): a published body's twins by their public

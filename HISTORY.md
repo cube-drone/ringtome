@@ -9462,3 +9462,22 @@ room's page hangs up no socket, writes no seen mark, and replaces the composer w
 honest word and a rejoin button. The feed suite's new claim walks the whole loop: in,
 listed active and pulled; out, listed beneath, not bold, not pulled; a look changes
 nothing; a rejoin pulls again and what was said meanwhile arrives and bolds the room.
+
+## 2026-09-19: mentions in rooms ring the bell
+
+CHAT.md slice 6. A message's user cards name people, and each is told: `ChatMessage.mentions`
+carries the roots the body names (derived at say, never the speaker, and in a sealed room
+only those the seal admits), and a new notice kind, the room mention, rides the mention's
+own envelope road with the message as evidence - the claim's doc is the room and its
+detail the room's author, the two halves of the room's address. The proto verifies it as
+it verifies every kind: the sender's own signed chat message, on the CHAT service, naming
+the recipient. Two follow-edge exemptions were the finding of the day: the inbox gate
+drops a followed sender's envelope on the theory that the fold speaks for them, and the
+bell drops a followed sender's delivered row for the same reason - and no fold reads a
+room chain, so a mention from someone you follow vanished twice. Both doors now keep a
+room mention whoever sent it. A left room rings nothing: the recipient's own register says
+which rooms they walked out of, and the door accepts such a mention and keeps nowhere. The
+bell's row reads "mentioned you in <room>" with the room's name as a link into it, and the
+room's `@` picker offers who has spoken there ahead of contacts and the directory. The
+feed suite's new claim: a follower's bell rings with the room as the object, and rings no
+more once she has left.

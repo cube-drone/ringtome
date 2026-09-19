@@ -232,7 +232,10 @@ const ROSTER_TTL_MS = 60_000;
 /// dialed. One directory fetch per editor per minute; a failed fetch offers whatever was
 /// last known. The word-start rule (pure/mentions.js) keeps an email address's `@` from
 /// opening it.
-export function mentionCompletions(root) {
+export function mentionCompletions(root, also) {
+    // `also` (CHAT.md, slice 6): a room's own roster - who has spoken there - offered
+    // first, ahead of contacts and the directory; a function, asked per pop, so the
+    // hosting page's latest list is what is offered.
     let roster = null;
     let fetchedAt = 0;
     return async (context) => {
@@ -249,10 +252,15 @@ export function mentionCompletions(root) {
             }
         }
         const people = new Map();
+        for (const p of (also && also()) || []) {
+            if (!p || !p.root || p.root === root) continue;
+            people.set(p.root, { root: p.root, name: p.name || '', label: p.name || '' });
+        }
         for (const c of await openMirror(root).contacts.toArray()) {
             if (c.root === root || !standingFacts(c.facts)) continue;
             const nickname = (c.facts || {}).nickname;
-            people.set(c.root, { root: c.root, name: c.name || '', label: nickname || c.name || '' });
+            const known = people.get(c.root);
+            people.set(c.root, { root: c.root, name: c.name || (known && known.name) || '', label: nickname || c.name || (known && known.label) || '' });
         }
         for (const d of roster) {
             if (d.root === root || people.has(d.root)) continue;

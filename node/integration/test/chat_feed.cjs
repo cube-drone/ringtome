@@ -139,4 +139,33 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.ok(row && !row.left && row.joined, `active again: ${JSON.stringify(row)}`);
         assert.equal(row.unread, true, "and bold, with what was said while bea was away");
     });
+
+    it("a message naming a persona rings their bell, with the room as the object; a left room rings nothing", async () => {
+        const { speakable } = await import("../../js/speakable.js");
+        const rows = async () => ((await (await bea(`api/identity/${beaRoot}/notifications`)).json()).items || []).filter((i) => i.kind === "room-mention" && i.author === adaRoot);
+        // Bea FOLLOWS ada: the envelope road still rings, since no fold reads a room chain.
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: `[user id=/id/${speakable(beaRoot)}]bea[/user] are you there?` });
+        assert.equal(said.status, 200, await said.text());
+        await beat(HOST, "outbox");
+        let found = [];
+        for (let i = 0; i < 30 && found.length === 0; i++) {
+            found = await rows();
+            if (found.length === 0) await wait(400);
+        }
+        assert.equal(found.length, 1, `the mention rang bea's bell: ${JSON.stringify(found)}`);
+        assert.equal(found[0].doc_id, room, "naming the room");
+        assert.equal(found[0].detail, adaRoot, "and its author - the room's address");
+        assert.equal(found[0].doc_title, "the parlour", "worn as the room's name");
+        const before = found[0].updated_ms;
+        // Left: the next mention is accepted at the door and kept nowhere.
+        const left = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}`, { method: "DELETE" });
+        assert.equal(left.status, 200, await left.text());
+        const again = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: `[user id=/id/${speakable(beaRoot)}]bea[/user] still there?` });
+        assert.equal(again.status, 200, await again.text());
+        await beat(HOST, "outbox");
+        await wait(1500);
+        const after = await rows();
+        assert.equal(after.length, 1, "no second row");
+        assert.equal(after[0].updated_ms, before, "and the one row did not move: a left room rings nothing");
+    });
 });

@@ -115,6 +115,12 @@ pub mod notice_kind {
     /// stranger naming you is exactly what the stranger pool is for, so the classifier
     /// tiers it by sender like a comment.
     pub const MENTIONED: u32 = 5;
+    /// "I mentioned you in a room" (CHAT.md, slice 6) - evidence is the sender's own signed
+    /// chat message, whose `mentions` name the recipient; the room is the entry's instance
+    /// and the message's `room_author`. The claim's `doc_id` is the ROOM and its `detail`
+    /// the room's author, hex - the two halves of the room's address, which is where the
+    /// bell's row leads. Conversation, tiered by sender like a mention in a post.
+    pub const ROOM_MENTION: u32 = 6;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -123,6 +129,7 @@ pub mod notice_kind {
             COMMENT => "comment",
             TAGGED => "tagged",
             MENTIONED => "mentioned",
+            ROOM_MENTION => "room-mention",
             _ => "unknown-kind",
         }
     }
@@ -663,6 +670,30 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                 format!("{}: {}", a.key, a.value)
             };
             (None, None, Some(a.target_doc), Some(words))
+        }
+        notice_kind::ROOM_MENTION => {
+            if evidence.entry().chain.service != crate::registry::service::CHAT
+                || evidence.entry().entry_type != crate::registry::entry_type::CHAT_MESSAGE
+            {
+                return Err(ProtoError::ChainViolation(
+                    "a room mention needs the sender's own chat message",
+                ));
+            }
+            let Some(room) = evidence.entry().chain.instance else {
+                return Err(ProtoError::ChainViolation("a chat message names its room"));
+            };
+            let crate::Payload::Inline(payload) = &evidence.entry().payload else {
+                return Err(ProtoError::BadEntry("chat message payload must be inline"));
+            };
+            let m = crate::registry::ChatMessage::decode(payload)?;
+            if !m.mentions.contains(&envelope.recipient_root) {
+                return Err(ProtoError::ChainViolation("the message names somebody else"));
+            }
+            let mut author_hex = String::with_capacity(64);
+            for b in m.room_author {
+                author_hex.push_str(&format!("{b:02x}"));
+            }
+            (None, None, Some(room), Some(author_hex))
         }
         notice_kind::MENTIONED => {
             if evidence.entry().chain.service != crate::registry::service::ANNOTATIONS_PUBLIC

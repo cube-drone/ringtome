@@ -172,8 +172,12 @@ pub async fn accept(
 
     // (2) The follow-edge rule, enforced HERE because only the recipient can know it: an
     // envelope from someone whose chains we already sync would be a second surface for a fact
-    // the pull path owns. The sender cannot check this and should not try.
-    if crate::net::subscriptions::follows(&state.node_db, recipient_root, &sender_hex).await? {
+    // the pull path owns. The sender cannot check this and should not try. The one
+    // exception is a room mention (CHAT.md, slice 6): no fold reads a room chain, so the
+    // envelope is the only road, follow or no follow.
+    if claim.kind != notice_kind::ROOM_MENTION
+        && crate::net::subscriptions::follows(&state.node_db, recipient_root, &sender_hex).await?
+    {
         return Ok(Verdict::AlreadyPulled);
     }
 
@@ -207,6 +211,15 @@ pub async fn accept(
     // is already this notice. Transcribing again would be a second chain entry saying the same
     // thing.
     catch_up(&db, &keys).await?;
+    // A left room rings no bell (Curtis, 2026-09-19): the recipient's own register says
+    // which rooms they walked out of, and a mention there is accepted and kept nowhere.
+    if claim.kind == notice_kind::ROOM_MENTION {
+        if let (Some(doc), Some(author)) = (claim.doc_id, claim.detail.as_deref()) {
+            if room_left(&db, &keys, author, &hex::encode(doc)).await? {
+                return Ok(Verdict::Transcribed);
+            }
+        }
+    }
     let kind = notice_kind::name(claim.kind).to_string();
     let held = held_envelope(&db, &sender_hex, &kind).await?;
     if held.as_deref() == Some(signed.bytes()) {
@@ -280,6 +293,20 @@ async fn contact_facts(
             .await
             .map_err(|e| anyhow!("{e}"))?;
     Ok(rows.into_iter().map(|r| (r.key, r.value)).collect())
+}
+
+/// The recipient's word on a room (the `rooms` register, CHAT.md): left, or not.
+async fn room_left(db: &Db, keys: &EpochKeys, author_hex: &str, doc_hex: &str) -> Result<bool> {
+    let (rows, _) = private::collection_registers(db, keys, service::GENERAL_PRIVATE, "rooms")
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
+    let key = format!("{author_hex}:{doc_hex}");
+    Ok(rows.iter().any(|r| {
+        r.key == key
+            && serde_json::from_str::<serde_json::Value>(&r.value)
+                .ok()
+                .is_some_and(|v| v.get("left_ms").is_some())
+    }))
 }
 
 fn facts_say_blocked(facts: &std::collections::BTreeMap<String, String>) -> bool {

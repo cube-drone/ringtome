@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 831 phrases across 58 files.
+// 832 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -113,6 +113,7 @@ export default {
     'apps.notes.no-tags-yet': 'no tags yet',
 
     // --- node/js/apps/notifications.js ---
+    'apps.notifications.a-room': 'a room',
     'apps.notifications.what-they-call-themselves-unverified': 'what they call themselves - an unverified claim, not a name this computer has checked',
     'apps.notifications.labelled-words': 'labelled "{words}"',
     'apps.notifications.labelled-a-post-words': 'labelled one of your posts "{words}"',

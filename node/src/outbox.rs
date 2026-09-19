@@ -324,6 +324,39 @@ pub(crate) async fn force_due(node_db: &Db) -> Result<()> {
 
 /// One pass of the rounds: take the due envelopes, knock once each, and retire whatever landed
 /// or was refused. Only "nobody answered" earns another turn on the ladder.
+/// Notices of one kind, sealed to each persona named and queued, then knocked eagerly:
+/// the mention's road (2026-09-06), shared with the room mention (CHAT.md, slice 6). The
+/// recipient's gate does the judging; this is best-effort beside the words.
+pub async fn queue_notices(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    root: &str,
+    named: Vec<(String, SignedEntry)>,
+    kind: u32,
+) {
+    if named.is_empty() {
+        return;
+    }
+    tracing::debug!(kind, count = named.len(), "queueing notices");
+    for (named_hex, signed) in named {
+        let Some(recipient) = crate::pubkey::decode(&named_hex) else { continue };
+        match data.notices().seal(&recipient, &signed, kind, state.config.pow_requested_bits).await {
+            Ok(envelope) => {
+                if let Err(e) = queue(&state.node_db, root, &named_hex, &envelope).await {
+                    tracing::warn!(named = %named_hex, kind, error = ?e, "could not queue a notice");
+                }
+            }
+            Err(e) => tracing::warn!(named = %named_hex, kind, error = ?e, "could not seal a notice"),
+        }
+    }
+    let eager = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = sweep(eager).await {
+            tracing::debug!(error = ?e, "eager notice delivery failed");
+        }
+    });
+}
+
 pub async fn sweep(state: AppState) -> Result<()> {
     /// `(sender, recipient, kind, envelope, first_noted_ms, last_tried_ms, tries)`.
     type Row = (String, String, String, Vec<u8>, i64, i64, i64);
