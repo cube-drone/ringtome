@@ -923,6 +923,10 @@ struct RoomItem {
     /// until rejoined.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     left: bool,
+    /// Closed (CHAT.md, ruling 10): the settled wish on the room post - the record stands,
+    /// nobody says more.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    closed: bool,
     /// When the room last heard a message, as this node holds it; absent when silent.
     #[serde(skip_serializing_if = "Option::is_none")]
     latest_ms: Option<i64>,
@@ -1002,6 +1006,7 @@ async fn rooms_handler(
             mine: true,
             joined: false,
             left: false,
+            closed: p.settled,
             author_name: None,
             author_avatar: None,
             latest_ms: None,
@@ -1031,6 +1036,7 @@ async fn rooms_handler(
             mine: false,
             joined: false,
             left: false,
+            closed: r.settled,
             author_name: None,
             author_avatar: None,
             latest_ms: None,
@@ -1068,6 +1074,7 @@ async fn rooms_handler(
             mine: false,
             joined: !is_left,
             left: is_left,
+            closed: h.settled,
             author_name: None,
             author_avatar: None,
             latest_ms: None,
@@ -1106,10 +1113,15 @@ async fn rooms_handler(
                 (None, _) => false,
             };
     }
-    // Active rooms first, left rooms beneath them, each group by the newest word.
+    // Active rooms first, left rooms beneath them, closed rooms at the very bottom for
+    // everyone (Curtis, 2026-09-19) - each group by the newest word.
     items.sort_by(|a, b| {
         let stamp = |i: &RoomItem| i.latest_ms.unwrap_or(i.published_ms);
-        a.left.cmp(&b.left).then_with(|| stamp(b).cmp(&stamp(a))).then_with(|| a.doc_id.cmp(&b.doc_id))
+        a.closed
+            .cmp(&b.closed)
+            .then_with(|| a.left.cmp(&b.left))
+            .then_with(|| stamp(b).cmp(&stamp(a)))
+            .then_with(|| a.doc_id.cmp(&b.doc_id))
     });
     Ok(Json(serde_json::json!({ "items": items })))
 }
@@ -1166,6 +1178,8 @@ async fn room_enter_handler(
         "mine": author == root,
         "joined": author != root && !is_left,
         "left": is_left,
+        // Closed (ruling 10): the settled wish on the post.
+        "closed": h.settled,
         // The archive (CHAT.md, ruling 6): this node keeps the room whole, as its creator's
         // node or by its operator's full-sync.
         "archivist": crate::chat::archivist_here(&state, &author, &doc).await,

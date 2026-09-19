@@ -9495,3 +9495,18 @@ view epoch when new words land, and the stream's tick sees it. The mirror keeps 
 under its own key and the dock reads it as it reads the bell's. The feed suite's new claim
 opens the stream and reads the snapshot: nothing after a look, two after two words by ada,
 nothing again after the next look, and one's own words never count.
+
+## 2026-09-19: the owner closes or takes down a room
+
+CHAT.md slice 7, ruling 10's two powers on the page. Both doors already stood - close is the
+settled wish re-published on the room's own draft, delete is the post's takedown - so the
+work was the page finding the room's draft on the mirror by its publication, the "close"
+button and the trash in the owner's header (the takedown confirmed in the house modal, with
+the honest word that everything said stays on its speakers' chains, orphaned, and leaves
+other computers very slowly), and the doors saying `closed` so the column wears the settled
+mark and the header the chip. One finding: close is one-way. A re-publish carries the
+settled wish forward, as it carries the seal, so "reopen" was written, watched not
+propagate, and taken out - a closed room stays closed, and the ruling never promised
+otherwise. The feed suite's owner claim: closed on ada's list and at bea's door, the next
+word refused, a re-publish saying otherwise still settled, and the takedown gone from ada's
+list at once and from bea's once the tombstone lands.

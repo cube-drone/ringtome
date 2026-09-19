@@ -207,4 +207,36 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(mine.status, 200, await mine.text());
         assert.equal((await snapshot()).unread_chat, 0, "looked, and one's own words are not unseen");
     });
+
+    it("the owner closes the room (the record stands, nobody says more, and closed stays closed), then takes it down (it leaves every list)", async () => {
+        const roomsOf = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
+        // The room's own draft, by its publication: what the page finds on the mirror.
+        const docs = await (await ada(`api/identity/${adaRoot}/docs`)).json();
+        const draft = (docs.docs || []).find((d) => d.fields && d.fields.published_as === room);
+        assert.ok(draft, "the room's draft is on ada's shelf");
+        const closed = await j(ada, `api/identity/${adaRoot}/docs/${draft.doc_id}/publish`, { settled: true });
+        assert.equal(closed.status, 200, await closed.text());
+        const adaList = await roomsOf(ada, adaRoot);
+        assert.equal(adaList.find((r) => r.doc_id === room).closed, true, "ada's list says closed");
+        assert.equal(adaList[adaList.length - 1].doc_id, room, "and a closed room sits at the very bottom");
+        await pullAndFold(HOST_B, adaRoot);
+        assert.equal((await (await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}`)).json()).closed, true, "bea's door says closed");
+        const late = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "too late" });
+        assert.equal(late.status, 400, await late.text());
+        // Closed stays closed (ruling 10): a re-publish carries the wish forward.
+        const again = await j(ada, `api/identity/${adaRoot}/docs/${draft.doc_id}/publish`, { settled: false });
+        assert.equal(again.status, 200, await again.text());
+        assert.equal((await (await ada(`api/id/${adaRoot}/posts/${room}`)).json()).settled, true, "the wish is carried, never lifted");
+        // Taken down: the post goes, and the room leaves the lists.
+        const down = await ada(`api/identity/${adaRoot}/posts/${room}`, { method: "DELETE" });
+        assert.equal(down.status, 200, await down.text());
+        assert.ok(!(await roomsOf(ada, adaRoot)).some((r) => r.doc_id === room), "gone from ada's list");
+        let still = true;
+        for (let i = 0; i < 30 && still; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            still = (await roomsOf(bea, beaRoot)).some((r) => r.doc_id === room);
+            if (still) await wait(300);
+        }
+        assert.equal(still, false, "and, once the tombstone lands, from bea's");
+    });
 });

@@ -22,6 +22,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { Modal } from '../modal.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from '../doc/completions.js';
@@ -90,7 +91,7 @@ const RoomRow = ({ room, current, selected }) => {
         <span class="chat-row-icon">${room.trusted_only ? html`<${Icons.trustPrivate} />` : html`<${Icons.chat} />`}</span>
         <span class="chat-row-main">
             <span class="chat-row-top">
-                <span class="chat-row-name">${roomName(words, room)}</span>
+                <span class="chat-row-name">${room.closed && html`<${Icons.settled} />`} ${roomName(words, room)}</span>
                 <span class="chat-row-when">${room.latest_ms ? whenWords(room.latest_ms) : t('apps.chat.quiet', 'quiet')}</span>
             </span>
             <span class="chat-row-by"><${PersonChip} root=${room.author} current=${current} /></span>
@@ -101,9 +102,10 @@ const RoomRow = ({ room, current, selected }) => {
 const RoomsColumn = ({ current, rooms, selected, onTuck }) => {
     const loc = useLocation();
     // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
-    // 2026-09-19): left rooms are not synced and never bold, until rejoined.
-    const active = (rooms || []).filter((r) => !r.left);
-    const left = (rooms || []).filter((r) => r.left);
+    // 2026-09-19): left rooms are not synced and never bold, until rejoined. Closed rooms
+    // sit at the bottom of that pile for everyone - the door sorts them last.
+    const active = (rooms || []).filter((r) => !r.left && !r.closed);
+    const left = (rooms || []).filter((r) => r.left || r.closed);
     const row = (r) => html`<${RoomRow}
         key=${`${r.author}/${r.doc_id}`}
         room=${r}
@@ -249,6 +251,15 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     const [history, setHistory] = useState(null); // { items, closed, more }
     const [older, setOlder] = useState(false); // an earlier page on its way
     const [archiving, setArchiving] = useState(false);
+    // The owner's two powers (CHAT.md, ruling 10; slice 7): close is the settled wish on the
+    // room post, set through the publish door with the room's own draft - and one-way, as a
+    // re-publish carries the wish forward: the conversation ended, and the record stands;
+    // delete is the takedown every post has, confirmed in the house modal.
+    const [deleting, setDeleting] = useState(false);
+    const [going, setGoing] = useState(false);
+    const [closing, setClosing] = useState(false);
+    const myDocs = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
+    const roomDraft = (myDocs || []).find((d) => (d.fields || {}).published_as === doc);
     const keepOffset = useRef(null); // the floor's height before older lines landed
     const [draft, setDraft] = useState('');
     const [sending, setSending] = useState(false);
@@ -517,6 +528,32 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         if (onChanged) onChanged();
         loc.route('/home/chat');
     };
+    const closeRoom = async () => {
+        if (!roomDraft || closing) return;
+        setClosing(true);
+        try {
+            await api(`/api/identity/${root}/docs/${roomDraft.doc_id}/publish`, { method: 'POST', body: JSON.stringify({ settled: true }) });
+            setRoom((r) => r && { ...r, closed: true });
+            readHistory();
+            if (onChanged) onChanged();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        } finally {
+            setClosing(false);
+        }
+    };
+    const takeDown = async () => {
+        setGoing(true);
+        try {
+            await api(`/api/identity/${root}/posts/${doc}`, { method: 'DELETE' });
+            if (onChanged) onChanged();
+            loc.route('/home/chat');
+        } catch (e) {
+            setSendError(e.message || String(e));
+            setGoing(false);
+            setDeleting(false);
+        }
+    };
     // Rejoin (Curtis, 2026-09-19): the room becomes active again and syncs from now on.
     const rejoin = async () => {
         try {
@@ -578,6 +615,39 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                   </span>`
                 : room.archivist && html`<span class="label-chip chat-archived">${t('apps.chat.the-archive', 'the archive')}</span>`}
             ${room.joined && html`<button class="chat-leave" onClick=${leave}>${t('apps.chat.leave', 'leave')}</button>`}
+            ${room.closed && html`<span class="label-chip label-chip-flag"><${Icons.settled} /> ${t('apps.chat.closed', 'closed')}</span>`}
+            ${room.mine &&
+            html`${!room.closed &&
+                html`<button
+                    class="chat-leave chat-close"
+                    disabled=${closing || !roomDraft}
+                    title=${t('apps.chat.close-the-room-title', 'close the room - the conversation ends, and the record stands')}
+                    onClick=${closeRoom}
+                >
+                    ${closing ? t('apps.chat.closing', 'closing…') : t('apps.chat.close', 'close')}
+                </button>`}
+                <button class="chat-leave chat-delete" title=${t('apps.chat.delete-the-room-title', 'take the room down - the post goes, and the conversation is orphaned')} onClick=${() => setDeleting(true)}>
+                    <${Icons.trash} />
+                </button>
+                ${deleting &&
+                html`<${Modal}
+                    title=${t('apps.chat.take-the-room-down', 'take the room down')}
+                    onClose=${() => {
+                        if (!going) setDeleting(false);
+                    }}
+                >
+                    <p class="feed-unpublish-warn">
+                        ${/* Plain words for the person deciding (Curtis, 2026-09-19): the
+                            machinery behind a takedown is CHAT.md's business, not theirs. */ ''}
+                        ${t('apps.chat.do-you-want-to-take-the-room-down', 'Do you want to take the room down? It may take a while.')}
+                    </p>
+                    <div class="feed-unpublish-acts">
+                        <button class="feed-unpublish-go" disabled=${going} onClick=${takeDown}>
+                            ${going ? t('apps.chat.taking-it-down', 'taking it down…') : t('apps.chat.take-it-down', 'take it down')}
+                        </button>
+                        <button class="feed-unpublish-no" disabled=${going} onClick=${() => setDeleting(false)}>${t('apps.chat.keep-it', 'keep it')}</button>
+                    </div>
+                </${Modal}>`}`}
         </header>
         <div class="chat-floor" ref=${floor} onScroll=${trackEnd}>
             ${/* The gap (Curtis, 2026-09-19): where what this computer holds runs out sits

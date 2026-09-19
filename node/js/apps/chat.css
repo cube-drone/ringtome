@@ -80,6 +80,11 @@
     flex-wrap: wrap;
 }
 
+.chat-delete {
+    display: inline-flex;
+    align-items: center;
+}
+
 .chat-rejoin {
     margin-left: auto;
     font-size: 0.9em;

@@ -286,9 +286,18 @@ node keeps its own room whole, which is where "all of it" lives.
    and keeps nothing. The bell's row reads "mentioned you in <room>", a link into the room
    worn as its name. The `@` picker in the room offers who has spoken there first, then
    contacts and the directory. Suite: the feed suite's bell claim.
-7. **Closing & Deleting Rooms**
+7. **Closing & Deleting Rooms.** **Built 2026-09-19.** Both powers are ruling 10's and
+   both doors already stood: close is the settled wish re-published on the room's own draft
+   (the page finds the draft on the mirror by its publication), delete is the post's
+   takedown. Close is one-way - a re-publish carries the settled wish forward, so a closed
+   room stays closed; the record stands. The rooms door and the enter door answer `closed`,
+   the column wears the settled mark, the header the chip, and the owner's header holds
+   "close" and the trash, the takedown confirmed in the house modal with the honest word
+   about orphaned chains. Suite: the feed suite's owner claim - closed here and there, the
+   next word refused, the wish never lifted, the takedown gone from every list.
 8. **Deleting & Editing Messags**
 9. **Emoji Responses**
+10. **The Mute List**
 
 ## Settled questions and residuals
 

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 832 phrases across 58 files.
+// 842 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -44,6 +44,16 @@ export default {
     'apps.chat.release': 'release',
     'apps.chat.the-archive': 'the archive',
     'apps.chat.leave': 'leave',
+    'apps.chat.closed': 'closed',
+    'apps.chat.close-the-room-title': 'close the room - the conversation ends, and the record stands',
+    'apps.chat.closing': 'closing…',
+    'apps.chat.close': 'close',
+    'apps.chat.delete-the-room-title': 'take the room down - the post goes, and the conversation is orphaned',
+    'apps.chat.take-the-room-down': 'take the room down',
+    'apps.chat.do-you-want-to-take-the-room-down': 'Do you want to take the room down? It may take a while.',
+    'apps.chat.taking-it-down': 'taking it down…',
+    'apps.chat.take-it-down': 'take it down',
+    'apps.chat.keep-it': 'keep it',
     'apps.chat.reading': 'reading…',
     'apps.chat.earlier': 'earlier…',
     'apps.chat.pull-the-whole-room-and-keep-it': "pull the room's whole history from its creator's node, and keep it here from now on",
