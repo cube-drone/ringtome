@@ -32,6 +32,12 @@ import { insertNewlineAndIndent } from '@codemirror/commands';
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
 const CHAT_BUCKET = 'chat';
+/// One message's words, at most - the wire's own cap (`ChatMessage::MAX_BODY_BYTES`), in
+/// bytes of UTF-8, which is what the door measures. The counter shows past the halfway mark
+/// and turns red past the cap, and the send button follows it (Curtis, 2026-09-19: "keep
+/// the user unsurprised by the limit").
+const MAX_MESSAGE_BYTES = 4096;
+const byteLength = (s) => new TextEncoder().encode(s).length;
 
 const html = htm.bind(h);
 
@@ -498,9 +504,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         }
         ws.send(JSON.stringify({ typing: on }));
     };
+    const draftBytes = byteLength(draft);
+    const overLong = draftBytes > MAX_MESSAGE_BYTES;
     const send = async () => {
         const said = draft.trim();
-        if (!said || sending) return;
+        if (!said || sending || overLong) return;
         setSending(true);
         setSendError(null);
         try {
@@ -717,6 +725,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                               }}
                           />
                       </div>
+                      ${draftBytes > MAX_MESSAGE_BYTES / 2 &&
+                      html`<span
+                          class=${overLong ? 'chat-composer-count chat-composer-count-over' : 'chat-composer-count'}
+                          title=${t('apps.chat.bytes-of-this-message', 'this message, in bytes, against the most one message may carry')}
+                      >${draftBytes} / ${MAX_MESSAGE_BYTES}</span>`}
                       <button
                           class="chat-composer-attach"
                           type="button"
@@ -728,7 +741,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                       <button
                           class="chat-composer-send"
                           type="submit"
-                          disabled=${sending || !draft.trim()}
+                          disabled=${sending || !draft.trim() || overLong}
                           title=${t('apps.chat.send', 'send')}
                           aria-label=${t('apps.chat.send', 'send')}
                       >

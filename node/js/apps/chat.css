@@ -467,6 +467,21 @@
     color: var(--muted);
 }
 
+/* The byte counter: quiet past halfway, red and blocking past the cap. */
+.chat-composer-count {
+    flex: none;
+    align-self: center;
+    font-size: 0.75em;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.chat-composer-count-over {
+    color: var(--coral);
+    font-weight: 600;
+}
+
 .chat-composer-attach {
     background: none;
     border: 1px solid var(--border);
