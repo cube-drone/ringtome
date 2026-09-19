@@ -63,6 +63,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/rooms/{author}/{doc}/sync", post(room_sync_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/live", get(room_live_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/chatters", get(room_chatters_handler))
+        .route("/api/identity/{root}/rooms/{author}/{doc}/join", post(room_join_handler))
         .route(
             "/api/identity/{root}/rooms/{author}/{doc}/archive",
             post(room_archive_handler).delete(room_unarchive_handler),
@@ -918,6 +919,10 @@ struct RoomItem {
     /// Entered by link and not left.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     joined: bool,
+    /// Left (Curtis, 2026-09-19): listed beneath the active rooms, never bold, not synced,
+    /// until rejoined.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    left: bool,
     /// When the room last heard a message, as this node holds it; absent when silent.
     #[serde(skip_serializing_if = "Option::is_none")]
     latest_ms: Option<i64>,
@@ -935,16 +940,36 @@ struct RoomItem {
 }
 
 /// The rooms this persona entered by link and has not left: `(author_hex, doc_hex)`.
-async fn joined_rooms(data: &store::Store) -> Result<Vec<(String, String)>, AppError> {
+/// The `rooms` register's rows, split by standing (Curtis, 2026-09-19): a room entered and
+/// still in (`joined_ms`), and a room left (`left_ms`) - kept on the register rather than
+/// dropped, so the column can list what was left beneath what is active, and a look at a
+/// left room does not quietly rejoin it.
+async fn rooms_by_standing(data: &store::Store) -> Result<(Vec<(String, String)>, Vec<(String, String)>), AppError> {
     let (rows, _) = data.private_registers(ROOMS_JOINED).all().await?;
-    Ok(rows
-        .into_iter()
-        .filter(|r| !r.value.trim().is_empty())
-        .filter_map(|r| {
-            let (author, doc) = r.key.split_once(':')?;
-            (author.len() == 64 && doc.len() == 32).then(|| (author.to_string(), doc.to_string()))
-        })
-        .collect())
+    let mut joined = Vec::new();
+    let mut left = Vec::new();
+    for r in rows {
+        if r.value.trim().is_empty() {
+            continue;
+        }
+        let Some((author, doc)) = r.key.split_once(':') else { continue };
+        if author.len() != 64 || doc.len() != 32 {
+            continue;
+        }
+        let is_left = serde_json::from_str::<serde_json::Value>(&r.value)
+            .ok()
+            .is_some_and(|v| v.get("left_ms").is_some());
+        if is_left {
+            left.push((author.to_string(), doc.to_string()));
+        } else {
+            joined.push((author.to_string(), doc.to_string()));
+        }
+    }
+    Ok((joined, left))
+}
+
+async fn joined_rooms(data: &store::Store) -> Result<Vec<(String, String)>, AppError> {
+    Ok(rooms_by_standing(data).await?.0)
 }
 
 /// GET `/api/identity/{root}/rooms` - every room this persona may see (CHAT.md, ruling 7):
@@ -976,6 +1001,7 @@ async fn rooms_handler(
             via: None,
             mine: true,
             joined: false,
+            left: false,
             author_name: None,
             author_avatar: None,
             latest_ms: None,
@@ -1004,6 +1030,7 @@ async fn rooms_handler(
             via: r.via_root,
             mine: false,
             joined: false,
+            left: false,
             author_name: None,
             author_avatar: None,
             latest_ms: None,
@@ -1011,16 +1038,21 @@ async fn rooms_handler(
             unread: false,
         });
     }
-    // The rooms I entered by link.
-    let joined = joined_rooms(&data).await?;
-    for (author, doc) in joined {
+    // The rooms I entered by link - still in, or left (Curtis, 2026-09-19).
+    let (joined, left) = rooms_by_standing(&data).await?;
+    for (author, doc, is_left) in joined
+        .into_iter()
+        .map(|(a, d)| (a, d, false))
+        .chain(left.into_iter().map(|(a, d)| (a, d, true)))
+    {
         let Some(h) = held_public_header(&state, &author, &doc).await? else { continue };
         if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
             continue;
         }
         if seen.contains(&(author.clone(), doc.clone())) {
             if let Some(item) = items.iter_mut().find(|i| i.author == author && i.doc_id == doc) {
-                item.joined = true;
+                item.joined = !is_left;
+                item.left = is_left;
             }
             continue;
         }
@@ -1034,7 +1066,8 @@ async fn rooms_handler(
             onward: h.onward,
             via: None,
             mine: false,
-            joined: true,
+            joined: !is_left,
+            left: is_left,
             author_name: None,
             author_avatar: None,
             latest_ms: None,
@@ -1064,15 +1097,19 @@ async fn rooms_handler(
     for item in items.iter_mut() {
         item.latest_ms = latest.get(&(item.author.clone(), item.doc_id.clone())).copied();
         item.seen_ms = seen.get(&format!("{}:{}", item.author, item.doc_id)).copied();
-        item.unread = match (item.latest_ms, item.seen_ms) {
-            (Some(l), Some(s)) => l > s,
-            (Some(_), None) => true,
-            (None, _) => false,
-        };
+        // A left room is never bold (Curtis, 2026-09-19): nothing in it is this persona's
+        // to catch up on until they rejoin.
+        item.unread = !item.left
+            && match (item.latest_ms, item.seen_ms) {
+                (Some(l), Some(s)) => l > s,
+                (Some(_), None) => true,
+                (None, _) => false,
+            };
     }
+    // Active rooms first, left rooms beneath them, each group by the newest word.
     items.sort_by(|a, b| {
         let stamp = |i: &RoomItem| i.latest_ms.unwrap_or(i.published_ms);
-        stamp(b).cmp(&stamp(a)).then_with(|| a.doc_id.cmp(&b.doc_id))
+        a.left.cmp(&b.left).then_with(|| stamp(b).cmp(&stamp(a))).then_with(|| a.doc_id.cmp(&b.doc_id))
     });
     Ok(Json(serde_json::json!({ "items": items })))
 }
@@ -1105,14 +1142,20 @@ async fn room_enter_handler(
         )));
     }
     let key = format!("{author}:{doc}");
-    let already = joined_rooms(&data).await?.iter().any(|(a, d)| *a == author && *d == doc);
-    if !already && author != root {
+    let (joined, left) = rooms_by_standing(&data).await?;
+    let is_left = left.iter().any(|(a, d)| *a == author && *d == doc);
+    let already = joined.iter().any(|(a, d)| *a == author && *d == doc);
+    if !already && !is_left && author != root {
         data.private_registers(ROOMS_JOINED)
             .set(&key, &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string())
             .await?;
     }
-    // The node keeps an opened room pulled for a while (CHAT.md, slice 2).
-    crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    // The node keeps an opened room pulled for a while (CHAT.md, slice 2) - unless this
+    // persona left it (Curtis, 2026-09-19): a look at a left room is a look, not a rejoin,
+    // and the room stays unsynced until the rejoin door is asked.
+    if !is_left {
+        crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    }
     Ok(Json(serde_json::json!({
         "author": author,
         "doc_id": doc,
@@ -1121,7 +1164,8 @@ async fn room_enter_handler(
         "onward": if h.onward { Some(true) } else { None },
         "published_ms": h.genesis_ms.unwrap_or(0),
         "mine": author == root,
-        "joined": author != root,
+        "joined": author != root && !is_left,
+        "left": is_left,
         // The archive (CHAT.md, ruling 6): this node keeps the room whole, as its creator's
         // node or by its operator's full-sync.
         "archivist": crate::chat::archivist_here(&state, &author, &doc).await,
@@ -1170,14 +1214,37 @@ async fn room_leave_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let key = format!("{author}:{doc}");
+    // Left, not forgotten (Curtis, 2026-09-19): the register keeps the room with a left
+    // stamp, so it lists beneath the active rooms and can be rejoined.
     if joined_rooms(&data).await?.iter().any(|(a, d)| *a == author && *d == doc) {
-        data.private_registers(ROOMS_JOINED).set(&key, "").await?;
+        data.private_registers(ROOMS_JOINED)
+            .set(&key, &serde_json::json!({ "left_ms": crate::clock::now_ms() }).to_string())
+            .await?;
     }
     crate::chat::close_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
     if let Ok(doc_id) = hex_fixed::<16>(&doc, "doc id") {
         crate::chat::leave_live(&state, &doc_id);
     }
     Ok(Json(serde_json::json!({ "left": true })))
+}
+
+/// POST `/api/identity/{root}/rooms/{author}/{doc}/join` - the rejoin (Curtis, 2026-09-19):
+/// a left room becomes active again, synced from now on; the room's door is asked as at
+/// the first entering.
+async fn room_join_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    room_admits(&state, &root, &author, &doc).await?;
+    if author != root {
+        data.private_registers(ROOMS_JOINED)
+            .set(&format!("{author}:{doc}"), &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string())
+            .await?;
+    }
+    crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "joined": true })))
 }
 
 /// GET `/api/identity/{root}/rooms/{author}/{doc}/live` - the room's live socket (CHAT.md,

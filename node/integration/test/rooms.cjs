@@ -140,7 +140,10 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const left = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${kitchen}`, { method: "DELETE" });
         assert.equal(left.status, 200, await left.text());
         his = await rooms(cal, calRoot);
-        assert.ok(!his.some((r) => r.doc_id === kitchen), "leaving forgets the link");
+        // Left, not forgotten (Curtis, 2026-09-19): the room lists beneath the active ones,
+        // no longer joined, until rejoined.
+        const gone = his.find((r) => r.doc_id === kitchen);
+        assert.ok(gone && gone.left && !gone.joined, `leaving keeps the room, marked left: ${JSON.stringify(gone)}`);
     });
 
     it("the share rule is the post's own: the open room passes along, the sealed one does not", async () => {

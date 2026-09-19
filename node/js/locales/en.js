@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 828 phrases across 58 files.
+// 831 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -20,6 +20,7 @@ export default {
     'apps.chat.chats': 'chats',
     'apps.chat.new-chat': '+ new chat',
     'apps.chat.no-rooms-yet-column': 'no chats yet',
+    'apps.chat.left': 'left',
     'apps.chat.a-new-chat': 'a new chat',
     'apps.chat.a-name-for-the-room': 'a name for the room',
     'apps.chat.what-is-it-for': 'what is it for? (optional)',
@@ -42,15 +43,17 @@ export default {
     'apps.chat.kept-whole-here': 'kept whole here',
     'apps.chat.release': 'release',
     'apps.chat.the-archive': 'the archive',
-    'apps.chat.pull-the-whole-room-and-keep-it': "pull the room's whole history from its creator's node, and keep it here from now on",
-    'apps.chat.pulling': 'pulling…',
-    'apps.chat.keep-whole-here': 'keep whole here',
     'apps.chat.leave': 'leave',
     'apps.chat.reading': 'reading…',
     'apps.chat.earlier': 'earlier…',
+    'apps.chat.pull-the-whole-room-and-keep-it': "pull the room's whole history from its creator's node, and keep it here from now on",
+    'apps.chat.loading-the-entire-history': 'loading the entire history…',
+    'apps.chat.load-the-entire-history-here': 'load the entire history here',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
     'apps.chat.is-typing': 'is typing…',
     'apps.chat.are-typing': 'are typing…',
+    'apps.chat.you-left-this-room': "you left this room - it isn't being updated here, and what you see may be out of date",
+    'apps.chat.rejoin': 'rejoin',
     'apps.chat.this-room-is-closed': 'this room is closed - the conversation ended, and the record stands',
     'apps.chat.say-something': 'say something…',
     'apps.chat.attach-a-picture-sound-or-video': 'attach a picture, a sound or a video (drop or paste works too)',

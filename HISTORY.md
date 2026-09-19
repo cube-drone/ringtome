@@ -9446,3 +9446,19 @@ rides the wire: the archive's history answer names how many messages it holds of
 (capped at a thousand, so the count costs one small query and no entries), the reader's
 history door answers its own memo's count or the archive's, whichever is larger, and the
 card says "100+" past a hundred more. The feed suite's tail claim checks the count.
+
+## 2026-09-19: rooms left, not forgotten
+
+Curtis: a left room should sit in its own list beneath the active chats, never bold, the
+lowest priority for updates or none at all, with the room itself saying it is not being
+updated and offering a rejoin. Leaving now stamps the `rooms` register with a left time
+rather than clearing the row, so the room stays known: the rooms door answers `left`, sorts
+the active rooms first and the left ones beneath, and never marks a left room unread; the
+node stops pulling it (its open-room row goes, so the sync beat and the live lane leave it
+alone). A look at a left room is a look, not a rejoin - the enter door answers `left` and
+does not reopen the pull - and a new join door is the rejoin: the register says joined
+again, the pull resumes. The column shows the two groups under a small divider, a left
+room's page hangs up no socket, writes no seen mark, and replaces the composer with the
+honest word and a rejoin button. The feed suite's new claim walks the whole loop: in,
+listed active and pulled; out, listed beneath, not bold, not pulled; a look changes
+nothing; a rejoin pulls again and what was said meanwhile arrives and bolds the room.

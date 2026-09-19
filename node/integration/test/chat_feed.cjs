@@ -11,7 +11,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST, HOST_B } = require("./fetch.cjs");
+const { HOST, HOST_B, sql } = require("./fetch.cjs");
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -99,5 +99,44 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual((tail.items || []).map((m) => m.words), ["four", "three", "two"], `the tail is the last three: ${JSON.stringify(tail)}`);
         assert.ok(tail.items.every((m) => m.said_ms > 0), "each with when");
         assert.equal(tail.total, 4, `and the room's size, for "and N more": ${JSON.stringify(tail)}`);
+    });
+
+    it("leaving a room lists it beneath the active ones, never bold and no longer synced; a look is not a rejoin; rejoining is", async () => {
+        const rooms = async () => ((await (await bea(`api/identity/${beaRoot}/rooms`)).json()).items || []);
+        const opened = async () => Number((await sql(`SELECT COUNT(*) AS n FROM rooms_open WHERE root_pubkey = '${beaRoot}' AND room_doc = '${room}'`, HOST_B)).rows[0].n);
+        let entered = null;
+        for (let i = 0; i < 30 && !entered; i++) {
+            const r = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}`);
+            if (r.status === 200) entered = await r.json();
+            else await wait(400);
+        }
+        assert.ok(entered && entered.joined && !entered.left, `bea is in the parlour: ${JSON.stringify(entered)}`);
+        assert.equal(await opened(), 1, "the node keeps the room pulled");
+        const left = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}`, { method: "DELETE" });
+        assert.equal(left.status, 200, await left.text());
+        assert.equal(await opened(), 0, "the node stops pulling a left room");
+        const saidAfter = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "after bea left" });
+        assert.equal(saidAfter.status, 200, await saidAfter.text());
+        let list = await rooms();
+        let row = list.find((r) => r.doc_id === room);
+        assert.ok(row && row.left, `the parlour is listed as left: ${JSON.stringify(row)}`);
+        assert.equal(!!row.unread, false, "a left room is never bold");
+        assert.ok(list.findIndex((r) => r.doc_id === room) >= list.filter((r) => !r.left).length, "and sits beneath every active room");
+        const look = await (await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}`)).json();
+        assert.equal(look.left, true, `a look at a left room says so: ${JSON.stringify(look)}`);
+        assert.equal(await opened(), 0, "and does not rejoin it");
+        const rejoined = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/join`, { method: "POST" });
+        assert.equal(rejoined.status, 200, await rejoined.text());
+        assert.equal(await opened(), 1, "the node pulls the room again");
+        for (let i = 0; i < 30; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            list = await rooms();
+            row = list.find((r) => r.doc_id === room);
+            if (row && !row.left && row.unread) break;
+            await wait(300);
+        }
+        assert.ok(row && !row.left && row.joined, `active again: ${JSON.stringify(row)}`);
+        assert.equal(row.unread, true, "and bold, with what was said while bea was away");
     });
 });

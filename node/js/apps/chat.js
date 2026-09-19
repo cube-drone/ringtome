@@ -25,6 +25,7 @@ import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from '../doc/completions.js';
+import { userCardHtml, userSpanHtml, useUserCards } from '../doc/usercard.js';
 import { insertNewlineAndIndent } from '@codemirror/commands';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
@@ -99,6 +100,16 @@ const RoomRow = ({ room, current, selected }) => {
 
 const RoomsColumn = ({ current, rooms, selected, onTuck }) => {
     const loc = useLocation();
+    // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
+    // 2026-09-19): left rooms are not synced and never bold, until rejoined.
+    const active = (rooms || []).filter((r) => !r.left);
+    const left = (rooms || []).filter((r) => r.left);
+    const row = (r) => html`<${RoomRow}
+        key=${`${r.author}/${r.doc_id}`}
+        room=${r}
+        current=${current}
+        selected=${!!selected && selected.author === r.author && selected.doc === r.doc_id}
+    />`;
     return html`<aside class="chat-rooms">
         <${PaneHead} label=${t('apps.chat.chats', 'chats')} onTuck=${onTuck} />
         <button class="chat-new-btn" onClick=${() => loc.route('/home/chat/new')}>
@@ -106,16 +117,10 @@ const RoomsColumn = ({ current, rooms, selected, onTuck }) => {
         </button>
         ${rooms && rooms.length === 0
             ? html`<p class="chat-rooms-empty">${t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
-            : html`<ul class="chat-list">
-                  ${(rooms || []).map(
-                      (r) => html`<${RoomRow}
-                          key=${`${r.author}/${r.doc_id}`}
-                          room=${r}
-                          current=${current}
-                          selected=${!!selected && selected.author === r.author && selected.doc === r.doc_id}
-                      />`
-                  )}
-              </ul>`}
+            : html`<ul class="chat-list">${active.map(row)}</ul>`}
+        ${left.length > 0 &&
+        html`<p class="chat-list-divider">${t('apps.chat.left', 'left')}</p>
+            <ul class="chat-list chat-list-left">${left.map(row)}</ul>`}
     </aside>`;
 };
 
@@ -236,7 +241,7 @@ const Line = ({ m, current, cont }) => {
     </li>`;
 };
 
-const Room = ({ current, author, doc, onSeen, admin }) => {
+const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [room, setRoom] = useState(undefined); // undefined loading, null refused, object entered
@@ -261,7 +266,15 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
     // by chip, drop or paste - the say door bakes what the words embed.
     const cursor = useRef(null);
     const sendRef = useRef(null);
-    const composerProfile = useTurbolinks(draft, 'marquee');
+    // The live preview dresses a user card as the person (Curtis, 2026-09-18: "@pete"
+    // rendered in the post composer and not here) - the same directive, span and faces the
+    // Writer's editor hands its surface, rebuilt as the faces land.
+    const tlProfile = useTurbolinks(draft, 'marquee');
+    const facesGen = useUserCards(draft, 'marquee');
+    const composerProfile = useMemo(
+        () => ({ ...tlProfile, directive: userCardHtml, span: userSpanHtml, faces: facesGen }),
+        [tlProfile, facesGen]
+    );
     const completions = useMemo(
         () => [emojiCompletions, linkCompletions(root, CHAT_BUCKET), mediaCompletions(root, CHAT_BUCKET), mentionCompletions(root)],
         [root]
@@ -300,6 +313,7 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
     // stamp goes to the `rooms_seen` register, throttled, and the column un-bolds the room.
     useEffect(() => {
         if (!root || !history || !history.items.length) return undefined;
+        if (room && room.left) return undefined; // a left room is not this persona's to catch up on
         const newest = Math.max(...history.items.map((m) => m.said_ms));
         if (newest <= seen.current.written) return undefined;
         const write = () => {
@@ -362,7 +376,7 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
     // The live lane (CHAT.md, ruling 5): the room's socket says when the floor moved and
     // who is here; it reconnects with backoff, and the poll above is the backstop.
     useEffect(() => {
-        if (!root || !room) return undefined;
+        if (!root || !room || room.left) return undefined; // no live lane for a left room
         let stopped = false;
         let retry = 1000;
         const connect = () => {
@@ -490,7 +504,19 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
         } catch {
             /* the list re-reads on the next look */
         }
+        if (onChanged) onChanged();
         loc.route('/home/chat');
+    };
+    // Rejoin (Curtis, 2026-09-19): the room becomes active again and syncs from now on.
+    const rejoin = async () => {
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/join`, { method: 'POST' });
+            setRoom((r) => r && { ...r, left: false, joined: true });
+            readHistory();
+            if (onChanged) onChanged();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        }
     };
 
     if (!root) return null;
@@ -533,22 +559,36 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
                 </ul>
             </details>
             <a class="chat-room-post" href=${`/id/${speakable(author)}/post/${doc}`}>${t('apps.chat.the-rooms-post', "the room's post")}</a>
-            ${/* The archive (ruling 6): the creator's node keeps its rooms whole unasked; any
-                other node's operator may press full-sync and keep this one whole too. */ ''}
+            ${/* The archive's standing (ruling 6): the creator's node keeps its rooms whole
+                unasked; a node whose operator pressed full-sync says so, and may release. */ ''}
             ${room.archived
                 ? html`<span class="label-chip chat-archived" title=${t('apps.chat.this-node-keeps-the-whole-room', 'this node keeps the whole room, not just the latest')}>
                       ${t('apps.chat.kept-whole-here', 'kept whole here')}
                       ${admin && html`<button class="chat-archive" disabled=${archiving} onClick=${() => setArchive(false)}>${t('apps.chat.release', 'release')}</button>`}
                   </span>`
-                : room.archivist
-                  ? html`<span class="label-chip chat-archived">${t('apps.chat.the-archive', 'the archive')}</span>`
-                  : admin && html`<button class="chat-archive" disabled=${archiving} onClick=${() => setArchive(true)} title=${t('apps.chat.pull-the-whole-room-and-keep-it', "pull the room's whole history from its creator's node, and keep it here from now on")}>
-                        ${archiving ? t('apps.chat.pulling', 'pulling…') : t('apps.chat.keep-whole-here', 'keep whole here')}
-                    </button>`}
+                : room.archivist && html`<span class="label-chip chat-archived">${t('apps.chat.the-archive', 'the archive')}</span>`}
             ${room.joined && html`<button class="chat-leave" onClick=${leave}>${t('apps.chat.leave', 'leave')}</button>`}
         </header>
         <div class="chat-floor" ref=${floor} onScroll=${trackEnd}>
-            ${history && history.more && html`<button class="chat-older" disabled=${older} onClick=${readOlder}>${older ? t('apps.chat.reading', 'reading…') : t('apps.chat.earlier', 'earlier…')}</button>`}
+            ${/* The gap (Curtis, 2026-09-19): where what this computer holds runs out sits
+                the way past it - a page of earlier lines for anyone, and for the node's
+                operator the full-sync, which loads the entire history here and keeps it. */ ''}
+            ${history &&
+            history.more &&
+            html`<div class="chat-gap">
+                <button class="chat-older" disabled=${older} onClick=${readOlder}>${older ? t('apps.chat.reading', 'reading…') : t('apps.chat.earlier', 'earlier…')}</button>
+                ${admin &&
+                !room.archived &&
+                !room.archivist &&
+                html`<button
+                    class="chat-older chat-archive-all"
+                    disabled=${archiving}
+                    onClick=${() => setArchive(true)}
+                    title=${t('apps.chat.pull-the-whole-room-and-keep-it', "pull the room's whole history from its creator's node, and keep it here from now on")}
+                >
+                    ${archiving ? t('apps.chat.loading-the-entire-history', 'loading the entire history…') : t('apps.chat.load-the-entire-history-here', 'load the entire history here')}
+                </button>`}
+            </div>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
                 ${lines.map((m, i) => html`<${Line} key=${m.hash} m=${m} current=${current} cont=${i > 0 && lines[i - 1].speaker === m.speaker} />`)}
@@ -561,7 +601,15 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
             </p>`}
         </div>
         <div class="chat-foot">
-            ${history && history.closed
+            ${/* A left room (Curtis, 2026-09-19): no composer - the honest word that it is
+                not being updated, and the way back in. */ ''}
+            ${room.left
+                ? html`<p class="chat-closed chat-left-note">
+                      <${Icons.trustPrivate} />
+                      ${t('apps.chat.you-left-this-room', "you left this room - it isn't being updated here, and what you see may be out of date")}
+                      <button class="chat-rejoin" onClick=${rejoin}>${t('apps.chat.rejoin', 'rejoin')}</button>
+                  </p>`
+                : history && history.closed
                 ? html`<p class="chat-closed"><${Icons.settled} /> ${t('apps.chat.this-room-is-closed', 'this room is closed - the conversation ended, and the record stands')}</p>`
                 : html`<form
                       class="chat-composer"
@@ -668,6 +716,7 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
                             author=${author}
                             doc=${doc}
                             admin=${admin}
+                            onChanged=${load}
                             onSeen=${(a, d, ms) =>
                                 setPage((p) =>
                                     p && {
