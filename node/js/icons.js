@@ -47,6 +47,7 @@ import {
     ArrowLeft,
     ArrowRight,
     UploadSimple,
+    PaperPlaneRight,
     CheckCircle,
     LinkSimple,
     FileImage,
@@ -131,6 +132,8 @@ export const Icons = {
     navNext: ArrowRight,
     // file upload (the doc-menu button; drop and paste land in the same place)
     upload: UploadSimple,
+    // say it: the chat composer's send
+    send: PaperPlaneRight,
     done: CheckCircle,
     // media document kinds (tree rows, list rows)
     fileImage: FileImage,

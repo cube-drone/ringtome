@@ -139,7 +139,13 @@ pub enum FragmentMessage {
     /// the frame cap, newest first; the answer is a run of these ended by an EMPTY one. Each
     /// entry proves itself; the root beside it is the archive's attribution, which the
     /// reader checks against the speaker's key tree before believing.
-    RoomHistory { items: Vec<([u8; 32], Vec<u8>)> },
+    RoomHistory {
+        items: Vec<([u8; 32], Vec<u8>)>,
+        /// How many messages the answering node holds of the room, capped at
+        /// `MAX_ROOM_HISTORY_TOTAL` - a card's "and N more" without syncing the conversation
+        /// (Curtis, 2026-09-18). The same on every frame of one answer.
+        total: u64,
+    },
 }
 
 /// Cap on a room directory answer: the speaker ceiling (CHAT.md, ruling 6).
@@ -150,6 +156,9 @@ pub const MAX_ROOM_HISTORY_ITEMS: usize = 3;
 
 /// Cap on one history ask.
 pub const MAX_ROOM_HISTORY_LIMIT: u64 = 64;
+/// The most a history answer's `total` says: past this a card reads "100+ more" and the
+/// archive counts no further.
+pub const MAX_ROOM_HISTORY_TOTAL: u64 = 1000;
 
 /// Cap on ids per shelf list, enforced at decode.
 pub const MAX_SHELF_IDS: usize = 64;
@@ -335,8 +344,8 @@ impl FragmentMessage {
                 w.uint(*before_ms);
                 w.uint(*limit);
             }
-            Self::RoomHistory { items } => {
-                w.array(2);
+            Self::RoomHistory { items, total } => {
+                w.array(3);
                 w.uint(TAG_ROOM_HISTORY);
                 w.array(items.len() as u64);
                 for (root, entry) in items {
@@ -344,6 +353,7 @@ impl FragmentMessage {
                     w.bytes(root);
                     w.bytes(entry);
                 }
+                w.uint((*total).min(MAX_ROOM_HISTORY_TOTAL));
             }
             Self::Replies { proofs, cursor } => {
                 w.array(3);
@@ -488,7 +498,7 @@ impl FragmentMessage {
                 before_ms: r.uint()?,
                 limit: r.uint()?,
             },
-            (TAG_ROOM_HISTORY, 2) => {
+            (TAG_ROOM_HISTORY, 3) => {
                 let count = r.array()?;
                 if count > MAX_ROOM_HISTORY_ITEMS as u64 {
                     return Err(ProtoError::BadEntry("room history frame too long"));
@@ -505,7 +515,8 @@ impl FragmentMessage {
                     }
                     items.push((root, entry.to_vec()));
                 }
-                Self::RoomHistory { items }
+                let total = r.uint()?.min(MAX_ROOM_HISTORY_TOTAL);
+                Self::RoomHistory { items, total }
             }
             (TAG_WANT_REPLIES, 4) => Self::WantReplies {
                 author: r.bytes_fixed::<32>()?,

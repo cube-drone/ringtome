@@ -1643,6 +1643,33 @@ pub async fn feed_all(node_db: &crate::db::Db, reader: &str, cap: i64) -> Result
     Ok(rows.into_iter().map(journal_row).collect())
 }
 
+/// Every room in any reader's feed here (CHAT.md; Curtis, 2026-09-18): `(reader, author,
+/// doc, published_ms)` - what the room pulse walks to keep busy rooms cycling.
+pub async fn rooms_in_feeds(node_db: &crate::db::Db) -> Result<Vec<(String, String, String, i64)>> {
+    node_db
+        .fetch_all(
+            "SELECT reader_root, author_root, doc_id, published_ms FROM feed_journal WHERE format = 'room'",
+            (),
+        )
+        .await
+        .context("listing the rooms in feeds")
+}
+
+/// A room's feed time is its last word's (Curtis, 2026-09-18): every reader's row for the
+/// room moves up to `latest_ms` when that is newer than where the row sits. Rooms only,
+/// and only forward - the keyset the feed pages by is `published_ms`, so a moved row simply
+/// sorts where a fresh post would.
+pub async fn bump_room_time(node_db: &crate::db::Db, author_root: &str, doc_hex: &str, latest_ms: i64) -> Result<u64> {
+    node_db
+        .execute(
+            "UPDATE feed_journal SET published_ms = ?3
+             WHERE author_root = ?1 AND doc_id = ?2 AND format = 'room' AND published_ms < ?3",
+            (author_root, doc_hex, latest_ms),
+        )
+        .await
+        .context("moving a room up its readers' feeds")
+}
+
 pub async fn feed_page(
     node_db: &crate::db::Db,
     reader_root: &str,

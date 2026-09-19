@@ -249,11 +249,14 @@
     padding: 0.05rem 0.6rem;
     cursor: pointer;
 }
+/* The floor is one sheet of paper (Curtis, 2026-09-18, after Slack): names, dates and
+   words run one after another on a white ground, and no line is a box of its own. */
 .chat-floor {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     padding: 0.6rem 0;
+    background: var(--paper);
 }
 
 .chat-lines {
@@ -272,7 +275,7 @@
 }
 
 .chat-line:hover {
-    background: var(--bg);
+    background: var(--surface);
 }
 
 .chat-line-cont {
@@ -312,6 +315,15 @@
 
 .chat-line-body p {
     margin: 0;
+}
+
+/* The words come rendered in the reader's paper box (doc/surface.css); on the floor they
+   are plain text, and the hover behind the line is the only ground they get. */
+.chat-line-body .reader-marquee {
+    background: none;
+    border: none;
+    clip-path: none;
+    padding: 0;
 }
 
 .chat-msg-sealed {
@@ -356,16 +368,81 @@
     width: 100%;
 }
 
+/* The composer is the post composer's live surface, sized for a line or a few. The surface
+   arrives wearing the document editor's `editor-live` class, whose stylesheet sizes it for a
+   page (half the window at least); every rule here outranks those by naming the host too. */
 .chat-composer-words {
     flex: 1;
-    font: inherit;
-    color: var(--ink);
+    min-width: 0;
+}
+
+.chat-composer-words .editor-live {
+    min-height: 0;
+    max-height: none;
+    height: auto;
+    background: transparent;
+    border: none;
+    clip-path: none;
+    overflow: visible;
+}
+
+.chat-composer-words .editor-live .cm-editor {
     background: var(--bg);
     border: 1px solid var(--border);
-    padding: 0.45rem 0.5rem;
+    clip-path: none;
     min-height: 2.6rem;
     max-height: 10rem;
-    resize: vertical;
+}
+
+.chat-composer-words .editor-live .cm-editor.cm-focused {
+    outline: none;
+}
+
+.chat-composer-words .editor-live .cm-scroller {
+    font-family: inherit;
+    line-height: 1.4;
+    max-height: 10rem;
+    padding: 0;
+}
+
+.chat-composer-words .editor-live .cm-content {
+    min-height: 0;
+    padding: 0.45rem 0.5rem;
+}
+
+/* The hint is an overlay, not an inline widget: CodeMirror plants its placeholder INSIDE the
+   empty line, and Firefox's native caret beside that inline-block landed above the words,
+   half-hidden (Curtis, 2026-09-18). Out of the flow, the empty line is an ordinary empty
+   line; and the surface draws its own cursor besides (doc/livemarquee.js), so the native
+   caret no longer decides anything. */
+.chat-composer-words .editor-live .cm-line {
+    position: relative;
+}
+
+.chat-composer-words .editor-live .cm-placeholder {
+    position: absolute;
+    left: 6px;
+    top: 0;
+    pointer-events: none;
+    color: var(--muted);
+}
+
+.chat-composer-attach {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--ink);
+    padding: 0.4rem 0.5rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* A picture said in a room sits in its line, bounded - a floor is for many lines. */
+.chat-line-body img,
+.chat-line-body video {
+    max-width: min(100%, 28rem);
+    max-height: 20rem;
+    display: block;
 }
 
 .chat-composer-send {
@@ -374,9 +451,12 @@
     --j: 3px;
     clip-path: var(--jag-1);
     color: var(--bg);
-    padding: 0.5rem 0.9rem;
+    padding: 0.45rem 0.7rem;
     font: inherit;
-    font-weight: 600;
+    font-size: 1.2em;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
     cursor: pointer;
 }
 
@@ -446,16 +526,81 @@
 }
 
 /* The room post's card: what it is, and the door in (postentry.js). */
-.room-card-foot {
+/* The room card's floor: the post as the first line said, "and N more", the last few
+   lines - one shape, rendered as the room renders them, tight. */
+.room-card-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.room-card-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+/* "and N more" sits on a rule: the words in the middle of a line drawn across the card,
+   a break in the conversation rather than a line of it. */
+.room-card-more {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.6rem;
+    margin: 0.2rem 0;
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+.room-card-more::before,
+.room-card-more::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid var(--border);
+}
+
+.room-card-words {
+    flex: 1;
+    min-width: 0;
+}
+
+.room-card-words .reader-marquee {
+    background: none;
+    border: none;
+    clip-path: none;
+    padding: 0;
+}
+
+.room-card-words p {
+    margin: 0;
+}
+
+.room-card-words img,
+.room-card-words video {
+    max-width: min(100%, 20rem);
+    max-height: 12rem;
+    display: block;
+}
+
+.room-card-when {
+    flex: none;
+    font-size: 0.75em;
+    color: var(--muted);
+}
+
+.room-card-foot {
+    display: flex;
+    justify-content: flex-end;
     margin: 0.6rem 0 0;
-    color: var(--ink-soft);
     font-size: 0.9em;
 }
 
 .room-card-enter {
-    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     color: var(--teal);
 }

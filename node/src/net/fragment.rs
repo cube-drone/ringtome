@@ -100,11 +100,11 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantRoomHistory { author, doc_id, for_root, before_ms, limit }) => {
             // Streamed (CHAT.md, ruling 6): a page of history is more than one frame holds,
             // so the answer is a run of small frames ended by an empty one.
-            let items = crate::chat::answer_room_history(&state, &conn, &author, &doc_id, &for_root, before_ms, limit).await;
+            let (items, total) = crate::chat::answer_room_history(&state, &conn, &author, &doc_id, &for_root, before_ms, limit).await;
             for chunk in items.chunks(ringtome_proto::fragment::MAX_ROOM_HISTORY_ITEMS) {
-                write_frame(&mut send, &FragmentMessage::RoomHistory { items: chunk.to_vec() }).await?;
+                write_frame(&mut send, &FragmentMessage::RoomHistory { items: chunk.to_vec(), total }).await?;
             }
-            write_frame(&mut send, &FragmentMessage::RoomHistory { items: Vec::new() }).await?;
+            write_frame(&mut send, &FragmentMessage::RoomHistory { items: Vec::new(), total }).await?;
             send.finish().ok();
             conn.closed().await;
             return Ok(());
@@ -247,8 +247,9 @@ pub async fn fetch_room(
 }
 
 /// Ask an archive for a page of a room's history (CHAT.md, ruling 6): `(speaker root,
-/// signed entry)` pairs, newest first, read frame by frame until the empty one. Nothing here
-/// is believed - the caller verifies every entry and its attribution.
+/// signed entry)` pairs, newest first, read frame by frame until the empty one, and how
+/// many messages the archive holds of the room (capped). Nothing here is believed - the
+/// caller verifies every entry and its attribution; the count is a number for a card.
 pub async fn fetch_room_history(
     state: &AppState,
     endpoint_id: &str,
@@ -257,7 +258,7 @@ pub async fn fetch_room_history(
     for_root: &[u8; 32],
     before_ms: u64,
     limit: u64,
-) -> Result<Vec<([u8; 32], Vec<u8>)>> {
+) -> Result<(Vec<([u8; 32], Vec<u8>)>, u64)> {
     let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
     let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
         .await
@@ -270,11 +271,17 @@ pub async fn fetch_room_history(
     .await?;
     send.finish().ok();
     let mut out = Vec::new();
+    let mut total = 0u64;
     loop {
         let frame = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room history timed out")??;
         match frame {
-            Some(FragmentMessage::RoomHistory { items }) if items.is_empty() => break,
-            Some(FragmentMessage::RoomHistory { items }) => out.extend(items),
+            Some(FragmentMessage::RoomHistory { items, total: t }) => {
+                total = total.max(t);
+                if items.is_empty() {
+                    break;
+                }
+                out.extend(items);
+            }
             other => return Err(anyhow!("unexpected answer to a room history ask: {other:?}")),
         }
         if out.len() as u64 >= limit {
@@ -282,7 +289,7 @@ pub async fn fetch_room_history(
         }
     }
     conn.close(0u8.into(), b"done");
-    Ok(out)
+    Ok((out, total))
 }
 
 /// Ask one endpoint for a post key.

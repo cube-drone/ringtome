@@ -12,7 +12,7 @@
 import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { EditorView, keymap } from '@codemirror/view';
+import { EditorView, keymap, placeholder as cmPlaceholder, drawSelection } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin } from '../pure/portable.js';
@@ -31,6 +31,17 @@ export const LiveMarquee = ({
     // Contextual pop-up helpers (doc/completions.js sources): pickers that hover at the caret when
     // their trigger character is typed. Optional; absent means no autocompletion extension.
     completions,
+    // Extra key bindings (CodeMirror keymap entries), ahead of the default keymap and behind
+    // the pickers' own (Enter with a picker open still picks) - the chat composer's
+    // Enter-sends, Shift-Enter-breaks (CHAT.md, ruling 7). Bind through a ref: the map is
+    // built once, at mount. Optional.
+    keys,
+    // Hint text shown while the surface is empty. Optional. A surface with a hint also draws
+    // its own cursor (CodeMirror's drawSelection): the hint is an inline widget in the empty
+    // line, and Firefox puts the NATIVE caret beside such a widget above the line, half
+    // hidden (Curtis, 2026-09-18) - a drawn cursor sits where the measured text is, in every
+    // browser.
+    placeholder,
 }) => {
     const host = useRef(null);
     const view = useRef(null);
@@ -61,7 +72,9 @@ export const LiveMarquee = ({
                 selection: at,
                 extensions: [
                     history(),
+                    ...(keys && keys.length ? [keymap.of(keys)] : []),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
+                    ...(placeholder ? [cmPlaceholder(placeholder), drawSelection()] : []),
                     EditorView.lineWrapping,
                     // The pickers ride CodeMirror's own autocompletion: filter-as-you-type,
                     // arrows + Enter to pick, Escape (or just typing past) to wave it off.

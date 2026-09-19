@@ -67,6 +67,7 @@ import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
+import { agoUnit } from './pure/ago.js';
 import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
 import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
@@ -539,6 +540,61 @@ const BookCard = ({ book, author }) => {
     </div>`;
 };
 
+/// A room's card is a slice of its floor (Curtis, 2026-09-18): the post as the first
+/// thing said, by its creator, then "and N more", then the last three things said - every
+/// line the same shape, rendered as the room renders them, each with when. Off the room's
+/// history door, which fills from the archive when this node keeps less and says how many
+/// the room holds without syncing it; past a hundred more the card says "100+". Nothing
+/// past the post when the reader may not enter, or is signed out.
+const ROOM_TAIL = 3;
+const ROOM_MORE_CAP = 100;
+const sinceWords = (ms) => {
+    const ago = agoUnit(ms, Date.now());
+    return ago ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit) : t('postentry.just-now', 'just now');
+};
+const RoomLine = ({ speaker, words, said_ms, current }) => {
+    const profile = useTurbolinks(words || '', 'marquee');
+    return html`<li class="room-card-line">
+        <${PersonChip} root=${speaker} current=${current} />
+        <div class="room-card-words">
+            ${words === null
+                ? html`<span class="chat-msg-sealed">${t('postentry.sealed-words', 'sealed words')}</span>`
+                : html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`}
+        </div>
+        <span class="room-card-when" title=${new Date(said_ms).toLocaleString()}>${sinceWords(said_ms)}</span>
+    </li>`;
+};
+const RoomFloor = ({ item, current, post }) => {
+    const root = current && current.root;
+    const [tail, setTail] = useState(null);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/rooms/${item.author}/${item.doc_id}/messages?limit=${ROOM_TAIL}`)
+            .then((page) => live && setTail(page))
+            .catch(() => live && setTail(null));
+        return () => {
+            live = false;
+        };
+    }, [root, item.author, item.doc_id]);
+    const lines = tail && tail.items ? [...tail.items].reverse() : [];
+    const more = tail ? Math.max(0, (tail.total || 0) - lines.length) : 0;
+    return html`<ul class="room-card-lines">
+        <${RoomLine} speaker=${item.author} words=${post} said_ms=${item.published_ms} current=${current} />
+        ${/* A rule with the count on it: a break in the conversation, not a line of it
+            (Curtis, 2026-09-18). */ ''}
+        ${more > 0 &&
+        html`<li class="room-card-more" role="separator">
+            ${more > ROOM_MORE_CAP
+                ? t('postentry.and-100-more', 'and {cap}+ more', { cap: ROOM_MORE_CAP })
+                : more === 1
+                  ? t('postentry.and-one-more', 'and one more')
+                  : t('postentry.and-n-more', 'and {n} more', { n: more })}
+        </li>`}
+        ${lines.map((m) => html`<${RoomLine} key=${m.hash} speaker=${m.speaker} words=${m.words} said_ms=${m.said_ms} current=${current} />`)}
+    </ul>`;
+};
+
 export const PostEntry = ({ item, current, interest, editing, quote, standalone = false }) => {
     const [body, setBody] = useState(undefined);
     const [sealedWords, setSealedWords] = useState('');
@@ -902,7 +958,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}
                     ${/* Copy into private notes, last on every card (Curtis, 2026-09-08: the
                         same seat on your own posts and other people's). */ ''}
-                    ${!!current && !!current.root && !open && item.kind !== 'share' && html`<${CopyButton} item=${item} current=${current} />`}`}
+                    ${/* A room is a conversation, not a note (Curtis, 2026-09-18): it does
+                        not copy, and it takes no replies (the page hides the thread). */ ''}
+                    ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && html`<${CopyButton} item=${item} current=${current} />`}`}
             />
             ${!open &&
             !!title &&
@@ -1125,20 +1183,23 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                       html`<div class="feed-entry-body">
                           ${item.format === 'book'
                               ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
-                              : bodyFormat === 'marquee'
-                                ? html`<${MarqueeBody}
-                                      source=${shown}
-                                      profile=${tlProfile}
-                                      onUnparsable=${bareSource}
-                                  />`
-                                : html`<pre class="reader-plain">${shown}</pre>`}
+                              : item.format === 'room'
+                                ? html`<${RoomFloor} item=${item} current=${current} post=${shownBody} />`
+                                : bodyFormat === 'marquee'
+                                  ? html`<${MarqueeBody}
+                                        source=${shown}
+                                        profile=${tlProfile}
+                                        onUnparsable=${bareSource}
+                                    />`
+                                  : html`<pre class="reader-plain">${shown}</pre>`}
                           ${/* A room (CHAT.md, ruling 1): the card says so and opens it; a
                               stranger's shell has no rooms, so the door is the sign-in. */ ''}
+                          ${/* One word on the right (Curtis, 2026-09-18: "a room" beside
+                              "enter the room" was redundant). */ ''}
                           ${item.format === 'room' &&
                           html`<p class="room-card-foot">
-                              <${Icons.chat} /> ${t('postentry.a-room', 'a room')}
                               <a class="room-card-enter" href=${`/home/chat/${item.author}/${item.doc_id}`}
-                                  >${t('postentry.enter-the-room', 'enter the room')}</a
+                                  ><${Icons.chat} /> ${t('postentry.enter-the-room', 'enter the room')}</a
                               >
                           </p>`}
                           ${cut &&

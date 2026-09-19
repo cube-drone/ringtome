@@ -9377,3 +9377,72 @@ the new suite says the creator holds twelve lines where the reader holds eight y
 all twelve, that scroll-back's second page comes from the archive, and that full-sync is
 refused to a plain user, holds the room whole as it grows, and hands it back to the budget
 when released.
+
+## 2026-09-18: the generator opens rooms and talks in them
+
+Curtis: "add creating chat rooms and commenting in chat rooms to our test-data script".
+Two draws in the hat (`harness/testdata.mjs`): `open-a-chat-room` files a post in the chat
+bucket and publishes it as a room, one in six sealed to the creator's trusted circle, and
+puts it on the run's room list; `talk-in-a-chat-room` picks an open room (or one of the
+persona's own sealed ones), reaches a room on another node by its creator's page the way a
+human does, knocks with a short retry while the door learns the room, and says three things.
+Tried on two scratch nodes: three hundred and twenty actions, none failed, eight rooms, the
+busiest with four speakers from both nodes.
+
+## 2026-09-18: media in rooms
+
+CHAT.md slice 5, ruling 11: "chats should carry embedded media content." A message never
+carries bytes, it carries references, and the say door now bakes them exactly as
+publication bakes a post's - the private picture becomes a public twin on the speaker's
+posts chain, the words are rewritten to it, and the message's new `refs` (an additive wire
+key, absent when empty, so every earlier message agrees with itself byte for byte) name
+what was baked. The reader's side is the share's machinery reused: the memo fold mints
+cover rows keyed by the message's hash where a post's id would stand and, off the fold's
+path, wants the twins from the creator's node first and the speaker's own nodes after; a
+pruned line releases its covers and the twin nothing covers is forgotten, while the
+archive keeps both. One door had to learn the room: the public body door consulted the
+fragment shelf only beneath a follow ceiling's floor, and a persona held at room depth has
+no posts chain here at all - it now reads the shelf whenever the held chain lacks the
+document, the dial for what the shelf lacks still gated by the floor. Sealed rooms came in
+the same pass rather than the deferred one the ruling allowed: a twin already sealed under
+a key with a named holder for a reply under its parent's seal, so a room's twin seals
+under the room's key with the room post as holder, and admission to the room is admission
+to the picture. Media from the open web is refused in a room, since the background bake
+has no post to come back to. The composer is the post composer's live surface now - the
+colon emoji picker, the bang media picker over the chat bucket, the at picker, uploads by
+chip, drop or paste - with Enter sending and Shift-Enter breaking a line through a `keys`
+prop the live surface gained, and a placeholder. The suite: a picture said in an open room
+reaches a reader by link as an image under the room's door, the open web is refused, the
+flood past the budget takes the picture with the line on the reader's node while the
+creator's node still serves it, and the sealed vault's picture opens for the trusted reader
+and not for the stranger.
+
+## 2026-09-18: a room in the feed
+
+Curtis: a room's post should take no replies and not copy into notes; its card should show
+the post, then "…", then the last three things said with when; and busy rooms should cycle
+in the feed, re-sorted periodically with the last word's time as their feed time. The reply
+resolver refuses a room post beside the settled refusal, the copy door refuses a room's
+post, the card hides its copy button and the post page its thread and reply box. The card
+gained a tail off the room's history door (three lines, newest last, each with when), which
+fills from the archive when this node keeps less. The pulse is a new sixty-second pass:
+every room in any reader's feed here moves up to its last word - read off the memo for
+rooms this node holds, asked of the creator's node over the fragment lane (one entry, its
+signature and room checked, its claimed time taken for order alone) for rooms nobody here
+entered, a few per pass and each at most every ten minutes. The feed's own keyset column
+moves, so a moved row sorts where a fresh post would, and the journal's upsert never
+resets it. A test beat rings the pass; the suite: the reply and the copy refused, the room
+climbing above a later post after one word said, without the reader ever entering it, and
+the tail as the last three.
+
+## 2026-09-18: the room card is a slice of its floor
+
+Curtis: the card showed `:bee:` and `![…](…)` as text, and the post and the talk should
+look alike, "as if said by people", with "and 57 more" between them rather than "…", capped
+at "100+" for a long room and without syncing the conversation. The card now renders the
+post as the first line said, by its creator, then "and N more", then the last three lines,
+every line one shape - chip, words rendered as the room renders them, when. The number
+rides the wire: the archive's history answer names how many messages it holds of the room
+(capped at a thousand, so the count costs one small query and no entries), the reader's
+history door answers its own memo's count or the archive's, whichever is larger, and the
+card says "100+" past a hundred more. The feed suite's tail claim checks the count.

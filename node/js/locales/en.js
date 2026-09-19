@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 818 phrases across 58 files.
+// 828 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -53,6 +53,7 @@ export default {
     'apps.chat.are-typing': 'are typing…',
     'apps.chat.this-room-is-closed': 'this room is closed - the conversation ended, and the record stands',
     'apps.chat.say-something': 'say something…',
+    'apps.chat.attach-a-picture-sound-or-video': 'attach a picture, a sound or a video (drop or paste works too)',
     'apps.chat.send': 'send',
     'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
     'apps.chat.pick-a-chat': 'pick a chat on the left, or start a new one',
@@ -621,6 +622,11 @@ export default {
     'postentry.a-book-this-node-cannot-read': 'a book this computer cannot read yet',
     'postentry.a-book-1-page': 'a book · 1 page',
     'postentry.a-book-n-pages': 'a book · {count} pages',
+    'postentry.just-now': 'just now',
+    'postentry.sealed-words': 'sealed words',
+    'postentry.and-100-more': 'and {cap}+ more',
+    'postentry.and-one-more': 'and one more',
+    'postentry.and-n-more': 'and {n} more',
     'postentry.passed-this-along': 'passed this along',
     'postentry.vouches-for-this-author': 'vouches for this author',
     'postentry.scheduled-for': 'scheduled for {when}',
@@ -656,7 +662,6 @@ export default {
     'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
-    'postentry.a-room': 'a room',
     'postentry.enter-the-room': 'enter the room',
     'postentry.the-whole-thing': 'the whole thing',
     'postentry.1-reply': '1 reply',
@@ -744,6 +749,9 @@ export default {
     'chat.this-room-is-closed': 'this room is closed - the conversation ended, and the record stands',
     'chat.bad-room-author': 'bad room author',
     'chat.the-rooms-key-hasnt-arrived': "the room's key hasn't arrived here - the words would be unreadable",
+    'chat.a-message-embeds-too-many-documents': 'this message embeds {count} documents - one message may carry {cap}',
+    'chat.a-room-cant-bake-web-media': "a room can't bake media from the open web - save the picture and attach it directly",
+    'chat.that-media-is-still-being-prepared': 'that media is still being prepared - say it again in a moment',
 
     // --- node/src/identity.rs ---
     'identity.recovery-failed': 'recovery failed',
@@ -781,6 +789,7 @@ export default {
     'identity.routes.cant-reply-to-words-you-cant-read': "you can't reply to words the author doesn't share with you",
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
+    'identity.routes.a-room-takes-no-replies': 'a room takes no replies - enter it and say it there',
     'identity.routes.mention-someone-first': 'mention someone first - a post for the people mentioned needs a user card in the words',
     'identity.routes.a-room-is-not-a-reply': 'a room is a post of its own, not a reply',
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
@@ -799,6 +808,7 @@ export default {
     'identity.routes.no-such-note-to-copy': 'no such note to copy',
     'identity.routes.only-words-copy': 'only a post of words copies into notes',
     'identity.routes.those-words-havent-arrived': "those words haven't arrived on this computer yet",
+    'identity.routes.a-room-doesnt-copy': "a room is a conversation, not a note - it doesn't copy into notes",
     'identity.routes.a-book-copies-into-a-fresh': 'a book copies whole into a fresh notebook - name a new one',
     'identity.routes.bad-multipart-body-e': 'bad multipart body: {e}',
     'identity.routes.bad-multipart-part-name-e': 'bad multipart part {name:?}: {e}',

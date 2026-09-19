@@ -7,7 +7,7 @@
 // you are at the end, one speaker's run of lines attributed once, the composer fixed to the
 // bottom at full width. The room's own post is the first line, said by its creator.
 import { h } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -22,6 +22,14 @@ import { openMirror, useLive } from '../mirror.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { LiveMarquee } from '../doc/livemarquee.js';
+import { useUploadCapture } from '../doc/upload.js';
+import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from '../doc/completions.js';
+import { insertNewlineAndIndent } from '@codemirror/commands';
+
+/// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
+/// rooms - so the `!` picker offers what was said here before.
+const CHAT_BUCKET = 'chat';
 
 const html = htm.bind(h);
 
@@ -248,6 +256,46 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
     const floor = useRef(null);
     const atEnd = useRef(true);
     const seen = useRef({ written: 0, at: 0, timer: null });
+    // The composer is the post composer's surface (ruling 11): Marquee live, the colon
+    // emoji picker, the bang media picker over the chat bucket, the at picker, and uploads
+    // by chip, drop or paste - the say door bakes what the words embed.
+    const cursor = useRef(null);
+    const sendRef = useRef(null);
+    const composerProfile = useTurbolinks(draft, 'marquee');
+    const completions = useMemo(
+        () => [emojiCompletions, linkCompletions(root, CHAT_BUCKET), mediaCompletions(root, CHAT_BUCKET), mentionCompletions(root)],
+        [root]
+    );
+    const keys = useMemo(
+        () => [
+            // Enter sends, Shift-Enter breaks a line (CHAT.md, ruling 7).
+            {
+                key: 'Enter',
+                run: () => {
+                    if (sendRef.current) sendRef.current();
+                    return true;
+                },
+            },
+            { key: 'Shift-Enter', run: insertNewlineAndIndent },
+        ],
+        []
+    );
+    const {
+        catchDrop,
+        allowFileDrag,
+        catchPaste,
+        pickFiles,
+        extras: uploadExtras,
+    } = useUploadCapture({
+        root,
+        bucket: CHAT_BUCKET,
+        format: 'marquee',
+        body: draft,
+        setBody: setDraft,
+        touched: () => {},
+        cursorPos: () => cursor.current,
+        onRefused: (message) => setSendError(message),
+    });
     // What the floor showed is what this persona has seen (Curtis, 2026-09-18): the newest
     // stamp goes to the `rooms_seen` register, throttled, and the column un-bolds the room.
     useEffect(() => {
@@ -435,6 +483,7 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
             setSending(false);
         }
     };
+    sendRef.current = send;
     const leave = async () => {
         try {
             await api(`/api/identity/${root}/rooms/${author}/${doc}`, { method: 'DELETE' });
@@ -520,27 +569,45 @@ const Room = ({ current, author, doc, onSeen, admin }) => {
                           e.preventDefault();
                           send();
                       }}
+                      onDrop=${catchDrop}
+                      onDragOver=${allowFileDrag}
+                      onPaste=${catchPaste}
                   >
-                      <textarea
-                          class="chat-composer-words"
-                          placeholder=${t('apps.chat.say-something', 'say something…')}
-                          value=${draft}
-                          onInput=${(e) => {
-                              setDraft(e.currentTarget.value);
-                              sayTyping(e.currentTarget.value.trim().length > 0);
-                          }}
-                          onKeyDown=${(e) => {
-                              // Enter sends, Shift-Enter breaks a line (CHAT.md, ruling 7).
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  send();
-                              }
-                          }}
-                      ></textarea>
-                      <button class="chat-composer-send" type="submit" disabled=${sending || !draft.trim()}>
-                          ${t('apps.chat.send', 'send')}
+                      <div class="chat-composer-words">
+                          <${LiveMarquee}
+                              body=${draft}
+                              profile=${composerProfile}
+                              completions=${completions}
+                              keys=${keys}
+                              placeholder=${t('apps.chat.say-something', 'say something…')}
+                              onInput=${(text) => {
+                                  setDraft(text);
+                                  sayTyping(text.trim().length > 0);
+                              }}
+                              onCursor=${(_start, end) => {
+                                  cursor.current = end;
+                              }}
+                          />
+                      </div>
+                      <button
+                          class="chat-composer-attach"
+                          type="button"
+                          title=${t('apps.chat.attach-a-picture-sound-or-video', 'attach a picture, a sound or a video (drop or paste works too)')}
+                          onClick=${pickFiles}
+                      >
+                          <${Icons.upload} />
                       </button>
-                  </form>`}
+                      <button
+                          class="chat-composer-send"
+                          type="submit"
+                          disabled=${sending || !draft.trim()}
+                          title=${t('apps.chat.send', 'send')}
+                          aria-label=${t('apps.chat.send', 'send')}
+                      >
+                          <${Icons.send} weight="fill" />
+                      </button>
+                  </form>
+                  ${uploadExtras}`}
             ${sendError && html`<p class="form-error">${sendError}</p>`}
         </div>
     </section>`;

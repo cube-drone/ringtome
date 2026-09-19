@@ -137,6 +137,47 @@ node keeps its own room whole, which is where "all of it" lives.
    everyone else is a bigger power than deleting one's own post, and close gives the
    creator the moderation outcome without it. Slice 2's message gate refuses an entry
    whose room post is settled; the takedown's own machinery does the rest.
+11. **Media rides the room the way it rides a share (settled 2026-09-18).** "Chats should
+   carry embedded media content." A message is a 16KB entry and a picture is not, so a
+   message never carries bytes: it carries REFERENCES, exactly as a post does, and the
+   post's media machinery is reused whole rather than given a chat-shaped twin. Today the
+   room composer is a bare textarea, and a message that pasted a reference to a published
+   picture renders only for readers who FOLLOW the speaker - the twin lives on the speaker's
+   posts chain, which the room lane (ruling 4) does not carry, so a reader who reached the
+   room by link sees a broken image, and in a sealed room the born-public twin leaks the
+   picture while the words stay sealed. The plumbing, in the order it stacks:
+   - **Say bakes.** The say door runs the publication bake on the message body: the
+     picker's private media documents become public twins, the references are rewritten to
+     them, and the message's refs are derived from the rewritten body, as `bake::publish`
+     does for a post. The composer swap (the post composer with its colon emoji picker and
+     its bang image picker, in place of the textarea) is the last step, not the first,
+     because a picker's output means nothing until say bakes it.
+   - **The wire.** `ChatMessage` gains an additive `refs` list of the twins the body embeds,
+     capped as a header's refs are (`MAX_REFS`), and the reader's fold trusts a message's
+     refs the way it trusts a header's: a claim about the body, self-scoped, over-claim
+     obliging the speaker's own archives and under-claim breaking the speaker's own images.
+   - **The reader's obligation.** The memo fold, seeing a message with refs, mints cover rows
+     with a new covering kind - a room message, never a post - and wants the twins: the
+     header over the fragment lane's `Want`/`Have`, the bytes over blobs by hash, first from
+     the creator's node (the archive, ruling 6, holds them) and then from the speaker's own
+     nodes. The serve side's fragment gate learns the room rule the sync lane already has:
+     a twin a room message names is served under the room's door to a dialer the room
+     admits. No fold or sweep ever parses foreign Marquee - the refs say what to fetch.
+   - **Retention.** A pruned message releases its covers, so media dies with the line on a
+     budgeted node and lives at the archive; the archive's obligation grows from messages to
+     bytes, and a room gets a MEDIA budget beside its message budget - the post's
+     `media_budget` per message, and a room-wide ceiling the operator's full-sync accepts
+     knowingly. The reaper's rule holds: a twin nothing covers is nobody's to keep.
+   - **Sealed rooms seal their twins.** A twin embedded in a sealed room is sealed under the
+     room's key, title included (the sealed-bodies machinery, sealed titles slice 2), not
+     born public - and its key is the room's key, so admission to the room is admission to
+     the picture and nothing new is granted. Until that lands, a sealed room's say REFUSES
+     a body with media rather than leak it: refusal is honest, a public twin is not.
+   - **Deletion comes free.** The twin is a document on the speaker's posts chain, so the
+     speaker's ordinary takedown tombstones it and the fragment lane's revalidation carries
+     the death; retracting the message (ruling 8) releases its covers the way an edit
+     releases a post's. Sound and video ride the same road - the crush trilogy already
+     makes every upload a bounded twin, and a room line embeds whatever a post can.
 
 ## Slices
 
@@ -215,7 +256,24 @@ node keeps its own room whole, which is where "all of it" lives.
    chain down from this node's floor to its beginning - a room chain now backfills beneath
    its floor on the room's lane, and a prune reconciles the frontier memo so the next Hello
    claims the true floor. Suite: `chat_history.cjs`, with the rig's room budget at eight.
-5. **Mentions and the bell.** A message naming a persona rings their bell under the room's
+5. **Media.** Ruling 11, in its stated order: say bakes; `refs` on the wire; covers and
+   the fragment-lane fetch under the room's door, served by the archive; the room's media
+   budget and release on prune; sealed rooms seal their twins (refusing media until they
+   do); then the post composer in the room, pickers and all. Suite: a picture said in an
+   open room renders for a reader who reached the room by link and holds the speaker at
+   room depth; the archive serves the twin; a pruned line takes its picture with it; a
+   sealed room refuses media until its twins seal, then seals them. **Built 2026-09-18**,
+   sealed twins included - the post machinery already sealed a twin under a key with a
+   named holder (a reply's twin under its parent's seal), so a room's twin seals under the
+   room's key with the room post as holder in the same pass, and no refusal was needed.
+   `ChatMessage.refs` (key 3, additive); the say door's `bake_words`; cover rows keyed by
+   the message hash (`fragments::cover_for_message`, `release_covers`), walked off the
+   memo fold's path and released by the prune; the public body door reads the shelf for a
+   persona whose held chain lacks the document, which a room-depth persona's always does;
+   the room composer is the post composer's live surface (`LiveMarquee` with `keys` and a
+   `placeholder`), pickers and uploads into the chat bucket. Media from the open web is
+   refused in a room. Suite: `chat_media.cjs`.
+6. **Mentions and the bell.** A message naming a persona rings their bell under the room's
    door, and the user-card picker knows the room's participants.
 
 ## Settled questions and residuals

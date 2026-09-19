@@ -508,15 +508,25 @@ pub async fn say(
         return Err(AppError::BadRequest(crate::msg!("chat.this-room-is-closed", "this room is closed - the conversation ended, and the record stands")));
     }
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| AppError::BadRequest(crate::msg!("chat.bad-room-author", "bad room author")))?;
-    let (body, sealed) = if head.trusted_only {
+    // The room's key first: a sealed room seals its words and its pictures under one key.
+    let key = if head.trusted_only {
         let Some(key) = crate::idface::key_for(state, author_hex, doc, root_hex, None).await else {
             return Err(AppError::Forbidden(crate::msg!("chat.the-rooms-key-hasnt-arrived", "the room's key hasn't arrived here - the words would be unreadable")));
         };
-        (crate::record::private::seal_post_body(&key, words.as_bytes())?, true)
+        Some(key)
     } else {
-        (words.as_bytes().to_vec(), false)
+        None
     };
-    let payload = ChatMessage { room_author: author, body, sealed }
+    // Media rides the room the way it rides a share (ruling 11): the say bakes.
+    let (words, refs) = bake_words(state, data, root_hex, &author, doc, &head, key, words).await?;
+    if words.len() > ChatMessage::MAX_BODY_BYTES {
+        return Err(AppError::BadRequest(crate::msg!("chat.that-is-too-long-for-one-message", "that is too long for one message")));
+    }
+    let (body, sealed) = match key {
+        Some(key) => (crate::record::private::seal_post_body(&key, words.as_bytes())?, true),
+        None => (words.into_bytes(), false),
+    };
+    let payload = ChatMessage { room_author: author, body, sealed, refs }
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
     let signed = crate::record::imaol::append_on(
@@ -541,6 +551,79 @@ pub async fn say(
         push_room(&push_state, &push_root, &push_author, &push_doc).await;
     });
     Ok((seq, said_ms))
+}
+
+/// The say's bake (ruling 11): the private media the words embed become public twins - in a
+/// sealed room, sealed under the room's key with the room post as the seal's holder, so
+/// admission to the room is admission to the picture and nothing new is granted - the
+/// references are rewritten to them, and the message's refs are what was baked, as
+/// `bake::publish` does for a post. Media from the open web is refused: the background bake
+/// has no post to come back to, and a room says now.
+#[allow(clippy::too_many_arguments)]
+async fn bake_words(
+    state: &AppState,
+    data: &Store,
+    root_hex: &str,
+    author: &[u8; 32],
+    doc: &[u8; 16],
+    head: &ringtome_proto::registry::DocHeaderPlain,
+    key: Option<[u8; 32]>,
+    words: &str,
+) -> Result<(String, Vec<[u8; 16]>), AppError> {
+    use crate::record::bake::MediaRef;
+    let refs = crate::record::bake::media_refs(words, root_hex);
+    if refs.is_empty() {
+        return Ok((words.to_string(), Vec::new()));
+    }
+    if refs.len() > ringtome_proto::DocHeaderPlain::MAX_REFS {
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.a-message-embeds-too-many-documents",
+            "this message embeds {count} documents - one message may carry {cap}",
+            count = refs.len(),
+            cap = ringtome_proto::DocHeaderPlain::MAX_REFS
+        )));
+    }
+    if refs.iter().any(|r| matches!(r, MediaRef::External { .. })) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.a-room-cant-bake-web-media",
+            "a room can't bake media from the open web - save the picture and attach it directly"
+        )));
+    }
+    let docs = data.documents();
+    let seal_of = key.map(|_| (*author, *doc));
+    let mut swaps: Vec<(String, String)> = Vec::new();
+    let mut baked: Vec<[u8; 16]> = Vec::new();
+    for r in &refs {
+        let MediaRef::PrivateDoc { target, doc_id: media } = r else { continue };
+        if !docs.media_bytes_present(media).await? {
+            return Err(AppError::BadRequest(crate::msg!(
+                "chat.that-media-is-still-being-prepared",
+                "that media is still being prepared - say it again in a moment"
+            )));
+        }
+        let (public, fmt, anim) = docs.bake_private_media(media, key, seal_of, head.onward).await?;
+        swaps.push((target.clone(), crate::record::bake::public_media_target(root_hex, &public, fmt, anim)));
+        if !baked.contains(&public) {
+            baked.push(public);
+        }
+    }
+    crate::record::bake::media_budget(state, data, &baked).await?;
+    Ok((crate::record::bake::rewrite(words, &swaps), baked))
+}
+
+/// A message's media is this node's to hold while the message is (ruling 11): cover rows
+/// keyed by the message's hash, the twins wanted from the creator's node first - the
+/// archive holds them - and the speaker's own nodes after. Never for a hosted speaker,
+/// whose twins sit on their own chain here.
+async fn cover_message(state: &AppState, room_author: &str, speaker: &str, hash_hex: &str, refs: &[[u8; 16]]) {
+    let mut origins: Vec<String> = Vec::new();
+    if !crate::identity::is_hosted(&state.node_db, room_author).await.unwrap_or(false) {
+        origins.push(room_author.to_string());
+    }
+    if speaker != room_author {
+        origins.push(speaker.to_string());
+    }
+    crate::fragments::cover_for_message(state, &origins, speaker, hash_hex, refs).await;
 }
 
 /// Is this node the room's archivist (CHAT.md, ruling 6): the creator's node, which keeps its
@@ -587,9 +670,27 @@ pub async fn set_archived(node_db: &Db, author_hex: &str, doc_hex: &str, on: boo
     Ok(())
 }
 
+/// How many messages this node holds of a room, before its close if closed, capped at the
+/// wire's ceiling - a card's "and N more" (Curtis, 2026-09-18).
+async fn held_count(state: &AppState, author_hex: &str, doc_hex: &str, ceiling: i64) -> i64 {
+    let cap = ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64 + 1;
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM room_messages
+               WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 LIMIT ?4)",
+            (author_hex, doc_hex, ceiling, cap),
+        )
+        .await
+        .ok()
+        .flatten()
+        .map_or(0, |(n,)| n)
+}
+
 /// The archive's answer (ruling 6): `(speaker root, signed entry)` for the room's messages
 /// said before `before_ms`, newest first - the entries themselves off each speaker's chain
-/// as this node holds it, for a dialer the room admits (the directory's own gate).
+/// as this node holds it, for a dialer the room admits (the directory's own gate) - and
+/// how many the room holds here, capped.
 /// user-db open 4 of 5 (tests/conventions.rs): one per speaker on the page.
 pub async fn answer_room_history(
     state: &AppState,
@@ -599,23 +700,25 @@ pub async fn answer_room_history(
     for_root: &[u8; 32],
     before_ms: u64,
     limit: u64,
-) -> Vec<([u8; 32], Vec<u8>)> {
+) -> (Vec<([u8; 32], Vec<u8>)>, u64) {
     let author_hex = hex::encode(author);
     let doc_hex = hex::encode(doc);
-    let Some((head, _)) = room_head(state, &author_hex, doc).await else { return Vec::new() };
+    let Some((head, _)) = room_head(state, &author_hex, doc).await else { return (Vec::new(), 0) };
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
-        return Vec::new();
+        return (Vec::new(), 0);
     }
     if head.trusted_only {
         let for_hex = hex::encode(for_root);
         if !crate::idface::seal_admits(state, &author_hex, &doc_hex, &for_hex, None).await {
-            return Vec::new();
+            return (Vec::new(), 0);
         }
         let dialer = conn.remote_id().to_string();
         if !crate::net::sync::endpoint_serves_any(&state.node_db, &[for_hex], &dialer).await.unwrap_or(false) {
-            return Vec::new();
+            return (Vec::new(), 0);
         }
     }
+    let ceiling = closed_at(state, &author_hex, doc).await.unwrap_or(i64::MAX);
+    let total = held_count(state, &author_hex, &doc_hex, ceiling).await as u64;
     let limit = limit.clamp(1, ringtome_proto::fragment::MAX_ROOM_HISTORY_LIMIT) as i64;
     let before = i64::try_from(before_ms).unwrap_or(i64::MAX);
     let rows: Vec<(String, Vec<u8>)> = state
@@ -646,8 +749,11 @@ pub async fn answer_room_history(
             out.push((root, entry.bytes().to_vec()));
         }
     }
-    out
+    (out, total)
 }
+
+/// What the archive answers: `(speaker root, signed entry)` pairs and its count of the room.
+type HistoryAnswer = (Vec<([u8; 32], Vec<u8>)>, u64);
 
 /// The reader's road to the archive (ruling 6): older messages than this node keeps, asked
 /// of the creator's node, each entry verified here - the signature, the room it names -
@@ -662,20 +768,20 @@ async fn archive_history(
     doc: &[u8; 16],
     before_ms: i64,
     limit: i64,
-) -> Vec<(String, ringtome_proto::SignedEntry)> {
-    let Some(author) = crate::pubkey::decode(author_hex) else { return Vec::new() };
-    let Some(for_root) = crate::pubkey::decode(viewer_hex) else { return Vec::new() };
-    let mut fetched: Option<Vec<([u8; 32], Vec<u8>)>> = None;
+) -> (Vec<(String, ringtome_proto::SignedEntry)>, i64) {
+    let Some(author) = crate::pubkey::decode(author_hex) else { return (Vec::new(), 0) };
+    let Some(for_root) = crate::pubkey::decode(viewer_hex) else { return (Vec::new(), 0) };
+    let mut fetched: Option<HistoryAnswer> = None;
     for endpoint in creator_endpoints(state, author_hex).await {
         match crate::net::fragment::fetch_room_history(state, &endpoint, &author, doc, &for_root, before_ms.max(0) as u64, limit as u64).await {
-            Ok(items) => {
-                fetched = Some(items);
+            Ok(answer) => {
+                fetched = Some(answer);
                 break;
             }
             Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room history ask failed"),
         }
     }
-    let Some(items) = fetched else { return Vec::new() };
+    let Some((items, total)) = fetched else { return (Vec::new(), 0) };
     let mut trees: HashMap<String, Option<ringtome_proto::Crown>> = HashMap::new();
     let mut out = Vec::with_capacity(items.len());
     for (root, bytes) in items {
@@ -706,15 +812,17 @@ async fn archive_history(
         }
         out.push((root_hex, signed));
     }
-    out
+    (out, total as i64)
 }
 
 /// The room's recent history, newest first, as this node holds it - every speaker's chain
 /// interleaved by claimed time (CHAT.md, ruling 3). A sealed message opens with the key the
 /// reader may have; a closed room serves nothing said after the close (ruling 10). When
 /// this node keeps only the budget and the page runs past it, the archive fills the rest
-/// (ruling 6). Returns the page, whether the room is closed, and whether more may lie
-/// beneath it.
+/// (ruling 6). Returns the page, whether the room is closed, whether more may lie beneath
+/// it, and how many messages the room holds as best this node knows - its own memo, or
+/// the archive's word when the archive was asked - capped at the wire's ceiling, so a card
+/// can say "and N more" (Curtis, 2026-09-18) without syncing the conversation.
 pub async fn history(
     state: &AppState,
     viewer_hex: &str,
@@ -722,7 +830,7 @@ pub async fn history(
     doc: &[u8; 16],
     before_ms: Option<i64>,
     limit: i64,
-) -> Result<(Vec<Message>, bool, bool), AppError> {
+) -> Result<(Vec<Message>, bool, bool, i64), AppError> {
     let doc_hex = hex::encode(doc);
     let closed = closed_at(state, author_hex, doc).await;
     let limit = limit.clamp(1, HISTORY_PAGE);
@@ -743,11 +851,13 @@ pub async fn history(
     // Past what this node keeps: the archive (ruling 6). Asked only when the local page
     // came up short and this node is not the archivist itself.
     let mut more = rows.len() as i64 >= limit;
+    let mut total = held_count(state, author_hex, &doc_hex, closed.unwrap_or(i64::MAX)).await;
     if (rows.len() as i64) < limit && !archivist_here(state, author_hex, &doc_hex).await {
         let oldest = rows.last().map(|r| r.3).unwrap_or(ceiling);
         let want = limit - rows.len() as i64;
         let held: std::collections::HashSet<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
-        let archived = archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
+        let (archived, archive_total) = archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
+        total = total.max(archive_total);
         more = archived.len() as i64 >= want;
         for (root, signed) in archived {
             if held.contains(signed.hash().as_slice()) {
@@ -789,7 +899,7 @@ pub async fn history(
             }
         })
         .collect();
-    Ok((items, closed.is_some(), more))
+    Ok((items, closed.is_some(), more, total.min(ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64)))
 }
 
 /// When each room this node holds last heard a message: `(room_author, room_doc) ->
@@ -884,6 +994,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     let entries = crate::record::imaol::chat_entries(&db).await.map_err(|e| anyhow!("{e}"))?;
     let now = crate::clock::now_ms();
     let mut rooms: std::collections::BTreeSet<(String, String)> = Default::default();
+    let hosted = crate::identity::is_hosted(&state.node_db, root).await.unwrap_or(false);
+    let mut covers: Vec<(String, String, Vec<[u8; 16]>)> = Vec::new();
     for signed in &entries {
         let entry = signed.entry();
         let Some(instance) = entry.chain.instance else { continue };
@@ -913,10 +1025,36 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             )
             .await
             .context("noting a room message")?;
+        if !msg.refs.is_empty() && !hosted {
+            covers.push((room_author.clone(), hex::encode(signed.hash()), msg.refs.clone()));
+        }
     }
     let mut pruned = false;
     for (room_author, room_doc) in rooms {
         pruned |= enforce_budget(state, &db, &room_author, &room_doc).await?;
+    }
+    // The media the messages embed (ruling 11), off the fold's path: the cover walk dials
+    // when a twin is missing, and a fold must not wait on the network. Only what the prune
+    // left standing is wanted.
+    if !covers.is_empty() {
+        let state = state.clone();
+        let speaker = root.to_string();
+        tokio::spawn(async move {
+            for (room_author, hash_hex, refs) in covers {
+                let still: Option<(i64,)> = state
+                    .node_db
+                    .fetch_optional(
+                        "SELECT 1 FROM room_messages WHERE speaker_root = ?1 AND entry_hash = ?2",
+                        (speaker.as_str(), hex::decode(&hash_hex).unwrap_or_default()),
+                    )
+                    .await
+                    .unwrap_or(None);
+                if still.is_none() {
+                    continue;
+                }
+                cover_message(&state, &room_author, &speaker, &hash_hex, &refs).await;
+            }
+        });
     }
     // A prune moved a chain's FLOOR, which the frontier memo never raises on its own (it
     // heals on the sweep's beat): reconcile now, so the next Hello claims the true floor
@@ -961,6 +1099,24 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
         .context("finding the chains' floors")?;
     let Ok(instance) = hex::decode(room_doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return Ok(false) };
     let Ok(instance) = instance else { return Ok(false) };
+    // The pruned lines' media goes with them (ruling 11): their covers released, the twins
+    // nothing covers forgotten.
+    let dropped: Vec<(String, Vec<u8>)> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, entry_hash FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms <= ?3",
+            (room_author, room_doc, cut_ms),
+        )
+        .await
+        .context("listing the lines a room's budget drops")?;
+    let mut by_speaker: HashMap<String, Vec<String>> = HashMap::new();
+    for (speaker, hash) in dropped {
+        by_speaker.entry(speaker).or_default().push(hex::encode(hash));
+    }
+    for (speaker, hashes) in by_speaker {
+        crate::fragments::release_covers(&state.node_db, &speaker, &hashes).await?;
+    }
     for (leaf, floor) in chains {
         crate::record::imaol::prune_chain_below(db, &leaf, service::CHAT, Some(instance), floor as u64)
             .await
@@ -1146,6 +1302,99 @@ pub async fn archive_pull(state: &AppState, root_hex: &str, author_hex: &str, do
     Ok(pulled)
 }
 
+// ---------------------------------------------------------------------------------------------
+// The pulse: a busy room cycles in the feed (Curtis, 2026-09-18)
+
+/// How long a room's last word, asked of its creator's node, is believed before asking again.
+const PULSE_ASK_TTL_MS: i64 = 10 * 60 * 1000;
+/// Rooms asked of their creators' nodes per pass: the pulse is periodic, not per word, on
+/// purpose ("not every time somebody posts, because that could get expensive").
+const PULSE_ASKS_PER_PASS: usize = 8;
+
+/// When each room not held here was last asked (in memory: a memo that only paces dials).
+static PULSED: std::sync::LazyLock<std::sync::Mutex<HashMap<(String, String), i64>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// The room's newest word as its creator's node tells it: one entry over the fragment
+/// lane, verified as signed and as this room's, its claimed time taken for the feed's
+/// order and nothing else. No attribution check - the creator's node is the directory of
+/// record (ruling 6), and a lie here misplaces a card, never a word.
+async fn remote_latest(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Option<i64> {
+    let author = crate::pubkey::decode(author_hex)?;
+    let for_root = crate::pubkey::decode(viewer_hex)?;
+    for endpoint in creator_endpoints(state, author_hex).await {
+        let Ok((items, _)) = crate::net::fragment::fetch_room_history(state, &endpoint, &author, doc, &for_root, u64::MAX, 1).await else { continue };
+        let mut newest: Option<i64> = None;
+        for (_, bytes) in items {
+            let Ok(signed) = ringtome_proto::SignedEntry::decode(&bytes) else { continue };
+            if signed.verify().is_err() {
+                continue;
+            }
+            let entry = signed.entry();
+            if entry.chain.service != service::CHAT || entry.chain.instance != Some(*doc) || entry.entry_type != entry_type::CHAT_MESSAGE {
+                continue;
+            }
+            let Payload::Inline(payload) = &entry.payload else { continue };
+            let Ok(msg) = ChatMessage::decode(payload) else { continue };
+            if msg.room_author != author {
+                continue;
+            }
+            newest = Some(newest.map_or(entry.timestamp_ms, |n| n.max(entry.timestamp_ms)));
+        }
+        return newest;
+    }
+    None
+}
+
+/// The pass: every room in a feed here moves up to its last word. Rooms this node holds
+/// are read off the memo, free; a room nobody here entered is asked of its creator's node,
+/// a few per pass and each at most every ten minutes, so a busy room a reader only follows
+/// still cycles - slowly, by design.
+pub async fn pulse_pass(state: AppState) -> Result<()> {
+    let rows = crate::fanout::rooms_in_feeds(&state.node_db).await?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let local = latest_by_room(&state.node_db).await?;
+    let now = crate::clock::now_ms();
+    // One question per room, whoever's feed it sits in: the newest row's time is the bar.
+    let mut rooms: HashMap<(String, String), (String, i64)> = HashMap::new();
+    for (reader, author, doc, published_ms) in rows {
+        let slot = rooms.entry((author, doc)).or_insert((reader.clone(), published_ms));
+        if published_ms > slot.1 {
+            *slot = (reader, published_ms);
+        }
+    }
+    let mut asked = 0usize;
+    for ((author, doc_hex), (reader, published_ms)) in rooms {
+        let latest = match local.get(&(author.clone(), doc_hex.clone())) {
+            Some(ms) => Some(*ms),
+            None => {
+                if asked >= PULSE_ASKS_PER_PASS {
+                    continue;
+                }
+                let key = (author.clone(), doc_hex.clone());
+                let due = PULSED.lock().map(|m| m.get(&key).is_none_or(|t| now - *t > PULSE_ASK_TTL_MS)).unwrap_or(true);
+                if !due {
+                    continue;
+                }
+                let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+                asked += 1;
+                if let Ok(mut m) = PULSED.lock() {
+                    m.insert(key, now);
+                }
+                remote_latest(&state, &reader, &author, &doc).await
+            }
+        };
+        if let Some(ms) = latest {
+            if ms > published_ms {
+                crate::fanout::bump_room_time(&state.node_db, &author, &doc_hex, ms).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The beat: every room a hosted persona opened lately, pulled. Slow and bounded on
 /// purpose - live is slice 3's.
 pub async fn sync_pass(state: AppState) -> Result<()> {
@@ -1200,7 +1449,7 @@ mod tests {
     fn a_message_seals_and_opens_under_the_room_key() {
         let key = [9u8; 32];
         let sealed = crate::record::private::seal_post_body(&key, b"the quiet one").unwrap();
-        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true };
+        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new() };
         let back = ChatMessage::decode(&msg.encode().unwrap()).unwrap();
         assert_eq!(crate::record::private::open_post_body(&back.body, &key).unwrap(), b"the quiet one");
         assert!(crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(), "the wrong key opens nothing");

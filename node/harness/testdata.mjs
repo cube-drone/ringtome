@@ -16,7 +16,8 @@
 //
 //   - `weight` is its share of the hat - relative, not a percentage.
 //   - `p` is the acting persona: { base, root, fetch, bases } (fetch carries their session).
-//   - `ctx` is the world: { personas, nodes, endpointOf(base), lorem(rng), pick(rng, arr) }.
+//   - `ctx` is the world: { personas, nodes, rooms, endpointOf(base), lorem(rng), pick(rng, arr) }
+//     (`rooms` is every chat room opened this run, as { author, doc, base, trusted_only }).
 //   - Throwing is fine - a failed action is logged and the run continues, because one refused
 //     dial must not cost the other twenty thousand actions.
 //
@@ -552,6 +553,56 @@ const ACTIONS = [
             if (done.status === 200) p.bases.push(target);
         },
     },
+    {
+        // A chat room (CHAT.md): a post filed in the chat bucket and published as a room.
+        // The room goes on the world's list so anyone may wander in later; one draw in six
+        // seals it to the creator's trusted circle, so the seeded network has doors that
+        // refuse as well as doors that open.
+        name: 'open-a-chat-room',
+        weight: 4,
+        run: async (ctx, p, rng) => {
+            const trusted_only = rng() < 1 / 6;
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: ctx.lorem(rng, 1).slice(0, 32).replace(/[.,]$/, ''),
+                body: ctx.lorem(rng, 1),
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/chat`);
+            const pub = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {
+                room: true, trusted_only,
+            });
+            ctx.rooms.push({ author: p.root, doc: pub.post_id, base: p.base, trusted_only });
+        },
+    },
+    {
+        // Talk: enter a room somebody opened and say three things in it. A room on another
+        // node is reached the way a human reaches it - by the creator's page, which is the
+        // fetch that brings the room's post here - and the door may take a moment to know
+        // the room, so the knock retries briefly. Sealed rooms are left to their creators
+        // (a refused knock would only be a logged failure).
+        name: 'talk-in-a-chat-room',
+        weight: 10,
+        run: async (ctx, p, rng) => {
+            const open = ctx.rooms.filter((r) => !r.trusted_only || r.author === p.root);
+            const room = ctx.pick(rng, open);
+            if (!room) return;
+            if (room.author !== p.root && room.base !== p.base) {
+                const via = await ctx.endpointOf(room.base);
+                await api(p, 'GET', `/api/id/${room.author}/profile?via=${via}`);
+            }
+            let entered = false;
+            for (let tries = 0; tries < 6 && !entered; tries++) {
+                const knock = await p.fetch(`/api/identity/${p.root}/rooms/${room.author}/${room.doc}`);
+                if (knock.status === 200) entered = true;
+                else if (tries < 5) await new Promise((res) => setTimeout(res, 300));
+                else throw new Error(`GET room ${room.doc} -> ${knock.status} ${(await knock.text()).slice(0, 120)}`);
+            }
+            for (let i = 0; i < 3; i++) {
+                const words = ctx.lorem(rng, 1).split('. ')[0].slice(0, 120);
+                await api(p, 'POST', `/api/identity/${p.root}/rooms/${room.author}/${room.doc}/messages`, { words });
+            }
+        },
+    },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -749,6 +800,9 @@ for (const base of nodes) {
     console.log(`  ${base}: ${PERSONAS} personas born (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
 }
 
+// The chat rooms opened this run (CHAT.md), for anyone to wander into later.
+const rooms = [];
+
 // Lives: interleaved rounds, one action per persona per round, order shuffled per round -
 // the network grows the way a real one does, everyone at once, rather than one biography
 // completing before the next begins.
@@ -761,7 +815,7 @@ for (let round = 0; round < PER; round++) {
     for (const p of order) {
         const action = drawAction(rng);
         try {
-            await action.run({ personas, nodes, endpointOf, lorem, pick, picture }, p, rng);
+            await action.run({ personas, nodes, rooms, endpointOf, lorem, pick, picture }, p, rng);
         } catch (e) {
             failed++;
             failures.set(action.name, (failures.get(action.name) || 0) + 1);

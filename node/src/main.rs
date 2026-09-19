@@ -542,6 +542,18 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(20)
     };
     loops::periodic("room-sync", room_beat, state.clone(), chat::sync_pass);
+    // The room pulse (Curtis, 2026-09-18): a busy room's feed time is its last word's, moved
+    // periodically rather than per word.
+    let pulse_beat = if local_test {
+        std::env::var("RINGTOME_TEST_ROOM_PULSE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(60))
+    } else {
+        std::time::Duration::from_secs(60)
+    };
+    loops::periodic("room-pulse", pulse_beat, state.clone(), chat::pulse_pass);
     // The public text index's backlog walk (search.rs): a bounded slice per beat, so the
     // first search over a deep journal is rarely the one that pays for reading it. Its own
     // slow beat, never the journal fill's (2026-09-08): on the rig the fill beat is a

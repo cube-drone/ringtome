@@ -1261,15 +1261,20 @@ pub(crate) async fn public_doc_bytes(
                 // by id over the fragment road. Only while the posts chain HAS a floor: a
                 // whole mirror lacking a document lacks it for a reason (retracted,
                 // disproven), and must not fetch it back. Never for a persona hosted here.
+                // A document the held chain lacks may sit on the shelf: beneath a follow
+                // ceiling's floor, or brought by a share or a room (CHAT.md, ruling 11 - a
+                // persona held at room depth has no posts chain here at all, and its media
+                // twins arrive as fragments under the room's door). The shelf is one read,
+                // always taken; the dial for what the shelf lacks stays gated by the floor,
+                // so a typo against a followed persona costs no connection.
                 if !peek
                     && !speculative_only
                     && fragment_first.is_none()
                     && !hosted_here(state, &root_hex).await.unwrap_or(false)
-                    && posts_floor(state, &root_hex).await > 0
                     && crate::record::documents::public_head(&db, &doc_id).await?.is_none()
                 {
                     fragment_first = from_fragments().await?;
-                    if fragment_first.is_none() {
+                    if fragment_first.is_none() && posts_floor(state, &root_hex).await > 0 {
                         crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
                         fragment_first = from_fragments().await?;
                     }

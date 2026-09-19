@@ -94,6 +94,8 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
 
     // A book, or a page of one: the reader (PROJECT_PLAN's Books, slice 4) rather than the card.
     const isBook = !!post && post.format === 'book';
+    // A room takes no replies (Curtis, 2026-09-18): no thread section, no reply box.
+    const isRoom = !!post && post.format === 'room';
     const partOf = (post && post.part_of) || null;
     // A book's comments live in one place (Curtis, 2026-09-04: a per-page thread is "a place
     // for comments to get very lost"): a page's page threads and replies on the BOOK.
@@ -154,8 +156,11 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
             html`<p class="thread-settled">
                 ${t('postpage.the-author-settled-this', 'the author turned off comments for this post')}
             </p>`}
+            ${/* A room takes no replies (Curtis, 2026-09-18): the conversation is inside it,
+                and the card's tail shows it moving. */ ''}
             ${item &&
             !item.settled &&
+            !isRoom &&
             html`<section class="thread">
                 <h2 class="thread-head">
                     ${t('postpage.replies-known-here', 'replies known here')}

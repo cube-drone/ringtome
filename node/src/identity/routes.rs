@@ -1327,8 +1327,8 @@ async fn room_history_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    let (items, closed, more) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
-    Ok(Json(serde_json::json!({ "items": items, "closed": closed, "more": more })))
+    let (items, closed, more, total) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
+    Ok(Json(serde_json::json!({ "items": items, "closed": closed, "more": more, "total": total })))
 }
 
 /// GET `/api/identity/{root}/rooms/{author}/{doc}/chatters` - who has visibly spoken here,
@@ -2417,6 +2417,14 @@ async fn resolve_reply_link(
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.settled-no-replies",
             "the author turned off comments for this post"
+        )));
+    }
+    // A room takes no replies (CHAT.md; Curtis, 2026-09-18): the conversation is the room's
+    // own chains, said inside it - a reply to the post would be a thread beside the room.
+    if header.format == Some(ringtome_proto::registry::doc_format::ROOM) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-room-takes-no-replies",
+            "a room takes no replies - enter it and say it there"
         )));
     }
     let parent_link = (author, doc);
@@ -3990,6 +3998,13 @@ async fn docs_copy_handler(
         return Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }));
     }
     let src = read_public_source(&state, &session, &author_hex, &doc_hex, &doc_id).await?;
+    // A room is a conversation, not a note (Curtis, 2026-09-18): its post does not copy.
+    if src.format == crate::record::documents::Format::Room {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-room-doesnt-copy",
+            "a room is a conversation, not a note - it doesn't copy into notes"
+        )));
+    }
     if src.format == crate::record::documents::Format::Book {
         if !req.new {
             return Err(AppError::BadRequest(crate::msg!("identity.routes.a-book-copies-into-a-fresh", "a book copies whole into a fresh notebook - name a new one")));

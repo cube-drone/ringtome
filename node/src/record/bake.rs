@@ -454,7 +454,7 @@ const MAX_POST_MEDIA_BYTES: u64 = 10 * 1024 * 1024;
 /// A media document whose size cannot be read is skipped rather than assumed: it was baked
 /// moments ago on this node, so absence means something stranger than a big file, and failing a
 /// publish over a metadata miss would be a worse bug than the one this guards.
-async fn media_budget(
+pub(crate) async fn media_budget(
     state: &AppState,
     data: &crate::record::store::Store,
     baked: &[[u8; 16]],

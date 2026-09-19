@@ -342,6 +342,82 @@ async fn cover_refs_inner(
     Ok(())
 }
 
+/// A room message's media (CHAT.md, ruling 11): the same refcount, keyed by the MESSAGE's
+/// hash where a post's id would stand - so a pruned line releases its pictures exactly as
+/// an edit releases a post's - and the twins wanted from the origins given, in order, until
+/// held: the creator's node first (the archive holds them), the speaker's own nodes after.
+/// `heal_covers` retries a POST's media from its fragment's origin; a message is no
+/// fragment, so the room's memo fold is the retry here, and this walk is cheap when
+/// everything is already held.
+pub async fn cover_for_message(
+    state: &crate::AppState,
+    origins: &[String],
+    author_root: &str,
+    message_hex: &str,
+    refs: &[[u8; 16]],
+) {
+    if let Err(e) = cover_for_message_inner(state, origins, author_root, message_hex, refs).await {
+        tracing::debug!(author = %author_root, message = %message_hex, error = ?e, "room media cover walk failed");
+    }
+}
+
+async fn cover_for_message_inner(
+    state: &crate::AppState,
+    origins: &[String],
+    author_root: &str,
+    message_hex: &str,
+    refs: &[[u8; 16]],
+) -> Result<()> {
+    for media in reconcile_covers(&state.node_db, author_root, message_hex, refs).await? {
+        forget_one(&state.node_db, author_root, &media).await?;
+    }
+    for media in refs {
+        let media_hex = hex::encode(media);
+        if held(&state.node_db, author_root, &media_hex).await?.is_some()
+            || entombed(&state.node_db, author_root, media).await?
+        {
+            continue;
+        }
+        for origin in origins {
+            fetch_cover(state, origin, author_root, media).await;
+            if held(&state.node_db, author_root, &media_hex).await?.is_some() {
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The covers of pruned room lines (ruling 6 meets ruling 11): released by the message
+/// hashes the memo dropped, and the media nothing covers any more forgotten with them.
+pub async fn release_covers(node_db: &Db, author_root: &str, post_docs: &[String]) -> Result<()> {
+    for post_hex in post_docs {
+        let media: Vec<(String,)> = node_db
+            .fetch_all(
+                "SELECT media_doc FROM fragment_covers WHERE author_root = ?1 AND post_doc = ?2",
+                (author_root, post_hex.as_str()),
+            )
+            .await
+            .context("reading a pruned line's covers")?;
+        if media.is_empty() {
+            continue;
+        }
+        node_db
+            .execute(
+                "DELETE FROM fragment_covers WHERE author_root = ?1 AND post_doc = ?2",
+                (author_root, post_hex.as_str()),
+            )
+            .await
+            .context("releasing a pruned line's covers")?;
+        for (media_hex,) in media {
+            if !covered(node_db, author_root, &media_hex).await? {
+                forget_one(node_db, author_root, &media_hex).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// One held fragment's proof, as stored: the author's exact signed bytes and the packed
 /// delegation path - what the thread door serves for a reply that arrived as a share
 /// (PROJECT_PLAN's Replies slice 6).
