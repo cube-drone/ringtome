@@ -924,6 +924,20 @@ pub async fn history(
     Ok((items, closed.is_some(), more, total.min(ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64)))
 }
 
+/// Messages said in a room since `since_ms` by anyone but `not_speaker`: the chat badge's
+/// arithmetic (Curtis, 2026-09-19), one count per room this persona is in.
+pub async fn unseen_in(node_db: &Db, author_hex: &str, doc_hex: &str, since_ms: i64, not_speaker: &str) -> Result<u64> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT COUNT(*) FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms > ?3 AND speaker_root != ?4",
+            (author_hex, doc_hex, since_ms, not_speaker),
+        )
+        .await
+        .context("counting a room's unseen messages")?;
+    Ok(row.map_or(0, |(n,)| n.max(0) as u64))
+}
+
 /// When each room this node holds last heard a message: `(room_author, room_doc) ->
 /// said_ms` - what the chats column sorts and bolds by (Curtis, 2026-09-18).
 pub async fn latest_by_room(node_db: &Db) -> Result<HashMap<(String, String), i64>> {
@@ -1018,6 +1032,7 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     let mut rooms: std::collections::BTreeSet<(String, String)> = Default::default();
     let hosted = crate::identity::is_hosted(&state.node_db, root).await.unwrap_or(false);
     let mut covers: Vec<(String, String, Vec<[u8; 16]>)> = Vec::new();
+    let mut landed = 0u64;
     for signed in &entries {
         let entry = signed.entry();
         let Some(instance) = entry.chain.instance else { continue };
@@ -1026,7 +1041,7 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         let room_author = hex::encode(msg.room_author);
         let room_doc = hex::encode(instance);
         rooms.insert((room_author.clone(), room_doc.clone()));
-        state
+        landed += state
             .node_db
             .execute(
                 "INSERT OR IGNORE INTO room_messages
@@ -1054,6 +1069,16 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     let mut pruned = false;
     for (room_author, room_doc) in rooms {
         pruned |= enforce_budget(state, &db, &room_author, &room_doc).await?;
+    }
+    // New words landed in the memo, which lives beside every reader's own data rather than
+    // in it: nudge every hosted persona's live stream, so the chat badge moves the moment a
+    // room does (Curtis, 2026-09-19) rather than at their next own write.
+    if landed > 0 {
+        if let Ok(readers) = crate::identity::hosted_roots(&state.node_db).await {
+            for reader in readers {
+                state.view_epochs.bump(&reader);
+            }
+        }
     }
     // The media the messages embed (ruling 11), off the fold's path: the cover walk dials
     // when a twin is missing, and a fold must not wait on the network. Only what the prune

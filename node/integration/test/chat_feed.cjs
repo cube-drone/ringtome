@@ -168,4 +168,43 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(after.length, 1, "no second row");
         assert.equal(after[0].updated_ms, before, "and the one row did not move: a left room rings nothing");
     });
+
+    it("the chat badge counts what others said in active rooms since the last look, off the live stream", async () => {
+        const WebSocket = require("ws");
+        const cookie = bea.jar.getCookieStringSync(`http://${HOST_B}/`);
+        // One frame: a fresh socket's snapshot carries the count as the bell's.
+        const snapshot = () =>
+            new Promise((resolve, reject) => {
+                const ws = new WebSocket(`ws://${HOST_B}/api/identity/${beaRoot}/stream`, { headers: { Cookie: cookie } });
+                const timer = setTimeout(() => { ws.close(); reject(new Error("no snapshot within 10s")); }, 10000);
+                ws.on("message", (data) => { clearTimeout(timer); ws.close(); resolve(JSON.parse(data.toString())); });
+                ws.on("error", reject);
+            });
+        const latest = async () => (((await (await bea(`api/identity/${beaRoot}/rooms`)).json()).items || []).find((r) => r.doc_id === room) || {}).latest_ms || 0;
+        // Back in, and caught up: the look is the newest word.
+        assert.equal((await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/join`, { method: "POST" })).status, 200);
+        await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+        await beat(HOST_B, "fold", adaRoot);
+        await j(bea, `api/identity/${beaRoot}/private/kv/rooms_seen/${adaRoot}:${room}`, { value: String(await latest()) }, "PUT");
+        assert.equal((await snapshot()).unread_chat, 0, "caught up: nothing unseen");
+        for (const w of ["one for the badge", "two for the badge"]) {
+            const r = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: w });
+            assert.equal(r.status, 200, await r.text());
+            await wait(5);
+        }
+        let frame = null;
+        for (let i = 0; i < 30; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            frame = await snapshot();
+            if (frame.unread_chat === 2) break;
+            await wait(300);
+        }
+        assert.equal(frame.unread_chat, 2, `two words said since the look: ${JSON.stringify(frame.unread_chat)}`);
+        // The look clears it; bea's own words never count.
+        await j(bea, `api/identity/${beaRoot}/private/kv/rooms_seen/${adaRoot}:${room}`, { value: String(await latest()) }, "PUT");
+        const mine = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "my own word" });
+        assert.equal(mine.status, 200, await mine.text());
+        assert.equal((await snapshot()).unread_chat, 0, "looked, and one's own words are not unseen");
+    });
 });

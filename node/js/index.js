@@ -55,6 +55,8 @@ const html = htm.bind(h);
 // The app whose heptagon wears the unread badge (an id, not a phrase - hoisted so the
 // strings cop does not read it as words shown to a person).
 const BELL_APP_ID = 'notifications';
+// The chat app's heptagon wears the unseen-messages badge (Curtis, 2026-09-19).
+const CHAT_APP_ID = 'chat';
 // The persona app's id, hoisted for the same reason: its dock tile lights on your own /id page.
 const PERSONA_APP_ID = 'persona';
 
@@ -267,6 +269,11 @@ const Inside = ({ session }) => {
         [root]
     );
     const unread = unreadRow && typeof unreadRow.value === 'number' ? unreadRow.value : 0;
+    const unreadChatRow = useLive(
+        () => (root ? openMirror(root).kv.get('unread_chat') : null),
+        [root]
+    );
+    const unreadChat = unreadChatRow && typeof unreadChatRow.value === 'number' ? unreadChatRow.value : 0;
     const bar = html`
         <footer class="quickbar">
             <span class="quickbar-apps">
@@ -277,7 +284,7 @@ const Inside = ({ session }) => {
                         app.id === PERSONA_APP_ID
                             ? !!root && loc.path === `/id/${speakable(root)}`
                             : !!(appHere && appHere.id === app.id);
-                    const badge = app.id === BELL_APP_ID && unread > 0 ? unread : 0;
+                    const badge = app.id === BELL_APP_ID ? unread : app.id === CHAT_APP_ID ? unreadChat : 0;
                     // Clicking the app you're already in closes it (back to the launcher).
                     return html`<span class="quickbar-slot" key=${app.id}>
                         <button

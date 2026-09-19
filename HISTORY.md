@@ -9481,3 +9481,17 @@ bell's row reads "mentioned you in <room>" with the room's name as a link into i
 room's `@` picker offers who has spoken there ahead of contacts and the directory. The
 feed suite's new claim: a follower's bell rings with the room as the object, and rings no
 more once she has left.
+
+## 2026-09-19: the chat app wears a badge
+
+Curtis: the bell's heptagon carries the unread count; the chat app's should carry the unseen
+messages. The count is every message said by somebody else in a room this persona is in -
+their own, or entered and not left - since they last looked at it, off the node's room
+memo, and it rides the persona's live stream beside the bell's number, absent when
+unchanged, so the badge is a live query and never a poll. One wrinkle: the memo lives
+beside a reader's data rather than in it, so the stream that re-gathers on the reader's own
+writes would not have noticed a room moving; the memo fold now bumps every hosted persona's
+view epoch when new words land, and the stream's tick sees it. The mirror keeps the number
+under its own key and the dock reads it as it reads the bell's. The feed suite's new claim
+opens the stream and reads the snapshot: nothing after a look, two after two words by ada,
+nothing again after the next look, and one's own words never count.

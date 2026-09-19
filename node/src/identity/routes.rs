@@ -1852,6 +1852,39 @@ async fn notifications_handler(
 /// How many of the bell's rows the reader has not seen - the dock badge's number
 /// (2026-08-28), computed from exactly the rows the bell would show, so the badge and the
 /// bell can never disagree.
+/// The chat badge's number (Curtis, 2026-09-19): every message said by somebody else in a
+/// room this persona is in - their own, or entered and not left - since they last looked
+/// at it (the `rooms_seen` register); a room never looked at counts whole. Off the node's
+/// room memo, so a room nobody here holds counts nothing, honestly.
+async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
+    let mut rooms: Vec<(String, String)> = Vec::new();
+    for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
+        if crate::record::documents::Format::from_wire(p.format) == crate::record::documents::Format::Room {
+            rooms.push((root.to_string(), hex::encode(p.doc_id)));
+        }
+    }
+    let (joined, _left) = rooms_by_standing(data).await?;
+    for (author, doc) in joined {
+        if !rooms.contains(&(author.clone(), doc.clone())) {
+            rooms.push((author, doc));
+        }
+    }
+    if rooms.is_empty() {
+        return Ok(0);
+    }
+    let (seen_rows, _) = data.private_registers(ROOMS_SEEN).all().await?;
+    let seen: std::collections::HashMap<String, i64> = seen_rows
+        .into_iter()
+        .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|ms| (r.key, ms)))
+        .collect();
+    let mut total = 0u64;
+    for (author, doc) in rooms {
+        let since = seen.get(&format!("{author}:{doc}")).copied().unwrap_or(0);
+        total += crate::chat::unseen_in(&state.node_db, &author, &doc, since, root).await.map_err(AppError::Internal)?;
+    }
+    Ok(total)
+}
+
 async fn unread_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
     let (items, _) = notification_items(state, data, root).await?;
     Ok(items.iter().filter(|i| !i.seen).count() as u64)
@@ -5669,6 +5702,11 @@ struct StreamMessage {
     /// the stream when it writes them, and the loop recounts on every wake.
     #[serde(skip_serializing_if = "Option::is_none")]
     unread: Option<u64>,
+    /// The chat dock badge (Curtis, 2026-09-19): messages said in this persona's active
+    /// rooms since they last looked, by others - sent as the bell's count is, absent when
+    /// unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unread_chat: Option<u64>,
 }
 
 impl StreamMessage {
@@ -5690,6 +5728,7 @@ impl StreamMessage {
             search_changed: None,
             search_removed: None,
             unread: None,
+            unread_chat: None,
         }
     }
 }
@@ -6059,6 +6098,10 @@ async fn serve_stream(
         .await
         .map_err(anyhow::Error::new)?;
     first.unread = Some(last_unread);
+    let mut last_chat = unseen_chat_count(&state, &data, &root)
+        .await
+        .map_err(anyhow::Error::new)?;
+    first.unread_chat = Some(last_chat);
     socket
         .send(Message::Text(serde_json::to_string(&first)?.into()))
         .await?;
@@ -6112,6 +6155,11 @@ async fn serve_stream(
             .map_err(anyhow::Error::new)?;
         let unread_changed = unread != last_unread;
         last_unread = unread;
+        let chat = unseen_chat_count(&state, &data, &root)
+            .await
+            .map_err(anyhow::Error::new)?;
+        let chat_changed = chat != last_chat;
+        last_chat = chat;
         if now != stamp {
             let moved = Moved::since(&stamp, &now);
             stamp = now;
@@ -6121,12 +6169,20 @@ async fn serve_stream(
             if unread_changed {
                 update.unread = Some(unread);
             }
+            if chat_changed {
+                update.unread_chat = Some(chat);
+            }
             socket
                 .send(Message::Text(serde_json::to_string(&update)?.into()))
                 .await?;
-        } else if unread_changed {
+        } else if unread_changed || chat_changed {
             let mut quiet = StreamMessage::quiet("live", stamp.token());
-            quiet.unread = Some(unread);
+            if unread_changed {
+                quiet.unread = Some(unread);
+            }
+            if chat_changed {
+                quiet.unread_chat = Some(chat);
+            }
             socket
                 .send(Message::Text(serde_json::to_string(&quiet)?.into()))
                 .await?;

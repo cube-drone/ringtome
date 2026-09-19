@@ -160,6 +160,10 @@ export function startLiveCache(root) {
                 if (typeof msg.unread === 'number') {
                     await db.kv.put({ key: 'unread_notifications', value: msg.unread });
                 }
+                // The chat badge's count, the same way (Curtis, 2026-09-19).
+                if (typeof msg.unread_chat === 'number') {
+                    await db.kv.put({ key: 'unread_chat', value: msg.unread_chat });
+                }
                 state.retryMs = 1000; // a healthy message resets the backoff
             } catch (e) {
                 console.warn('live cache: bad frame', e);
