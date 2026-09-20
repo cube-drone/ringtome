@@ -8,6 +8,14 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ## Near-Term Goals
 
+### Chat
+* 2-way encrypted p2p chats (we already have most of this)
+* Opus took a crack at fixing chat search losing visible context, but wasn't smart enough; revisit with Fable
+
+### Notifications
+* Have the app pop a real notification when stuff happens
+* Change the favicon when stuff happens
+
 ### Localization
 * An in-ui way to cheat your presented language, for testing
  * just fully do french and spanish or something
@@ -44,27 +52,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   front page is the first thing a scraper finds; a per-address budget beyond the paging.
 * Node-observed feed ("here's everything public that anybody is looking at")
 * more granular or time-limited blocks? ("block for 6 months")
-
-### Inbox
-
-Design settled 2026-08-09 - PROJECT_PLAN's *Arrival and Attention* (extended). The first kind
-("someone you don't follow published an edge naming you") shipped the same day: the envelope
-format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at transcription,
-both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
-beside derived. What is left:
-
-* **More notice kinds**: first-contact, the one bare-claim kind, which needs the capped
-  greeting surfaced and its own smaller pool (commented-on and tagged-your-post are built,
-  each with its evidence rule in `deliver::verify_claim`).
-* **Sealed-envelope relays**: a friend's always-on node holding a notice for a phone that is
-  never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
-  does not (iroh QUIC already encrypts point to point).
-* **The transport tier**: pricing connection admission by shared public-edge standing.
-* Real-time chat rooms (CHAT.md, settled 2026-09-18): every slice built 2026-09-18/19.
-  Residuals CHAT.md names: an eviction re-keys nothing (ruling 2's bound); a stranger's media
-  loads blurred rather than not at all.
-* Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately; CHAT.md
-  notes it may be a room of two)
 
 ### Public means public (Gateway)
 * the public-HTML browser for this repo
@@ -131,7 +118,6 @@ beside derived. What is left:
 * The "seed" is shared, like a Post would be, and can be rebroadcast, also like a post would be
 
 ### Weird Ideas
-* Chat
 * Anki-Style Flashcards
 * Minesweeper/Solitaire
 * VN Engine
