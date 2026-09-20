@@ -12,6 +12,7 @@
 // shape does not), so the chip takes a `size`.
 //
 //   PersonChip   - a heptagon of their picture, their name on hover. Studs lists and prose.
+//   PersonInline - the same heptagon with the name beside it, for lines that clip a hover.
 //   PersonBanner - the inline header: heptagon + names + address, filling a row.
 //   PersonCard   - everything: picture, names, address, bio, and your relationship.
 //
@@ -177,6 +178,21 @@ export const PersonChip = ({ root, current, size = 'small', profile }) => {
                 ${person.others.length > 0 && html`<small>${person.others.join(' · ')}</small>`}
             </span>
         </a>
+    `;
+};
+
+/// The name said in the flow of a line: the heptagon and the one name this reader calls
+/// them, inline, with no hover label. What a chip cannot be where the pop-over would be
+/// clipped by the frame around it, or where the line is already a button (the chat search's
+/// results: Curtis, 2026-09-20). Not a link, for the same reason - the line owns the click.
+export const PersonInline = ({ root, current, profile }) => {
+    const person = usePerson(root, { current, profile });
+    if (!root) return null;
+    return html`
+        <span class="person-inline" data-blocked=${person.blocked ? 'yes' : null}>
+            <${PersonHex} person=${person} size="mini" />
+            <span class="person-inline-name">${person.primary || speakable(root)}</span>
+        </span>
     `;
 };
 

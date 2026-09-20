@@ -81,6 +81,25 @@
     opacity: 1;
 }
 
+/* The name in the flow of a line: face and name together, nothing to pop over. */
+.person-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.person-inline[data-blocked='yes'] .person-hex {
+    opacity: 0.45;
+}
+
+.person-inline-name {
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* The banner: the inline header, filling the row it's given. */
 .person-banner {
     display: flex;

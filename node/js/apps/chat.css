@@ -578,9 +578,17 @@
 
 .chat-result-said {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.5rem;
     min-width: 0;
+}
+
+/* Who said it, named inline (a hover label would be clipped by this pane): capped, so a
+   long nickname cannot crowd out the words the search actually found. */
+.chat-result-said .person-inline {
+    flex: none;
+    max-width: 30%;
+    font-size: 0.85em;
 }
 
 .chat-result-words {

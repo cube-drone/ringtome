@@ -9792,3 +9792,9 @@ alone on its line, with the closed and sealed marks beside it. When it was last 
 the tags the room wears, moved to a second line under the title, where the creator's chip
 used to sit: their face already leads the row, so the name went with the icon. Client only,
 so a refresh shows it.
+
+The search results name their speaker inline (Curtis, 2026-09-20): a chip keeps its name in
+a pop-over above the face, and this pane's own frame ate it. `PersonInline` is the family's
+fifth shape - the mini heptagon with the one name this reader calls them beside it, no hover
+label and no link, since the result line is already the button that opens the room. Capped at
+a third of the line, so a long nickname cannot crowd out the words the search found.

@@ -14,7 +14,7 @@ import { useLocation } from 'preact-iso';
 import { api, apiTextTitled } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
-import { PersonChip, PersonHex, usePerson } from '../person.js';
+import { PersonChip, PersonHex, PersonInline, usePerson } from '../person.js';
 import { agoUnit } from '../pure/ago.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
@@ -1243,7 +1243,7 @@ const SearchResults = ({ current, needle, hits, onOpen }) => {
                             <span class="chat-result-when">${whenWords(h.said_ms)}</span>
                         </span>
                         <span class="chat-result-said">
-                            <${PersonChip} root=${h.speaker} current=${current} />
+                            <${PersonInline} root=${h.speaker} current=${current} />
                             <span class="chat-result-words">${marked(h.words, needle)}</span>
                         </span>
                     </button>
