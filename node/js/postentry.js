@@ -529,14 +529,31 @@ const sinceWords = (ms) => {
     const ago = agoUnit(ms, Date.now());
     return ago ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit) : t('postentry.just-now', 'just now');
 };
-const RoomLine = ({ speaker, words, said_ms, current }) => {
+const RoomLine = ({ speaker, words, said_ms, current, author }) => {
     const profile = useTurbolinks(words || '', 'marquee');
-    return html`<li class="room-card-line">
+    // A stranger's media wears the veil here too (Curtis, 2026-09-19): the card sits in the
+    // feed, where a dropped image would otherwise land unasked. The reader and the room's
+    // creator are never strangers.
+    const person = usePerson(speaker, { current });
+    const trust = (person.facts || {}).trust;
+    const stranger = !!current && speaker !== current.root && speaker !== author && (!trust || trust === 'none');
+    const [revealed, setRevealed] = useState(false);
+    const veiled = stranger && !revealed && words !== null && /!\[|:::media\b/.test(words || '');
+    return html`<li class=${stranger ? 'room-card-line room-card-line-untrusted' : 'room-card-line'}>
         <${PersonChip} root=${speaker} current=${current} />
         <div class="room-card-words">
             ${words === null
                 ? html`<span class="chat-msg-sealed">${t('postentry.sealed-words', 'sealed words')}</span>`
-                : html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`}
+                : veiled
+                  ? html`<div class="feed-entry-veil">
+                        <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
+                            <${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />
+                        </div>
+                        <button class="feed-entry-unveil" type="button" onClick=${() => setRevealed(true)}>
+                            ${t('postentry.media-from-someone-you-dont-trust', "media from someone you don't trust - click to see")}
+                        </button>
+                    </div>`
+                  : html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`}
         </div>
         <span class="room-card-when" title=${new Date(said_ms).toLocaleString()}>${sinceWords(said_ms)}</span>
     </li>`;
@@ -557,7 +574,7 @@ const RoomFloor = ({ item, current, post }) => {
     const lines = tail && tail.items ? [...tail.items].reverse() : [];
     const more = tail ? Math.max(0, (tail.total || 0) - lines.length) : 0;
     return html`<ul class="room-card-lines">
-        <${RoomLine} speaker=${item.author} words=${post} said_ms=${item.published_ms} current=${current} />
+        <${RoomLine} speaker=${item.author} words=${post} said_ms=${item.published_ms} current=${current} author=${item.author} />
         ${/* A rule with the count on it: a break in the conversation, not a line of it
             (Curtis, 2026-09-18). */ ''}
         ${more > 0 &&
@@ -568,7 +585,7 @@ const RoomFloor = ({ item, current, post }) => {
                   ? t('postentry.and-one-more', 'and one more')
                   : t('postentry.and-n-more', 'and {n} more', { n: more })}
         </li>`}
-        ${lines.map((m) => html`<${RoomLine} key=${m.hash} speaker=${m.speaker} words=${m.words} said_ms=${m.said_ms} current=${current} />`)}
+        ${lines.map((m) => html`<${RoomLine} key=${m.hash} speaker=${m.speaker} words=${m.words} said_ms=${m.said_ms} current=${current} author=${item.author} />`)}
     </ul>`;
 };
 

@@ -80,11 +80,6 @@
     flex-wrap: wrap;
 }
 
-.chat-delete {
-    display: inline-flex;
-    align-items: center;
-}
-
 .chat-rejoin {
     margin-left: auto;
     font-size: 0.9em;
@@ -188,23 +183,31 @@
     font-size: 1.15em;
 }
 
-.chat-chatters {
+/* The people box beside the title: the owner, how many others, and the triangle. */
+.chat-people {
     position: relative;
     font-size: 0.85em;
 }
 
-.chat-chatters-summary {
+.chat-people-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     cursor: pointer;
     color: var(--ink-soft);
     border: 1px solid var(--border);
     --j: 4px;
     clip-path: var(--jag-1);
-    padding: 0.15rem 0.6rem;
+    padding: 0.15rem 0.5rem;
     list-style: none;
 }
 
-.chat-chatters-summary::-webkit-details-marker {
+.chat-people-summary::-webkit-details-marker {
     display: none;
+}
+
+.chat-people-caret {
+    color: var(--muted);
 }
 
 .chat-chatters-list {
@@ -235,27 +238,46 @@
     white-space: nowrap;
 }
 
-.chat-chatters-none {
-    color: var(--muted);
+/* The tools: one strip on the right, icons with their words on hover. */
+.chat-tools {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
 }
 
-.chat-room-post,
-.chat-leave {
-    margin-left: auto;
-    font: inherit;
-    font-size: 0.85em;
+.chat-tool {
+    display: inline-flex;
+    align-items: center;
+    font-size: 1.05em;
     color: var(--ink-soft);
     background: none;
-    border: 1px solid var(--border);
-    --j: 4px;
-    clip-path: var(--jag-1);
-    padding: 0.2rem 0.6rem;
-    text-decoration: none;
+    border: 1px solid transparent;
+    padding: 0.25rem 0.35rem;
     cursor: pointer;
+    text-decoration: none;
 }
 
-.chat-room-post + .chat-leave {
-    margin-left: 0;
+.chat-tool:hover {
+    border-color: var(--border);
+    color: var(--ink);
+}
+
+.chat-tool-on {
+    color: var(--teal);
+}
+
+.chat-tool-static {
+    cursor: default;
+}
+
+.chat-tool-danger:hover {
+    color: var(--coral);
+}
+
+.chat-tool:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 
 /* The floor: every line at full width, the newest at the bottom. */
@@ -274,19 +296,6 @@
     border: 1px solid var(--border);
     border-radius: 999px;
     padding: 0.1rem 0.75rem;
-    cursor: pointer;
-}
-.chat-archived {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-}
-.chat-archive {
-    font-size: 0.85em;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.05rem 0.6rem;
     cursor: pointer;
 }
 /* The floor is one sheet of paper (Curtis, 2026-09-18, after Slack): names, dates and
@@ -457,6 +466,17 @@
     color: var(--muted);
 }
 
+/* A stranger's media, veiled: the feed's blur and button, sized to a line. */
+.chat-line-veil {
+    max-width: 28rem;
+    min-height: 3.5rem;
+}
+
+.room-card-line-untrusted {
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
 /* The stub a hidden run leaves behind. */
 .chat-line-hidden {
     font-size: 0.8em;
@@ -465,15 +485,6 @@
     padding-left: 2.7rem;
 }
 
-.chat-hide-untrusted {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.8em;
-    color: var(--muted);
-    cursor: pointer;
-    white-space: nowrap;
-}
 
 /* A run's later lines sit under the first line's words, the hex's width in from the edge. */
 .chat-line-body {

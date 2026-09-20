@@ -31,6 +31,8 @@ import { usePref } from '../mirror/prefs.js';
 const hasTrust = (v) => !!v && v !== 'none';
 /// The preference: hide untrusted speakers' lines in every room this persona reads.
 const HIDE_UNTRUSTED_PREF = 'chat.hide-untrusted';
+/// Whether some words embed media - a picture, a sound, a clip - by Marquee's two spellings.
+export const embedsMedia = (words) => /!\[|:::media\b/.test(words || '');
 import { POLE_EMOJI, EMOJI_PALETTE, shortcodeOf, glyphOf } from '../emoji.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -285,8 +287,12 @@ const Line = ({ m, current, cont, onReact, untrusted }) => {
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     const mine = !!current && current.root === m.speaker;
     const whoSaid = (r) => r.who.map((w) => w.name || speakable(w.root)).join(', ');
-    // A speaker this reader has not placed reads small and gray: present, unimportant.
+    // A speaker this reader has not placed reads small and gray: present, unimportant. Their
+    // media wears the feed's veil until clicked (Curtis, 2026-09-19: "baddies might want to
+    // pop on to a chat channel and drop in nasty images or sounds").
     const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : ''].filter(Boolean).join(' ');
+    const [revealed, setRevealed] = useState(false);
+    const veiled = untrusted && !revealed && m.words !== null && embedsMedia(m.words);
     return html`<li class=${cls} title=${untrusted ? t('apps.chat.someone-you-dont-trust', "someone you don't trust") : undefined}>
         ${!cont &&
         html`<div class="chat-line-head">
@@ -314,7 +320,16 @@ const Line = ({ m, current, cont, onReact, untrusted }) => {
         <div class="chat-line-body" title=${cont ? when : undefined}>
             ${m.words === null
                 ? html`<span class="chat-msg-sealed"><${Icons.trustPrivate} /> ${t('apps.chat.sealed-words-you-cannot-open', 'sealed words this computer cannot open')}</span>`
-                : html`<${MarqueeBody} source=${m.words} profile=${profile} onUnparsable=${bareSource} />`}
+                : veiled
+                  ? html`<div class="feed-entry-veil chat-line-veil">
+                        <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
+                            <${MarqueeBody} source=${m.words} profile=${profile} onUnparsable=${bareSource} />
+                        </div>
+                        <button class="feed-entry-unveil" type="button" onClick=${() => setRevealed(true)}>
+                            ${t('apps.chat.media-from-someone-you-dont-trust', "media from someone you don't trust - click to see")}
+                        </button>
+                    </div>`
+                  : html`<${MarqueeBody} source=${m.words} profile=${profile} onUnparsable=${bareSource} />`}
             ${(m.reactions || []).length > 0 &&
             html`<span class="chat-reacts">
                 ${m.reactions.map((r) => {
@@ -687,6 +702,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         </div>`;
     }
     const name = roomName(words, room);
+    const others = (chatters || []).filter((c) => c.root !== author);
     // The floor: the room's post first, said by its creator, then every line oldest to
     // newest; a run of lines by one speaker is attributed once.
     const lines = [];
@@ -709,78 +725,102 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     return html`<section class="chat-room">
         <header class="chat-room-head">
             <h2 class="chat-room-name">${name}</h2>
-            <${PersonChip} root=${author} current=${current} />
             ${room.trusted_only &&
             html`<span class="label-chip label-chip-flag"><${Icons.trustPrivate} /> ${room.onward ? t('apps.chat.trusted-and-onward', 'trusted, and onward') : t('apps.chat.sealed', 'sealed')}</span>`}
-            ${/* Nobody is "in" a room (Curtis, 2026-09-18): the only roster is who has visibly
-                spoken, newest speaker first, with when. */ ''}
-            ${/* The preference (Curtis, 2026-09-19): hide what people this reader has not
-                placed say, in every room; the count says what the floor is not showing. */ ''}
-            <label class="chat-hide-untrusted" title=${t('apps.chat.hide-lines-from-people-you-dont-trust', "hide lines from people you don't trust, in every room")}>
-                <input type="checkbox" checked=${hiding} onChange=${(e) => setHideUntrusted(e.currentTarget.checked ? 'yes' : 'no')} />
-                ${hiding && hidden > 0
-                    ? t('apps.chat.hiding-n', 'hiding {n}', { n: hidden })
-                    : t('apps.chat.hide-untrusted', 'hide untrusted')}
-            </label>
-            <details class="chat-chatters">
-                <summary class="chat-chatters-summary">
-                    ${chatters && chatters.length > 0
-                        ? t('apps.chat.n-chatters', '{count} chatters', { count: chatters.length })
-                        : t('apps.chat.chatters', 'chatters')}
+            ${/* The people (Curtis, 2026-09-19): the owner and how many others have spoken,
+                in one box beside the title, the triangle promising the list - who has
+                visibly spoken, newest first, with when; nobody is "in" a room. */ ''}
+            <details class="chat-people">
+                <summary class="chat-people-summary">
+                    <${PersonChip} root=${author} current=${current} />
+                    ${others.length > 0 &&
+                    html`<span class="chat-people-others">${others.length === 1 ? t('apps.chat.and-one-other', 'and one other') : t('apps.chat.and-n-others', 'and {n} others', { n: others.length })}</span>`}
+                    <${Icons.caretDown} class="chat-people-caret" />
                 </summary>
                 <ul class="chat-chatters-list">
-                    ${(chatters || []).map(
+                    <li class="chat-chatters-row">
+                        <${Speaker} root=${author} current=${current} />
+                        <span class="chat-chatters-when">${t('apps.chat.opened-the-room', 'opened the room')}</span>
+                    </li>
+                    ${others.map(
                         (c) => html`<li key=${c.root} class="chat-chatters-row">
                             <${Speaker} root=${c.root} current=${current} />
                             <span class="chat-chatters-when">${whenWords(c.last_ms)}</span>
                         </li>`
                     )}
-                    ${chatters && chatters.length === 0 && html`<li class="chat-chatters-row chat-chatters-none">${t('apps.chat.nobody-has-spoken-here', 'nobody has spoken here yet')}</li>`}
                 </ul>
             </details>
-            <a class="chat-room-post" href=${`/id/${speakable(author)}/post/${doc}`}>${t('apps.chat.the-rooms-post', "the room's post")}</a>
-            ${/* The archive's standing (ruling 6): the creator's node keeps its rooms whole
-                unasked; a node whose operator pressed full-sync says so, and may release. */ ''}
-            ${room.archived
-                ? html`<span class="label-chip chat-archived" title=${t('apps.chat.this-node-keeps-the-whole-room', 'this computer keeps the whole conversation')}>
-                      ${t('apps.chat.kept-whole-here', 'kept whole here')}
-                      ${admin && html`<button class="chat-archive" disabled=${archiving} onClick=${() => setArchive(false)}>${t('apps.chat.release', 'release')}</button>`}
-                  </span>`
-                : room.archivist && html`<span class="label-chip chat-archived">${t('apps.chat.the-archive', 'the archive')}</span>`}
-            ${room.joined && html`<button class="chat-leave" onClick=${leave}>${t('apps.chat.leave', 'leave')}</button>`}
-            ${room.closed && html`<span class="label-chip label-chip-flag"><${Icons.settled} /> ${t('apps.chat.closed', 'closed')}</span>`}
-            ${room.mine &&
-            html`${!room.closed &&
-                html`<button
-                    class="chat-leave chat-close"
-                    disabled=${closing || !roomDraft}
-                    title=${t('apps.chat.close-the-room-title', 'close this room for good')}
-                    onClick=${closeRoom}
+            ${/* The tools, one strip on the right (Curtis, 2026-09-19): icons with their
+                words on hover. */ ''}
+            <span class="chat-tools">
+                <button
+                    class=${hiding ? 'chat-tool chat-tool-on' : 'chat-tool'}
+                    type="button"
+                    title=${hiding
+                        ? hidden > 0
+                            ? t('apps.chat.hiding-n-lines-click-to-show', "hiding {n} lines from people you don't trust - click to show them", { n: hidden })
+                            : t('apps.chat.hiding-untrusted-click-to-show', "hiding people you don't trust - click to show them")
+                        : t('apps.chat.hide-lines-from-people-you-dont-trust', "hide lines from people you don't trust, in every room")}
+                    onClick=${() => setHideUntrusted(hiding ? 'no' : 'yes')}
                 >
-                    ${closing ? t('apps.chat.closing', 'closing…') : t('apps.chat.close', 'close')}
-                </button>`}
-                <button class="chat-leave chat-delete" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
-                    <${Icons.trash} />
+                    ${hiding ? html`<${Icons.eyeClosed} />` : html`<${Icons.eye} />`}
                 </button>
-                ${deleting &&
-                html`<${Modal}
-                    title=${t('apps.chat.take-the-room-down', 'take the room down')}
-                    onClose=${() => {
-                        if (!going) setDeleting(false);
-                    }}
+                ${admin &&
+                !room.archivist &&
+                html`<button
+                    class=${room.archived ? 'chat-tool chat-tool-on' : 'chat-tool'}
+                    type="button"
+                    disabled=${archiving}
+                    title=${room.archived
+                        ? t('apps.chat.kept-whole-here-click-to-release', 'this computer keeps the whole conversation - click to stop')
+                        : t('apps.chat.pull-the-whole-room-and-keep-it', 'keep the whole conversation on this computer')}
+                    onClick=${() => setArchive(!room.archived)}
                 >
-                    <p class="feed-unpublish-warn">
-                        ${/* Plain words for the person deciding (Curtis, 2026-09-19): the
-                            machinery behind a takedown is CHAT.md's business, not theirs. */ ''}
-                        ${t('apps.chat.do-you-want-to-take-the-room-down', 'Do you want to take the room down? It may take a while.')}
-                    </p>
-                    <div class="feed-unpublish-acts">
-                        <button class="feed-unpublish-go" disabled=${going} onClick=${takeDown}>
-                            ${going ? t('apps.chat.taking-it-down', 'taking it down…') : t('apps.chat.take-it-down', 'take it down')}
-                        </button>
-                        <button class="feed-unpublish-no" disabled=${going} onClick=${() => setDeleting(false)}>${t('apps.chat.keep-it', 'keep it')}</button>
-                    </div>
-                </${Modal}>`}`}
+                    <${Icons.memory} />
+                </button>`}
+                <a class="chat-tool" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
+                    <${Icons.feed} />
+                </a>
+                ${room.joined &&
+                html`<button class="chat-tool" type="button" title=${t('apps.chat.leave', 'leave')} onClick=${leave}>
+                    <${Icons.leave} />
+                </button>`}
+                ${room.closed
+                    ? html`<span class="chat-tool chat-tool-on chat-tool-static" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /></span>`
+                    : room.mine &&
+                      html`<button
+                          class="chat-tool"
+                          type="button"
+                          disabled=${closing || !roomDraft}
+                          title=${t('apps.chat.close-the-room-title', 'close this room for good')}
+                          onClick=${closeRoom}
+                      >
+                          <${Icons.settled} />
+                      </button>`}
+                ${room.mine &&
+                html`<button class="chat-tool chat-tool-danger" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
+                    <${Icons.trash} />
+                </button>`}
+            </span>
+            ${deleting &&
+            html`<${Modal}
+                title=${t('apps.chat.take-the-room-down', 'take the room down')}
+                onClose=${() => {
+                    if (!going) setDeleting(false);
+                }}
+            >
+                <p class="feed-unpublish-warn">
+                    ${/* Plain words for the person deciding (Curtis, 2026-09-19): the
+                        machinery behind a takedown is CHAT.md's business, not theirs. */ ''}
+                    ${t('apps.chat.do-you-want-to-take-the-room-down', 'Do you want to take the room down? It may take a while.')}
+                </p>
+                <div class="feed-unpublish-acts">
+                    <button class="feed-unpublish-go" disabled=${going} onClick=${takeDown}>
+                        ${going ? t('apps.chat.taking-it-down', 'taking it down…') : t('apps.chat.take-it-down', 'take it down')}
+                    </button>
+                    <button class="feed-unpublish-no" disabled=${going} onClick=${() => setDeleting(false)}>${t('apps.chat.keep-it', 'keep it')}</button>
+                </div>
+            </${Modal}>`}
         </header>
         <div class="chat-floor" ref=${floor} onScroll=${trackEnd}>
             ${/* The gap (Curtis, 2026-09-19): where what this computer holds runs out sits
@@ -790,17 +830,6 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             history.more &&
             html`<div class="chat-gap">
                 <button class="chat-older" disabled=${older} onClick=${readOlder}>${older ? t('apps.chat.reading', 'reading…') : t('apps.chat.earlier', 'earlier…')}</button>
-                ${admin &&
-                !room.archived &&
-                !room.archivist &&
-                html`<button
-                    class="chat-older chat-archive-all"
-                    disabled=${archiving}
-                    onClick=${() => setArchive(true)}
-                    title=${t('apps.chat.pull-the-whole-room-and-keep-it', 'keep the whole conversation on this computer')}
-                >
-                    ${archiving ? t('apps.chat.loading-the-entire-history', 'loading the entire history…') : t('apps.chat.load-the-entire-history-here', 'load the entire history here')}
-                </button>`}
             </div>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">

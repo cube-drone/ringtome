@@ -9568,3 +9568,25 @@ persona keeps for every room, collapses their lines to one italic stub per run (
 hidden - from people you don't trust"), the header's label counting what the floor is not
 showing. Client only: the chains, the memo and the notices are untouched, since who is
 worth reading is the reader's business and nobody else's.
+
+## 2026-09-19: a stranger's media is veiled
+
+Curtis: "baddies might want to pop on to a chat channel and drop in nasty images or sounds."
+The feed's veil - the blur and the click-to-see button the content-control tags wear - now
+covers media said by a speaker the reader has placed no trust on, on the room floor and on
+the room card's tail in the feed, where a dropped picture would otherwise land unasked. A
+line's words show; only a line that embeds a picture, a sound or a clip is veiled, one click
+reveals it for that line, and the reader and the room's creator are never strangers. Client
+only, judged off the reader's contacts mirror like the small gray lines it joins.
+
+## 2026-09-19: the room header, tidied
+
+Curtis: the top row - title, owner, hide untrusted, chatters, the post, close, trash - "getting
+a little complicated and messy." Now two things beside the title: a people box, the owner's
+chip and "and 3 others" with a triangle, dropping the list of who has spoken (the owner
+first, "opened the room"); and one strip of tools on the right, icons with their words on
+hover - the eye or the closed eye for seeing or hiding people you don't trust, the memory
+chip for keeping the whole conversation here (lit when it is; the operator's alone, and
+gone from the floor's gap, which keeps only "earlier"), the megaphone for the room's post,
+the door for leaving, the prohibit sign for closing (lit and still once closed), the trash
+for deleting. The status chips went with the buttons they explained.

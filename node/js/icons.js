@@ -49,6 +49,11 @@ import {
     UploadSimple,
     PaperPlaneRight,
     Smiley,
+    Eye,
+    EyeClosed,
+    Memory,
+    SignOut,
+    CaretDown,
     CheckCircle,
     LinkSimple,
     FileImage,
@@ -137,6 +142,14 @@ export const Icons = {
     send: PaperPlaneRight,
     // answer a line with an emoji (CHAT.md, slice 9)
     smiley: Smiley,
+    // the room header's tools (Curtis, 2026-09-19): see / hide untrusted speakers, keep the
+    // whole history here, leave; the post is the megaphone (`feed`), close the prohibit
+    // (`settled`), delete the trash
+    eye: Eye,
+    eyeClosed: EyeClosed,
+    memory: Memory,
+    leave: SignOut,
+    caretDown: CaretDown,
     done: CheckCircle,
     // media document kinds (tree rows, list rows)
     fileImage: FileImage,
