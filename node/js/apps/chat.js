@@ -371,7 +371,16 @@ const EmojiPicker = ({ onPick, onClose }) => {
 /// line shows its menu (CHAT.md, slice 9): the smiley opens the emoji picker; a line of
 /// one's own also offers edit and delete, which slice 8 will wire. The emoji said in answer
 /// stack under the words, most-said first, who on hover.
-const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete }) => {
+/// A moderation act, said in the room (CHAT.md, ruling 8): not talk, so it reads as its own
+/// quiet line with both people named, and wears no menu.
+const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notice">
+    <${Icons.mute} />
+    <${PersonChip} root=${m.speaker} current=${current} />
+    <span>${m.notice === 'unmuted' ? t('apps.chat.unmuted', 'unmuted') : t('apps.chat.muted', 'muted')}</span>
+    <${PersonChip} root=${m.notice_subject} current=${current} />
+</li>`;
+
+const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -398,6 +407,14 @@ const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete }) => {
             ${mine &&
             html`<button class="chat-line-act" type="button" title=${t('apps.chat.edit-this-line', 'edit')} onClick=${() => onEdit && onEdit(m)}><${Icons.rename} /></button>
                 <button class="chat-line-act chat-line-act-danger" type="button" title=${t('apps.chat.delete-this-line', 'delete')} onClick=${() => onDelete && onDelete(m)}><${Icons.trash} /></button>`}
+            ${!mine &&
+            !!onMute &&
+            html`<button
+                class="chat-line-act chat-line-act-danger"
+                type="button"
+                title=${t('apps.chat.mute-this-person', 'mute this person in the room')}
+                onClick=${() => onMute(m.speaker)}
+            ><${Icons.mute} /></button>`}
             ${picking &&
             html`<${EmojiPicker}
                 onClose=${() => setPicking(false)}
@@ -815,6 +832,17 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             setSendError(e.message || String(e));
         }
     };
+    // The creator's moderation (CHAT.md, ruling 8): a label on the room post, and a line in
+    // the room saying so. The door does both; here it is one click.
+    const setMuted = async (who, on) => {
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/mutes/${who}`, { method: on ? 'POST' : 'DELETE' });
+            setRoom((r) => r && { ...r, muted: on ? [...(r.muted || []), who] : (r.muted || []).filter((m) => m !== who) });
+            readHistory();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        }
+    };
     const takeDown = async () => {
         setGoing(true);
         try {
@@ -888,9 +916,16 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                         <span class="chat-chatters-when">${t('apps.chat.opened-the-room', 'opened the room')}</span>
                     </li>
                     ${others.map(
-                        (c) => html`<li key=${c.root} class="chat-chatters-row">
+                        (c) => html`<li key=${c.root} class=${c.muted ? 'chat-chatters-row chat-chatters-muted' : 'chat-chatters-row'}>
                             <${Speaker} root=${c.root} current=${current} />
-                            <span class="chat-chatters-when">${whenWords(c.last_ms)}</span>
+                            ${room.mine &&
+                            html`<button
+                                class="chat-chatters-mute"
+                                type="button"
+                                title=${c.muted ? t('apps.chat.unmute-this-person', 'let them speak here again') : t('apps.chat.mute-this-person', 'mute this person in the room')}
+                                onClick=${() => setMuted(c.root, !c.muted)}
+                            ><${Icons.mute} /></button>`}
+                            <span class="chat-chatters-when">${c.muted ? t('apps.chat.muted', 'muted') : whenWords(c.last_ms)}</span>
                         </li>`
                     )}
                 </ul>
@@ -991,7 +1026,9 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
                 ${lines.map((m, i) =>
-                    m.stub
+                    m.notice
+                        ? html`<${NoticeLine} key=${m.hash} m=${m} current=${current} />`
+                        : m.stub
                         ? html`<li key=${m.hash} class="chat-line chat-line-hidden">
                               ${m.count === 1
                                   ? t('apps.chat.one-line-hidden', "one line hidden - from someone you don't trust")
@@ -1006,6 +1043,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                               onReact=${m.post || room.left || (history && history.closed) ? null : react}
                               onEdit=${m.post || room.left || (history && history.closed) ? null : beginEdit}
                               onDelete=${m.post || room.left || (history && history.closed) ? null : setDeletingLine}
+                              onMute=${room.mine && !m.post && !room.left ? (who) => setMuted(who, true) : null}
                           />`
                 )}
             </ul>

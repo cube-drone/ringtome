@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 865 phrases across 58 files.
+// 871 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -35,11 +35,14 @@ export default {
     'apps.chat.opening': 'opening…',
     'apps.chat.open-a-room': 'open a room',
     'apps.chat.find-an-emoji': 'find an emoji…',
+    'apps.chat.unmuted': 'unmuted',
+    'apps.chat.muted': 'muted',
     'apps.chat.someone-you-dont-trust': "someone you don't trust",
     'apps.chat.edited': '(edited)',
     'apps.chat.react-with-an-emoji': 'react with an emoji',
     'apps.chat.edit-this-line': 'edit',
     'apps.chat.delete-this-line': 'delete',
+    'apps.chat.mute-this-person': 'mute this person in the room',
     'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
     'apps.chat.media-from-someone-you-dont-trust': "media from someone you don't trust - click to see",
     'apps.chat.who-said-click-to-take-yours-back': '{who} - click to take yours back',
@@ -50,6 +53,7 @@ export default {
     'apps.chat.and-one-other': 'and one other',
     'apps.chat.and-n-others': 'and {n} others',
     'apps.chat.opened-the-room': 'opened the room',
+    'apps.chat.unmute-this-person': 'let them speak here again',
     'apps.chat.hiding-n-lines-click-to-show': "hiding {n} lines from people you don't trust - click to show them",
     'apps.chat.hiding-untrusted-click-to-show': "hiding people you don't trust - click to show them",
     'apps.chat.hide-lines-from-people-you-dont-trust': "hide lines from people you don't trust, in every room",
@@ -817,6 +821,8 @@ export default {
     'identity.routes.that-post-is-not-a-room': 'that post is not a room',
     'identity.routes.this-room-is-sealed': 'this room is sealed - its author shares it only with people they trust',
     'identity.routes.only-the-nodes-operator-archives': "only this computer's owner can do that",
+    'identity.routes.only-the-rooms-creator-moderates': "only the room's creator moderates it",
+    'identity.routes.you-cant-mute-yourself': "you can't mute yourself",
     'identity.routes.the-room-could-not-go-live': 'the room could not go live: {why}',
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',

@@ -338,6 +338,50 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(still, false, "and from bea's");
     });
 
+    it("the creator mutes a person: their words leave every floor, the room hears it said, and the roster sits them last until it is lifted", async () => {
+        const history = async (who, root) => (await (await who(`api/identity/${root}/rooms/${adaRoot}/${room}/messages`)).json());
+        const wordsOf = async (who, root) => ((await history(who, root)).items || []).map((m) => m.words);
+        // Bea says something, and ada holds it.
+        const said = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "bea speaks out of turn" });
+        assert.equal(said.status, 200, await said.text());
+        let heard = [];
+        for (let i = 0; i < 30 && !heard.includes("bea speaks out of turn"); i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            heard = await wordsOf(ada, adaRoot);
+            if (!heard.includes("bea speaks out of turn")) await wait(300);
+        }
+        assert.ok(heard.includes("bea speaks out of turn"), "ada hears her before the mute");
+        // Only the creator moderates.
+        const notHers = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/mutes/${adaRoot}`, { method: "POST" });
+        assert.equal(notHers.status, 403, await notHers.text());
+        // The mute: a label on the post, and a line in the room saying so.
+        const muted = await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/mutes/${beaRoot}`, { method: "POST" });
+        assert.equal(muted.status, 200, await muted.text());
+        const after = await history(ada, adaRoot);
+        assert.ok(!(after.items || []).some((m) => m.words === "bea speaks out of turn"), "her words left ada's floor");
+        const notice = (after.items || []).find((m) => m.notice === "muted");
+        assert.ok(notice && notice.notice_subject === beaRoot && notice.speaker === adaRoot, `the room heard it said: ${JSON.stringify(notice)}`);
+        assert.equal((await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}`)).json()).muted[0], beaRoot, "the door names the muted");
+        const roster = ((await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/chatters`)).json()).items || []);
+        assert.equal(roster[roster.length - 1].root, beaRoot, "and the roster sits her last");
+        assert.equal(roster[roster.length - 1].muted, true, "marked");
+        // The mute travels: bea's own node honours it once ada's labels land.
+        let hers = await wordsOf(bea, beaRoot);
+        for (let i = 0; i < 30 && hers.includes("bea speaks out of turn"); i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            hers = await wordsOf(bea, beaRoot);
+            if (hers.includes("bea speaks out of turn")) await wait(300);
+        }
+        assert.ok(!hers.includes("bea speaks out of turn"), `an honest node hides a muted speaker from every reader: ${JSON.stringify(hers)}`);
+        // Lifted: her words come back, and the room hears that too.
+        const lifted = await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/mutes/${beaRoot}`, { method: "DELETE" });
+        assert.equal(lifted.status, 200, await lifted.text());
+        const back = await history(ada, adaRoot);
+        assert.ok((back.items || []).some((m) => m.words === "bea speaks out of turn"), "her words are on the floor again");
+        assert.ok((back.items || []).some((m) => m.notice === "unmuted" && m.notice_subject === beaRoot), "and the room heard the lift");
+    });
+
     it("the owner closes the room (the record stands, nobody says more, and closed stays closed), then takes it down (it leaves every list)", async () => {
         const roomsOf = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
         // The room's own draft, by its publication: what the page finds on the mirror.

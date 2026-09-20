@@ -507,6 +507,35 @@
     color: var(--muted);
 }
 
+/* A moderation act, said in the room (CHAT.md, ruling 8): quiet, centred, its own line. */
+.chat-line-notice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    margin: 0.3rem 0;
+    font-size: 0.8em;
+    color: var(--muted);
+}
+
+.chat-chatters-muted {
+    opacity: 0.6;
+}
+
+.chat-chatters-mute {
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 0 0.2rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.chat-chatters-mute:hover {
+    color: var(--coral);
+}
+
 /* Edited: a quiet word beside the time (CHAT.md, slice 8). */
 .chat-line-edited {
     font-size: 0.75em;

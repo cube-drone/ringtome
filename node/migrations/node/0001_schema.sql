@@ -983,6 +983,9 @@ CREATE TABLE room_messages (
     -- (a `retracts` naming it - the row stays, the reads skip it), or edited (the newest
     -- `edits` naming it - its words shown in this line's place, marked).
     deleted      INTEGER NOT NULL DEFAULT 0,
+    -- A moderation act said in the room (CHAT.md, ruling 8): the kind, and whom it names.
+    notice_kind    INTEGER,
+    notice_subject TEXT,
     edit_hash    BLOB,
     edit_body    BLOB,
     edit_sealed  INTEGER NOT NULL DEFAULT 0,

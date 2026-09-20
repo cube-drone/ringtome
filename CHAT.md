@@ -353,8 +353,18 @@ node keeps its own room whole, which is where "all of it" lives.
   ask, worded as the settled wish is: a public annotation on the room post naming the muted
   persona, honoured by every honest client - their messages hidden for every reader, their
   room chain no longer mirrored or archived - and not cryptography, since a malicious client
-  shows them anyway. The muted are told nothing (a block is the one refusal that is not
-  spoken), and the mutes travel with a share, as every annotation on the post does. A
+  shows them anyway. **The room hears it** (Curtis, 2026-09-20, amending the first cut's "the
+  muted are told nothing"): a moderation act in a shared room is not a block, which is the
+  one refusal that stays unspoken, so muting says a line in the room naming both people, and
+  lifting it says another. The mutes travel with a share, as every annotation on the post
+  does. **Built 2026-09-20**: the creator's own `mute` labels on the room post, sealed with
+  the room when it is sealed; this node honours them for every surface it serves - the floor,
+  the count, the badge - so an honest client gets it for free; the roster still names the
+  muted and sits them last, which is where the creator lifts it; and the line rides a
+  `notice` on the message (kind and subject), with a plain sentence in the body so a reader
+  that does not know the kind still reads what happened. The doors are
+  `POST`/`DELETE …/rooms/{author}/{doc}/mutes/{who}`, the creator's alone. The moderators
+  list below remains unbuilt. A
   **moderators list** is a second annotation the creator publishes, naming personas whose
   mutes honest clients honour as the creator's own; it grows one persona at a time, or by a
   contact tag from the People page - a UI nicety only, since the tag is private and never

@@ -9683,3 +9683,21 @@ that still does not stick is named out loud while the room opens anyway, since i
 either way and its post page takes labels like any post's. The client's copy of the number
 lives beside the display register in `pure/annotations.js`, and a conventions test reads it
 back and pins it to the wire's, because two spellings of one number is how this comes back.
+
+## 2026-09-20: the creator mutes, and the room hears it
+
+CHAT.md's ruling 8, built, with one amendment Curtis made in the asking: the first cut said
+the muted are told nothing, and a mute is now announced, because a moderation act in a
+shared room is not a block. A mute is the creator's own `mute` label on the room post - the
+settled wish's shape, travelling with the post and sealing with it - and this node honours
+its own labels everywhere it serves: a muted speaker's lines leave the floor, the count
+behind "and N more", and the chat badge. The roster still names them and sits them last,
+which is where the creator lifts it, and every muted name wears the mark. The line the room
+hears rides a new `notice` on the message, a kind and a subject, with a plain sentence in
+the body so a reader that does not know the kind still reads what happened; the floor draws
+it as a quiet centred line naming both people rather than as talk. Two doors, the creator's
+alone: mute and unmute, each publishing the label and saying the line in one act. On the
+floor, the creator's hover menu gains the speaker-slash on anyone else's line. The suite:
+bea speaks, ada hears her, bea cannot mute ada, ada mutes bea and her words leave both
+floors once the labels land, the room holds the notice, the roster sits her last and marked,
+and lifting brings her words and a second notice. Node schema 53 - `just clean` owed.

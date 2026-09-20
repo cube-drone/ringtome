@@ -54,6 +54,7 @@ import {
     Memory,
     SignOut,
     CaretDown,
+    SpeakerSlash,
     CheckCircle,
     LinkSimple,
     FileImage,
@@ -150,6 +151,8 @@ export const Icons = {
     memory: Memory,
     leave: SignOut,
     caretDown: CaretDown,
+    // the room's moderation (CHAT.md, ruling 8): the creator's mute
+    mute: SpeakerSlash,
     done: CheckCircle,
     // media document kinds (tree rows, list rows)
     fileImage: FileImage,

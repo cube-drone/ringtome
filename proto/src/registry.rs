@@ -1478,6 +1478,12 @@ pub struct ChatMessage {
     /// the chain keeps both, the floor shows the newest words at the old line's place,
     /// marked edited. Absent for a fresh line.
     pub edits: Option<[u8; 32]>,
+    /// A moderation act said in the room (CHAT.md, ruling 8; Curtis, 2026-09-20: "'User A
+    /// has muted User B' is a new message in the chat room's history"): `(kind, subject)`,
+    /// kind [`Self::NOTICE_MUTED`] or [`Self::NOTICE_UNMUTED`]. The body carries a plain
+    /// sentence beside it, so a reader that does not know the kind still reads what
+    /// happened; a reader that does says it in its own words.
+    pub notice: Option<(u64, [u8; 32])>,
 }
 
 impl ChatMessage {
@@ -1486,6 +1492,10 @@ impl ChatMessage {
     pub const MAX_BODY_BYTES: usize = 4096;
     /// The most personas one message may name.
     pub const MAX_MENTIONS: usize = 32;
+    /// This line says its speaker muted the persona it names.
+    pub const NOTICE_MUTED: u64 = 0;
+    /// ...and this, that they lifted it.
+    pub const NOTICE_UNMUTED: u64 = 1;
 
     fn well_formed(&self) -> Result<(), ProtoError> {
         if self.body.is_empty() {
@@ -1511,7 +1521,8 @@ impl ChatMessage {
             + u64::from(!self.mentions.is_empty())
             + u64::from(self.reacts_to.is_some())
             + u64::from(self.retracts.is_some())
-            + u64::from(self.edits.is_some()));
+            + u64::from(self.edits.is_some())
+            + u64::from(self.notice.is_some()));
         w.uint(0);
         w.bytes(&self.room_author);
         w.uint(1);
@@ -1544,6 +1555,12 @@ impl ChatMessage {
             w.uint(7);
             w.bytes(earlier);
         }
+        if let Some((kind, subject)) = &self.notice {
+            w.uint(8);
+            w.array(2);
+            w.uint(*kind);
+            w.bytes(subject);
+        }
         Ok(w.into_bytes())
     }
 
@@ -1558,6 +1575,7 @@ impl ChatMessage {
         let mut reacts_to: Option<[u8; 32]> = None;
         let mut retracts: Option<[u8; 32]> = None;
         let mut edits: Option<[u8; 32]> = None;
+        let mut notice: Option<(u64, [u8; 32])> = None;
         while let Some(k) = map.next_key()? {
             match k {
                 0 => room_author = Some(map.bytes_fixed::<32>()?),
@@ -1584,6 +1602,12 @@ impl ChatMessage {
                 5 => reacts_to = Some(map.bytes_fixed::<32>()?),
                 6 => retracts = Some(map.bytes_fixed::<32>()?),
                 7 => edits = Some(map.bytes_fixed::<32>()?),
+                8 => {
+                    if map.array()? != 2 {
+                        return Err(ProtoError::BadEntry("a room notice is [kind, subject]"));
+                    }
+                    notice = Some((map.uint()?, map.bytes_fixed::<32>()?));
+                }
                 _ => map.skip_value()?,
             }
         }
@@ -1597,6 +1621,7 @@ impl ChatMessage {
             reacts_to,
             retracts,
             edits,
+            notice,
         };
         out.well_formed()?;
         Ok(out)
@@ -1609,13 +1634,13 @@ mod tests {
 
     #[test]
     fn a_chat_message_round_trips_and_refuses_silence() {
-        let m = ChatMessage { room_author: [7u8; 32], body: b"hello the room".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let m = ChatMessage { room_author: [7u8; 32], body: b"hello the room".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         assert_eq!(ChatMessage::decode(&m.encode().unwrap()).unwrap(), m);
-        let sealed = ChatMessage { room_author: [7u8; 32], body: vec![0xaa; 40], sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let sealed = ChatMessage { room_author: [7u8; 32], body: vec![0xaa; 40], sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         assert_eq!(ChatMessage::decode(&sealed.encode().unwrap()).unwrap(), sealed);
-        let silent = ChatMessage { room_author: [7u8; 32], body: Vec::new(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let silent = ChatMessage { room_author: [7u8; 32], body: Vec::new(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         assert!(silent.encode().is_err());
-        let long = ChatMessage { room_author: [7u8; 32], body: vec![b'x'; ChatMessage::MAX_BODY_BYTES + 65], sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let long = ChatMessage { room_author: [7u8; 32], body: vec![b'x'; ChatMessage::MAX_BODY_BYTES + 65], sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         assert!(long.encode().is_err());
     }
 
@@ -1624,9 +1649,9 @@ mod tests {
     /// cap refuses at both doors.
     #[test]
     fn a_chat_message_carries_its_media_refs() {
-        let with = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: vec![[1u8; 16], [2u8; 16]], mentions: vec![[9u8; 32]], reacts_to: Some([4u8; 32]), retracts: Some([5u8; 32]), edits: Some([6u8; 32]) };
+        let with = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: vec![[1u8; 16], [2u8; 16]], mentions: vec![[9u8; 32]], reacts_to: Some([4u8; 32]), retracts: Some([5u8; 32]), edits: Some([6u8; 32]), notice: Some((ChatMessage::NOTICE_MUTED, [7u8; 32])) };
         assert_eq!(ChatMessage::decode(&with.encode().unwrap()).unwrap(), with);
-        let without = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let without = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         let mut old = Writer::new();
         old.map(3);
         old.uint(0);
@@ -1636,7 +1661,7 @@ mod tests {
         old.uint(2);
         old.uint(0);
         assert_eq!(without.encode().unwrap(), old.into_bytes(), "no refs is wire-absence");
-        let over = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: vec![[1u8; 16]; DocHeaderPlain::MAX_REFS + 1], mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let over = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: vec![[1u8; 16]; DocHeaderPlain::MAX_REFS + 1], mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         assert!(over.encode().is_err());
         let mut forged = Writer::new();
         forged.map(4);

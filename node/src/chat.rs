@@ -367,6 +367,11 @@ pub struct Message {
     /// The words are a later edit's (slice 8).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub edited: bool,
+    /// A moderation act, said in the room (ruling 8): `"muted"` or `"unmuted"`, and whom.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notice_subject: Option<String>,
 }
 
 /// One stack of emoji under a line: the shortcode, how many said it, and who.
@@ -717,6 +722,7 @@ pub async fn say(
     retract: bool,
     edits: Option<[u8; 32]>,
     deletes: Option<[u8; 32]>,
+    notice: Option<(u64, [u8; 32])>,
 ) -> Result<(u64, i64), AppError> {
     let words = words.trim();
     if words.is_empty() && deletes.is_none() {
@@ -759,7 +765,7 @@ pub async fn say(
             // Every earlier copy but the last is taken back by its own quiet entry; the last
             // rides the ordinary road below, fold, topic and push included.
             for earlier in standing {
-                let quiet = ChatMessage { room_author: crate::pubkey::decode(author_hex).unwrap_or([0u8; 32]), body: words.as_bytes().to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: Some(target), retracts: Some(earlier), edits: None }
+                let quiet = ChatMessage { room_author: crate::pubkey::decode(author_hex).unwrap_or([0u8; 32]), body: words.as_bytes().to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: Some(target), retracts: Some(earlier), edits: None, notice: None }
                     .encode()
                     .map_err(|e| AppError::Internal(anyhow!("encoding a take-back: {e}")))?;
                 crate::record::imaol::append_on(data.db(), data.signer(), service::CHAT, Some(*doc), entry_type::CHAT_MESSAGE, Payload::Inline(quiet)).await?;
@@ -832,7 +838,7 @@ pub async fn say(
         Some(key) => (crate::record::private::seal_post_body(&key, words.as_bytes())?, true),
         None => (words.into_bytes(), false),
     };
-    let payload = ChatMessage { room_author: author, body, sealed, refs, mentions: mentions.clone(), reacts_to, retracts, edits }
+    let payload = ChatMessage { room_author: author, body, sealed, refs, mentions: mentions.clone(), reacts_to, retracts, edits, notice }
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
     let signed = crate::record::imaol::append_on(
@@ -945,6 +951,50 @@ async fn room_key(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex
     let via = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &hex::encode(doc)).await;
     crate::idface::key_for(state, author_hex, doc, viewer_hex, via.as_deref()).await
 }
+
+/// `held_count`, less what the muted said: what a card's "and N more" may honestly say
+/// once a mute stands.
+async fn held_count_unmuted(state: &AppState, author_hex: &str, doc_hex: &str, ceiling: i64, muted: &std::collections::HashSet<String>) -> i64 {
+    let cap = ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64 + 1;
+    let marks: Vec<String> = (0..muted.len()).map(|i| format!("?{}", i + 5)).collect();
+    let sql = format!(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM room_messages
+           WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0
+             AND speaker_root NOT IN ({}) LIMIT ?4)",
+        marks.join(",")
+    );
+    let mut params: Vec<turso::Value> = vec![
+        turso::Value::Text(author_hex.to_string()),
+        turso::Value::Text(doc_hex.to_string()),
+        turso::Value::Integer(ceiling),
+        turso::Value::Integer(cap),
+    ];
+    params.extend(muted.iter().map(|m| turso::Value::Text(m.clone())));
+    state.node_db.fetch_optional::<(i64,)>(&sql, params).await.ok().flatten().map_or(0, |(n,)| n)
+}
+
+/// Who the room's creator has muted (CHAT.md, ruling 8): their own present `mute` labels on
+/// the room post, each naming a persona - the settled wish's shape, travelling with the post
+/// like every label, sealed with it when the room is sealed and opened here for a reader the
+/// seal admits. Honoured by this node for every surface it serves, which is what "honoured
+/// by every honest client" means from the inside.
+pub async fn muted_in(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> std::collections::HashSet<String> {
+    let known = crate::annotations::for_posts(state, &[(author_hex.to_string(), doc_hex.to_string())], Some(viewer_hex))
+        .await
+        .unwrap_or_default();
+    known
+        .get(&(author_hex.to_string(), doc_hex.to_string()))
+        .map(|list| {
+            list.iter()
+                .filter(|a| a.annotator == author_hex && a.key == MUTE_KEY)
+                .map(|a| a.value.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The label a mute is said as.
+pub const MUTE_KEY: &str = "mute";
 
 /// Whether the room is sealed: its reactions are sealed too, and stacking them wants the key.
 async fn head_sealed(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
@@ -1183,7 +1233,7 @@ pub async fn history(
     let doc_hex = hex::encode(doc);
     let closed = closed_at(state, author_hex, doc).await;
     let limit = limit.clamp(1, HISTORY_PAGE);
-    type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64, i64);
+    type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64, i64, Option<i64>, Option<String>);
     let before = before_ms.unwrap_or(i64::MAX);
     let ceiling = closed.map_or(before, |c| c.min(before));
     let mut rows: Vec<Row> = state
@@ -1191,7 +1241,7 @@ pub async fn history(
         .fetch_all(
             "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash,
                     COALESCE(edit_body, body), CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END,
-                    edit_hash IS NOT NULL
+                    edit_hash IS NOT NULL, notice_kind, notice_subject
              FROM room_messages
              WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0
              ORDER BY said_ms DESC, seq DESC LIMIT ?4",
@@ -1238,7 +1288,18 @@ pub async fn history(
                 continue;
             }
             lines_from_archive += 1;
-            rows.push((root, hex::encode(entry.chain.author), entry.seq as i64, entry.timestamp_ms, signed.hash().to_vec(), msg.body, i64::from(msg.sealed), 0));
+            rows.push((
+                root,
+                hex::encode(entry.chain.author),
+                entry.seq as i64,
+                entry.timestamp_ms,
+                signed.hash().to_vec(),
+                msg.body,
+                i64::from(msg.sealed),
+                0,
+                msg.notice.map(|(kind, _)| kind as i64),
+                msg.notice.map(|(_, who)| hex::encode(who)),
+            ));
         }
         for row in rows.iter_mut() {
             if let Some((_, body, sealed)) = archived_edits.remove(&row.4) {
@@ -1250,6 +1311,13 @@ pub async fn history(
         more = lines_from_archive >= want;
         rows.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.2.cmp(&a.2)));
     }
+    // The mute (ruling 8): a muted speaker's lines leave the floor, and the count with
+    // them; the creator's own notice saying so stays, because the creator said it.
+    let muted = muted_in(state, viewer_hex, author_hex, &doc_hex).await;
+    if !muted.is_empty() {
+        rows.retain(|r| !muted.contains(&r.0));
+        total = held_count_unmuted(state, author_hex, &doc_hex, closed.unwrap_or(i64::MAX), &muted).await;
+    }
     let needs_key = rows.iter().any(|r| r.6 != 0) || archived_reactions.iter().any(|r| r.3 != 0) || head_sealed(state, author_hex, doc).await;
     let key = if needs_key { room_key(state, author_hex, doc, viewer_hex).await } else { None };
     let targets: Vec<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
@@ -1258,7 +1326,7 @@ pub async fn history(
     let bylines = crate::profiles::bylines(&state.node_db, &speakers).await.unwrap_or_default();
     let items = rows
         .into_iter()
-        .map(|(speaker, leaf, seq, said_ms, hash, body, sealed, edited)| {
+        .map(|(speaker, leaf, seq, said_ms, hash, body, sealed, edited, notice_kind, notice_subject)| {
             let words = if sealed != 0 {
                 key.and_then(|k| crate::record::private::open_post_body(&body, &k))
                     .and_then(|b| String::from_utf8(b).ok())
@@ -1278,6 +1346,10 @@ pub async fn history(
                 reactions: stacks.remove(&hash_hex).unwrap_or_default(),
                 hash: hash_hex,
                 edited: edited != 0,
+                notice: notice_kind.map(|k| {
+                    if k == ChatMessage::NOTICE_UNMUTED as i64 { "unmuted".to_string() } else { "muted".to_string() }
+                }),
+                notice_subject,
             }
         })
         .collect();
@@ -1286,16 +1358,23 @@ pub async fn history(
 
 /// Messages said in a room since `since_ms` by anyone but `not_speaker`: the chat badge's
 /// arithmetic (Curtis, 2026-09-19), one count per room this persona is in.
-pub async fn unseen_in(node_db: &Db, author_hex: &str, doc_hex: &str, since_ms: i64, not_speaker: &str) -> Result<u64> {
-    let row: Option<(i64,)> = node_db
-        .fetch_optional(
-            "SELECT COUNT(*) FROM room_messages
-             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms > ?3 AND speaker_root != ?4 AND deleted = 0",
+pub async fn unseen_in(state: &AppState, author_hex: &str, doc_hex: &str, since_ms: i64, not_speaker: &str) -> Result<u64> {
+    let rows: Vec<(String, i64)> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, COUNT(*) FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms > ?3 AND speaker_root != ?4 AND deleted = 0
+             GROUP BY speaker_root",
             (author_hex, doc_hex, since_ms, not_speaker),
         )
         .await
         .context("counting a room's unseen messages")?;
-    Ok(row.map_or(0, |(n,)| n.max(0) as u64))
+    if rows.is_empty() {
+        return Ok(0);
+    }
+    // A muted speaker never bolds a room (ruling 8): that is most of what moderation is for.
+    let muted = muted_in(state, not_speaker, author_hex, doc_hex).await;
+    Ok(rows.iter().filter(|(who, _)| !muted.contains(who)).map(|(_, n)| (*n).max(0) as u64).sum())
 }
 
 /// When each room this node holds last heard a message: `(room_author, room_doc) ->
@@ -1461,8 +1540,9 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             .node_db
             .execute(
                 "INSERT OR IGNORE INTO room_messages
-                   (room_author, room_doc, speaker_root, speaker_leaf, seq, said_ms, entry_hash, body, sealed, noted_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                   (room_author, room_doc, speaker_root, speaker_leaf, seq, said_ms, entry_hash, body, sealed, noted_ms,
+                    notice_kind, notice_subject)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 (
                     room_author.as_str(),
                     room_doc.as_str(),
@@ -1474,6 +1554,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                     msg.body.clone(),
                     i64::from(msg.sealed),
                     now,
+                    msg.notice.map(|(kind, _)| kind as i64),
+                    msg.notice.map(|(_, who)| hex::encode(who)),
                 ),
             )
             .await
@@ -1930,7 +2012,7 @@ mod tests {
     fn a_message_seals_and_opens_under_the_room_key() {
         let key = [9u8; 32];
         let sealed = crate::record::private::seal_post_body(&key, b"the quiet one").unwrap();
-        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         let back = ChatMessage::decode(&msg.encode().unwrap()).unwrap();
         assert_eq!(crate::record::private::open_post_body(&back.body, &key).unwrap(), b"the quiet one");
         assert!(crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(), "the wrong key opens nothing");

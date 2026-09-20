@@ -2904,7 +2904,7 @@ mod tests {
         let db = crate::db::test_user_db().await;
         let sk = SigningKey::from_bytes(&[21u8; 32]);
         let room = [7u8; 16];
-        let msg = ringtome_proto::registry::ChatMessage { room_author: [9u8; 32], body: b"hi".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
+        let msg = ringtome_proto::registry::ChatMessage { room_author: [9u8; 32], body: b"hi".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
         crate::record::imaol::append_on(&db, &sk, service::CHAT, Some(room), entry_type::CHAT_MESSAGE, Payload::Inline(msg.encode().unwrap()))
             .await
             .unwrap();

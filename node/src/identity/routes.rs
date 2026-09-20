@@ -65,6 +65,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/rooms/{author}/{doc}/chatters", get(room_chatters_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/join", post(room_join_handler))
         .route(
+            "/api/identity/{root}/rooms/{author}/{doc}/mutes/{who}",
+            post(room_mute_handler).delete(room_unmute_handler),
+        )
+        .route(
             "/api/identity/{root}/rooms/{author}/{doc}/archive",
             post(room_archive_handler).delete(room_unarchive_handler),
         )
@@ -1205,6 +1209,9 @@ async fn room_enter_handler(
         "left": is_left,
         // Closed (ruling 10): the settled wish on the post.
         "closed": h.settled,
+        // The creator's mutes (ruling 8), so the roster can sit them at the bottom and the
+        // creator's own page can offer the button.
+        "muted": crate::chat::muted_in(&state, &root, &author, &doc).await.into_iter().collect::<Vec<_>>(),
         // The archive (CHAT.md, ruling 6): this node keeps the room whole, as its creator's
         // node or by its operator's full-sync.
         "archivist": crate::chat::archivist_here(&state, &author, &doc).await,
@@ -1265,6 +1272,79 @@ async fn room_leave_handler(
         crate::chat::leave_live(&state, &doc_id);
     }
     Ok(Json(serde_json::json!({ "left": true })))
+}
+
+/// POST / DELETE `/api/identity/{root}/rooms/{author}/{doc}/mutes/{who}` - the room's
+/// moderation (CHAT.md, ruling 8; Curtis, 2026-09-20). The creator's own act, and only
+/// theirs: a `mute` label on the room post naming the persona - which travels with the post,
+/// seals with it, and every honest surface honours - and a line said in the room saying so,
+/// because a moderation act in a shared room is not a secret.
+async fn room_mute_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc, who)): Path<(String, String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    set_mute(session, state, root, author, doc, who, true).await
+}
+
+async fn room_unmute_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc, who)): Path<(String, String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    set_mute(session, state, root, author, doc, who, false).await
+}
+
+async fn set_mute(
+    session: Session,
+    state: AppState,
+    root: String,
+    author: String,
+    doc: String,
+    who: String,
+    on: bool,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    if root != author {
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.routes.only-the-rooms-creator-moderates",
+            "only the room's creator moderates it"
+        )));
+    }
+    let subject = hex_fixed::<32>(&who, "persona root")?;
+    if who == root {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.you-cant-mute-yourself", "you can't mute yourself")));
+    }
+    let target_author = hex_fixed::<32>(&author, "author root")?;
+    // The label, sealed with the room when the room is sealed - the annotation door's own
+    // rule, reached here through the same store.
+    let (key, value) = match crate::idface::seal_key_for(&state, &author, &doc_id, &root).await? {
+        Some((_, post_key)) => (
+            crate::annotations::SEALED_KEY.to_string(),
+            crate::annotations::seal_statement(&post_key, crate::chat::MUTE_KEY, &who).map_err(AppError::Internal)?,
+        ),
+        None => (crate::chat::MUTE_KEY.to_string(), who.clone()),
+    };
+    data.public_annotations().say(&target_author, &doc_id, &key, &value, on).await?;
+    crate::fold::fold_now(&state, &root).await;
+    // And the room hears it (Curtis, 2026-09-20). The words are the fallback for a reader
+    // that does not know the notice; a reader that does says it in its own.
+    // Plain English on purpose: this is the fallback a reader that does not know the notice
+    // kind shows, and a reader that does never shows it at all - it says the act in its own
+    // words, from the notice beside these.
+    let said = format!(
+        "{} {}",
+        if on { "muted" } else { "unmuted" },
+        crate::speakable::speakable(&subject)
+    );
+    let kind = if on {
+        ringtome_proto::registry::ChatMessage::NOTICE_MUTED
+    } else {
+        ringtome_proto::registry::ChatMessage::NOTICE_UNMUTED
+    };
+    crate::chat::say(&state, &data, &root, &author, &doc_id, &said, None, false, None, None, Some((kind, subject))).await?;
+    Ok(Json(serde_json::json!({ "muted": on })))
 }
 
 /// POST `/api/identity/{root}/rooms/{author}/{doc}/join` - the rejoin (Curtis, 2026-09-19):
@@ -1443,7 +1523,7 @@ async fn room_say_handler(
         Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
         None => None,
     };
-    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words, reacts_to, req.retract.unwrap_or(false), edits, deletes).await?;
+    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words, reacts_to, req.retract.unwrap_or(false), edits, deletes, None).await?;
     Ok(Json(serde_json::json!({ "seq": seq, "said_ms": said_ms })))
 }
 
@@ -1470,7 +1550,11 @@ async fn room_chatters_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     room_admits(&state, &root, &author, &doc).await?;
-    let rows = crate::chat::chatters(&state.node_db, &author, &doc).await.map_err(AppError::Internal)?;
+    let mut rows = crate::chat::chatters(&state.node_db, &author, &doc).await.map_err(AppError::Internal)?;
+    // Muted last (Curtis, 2026-09-20), still named: moderation is a public act, and the
+    // creator unmutes from this list.
+    let muted = crate::chat::muted_in(&state, &root, &author, &doc).await;
+    rows.sort_by(|a, b| muted.contains(&a.0).cmp(&muted.contains(&b.0)).then_with(|| b.1.cmp(&a.1)));
     let roots: Vec<String> = rows.iter().map(|(r, _)| r.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
     let items: Vec<serde_json::Value> = rows
@@ -1478,6 +1562,7 @@ async fn room_chatters_handler(
         .map(|(root, last_ms)| {
             let b = bylines.get(&root);
             serde_json::json!({
+                "muted": muted.contains(&root),
                 "root": root,
                 "last_ms": last_ms,
                 "name": b.and_then(|b| b.name.clone()),
@@ -1943,7 +2028,7 @@ async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) ->
     let mut total = 0u64;
     for (author, doc) in rooms {
         let since = seen.get(&format!("{author}:{doc}")).copied().unwrap_or(0);
-        total += crate::chat::unseen_in(&state.node_db, &author, &doc, since, root).await.map_err(AppError::Internal)?;
+        total += crate::chat::unseen_in(state, &author, &doc, since, root).await.map_err(AppError::Internal)?;
     }
     Ok(total)
 }
