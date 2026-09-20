@@ -9555,3 +9555,16 @@ stack counted them once however often they said it (the first cut withdrew only 
 and bea's earlier thumb went on counting). On the floor, a pill you are in takes yours back
 on click; one you are not says it. The same key is slice 8's delete. The feed suite's claim
 now takes a thumb back, watches it stop counting on the creator's node, and says it again.
+
+## 2026-09-19: strangers in the room read small
+
+Curtis, after a stranger followed him and walked into one of his public rooms: untrusted
+speakers should read "in small, gray font to indicate their relative unimportance", and a
+reader should be able to hide what they say. Both on the floor, off the reader's own
+contacts mirror: a speaker with no trust dial placed - anyone but the reader themself and
+the room's creator - wears the whole line small and gray, words included, with the honest
+title on hover; and a "hide untrusted" checkbox in the room header, a preference this
+persona keeps for every room, collapses their lines to one italic stub per run ("3 lines
+hidden - from people you don't trust"), the header's label counting what the floor is not
+showing. Client only: the chains, the memo and the notices are untouched, since who is
+worth reading is the reader's business and nobody else's.

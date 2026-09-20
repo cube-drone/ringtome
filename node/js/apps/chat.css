@@ -444,6 +444,37 @@
     color: var(--muted);
 }
 
+/* A speaker this reader has not placed: small and gray, present but unimportant (Curtis,
+   2026-09-19). The whole line, words included. */
+.chat-line-untrusted {
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.chat-line-untrusted .chat-line-body,
+.chat-line-untrusted .chat-speaker,
+.chat-line-untrusted .chat-speaker-name {
+    color: var(--muted);
+}
+
+/* The stub a hidden run leaves behind. */
+.chat-line-hidden {
+    font-size: 0.8em;
+    color: var(--muted);
+    font-style: italic;
+    padding-left: 2.7rem;
+}
+
+.chat-hide-untrusted {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8em;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
 /* A run's later lines sit under the first line's words, the hex's width in from the edge. */
 .chat-line-body {
     color: var(--ink);

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 851 phrases across 58 files.
+// 857 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -31,6 +31,7 @@ export default {
     'apps.chat.opening': 'opening…',
     'apps.chat.open-a-room': 'open a room',
     'apps.chat.find-an-emoji': 'find an emoji…',
+    'apps.chat.someone-you-dont-trust': "someone you don't trust",
     'apps.chat.react-with-an-emoji': 'react with an emoji',
     'apps.chat.edit-soon': 'edit (coming soon)',
     'apps.chat.delete-soon': 'delete (coming soon)',
@@ -40,6 +41,9 @@ export default {
     'apps.chat.this-room-is-not-open-to-you': 'this room is not open to you',
     'apps.chat.trusted-and-onward': 'trusted, and onward',
     'apps.chat.sealed': 'sealed',
+    'apps.chat.hide-lines-from-people-you-dont-trust': "hide lines from people you don't trust, in every room",
+    'apps.chat.hiding-n': 'hiding {n}',
+    'apps.chat.hide-untrusted': 'hide untrusted',
     'apps.chat.n-chatters': '{count} chatters',
     'apps.chat.chatters': 'chatters',
     'apps.chat.nobody-has-spoken-here': 'nobody has spoken here yet',
@@ -65,6 +69,8 @@ export default {
     'apps.chat.loading-the-entire-history': 'loading the entire history…',
     'apps.chat.load-the-entire-history-here': 'load the entire history here',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
+    'apps.chat.one-line-hidden': "one line hidden - from someone you don't trust",
+    'apps.chat.n-lines-hidden': "{n} lines hidden - from people you don't trust",
     'apps.chat.is-typing': 'is typing…',
     'apps.chat.are-typing': 'are typing…',
     'apps.chat.you-left-this-room': "you left this room. It isn't updating.",

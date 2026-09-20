@@ -23,6 +23,14 @@ import { tagCounts } from '../pure/contacttags.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Modal } from '../modal.js';
+import { usePref } from '../mirror/prefs.js';
+
+/// Whether a trust dial says anything: absent or "none" is a stranger, whatever else a
+/// person this reader has placed (Curtis, 2026-09-19: untrusted speakers read small and
+/// gray, and may be hidden).
+const hasTrust = (v) => !!v && v !== 'none';
+/// The preference: hide untrusted speakers' lines in every room this persona reads.
+const HIDE_UNTRUSTED_PREF = 'chat.hide-untrusted';
 import { POLE_EMOJI, EMOJI_PALETTE, shortcodeOf, glyphOf } from '../emoji.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -271,13 +279,15 @@ const EmojiPicker = ({ onPick, onClose }) => {
 /// line shows its menu (CHAT.md, slice 9): the smiley opens the emoji picker; a line of
 /// one's own also offers edit and delete, which slice 8 will wire. The emoji said in answer
 /// stack under the words, most-said first, who on hover.
-const Line = ({ m, current, cont, onReact }) => {
+const Line = ({ m, current, cont, onReact, untrusted }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     const mine = !!current && current.root === m.speaker;
     const whoSaid = (r) => r.who.map((w) => w.name || speakable(w.root)).join(', ');
-    return html`<li class=${cont ? 'chat-line chat-line-cont' : 'chat-line'}>
+    // A speaker this reader has not placed reads small and gray: present, unimportant.
+    const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : ''].filter(Boolean).join(' ');
+    return html`<li class=${cls} title=${untrusted ? t('apps.chat.someone-you-dont-trust', "someone you don't trust") : undefined}>
         ${!cont &&
         html`<div class="chat-line-head">
             <${Speaker} root=${m.speaker} current=${current} />
@@ -340,6 +350,14 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     const [closing, setClosing] = useState(false);
     const myDocs = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     const roomDraft = (myDocs || []).find((d) => (d.fields || {}).published_as === doc);
+    // Who this reader trusts, off the contacts mirror (Curtis, 2026-09-19): a speaker with
+    // no trust placed reads small and gray, and the preference hides them outright. The
+    // reader trusts themself, and the room's creator opened the door - both stand.
+    const contacts = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
+    const trustOf = new Map((contacts || []).map((c) => [c.root, (c.facts || {}).trust]));
+    const trusted = (speaker) => speaker === root || speaker === author || hasTrust(trustOf.get(speaker));
+    const [hideUntrusted, setHideUntrusted] = usePref(root, HIDE_UNTRUSTED_PREF, '');
+    const hiding = hideUntrusted === 'yes';
     const keepOffset = useRef(null); // the floor's height before older lines landed
     const [draft, setDraft] = useState('');
     const [sending, setSending] = useState(false);
@@ -675,7 +693,19 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     if (words.body) {
         lines.push({ hash: 'post', speaker: author, said_ms: room.published_ms || 0, words: words.body, post: true });
     }
-    for (const m of [...((history && history.items) || [])].reverse()) lines.push(m);
+    // Hidden lines (the preference) collapse to one stub per run, so the floor still says
+    // that something was said, and by whom it was not.
+    let hidden = 0;
+    for (const m of [...((history && history.items) || [])].reverse()) {
+        if (hiding && !trusted(m.speaker)) {
+            hidden += 1;
+            const last = lines[lines.length - 1];
+            if (last && last.stub) last.count += 1;
+            else lines.push({ hash: `stub-${m.hash}`, stub: true, count: 1, speaker: null });
+            continue;
+        }
+        lines.push(m);
+    }
     return html`<section class="chat-room">
         <header class="chat-room-head">
             <h2 class="chat-room-name">${name}</h2>
@@ -684,6 +714,14 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             html`<span class="label-chip label-chip-flag"><${Icons.trustPrivate} /> ${room.onward ? t('apps.chat.trusted-and-onward', 'trusted, and onward') : t('apps.chat.sealed', 'sealed')}</span>`}
             ${/* Nobody is "in" a room (Curtis, 2026-09-18): the only roster is who has visibly
                 spoken, newest speaker first, with when. */ ''}
+            ${/* The preference (Curtis, 2026-09-19): hide what people this reader has not
+                placed say, in every room; the count says what the floor is not showing. */ ''}
+            <label class="chat-hide-untrusted" title=${t('apps.chat.hide-lines-from-people-you-dont-trust', "hide lines from people you don't trust, in every room")}>
+                <input type="checkbox" checked=${hiding} onChange=${(e) => setHideUntrusted(e.currentTarget.checked ? 'yes' : 'no')} />
+                ${hiding && hidden > 0
+                    ? t('apps.chat.hiding-n', 'hiding {n}', { n: hidden })
+                    : t('apps.chat.hide-untrusted', 'hide untrusted')}
+            </label>
             <details class="chat-chatters">
                 <summary class="chat-chatters-summary">
                     ${chatters && chatters.length > 0
@@ -766,7 +804,22 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             </div>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
-                ${lines.map((m, i) => html`<${Line} key=${m.hash} m=${m} current=${current} cont=${i > 0 && lines[i - 1].speaker === m.speaker} onReact=${m.post || room.left || (history && history.closed) ? null : react} />`)}
+                ${lines.map((m, i) =>
+                    m.stub
+                        ? html`<li key=${m.hash} class="chat-line chat-line-hidden">
+                              ${m.count === 1
+                                  ? t('apps.chat.one-line-hidden', "one line hidden - from someone you don't trust")
+                                  : t('apps.chat.n-lines-hidden', "{n} lines hidden - from people you don't trust", { n: m.count })}
+                          </li>`
+                        : html`<${Line}
+                              key=${m.hash}
+                              m=${m}
+                              current=${current}
+                              cont=${i > 0 && lines[i - 1].speaker === m.speaker}
+                              untrusted=${!m.post && !trusted(m.speaker)}
+                              onReact=${m.post || room.left || (history && history.closed) ? null : react}
+                          />`
+                )}
             </ul>
             ${/* Typing shows where the next line will land: at the end of the floor. */ ''}
             ${typing.length > 0 &&
