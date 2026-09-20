@@ -144,6 +144,22 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             await wait(300);
         }
         assert.deepEqual(sealed, ["secret"], `the sealed room's tags open for a reader it admits: ${JSON.stringify(sealed)}`);
+        // Everyone tags (the display register, 2026-08-31): bea's word about ada's room
+        // rides beside ada's own, the creator's first, and a blocked annotator's shows
+        // nowhere - the block read off ada's own ledger, where it stays.
+        const byBea = await j(bea, `api/identity/${beaRoot}/public-annotations/${adaRoot}/${kitchen}`, { key: "tag", value: "crumbs" }, "PUT");
+        assert.equal(byBea.status, 200, await byBea.text());
+        let mine = [];
+        for (let i = 0; i < 30 && !mine.includes("crumbs"); i++) {
+            await pullAndFold(HOST, beaRoot);
+            mine = await tagsOf(ada, adaRoot, kitchen);
+            if (!mine.includes("crumbs")) await wait(300);
+        }
+        assert.deepEqual(mine, ["baking", "bread", "crumbs"], `the creator's first, then everyone else's: ${JSON.stringify(mine)}`);
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/blocked`, { value: "yes" }, "PUT");
+        assert.deepEqual(await tagsOf(ada, adaRoot, kitchen), ["baking", "bread"], "a blocked annotator's label shows nowhere");
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/blocked`, { value: "no" }, "PUT");
+        assert.ok((await tagsOf(ada, adaRoot, kitchen)).includes("crumbs"), "and comes back when the block lifts");
     });
 
     it("a stranger enters the open room by link, is refused the sealed one, and can leave", async () => {

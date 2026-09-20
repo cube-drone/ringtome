@@ -1097,21 +1097,38 @@ async fn rooms_handler(
             unread: false,
         });
     }
-    // The creator's own labels on each room (Curtis, 2026-09-19), one lookup: what the room
-    // is about, in the creator's words. A sealed room's labels open for a reader the seal
-    // admits and stay shut for everyone else, as every label does.
+    // Every tag the room wears (Curtis, 2026-09-20), one lookup: the creator's word about
+    // their own room first, then everyone else's, because a label is a claim under a name
+    // and the name is the safeguard - the display register's rule, which the post card has
+    // followed since 2026-08-31 and the chats column now follows too. A blocked annotator
+    // shows nowhere, and the block stays home: it is read here off this reader's own ledger.
+    // A sealed room's labels open for a reader the seal admits and stay shut for everyone
+    // else, as every label does.
     let pairs: Vec<(String, String)> = items.iter().map(|i| (i.author.clone(), i.doc_id.clone())).collect();
     let labels = crate::annotations::for_posts(&state, &pairs, Some(&root))
         .await
         .map_err(AppError::Internal)?;
+    let blocked: std::collections::HashSet<String> = data
+        .contacts()
+        .await?
+        .into_iter()
+        .filter(|(_, facts)| facts.get("blocked").map(String::as_str) == Some("yes"))
+        .map(|(root, _)| root)
+        .collect();
     for item in items.iter_mut() {
         if let Some(known) = labels.get(&(item.author.clone(), item.doc_id.clone())) {
-            for a in known.iter().filter(|a| a.annotator == item.author && a.key == "tag") {
+            let mut said: Vec<&crate::annotations::KnownAnnotation> = known
+                .iter()
+                .filter(|a| a.key == "tag" && !blocked.contains(&a.annotator))
+                .collect();
+            // The creator's first, in the order they said them; everyone else's after, by
+            // the word, so a room reads as its own before it reads as other people's.
+            said.sort_by_key(|a| (a.annotator != item.author, a.value.clone()));
+            for a in said {
                 if !item.tags.contains(&a.value) {
                     item.tags.push(a.value.clone());
                 }
             }
-            item.tags.sort();
         }
     }
     // Bylines, one lookup for everyone named.

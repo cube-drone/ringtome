@@ -9726,3 +9726,30 @@ two doors are the creator's alone. The label-saying that a mute and a badge shar
 helper rather than two copies. The suite: cal chats, bea cannot moderate, ada deputizes her
 and the room hears it, her mute of cal is honoured on ada's own floor, she cannot pass the
 badge on or turn it on ada, and taking it back is heard and brings cal's words home.
+
+## 2026-09-20 (cont.): a tags column for the chats
+
+Rooms wear their creator's tags, so the chat app now filters by them the way Writer does: a
+tags column holding a histogram of every tag the rooms in view wear, most-used first,
+clicking one into or out of the filter, and minimized to a rail until asked for - most rooms
+have no tags, and the chats column is the one that earns the space. The counts run over
+every room this persona may see rather than over what survives the picking, so the cloud
+shows what could be chosen while the list narrows; picks stack, as a post's tags do; and an
+empty result says the tags are the reason. The column itself moved out of Writer into
+panes.js beside the heads and the rails, since it was always column furniture and is now
+shared by two apps, with a `label` for what the tags are on.
+
+## 2026-09-20 (cont.): a room wears everyone's tags
+
+Curtis: rooms can be tagged by anyone who meets them in the feed, so do those tags reach the
+chats column? They did not - the rooms door attached only the creator's, a filter written
+when tags at creation were the ask, and the post card in the feed had been showing everyone's
+all along. The door now follows the display register like every other surface: every tag on
+the room post, the creator's first in the order they said them and everyone else's after by
+the word, because a label is a claim under a name and the name is the safeguard. The one
+filter that survives is the block, read off this reader's own ledger, where it stays - the
+door has the reader in hand, so it applies the rule the card applies rather than a looser
+one. The histogram in the tags column counts what the column shows, so filtering by a tag a
+friend put on a room works like filtering by one the creator did. The rooms suite's tag
+claim now watches bea's word ride beside ada's, vanish when ada blocks her, and come back
+when the block lifts.

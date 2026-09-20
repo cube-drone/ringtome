@@ -103,3 +103,22 @@ export function useColWidths(root, appId, cols, mins = {}) {
         .join('; ');
     return { resizer, colStyle };
 }
+
+// The tag cloud: every tag in view, most-used first, clicking one into (or out of) the filter
+// the list reads. Column furniture, so it lives here with the heads and the rails: Writer asks
+// for it through `features.tagColumn`, and the chat app keeps one for rooms (Curtis,
+// 2026-09-20). `label` names what the tags are on, when "tags" is not enough.
+export const TagColumn = ({ cloud, active, onToggleTag, onTuck, label }) => html`<aside class="tag-column">
+    <${PaneHead} label=${label || t('panes.tags', 'tags')} onTuck=${onTuck} />
+    ${cloud.map(
+        ([tag, count]) => html`<button
+            key=${tag}
+            class=${active.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
+            onClick=${() => onToggleTag(tag)}
+        >
+            <span class="tag-cloud-name">${tag}</span>
+            <span class="tag-cloud-count">${count}</span>
+        </button>`
+    )}
+    ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('panes.no-tags-yet', 'no tags yet')}</p>`}
+</aside>`;

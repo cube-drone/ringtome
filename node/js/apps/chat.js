@@ -22,7 +22,8 @@ import { openMirror, useLive } from '../mirror.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { MAX_TAG_CHARS } from '../pure/annotations.js';
 import { speakable } from '../speakable.js';
-import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
+import { tagCounts as roomTagCounts } from '../pure/doclist.js';
 import { Modal } from '../modal.js';
 import { usePref, OPEN_ROOM_KEY } from '../mirror/prefs.js';
 
@@ -135,7 +136,7 @@ const RoomRow = ({ room, current, selected }) => {
     </li>`;
 };
 
-const RoomsColumn = ({ current, rooms, selected, onTuck }) => {
+const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     const loc = useLocation();
     // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
     // 2026-09-19): left rooms are not synced and never bold, until rejoined. Closed rooms
@@ -154,7 +155,7 @@ const RoomsColumn = ({ current, rooms, selected, onTuck }) => {
             ${t('apps.chat.new-chat', '+ new chat')}
         </button>
         ${rooms && rooms.length === 0
-            ? html`<p class="chat-rooms-empty">${t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
+            ? html`<p class="chat-rooms-empty">${filtered ? t('apps.chat.no-chats-wear-those-tags', 'no chats wear those tags') : t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
             : html`<ul class="chat-list">${active.map(row)}</ul>`}
         ${left.length > 0 &&
         html`<p class="chat-list-divider">${t('apps.chat.left', 'left')}</p>
@@ -1195,8 +1196,12 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
     // column, never a fact about the persona.
     const [wasOpen, setWasOpen] = usePref(root, OPEN_ROOM_KEY, '');
     const restored = useRef(false);
-    const { tucked, toggleTuck } = useColTucks(root, APP_ID, []);
-    const { resizer, colStyle } = useColWidths(root, APP_ID, ['rooms'], { rooms: 180 });
+    // The tags column (Curtis, 2026-09-20), Writer's: a histogram of the tags the rooms in
+    // view wear, clicking one into or out of the filter, and minimized to a rail until asked
+    // for - a room's tags are its creator's word about it, and most rooms have none.
+    const [tagFilter, setTagFilter] = useState([]);
+    const { tucked, toggleTuck } = useColTucks(root, APP_ID, ['tags']);
+    const { resizer, colStyle } = useColWidths(root, APP_ID, ['tags', 'rooms'], { rooms: 180, tags: 150 });
     const load = () => {
         if (!root) return;
         api(`/api/identity/${root}/rooms`)
@@ -1233,13 +1238,33 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root]);
     if (!root) return null;
-    const rooms = page && page.items;
+    const all = page && page.items;
+    // Counted over every room this persona may see, so the cloud shows what could be picked
+    // rather than only what survives the picking; the list narrows, the cloud does not.
+    const cloud = roomTagCounts(all);
+    const rooms =
+        all && tagFilter.length > 0 ? all.filter((r) => tagFilter.every((tag) => (r.tags || []).includes(tag))) : all;
     const selected = author && doc ? { author, doc } : null;
     return html`<div class="chat">
         <div class="chat-columns" style=${colStyle}>
+            ${tucked.has('tags')
+                ? html`<${Rail} icon=${Icons.tag} label=${t('apps.chat.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
+                : html`<${TagColumn}
+                      cloud=${cloud}
+                      active=${tagFilter}
+                      label=${t('apps.chat.tags', 'tags')}
+                      onToggleTag=${(tag) => setTagFilter((have) => (have.includes(tag) ? have.filter((x) => x !== tag) : [...have, tag]))}
+                      onTuck=${() => toggleTuck('tags')}
+                  />${resizer('tags')}`}
             ${tucked.has('rooms')
                 ? html`<${Rail} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onClick=${() => toggleTuck('rooms')} />`
-                : html`<${RoomsColumn} current=${current} rooms=${rooms} selected=${selected} onTuck=${() => toggleTuck('rooms')} />${resizer('rooms')}`}
+                : html`<${RoomsColumn}
+                      current=${current}
+                      rooms=${rooms}
+                      selected=${selected}
+                      filtered=${tagFilter.length > 0}
+                      onTuck=${() => toggleTuck('rooms')}
+                  />${resizer('rooms')}`}
             <section class="chat-main">
                 ${mode === 'new'
                     ? html`<${NewRoom}

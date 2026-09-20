@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 881 phrases across 58 files.
+// 883 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -19,6 +19,7 @@ export default {
     'apps.chat.quiet': 'quiet',
     'apps.chat.chats': 'chats',
     'apps.chat.new-chat': '+ new chat',
+    'apps.chat.no-chats-wear-those-tags': 'no chats wear those tags',
     'apps.chat.no-rooms-yet-column': 'no chats yet',
     'apps.chat.left': 'left',
     'apps.chat.a-tag-is-n-characters-at-most': 'a tag is {cap} characters at most',
@@ -94,6 +95,7 @@ export default {
     'apps.chat.bytes-of-this-message': 'message length',
     'apps.chat.attach-a-picture-sound-or-video': 'attach a picture, a sound or a video (drop or paste works too)',
     'apps.chat.send': 'send',
+    'apps.chat.tags': 'tags',
     'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
     'apps.chat.pick-a-chat': 'pick a chat on the left, or start a new one',
 
@@ -145,8 +147,6 @@ export default {
     'apps.notes.unfiled': 'unfiled',
     'apps.notes.a-date-you-set-for': 'a date you set for this document (its real last edit was {p0})',
     'apps.notes.two-versions': 'two versions',
-    'apps.notes.tags': 'tags',
-    'apps.notes.no-tags-yet': 'no tags yet',
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.a-room': 'a room',
@@ -506,6 +506,8 @@ export default {
 
     // --- node/js/panes.js ---
     'panes.drag-to-resize': 'drag to resize',
+    'panes.tags': 'tags',
+    'panes.no-tags-yet': 'no tags yet',
 
     // --- node/js/person.js ---
     'person.address': 'address',

@@ -24,7 +24,7 @@ import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docda
 import { featuresOf, itemNoun, itemPlural, homeAppFor, bucketHolds } from '../pure/apps.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
-import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 import { t } from '../i18n.js';
@@ -253,23 +253,6 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
         )}
     </span>`}
 </button>`;
-
-// The tag cloud: every tag in view, most-used first, clicking one into (or out of) the filter the
-// list reads. An optional column - only apps whose `features.tagColumn` asks for it.
-const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class="tag-column">
-    <${PaneHead} label=${t('apps.notes.tags', 'tags')} onTuck=${onTuck} />
-    ${cloud.map(
-        ([tag, count]) => html`<button
-            key=${tag}
-            class=${active.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
-            onClick=${() => onToggleTag(tag)}
-        >
-            <span class="tag-cloud-name">${tag}</span>
-            <span class="tag-cloud-count">${count}</span>
-        </button>`
-    )}
-    ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('apps.notes.no-tags-yet', 'no tags yet')}</p>`}
-</aside>`;
 
 // The documents app - the shared surface a "documents" application (Writer, Lost & Found)
 // currently renders. `app` is its registry entry (id, name, icon, style); the document

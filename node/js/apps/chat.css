@@ -22,6 +22,12 @@
     width: var(--w-rooms, 260px);
 }
 
+/* The tags column, Writer's (its own styles live in apps/notes.css): here it takes the
+   chat app's stored width, and starts as a rail. */
+.chat-columns .tag-column {
+    width: var(--w-tags, 150px);
+}
+
 .chat-rooms {
     flex-shrink: 0;
     display: flex;
