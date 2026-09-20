@@ -988,6 +988,44 @@ async fn held_count_unmuted(state: &AppState, author_hex: &str, doc_hex: &str, c
 /// seal admits. Honoured by this node for every surface it serves, which is what "honoured
 /// by every honest client" means from the inside.
 pub async fn muted_in(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> std::collections::HashSet<String> {
+    // A deputy's mute is the creator's (ruling 8): the creator said whose word counts, and
+    // this reads both lists off the same post. The creator is never muted in their own room,
+    // whoever says otherwise.
+    let deputies = deputies_in(state, viewer_hex, author_hex, doc_hex).await;
+    let mut muted = labels_by(state, viewer_hex, author_hex, doc_hex, MUTE_KEY, |annotator| {
+        annotator == author_hex || deputies.contains(annotator)
+    })
+    .await;
+    muted.remove(author_hex);
+    muted
+}
+
+/// The label a mute is said as.
+pub const MUTE_KEY: &str = "mute";
+/// ...and the one that says who may say it (CHAT.md, ruling 8's moderators list, which
+/// Curtis calls deputies, 2026-09-20): the creator's own label naming a persona whose mutes
+/// count as the creator's. Only the creator deputizes; a deputy cannot pass the badge on.
+pub const DEPUTY_KEY: &str = "deputy";
+
+/// The room's deputies: the creator's own `deputy` labels, read like every label.
+pub async fn deputies_in(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> std::collections::HashSet<String> {
+    labels_by(state, viewer_hex, author_hex, doc_hex, DEPUTY_KEY, |annotator| annotator == author_hex).await
+}
+
+/// Whether this persona may mute in this room: its creator, or one of their deputies.
+pub async fn may_moderate(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> bool {
+    viewer_hex == author_hex || deputies_in(state, viewer_hex, author_hex, doc_hex).await.contains(viewer_hex)
+}
+
+/// The values of one label on the room post, by annotators the caller vouches for.
+async fn labels_by(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+    key: &str,
+    said_by: impl Fn(&str) -> bool,
+) -> std::collections::HashSet<String> {
     let known = crate::annotations::for_posts(state, &[(author_hex.to_string(), doc_hex.to_string())], Some(viewer_hex))
         .await
         .unwrap_or_default();
@@ -995,15 +1033,12 @@ pub async fn muted_in(state: &AppState, viewer_hex: &str, author_hex: &str, doc_
         .get(&(author_hex.to_string(), doc_hex.to_string()))
         .map(|list| {
             list.iter()
-                .filter(|a| a.annotator == author_hex && a.key == MUTE_KEY)
+                .filter(|a| a.key == key && said_by(&a.annotator))
                 .map(|a| a.value.clone())
                 .collect()
         })
         .unwrap_or_default()
 }
-
-/// The label a mute is said as.
-pub const MUTE_KEY: &str = "mute";
 
 /// Whether the room is sealed: its reactions are sealed too, and stacking them wants the key.
 async fn head_sealed(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
@@ -1355,8 +1390,12 @@ pub async fn history(
                 reactions: stacks.remove(&hash_hex).unwrap_or_default(),
                 hash: hash_hex,
                 edited: edited != 0,
-                notice: notice_kind.map(|k| {
-                    if k == ChatMessage::NOTICE_UNMUTED as i64 { "unmuted".to_string() } else { "muted".to_string() }
+                notice: notice_kind.and_then(|k| match k as u64 {
+                    ChatMessage::NOTICE_MUTED => Some("muted".to_string()),
+                    ChatMessage::NOTICE_UNMUTED => Some("unmuted".to_string()),
+                    ChatMessage::NOTICE_DEPUTIZED => Some("deputized".to_string()),
+                    ChatMessage::NOTICE_UNDEPUTIZED => Some("undeputized".to_string()),
+                    _ => None,
                 }),
                 notice_subject,
             }

@@ -373,10 +373,18 @@ const EmojiPicker = ({ onPick, onClose }) => {
 /// stack under the words, most-said first, who on hover.
 /// A moderation act, said in the room (CHAT.md, ruling 8): not talk, so it reads as its own
 /// quiet line with both people named, and wears no menu.
+/// The four acts a notice can carry, as the door names them, and how each reads here.
+const NOTICE_WORDS = {
+    muted: () => t('apps.chat.muted', 'muted'),
+    unmuted: () => t('apps.chat.unmuted', 'unmuted'),
+    deputized: () => t('apps.chat.deputized', 'deputized'),
+    undeputized: () => t('apps.chat.undeputized', 'took the badge back from'),
+};
+const BADGE_NOTICES = ['deputized', 'undeputized'];
 const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notice">
-    <${Icons.mute} />
+    ${BADGE_NOTICES.includes(m.notice) ? html`<${Icons.deputy} />` : html`<${Icons.mute} />`}
     <${PersonChip} root=${m.speaker} current=${current} />
-    <span>${m.notice === 'unmuted' ? t('apps.chat.unmuted', 'unmuted') : t('apps.chat.muted', 'muted')}</span>
+    <span>${(NOTICE_WORDS[m.notice] || NOTICE_WORDS.muted)()}</span>
     <${PersonChip} root=${m.notice_subject} current=${current} />
 </li>`;
 
@@ -835,6 +843,15 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     };
     // The creator's moderation (CHAT.md, ruling 8): a label on the room post, and a line in
     // the room saying so. The door does both; here it is one click.
+    const setDeputy = async (who, on) => {
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/deputies/${who}`, { method: on ? 'POST' : 'DELETE' });
+            setRoom((r) => r && { ...r, deputies: on ? [...(r.deputies || []), who] : (r.deputies || []).filter((d) => d !== who) });
+            readHistory();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        }
+    };
     const setMuted = async (who, on) => {
         try {
             await api(`/api/identity/${root}/rooms/${author}/${doc}/mutes/${who}`, { method: on ? 'POST' : 'DELETE' });
@@ -880,6 +897,8 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     // they can read as plainly as everyone else, so the composer says so and stands down -
     // nothing typed into it would reach a floor.
     const iAmMuted = (room.muted || []).includes(root);
+    // Who may mute here (CHAT.md, ruling 8): the creator, and the deputies they named.
+    const iModerate = room.mine || (room.deputies || []).includes(root);
     const others = (chatters || []).filter((c) => c.root !== author);
     // The floor: the room's post first, said by its creator, then every line oldest to
     // newest; a run of lines by one speaker is attributed once.
@@ -923,7 +942,17 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                     ${others.map(
                         (c) => html`<li key=${c.root} class=${c.muted ? 'chat-chatters-row chat-chatters-muted' : 'chat-chatters-row'}>
                             <${Speaker} root=${c.root} current=${current} />
+            ${/* The creator hands out the badge (ruling 8); a deputy may mute, and cannot
+                deputize or mute another deputy - the door says so too. */ ''}
                             ${room.mine &&
+                            html`<button
+                                class=${c.deputy ? 'chat-chatters-mute chat-chatters-on' : 'chat-chatters-mute'}
+                                type="button"
+                                title=${c.deputy ? t('apps.chat.take-the-badge-back', 'take the badge back') : t('apps.chat.deputize-this-person', 'deputize them - their mutes count as yours')}
+                                onClick=${() => setDeputy(c.root, !c.deputy)}
+                            ><${Icons.deputy} /></button>`}
+                            ${iModerate &&
+                            !c.deputy &&
                             html`<button
                                 class="chat-chatters-mute"
                                 type="button"
@@ -1048,7 +1077,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                               onReact=${m.post || room.left || (history && history.closed) ? null : react}
                               onEdit=${m.post || room.left || (history && history.closed) ? null : beginEdit}
                               onDelete=${m.post || room.left || (history && history.closed) ? null : setDeletingLine}
-                              onMute=${room.mine && !m.post && !room.left ? (who) => setMuted(who, true) : null}
+                              onMute=${iModerate && !m.post && !room.left ? (who) => setMuted(who, true) : null}
                               ${/* A muted reader's react, edit and delete would be seen by
                                   nobody: the menu stands down with the composer. */ ''}
                               hushed=${iAmMuted}

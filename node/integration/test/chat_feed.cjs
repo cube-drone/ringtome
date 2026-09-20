@@ -11,7 +11,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST, HOST_B, sql } = require("./fetch.cjs");
+const { HOST, HOST_B, HOST_C, sql } = require("./fetch.cjs");
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -391,6 +391,63 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const back = await history(ada, adaRoot);
         assert.ok((back.items || []).some((m) => m.words === "bea speaks out of turn"), "her words are on the floor again");
         assert.ok((back.items || []).some((m) => m.notice === "unmuted" && m.notice_subject === beaRoot), "and the room heard the lift");
+    });
+
+    it("the creator deputizes: the badge is said in the room, a deputy's mute counts as the creator's, and a deputy cannot pass the badge on", async () => {
+        const history = async (who, root) => (await (await who(`api/identity/${root}/rooms/${adaRoot}/${room}/messages`)).json());
+        const cal = await makeUserFetch({ prefix: "depcal", host: HOST_C });
+        const calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
+        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
+        const { toBase58 } = await import("../../js/speakable.js");
+        const via = toBase58((await (await ada("api/node")).json()).endpoint_id);
+        if ((await cal(`api/id/${adaRoot}/profile?via=${via}`)).status !== 200) this.skip();
+        // Cal enters the open room by link and says something ada can hear.
+        let entered = null;
+        for (let i = 0; i < 30 && !entered; i++) {
+            const r = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${room}`);
+            if (r.status === 200) entered = await r.json();
+            else await wait(400);
+        }
+        assert.ok(entered, "cal is in the parlour");
+        assert.equal((await j(cal, `api/identity/${calRoot}/rooms/${adaRoot}/${room}/messages`, { words: "cal is chatty" })).status, 200);
+        // Before the badge, bea may not moderate.
+        const tooSoon = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/mutes/${calRoot}`, { method: "POST" });
+        assert.equal(tooSoon.status, 403, await tooSoon.text());
+        // The badge: said on the post, and said in the room.
+        const badge = await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/deputies/${beaRoot}`, { method: "POST" });
+        assert.equal(badge.status, 200, await badge.text());
+        const heard = await history(ada, adaRoot);
+        assert.ok(
+            (heard.items || []).some((m) => m.notice === "deputized" && m.notice_subject === beaRoot && m.speaker === adaRoot),
+            `the room heard the badge: ${JSON.stringify((heard.items || []).map((m) => m.notice).filter(Boolean))}`
+        );
+        assert.deepEqual((await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}`)).json()).deputies, [beaRoot], "the door names the deputy");
+        // Bea's mute now counts as ada's, on ada's own floor, once her labels land.
+        for (let i = 0; i < 30; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            const r = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/mutes/${calRoot}`, { method: "POST" });
+            if (r.status === 200) break;
+            await wait(300);
+        }
+        let gone = false;
+        for (let i = 0; i < 30 && !gone; i++) {
+            await pullAndFold(HOST, beaRoot);
+            const words = ((await history(ada, adaRoot)).items || []).map((m) => m.words);
+            gone = !words.includes("cal is chatty");
+            if (!gone) await wait(300);
+        }
+        assert.ok(gone, "a deputy's mute is honoured on the creator's own floor");
+        // The badge stops with her: a deputy deputizes nobody, and does not mute the creator.
+        const passed = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/deputies/${calRoot}`, { method: "POST" });
+        assert.equal(passed.status, 403, await passed.text());
+        const atTheCreator = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/mutes/${adaRoot}`, { method: "POST" });
+        assert.equal(atTheCreator.status, 403, await atTheCreator.text());
+        // Taken back: the room hears that too, and her word stops counting.
+        const back = await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/deputies/${beaRoot}`, { method: "DELETE" });
+        assert.equal(back.status, 200, await back.text());
+        const after = await history(ada, adaRoot);
+        assert.ok((after.items || []).some((m) => m.notice === "undeputized" && m.notice_subject === beaRoot), "the room heard the badge come back");
+        assert.ok(((after.items || []).map((m) => m.words)).includes("cal is chatty"), "and cal is heard again");
     });
 
     it("the owner closes the room (the record stands, nobody says more, and closed stays closed), then takes it down (it leaves every list)", async () => {

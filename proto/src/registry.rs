@@ -1496,6 +1496,11 @@ impl ChatMessage {
     pub const NOTICE_MUTED: u64 = 0;
     /// ...and this, that they lifted it.
     pub const NOTICE_UNMUTED: u64 = 1;
+    /// This line says the room's creator deputized the persona it names: their mutes count
+    /// as the creator's own (CHAT.md, ruling 8's moderators list; Curtis, 2026-09-20).
+    pub const NOTICE_DEPUTIZED: u64 = 2;
+    /// ...and this, that the creator took the badge back.
+    pub const NOTICE_UNDEPUTIZED: u64 = 3;
 
     fn well_formed(&self) -> Result<(), ProtoError> {
         if self.body.is_empty() {

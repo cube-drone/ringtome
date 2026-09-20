@@ -55,6 +55,7 @@ import {
     SignOut,
     CaretDown,
     SpeakerSlash,
+    Siren,
     CheckCircle,
     LinkSimple,
     FileImage,
@@ -153,6 +154,8 @@ export const Icons = {
     caretDown: CaretDown,
     // the room's moderation (CHAT.md, ruling 8): the creator's mute
     mute: SpeakerSlash,
+    // ...and the badge that lets somebody else do it (ruling 8's moderators list)
+    deputy: Siren,
     done: CheckCircle,
     // media document kinds (tree rows, list rows)
     fileImage: FileImage,

@@ -368,7 +368,12 @@ node keeps its own room whole, which is where "all of it" lives.
   stands down behind "you've been muted by the room", the line menu with it, and their own
   node's say door refuses - an honest node does not grow a chain whose words no floor will
   show. The moderators
-  list below remains unbuilt. A
+  list is built too (**2026-09-20**), as deputies: a second label the creator publishes
+  naming a persona whose mutes count as the creator's own. Only the creator hands the badge
+  out and takes it back - a deputy deputizes nobody - and a deputy may mute anyone but the
+  creator and another deputy, since a mute war between deputies is not moderation. The room
+  hears both acts, as it hears a mute. Adding by contact tag remains a UI nicety nobody has
+  built. A
   **moderators list** is a second annotation the creator publishes, naming personas whose
   mutes honest clients honour as the creator's own; it grows one persona at a time, or by a
   contact tag from the People page - a UI nicety only, since the tag is private and never

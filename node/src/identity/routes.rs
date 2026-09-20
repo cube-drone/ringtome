@@ -69,6 +69,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             post(room_mute_handler).delete(room_unmute_handler),
         )
         .route(
+            "/api/identity/{root}/rooms/{author}/{doc}/deputies/{who}",
+            post(room_deputize_handler).delete(room_undeputize_handler),
+        )
+        .route(
             "/api/identity/{root}/rooms/{author}/{doc}/archive",
             post(room_archive_handler).delete(room_unarchive_handler),
         )
@@ -1212,6 +1216,9 @@ async fn room_enter_handler(
         // The creator's mutes (ruling 8), so the roster can sit them at the bottom and the
         // creator's own page can offer the button.
         "muted": crate::chat::muted_in(&state, &root, &author, &doc).await.into_iter().collect::<Vec<_>>(),
+        // ...and the deputies (ruling 8), so the roster marks them and the right people see
+        // the mute button.
+        "deputies": crate::chat::deputies_in(&state, &root, &author, &doc).await.into_iter().collect::<Vec<_>>(),
         // The archive (CHAT.md, ruling 6): this node keeps the room whole, as its creator's
         // node or by its operator's full-sync.
         "archivist": crate::chat::archivist_here(&state, &author, &doc).await,
@@ -1306,7 +1313,8 @@ async fn set_mute(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    if root != author {
+    // The creator, or one they deputized (CHAT.md, ruling 8).
+    if !crate::chat::may_moderate(&state, &root, &author, &doc).await {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.only-the-rooms-creator-moderates",
             "only the room's creator moderates it"
@@ -1316,35 +1324,142 @@ async fn set_mute(
     if who == root {
         return Err(AppError::BadRequest(crate::msg!("identity.routes.you-cant-mute-yourself", "you can't mute yourself")));
     }
-    let target_author = hex_fixed::<32>(&author, "author root")?;
-    // The label, sealed with the room when the room is sealed - the annotation door's own
-    // rule, reached here through the same store.
-    let (key, value) = match crate::idface::seal_key_for(&state, &author, &doc_id, &root).await? {
+    // A deputy's badge does not reach the creator, nor another deputy: the creator hands it
+    // out and the creator takes it back, and a mute war between deputies is not moderation.
+    if root != author {
+        if who == author {
+            return Err(AppError::Forbidden(crate::msg!(
+                "identity.routes.a-deputy-cant-mute-the-creator",
+                "a deputy can't mute the room's creator"
+            )));
+        }
+        if crate::chat::deputies_in(&state, &root, &author, &doc).await.contains(&who) {
+            return Err(AppError::Forbidden(crate::msg!(
+                "identity.routes.a-deputy-cant-mute-a-deputy",
+                "a deputy can't mute another deputy - ask the room's creator"
+            )));
+        }
+    }
+    // And the room hears it (Curtis, 2026-09-20): a moderation act in a shared room is not
+    // a block, which is the one refusal that stays unspoken.
+    say_label(
+        &state,
+        &data,
+        &root,
+        &author,
+        &doc,
+        &doc_id,
+        crate::chat::MUTE_KEY,
+        &who,
+        subject,
+        on,
+        if on { "muted" } else { "unmuted" },
+        if on {
+            ringtome_proto::registry::ChatMessage::NOTICE_MUTED
+        } else {
+            ringtome_proto::registry::ChatMessage::NOTICE_UNMUTED
+        },
+    )
+    .await?;
+    Ok(Json(serde_json::json!({ "muted": on })))
+}
+
+/// POST / DELETE `/api/identity/{root}/rooms/{author}/{doc}/deputies/{who}` - the badge
+/// (CHAT.md, ruling 8's moderators list; Curtis, 2026-09-20): the creator's own act, naming
+/// a persona whose mutes count as theirs. A deputy cannot pass it on - only the creator
+/// deputizes - and the room hears it said, as it hears a mute.
+async fn room_deputize_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc, who)): Path<(String, String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    set_deputy(session, state, root, author, doc, who, true).await
+}
+
+async fn room_undeputize_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc, who)): Path<(String, String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    set_deputy(session, state, root, author, doc, who, false).await
+}
+
+async fn set_deputy(
+    session: Session,
+    state: AppState,
+    root: String,
+    author: String,
+    doc: String,
+    who: String,
+    on: bool,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    if root != author {
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.routes.only-the-rooms-creator-deputizes",
+            "only the room's creator deputizes"
+        )));
+    }
+    let subject = hex_fixed::<32>(&who, "persona root")?;
+    if who == root {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.you-are-the-creator", "you are the room's creator")));
+    }
+    say_label(
+        &state,
+        &data,
+        &root,
+        &author,
+        &doc,
+        &doc_id,
+        crate::chat::DEPUTY_KEY,
+        &who,
+        subject,
+        on,
+        if on { "deputized" } else { "undeputized" },
+        if on {
+            ringtome_proto::registry::ChatMessage::NOTICE_DEPUTIZED
+        } else {
+            ringtome_proto::registry::ChatMessage::NOTICE_UNDEPUTIZED
+        },
+    )
+    .await?;
+    Ok(Json(serde_json::json!({ "deputy": on })))
+}
+
+/// One moderation label, said on the room post and then in the room: the shape a mute and a
+/// badge share. The label seals with the room when the room is sealed, as every label does.
+#[allow(clippy::too_many_arguments)]
+async fn say_label(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    author: &str,
+    doc: &str,
+    doc_id: &[u8; 16],
+    key: &str,
+    who: &str,
+    subject: [u8; 32],
+    on: bool,
+    word: &str,
+    notice: u64,
+) -> Result<(), AppError> {
+    let target_author = hex_fixed::<32>(author, "author root")?;
+    let (label_key, value) = match crate::idface::seal_key_for(state, author, doc_id, root).await? {
         Some((_, post_key)) => (
             crate::annotations::SEALED_KEY.to_string(),
-            crate::annotations::seal_statement(&post_key, crate::chat::MUTE_KEY, &who).map_err(AppError::Internal)?,
+            crate::annotations::seal_statement(&post_key, key, who).map_err(AppError::Internal)?,
         ),
-        None => (crate::chat::MUTE_KEY.to_string(), who.clone()),
+        None => (key.to_string(), who.to_string()),
     };
-    data.public_annotations().say(&target_author, &doc_id, &key, &value, on).await?;
-    crate::fold::fold_now(&state, &root).await;
-    // And the room hears it (Curtis, 2026-09-20). The words are the fallback for a reader
-    // that does not know the notice; a reader that does says it in its own.
+    data.public_annotations().say(&target_author, doc_id, &label_key, &value, on).await?;
+    crate::fold::fold_now(state, root).await;
     // Plain English on purpose: this is the fallback a reader that does not know the notice
-    // kind shows, and a reader that does never shows it at all - it says the act in its own
-    // words, from the notice beside these.
-    let said = format!(
-        "{} {}",
-        if on { "muted" } else { "unmuted" },
-        crate::speakable::speakable(&subject)
-    );
-    let kind = if on {
-        ringtome_proto::registry::ChatMessage::NOTICE_MUTED
-    } else {
-        ringtome_proto::registry::ChatMessage::NOTICE_UNMUTED
-    };
-    crate::chat::say(&state, &data, &root, &author, &doc_id, &said, None, false, None, None, Some((kind, subject))).await?;
-    Ok(Json(serde_json::json!({ "muted": on })))
+    // kind shows, and a reader that does says the act in its own words.
+    let said = format!("{word} {}", crate::speakable::speakable(&subject));
+    crate::chat::say(state, data, root, author, doc_id, &said, None, false, None, None, Some((notice, subject))).await?;
+    let _ = doc;
+    Ok(())
 }
 
 /// POST `/api/identity/{root}/rooms/{author}/{doc}/join` - the rejoin (Curtis, 2026-09-19):
@@ -1554,6 +1669,7 @@ async fn room_chatters_handler(
     // Muted last (Curtis, 2026-09-20), still named: moderation is a public act, and the
     // creator unmutes from this list.
     let muted = crate::chat::muted_in(&state, &root, &author, &doc).await;
+    let deputies = crate::chat::deputies_in(&state, &root, &author, &doc).await;
     rows.sort_by(|a, b| muted.contains(&a.0).cmp(&muted.contains(&b.0)).then_with(|| b.1.cmp(&a.1)));
     let roots: Vec<String> = rows.iter().map(|(r, _)| r.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
@@ -1563,6 +1679,7 @@ async fn room_chatters_handler(
             let b = bylines.get(&root);
             serde_json::json!({
                 "muted": muted.contains(&root),
+                "deputy": deputies.contains(&root),
                 "root": root,
                 "last_ms": last_ms,
                 "name": b.and_then(|b| b.name.clone()),

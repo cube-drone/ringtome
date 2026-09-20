@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 873 phrases across 58 files.
+// 881 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -35,8 +35,10 @@ export default {
     'apps.chat.opening': 'opening…',
     'apps.chat.open-a-room': 'open a room',
     'apps.chat.find-an-emoji': 'find an emoji…',
-    'apps.chat.unmuted': 'unmuted',
     'apps.chat.muted': 'muted',
+    'apps.chat.unmuted': 'unmuted',
+    'apps.chat.deputized': 'deputized',
+    'apps.chat.undeputized': 'took the badge back from',
     'apps.chat.someone-you-dont-trust': "someone you don't trust",
     'apps.chat.edited': '(edited)',
     'apps.chat.react-with-an-emoji': 'react with an emoji',
@@ -53,6 +55,8 @@ export default {
     'apps.chat.and-one-other': 'and one other',
     'apps.chat.and-n-others': 'and {n} others',
     'apps.chat.opened-the-room': 'opened the room',
+    'apps.chat.take-the-badge-back': 'take the badge back',
+    'apps.chat.deputize-this-person': 'deputize them - their mutes count as yours',
     'apps.chat.unmute-this-person': 'let them speak here again',
     'apps.chat.hiding-n-lines-click-to-show': "hiding {n} lines from people you don't trust - click to show them",
     'apps.chat.hiding-untrusted-click-to-show': "hiding people you don't trust - click to show them",
@@ -825,6 +829,10 @@ export default {
     'identity.routes.only-the-nodes-operator-archives': "only this computer's owner can do that",
     'identity.routes.only-the-rooms-creator-moderates': "only the room's creator moderates it",
     'identity.routes.you-cant-mute-yourself': "you can't mute yourself",
+    'identity.routes.a-deputy-cant-mute-the-creator': "a deputy can't mute the room's creator",
+    'identity.routes.a-deputy-cant-mute-a-deputy': "a deputy can't mute another deputy - ask the room's creator",
+    'identity.routes.only-the-rooms-creator-deputizes': "only the room's creator deputizes",
+    'identity.routes.you-are-the-creator': "you are the room's creator",
     'identity.routes.the-room-could-not-go-live': 'the room could not go live: {why}',
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',

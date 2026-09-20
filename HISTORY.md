@@ -9711,3 +9711,18 @@ either. Their own node agrees at the door: the say refuses with the same words o
 creator's mute label has reached it, so no chain grows words no floor will show. The
 creator's notices are exempt by construction - the mute is their act, and nobody is muted in
 their own room. The moderation claim now watches bea's own node turn her down.
+
+## 2026-09-20 (cont.): deputies
+
+The rest of ruling 8's moderators list, which Curtis names deputies. A badge is the
+creator's own `deputy` label on the room post, beside the mutes and read the same way, and
+a deputy's mute counts as the creator's everywhere a mute is read - the floor, the count,
+the badge. Only the creator hands it out or takes it back: a deputy deputizes nobody, and
+may not mute the creator or another deputy, because a mute war between deputies is not
+moderation. Both acts are said in the room as a mute is, on two new notice kinds, so the
+history reads "ada deputized bea" in each reader's own words with both people named. The
+roster shows the siren for the creator and the speaker-slash for anyone who may use it; the
+two doors are the creator's alone. The label-saying that a mute and a badge share is now one
+helper rather than two copies. The suite: cal chats, bea cannot moderate, ada deputizes her
+and the room hears it, her mute of cal is honoured on ada's own floor, she cannot pass the
+badge on or turn it on ada, and taking it back is heard and brings cal's words home.
