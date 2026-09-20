@@ -9783,3 +9783,12 @@ living end sits above it. A line this computer does not hold falls back to the n
 one line found whatever the case, naming its room and its line, a word nobody said finding
 nothing, and a sealed room searchable by its author and by nobody else however the words
 travel.
+
+## 2026-09-20 (cont.): the chats list, restyled
+
+Every row in the chats list is a chat, so the chat icon each one wore said nothing. The slot
+now holds the face of whoever opened the room, and the title takes the width that frees -
+alone on its line, with the closed and sealed marks beside it. When it was last said in, and
+the tags the room wears, moved to a second line under the title, where the creator's chip
+used to sit: their face already leads the row, so the name went with the icon. Client only,
+so a refresh shows it.

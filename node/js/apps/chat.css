@@ -111,26 +111,25 @@
     background: var(--bg);
 }
 
-.chat-row-icon {
-    color: var(--ink-soft);
-    font-size: 1.2em;
+/* Whoever opened the room, in the slot a chat icon used to waste. */
+.chat-row-face {
+    display: flex;
+    flex: none;
 }
 
 .chat-row-main {
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 0.15rem;
     min-width: 0;
 }
 
-.chat-row-top {
-    display: flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    min-width: 0;
-}
-
+/* The title has the row to itself: closed and sealed marks, then the name. */
 .chat-row-name {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
@@ -143,8 +142,7 @@
 }
 
 .chat-row-when {
-    margin-left: auto;
-    font-size: 0.75em;
+    font-size: 0.9em;
     color: var(--muted);
     white-space: nowrap;
 }
@@ -153,12 +151,14 @@
     color: var(--ink-soft);
 }
 
+/* Under the title: when it was last said in, then what it's about. */
 .chat-row-by {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.3rem;
     font-size: 0.8em;
+    min-width: 0;
 }
 
 /* What the room is about, in its creator's words. */

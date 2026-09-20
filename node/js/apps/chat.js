@@ -118,18 +118,24 @@ const roomName = (words, room) =>
 const RoomRow = ({ room, current, selected }) => {
     const loc = useLocation();
     const words = useRoomWords(room);
+    const person = usePerson(room.author, { current });
+    // Every row in this list is a chat, so no row wears a chat icon (Curtis, 2026-09-20):
+    // the slot holds the face of whoever opened the room, and the title gets the width.
     // Bold where something was said since this persona last looked (the `rooms_seen`
-    // register, synced to every computer); the newest word's time beside every room.
+    // register, synced to every computer); the newest word's time beneath every room.
     const cls = ['chat-row', selected ? 'chat-row-selected' : '', room.unread ? 'chat-row-unread' : ''].filter(Boolean).join(' ');
     return html`<li class=${cls} onClick=${() => loc.route(`/home/chat/${room.author}/${room.doc_id}`)}>
-        <span class="chat-row-icon">${room.trusted_only ? html`<${Icons.trustPrivate} />` : html`<${Icons.chat} />`}</span>
+        <span class="chat-row-face" title=${person.primary || speakable(room.author)}>
+            <${PersonHex} person=${person} size="small" />
+        </span>
         <span class="chat-row-main">
-            <span class="chat-row-top">
-                <span class="chat-row-name">${room.closed && html`<${Icons.settled} />`} ${roomName(words, room)}</span>
-                <span class="chat-row-when">${room.latest_ms ? whenWords(room.latest_ms) : t('apps.chat.quiet', 'quiet')}</span>
+            <span class="chat-row-name">
+                ${room.closed && html`<${Icons.settled} />`}
+                ${room.trusted_only && html`<${Icons.trustPrivate} />`}
+                ${roomName(words, room)}
             </span>
             <span class="chat-row-by">
-                <${PersonChip} root=${room.author} current=${current} />
+                <span class="chat-row-when">${room.latest_ms ? whenWords(room.latest_ms) : t('apps.chat.quiet', 'quiet')}</span>
                 ${(room.tags || []).map((value) => html`<span class="chat-row-tag" key=${value}>${value}</span>`)}
             </span>
         </span>
