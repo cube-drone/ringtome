@@ -366,6 +366,17 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const roster = ((await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/chatters`)).json()).items || []);
         assert.equal(roster[roster.length - 1].root, beaRoot, "and the roster sits her last");
         assert.equal(roster[roster.length - 1].muted, true, "marked");
+        // And her own door stands down with the composer (Curtis, 2026-09-20): once the mute
+        // reaches her node, it will not put words on a chain no floor will show.
+        let refused = null;
+        for (let i = 0; i < 30 && !refused; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            const r = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "hello?" });
+            if (r.status === 403) refused = await r.text();
+            else await wait(300);
+        }
+        assert.ok(refused && /muted/.test(refused), `her own node refuses her, with the word: ${refused}`);
+        assert.equal((await (await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}`)).json()).muted[0], beaRoot, "and her door names her muted, so the page can say so");
         // The mute travels: bea's own node honours it once ada's labels land.
         let hers = await wordsOf(bea, beaRoot);
         for (let i = 0; i < 30 && hers.includes("bea speaks out of turn"); i++) {

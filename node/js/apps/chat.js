@@ -380,7 +380,7 @@ const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notic
     <${PersonChip} root=${m.notice_subject} current=${current} />
 </li>`;
 
-const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute }) => {
+const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, hushed }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -400,6 +400,7 @@ const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute }
             ${m.edited && html`<span class="chat-line-edited">${t('apps.chat.edited', '(edited)')}</span>`}
         </div>`}
         ${!!onReact &&
+        !hushed &&
         html`<span class="chat-line-menu">
             <button class="chat-line-act" type="button" title=${t('apps.chat.react-with-an-emoji', 'react with an emoji')} onClick=${() => setPicking((p) => !p)}>
                 <${Icons.smiley} />
@@ -875,6 +876,10 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         </div>`;
     }
     const name = roomName(words, room);
+    // Muted here (CHAT.md, ruling 8; Curtis, 2026-09-20): the room hid this persona, which
+    // they can read as plainly as everyone else, so the composer says so and stands down -
+    // nothing typed into it would reach a floor.
+    const iAmMuted = (room.muted || []).includes(root);
     const others = (chatters || []).filter((c) => c.root !== author);
     // The floor: the room's post first, said by its creator, then every line oldest to
     // newest; a run of lines by one speaker is attributed once.
@@ -1044,6 +1049,9 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                               onEdit=${m.post || room.left || (history && history.closed) ? null : beginEdit}
                               onDelete=${m.post || room.left || (history && history.closed) ? null : setDeletingLine}
                               onMute=${room.mine && !m.post && !room.left ? (who) => setMuted(who, true) : null}
+                              ${/* A muted reader's react, edit and delete would be seen by
+                                  nobody: the menu stands down with the composer. */ ''}
+                              hushed=${iAmMuted}
                           />`
                 )}
             </ul>
@@ -1073,7 +1081,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             </${Modal}>`}
             ${/* A left room (Curtis, 2026-09-19): no composer - the honest word that it is
                 not being updated, and the way back in. */ ''}
-            ${room.left
+            ${iAmMuted
+                ? html`<p class="chat-closed chat-muted-note">
+                      <${Icons.mute} /> ${t('apps.chat.youve-been-muted-by-the-room', "you've been muted by the room")}
+                  </p>`
+                : room.left
                 ? html`<p class="chat-closed chat-left-note">
                       <${Icons.trustPrivate} />
                       ${t('apps.chat.you-left-this-room', "you left this room. It isn't updating.")}

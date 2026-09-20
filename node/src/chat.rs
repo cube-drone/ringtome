@@ -797,6 +797,15 @@ pub async fn say(
     if head.settled {
         return Err(AppError::BadRequest(crate::msg!("chat.this-room-is-closed", "this room is closed")));
     }
+    // Muted (ruling 8): the room hid this persona, and an honest node does not grow a chain
+    // whose words no floor will show. The creator's own notices are exempt, since the mute
+    // is the creator's act and they are never muted in their own room.
+    if notice.is_none() && muted_in(state, root_hex, author_hex, &hex::encode(doc)).await.contains(root_hex) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "chat.youve-been-muted-by-the-room",
+            "you've been muted by the room"
+        )));
+    }
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| AppError::BadRequest(crate::msg!("chat.bad-room-author", "bad room author")))?;
     // The room's key first: a sealed room seals its words and its pictures under one key.
     let key = if head.trusted_only {

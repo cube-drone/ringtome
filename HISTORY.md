@@ -9701,3 +9701,13 @@ floor, the creator's hover menu gains the speaker-slash on anyone else's line. T
 bea speaks, ada hears her, bea cannot mute ada, ada mutes bea and her words leave both
 floors once the labels land, the room holds the notice, the roster sits her last and marked,
 and lifting brings her words and a second notice. Node schema 53 - `just clean` owed.
+
+## 2026-09-20 (cont.): a muted reader's composer stands down
+
+Curtis: a muted person can read the notice like everyone else, so the text box should stop
+pretending. Their room page now replaces the composer with "you've been muted by the room"
+and drops the line menu with it, since a react or an edit of theirs would be seen by nobody
+either. Their own node agrees at the door: the say refuses with the same words once the
+creator's mute label has reached it, so no chain grows words no floor will show. The
+creator's notices are exempt by construction - the mute is their act, and nobody is muted in
+their own room. The moderation claim now watches bea's own node turn her down.

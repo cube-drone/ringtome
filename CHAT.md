@@ -363,7 +363,11 @@ node keeps its own room whole, which is where "all of it" lives.
   muted and sits them last, which is where the creator lifts it; and the line rides a
   `notice` on the message (kind and subject), with a plain sentence in the body so a reader
   that does not know the kind still reads what happened. The doors are
-  `POST`/`DELETE …/rooms/{author}/{doc}/mutes/{who}`, the creator's alone. The moderators
+  `POST`/`DELETE …/rooms/{author}/{doc}/mutes/{who}`, the creator's alone. **A muted reader
+  is told by the room, so their own page says it plainly** (Curtis, 2026-09-20): the composer
+  stands down behind "you've been muted by the room", the line menu with it, and their own
+  node's say door refuses - an honest node does not grow a chain whose words no floor will
+  show. The moderators
   list below remains unbuilt. A
   **moderators list** is a second annotation the creator publishes, naming personas whose
   mutes honest clients honour as the creator's own; it grows one persona at a time, or by a

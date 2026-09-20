@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 871 phrases across 58 files.
+// 873 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -83,6 +83,7 @@ export default {
     'apps.chat.delete-this-line-title': 'delete this line',
     'apps.chat.delete-this-line-question': 'Delete this line? It may take a while to disappear everywhere.',
     'apps.chat.delete': 'delete',
+    'apps.chat.youve-been-muted-by-the-room': "you've been muted by the room",
     'apps.chat.you-left-this-room': "you left this room. It isn't updating.",
     'apps.chat.rejoin': 'rejoin',
     'apps.chat.say-something': 'say something…',
@@ -788,6 +789,7 @@ export default {
     'chat.no-such-room-is-held-here': "can't find that room",
     'chat.that-post-is-not-a-room': 'that post is not a room',
     'chat.this-room-is-closed': 'this room is closed',
+    'chat.youve-been-muted-by-the-room': "you've been muted by the room",
     'chat.bad-room-author': 'bad room author',
     'chat.the-rooms-key-hasnt-arrived': "this room isn't ready on this computer yet",
     'chat.a-message-embeds-too-many-documents': 'this message embeds {count} documents - one message may carry {cap}',
