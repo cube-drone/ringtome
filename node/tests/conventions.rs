@@ -358,3 +358,28 @@ fn every_outbound_dial_goes_through_the_gate() {
          covers it - a dial that bypasses the gate makes every partition test quietly half-true."
     );
 }
+
+/// The tag cap, spelled twice: the wire refuses a tag past `MAX_TAG_CHARS`, and the client
+/// stops the typing at the same place so a chip the door would refuse never forms. They
+/// agree today; if they ever stop, the symptom is not a crash but the exact bug this pins
+/// (Curtis, 2026-09-20: a room tagged with a film script, made and quietly untagged).
+#[test]
+fn the_client_and_the_wire_cap_a_tag_alike() {
+    let js = Path::new(env!("CARGO_MANIFEST_DIR")).join("js/pure/annotations.js");
+    let source = std::fs::read_to_string(&js).expect("readable js/pure/annotations.js");
+    let line = source
+        .lines()
+        .find(|l| l.contains("export const MAX_TAG_CHARS"))
+        .expect("js/pure/annotations.js exports MAX_TAG_CHARS for the tag inputs");
+    let said: usize = line
+        .split('=')
+        .nth(1)
+        .and_then(|v| v.trim().trim_end_matches(';').parse().ok())
+        .expect("MAX_TAG_CHARS is a plain number");
+    assert_eq!(
+        said,
+        ringtome_proto::PublicAnnotation::MAX_TAG_CHARS,
+        "the client's tag cap and the wire's must be the same number, or an input lets \
+         somebody type a label the door will refuse and nothing says so"
+    );
+}

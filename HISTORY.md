@@ -9668,3 +9668,18 @@ passes it along, cal - whom ada has never met - finds it among his chats, opens 
 bea's trust, and reads ada's words on the key alone. And the negative: dana, handed the
 room's address as a leaked link would hand it to her, gets a refusal at the door and nothing
 of the room, because no node will give her the key. An address is still not a capability.
+
+## 2026-09-20: a tag the door would refuse never forms
+
+Curtis tagged a chat room with a film script, and the room was made with no tag and nothing
+said. The cause was the new-room form's own shape: the chips were a local list, the labels
+were said to the door only after the room was published, and a refusal there was swallowed
+on the theory that a refused label costs a label and never the room. It cost the words too.
+The tag cap has been the wire's since 2026-08-31 (a tag is 32 characters; every other
+annotation value 1024), so the door was right and only the form was quiet. Now the gesture
+is the gate: the tag inputs - the room form's, the post card's and the content-control
+list's - stop at the cap, a chip past it refuses with the number in the words, and a label
+that still does not stick is named out loud while the room opens anyway, since it exists
+either way and its post page takes labels like any post's. The client's copy of the number
+lives beside the display register in `pure/annotations.js`, and a conventions test reads it
+back and pins it to the wire's, because two spellings of one number is how this comes back.

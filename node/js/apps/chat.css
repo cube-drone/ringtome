@@ -172,6 +172,15 @@
     gap: 0.3rem;
 }
 
+/* The description's count, once it is past halfway - the composer's manners. */
+.chat-new-count {
+    margin: 0;
+    align-self: flex-end;
+    font-size: 0.75em;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+}
+
 .chat-new-tag {
     flex: 1;
     min-width: 8rem;

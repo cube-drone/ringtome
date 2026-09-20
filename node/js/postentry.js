@@ -28,7 +28,7 @@ import { descriptionOf, excerpt } from './pure/excerpt.js';
 // position, then the whole gemoji table - shared with the room's reaction picker
 // (emoji.js). One click says the emoji as a tag.
 import { POLE_EMOJI, EMOJI_PALETTE } from './emoji.js';
-import { groupLabels, isEmojiTag, visibleAnnotations } from './pure/annotations.js';
+import { groupLabels, isEmojiTag, visibleAnnotations, MAX_TAG_CHARS } from './pure/annotations.js';
 import {
     FEED_STYLE,
     publishedState,
@@ -1079,6 +1079,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           class="label-add-input"
                           maxlength="32"
                           placeholder=${t('postentry.tag-placeholder', 'a tag')}
+                          maxlength=${MAX_TAG_CHARS}
                           value=${tagInput}
                           ref=${(el) => el && el.focus()}
                           onInput=${(e) => setTagInput(e.currentTarget.value)}

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 863 phrases across 58 files.
+// 865 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -21,6 +21,8 @@ export default {
     'apps.chat.new-chat': '+ new chat',
     'apps.chat.no-rooms-yet-column': 'no chats yet',
     'apps.chat.left': 'left',
+    'apps.chat.a-tag-is-n-characters-at-most': 'a tag is {cap} characters at most',
+    'apps.chat.the-room-was-made-but-tags-didnt-stick': 'the room was made, but these tags did not stick: {tags}',
     'apps.chat.a-new-chat': 'a new chat',
     'apps.chat.a-name-for-the-room': 'a name for the room',
     'apps.chat.take-this-tag-off': 'take this tag off',

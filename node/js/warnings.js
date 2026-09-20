@@ -9,6 +9,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
+import { MAX_TAG_CHARS } from './pure/annotations.js';
 import { DEFAULT_BLUR, DEFAULT_HIDE, parseTagList, serializeTagList, normalizeTag } from './pure/warnings.js';
 
 const html = htm.bind(h);
@@ -90,6 +91,7 @@ const TagList = ({ root, which, label, hint }) => {
                 class="warn-add"
                 value=${draft}
                 placeholder=${t('warnings.add-a-tag', 'add a tag…')}
+                maxlength=${MAX_TAG_CHARS}
                 onInput=${(e) => setDraft(e.currentTarget.value)}
                 onKeyDown=${(e) => {
                     if (e.key === 'Enter' || e.key === ',') {

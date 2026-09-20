@@ -20,6 +20,7 @@ import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { openMirror, useLive } from '../mirror.js';
 import { tagCounts } from '../pure/contacttags.js';
+import { MAX_TAG_CHARS } from '../pure/annotations.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Modal } from '../modal.js';
@@ -53,6 +54,11 @@ import { insertNewlineAndIndent } from '@codemirror/commands';
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
 const CHAT_BUCKET = 'chat';
+/// A room's description, at most (Curtis, 2026-09-20): the room post's words, which stand
+/// at the top of the floor as the first thing said and ride every card. The wire would take
+/// far more - a post's body is capped by the node's document limit - so this is the app's
+/// own manners rather than the door's rule: a blurb, not an essay.
+const MAX_ROOM_WORDS = 1024;
 /// One message's words, at most - the wire's own cap (`ChatMessage::MAX_BODY_BYTES`), in
 /// bytes of UTF-8, which is what the door measures. The counter shows past the halfway mark
 /// and turns red past the cap, and the send button follows it (Curtis, 2026-09-19: "keep
@@ -163,6 +169,8 @@ const NewRoom = ({ root, onMade }) => {
     const [name, setName] = useState('');
     const [words, setWords] = useState('');
     const [audience, setAudience] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
     // What the room is about (Curtis, 2026-09-19): the creator's own labels on the room
     // post, said after it is published and shown beside it in every chats column.
     const [roomTags, setRoomTags] = useState([]);
@@ -171,10 +179,16 @@ const NewRoom = ({ root, onMade }) => {
         const value = (raw || '').trim().replace(/,+$/, '');
         setTagInput('');
         if (!value || roomTags.includes(value)) return;
+        // The door's own limit, met at the gesture (Curtis, 2026-09-20, having tagged a room
+        // with a film script): a chip the door would refuse must never form, or the room is
+        // made and the label quietly is not.
+        if ([...value].length > MAX_TAG_CHARS) {
+            setError(t('apps.chat.a-tag-is-n-characters-at-most', 'a tag is {cap} characters at most', { cap: MAX_TAG_CHARS }));
+            return;
+        }
+        setError(null);
         setRoomTags((have) => [...have, value]);
     };
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState(null);
     const contactRows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
     const tags = tagCounts(contactRows || []).map((c) => c.value);
     const make = async () => {
@@ -205,6 +219,7 @@ const NewRoom = ({ root, onMade }) => {
             // label, never the room.
             const said = [...roomTags];
             if (tagInput.trim()) said.push(tagInput.trim());
+            const refused = [];
             for (const value of said) {
                 try {
                     await api(`/api/identity/${root}/public-annotations/${root}/${posted.post_id}`, {
@@ -212,13 +227,18 @@ const NewRoom = ({ root, onMade }) => {
                         body: JSON.stringify({ key: 'tag', value }),
                     });
                 } catch {
-                    /* a refused label says nothing */
+                    refused.push(value);
                 }
             }
             setName('');
             setWords('');
             setRoomTags([]);
             setTagInput('');
+            // A label that did not stick is said out loud, and the room still opens: it
+            // exists either way, and its post page takes labels like any post's.
+            if (refused.length > 0) {
+                setError(t('apps.chat.the-room-was-made-but-tags-didnt-stick', 'the room was made, but these tags did not stick: {tags}', { tags: refused.join(', ') }));
+            }
             onMade(posted.post_id);
         } catch (e) {
             setError(e.message || String(e));
@@ -258,6 +278,7 @@ const NewRoom = ({ root, onMade }) => {
                 <input
                     class="chat-new-tag"
                     placeholder=${t('apps.chat.a-tag-optional', 'a tag (optional)')}
+                    maxlength=${MAX_TAG_CHARS}
                     value=${tagInput}
                     onInput=${(e) => setTagInput(e.currentTarget.value)}
                     onKeyDown=${(e) => {
@@ -272,9 +293,12 @@ const NewRoom = ({ root, onMade }) => {
             <textarea
                 class="chat-new-words"
                 placeholder=${t('apps.chat.what-is-it-for', 'what is it for? (optional)')}
+                maxlength=${MAX_ROOM_WORDS}
                 value=${words}
                 onInput=${(e) => setWords(e.currentTarget.value)}
             ></textarea>
+            ${words.length > MAX_ROOM_WORDS / 2 &&
+            html`<p class="chat-new-count">${words.length} / ${MAX_ROOM_WORDS}</p>`}
             <div class="chat-new-foot">
                 <label class="feed-settle">
                     ${t('apps.chat.only-show-to', 'only show to')}

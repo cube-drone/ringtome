@@ -48,6 +48,11 @@ export function groupLabels(labels, { author }) {
  * would bless bare digits.
  */
 const ONE_EMOJI = /^\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*$/u;
+/// A tag's length, in characters - `PublicAnnotation::MAX_TAG_CHARS` on the wire, which is
+/// the authority; this is the client's copy, so an input can stop at the same place the
+/// door would refuse (Curtis, 2026-09-20). A Rust test pins the two equal.
+export const MAX_TAG_CHARS = 32;
+
 export function isEmojiTag(value) {
     return typeof value === 'string' && ONE_EMOJI.test(value);
 }
