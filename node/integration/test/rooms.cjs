@@ -119,6 +119,33 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(entered.trusted_only, true);
     });
 
+    it("the creator tags a room, and the tags ride it into everyone's list - a sealed room's only to those it admits", async () => {
+        const tagsOf = async (who, root, doc) => ((await rooms(who, root)).find((r) => r.doc_id === doc) || {}).tags || [];
+        for (const [doc, value] of [[kitchen, "bread"], [kitchen, "baking"], [cellar, "secret"]]) {
+            const put = await j(ada, `api/identity/${adaRoot}/public-annotations/${adaRoot}/${doc}`, { key: "tag", value }, "PUT");
+            assert.equal(put.status, 200, await put.text());
+        }
+        assert.deepEqual(await tagsOf(ada, adaRoot, kitchen), ["baking", "bread"], "her own list wears them, sorted");
+        assert.deepEqual(await tagsOf(ada, adaRoot, cellar), ["secret"], "the sealed room's too, for its author");
+        // Bea, trusted: both rooms' tags reach her, the sealed one's through the seal.
+        let hers = [];
+        for (let i = 0; i < 30; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            hers = await tagsOf(bea, beaRoot, kitchen);
+            if (hers.length === 2) break;
+            await wait(300);
+        }
+        assert.deepEqual(hers, ["baking", "bread"], `the open room's tags reached bea: ${JSON.stringify(hers)}`);
+        let sealed = [];
+        for (let i = 0; i < 30; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            sealed = await tagsOf(bea, beaRoot, cellar);
+            if (sealed.length === 1) break;
+            await wait(300);
+        }
+        assert.deepEqual(sealed, ["secret"], `the sealed room's tags open for a reader it admits: ${JSON.stringify(sealed)}`);
+    });
+
     it("a stranger enters the open room by link, is refused the sealed one, and can leave", async () => {
         const seen = await cal(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
         if (seen.status !== 200) this.skip();

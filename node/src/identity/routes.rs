@@ -923,6 +923,10 @@ struct RoomItem {
     /// until rejoined.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     left: bool,
+    /// The creator's own labels on the room post (Curtis, 2026-09-19): what the room is
+    /// about, said as public annotations and read back through the seal like any label.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
     /// Closed (CHAT.md, ruling 10): the settled wish on the room post - the record stands,
     /// nobody says more.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -1006,6 +1010,7 @@ async fn rooms_handler(
             mine: true,
             joined: false,
             left: false,
+            tags: Vec::new(),
             closed: p.settled,
             author_name: None,
             author_avatar: None,
@@ -1036,6 +1041,7 @@ async fn rooms_handler(
             mine: false,
             joined: false,
             left: false,
+            tags: Vec::new(),
             closed: r.settled,
             author_name: None,
             author_avatar: None,
@@ -1074,6 +1080,7 @@ async fn rooms_handler(
             mine: false,
             joined: !is_left,
             left: is_left,
+            tags: Vec::new(),
             closed: h.settled,
             author_name: None,
             author_avatar: None,
@@ -1081,6 +1088,23 @@ async fn rooms_handler(
             seen_ms: None,
             unread: false,
         });
+    }
+    // The creator's own labels on each room (Curtis, 2026-09-19), one lookup: what the room
+    // is about, in the creator's words. A sealed room's labels open for a reader the seal
+    // admits and stay shut for everyone else, as every label does.
+    let pairs: Vec<(String, String)> = items.iter().map(|i| (i.author.clone(), i.doc_id.clone())).collect();
+    let labels = crate::annotations::for_posts(&state, &pairs, Some(&root))
+        .await
+        .map_err(AppError::Internal)?;
+    for item in items.iter_mut() {
+        if let Some(known) = labels.get(&(item.author.clone(), item.doc_id.clone())) {
+            for a in known.iter().filter(|a| a.annotator == item.author && a.key == "tag") {
+                if !item.tags.contains(&a.value) {
+                    item.tags.push(a.value.clone());
+                }
+            }
+            item.tags.sort();
+        }
     }
     // Bylines, one lookup for everyone named.
     let authors: Vec<String> = items.iter().map(|i| i.author.clone()).collect();

@@ -9608,3 +9608,17 @@ the composer under an "editing a line" banner with a way out, and the next send 
 again as the edit; delete asks in the house modal first. The feed suite's claim: a typo
 edited in place with the reaction kept, on both nodes; deleted from both; bea refused to
 edit ada's line; deleting twice refused.
+
+## 2026-09-19: rooms wear their creator's tags
+
+Curtis: the creator should be able to tag a room at creation, and the tags should show in
+the chats column. No new mechanism was needed: a room is a post, and a post's labels are
+public annotations that already travel with it, seal under its key when it is sealed, and
+open for readers the seal admits. The new-chat form gained a tag field - chips, comma or
+Enter to add, an x to take one off - and says each as a label on the room post the moment
+it is published; the rooms door dresses every room with its creator's own tag labels, one
+lookup for the page, sorted; the column shows them beside the owner's chip. Later tagging
+needs nothing new either: the room's post page has the label strip every post has. The
+rooms suite's new claim: two tags on the open room and one on the sealed one, sorted in
+ada's list, reaching bea's through the feed, and the sealed room's opening for her because
+ada trusts her.

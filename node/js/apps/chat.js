@@ -120,7 +120,10 @@ const RoomRow = ({ room, current, selected }) => {
                 <span class="chat-row-name">${room.closed && html`<${Icons.settled} />`} ${roomName(words, room)}</span>
                 <span class="chat-row-when">${room.latest_ms ? whenWords(room.latest_ms) : t('apps.chat.quiet', 'quiet')}</span>
             </span>
-            <span class="chat-row-by"><${PersonChip} root=${room.author} current=${current} /></span>
+            <span class="chat-row-by">
+                <${PersonChip} root=${room.author} current=${current} />
+                ${(room.tags || []).map((value) => html`<span class="chat-row-tag" key=${value}>${value}</span>`)}
+            </span>
         </span>
     </li>`;
 };
@@ -159,6 +162,16 @@ const NewRoom = ({ root, onMade }) => {
     const [name, setName] = useState('');
     const [words, setWords] = useState('');
     const [audience, setAudience] = useState('');
+    // What the room is about (Curtis, 2026-09-19): the creator's own labels on the room
+    // post, said after it is published and shown beside it in every chats column.
+    const [roomTags, setRoomTags] = useState([]);
+    const [tagInput, setTagInput] = useState('');
+    const addRoomTag = (raw) => {
+        const value = (raw || '').trim().replace(/,+$/, '');
+        setTagInput('');
+        if (!value || roomTags.includes(value)) return;
+        setRoomTags((have) => [...have, value]);
+    };
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const contactRows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
@@ -186,8 +199,25 @@ const NewRoom = ({ root, onMade }) => {
                 method: 'POST',
                 body: JSON.stringify({ room: true, tz_offset_min: new Date().getTimezoneOffset(), ...wish }),
             });
+            // The labels go on the POST (they travel with it), and a sealed room's seal
+            // under its key - the door does both. Best-effort: a refused label costs a
+            // label, never the room.
+            const said = [...roomTags];
+            if (tagInput.trim()) said.push(tagInput.trim());
+            for (const value of said) {
+                try {
+                    await api(`/api/identity/${root}/public-annotations/${root}/${posted.post_id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ key: 'tag', value }),
+                    });
+                } catch {
+                    /* a refused label says nothing */
+                }
+            }
             setName('');
             setWords('');
+            setRoomTags([]);
+            setTagInput('');
             onMade(posted.post_id);
         } catch (e) {
             setError(e.message || String(e));
@@ -212,6 +242,32 @@ const NewRoom = ({ root, onMade }) => {
                 value=${name}
                 onInput=${(e) => setName(e.currentTarget.value)}
             />
+            <div class="chat-new-tags">
+                ${roomTags.map(
+                    (value) => html`<span class="label-chip" key=${value}>
+                        ${value}
+                        <button
+                            class="label-x"
+                            type="button"
+                            title=${t('apps.chat.take-this-tag-off', 'take this tag off')}
+                            onClick=${() => setRoomTags((have) => have.filter((v) => v !== value))}
+                        >×</button>
+                    </span>`
+                )}
+                <input
+                    class="chat-new-tag"
+                    placeholder=${t('apps.chat.a-tag-optional', 'a tag (optional)')}
+                    value=${tagInput}
+                    onInput=${(e) => setTagInput(e.currentTarget.value)}
+                    onKeyDown=${(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                            e.preventDefault();
+                            addRoomTag(e.currentTarget.value);
+                        }
+                    }}
+                    onBlur=${(e) => addRoomTag(e.currentTarget.value)}
+                />
+            </div>
             <textarea
                 class="chat-new-words"
                 placeholder=${t('apps.chat.what-is-it-for', 'what is it for? (optional)')}

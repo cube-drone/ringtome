@@ -147,7 +147,39 @@
 }
 
 .chat-row-by {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
     font-size: 0.8em;
+}
+
+/* What the room is about, in its creator's words. */
+.chat-row-tag {
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    --j: 3px;
+    clip-path: var(--jag-1);
+    padding: 0 0.35rem;
+    white-space: nowrap;
+}
+
+/* The tags on the new-chat form: chips, then the input that makes them. */
+.chat-new-tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.chat-new-tag {
+    flex: 1;
+    min-width: 8rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 0.35rem 0.5rem;
 }
 
 /* The right side: a room, the new-chat form, or the null state. */
