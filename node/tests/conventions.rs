@@ -44,6 +44,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("post_search", vec!["search.rs"]),
         ("room_messages", vec!["chat.rs"]),
         ("rooms_open", vec!["chat.rs"]),
+        ("room_reactions", vec!["chat.rs"]),
         ("room_archives", vec!["chat.rs"]),
         ("node_shelf", vec!["nodeshelf.rs"]),
         ("node_listing", vec!["nodeshelf.rs"]),

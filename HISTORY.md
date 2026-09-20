@@ -9523,3 +9523,35 @@ computer" and "you" wherever a person reads them rather than manages them; and t
 refusals a person actually meets ("invalid credentials", "consecutive separators", "rate
 limit exceeded", "this note is diverged") speak like the rest of the app. Keys unchanged,
 placeholders kept, the suites' regexes on "closed" and "sealed" still true.
+
+## 2026-09-19: emoji replies
+
+CHAT.md slice 9, Slack's shape as Curtis asked for it. A reaction is a message on the
+reactor's own room chain that names the line it answers - `reacts_to`, an additive wire
+key, the target's hash - with the emoji's shortcode for its body, sealed as the room's
+words are. The fold files it in a new memo, `room_reactions` (node schema 52, `just clean`
+owed), never among the lines; the history door stacks a page's reactions under their
+targets, once per person per emoji however often they said it, most-said first, with who -
+opened with the room's key when sealed - and the archive hands a page's reactions over
+with the page. The say door takes `reacts_to` and refuses anything but one shortcode, or a
+line it does not hold. On the floor, hovering a line shows a small menu: the smiley opens
+the picker (the post card's palette, moved out to a shared `emoji.js` - not under pure/,
+since it leans on the gemoji package, which the pure cop rightly refused), and a line of
+one's own also shows edit and delete, disabled until slice 8. The stacks sit under the
+words as pills, yours outlined, who on hover, and clicking one says the same emoji. The
+feed suite's claim: two thumbs and a heart, ordered by count, bea's second thumb counted
+once, a word refused, an unknown line refused, and no reaction shown as a line.
+
+## 2026-09-19: taking an emoji back
+
+Curtis: "can I click on an emoji to remove an emoji from a post, too?" A reaction is a message
+on the reactor's chain, and a chain never forgets, so taking one back is another message
+that names it: `ChatMessage.retracts` (an additive wire key, the earlier entry's hash),
+which the fold marks withdrawn on the memo row it names - chain order puts the original
+before its retraction, a re-fold's insert is ignored, and the stacks and the archive skip
+withdrawn rows. The say door takes `retract` beside `reacts_to`, refuses taking back what
+was never said, and withdraws every standing copy of that emoji by that person, since the
+stack counted them once however often they said it (the first cut withdrew only the latest,
+and bea's earlier thumb went on counting). On the floor, a pill you are in takes yours back
+on click; one you are not says it. The same key is slice 8's delete. The feed suite's claim
+now takes a thumb back, watches it stop counting on the creator's node, and says it again.

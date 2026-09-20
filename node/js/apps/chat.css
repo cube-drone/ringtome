@@ -309,9 +309,106 @@
 
 /* Tight: a lot of conversation on one screen (Curtis, 2026-09-18). */
 .chat-line {
+    position: relative;
     width: 100%;
     padding: 0.05rem 0.3rem;
     line-height: 1.3;
+}
+
+/* The hover menu (CHAT.md, slice 9): a small strip at the line's top right, shown on hover
+   or while its picker is open. */
+.chat-line-menu {
+    position: absolute;
+    right: 0.4rem;
+    top: -0.55rem;
+    display: none;
+    align-items: center;
+    gap: 0.1rem;
+    padding: 0.05rem 0.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    z-index: 5;
+}
+
+.chat-line:hover .chat-line-menu,
+.chat-line-menu:has(.chat-emoji-pop) {
+    display: inline-flex;
+}
+
+.chat-line-act {
+    background: none;
+    border: none;
+    color: var(--ink);
+    padding: 0.15rem 0.3rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.chat-line-act:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.chat-emoji-pop {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    width: 16rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.3rem;
+    z-index: 40;
+}
+
+.chat-emoji-search {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 0.85em;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--ink);
+    margin-bottom: 0.25rem;
+}
+
+/* The strip class comes from the post card's palette; here it sits in the flow of the pop. */
+.chat-emoji-pop .chat-emoji-strip {
+    position: static;
+    width: auto;
+    max-height: 11rem;
+    overflow-y: auto;
+}
+
+/* The stacks under a line: emoji and a count, most-said first, who on hover. */
+.chat-reacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.15rem;
+}
+
+.chat-react {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font: inherit;
+    font-size: 0.85em;
+    padding: 0 0.45rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.chat-react-mine {
+    border-color: var(--teal);
+    background: var(--surface-2);
+}
+
+.chat-react-glyph {
+    font-size: 1.1em;
 }
 
 .chat-line:hover {

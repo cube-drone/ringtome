@@ -983,6 +983,27 @@ CREATE TABLE room_messages (
 );
 CREATE INDEX room_messages_by_room ON room_messages (room_author, room_doc, said_ms);
 
+-- Emoji reactions (CHAT.md, slice 9): a reaction is a message on the reactor's own room
+-- chain that names the message it answers; the fold files it here rather than among the
+-- lines, and the history door stacks it under its target. Same shape as room_messages, plus
+-- the target; the body is the emoji's shortcode, sealed as the room's words are.
+CREATE TABLE room_reactions (
+    room_author  TEXT    NOT NULL,
+    room_doc     TEXT    NOT NULL,
+    target_hash  BLOB    NOT NULL,   -- the message answered
+    speaker_root TEXT    NOT NULL,
+    speaker_leaf TEXT    NOT NULL,
+    seq          INTEGER NOT NULL,
+    said_ms      INTEGER NOT NULL,
+    entry_hash   BLOB    NOT NULL,
+    body         BLOB    NOT NULL,
+    sealed       INTEGER NOT NULL DEFAULT 0,
+    noted_ms     INTEGER NOT NULL,
+    withdrawn    INTEGER NOT NULL DEFAULT 0, -- taken back by a later entry of the speaker's (`retracts`)
+    PRIMARY KEY (speaker_leaf, room_doc, seq)
+);
+CREATE INDEX room_reactions_by_target ON room_reactions (room_author, room_doc, target_hash);
+
 -- Rooms this node keeps WHOLE by its operator's choice (CHAT.md, ruling 6: the full-sync
 -- button) - the volunteer archive beside the creator's node, which keeps its own rooms whole
 -- without being asked. Retention never prunes an archived room.

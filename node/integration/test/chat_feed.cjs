@@ -208,6 +208,73 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal((await snapshot()).unread_chat, 0, "looked, and one's own words are not unseen");
     });
 
+    it("an emoji said in answer to a line stacks under it - once per person per emoji, most-said first, with who - and is no line itself", async () => {
+        const history = async (who, root) => (await (await who(`api/identity/${root}/rooms/${adaRoot}/${room}/messages`)).json());
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "react to this" });
+        assert.equal(said.status, 200, await said.text());
+        let line = null;
+        for (let i = 0; i < 30 && !line; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            line = (await history(bea, beaRoot)).items.find((m) => m.words === "react to this");
+            if (!line) await wait(300);
+        }
+        assert.ok(line, "bea sees the line");
+        // Bea twice with one emoji (counts once), ada with two; a word is not a reaction;
+        // a line nobody holds cannot be answered.
+        for (const [who, root, code] of [[bea, beaRoot, ":+1:"], [bea, beaRoot, ":+1:"], [ada, adaRoot, ":+1:"], [ada, adaRoot, ":heart:"]]) {
+            const r = await j(who, `api/identity/${root}/rooms/${adaRoot}/${room}/messages`, { words: code, reacts_to: line.hash });
+            assert.equal(r.status, 200, await r.text());
+        }
+        const notEmoji = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "thumbs up", reacts_to: line.hash });
+        assert.equal(notEmoji.status, 400, await notEmoji.text());
+        const nowhere = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: ":+1:", reacts_to: "ab".repeat(32) });
+        assert.equal(nowhere.status, 404, await nowhere.text());
+        // On ada's node, the directory of record, once bea's chain lands.
+        let stacked = null;
+        for (let i = 0; i < 30; i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            const h = await history(ada, adaRoot);
+            const l = h.items.find((m) => m.hash === line.hash);
+            if (l && (l.reactions || []).some((r) => r.emoji === ":+1:" && r.count === 2)) {
+                stacked = { h, l };
+                break;
+            }
+            await wait(300);
+        }
+        assert.ok(stacked, "the stacks assembled on ada's node");
+        assert.deepEqual(stacked.l.reactions.map((r) => [r.emoji, r.count]), [[":+1:", 2], [":heart:", 1]], `most-said first: ${JSON.stringify(stacked.l.reactions)}`);
+        assert.deepEqual(stacked.l.reactions[0].who.map((w) => w.root).sort(), [adaRoot, beaRoot].sort(), "who said the thumbs");
+        assert.ok(!stacked.h.items.some((m) => m.words === ":+1:" || m.words === ":heart:"), "a reaction is no line of its own");
+        // Taken back: bea withdraws her thumb, and it stops counting once her chain lands;
+        // said again, it counts again. Taking back what one never said is refused.
+        const back = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: ":+1:", reacts_to: line.hash, retract: true });
+        assert.equal(back.status, 200, await back.text());
+        const never = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: ":heart:", reacts_to: line.hash, retract: true });
+        assert.equal(never.status, 404, await never.text());
+        const stackOf = async (who, root, emoji) => (((await history(who, root)).items.find((m) => m.hash === line.hash) || {}).reactions || []).find((r) => r.emoji === emoji);
+        let thumbs = null;
+        for (let i = 0; i < 30; i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            thumbs = await stackOf(ada, adaRoot, ":+1:");
+            if (thumbs && thumbs.count === 1) break;
+            await wait(300);
+        }
+        assert.ok(thumbs && thumbs.count === 1 && thumbs.who[0].root === adaRoot, `bea's thumb is withdrawn on ada's node: ${JSON.stringify(thumbs)}`);
+        const again = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: ":+1:", reacts_to: line.hash });
+        assert.equal(again.status, 200, await again.text());
+        for (let i = 0; i < 30; i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            thumbs = await stackOf(ada, adaRoot, ":+1:");
+            if (thumbs && thumbs.count === 2) break;
+            await wait(300);
+        }
+        assert.equal(thumbs && thumbs.count, 2, "said again, it counts again");
+    });
+
     it("the owner closes the room (the record stands, nobody says more, and closed stays closed), then takes it down (it leaves every list)", async () => {
         const roomsOf = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
         // The room's own draft, by its publication: what the page finds on the mirror.

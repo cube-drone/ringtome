@@ -48,6 +48,7 @@ import {
     ArrowRight,
     UploadSimple,
     PaperPlaneRight,
+    Smiley,
     CheckCircle,
     LinkSimple,
     FileImage,
@@ -134,6 +135,8 @@ export const Icons = {
     upload: UploadSimple,
     // say it: the chat composer's send
     send: PaperPlaneRight,
+    // answer a line with an emoji (CHAT.md, slice 9)
+    smiley: Smiley,
     done: CheckCircle,
     // media document kinds (tree rows, list rows)
     fileImage: FileImage,

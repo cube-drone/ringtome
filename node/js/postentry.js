@@ -24,33 +24,10 @@ import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
-import { nameToEmoji } from 'gemoji';
 // The reaction palette under the open tag input (Curtis, 2026-08-31): the nine in pole
-// position, then the whole gemoji table - the same table the marquee editor's `:` completions
-// draw from - deduped (gemoji aliases share characters) and scrollable. One click says the
-// emoji as a tag; there is no separate "react" machinery to build or explain.
-const POLE_EMOJI = [
-    ['heart', '\u2764\uFE0F'],
-    ['thumbs up', '\u{1F44D}'],
-    ['thumbs down', '\u{1F44E}'],
-    ['rofl', '\u{1F923}'],
-    ['crying', '\u{1F622}'],
-    ['rolling eyes', '\u{1F644}'],
-    ['thinking', '\u{1F914}'],
-    ['partying', '\u{1F973}'],
-    ['people hugging', '\u{1FAC2}'],
-    ['poop', '\u{1F4A9}'],
-];
-const EMOJI_PALETTE = (() => {
-    const seen = new Set(POLE_EMOJI.map(([, ch]) => ch));
-    const rest = [];
-    for (const [name, ch] of Object.entries(nameToEmoji)) {
-        if (seen.has(ch)) continue;
-        seen.add(ch);
-        rest.push([name, ch]);
-    }
-    return rest;
-})();
+// position, then the whole gemoji table - shared with the room's reaction picker
+// (emoji.js). One click says the emoji as a tag.
+import { POLE_EMOJI, EMOJI_PALETTE } from './emoji.js';
 import { groupLabels, isEmojiTag, visibleAnnotations } from './pure/annotations.js';
 import {
     FEED_STYLE,

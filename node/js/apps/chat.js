@@ -23,6 +23,7 @@ import { tagCounts } from '../pure/contacttags.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Modal } from '../modal.js';
+import { POLE_EMOJI, EMOJI_PALETTE, shortcodeOf, glyphOf } from '../emoji.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from '../doc/completions.js';
@@ -230,21 +231,94 @@ const Speaker = ({ root, current }) => {
     </a>`;
 };
 
+/// The emoji picker under a line's hover menu (CHAT.md, slice 9): the pole ten, then the
+/// whole table, narrowed as you type a name. One click says the emoji.
+const EmojiPicker = ({ onPick, onClose }) => {
+    const [q, setQ] = useState('');
+    const needle = q.trim().toLowerCase();
+    const hit = ([name]) => !needle || name.replace(/_/g, ' ').includes(needle);
+    const pole = POLE_EMOJI.filter(hit);
+    const rest = EMOJI_PALETTE.filter(hit);
+    const chip = ([name, ch]) => html`<button
+        class="label-emoji"
+        key=${name}
+        title=${name}
+        type="button"
+        onMouseDown=${(e) => e.preventDefault()}
+        onClick=${() => onPick(ch)}
+    >${ch}</button>`;
+    return html`<span class="chat-emoji-pop" onMouseDown=${(e) => e.stopPropagation()}>
+        <input
+            class="chat-emoji-search"
+            placeholder=${t('apps.chat.find-an-emoji', 'find an emoji…')}
+            value=${q}
+            autofocus
+            onInput=${(e) => setQ(e.currentTarget.value)}
+            onKeyDown=${(e) => {
+                if (e.key === 'Escape') onClose();
+            }}
+        />
+        <span class="label-emoji-strip chat-emoji-strip">
+            ${pole.map(chip)}
+            ${pole.length > 0 && rest.length > 0 && html`<span class="label-emoji-pole-break"></span>`}
+            ${rest.map(chip)}
+        </span>
+    </span>`;
+};
+
 /// One line on the floor. `cont` is a line by the same speaker as the one before it: the
-/// speaker is implied, so it wears no card (IRC's and Slack's run-of-lines).
-const Line = ({ m, current, cont }) => {
+/// speaker is implied, so it wears no card (IRC's and Slack's run-of-lines). Hovering a
+/// line shows its menu (CHAT.md, slice 9): the smiley opens the emoji picker; a line of
+/// one's own also offers edit and delete, which slice 8 will wire. The emoji said in answer
+/// stack under the words, most-said first, who on hover.
+const Line = ({ m, current, cont, onReact }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
+    const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    const mine = !!current && current.root === m.speaker;
+    const whoSaid = (r) => r.who.map((w) => w.name || speakable(w.root)).join(', ');
     return html`<li class=${cont ? 'chat-line chat-line-cont' : 'chat-line'}>
         ${!cont &&
         html`<div class="chat-line-head">
             <${Speaker} root=${m.speaker} current=${current} />
             <span class="chat-line-when">${when}</span>
         </div>`}
+        ${!!onReact &&
+        html`<span class="chat-line-menu">
+            <button class="chat-line-act" type="button" title=${t('apps.chat.react-with-an-emoji', 'react with an emoji')} onClick=${() => setPicking((p) => !p)}>
+                <${Icons.smiley} />
+            </button>
+            ${mine &&
+            html`<button class="chat-line-act" type="button" disabled title=${t('apps.chat.edit-soon', 'edit (coming soon)')}><${Icons.rename} /></button>
+                <button class="chat-line-act" type="button" disabled title=${t('apps.chat.delete-soon', 'delete (coming soon)')}><${Icons.trash} /></button>`}
+            ${picking &&
+            html`<${EmojiPicker}
+                onClose=${() => setPicking(false)}
+                onPick=${(glyph) => {
+                    setPicking(false);
+                    const code = shortcodeOf(glyph);
+                    if (code) onReact(m.hash, code);
+                }}
+            />`}
+        </span>`}
         <div class="chat-line-body" title=${cont ? when : undefined}>
             ${m.words === null
                 ? html`<span class="chat-msg-sealed"><${Icons.trustPrivate} /> ${t('apps.chat.sealed-words-you-cannot-open', 'sealed words this computer cannot open')}</span>`
                 : html`<${MarqueeBody} source=${m.words} profile=${profile} onUnparsable=${bareSource} />`}
+            ${(m.reactions || []).length > 0 &&
+            html`<span class="chat-reacts">
+                ${m.reactions.map((r) => {
+                    // A pill you are in takes yours back; one you are not says it too.
+                    const mine = r.who.some((w) => !!current && w.root === current.root);
+                    return html`<button
+                        class=${mine ? 'chat-react chat-react-mine' : 'chat-react'}
+                        type="button"
+                        key=${r.emoji}
+                        title=${mine ? t('apps.chat.who-said-click-to-take-yours-back', '{who} - click to take yours back', { who: whoSaid(r) }) : whoSaid(r)}
+                        onClick=${() => onReact && onReact(m.hash, r.emoji, mine)}
+                    ><span class="chat-react-glyph">${glyphOf(r.emoji)}</span> ${r.count}</button>`;
+                })}
+            </span>`}
         </div>
     </li>`;
 };
@@ -550,6 +624,19 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             setClosing(false);
         }
     };
+    // A reaction (slice 9): an emoji said in answer to a line - a message on this persona's
+    // own chain that names the line, stacked under it by the door.
+    const react = async (hash, code, retract = false) => {
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ words: code, reacts_to: hash, retract }),
+            });
+            readHistory();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        }
+    };
     const takeDown = async () => {
         setGoing(true);
         try {
@@ -679,7 +766,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             </div>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
-                ${lines.map((m, i) => html`<${Line} key=${m.hash} m=${m} current=${current} cont=${i > 0 && lines[i - 1].speaker === m.speaker} />`)}
+                ${lines.map((m, i) => html`<${Line} key=${m.hash} m=${m} current=${current} cont=${i > 0 && lines[i - 1].speaker === m.speaker} onReact=${m.post || room.left || (history && history.closed) ? null : react} />`)}
             </ul>
             ${/* Typing shows where the next line will land: at the end of the floor. */ ''}
             ${typing.length > 0 &&

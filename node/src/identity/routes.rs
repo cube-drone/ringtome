@@ -1376,6 +1376,10 @@ async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> R
 #[derive(Deserialize)]
 struct SayRequest {
     words: String,
+    /// The line this answers with an emoji (CHAT.md, slice 9): its hash, hex.
+    reacts_to: Option<String>,
+    /// Take the emoji back instead of saying it (slice 9).
+    retract: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -1394,7 +1398,11 @@ async fn room_say_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words).await?;
+    let reacts_to = match req.reacts_to.as_deref() {
+        Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
+        None => None,
+    };
+    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words, reacts_to, req.retract.unwrap_or(false)).await?;
     Ok(Json(serde_json::json!({ "seq": seq, "said_ms": said_ms })))
 }
 

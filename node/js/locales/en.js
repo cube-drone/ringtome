@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 843 phrases across 58 files.
+// 851 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -30,7 +30,12 @@ export default {
     'apps.chat.people-i-trust': 'people I trust',
     'apps.chat.opening': 'opening…',
     'apps.chat.open-a-room': 'open a room',
+    'apps.chat.find-an-emoji': 'find an emoji…',
+    'apps.chat.react-with-an-emoji': 'react with an emoji',
+    'apps.chat.edit-soon': 'edit (coming soon)',
+    'apps.chat.delete-soon': 'delete (coming soon)',
     'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
+    'apps.chat.who-said-click-to-take-yours-back': '{who} - click to take yours back',
     'apps.chat.knocking': 'knocking…',
     'apps.chat.this-room-is-not-open-to-you': 'this room is not open to you',
     'apps.chat.trusted-and-onward': 'trusted, and onward',
@@ -758,6 +763,9 @@ export default {
 
     // --- node/src/chat.rs ---
     'chat.say-something': 'say something',
+    'chat.a-reaction-is-one-emoji': 'a reaction is one emoji',
+    'chat.you-havent-said-that-emoji-here': "you haven't said that emoji here",
+    'chat.no-such-line-to-react-to': "that line isn't here to react to",
     'chat.that-is-too-long-for-one-message': 'that is too long for one message',
     'chat.no-such-room-is-held-here': "can't find that room",
     'chat.that-post-is-not-a-room': 'that post is not a room',

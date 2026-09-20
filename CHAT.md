@@ -296,7 +296,19 @@ node keeps its own room whole, which is where "all of it" lives.
    about orphaned chains. Suite: the feed suite's owner claim - closed here and there, the
    next word refused, the wish never lifted, the takedown gone from every list.
 8. **Deleting & Editing Messags**
-9. **Emoji Responses**
+9. **Emoji Responses.** **Built 2026-09-19.** Slack's shape: an emoji said in answer to a
+   line is a message on the reactor's own room chain (`ChatMessage.reacts_to`, key 5, the
+   target's hash; the body its shortcode, sealed as the room's words are), filed by the
+   fold in `room_reactions` (node schema 52) rather than among the lines, served by the
+   history door stacked under its target - once per person per emoji, most-said first, who
+   on hover - and by the archive with the page it answers. Hovering a line shows its menu:
+   the smiley opens the picker (the post card's palette, shared through `emoji.js`), and a
+   line of one's own also shows edit and delete, unwired until slice 8. Un-reacting is
+   built: clicking a pill one is in takes the emoji back - a message that `retracts` (key 6)
+   an earlier entry of the speaker's, one per standing copy, which the fold marks withdrawn
+   in the memo (the chain keeps both; the stacks stop counting). The same key is slice 8's
+   delete. The rooms badge and the bold ignore reactions. Suite: the feed suite's reaction
+   claim, take-back and re-say included.
 10. **The Mute List**
 
 ## Settled questions and residuals
