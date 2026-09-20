@@ -33,6 +33,15 @@ const hasTrust = (v) => !!v && v !== 'none';
 const HIDE_UNTRUSTED_PREF = 'chat.hide-untrusted';
 /// Whether some words embed media - a picture, a sound, a clip - by Marquee's two spellings.
 export const embedsMedia = (words) => /!\[|:::media\b/.test(words || '');
+/// Whether a line is nothing but emoji (Curtis, 2026-09-19: such a line reads at 150%) - the
+/// picker's `:name:` shortcodes and the glyphs themselves, with their modifiers and joiners,
+/// and whitespace between; up to a handful, so a wall of them stays a wall.
+const EMOJI_ONLY = /^(?:\s|:[a-z0-9_+-]+:|\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*)+$/u;
+const onlyEmoji = (words) => {
+    if (!words || !words.trim() || !EMOJI_ONLY.test(words)) return false;
+    const count = (words.match(/:[a-z0-9_+-]+:|\p{Extended_Pictographic}/gu) || []).length;
+    return count > 0 && count <= 8;
+};
 import { POLE_EMOJI, EMOJI_PALETTE, shortcodeOf, glyphOf } from '../emoji.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -290,7 +299,7 @@ const Line = ({ m, current, cont, onReact, untrusted }) => {
     // A speaker this reader has not placed reads small and gray: present, unimportant. Their
     // media wears the feed's veil until clicked (Curtis, 2026-09-19: "baddies might want to
     // pop on to a chat channel and drop in nasty images or sounds").
-    const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : ''].filter(Boolean).join(' ');
+    const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : '', onlyEmoji(m.words) ? 'chat-line-emoji' : ''].filter(Boolean).join(' ');
     const [revealed, setRevealed] = useState(false);
     const veiled = untrusted && !revealed && m.words !== null && embedsMedia(m.words);
     return html`<li class=${cls} title=${untrusted ? t('apps.chat.someone-you-dont-trust', "someone you don't trust") : undefined}>

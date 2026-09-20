@@ -466,6 +466,12 @@
     color: var(--muted);
 }
 
+/* A line of nothing but emoji reads at 150% (Curtis, 2026-09-19). */
+.chat-line-emoji .chat-line-body {
+    font-size: 1.5em;
+    line-height: 1.25;
+}
+
 /* A stranger's media, veiled: the feed's blur and button, sized to a line. */
 .chat-line-veil {
     max-width: 28rem;
