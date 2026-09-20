@@ -42,6 +42,11 @@ export const SEAL_PREFIX = 'seal:';
 /// A document's remembered editor view mode. Domain: a key of doc/editor.js's `MODES`.
 export const viewModeKey = (docId) => `mode:${docId}`;
 
+/// The chat room this browser had open (Curtis, 2026-09-20: close the app, come back, and
+/// the conversation is where you left it). Domain: `<author>/<doc>`, or absent for none.
+/// A singleton, like the browser it belongs to - never the persona's, never the node's.
+export const OPEN_ROOM_KEY = 'chat:room';
+
 
 // --- reading ---
 

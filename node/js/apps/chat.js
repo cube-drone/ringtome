@@ -24,7 +24,7 @@ import { MAX_TAG_CHARS } from '../pure/annotations.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Modal } from '../modal.js';
-import { usePref } from '../mirror/prefs.js';
+import { usePref, OPEN_ROOM_KEY } from '../mirror/prefs.js';
 
 /// Whether a trust dial says anything: absent or "none" is a stranger, whatever else a
 /// person this reader has placed (Curtis, 2026-09-19: untrusted speakers read small and
@@ -1190,6 +1190,11 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [page, setPage] = useState(null);
+    // Where this browser was (Curtis, 2026-09-20): the room last opened here, remembered
+    // across a close and a refresh, and only here - a per-browser gesture, like a tucked
+    // column, never a fact about the persona.
+    const [wasOpen, setWasOpen] = usePref(root, OPEN_ROOM_KEY, '');
+    const restored = useRef(false);
     const { tucked, toggleTuck } = useColTucks(root, APP_ID, []);
     const { resizer, colStyle } = useColWidths(root, APP_ID, ['rooms'], { rooms: 180 });
     const load = () => {
@@ -1199,6 +1204,25 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
             .catch(() => {});
     };
     useEffect(load, [root]);
+    useEffect(() => {
+        if (author && doc) {
+            restored.current = true;
+            if (wasOpen !== `${author}/${doc}`) setWasOpen(`${author}/${doc}`);
+            return;
+        }
+        // Nothing named in the address: walk back into the remembered room, once, and only
+        // when it is still one of this persona's - a room taken down leaves the memory stale
+        // rather than the page broken.
+        if (mode || restored.current || !wasOpen || !page) return;
+        restored.current = true;
+        const [was, wasDoc] = wasOpen.split('/');
+        if ((page.items || []).some((r) => r.author === was && r.doc_id === wasDoc)) {
+            loc.route(`/home/chat/${was}/${wasDoc}`);
+        } else {
+            setWasOpen('');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [author, doc, mode, wasOpen, page]);
     useEffect(() => {
         const interval = setInterval(load, 30_000);
         window.addEventListener('focus', load);
