@@ -322,6 +322,24 @@ node keeps its own room whole, which is where "all of it" lives.
 
 ## Settled questions and residuals
 
+- **Settled 2026-09-20: an onward room answers to the key, not to the creator's list.**
+  A room passes along like the post it is (the room header's pass-along button). A public
+  room travelled whole already; an onward one went halfway, because the room's chains come
+  from the creator's node and that node judged a dialer by the CREATOR's trust, which an
+  onward reader is outside of by construction. Curtis: "it makes sense to have the node
+  return a trusted+onward chain to anyone who can prove that they hold the key that could
+  read that chain." So it does. The dialer's Hello carries a **room-key proof** per room it
+  asks about - `blake3` keyed with the room's key over the room id and both endpoints of
+  the connection, the member proof's idiom with a shared secret in place of a signature -
+  and the room's fragment doors take the same proof. A sealed room marked onward opens to
+  it; a plain sealed room keeps the strict gate, because there the author's list is the
+  whole story and an untrust must still stop what comes next. The reasoning, stated once:
+  the words are ciphertext to anyone without the key, the key travels the trust web the
+  author asked for, and the proof binds to the connection, so overhearing one buys nothing.
+  The address stays what it is everywhere else in the system - not a capability. Proven by
+  the onward suite: the room passes along, the reader it reaches reads it on the key alone,
+  and someone handed only the address gets nothing.
+
 - **Settled 2026-09-18: the per-instance chain.** The chain key grows a third element,
   `(author, service, instance)`, absent for every existing service and required for rooms -
   its own arc before slice one, landing green under the existing suites with no chat in it.

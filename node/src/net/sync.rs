@@ -1671,6 +1671,10 @@ async fn exchange_on(
             ceiling: ask.ceiling,
             below: ask.below,
             instances: instances.to_vec(),
+            // The key answers the sealed room's door (CHAT.md; Curtis, 2026-09-20): a proof
+            // for every room named whose key this node holds, so an onward room's chains
+            // come to whoever can read them rather than only to the creator's own circle.
+            key_proofs: crate::chat::key_proofs_for(state, instances, &our_id, &peer_id).await,
         },
     )
     .await?;
@@ -1928,7 +1932,7 @@ async fn serve_on(
     // `scope` is the requester's service scope (Hello `wanted`, empty = everything) -
     // distinct from the serve-consent `wanted` gate below, which answers a different
     // question ("do we serve this persona at all").
-    let (root, peer_frontiers, peer_proof, scope, ask, instances) = match hello {
+    let (root, peer_frontiers, peer_proof, scope, ask, instances, key_proofs) = match hello {
         Some(SyncMessage::Hello {
             root,
             frontiers,
@@ -1937,7 +1941,8 @@ async fn serve_on(
             ceiling,
             below,
             instances,
-        }) => (root, frontiers, proof, wanted, Ask { ceiling, below }, instances),
+            key_proofs,
+        }) => (root, frontiers, proof, wanted, Ask { ceiling, below }, instances, key_proofs),
         other => bail!("expected Hello, got {other:?}"),
     };
     let root_hex = hex::encode(root);
@@ -1973,6 +1978,7 @@ async fn serve_on(
                 ceiling: 0,
                 below: 0,
                 instances: Vec::new(),
+                key_proofs: Vec::new(),
             },
         )
         .await?;
@@ -2024,7 +2030,7 @@ async fn serve_on(
     // The room's door at the lane (CHAT.md, ruling 4): a sealed room's chains go only to a
     // dialer serving a persona the seal admits; the instances it may not hold leave the
     // scope, so neither side claims nor sends them.
-    let instances = crate::chat::instances_dialer_may_hold(&state, &instances, &hex::encode(peer_id)).await;
+    let instances = crate::chat::instances_dialer_may_hold(&state, &instances, &key_proofs, &hex::encode(peer_id), &our_id).await;
 
     // They dialed us and named this persona: that is a demand edge, recorded before anything
     // else happens because the asking is the fact, whatever the exchange goes on to transfer.
@@ -2073,6 +2079,7 @@ async fn serve_on(
             ceiling: 0,
             below: 0,
             instances: instances.clone(),
+            key_proofs: Vec::new(),
         },
     )
     .await?;

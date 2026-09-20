@@ -72,6 +72,28 @@ pub struct Frontier {
 
 /// Domain tag for member proofs.
 pub const DOMAIN_MEMBER_PROOF: &[u8] = b"ringtome-v0/member-proof";
+/// The room-key proof's domain (CHAT.md; Curtis, 2026-09-20): a sealed room marked onward
+/// hands its chains to whoever can show they hold the key that opens them. The words are
+/// ciphertext to everyone else anyway, and the key travels the trust web the author asked
+/// for - so the proof, not the creator's own trust list, is the gate.
+pub const DOMAIN_ROOM_KEY_PROOF: &[u8] = b"ringtome-v0/room-key-proof";
+
+/// A keyed hash over the room, bound to both ends of this connection - the member proof's
+/// idiom, with a shared secret in place of a signature. Bound to the endpoints so it is
+/// worthless to anyone who overhears it: a different dialer cannot present it (the endpoint
+/// it names is authenticated by the connection), and a different server will not accept it.
+pub fn room_key_proof(
+    room_key: &[u8; 32],
+    instance: &[u8; 16],
+    prover_endpoint: &[u8; 32],
+    verifier_endpoint: &[u8; 32],
+) -> [u8; 32] {
+    let mut p = DOMAIN_ROOM_KEY_PROOF.to_vec();
+    p.extend_from_slice(instance);
+    p.extend_from_slice(prover_endpoint);
+    p.extend_from_slice(verifier_endpoint);
+    *blake3::keyed_hash(room_key, &p).as_bytes()
+}
 
 /// Proof that the sender of a Hello is one of the identity's own nodes: its leaf key signs a
 /// statement **channel-bound** to this exact connection (both endpoint ids are in the preimage,
@@ -129,6 +151,7 @@ impl MemberProof {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum SyncMessage {
     /// "Here is the identity I want, what I already hold, and (optionally) proof that I am one
     /// of its own nodes." Without a valid proof the exchange covers public chains only.
@@ -155,8 +178,13 @@ pub enum SyncMessage {
         /// per-instance service's chains only for these instances - a room's lane, and
         /// nothing of the persona's other rooms - while chains with no instance (the
         /// identity and profile the room's readers need) ride as the service scope allows.
+        ///
+        /// `key_proofs` (2026-09-20) answers the sealed room's door with the key instead of
+        /// with a persona: `(instance, proof)` for each room whose key this node holds, as
+        /// [`room_key_proof`] computes it. An onward room's chains go to whoever shows one.
         /// Empty is every instance, the pre-rooms wire shape (arity-6 Hellos decode to it).
         instances: Vec<[u8; 16]>,
+        key_proofs: Vec<([u8; 16], [u8; 32])>,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -176,6 +204,7 @@ impl SyncMessage {
                 ceiling,
                 below,
                 instances,
+                key_proofs,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -186,7 +215,16 @@ impl SyncMessage {
                 if instances.len() > MAX_WANTED_INSTANCES {
                     return Err(ProtoError::BadEntry("too many wanted instances"));
                 }
-                w.array(if instances.is_empty() { 6 } else { 7 });
+                if key_proofs.len() > MAX_WANTED_INSTANCES {
+                    return Err(ProtoError::BadEntry("too many key proofs"));
+                }
+                w.array(if !key_proofs.is_empty() {
+                    8
+                } else if instances.is_empty() {
+                    6
+                } else {
+                    7
+                });
                 w.uint(TAG_HELLO);
                 w.bytes(root);
                 w.array(frontiers.len() as u64);
@@ -223,10 +261,20 @@ impl SyncMessage {
                 w.uint(*ceiling);
                 w.uint(*below);
                 // The instance slot, only when scoped: a room-scoped exchange.
-                if !instances.is_empty() {
+                if !instances.is_empty() || !key_proofs.is_empty() {
                     w.array(instances.len() as u64);
                     for i in instances {
                         w.bytes(i);
+                    }
+                }
+                // The key slot (2026-09-20): `(instance, proof)` pairs, written only when
+                // this node can show the key to a room it is asking about.
+                if !key_proofs.is_empty() {
+                    w.array(key_proofs.len() as u64);
+                    for (instance, proof) in key_proofs {
+                        w.array(2);
+                        w.bytes(instance);
+                        w.bytes(proof);
                     }
                 }
             }
@@ -253,7 +301,7 @@ impl SyncMessage {
         let mut r = Reader::new(bytes);
         let arity = r.array()?;
         let msg = match (r.uint()?, arity) {
-            (TAG_HELLO, arity @ 4..=7) => {
+            (TAG_HELLO, arity @ 4..=8) => {
                 let root = r.bytes_fixed::<32>()?;
                 let n = r.array()?;
                 if n > MAX_FRONTIERS as u64 {
@@ -321,8 +369,9 @@ impl SyncMessage {
                 } else {
                     (0, 0)
                 };
-                // Arity 7 carries the instance scope (CHAT.md, ruling 4).
-                let instances = if arity == 7 {
+                // Arity 7 carries the instance scope (CHAT.md, ruling 4); arity 8 the key
+                // proofs beside it (2026-09-20).
+                let instances = if arity >= 7 {
                     let n = r.array()?;
                     if n > MAX_WANTED_INSTANCES as u64 {
                         return Err(ProtoError::BadEntry("too many wanted instances"));
@@ -330,6 +379,22 @@ impl SyncMessage {
                     let mut list = Vec::with_capacity(n as usize);
                     for _ in 0..n {
                         list.push(r.bytes_fixed::<16>()?);
+                    }
+                    list
+                } else {
+                    Vec::new()
+                };
+                let key_proofs = if arity >= 8 {
+                    let n = r.array()?;
+                    if n > MAX_WANTED_INSTANCES as u64 {
+                        return Err(ProtoError::BadEntry("too many key proofs"));
+                    }
+                    let mut list = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        if r.array()? != 2 {
+                            return Err(ProtoError::BadEntry("a key proof is [instance, proof]"));
+                        }
+                        list.push((r.bytes_fixed::<16>()?, r.bytes_fixed::<32>()?));
                     }
                     list
                 } else {
@@ -343,6 +408,7 @@ impl SyncMessage {
                     ceiling,
                     below,
                     instances,
+                    key_proofs,
                 }
             }
             (TAG_ENTRY, 2) => {
@@ -399,6 +465,7 @@ mod tests {
             ceiling: 0,
             below: 0,
             instances: vec![],
+            key_proofs: Vec::new(),
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -411,6 +478,7 @@ mod tests {
             ceiling: 0,
             below: 0,
             instances: vec![],
+            key_proofs: Vec::new(),
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
@@ -420,6 +488,7 @@ mod tests {
             ceiling: 0,
             below: 0,
             instances: vec![],
+            key_proofs: Vec::new(),
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -451,6 +520,7 @@ mod tests {
                 ceiling: 0,
                 below: 0,
                 instances: vec![],
+                key_proofs: Vec::new(),
             }
         );
     }
@@ -465,6 +535,7 @@ mod tests {
             ceiling: 0,
             below: 0,
             instances: vec![],
+            key_proofs: Vec::new(),
         };
         assert_eq!(
             msg.encode(),
@@ -508,6 +579,7 @@ mod tests {
             ceiling: 0,
             below: 0,
             instances: vec![],
+            key_proofs: Vec::new(),
         };
         assert!(bad.encode().is_err());
 

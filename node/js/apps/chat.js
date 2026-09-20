@@ -43,6 +43,7 @@ const onlyEmoji = (words) => {
     return count > 0 && count <= 8;
 };
 import { POLE_EMOJI, EMOJI_PALETTE, shortcodeOf, glyphOf } from '../emoji.js';
+import { useShared, markShared } from '../shares.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from '../doc/completions.js';
@@ -422,6 +423,29 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     const [history, setHistory] = useState(null); // { items, closed, more }
     const [older, setOlder] = useState(false); // an earlier page on its way
     const [archiving, setArchiving] = useState(false);
+    // Passing a room along (Curtis, 2026-09-19): a room is a post, and a rebroadcast is how
+    // one travels past the people who already follow its creator. The post's own rule
+    // decides who may - a sealed room does not pass along, a sealed-and-onward one does,
+    // one hop, for a reader who can read it - and one's own room is published, not shared.
+    const [sharing, setSharing] = useState(false);
+    const shared = useShared(root, author, doc);
+    const mayShare = !room.mine && (!room.trusted_only || room.onward);
+    const passAlong = async () => {
+        if (sharing || shared === null) return;
+        setSharing(true);
+        const next = !shared;
+        try {
+            await api(`/api/identity/${root}/rebroadcasts`, {
+                method: 'POST',
+                body: JSON.stringify({ author, doc_id: doc, ...(next ? {} : { retract: true }) }),
+            });
+            markShared(root, author, doc, next);
+        } catch (e) {
+            setSendError(e.message || String(e));
+        } finally {
+            setSharing(false);
+        }
+    };
     // The owner's two powers (CHAT.md, ruling 10; slice 7): close is the settled wish on the
     // room post, set through the publish door with the room's own draft - and one-way, as a
     // re-publish carries the wish forward: the conversation ended, and the record stands;
@@ -872,6 +896,18 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                     onClick=${() => setArchive(!room.archived)}
                 >
                     <${Icons.memory} />
+                </button>`}
+                ${mayShare &&
+                html`<button
+                    class=${shared ? 'chat-tool chat-tool-on' : 'chat-tool'}
+                    type="button"
+                    disabled=${sharing || shared === null}
+                    title=${shared
+                        ? t('apps.chat.stop-passing-this-room-along', 'stop passing this room along to your followers')
+                        : t('apps.chat.pass-this-room-along', 'pass this room along to your followers')}
+                    onClick=${passAlong}
+                >
+                    <${Icons.colRebroadcast} />
                 </button>`}
                 <a class="chat-tool" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
                     <${Icons.feed} />

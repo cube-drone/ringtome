@@ -142,6 +142,65 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(await opens(cal, `id/${adaRoot}/docs/${post}/body`, 5), "it's the one behind the station", "and again without the hint, on the grant his node remembers");
     });
 
+    it("an onward ROOM passes along, and the reader it reaches opens its door and reads it - the key is the gate, not the creator's list", async () => {
+        // A room is a post (CHAT.md), so it passes along by the post's own rule - which is how
+        // a public or onward room moves past the people who already follow its creator
+        // (Curtis, 2026-09-19). The door and the key honour the hop; the room's message
+        // chains still come from the creator's node alone (ruling 6), and the creator has
+        // never met cal - the residual CHAT.md names.
+        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "the bakery queue", body: "who is in line", format: "marquee" })).json();
+        await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
+        const made = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, { room: true, trusted_only: true, audience: "@onward" });
+        const madeText = await made.text();
+        assert.equal(made.status, 200, madeText);
+        const room = JSON.parse(madeText).post_id;
+        await pullAndFold(HOST_B, adaRoot);
+        let passed = false;
+        for (let i = 0; i < 30 && !passed; i++) {
+            const r = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: room });
+            passed = r.status === 200;
+            if (!passed) await wait(400);
+        }
+        assert.ok(passed, "bea, who may read it, passes the room along");
+        let his = null;
+        for (let i = 0; i < 30 && !his; i++) {
+            await shareArrives(HOST_C, beaRoot, adaRoot);
+            for (let k = 0; k < 3; k++) await beat(HOST_C, "journal-fill");
+            his = ((await (await cal(`api/identity/${calRoot}/rooms`)).json()).items || []).find((r) => r.doc_id === room);
+            if (!his) await wait(400);
+        }
+        assert.ok(his, "the room reached cal's chats, whom ada has never met");
+        assert.equal(his.via, beaRoot, "by bea");
+        const door = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${room}`);
+        assert.equal(door.status, 200, `the door admits him on bea's trust: ${await door.text()}`);
+        // And he reads it (Curtis, 2026-09-20): the creator's node hands an onward room's
+        // chains to whoever proves they hold the key that opens them, so ada's words reach
+        // a reader ada has never met, through the key bea's node released on her trust.
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "two in line" });
+        assert.equal(said.status, 200, await said.text());
+        let calFloor = [];
+        for (let i = 0; i < 40 && !calFloor.includes("two in line"); i++) {
+            await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_C, "fold", adaRoot);
+            calFloor = (((await (await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${room}/messages`)).json()).items) || []).map((m) => m.words);
+            if (!calFloor.includes("two in line")) await wait(300);
+        }
+        assert.ok(calFloor.includes("two in line"), `cal reads the room on the key alone: ${JSON.stringify(calFloor)}`);
+        // And the address alone is not a key (Curtis, 2026-09-20): dana knows where the room
+        // is - she is handed its address here, as a leaked link would hand it to her - and
+        // neither her door nor her node's pull gets her anything, because no node will give
+        // her the key.
+        const hers = await dana(`api/identity/${danaRoot}/rooms/${adaRoot}/${room}`);
+        assert.equal(hers.status, 403, `the address alone opens nothing: ${await hers.text()}`);
+        for (let i = 0; i < 5; i++) {
+            await dana(`api/identity/${danaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_C, "fold", adaRoot);
+            await wait(200);
+        }
+        const danaFloor = await dana(`api/identity/${danaRoot}/rooms/${adaRoot}/${room}/messages`);
+        assert.notEqual(danaFloor.status, 200, `and nothing of the room reaches her: ${danaFloor.status}`);
+    });
+
     it("someone the sharer does not trust is refused, and never sees the card", async () => {
         assert.ok(await refusedSteadily(dana, `id/${adaRoot}/docs/${post}/body?via=${beaRoot}`), "dana follows bea, but bea does not trust her: no key");
         await shareArrives(HOST_C, beaRoot, adaRoot);

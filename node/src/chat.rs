@@ -138,7 +138,7 @@ async fn topic_id(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex
     let mut hasher = blake3::Hasher::new();
     hasher.update(TOPIC_DOMAIN);
     if sealed {
-        let key = crate::idface::key_for(state, author_hex, doc, viewer_hex, None).await?;
+        let key = room_key(state, author_hex, doc, viewer_hex).await?;
         hasher.update(&key);
     } else {
         hasher.update(author_hex.as_bytes());
@@ -400,7 +400,7 @@ async fn my_reactions(state: &AppState, root_hex: &str, author_hex: &str, doc: &
         .context("reading a persona's own reactions")
         .map_err(AppError::Internal)?;
     let needs_key = rows.iter().any(|r| r.2 != 0);
-    let key = if needs_key { crate::idface::key_for(state, author_hex, doc, root_hex, None).await } else { None };
+    let key = if needs_key { room_key(state, author_hex, doc, root_hex).await } else { None };
     let mut mine = Vec::new();
     for (hash, body, sealed) in rows {
         let said = if sealed != 0 {
@@ -543,10 +543,96 @@ pub async fn rooms_here(state: &AppState, instances: &[[u8; 16]]) -> bool {
     false
 }
 
-/// The instances a dialer may hold chains of: every open room; a sealed room only when
-/// the dialing endpoint serves a persona the room's seal admits (CHAT.md, ruling 4 - the
-/// room's door at the lane, judged as the key lane judges).
-pub async fn instances_dialer_may_hold(state: &AppState, instances: &[[u8; 16]], dialer_hex: &str) -> Vec<[u8; 16]> {
+/// A proof of the key for each room named whose key this node holds (CHAT.md; Curtis,
+/// 2026-09-20): what the dialer shows a sealed room's door instead of a persona.
+pub async fn key_proofs_for(
+    state: &AppState,
+    instances: &[[u8; 16]],
+    our_endpoint: &[u8; 32],
+    peer_endpoint: &[u8; 32],
+) -> Vec<([u8; 16], [u8; 32])> {
+    let mut out = Vec::new();
+    for i in instances {
+        let Some(key) = held_room_key(state, i).await else { continue };
+        out.push((*i, ringtome_proto::sync::room_key_proof(&key, i, our_endpoint, peer_endpoint)));
+    }
+    out
+}
+
+/// A sealed room's door on the fragment lane: the asker's persona must be admitted by the
+/// seal and served by the dialing endpoint - or, for a room its author marked onward, the
+/// dialer may show the room's key instead (Curtis, 2026-09-20).
+async fn fragment_door_admits(
+    state: &AppState,
+    conn: &iroh::endpoint::Connection,
+    head: &ringtome_proto::registry::DocHeaderPlain,
+    author_hex: &str,
+    doc: &[u8; 16],
+    for_root: &[u8; 32],
+    key_proof: Option<[u8; 32]>,
+) -> bool {
+    if !head.trusted_only {
+        return true;
+    }
+    let doc_hex = hex::encode(doc);
+    let peer: [u8; 32] = *conn.remote_id().as_bytes();
+    if head.onward {
+        if let (Some(proof), Some(key)) = (key_proof, held_room_key(state, doc).await) {
+            let ours: [u8; 32] = *state.endpoint.id().as_bytes();
+            if proof_shows_key(&key, doc, &[(*doc, proof)], &peer, &ours) {
+                return true;
+            }
+        }
+    }
+    let for_hex = hex::encode(for_root);
+    if !crate::idface::seal_admits(state, author_hex, &doc_hex, &for_hex, None).await {
+        return false;
+    }
+    crate::net::sync::endpoint_serves_any(&state.node_db, &[for_hex], &conn.remote_id().to_string())
+        .await
+        .unwrap_or(false)
+}
+
+/// One room's key proof for a fragment-lane ask (Curtis, 2026-09-20): the same keyed hash
+/// the Hello carries, bound to this connection's two endpoints.
+pub async fn key_proof_for(state: &AppState, instance: &[u8; 16], peer_endpoint: &[u8; 32]) -> Option<[u8; 32]> {
+    let key = held_room_key(state, instance).await?;
+    let ours: [u8; 32] = *state.endpoint.id().as_bytes();
+    Some(ringtome_proto::sync::room_key_proof(&key, instance, &ours, peer_endpoint))
+}
+
+/// The key this node holds for a room, by instance: the room post's key, in the node's key
+/// ring, whoever put it there - the author's own node at the mint, or the key lane.
+async fn held_room_key(state: &AppState, instance: &[u8; 16]) -> Option<[u8; 32]> {
+    let author = room_author_of(&state.node_db, instance).await.ok().flatten()?;
+    crate::postkeys::lookup(&state.node_db, &author, &hex::encode(instance)).await.ok().flatten()
+}
+
+/// Does this dialer's Hello show the key to this room, bound to this connection?
+fn proof_shows_key(key: &[u8; 32], instance: &[u8; 16], proofs: &[([u8; 16], [u8; 32])], prover: &[u8; 32], verifier: &[u8; 32]) -> bool {
+    let want = ringtome_proto::sync::room_key_proof(key, instance, prover, verifier);
+    // Constant time over the proof: a mismatch must not say HOW it missed.
+    proofs
+        .iter()
+        .any(|(i, p)| i == instance && p.iter().zip(want.iter()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0)
+}
+
+/// The instances a dialer may hold chains of: every open room; a sealed room when the
+/// dialing endpoint serves a persona the room's seal admits (CHAT.md, ruling 4 - the room's
+/// door at the lane, judged as the key lane judges), or - for a room its author marked
+/// ONWARD - when the dialer shows the key itself (Curtis, 2026-09-20: "the node should
+/// return a trusted+onward chain to anyone who can prove that they hold the key that could
+/// read that chain"). The words are ciphertext to everyone else, and the key travels the
+/// trust web the author asked for, so the proof is the honest gate. A plain sealed room
+/// keeps the strict one: there the author's own list is the whole story, and an untrust
+/// must still stop what comes next.
+pub async fn instances_dialer_may_hold(
+    state: &AppState,
+    instances: &[[u8; 16]],
+    key_proofs: &[([u8; 16], [u8; 32])],
+    dialer_hex: &str,
+    our_endpoint: &[u8; 32],
+) -> Vec<[u8; 16]> {
     let mut out = Vec::with_capacity(instances.len());
     for i in instances {
         let Some(author) = room_author_of(&state.node_db, i).await.ok().flatten() else { continue };
@@ -556,6 +642,16 @@ pub async fn instances_dialer_may_hold(state: &AppState, instances: &[[u8; 16]],
             continue;
         }
         // Who the dialer serves, from the peer ledger; any one of them admitted opens the lane.
+        // The key, shown: an onward room answers to it.
+        if head.onward && !key_proofs.is_empty() {
+            if let Some(key) = held_room_key(state, i).await {
+                let prover = crate::pubkey::decode(&crate::net::sync::endpoint_to_id(dialer_hex)).unwrap_or([0u8; 32]);
+                if proof_shows_key(&key, i, key_proofs, &prover, our_endpoint) {
+                    out.push(*i);
+                    continue;
+                }
+            }
+        }
         let dialer = crate::net::sync::endpoint_to_id(dialer_hex);
         let served = crate::net::sync::roots_served_by(&state.node_db, &dialer).await.unwrap_or_default();
         let doc_hex = hex::encode(i);
@@ -698,7 +794,7 @@ pub async fn say(
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| AppError::BadRequest(crate::msg!("chat.bad-room-author", "bad room author")))?;
     // The room's key first: a sealed room seals its words and its pictures under one key.
     let key = if head.trusted_only {
-        let Some(key) = crate::idface::key_for(state, author_hex, doc, root_hex, None).await else {
+        let Some(key) = room_key(state, author_hex, doc, root_hex).await else {
             return Err(AppError::Forbidden(crate::msg!("chat.the-rooms-key-hasnt-arrived", "this room isn't ready on this computer yet")));
         };
         Some(key)
@@ -842,6 +938,14 @@ async fn cover_message(state: &AppState, room_author: &str, speaker: &str, hash_
     crate::fragments::cover_for_message(state, &origins, speaker, hash_hex, refs).await;
 }
 
+/// The room's key for this reader, through the onward hop when one brought it here (Contact
+/// tags, ruling 7): the sharer's node holds the key and releases it to the people they
+/// trust, so a room somebody passed along opens for its reader.
+async fn room_key(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex: &str) -> Option<[u8; 32]> {
+    let via = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &hex::encode(doc)).await;
+    crate::idface::key_for(state, author_hex, doc, viewer_hex, via.as_deref()).await
+}
+
 /// Whether the room is sealed: its reactions are sealed too, and stacking them wants the key.
 async fn head_sealed(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
     room_head(state, author_hex, doc).await.is_some_and(|(h, _)| h.trusted_only)
@@ -913,6 +1017,7 @@ async fn held_count(state: &AppState, author_hex: &str, doc_hex: &str, ceiling: 
 /// as this node holds it, for a dialer the room admits (the directory's own gate) - and
 /// how many the room holds here, capped.
 /// user-db open 4 of 5 (tests/conventions.rs): one per speaker on the page.
+#[allow(clippy::too_many_arguments)]
 pub async fn answer_room_history(
     state: &AppState,
     conn: &iroh::endpoint::Connection,
@@ -921,6 +1026,7 @@ pub async fn answer_room_history(
     for_root: &[u8; 32],
     before_ms: u64,
     limit: u64,
+    key_proof: Option<[u8; 32]>,
 ) -> (Vec<([u8; 32], Vec<u8>)>, u64) {
     let author_hex = hex::encode(author);
     let doc_hex = hex::encode(doc);
@@ -928,15 +1034,8 @@ pub async fn answer_room_history(
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
         return (Vec::new(), 0);
     }
-    if head.trusted_only {
-        let for_hex = hex::encode(for_root);
-        if !crate::idface::seal_admits(state, &author_hex, &doc_hex, &for_hex, None).await {
-            return (Vec::new(), 0);
-        }
-        let dialer = conn.remote_id().to_string();
-        if !crate::net::sync::endpoint_serves_any(&state.node_db, &[for_hex], &dialer).await.unwrap_or(false) {
-            return (Vec::new(), 0);
-        }
+    if !fragment_door_admits(state, conn, &head, &author_hex, doc, for_root, key_proof).await {
+        return (Vec::new(), 0);
     }
     let ceiling = closed_at(state, &author_hex, doc).await.unwrap_or(i64::MAX);
     let total = held_count(state, &author_hex, &doc_hex, ceiling).await as u64;
@@ -1152,7 +1251,7 @@ pub async fn history(
         rows.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.2.cmp(&a.2)));
     }
     let needs_key = rows.iter().any(|r| r.6 != 0) || archived_reactions.iter().any(|r| r.3 != 0) || head_sealed(state, author_hex, doc).await;
-    let key = if needs_key { crate::idface::key_for(state, author_hex, doc, viewer_hex, None).await } else { None };
+    let key = if needs_key { room_key(state, author_hex, doc, viewer_hex).await } else { None };
     let targets: Vec<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
     let mut stacks = stack_reactions(state, author_hex, &doc_hex, &targets, archived_reactions, key).await;
     let speakers: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
@@ -1250,6 +1349,7 @@ pub async fn answer_room(
     author: &[u8; 32],
     doc: &[u8; 16],
     for_root: &[u8; 32],
+    key_proof: Option<[u8; 32]>,
 ) -> ringtome_proto::fragment::FragmentMessage {
     let empty = ringtome_proto::fragment::FragmentMessage::Room { participants: Vec::new() };
     let author_hex = hex::encode(author);
@@ -1258,15 +1358,8 @@ pub async fn answer_room(
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
         return empty;
     }
-    if head.trusted_only {
-        let for_hex = hex::encode(for_root);
-        if !crate::idface::seal_admits(state, &author_hex, &doc_hex, &for_hex, None).await {
-            return empty;
-        }
-        let dialer = conn.remote_id().to_string();
-        if !crate::net::sync::endpoint_serves_any(&state.node_db, &[for_hex], &dialer).await.unwrap_or(false) {
-            return empty;
-        }
+    if !fragment_door_admits(state, conn, &head, &author_hex, doc, for_root, key_proof).await {
+        return empty;
     }
     let roots = participants(&state.node_db, &author_hex, &doc_hex).await.unwrap_or_default();
     let participants = roots.iter().filter_map(|r| crate::pubkey::decode(r)).collect();
@@ -1562,6 +1655,16 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     let for_root = crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
     let endpoints = if creator_here { Vec::new() } else { creator_endpoints(state, author_hex).await };
+    // A sealed room's door now answers to the key (Curtis, 2026-09-20), so fetch it before
+    // asking - otherwise the first pull of a room somebody passed along has nothing to show
+    // and waits for a read to prime it.
+    if !creator_here {
+        if let Some((head, _)) = room_head(state, author_hex, doc).await {
+            if head.trusted_only {
+                room_key(state, author_hex, doc, root_hex).await;
+            }
+        }
+    }
     // The directory: local when the creator is hosted here, else the first creator endpoint
     // that answers.
     let mut speakers: Vec<String> = if creator_here {

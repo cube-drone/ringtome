@@ -127,14 +127,17 @@ pub enum FragmentMessage {
     /// the answering node holds their room chains - the creator's node is the directory of
     /// record, archiving every participant's chain. `for_root` is the persona asking; a
     /// sealed room answers only a dialer serving a persona its seal admits.
-    WantRoom { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32] },
+    /// `key_proof` (2026-09-20) answers an onward room's door with the room's key rather
+    /// than with a persona, as the sync Hello's does: `sync::room_key_proof` over this
+    /// connection's two endpoints. Absent when the asker holds no key.
+    WantRoom { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], key_proof: Option<[u8; 32]> },
     /// The participants' roots. Empty for "nobody yet" and "not for you" alike.
     Room { participants: Vec<[u8; 32]> },
     /// The archive's history (CHAT.md, ruling 6): the room's messages said before
     /// `before_ms`, newest first, at most `limit` - asked of the creator's node, which keeps
     /// the room whole, by a reader whose own node keeps only the budget. `for_root` is the
     /// persona asking; a sealed room answers only a dialer serving a persona its seal admits.
-    WantRoomHistory { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], before_ms: u64, limit: u64 },
+    WantRoomHistory { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], before_ms: u64, limit: u64, key_proof: Option<[u8; 32]> },
     /// One frame of the answer: `(speaker root, signed entry)` pairs, a few per frame under
     /// the frame cap, newest first; the answer is a run of these ended by an EMPTY one. Each
     /// entry proves itself; the root beside it is the archive's attribution, which the
@@ -320,12 +323,15 @@ impl FragmentMessage {
                 w.uint(TAG_KEY);
                 w.bytes(key);
             }
-            Self::WantRoom { author, doc_id, for_root } => {
-                w.array(4);
+            Self::WantRoom { author, doc_id, for_root, key_proof } => {
+                w.array(if key_proof.is_some() { 5 } else { 4 });
                 w.uint(TAG_WANT_ROOM);
                 w.bytes(author);
                 w.bytes(doc_id);
                 w.bytes(for_root);
+                if let Some(proof) = key_proof {
+                    w.bytes(proof);
+                }
             }
             Self::Room { participants } => {
                 w.array(2);
@@ -335,14 +341,17 @@ impl FragmentMessage {
                     w.bytes(p);
                 }
             }
-            Self::WantRoomHistory { author, doc_id, for_root, before_ms, limit } => {
-                w.array(6);
+            Self::WantRoomHistory { author, doc_id, for_root, before_ms, limit, key_proof } => {
+                w.array(if key_proof.is_some() { 7 } else { 6 });
                 w.uint(TAG_WANT_ROOM_HISTORY);
                 w.bytes(author);
                 w.bytes(doc_id);
                 w.bytes(for_root);
                 w.uint(*before_ms);
                 w.uint(*limit);
+                if let Some(proof) = key_proof {
+                    w.bytes(proof);
+                }
             }
             Self::RoomHistory { items, total } => {
                 w.array(3);
@@ -475,10 +484,11 @@ impl FragmentMessage {
                 }
                 Self::Key { key }
             }
-            (TAG_WANT_ROOM, 4) => Self::WantRoom {
+            (TAG_WANT_ROOM, arity @ 4..=5) => Self::WantRoom {
                 author: r.bytes_fixed::<32>()?,
                 doc_id: r.bytes_fixed::<16>()?,
                 for_root: r.bytes_fixed::<32>()?,
+                key_proof: if arity == 5 { Some(r.bytes_fixed::<32>()?) } else { None },
             },
             (TAG_ROOM, 2) => {
                 let count = r.array()?;
@@ -491,12 +501,13 @@ impl FragmentMessage {
                 }
                 Self::Room { participants }
             }
-            (TAG_WANT_ROOM_HISTORY, 6) => Self::WantRoomHistory {
+            (TAG_WANT_ROOM_HISTORY, arity @ 6..=7) => Self::WantRoomHistory {
                 author: r.bytes_fixed::<32>()?,
                 doc_id: r.bytes_fixed::<16>()?,
                 for_root: r.bytes_fixed::<32>()?,
                 before_ms: r.uint()?,
                 limit: r.uint()?,
+                key_proof: if arity == 7 { Some(r.bytes_fixed::<32>()?) } else { None },
             },
             (TAG_ROOM_HISTORY, 3) => {
                 let count = r.array()?;

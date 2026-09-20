@@ -1643,6 +1643,21 @@ pub async fn feed_all(node_db: &crate::db::Db, reader: &str, cap: i64) -> Result
     Ok(rows.into_iter().map(journal_row).collect())
 }
 
+/// Who introduced one document to one reader here: the feed journal's byline (CHAT.md;
+/// Curtis, 2026-09-19). The onward hop's `via` for a door the client reached by address
+/// rather than by card - a room's, which the address bar names and no card dresses.
+pub async fn introducer(node_db: &crate::db::Db, reader_root: &str, author_root: &str, doc_hex: &str) -> Option<String> {
+    node_db
+        .fetch_optional::<(Option<String>,)>(
+            "SELECT via_root FROM feed_journal WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3",
+            (reader_root, author_root, doc_hex),
+        )
+        .await
+        .ok()
+        .flatten()
+        .and_then(|(v,)| v)
+}
+
 /// Every room in any reader's feed here (CHAT.md; Curtis, 2026-09-18): `(reader, author,
 /// doc, published_ms)` - what the room pulse walks to keep busy rooms cycling.
 pub async fn rooms_in_feeds(node_db: &crate::db::Db) -> Result<Vec<(String, String, String, i64)>> {

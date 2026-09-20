@@ -9622,3 +9622,49 @@ needs nothing new either: the room's post page has the label strip every post ha
 rooms suite's new claim: two tags on the open room and one on the sealed one, sorted in
 ada's list, reaching bea's through the feed, and the sealed room's opening for her because
 ada trusts her.
+
+## 2026-09-19: a room passes along
+
+Curtis: "we need a button to allow folks to rebroadcast chat rooms to their own followers -
+otherwise the public and 'trusted, and onward' rooms can't move meaningfully across the
+network." The room header's tool strip gained the pass-along, the feed card's own act with
+the same door and the same rule: not your own room (you published it), and not a sealed one
+unless it is onward, the post's rule rather than a new one. Lit while you are passing it
+along, clicking again takes it back.
+
+The onward case turned out to go halfway, which the suite now says out loud. A room has no
+card to carry a `via`, so the room doors never knew who introduced it and refused a reader
+admitted only by the hop - 403 where the same person could read the words through the body
+door. The doors now take the sharer from the feed journal's byline and hand it to the seal,
+and the room's key follows the same road, so the door opens and the key arrives. What does
+not arrive is the conversation: the room's chains come from the creator's node (ruling 6),
+which judges a dialer by the creator's trust, and an onward reader is a stranger to the
+creator by construction. Two gate-widenings were tried and reverted rather than shipped
+unproven - the serve gate judging the hop, and the sharer as a second source - because
+neither made the words arrive and both widen who may receive sealed chains. The suite then
+found the sharper shape of it: the room is write-only for such a reader. The lane accepts
+any dialer's push for a room it hosts, which is how a stranger speaks in a public room, so
+his words land on the creator's node while nothing of the room's ever comes back - he types
+into a room that cannot answer. CHAT.md carries the residual with three honest ways out: a
+sharer's node as a secondary directory for rooms they passed along; refusing `@onward` on a
+room at publish, since a room's history has one home; or at the least refusing the door to
+a reader the creator's node will not serve.
+
+## 2026-09-20: an onward room answers to the key
+
+Curtis settled yesterday's residual: a node should hand a trusted-and-onward room's chains
+to anyone who can prove they hold the key that opens them. The sync Hello gained a
+room-key proof per room it names - blake3 keyed with the room's key over the room id and
+both endpoints of the connection, which is the member proof's idiom with a shared secret in
+place of a signature - and the room's two fragment doors, the directory and the scroll-back,
+take the same proof. A sealed room marked onward opens to it; a plain sealed room keeps the
+strict gate, since there the author's own list is the whole story and an untrust must still
+stop what comes next. The dialer proves what it holds and the verifier decides, so nothing
+new is disclosed by asking. A pull of a sealed room now fetches the key before it asks, so
+the beat works unattended rather than waiting for a read to prime it.
+
+The road works end to end, which the onward suite now walks: ada opens an onward room, bea
+passes it along, cal - whom ada has never met - finds it among his chats, opens its door on
+bea's trust, and reads ada's words on the key alone. And the negative: dana, handed the
+room's address as a leaked link would hand it to her, gets a refusal at the door and nothing
+of the room, because no node will give her the key. An address is still not a capability.

@@ -94,13 +94,13 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantKey { author, doc_id, for_root }) => {
             answer_key(&state, &conn, &author, &doc_id, &for_root).await
         }
-        Some(FragmentMessage::WantRoom { author, doc_id, for_root }) => {
-            crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root).await
+        Some(FragmentMessage::WantRoom { author, doc_id, for_root, key_proof }) => {
+            crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root, key_proof).await
         }
-        Some(FragmentMessage::WantRoomHistory { author, doc_id, for_root, before_ms, limit }) => {
+        Some(FragmentMessage::WantRoomHistory { author, doc_id, for_root, before_ms, limit, key_proof }) => {
             // Streamed (CHAT.md, ruling 6): a page of history is more than one frame holds,
             // so the answer is a run of small frames ended by an empty one.
-            let (items, total) = crate::chat::answer_room_history(&state, &conn, &author, &doc_id, &for_root, before_ms, limit).await;
+            let (items, total) = crate::chat::answer_room_history(&state, &conn, &author, &doc_id, &for_root, before_ms, limit, key_proof).await;
             for chunk in items.chunks(ringtome_proto::fragment::MAX_ROOM_HISTORY_ITEMS) {
                 write_frame(&mut send, &FragmentMessage::RoomHistory { items: chunk.to_vec(), total }).await?;
             }
@@ -232,9 +232,15 @@ pub async fn fetch_room(
         .await
         .map_err(|e| anyhow!("dialing {endpoint_id} for a room directory: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    let peer: [u8; 32] = *conn.remote_id().as_bytes();
     write_frame(
         &mut send,
-        &FragmentMessage::WantRoom { author: *author, doc_id: *doc_id, for_root: *for_root },
+        &FragmentMessage::WantRoom {
+            author: *author,
+            doc_id: *doc_id,
+            for_root: *for_root,
+            key_proof: crate::chat::key_proof_for(state, doc_id, &peer).await,
+        },
     )
     .await?;
     send.finish().ok();
@@ -264,9 +270,17 @@ pub async fn fetch_room_history(
         .await
         .map_err(|e| anyhow!("dialing {endpoint_id} for room history: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    let peer: [u8; 32] = *conn.remote_id().as_bytes();
     write_frame(
         &mut send,
-        &FragmentMessage::WantRoomHistory { author: *author, doc_id: *doc_id, for_root: *for_root, before_ms, limit },
+        &FragmentMessage::WantRoomHistory {
+            author: *author,
+            doc_id: *doc_id,
+            for_root: *for_root,
+            before_ms,
+            limit,
+            key_proof: crate::chat::key_proof_for(state, doc_id, &peer).await,
+        },
     )
     .await?;
     send.finish().ok();

@@ -1171,7 +1171,8 @@ async fn room_enter_handler(
     if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
         return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
     }
-    if h.trusted_only && !crate::idface::seal_admits(&state, &author, &doc, &root, None).await {
+    let via = crate::fanout::introducer(&state.node_db, &root, &author, &doc).await;
+    if h.trusted_only && !crate::idface::seal_admits(&state, &author, &doc, &root, via.as_deref()).await {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.this-room-is-sealed",
             "this room is sealed - its author shares it only with people they trust"
@@ -1388,7 +1389,11 @@ async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> R
     if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
         return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
     }
-    if h.trusted_only && author != root && !crate::idface::seal_admits(state, author, doc, root, None).await {
+    // The onward hop (Contact tags, ruling 7): a room reached through somebody's share is
+    // admitted on their trust, one hop, exactly as the body door admits a shared post. The
+    // sharer is the feed journal's byline - a room has no card to carry a `via`.
+    let via = crate::fanout::introducer(&state.node_db, root, author, doc).await;
+    if h.trusted_only && author != root && !crate::idface::seal_admits(state, author, doc, root, via.as_deref()).await {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.this-room-is-sealed",
             "this room is sealed - its author shares it only with people they trust"

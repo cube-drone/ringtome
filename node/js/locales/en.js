@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 861 phrases across 58 files.
+// 863 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -53,6 +53,8 @@ export default {
     'apps.chat.hide-lines-from-people-you-dont-trust': "hide lines from people you don't trust, in every room",
     'apps.chat.kept-whole-here-click-to-release': 'this computer keeps the whole conversation - click to stop',
     'apps.chat.pull-the-whole-room-and-keep-it': 'keep the whole conversation on this computer',
+    'apps.chat.stop-passing-this-room-along': 'stop passing this room along to your followers',
+    'apps.chat.pass-this-room-along': 'pass this room along to your followers',
     'apps.chat.the-rooms-post': "the room's post",
     'apps.chat.leave': 'leave',
     'apps.chat.this-room-is-closed': 'this room is closed',
