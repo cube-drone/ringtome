@@ -450,6 +450,71 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.ok(((after.items || []).map((m) => m.words)).includes("cal is chatty"), "and cal is heard again");
     });
 
+    it("search reads every conversation this computer holds: the words, the room and the line, and nothing a reader may not read", async () => {
+        const find = async (who, root, q) => ((await (await who(`api/identity/${root}/rooms/search?q=${encodeURIComponent(q)}`)).json()).items || []);
+        // Something before it, so the page it sits on has a beneath.
+        assert.equal((await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "taking stock of the pantry" })).status, 200);
+        await wait(5);
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "the marmalade is behind the flour" });
+        assert.equal(said.status, 200, await said.text());
+        const hits = await find(ada, adaRoot, "MARMALADE");
+        assert.equal(hits.length, 1, `one line says it, whatever the case: ${JSON.stringify(hits)}`);
+        assert.equal(hits[0].doc_id, room, "naming its room");
+        assert.equal(hits[0].speaker, adaRoot, "and who said it");
+        assert.ok(hits[0].hash && hits[0].said_ms > 0, "and the line, so the floor can open there");
+        assert.deepEqual(await find(ada, adaRoot, "kumquat"), [], "a word nobody said finds nothing");
+        // An old room is searched as readily as a busy one (Curtis, 2026-09-20: a line he
+        // could read on the floor was missed, because the first cut looked only at the
+        // rooms that had spoken most recently).
+        const quiet = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "the quiet room", body: "nobody comes here", format: "marquee" })).json();
+        await ada(`api/identity/${adaRoot}/docs/${quiet.doc_id}/buckets/chat`, { method: "PUT" });
+        const quietRoom = JSON.parse(await (await j(ada, `api/identity/${adaRoot}/docs/${quiet.doc_id}/publish`, { room: true })).text()).post_id;
+        assert.equal((await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${quietRoom}/messages`, { words: "gooseberry fool" })).status, 200);
+        for (let i = 0; i < 6; i++) {
+            assert.equal((await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: `chatter ${i}` })).status, 200);
+            await wait(5);
+        }
+        const old = await find(ada, adaRoot, "gooseberry");
+        assert.equal(old.length, 1, `the quiet room is searched too: ${JSON.stringify(old)}`);
+        assert.equal(old[0].doc_id, quietRoom, "naming it");
+        // A sealed room this reader may not open is not searchable either.
+        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "the vault", body: "sealed", format: "marquee" })).json();
+        await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
+        const sealed = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, { room: true, trusted_only: true });
+        const sealedRoom = JSON.parse(await sealed.text()).post_id;
+        assert.equal((await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${sealedRoom}/messages`, { words: "quinces in the cellar" })).status, 200);
+        assert.equal((await find(ada, adaRoot, "quinces")).length, 1, "its author reads it");
+        let bearHits = null;
+        for (let i = 0; i < 20; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            bearHits = await find(bea, beaRoot, "quinces");
+            if (bearHits.length === 0) break;
+            await wait(300);
+        }
+        assert.deepEqual(bearHits, [], "and nobody else does, however the words travel");
+        // A line has an address (Curtis, 2026-09-20): asking for it opens the page it sits
+        // on, whatever has been said since.
+        for (let i = 0; i < 12; i++) {
+            assert.equal((await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: `and then ${i}` })).status, 200);
+            await wait(5);
+        }
+        // The landing is a WINDOW, not an ending (Curtis, 2026-09-20): the conversation
+        // around the line, with what came after it above and what came before beneath.
+        const page = await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages?at=${hits[0].hash}&limit=8`)).json();
+        const words = (page.items || []).map((m) => m.words);
+        const where = words.indexOf("the marmalade is behind the flour");
+        assert.ok(where >= 0, `the line is on the page: ${JSON.stringify(words)}`);
+        assert.ok(where > 0, `with what was said after it above: ${JSON.stringify(words)}`);
+        assert.ok(where < words.length - 1, `and what came before it beneath: ${JSON.stringify(words)}`);
+        assert.ok(words.includes("taking stock of the pantry"), "the line said before it is on the floor");
+        assert.ok(
+            page.items.slice(0, where).every((m) => m.said_ms >= page.items[where].said_ms),
+            "and what is above it was said after it"
+        );
+        const stranger = await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages?at=${"ab".repeat(32)}&limit=3`)).json();
+        assert.ok((stranger.items || []).length > 0, "a line this computer does not hold falls back to the newest page");
+    });
+
     it("the owner closes the room (the record stands, nobody says more, and closed stays closed), then takes it down (it leaves every list)", async () => {
         const roomsOf = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
         // The room's own draft, by its publication: what the page finds on the mirror.

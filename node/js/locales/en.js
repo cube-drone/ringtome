@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 883 phrases across 58 files.
+// 888 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -76,6 +76,8 @@ export default {
     'apps.chat.taking-it-down': 'taking it down…',
     'apps.chat.take-it-down': 'take it down',
     'apps.chat.keep-it': 'keep it',
+    'apps.chat.you-are-reading-back': 'reading back from a search',
+    'apps.chat.jump-to-the-newest': 'jump to the newest',
     'apps.chat.reading': 'reading…',
     'apps.chat.earlier': 'earlier…',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
@@ -95,6 +97,9 @@ export default {
     'apps.chat.bytes-of-this-message': 'message length',
     'apps.chat.attach-a-picture-sound-or-video': 'attach a picture, a sound or a video (drop or paste works too)',
     'apps.chat.send': 'send',
+    'apps.chat.searching': 'searching…',
+    'apps.chat.nothing-said-that': 'nothing said in your chats says that',
+    'apps.chat.n-lines-say-that': '{n} lines say that',
     'apps.chat.tags': 'tags',
     'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
     'apps.chat.pick-a-chat': 'pick a chat on the left, or start a new one',

@@ -104,7 +104,12 @@ export const APPS = [
         // Real-time rooms (CHAT.md): a room is a post, and this app lists the rooms a
         // persona may see - its own, the ones its feed carries, the ones it entered by
         // link - and opens them. Not a documents app: rooms are minted here, in one form,
-        // and their drafts live in the eponymous `chat` bucket.
+        // and their drafts live in the eponymous `chat` bucket. It takes the header's search
+        // as a plain text search over every conversation it holds (Curtis, 2026-09-20) -
+        // hence the opt-in: search is not a documents-app privilege, it is a promise that
+        // the app reads the query.
+        searchable: true,
+        plainSearch: true,
         itemNoun: 'room',
     },
     {

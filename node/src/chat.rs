@@ -1258,6 +1258,200 @@ async fn archive_history(
     (out, total as i64)
 }
 
+/// When a line was said, by its hash: what turns a line's address into the page it sits on
+/// (Curtis, 2026-09-20). `None` when this computer does not hold that line.
+pub async fn said_at(state: &AppState, author_hex: &str, doc_hex: &str, hash: &[u8; 32]) -> Option<i64> {
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT said_ms FROM room_messages WHERE room_author = ?1 AND room_doc = ?2 AND entry_hash = ?3",
+            (author_hex, doc_hex, hash.to_vec()),
+        )
+        .await
+        .ok()
+        .flatten()
+        .map(|(ms,)| ms)
+}
+
+/// A plain-words match, as the database hands it back: `(room author, room, speaker, hash,
+/// said_ms, words)`.
+type PlainHit = (String, String, String, Vec<u8>, i64, Vec<u8>);
+
+/// A line as a search reads it off the memo: `(speaker, hash, said_ms, words, sealed)`.
+type SearchRow = (String, Vec<u8>, i64, Vec<u8>, i64);
+
+/// One line a search found.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Hit {
+    pub author: String,
+    pub doc_id: String,
+    pub title: String,
+    pub hash: String,
+    pub said_ms: i64,
+    pub speaker: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker_name: Option<String>,
+    pub words: String,
+}
+
+/// What a search needs to know about a room, asked once: its header (the title a hit wears,
+/// and the seal's own word) and who is muted in it. `None` when this persona may not read it.
+type RoomVerdict = (ringtome_proto::registry::DocHeaderPlain, std::collections::HashSet<String>);
+
+async fn room_verdict(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> Option<RoomVerdict> {
+    let doc = hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())?;
+    let (head, _) = room_head(state, author_hex, &doc).await?;
+    if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+        return None;
+    }
+    // The room's own door decides, as it does everywhere else.
+    if head.trusted_only && author_hex != viewer_hex {
+        let via = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, doc_hex).await;
+        if !crate::idface::seal_admits(state, author_hex, doc_hex, viewer_hex, via.as_deref()).await {
+            return None;
+        }
+    }
+    let muted = muted_in(state, viewer_hex, author_hex, doc_hex).await;
+    Some((head, muted))
+}
+
+/// The newest lines searched in a SEALED room. The honest bound, and only here: a sealed
+/// line must be opened before it can be read at all, so those rooms are walked one at a
+/// time with the room's key in hand. Open rooms are matched by the database itself, across
+/// every room at once, so nothing is skipped for being old (Curtis, 2026-09-20: a line he
+/// could read on the floor was missed by a search that only looked at recent rooms).
+const SEARCH_DEPTH: i64 = 4_000;
+/// Lines handed back, at most.
+const SEARCH_HITS: usize = 60;
+/// Rows the plain-words pass may match before it stops looking.
+const SEARCH_SCAN: i64 = 500;
+
+/// Search every conversation this persona may read (Curtis, 2026-09-20): the words as they
+/// were said, matched without regard for case, newest first. Sealed rooms open with the key
+/// this node holds for them and stay shut without it; a muted speaker's lines are no more
+/// searchable than they are readable; a deleted line is gone here too, and an edited one
+/// matches its newest words.
+pub async fn search(state: &AppState, viewer_hex: &str, needle: &str, limit: usize) -> Result<Vec<Hit>, AppError> {
+    let needle = needle.trim().to_lowercase();
+    if needle.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut hits: Vec<Hit> = Vec::new();
+    // Rooms whose words are in the clear: the database matches them itself, every room at
+    // once, newest first.
+    let plain: Vec<PlainHit> = state
+        .node_db
+        .fetch_all(
+            "SELECT room_author, room_doc, speaker_root, entry_hash, said_ms, COALESCE(edit_body, body)
+             FROM room_messages
+             WHERE deleted = 0 AND notice_kind IS NULL
+               AND (CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END) = 0
+               AND instr(lower(CAST(COALESCE(edit_body, body) AS TEXT)), ?1) > 0
+             ORDER BY said_ms DESC, seq DESC LIMIT ?2",
+            (needle.as_str(), SEARCH_SCAN),
+        )
+        .await
+        .context("searching the rooms held here")
+        .map_err(AppError::Internal)?;
+    // ...and the sealed ones, which must be opened to be read: one room at a time, with its
+    // key, newest lines first.
+    let sealed_rooms: Vec<(String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT room_author, room_doc FROM room_messages
+             WHERE (CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END) = 1
+             GROUP BY room_author, room_doc ORDER BY MAX(said_ms) DESC",
+            (),
+        )
+        .await
+        .context("listing the sealed rooms to search")
+        .map_err(AppError::Internal)?;
+
+    // One verdict per room, asked once: may this persona read it at all, and who is muted
+    // in it.
+    let mut rooms: HashMap<(String, String), Option<RoomVerdict>> = HashMap::new();
+
+    for (author_hex, doc_hex, speaker, hash, said_ms, body) in plain {
+        let at = (author_hex.clone(), doc_hex.clone());
+        if !rooms.contains_key(&at) {
+            let verdict = room_verdict(state, viewer_hex, &author_hex, &doc_hex).await;
+            rooms.insert(at.clone(), verdict);
+        }
+        let Some(Some((head, muted))) = rooms.get(&at) else { continue };
+        if muted.contains(&speaker) {
+            continue;
+        }
+        let Ok(words) = String::from_utf8(body) else { continue };
+        hits.push(Hit {
+            author: author_hex,
+            doc_id: doc_hex,
+            title: head.title.clone(),
+            hash: hex::encode(hash),
+            said_ms,
+            speaker,
+            speaker_name: None,
+            words,
+        });
+    }
+
+    for (author_hex, doc_hex) in sealed_rooms {
+        let at = (author_hex.clone(), doc_hex.clone());
+        if !rooms.contains_key(&at) {
+            let verdict = room_verdict(state, viewer_hex, &author_hex, &doc_hex).await;
+            rooms.insert(at.clone(), verdict);
+        }
+        let Some(Some((head, muted))) = rooms.get(&at).cloned() else { continue };
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Some(key) = room_key(state, &author_hex, &doc, viewer_hex).await else { continue };
+        let rows: Vec<SearchRow> = state
+            .node_db
+            .fetch_all(
+                "SELECT speaker_root, entry_hash, said_ms,
+                        COALESCE(edit_body, body), CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END
+                 FROM room_messages
+                 WHERE room_author = ?1 AND room_doc = ?2 AND deleted = 0 AND notice_kind IS NULL
+                 ORDER BY said_ms DESC, seq DESC LIMIT ?3",
+                (author_hex.as_str(), doc_hex.as_str(), SEARCH_DEPTH),
+            )
+            .await
+            .context("reading a sealed room to search it")
+            .map_err(AppError::Internal)?;
+        for (speaker, hash, said_ms, body, sealed) in rows {
+            if muted.contains(&speaker) {
+                continue;
+            }
+            let words = if sealed != 0 {
+                crate::record::private::open_post_body(&body, &key).and_then(|b| String::from_utf8(b).ok())
+            } else {
+                String::from_utf8(body).ok()
+            };
+            let Some(words) = words else { continue };
+            if !words.to_lowercase().contains(&needle) {
+                continue;
+            }
+            hits.push(Hit {
+                author: author_hex.clone(),
+                doc_id: doc_hex.clone(),
+                title: head.title.clone(),
+                hash: hex::encode(hash),
+                said_ms,
+                speaker,
+                speaker_name: None,
+                words,
+            });
+        }
+    }
+
+    hits.sort_by_key(|h| std::cmp::Reverse(h.said_ms));
+    hits.truncate(limit.clamp(1, SEARCH_HITS));
+    let speakers: Vec<String> = hits.iter().map(|h| h.speaker.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &speakers).await.unwrap_or_default();
+    for hit in hits.iter_mut() {
+        hit.speaker_name = bylines.get(&hit.speaker).and_then(|b| b.name.clone());
+    }
+    Ok(hits)
+}
+
 /// The room's recent history, newest first, as this node holds it - every speaker's chain
 /// interleaved by claimed time (CHAT.md, ruling 3). A sealed message opens with the key the
 /// reader may have; a closed room serves nothing said after the close (ruling 10). When
@@ -1266,6 +1460,7 @@ async fn archive_history(
 /// it, and how many messages the room holds as best this node knows - its own memo, or
 /// the archive's word when the archive was asked - capped at the wire's ceiling, so a card
 /// can say "and N more" (Curtis, 2026-09-18) without syncing the conversation.
+#[allow(clippy::too_many_arguments)]
 pub async fn history(
     state: &AppState,
     viewer_hex: &str,
@@ -1273,10 +1468,15 @@ pub async fn history(
     doc: &[u8; 16],
     before_ms: Option<i64>,
     limit: i64,
+    // Landing on a line's address (Curtis, 2026-09-20): the conversation AROUND it, not the
+    // page that ends at it - half the page behind it and half in front, so the floor reads
+    // the way it reads anywhere else with that line in the middle of it.
+    at_ms: Option<i64>,
 ) -> Result<(Vec<Message>, bool, bool, i64), AppError> {
     let doc_hex = hex::encode(doc);
     let closed = closed_at(state, author_hex, doc).await;
     let limit = limit.clamp(1, HISTORY_PAGE);
+    let behind = if at_ms.is_some() { (limit + 1) / 2 } else { limit };
     type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64, i64, Option<i64>, Option<String>);
     let before = before_ms.unwrap_or(i64::MAX);
     let ceiling = closed.map_or(before, |c| c.min(before));
@@ -1289,14 +1489,33 @@ pub async fn history(
              FROM room_messages
              WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0
              ORDER BY said_ms DESC, seq DESC LIMIT ?4",
-            (author_hex, doc_hex.as_str(), ceiling, limit),
+            (author_hex, doc_hex.as_str(), ceiling, behind),
         )
         .await
         .context("reading a room's history")
         .map_err(AppError::Internal)?;
+    // ...and what was said after it, so a landing is a window rather than an ending.
+    if at_ms.is_some() {
+        let ahead: Vec<Row> = state
+            .node_db
+            .fetch_all(
+                "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash,
+                        COALESCE(edit_body, body), CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END,
+                        edit_hash IS NOT NULL, notice_kind, notice_subject
+                 FROM room_messages
+                 WHERE room_author = ?1 AND room_doc = ?2 AND said_ms >= ?3 AND deleted = 0
+                 ORDER BY said_ms ASC, seq ASC LIMIT ?4",
+                (author_hex, doc_hex.as_str(), ceiling, limit - behind),
+            )
+            .await
+            .context("reading a room's history forward")
+            .map_err(AppError::Internal)?;
+        rows.extend(ahead);
+        rows.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.2.cmp(&a.2)));
+    }
     // Past what this node keeps: the archive (ruling 6). Asked only when the local page
     // came up short and this node is not the archivist itself.
-    let mut more = rows.len() as i64 >= limit;
+    let mut more = rows.len() as i64 >= behind;
     let mut total = held_count(state, author_hex, &doc_hex, closed.unwrap_or(i64::MAX)).await;
     let mut archived_reactions: Vec<(Vec<u8>, String, Vec<u8>, i64)> = Vec::new();
     if (rows.len() as i64) < limit && !archivist_here(state, author_hex, &doc_hex).await {

@@ -231,7 +231,7 @@ const Inside = ({ session }) => {
     // header owns the input and the app reads it; it clears when you switch apps. Only document
     // apps (those with a `style`) offer search - and one of those opts out, because a box that
     // reaches a component which never reads the query is a control that lies.
-    const showSearch = !!(appHere && (appHere.style || appHere.everything) && appHere.searchable !== false);
+    const showSearch = !!(appHere && (appHere.style || appHere.everything || appHere.searchable === true) && appHere.searchable !== false);
     const [query, setQuery] = useState('');
     // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
     // it on app switch - a filter you set in one app shouldn't silently empty another.
@@ -452,9 +452,10 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
             <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
-            <${ChatApp} path="/home/chat" current=${persona.current} admin=${nodeAdmin} />
-            <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} />
-            <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} admin=${nodeAdmin} />
+            <${ChatApp} path="/home/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${ChatApp} path="/home/chat/:author/:doc/:line" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
             <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />

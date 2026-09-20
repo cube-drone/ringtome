@@ -9753,3 +9753,33 @@ one. The histogram in the tags column counts what the column shows, so filtering
 friend put on a room works like filtering by one the creator did. The rooms suite's tag
 claim now watches bea's word ride beside ada's, vanish when ada blocks her, and come back
 when the block lifts.
+
+## 2026-09-20 (cont.): search in the chats
+
+Curtis: most of the apps have a search window, and chat should too - over every conversation,
+with the matches marked, and a click landing in the un-searched room at that line. The
+header's box now opens for the chat app, which had to say so: search is not a documents-app
+privilege, so the registry gained an opt-in rather than the shell growing another special
+case. The door walks the rooms this computer holds words for, newest first, judging each by
+the room's own door - a sealed room opens with the key this node holds and stays shut
+without it - skipping muted speakers, deleted lines and the moderation notices, and matching
+the words as they were said without regard for case. One bound is stated where it lives: a
+sealed room is walked four thousand newest lines deep, because a sealed line must be opened
+before it can be read at all. Open rooms are matched by the database itself, every room at
+once, so nothing is skipped for being quiet - the first cut looked only at the sixty-four
+rooms that had spoken most recently, and Curtis lost a line he could read on the floor to
+it the same afternoon. A text index at fold time is the upgrade when this stops being
+enough.
+
+The answers read as rows - the room, when, who, and the words with the match marked - and
+clicking one empties the box and routes to the line's own address - `/home/chat/<author>/
+<doc>/<hash>`, since a line is a thing one can point at, as Curtis put it. The room asks the
+history door to land there, and the door reads the conversation AROUND that line - half the
+page behind it and half in front - rather than the page that ends at it, which was the first
+cut and which Curtis rightly called a page that does not exist in the flow of the chat. So a
+short room reads whole with the found line in the middle of it. The line is marked, scrolled
+into view, the floor holds its place instead of pinning to the end, and the way back to the
+living end sits above it. A line this computer does not hold falls back to the newest page. The suite:
+one line found whatever the case, naming its room and its line, a word nobody said finding
+nothing, and a sealed room searchable by its author and by nobody else however the words
+travel.

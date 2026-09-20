@@ -63,6 +63,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/rooms/{author}/{doc}/sync", post(room_sync_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/live", get(room_live_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/chatters", get(room_chatters_handler))
+        .route("/api/identity/{root}/rooms/search", get(room_search_handler))
         .route("/api/identity/{root}/rooms/{author}/{doc}/join", post(room_join_handler))
         .route(
             "/api/identity/{root}/rooms/{author}/{doc}/mutes/{who}",
@@ -1381,6 +1382,26 @@ async fn set_mute(
     Ok(Json(serde_json::json!({ "muted": on })))
 }
 
+/// GET `/api/identity/{root}/rooms/search?q=` - the words this persona may read, wherever
+/// they were said (Curtis, 2026-09-20): every conversation this computer holds, newest
+/// first, each hit naming its room and its line so the floor can be opened there.
+async fn room_search_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _data = store::open(&state, &session.account.id, &root).await?;
+    let items = crate::chat::search(&state, &root, q.q.as_deref().unwrap_or(""), q.limit.unwrap_or(30)).await?;
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: Option<String>,
+    limit: Option<usize>,
+}
+
 /// POST / DELETE `/api/identity/{root}/rooms/{author}/{doc}/deputies/{who}` - the badge
 /// (CHAT.md, ruling 8's moderators list; Curtis, 2026-09-20): the creator's own act, naming
 /// a persona whose mutes count as theirs. A deputy cannot pass it on - only the creator
@@ -1631,6 +1652,9 @@ struct SayRequest {
 struct HistoryQuery {
     before_ms: Option<i64>,
     limit: Option<i64>,
+    /// One line's address (Curtis, 2026-09-20): the page it sits on, rather than the newest.
+    /// A line this computer does not hold falls back to the newest page, and the floor says so.
+    at: Option<String>,
 }
 
 /// POST `/api/identity/{root}/rooms/{author}/{doc}/messages` - say one thing (CHAT.md,
@@ -1669,7 +1693,26 @@ async fn room_history_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    let (items, closed, more, total) = crate::chat::history(&state, &root, &author, &doc_id, q.before_ms, q.limit.unwrap_or(crate::chat::HISTORY_PAGE)).await?;
+    // A line's address names where to land; the door turns it into the moment, and the
+    // history reads around it (Curtis, 2026-09-20).
+    let at_ms = match q.at.as_deref() {
+        Some(hash) => {
+            let hash = hex_fixed::<32>(hash, "message hash")?;
+            crate::chat::said_at(&state, &author, &doc, &hash).await
+        }
+        None => None,
+    };
+    let before_ms = at_ms.map(|ms| ms + 1).or(q.before_ms);
+    let (items, closed, more, total) = crate::chat::history(
+        &state,
+        &root,
+        &author,
+        &doc_id,
+        before_ms,
+        q.limit.unwrap_or(crate::chat::HISTORY_PAGE),
+        at_ms,
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "items": items, "closed": closed, "more": more, "total": total })))
 }
 

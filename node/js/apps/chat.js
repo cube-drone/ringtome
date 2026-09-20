@@ -389,7 +389,7 @@ const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notic
     <${PersonChip} root=${m.notice_subject} current=${current} />
 </li>`;
 
-const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, hushed }) => {
+const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, hushed, found }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -401,7 +401,11 @@ const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, 
     const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : '', onlyEmoji(m.words) ? 'chat-line-emoji' : ''].filter(Boolean).join(' ');
     const [revealed, setRevealed] = useState(false);
     const veiled = untrusted && !revealed && m.words !== null && embedsMedia(m.words);
-    return html`<li class=${cls} title=${untrusted ? t('apps.chat.someone-you-dont-trust', "someone you don't trust") : undefined}>
+    return html`<li
+        class=${found ? `${cls} chat-line-found` : cls}
+        data-line=${m.hash}
+        title=${untrusted ? t('apps.chat.someone-you-dont-trust', "someone you don't trust") : undefined}
+    >
         ${!cont &&
         html`<div class="chat-line-head">
             <${Speaker} root=${m.speaker} current=${current} />
@@ -466,7 +470,7 @@ const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, 
     </li>`;
 };
 
-const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
+const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [room, setRoom] = useState(undefined); // undefined loading, null refused, object entered
@@ -636,7 +640,10 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
 
     const readHistory = () => {
         if (!root) return;
-        api(`/api/identity/${root}/rooms/${author}/${doc}/messages`)
+        // Landed on a line's own address (Curtis, 2026-09-20): the page it sits on, rather
+        // than the newest - the conversation as it was when that was said.
+        const where = at ? `?at=${at}` : '';
+        api(`/api/identity/${root}/rooms/${author}/${doc}/messages${where}`)
             .then(setHistory)
             .catch(() => {});
         api(`/api/identity/${root}/rooms/${author}/${doc}/chatters`)
@@ -717,14 +724,22 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < AT_END_PX;
         if (el.scrollTop < AT_END_PX) readOlder();
     };
+    // The found line, brought into view and marked once its page is on the floor.
+    useEffect(() => {
+        if (!at || !history) return;
+        atEnd.current = false;
+        const el = floor.current && floor.current.querySelector(`[data-line="${at}"]`);
+        if (el) el.scrollIntoView({ block: 'center' });
+    }, [at, history]);
     useEffect(() => {
         const el = floor.current;
         if (!el) return;
+        if (at) return; // a landing holds its place; the pin is for the living end
         if (keepOffset.current) {
             el.scrollTop = el.scrollHeight - keepOffset.current.height + keepOffset.current.top;
             keepOffset.current = null;
         } else if (atEnd.current) el.scrollTop = el.scrollHeight;
-    }, [history, words.body, typing]);
+    }, [history, words.body, typing, at]);
     // The full-sync button (ruling 6): the node's operator makes this node keep the room
     // whole, or lets the budget apply again.
     const setArchive = async (on) => {
@@ -1049,6 +1064,13 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                 </div>
             </${Modal}>`}
         </header>
+        ${at &&
+        html`<p class="chat-landed">
+            ${t('apps.chat.you-are-reading-back', 'reading back from a search')}
+            <button class="chat-older" type="button" onClick=${() => loc.route(`/home/chat/${author}/${doc}`)}>
+                ${t('apps.chat.jump-to-the-newest', 'jump to the newest')}
+            </button>
+        </p>`}
         <div class="chat-floor" ref=${floor} onScroll=${trackEnd}>
             ${/* The gap (Curtis, 2026-09-19): where what this computer holds runs out sits
                 the way past it - a page of earlier lines for anyone, and for the node's
@@ -1082,6 +1104,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                               ${/* A muted reader's react, edit and delete would be seen by
                                   nobody: the menu stands down with the composer. */ ''}
                               hushed=${iAmMuted}
+                              found=${at === m.hash}
                           />`
                 )}
             </ul>
@@ -1187,7 +1210,44 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
 /// every few seconds while the floor moves and once more when the page leaves.
 const SEEN_THROTTLE_MS = 5000;
 
-export const ChatApp = ({ current, author, doc, mode, admin }) => {
+/// One line a search found: the room it was said in, who said it, when, and the words with
+/// the match marked. Clicking it opens that room AT that line (Curtis, 2026-09-20), not at
+/// the newest word - the conversation as it was around what you were looking for.
+const marked = (words, needle) => {
+    const at = (words || '').toLowerCase().indexOf((needle || '').toLowerCase());
+    if (at < 0 || !needle) return words;
+    return html`${words.slice(0, at)}<mark>${words.slice(at, at + needle.length)}</mark>${words.slice(at + needle.length)}`;
+};
+const SearchResults = ({ current, needle, hits, onOpen }) => {
+    if (hits === null) return html`<p class="chat-empty">${t('apps.chat.searching', 'searching…')}</p>`;
+    if (hits.length === 0) {
+        return html`<p class="chat-empty">${t('apps.chat.nothing-said-that', 'nothing said in your chats says that')}</p>`;
+    }
+    return html`<section class="chat-results">
+        <header class="chat-room-head">
+            <h2 class="chat-room-name">${t('apps.chat.n-lines-say-that', '{n} lines say that', { n: hits.length })}</h2>
+        </header>
+        <ul class="chat-result-list">
+            ${hits.map(
+                (h) => html`<li key=${h.hash} class="chat-result">
+                    <button class="chat-result-hit" type="button" onClick=${() => onOpen(h)}>
+                        <span class="chat-result-where">
+                            <${Icons.chat} />
+                            ${h.title || t('apps.chat.a-sealed-room', 'a sealed room')}
+                            <span class="chat-result-when">${whenWords(h.said_ms)}</span>
+                        </span>
+                        <span class="chat-result-said">
+                            <${PersonChip} root=${h.speaker} current=${current} />
+                            <span class="chat-result-words">${marked(h.words, needle)}</span>
+                        </span>
+                    </button>
+                </li>`
+            )}
+        </ul>
+    </section>`;
+};
+
+export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, onSearch }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [page, setPage] = useState(null);
@@ -1195,6 +1255,26 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
     // across a close and a refresh, and only here - a per-browser gesture, like a tucked
     // column, never a fact about the persona.
     const [wasOpen, setWasOpen] = usePref(root, OPEN_ROOM_KEY, '');
+    // The header's search, over every conversation this computer holds: asked a beat after
+    // the typing stops, so a long word is one question rather than eight.
+    const makingNew = mode === 'new';
+    const needle = (searchQuery || '').trim();
+    const searching = needle.length >= 2;
+    const [hits, setHits] = useState(null);
+    useEffect(() => {
+        if (!root || !searching) return undefined;
+        let live = true;
+        setHits(null);
+        const timer = setTimeout(() => {
+            api(`/api/identity/${root}/rooms/search?q=${encodeURIComponent(needle)}`)
+                .then((page) => live && setHits(page.items || []))
+                .catch(() => live && setHits([]));
+        }, 250);
+        return () => {
+            live = false;
+            clearTimeout(timer);
+        };
+    }, [root, needle, searching]);
     const restored = useRef(false);
     // The tags column (Curtis, 2026-09-20), Writer's: a histogram of the tags the rooms in
     // view wear, clicking one into or out of the filter, and minimized to a rail until asked
@@ -1266,7 +1346,19 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
                       onTuck=${() => toggleTuck('rooms')}
                   />${resizer('rooms')}`}
             <section class="chat-main">
-                ${mode === 'new'
+                ${searching
+                    ? html`<${SearchResults}
+                          current=${current}
+                          needle=${needle}
+                          hits=${hits}
+                          ${/* A line has its own address (Curtis, 2026-09-20), so opening
+                              one is a route and the box empties behind you. */ ''}
+                          onOpen=${(h) => {
+                              if (onSearch) onSearch('');
+                              loc.route(`/home/chat/${h.author}/${h.doc_id}/${h.hash}`);
+                          }}
+                      />`
+                    : makingNew
                     ? html`<${NewRoom}
                           root=${root}
                           onMade=${(post) => {
@@ -1276,7 +1368,8 @@ export const ChatApp = ({ current, author, doc, mode, admin }) => {
                       />`
                     : selected
                       ? html`<${Room}
-                            key=${`${author}/${doc}`}
+                            key=${`${author}/${doc}/${line || ''}`}
+                            at=${line || null}
                             current=${current}
                             author=${author}
                             doc=${doc}
