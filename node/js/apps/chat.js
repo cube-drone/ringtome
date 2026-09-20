@@ -429,7 +429,9 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     // one hop, for a reader who can read it - and one's own room is published, not shared.
     const [sharing, setSharing] = useState(false);
     const shared = useShared(root, author, doc);
-    const mayShare = !room.mine && (!room.trusted_only || room.onward);
+    // `room` is undefined while the door is answering, so this reads it defensively: it sits
+    // among the hooks, above the loading guard, where the header's own reads do not.
+    const mayShare = !!room && !room.mine && (!room.trusted_only || room.onward);
     const passAlong = async () => {
         if (sharing || shared === null) return;
         setSharing(true);
