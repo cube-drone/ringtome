@@ -1380,6 +1380,10 @@ struct SayRequest {
     reacts_to: Option<String>,
     /// Take the emoji back instead of saying it (slice 9).
     retract: Option<bool>,
+    /// The line of one's own these words replace (slice 8): its hash, hex.
+    edits: Option<String>,
+    /// The line of one's own to delete (slice 8): its hash, hex; the words are ignored.
+    deletes: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1402,7 +1406,15 @@ async fn room_say_handler(
         Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
         None => None,
     };
-    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words, reacts_to, req.retract.unwrap_or(false)).await?;
+    let edits = match req.edits.as_deref() {
+        Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
+        None => None,
+    };
+    let deletes = match req.deletes.as_deref() {
+        Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
+        None => None,
+    };
+    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words, reacts_to, req.retract.unwrap_or(false), edits, deletes).await?;
     Ok(Json(serde_json::json!({ "seq": seq, "said_ms": said_ms })))
 }
 

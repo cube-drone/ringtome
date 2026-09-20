@@ -979,6 +979,14 @@ CREATE TABLE room_messages (
     body         BLOB    NOT NULL,
     sealed       INTEGER NOT NULL DEFAULT 0,
     noted_ms     INTEGER NOT NULL,
+    -- The line's fate (CHAT.md, slice 8), said by later entries of the speaker's: deleted
+    -- (a `retracts` naming it - the row stays, the reads skip it), or edited (the newest
+    -- `edits` naming it - its words shown in this line's place, marked).
+    deleted      INTEGER NOT NULL DEFAULT 0,
+    edit_hash    BLOB,
+    edit_body    BLOB,
+    edit_sealed  INTEGER NOT NULL DEFAULT 0,
+    edited_ms    INTEGER,
     PRIMARY KEY (speaker_leaf, room_doc, seq)
 );
 CREATE INDEX room_messages_by_room ON room_messages (room_author, room_doc, said_ms);

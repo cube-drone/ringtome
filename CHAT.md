@@ -295,7 +295,16 @@ node keeps its own room whole, which is where "all of it" lives.
    "close" and the trash, the takedown confirmed in the house modal with the honest word
    about orphaned chains. Suite: the feed suite's owner claim - closed here and there, the
    next word refused, the wish never lifted, the takedown gone from every list.
-8. **Deleting & Editing Messags**
+8. **Deleting & Editing Messages.** **Built 2026-09-19.** Both are later entries on the
+   speaker's own chain, never changes to earlier ones: a delete is a message that `retracts`
+   the line (the same key a reaction's take-back uses), an edit a message whose words
+   `edits` (key 7) the line. The memo remembers a line's fate on its row - deleted, or the
+   newest edit's words - so the floor shows the new words in the old line's place, marked
+   "(edited)", with its reactions intact, and a deleted line leaves the floor, the count and
+   the badge; the archive hands a page's edits over with the page and never serves a deleted
+   line. Only one's own lines, held here and not already deleted. The hover menu's edit loads
+   the words into the composer under an "editing a line" banner; delete asks first. Suite:
+   the feed suite's edit-and-delete claim.
 9. **Emoji Responses.** **Built 2026-09-19.** Slack's shape: an emoji said in answer to a
    line is a message on the reactor's own room chain (`ChatMessage.reacts_to`, key 5, the
    target's hash; the body its shortcode, sealed as the room's words are), filed by the

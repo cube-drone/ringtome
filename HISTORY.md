@@ -9590,3 +9590,21 @@ chip for keeping the whole conversation here (lit when it is; the operator's alo
 gone from the floor's gap, which keeps only "earlier"), the megaphone for the room's post,
 the door for leaving, the prohibit sign for closing (lit and still once closed), the trash
 for deleting. The status chips went with the buttons they explained.
+
+## 2026-09-19: lines edit and delete by later entries
+
+CHAT.md slice 8, as Curtis framed it: "delete" or "edit" entries in the chain rather than
+retroactive changes, which these chains cannot make. A delete is a message that `retracts`
+the line - the key a reaction's take-back already used - and an edit a message whose words
+`edits` the line, a new additive wire key. The room memo's rows gained a fate: deleted, or
+the newest edit's words, sealed as they came; the fold sets them when a later entry names
+the line, chain order and the ignored re-insert keeping the mark. The reads skip deleted
+lines - the floor, the count, the badge, the newest-word sort - and show an edited line's
+new words in its old place with the reactions it had, marked. The archive hands a page's
+edit entries over with the page and never serves a deleted line; the reader applies both
+to what arrives. The say door takes `edits` and `deletes`, each a line of the speaker's own,
+held here and not already deleted. On the floor the hover menu's edit loads the words into
+the composer under an "editing a line" banner with a way out, and the next send says them
+again as the edit; delete asks in the house modal first. The feed suite's claim: a typo
+edited in place with the reaction kept, on both nodes; deleted from both; bea refused to
+edit ada's line; deleting twice refused.

@@ -466,6 +466,37 @@
     color: var(--muted);
 }
 
+/* Edited: a quiet word beside the time (CHAT.md, slice 8). */
+.chat-line-edited {
+    font-size: 0.75em;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.chat-line-act-danger:hover {
+    color: var(--coral);
+}
+
+/* The editing banner above the composer, with the way out. */
+.chat-editing {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.3rem;
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.chat-editing-cancel {
+    margin-left: auto;
+    font-size: 0.9em;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.05rem 0.6rem;
+    cursor: pointer;
+}
+
 /* A line of nothing but emoji reads at 150% (Curtis, 2026-09-19). */
 .chat-line-emoji .chat-line-body {
     font-size: 1.5em;

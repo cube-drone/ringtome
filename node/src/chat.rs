@@ -364,6 +364,9 @@ pub struct Message {
     /// The emoji said in answer to this line (CHAT.md, slice 9), most first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reactions: Vec<Reaction>,
+    /// The words are a later edit's (slice 8).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub edited: bool,
 }
 
 /// One stack of emoji under a line: the shortcode, how many said it, and who.
@@ -616,16 +619,38 @@ pub async fn say(
     words: &str,
     reacts_to: Option<[u8; 32]>,
     retract: bool,
+    edits: Option<[u8; 32]>,
+    deletes: Option<[u8; 32]>,
 ) -> Result<(u64, i64), AppError> {
     let words = words.trim();
-    if words.is_empty() {
+    if words.is_empty() && deletes.is_none() {
         return Err(AppError::BadRequest(crate::msg!("chat.say-something", "say something")));
     }
+    // An edit or a delete (slice 8) names a line of this speaker's own, held here and not
+    // already deleted: the chain keeps every entry, the memo remembers the line's fate.
+    for target in [edits, deletes].into_iter().flatten() {
+        let own: Option<(i64,)> = state
+            .node_db
+            .fetch_optional(
+                "SELECT deleted FROM room_messages WHERE room_author = ?1 AND room_doc = ?2 AND entry_hash = ?3 AND speaker_root = ?4",
+                (author_hex, hex::encode(doc), target.to_vec(), root_hex),
+            )
+            .await
+            .context("looking for the line to change")
+            .map_err(AppError::Internal)?;
+        match own {
+            None => return Err(AppError::NotFound(crate::msg!("chat.thats-not-a-line-of-yours", "that isn't a line of yours here"))),
+            Some((d,)) if d != 0 => return Err(AppError::BadRequest(crate::msg!("chat.that-line-is-already-deleted", "that line is already deleted"))),
+            _ => {}
+        }
+    }
+    // A delete says nothing of its own: the entry's body is the one word it is.
+    let words = if deletes.is_some() { "deleted" } else { words };
     // A reaction (slice 9): one emoji shortcode, answering a line this node holds of the
     // room. No bake, no mentions, no notice - just the stack under the line. Taken back
     // (`retract`) by naming the reaction it withdraws: the chain keeps both, the memo stops
     // counting.
-    let mut retracts: Option<[u8; 32]> = None;
+    let mut retracts: Option<[u8; 32]> = deletes;
     if let Some(target) = reacts_to {
         if !is_shortcode(words) {
             return Err(AppError::BadRequest(crate::msg!("chat.a-reaction-is-one-emoji", "a reaction is one emoji")));
@@ -638,7 +663,7 @@ pub async fn say(
             // Every earlier copy but the last is taken back by its own quiet entry; the last
             // rides the ordinary road below, fold, topic and push included.
             for earlier in standing {
-                let quiet = ChatMessage { room_author: crate::pubkey::decode(author_hex).unwrap_or([0u8; 32]), body: words.as_bytes().to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: Some(target), retracts: Some(earlier) }
+                let quiet = ChatMessage { room_author: crate::pubkey::decode(author_hex).unwrap_or([0u8; 32]), body: words.as_bytes().to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: Some(target), retracts: Some(earlier), edits: None }
                     .encode()
                     .map_err(|e| AppError::Internal(anyhow!("encoding a take-back: {e}")))?;
                 crate::record::imaol::append_on(data.db(), data.signer(), service::CHAT, Some(*doc), entry_type::CHAT_MESSAGE, Payload::Inline(quiet)).await?;
@@ -682,7 +707,7 @@ pub async fn say(
     };
     // Media rides the room the way it rides a share (ruling 11): the say bakes - a line's
     // words, never a reaction's emoji.
-    let (words, refs) = if reacts_to.is_some() {
+    let (words, refs) = if reacts_to.is_some() || deletes.is_some() {
         (words.to_string(), Vec::new())
     } else {
         bake_words(state, data, root_hex, &author, doc, &head, key, words).await?
@@ -694,7 +719,7 @@ pub async fn say(
     // the seal admits - the notice is served under the room's door, and a bell that rings
     // for a room one may not enter would say the room exists.
     let mut mentions: Vec<[u8; 32]> = Vec::new();
-    let named_in_words = if reacts_to.is_some() { Vec::new() } else { crate::record::bake::mentions(&words) };
+    let named_in_words = if reacts_to.is_some() || deletes.is_some() { Vec::new() } else { crate::record::bake::mentions(&words) };
     for named in named_in_words {
         let named_hex = hex::encode(named);
         if named_hex == root_hex || mentions.contains(&named) {
@@ -711,7 +736,7 @@ pub async fn say(
         Some(key) => (crate::record::private::seal_post_body(&key, words.as_bytes())?, true),
         None => (words.into_bytes(), false),
     };
-    let payload = ChatMessage { room_author: author, body, sealed, refs, mentions: mentions.clone(), reacts_to, retracts }
+    let payload = ChatMessage { room_author: author, body, sealed, refs, mentions: mentions.clone(), reacts_to, retracts, edits }
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
     let signed = crate::record::imaol::append_on(
@@ -874,7 +899,7 @@ async fn held_count(state: &AppState, author_hex: &str, doc_hex: &str, ceiling: 
         .node_db
         .fetch_optional::<(i64,)>(
             "SELECT COUNT(*) FROM (SELECT 1 FROM room_messages
-               WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 LIMIT ?4)",
+               WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0 LIMIT ?4)",
             (author_hex, doc_hex, ceiling, cap),
         )
         .await
@@ -921,7 +946,18 @@ pub async fn answer_room_history(
         .node_db
         .fetch_all(
             "SELECT speaker_root, entry_hash FROM room_messages
-             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0
+             ORDER BY said_ms DESC, seq DESC LIMIT ?4",
+            (author_hex.as_str(), doc_hex.as_str(), before, limit),
+        )
+        .await
+        .unwrap_or_default();
+    // A page's edits ride with it (slice 8): the newest edit entry of each edited line.
+    let edits: Vec<(String, Vec<u8>)> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, edit_hash FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0 AND edit_hash IS NOT NULL
              ORDER BY said_ms DESC, seq DESC LIMIT ?4",
             (author_hex.as_str(), doc_hex.as_str(), before, limit),
         )
@@ -931,6 +967,7 @@ pub async fn answer_room_history(
     // does not keep come from the archive too.
     let mut rows = rows;
     let targets: Vec<Vec<u8>> = rows.iter().map(|(_, h)| h.clone()).collect();
+    rows.extend(edits);
     for chunk in targets.chunks(200) {
         let marks: Vec<String> = (0..chunk.len()).map(|i| format!("?{}", i + 3)).collect();
         let sql = format!(
@@ -1047,14 +1084,17 @@ pub async fn history(
     let doc_hex = hex::encode(doc);
     let closed = closed_at(state, author_hex, doc).await;
     let limit = limit.clamp(1, HISTORY_PAGE);
-    type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64);
+    type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64, i64);
     let before = before_ms.unwrap_or(i64::MAX);
     let ceiling = closed.map_or(before, |c| c.min(before));
     let mut rows: Vec<Row> = state
         .node_db
         .fetch_all(
-            "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash, body, sealed FROM room_messages
-             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3
+            "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash,
+                    COALESCE(edit_body, body), CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END,
+                    edit_hash IS NOT NULL
+             FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0
              ORDER BY said_ms DESC, seq DESC LIMIT ?4",
             (author_hex, doc_hex.as_str(), ceiling, limit),
         )
@@ -1073,6 +1113,8 @@ pub async fn history(
         let (archived, archive_total) = archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
         total = total.max(archive_total);
         let mut lines_from_archive = 0i64;
+        // An archived line's edits arrive beside it (slice 8): the newest stands in.
+        let mut archived_edits: HashMap<Vec<u8>, (i64, Vec<u8>, i64)> = HashMap::new();
         for (root, signed) in archived {
             if held.contains(signed.hash().as_slice()) {
                 continue;
@@ -1081,14 +1123,30 @@ pub async fn history(
             let Payload::Inline(payload) = &entry.payload else { continue };
             let Ok(msg) = ChatMessage::decode(payload) else { continue };
             if let Some(target) = msg.reacts_to {
-                archived_reactions.push((target.to_vec(), root, msg.body, i64::from(msg.sealed)));
+                if msg.retracts.is_none() {
+                    archived_reactions.push((target.to_vec(), root, msg.body, i64::from(msg.sealed)));
+                }
                 continue;
             }
-            if entry.timestamp_ms >= ceiling {
+            if let Some(target) = msg.edits {
+                let slot = archived_edits.entry(target.to_vec()).or_insert((0, Vec::new(), 0));
+                if entry.timestamp_ms > slot.0 {
+                    *slot = (entry.timestamp_ms, msg.body, i64::from(msg.sealed));
+                }
+                continue;
+            }
+            if msg.retracts.is_some() || entry.timestamp_ms >= ceiling {
                 continue;
             }
             lines_from_archive += 1;
-            rows.push((root, hex::encode(entry.chain.author), entry.seq as i64, entry.timestamp_ms, signed.hash().to_vec(), msg.body, i64::from(msg.sealed)));
+            rows.push((root, hex::encode(entry.chain.author), entry.seq as i64, entry.timestamp_ms, signed.hash().to_vec(), msg.body, i64::from(msg.sealed), 0));
+        }
+        for row in rows.iter_mut() {
+            if let Some((_, body, sealed)) = archived_edits.remove(&row.4) {
+                row.5 = body;
+                row.6 = sealed;
+                row.7 = 1;
+            }
         }
         more = lines_from_archive >= want;
         rows.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.2.cmp(&a.2)));
@@ -1101,7 +1159,7 @@ pub async fn history(
     let bylines = crate::profiles::bylines(&state.node_db, &speakers).await.unwrap_or_default();
     let items = rows
         .into_iter()
-        .map(|(speaker, leaf, seq, said_ms, hash, body, sealed)| {
+        .map(|(speaker, leaf, seq, said_ms, hash, body, sealed, edited)| {
             let words = if sealed != 0 {
                 key.and_then(|k| crate::record::private::open_post_body(&body, &k))
                     .and_then(|b| String::from_utf8(b).ok())
@@ -1120,6 +1178,7 @@ pub async fn history(
                 words,
                 reactions: stacks.remove(&hash_hex).unwrap_or_default(),
                 hash: hash_hex,
+                edited: edited != 0,
             }
         })
         .collect();
@@ -1132,7 +1191,7 @@ pub async fn unseen_in(node_db: &Db, author_hex: &str, doc_hex: &str, since_ms: 
     let row: Option<(i64,)> = node_db
         .fetch_optional(
             "SELECT COUNT(*) FROM room_messages
-             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms > ?3 AND speaker_root != ?4",
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms > ?3 AND speaker_root != ?4 AND deleted = 0",
             (author_hex, doc_hex, since_ms, not_speaker),
         )
         .await
@@ -1145,7 +1204,7 @@ pub async fn unseen_in(node_db: &Db, author_hex: &str, doc_hex: &str, since_ms: 
 pub async fn latest_by_room(node_db: &Db) -> Result<HashMap<(String, String), i64>> {
     let rows: Vec<(String, String, i64)> = node_db
         .fetch_all(
-            "SELECT room_author, room_doc, MAX(said_ms) FROM room_messages GROUP BY room_author, room_doc",
+            "SELECT room_author, room_doc, MAX(said_ms) FROM room_messages WHERE deleted = 0 GROUP BY room_author, room_doc",
             (),
         )
         .await
@@ -1245,8 +1304,9 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         rooms.insert((room_author.clone(), room_doc.clone()));
         if let Some(earlier) = msg.retracts {
             // Taken back (slices 8 and 9): the earlier entry of this speaker's stops
-            // counting. Chain order puts the original before its retraction, and a re-fold
-            // ignores the original's insert, so the mark sticks.
+            // counting - a reaction withdrawn, or a line deleted. Chain order puts the
+            // original before its retraction, and a re-fold ignores the original's insert,
+            // so the mark sticks.
             state
                 .node_db
                 .execute(
@@ -1255,6 +1315,27 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                 )
                 .await
                 .context("withdrawing a reaction")?;
+            state
+                .node_db
+                .execute(
+                    "UPDATE room_messages SET deleted = 1 WHERE speaker_root = ?1 AND entry_hash = ?2",
+                    (root, earlier.to_vec()),
+                )
+                .await
+                .context("deleting a line")?;
+            continue;
+        }
+        if let Some(earlier) = msg.edits {
+            // Edited (slice 8): the newest edit's words stand in the old line's place.
+            state
+                .node_db
+                .execute(
+                    "UPDATE room_messages SET edit_hash = ?3, edit_body = ?4, edit_sealed = ?5, edited_ms = ?6
+                     WHERE speaker_root = ?1 AND entry_hash = ?2 AND (edited_ms IS NULL OR edited_ms < ?6)",
+                    (root, earlier.to_vec(), signed.hash().to_vec(), msg.body.clone(), i64::from(msg.sealed), entry.timestamp_ms),
+                )
+                .await
+                .context("editing a line")?;
             continue;
         }
         if let Some(target) = msg.reacts_to {
@@ -1746,7 +1827,7 @@ mod tests {
     fn a_message_seals_and_opens_under_the_room_key() {
         let key = [9u8; 32];
         let sealed = crate::record::private::seal_post_body(&key, b"the quiet one").unwrap();
-        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None };
+        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None };
         let back = ChatMessage::decode(&msg.encode().unwrap()).unwrap();
         assert_eq!(crate::record::private::open_post_body(&back.body, &key).unwrap(), b"the quiet one");
         assert!(crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(), "the wrong key opens nothing");

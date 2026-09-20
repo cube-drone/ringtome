@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 851 phrases across 58 files.
+// 859 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -32,9 +32,10 @@ export default {
     'apps.chat.open-a-room': 'open a room',
     'apps.chat.find-an-emoji': 'find an emoji…',
     'apps.chat.someone-you-dont-trust': "someone you don't trust",
+    'apps.chat.edited': '(edited)',
     'apps.chat.react-with-an-emoji': 'react with an emoji',
-    'apps.chat.edit-soon': 'edit (coming soon)',
-    'apps.chat.delete-soon': 'delete (coming soon)',
+    'apps.chat.edit-this-line': 'edit',
+    'apps.chat.delete-this-line': 'delete',
     'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
     'apps.chat.media-from-someone-you-dont-trust': "media from someone you don't trust - click to see",
     'apps.chat.who-said-click-to-take-yours-back': '{who} - click to take yours back',
@@ -67,6 +68,11 @@ export default {
     'apps.chat.n-lines-hidden': "{n} lines hidden - from people you don't trust",
     'apps.chat.is-typing': 'is typing…',
     'apps.chat.are-typing': 'are typing…',
+    'apps.chat.editing-a-line': 'editing a line',
+    'apps.chat.never-mind': 'never mind',
+    'apps.chat.delete-this-line-title': 'delete this line',
+    'apps.chat.delete-this-line-question': 'Delete this line? It may take a while to disappear everywhere.',
+    'apps.chat.delete': 'delete',
     'apps.chat.you-left-this-room': "you left this room. It isn't updating.",
     'apps.chat.rejoin': 'rejoin',
     'apps.chat.say-something': 'say something…',
@@ -763,6 +769,8 @@ export default {
 
     // --- node/src/chat.rs ---
     'chat.say-something': 'say something',
+    'chat.thats-not-a-line-of-yours': "that isn't a line of yours here",
+    'chat.that-line-is-already-deleted': 'that line is already deleted',
     'chat.a-reaction-is-one-emoji': 'a reaction is one emoji',
     'chat.you-havent-said-that-emoji-here': "you haven't said that emoji here",
     'chat.no-such-line-to-react-to': "that line isn't here to react to",

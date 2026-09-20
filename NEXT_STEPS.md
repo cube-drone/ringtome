@@ -60,9 +60,9 @@ beside derived. What is left:
   never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
   does not (iroh QUIC already encrypts point to point).
 * **The transport tier**: pricing connection admission by shared public-edge standing.
-* Real-time chat rooms (CHAT.md, settled 2026-09-18): slices 0 to 7 and 9 built
-  2026-09-18/19; slice 8 (deleting and editing messages) remains - the hover menu already
-  shows its buttons, and the wire's `retracts` key, built for un-reacting, is its delete.
+* Real-time chat rooms (CHAT.md, settled 2026-09-18): every slice built 2026-09-18/19.
+  Residuals CHAT.md names: an eviction re-keys nothing (ruling 2's bound); a stranger's media
+  loads blurred rather than not at all.
 * Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately; CHAT.md
   notes it may be a room of two)
 

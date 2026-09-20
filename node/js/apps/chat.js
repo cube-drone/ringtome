@@ -290,7 +290,7 @@ const EmojiPicker = ({ onPick, onClose }) => {
 /// line shows its menu (CHAT.md, slice 9): the smiley opens the emoji picker; a line of
 /// one's own also offers edit and delete, which slice 8 will wire. The emoji said in answer
 /// stack under the words, most-said first, who on hover.
-const Line = ({ m, current, cont, onReact, untrusted }) => {
+const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -307,6 +307,7 @@ const Line = ({ m, current, cont, onReact, untrusted }) => {
         html`<div class="chat-line-head">
             <${Speaker} root=${m.speaker} current=${current} />
             <span class="chat-line-when">${when}</span>
+            ${m.edited && html`<span class="chat-line-edited">${t('apps.chat.edited', '(edited)')}</span>`}
         </div>`}
         ${!!onReact &&
         html`<span class="chat-line-menu">
@@ -314,8 +315,8 @@ const Line = ({ m, current, cont, onReact, untrusted }) => {
                 <${Icons.smiley} />
             </button>
             ${mine &&
-            html`<button class="chat-line-act" type="button" disabled title=${t('apps.chat.edit-soon', 'edit (coming soon)')}><${Icons.rename} /></button>
-                <button class="chat-line-act" type="button" disabled title=${t('apps.chat.delete-soon', 'delete (coming soon)')}><${Icons.trash} /></button>`}
+            html`<button class="chat-line-act" type="button" title=${t('apps.chat.edit-this-line', 'edit')} onClick=${() => onEdit && onEdit(m)}><${Icons.rename} /></button>
+                <button class="chat-line-act chat-line-act-danger" type="button" title=${t('apps.chat.delete-this-line', 'delete')} onClick=${() => onDelete && onDelete(m)}><${Icons.trash} /></button>`}
             ${picking &&
             html`<${EmojiPicker}
                 onClose=${() => setPicking(false)}
@@ -387,6 +388,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
     const [sending, setSending] = useState(false);
     const [sendError, setSendError] = useState(null);
     const [typing, setTyping] = useState([]);
+    // Editing (CHAT.md, slice 8): the line's words load into the composer, and the next
+    // send says them again as an edit naming the line - a new entry, never a change to the
+    // old one. Deleting asks first, then says the one word "deleted" naming the line.
+    const [editingLine, setEditingLine] = useState(null);
+    const [deletingLine, setDeletingLine] = useState(null);
     const [chatters, setChatters] = useState(null);
     const chattersRef = useRef(null); // the `@` picker reads the latest roster per pop
     const socket = useRef(null);
@@ -630,9 +636,10 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         try {
             await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
                 method: 'POST',
-                body: JSON.stringify({ words: said }),
+                body: JSON.stringify(editingLine ? { words: said, edits: editingLine.hash } : { words: said }),
             });
             setDraft('');
+            setEditingLine(null);
             sayTyping(false);
             atEnd.current = true; // your own line always brings you to the end
             readHistory();
@@ -643,6 +650,29 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
         }
     };
     sendRef.current = send;
+    const beginEdit = (m) => {
+        setEditingLine({ hash: m.hash, words: m.words || '' });
+        setDraft(m.words || '');
+    };
+    const cancelEdit = () => {
+        setEditingLine(null);
+        setDraft('');
+    };
+    const deleteLine = async () => {
+        const m = deletingLine;
+        if (!m) return;
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ words: 'deleted', deletes: m.hash }),
+            });
+            readHistory();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        } finally {
+            setDeletingLine(null);
+        }
+    };
     const leave = async () => {
         try {
             await api(`/api/identity/${root}/rooms/${author}/${doc}`, { method: 'DELETE' });
@@ -856,6 +886,8 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                               cont=${i > 0 && lines[i - 1].speaker === m.speaker}
                               untrusted=${!m.post && !trusted(m.speaker)}
                               onReact=${m.post || room.left || (history && history.closed) ? null : react}
+                              onEdit=${m.post || room.left || (history && history.closed) ? null : beginEdit}
+                              onDelete=${m.post || room.left || (history && history.closed) ? null : setDeletingLine}
                           />`
                 )}
             </ul>
@@ -867,6 +899,22 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             </p>`}
         </div>
         <div class="chat-foot">
+            ${editingLine &&
+            html`<p class="chat-editing">
+                <${Icons.rename} /> ${t('apps.chat.editing-a-line', 'editing a line')}
+                <button class="chat-editing-cancel" type="button" onClick=${cancelEdit}>${t('apps.chat.never-mind', 'never mind')}</button>
+            </p>`}
+            ${deletingLine &&
+            html`<${Modal}
+                title=${t('apps.chat.delete-this-line-title', 'delete this line')}
+                onClose=${() => setDeletingLine(null)}
+            >
+                <p class="feed-unpublish-warn">${t('apps.chat.delete-this-line-question', 'Delete this line? It may take a while to disappear everywhere.')}</p>
+                <div class="feed-unpublish-acts">
+                    <button class="feed-unpublish-go" onClick=${deleteLine}>${t('apps.chat.delete', 'delete')}</button>
+                    <button class="feed-unpublish-no" onClick=${() => setDeletingLine(null)}>${t('apps.chat.keep-it', 'keep it')}</button>
+                </div>
+            </${Modal}>`}
             ${/* A left room (Curtis, 2026-09-19): no composer - the honest word that it is
                 not being updated, and the way back in. */ ''}
             ${room.left

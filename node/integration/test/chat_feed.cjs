@@ -275,6 +275,69 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(thumbs && thumbs.count, 2, "said again, it counts again");
     });
 
+    it("a line edits and deletes by later entries: the newest words stand in its place, marked; a deleted line leaves the floor; only one's own lines change", async () => {
+        const history = async (who, root) => (await (await who(`api/identity/${root}/rooms/${adaRoot}/${room}/messages`)).json());
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "a typo hear" });
+        assert.equal(said.status, 200, await said.text());
+        const mine = (await history(ada, adaRoot)).items.find((m) => m.words === "a typo hear");
+        assert.ok(mine, "the line is on ada's floor");
+        // A reaction first, so the edit can be seen to keep it - once bea's node holds the line.
+        let seen = false;
+        for (let i = 0; i < 30 && !seen; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            seen = (await history(bea, beaRoot)).items.some((m) => m.hash === mine.hash);
+            if (!seen) await wait(300);
+        }
+        assert.ok(seen, "bea holds the line");
+        const eyes = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: ":eyes:", reacts_to: mine.hash });
+        assert.equal(eyes.status, 200, await eyes.text());
+        // Not bea's to change.
+        const notHers = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "a typo here", edits: mine.hash });
+        assert.equal(notHers.status, 404, await notHers.text());
+        // Edited: the same hash, the new words, marked, at the old place; the count unchanged.
+        const before = (await history(ada, adaRoot)).total;
+        const edited = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "a typo here", edits: mine.hash });
+        assert.equal(edited.status, 200, await edited.text());
+        let h = await history(ada, adaRoot);
+        let line = h.items.find((m) => m.hash === mine.hash);
+        assert.ok(line && line.words === "a typo here" && line.edited === true && line.said_ms === mine.said_ms, `edited in place: ${JSON.stringify(line)}`);
+        assert.ok(!h.items.some((m) => m.words === "a typo hear"), "the old words are gone from the floor");
+        assert.equal(h.total, before, "an edit is no new line");
+        // Bea's node, once ada's chain lands: the same, reaction kept.
+        for (let i = 0; i < 30; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            line = (await history(bea, beaRoot)).items.find((m) => m.hash === mine.hash);
+            if (line && line.words === "a typo here") break;
+            await wait(300);
+        }
+        assert.ok(line && line.edited, `bea sees the edit: ${JSON.stringify(line)}`);
+        for (let i = 0; i < 30 && !(line.reactions || []).some((r) => r.emoji === ":eyes:"); i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            line = (await history(ada, adaRoot)).items.find((m) => m.hash === mine.hash);
+            await wait(300);
+        }
+        assert.ok((line.reactions || []).some((r) => r.emoji === ":eyes:"), "the reaction rides the line through the edit");
+        // Deleted: gone from ada's floor and, once landed, from bea's; the count drops; twice is refused.
+        const gone = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "", deletes: mine.hash });
+        assert.equal(gone.status, 200, await gone.text());
+        h = await history(ada, adaRoot);
+        assert.ok(!h.items.some((m) => m.hash === mine.hash), "deleted from ada's floor");
+        assert.equal(h.total, before - 1, "and the count drops");
+        const twice = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "", deletes: mine.hash });
+        assert.equal(twice.status, 400, await twice.text());
+        let still = true;
+        for (let i = 0; i < 30 && still; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            still = (await history(bea, beaRoot)).items.some((m) => m.hash === mine.hash);
+            if (still) await wait(300);
+        }
+        assert.equal(still, false, "and from bea's");
+    });
+
     it("the owner closes the room (the record stands, nobody says more, and closed stays closed), then takes it down (it leaves every list)", async () => {
         const roomsOf = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
         // The room's own draft, by its publication: what the page finds on the mirror.
