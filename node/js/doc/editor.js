@@ -627,7 +627,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                             <input type="checkbox" checked=${hiddenHere} onChange=${(e) => book.mark(`doc:${docId}`, e.currentTarget.checked)} />
                             ${t('doc.editor.hide-from-the-book', 'hide from the book')}
                         </label>
-                        <button class="publish-bar-update" disabled=${true} title=${t('doc.editor.the-book-rolls-out-from', 'the book rolls out from the Publish column - the rollout lands with the next slice')}>
+                        <button class="publish-bar-update" disabled=${true} title=${t('doc.editor.the-book-rolls-out-from', 'publish from the Publish column')}>
                             <${Icons.update} /> ${t('doc.editor.publish-the-changes', 'publish the changes')}
                         </button>
                     </span>
@@ -654,7 +654,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                 </span>
                 <span class="publish-bar-acts">
                 ${standing === 'private' &&
-                html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist')}>
+                html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turn off comments')}>
                         <input
                             type="checkbox"
                             checked=${wishes.settled}
@@ -674,7 +674,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     html`<button
                         class="publish-bar-publish"
                         disabled=${publishing}
-                        title=${t('doc.editor.publish---makes-this-content', 'publish - makes this content available on your public feed')}
+                        title=${t('doc.editor.publish---makes-this-content', 'publish')}
                         onClick=${publishNow}
                     ><${Icons.docPublic} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.publish', 'publish')}</button>`}
                     ${standing === 'public' &&
@@ -705,7 +705,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     html`<button
                         class="publish-bar-update"
                         disabled=${true}
-                        title=${t('doc.editor.this-document-was-published-over', 'this document was published over a day ago and can no longer be updated')}
+                        title=${t('doc.editor.this-document-was-published-over', 'posts can only be edited for a day')}
                     ><${Icons.update} /> ${t('doc.editor.update', 'update')}</button>`}
                     ${standing === 'public' &&
                     html`<button
@@ -718,7 +718,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     html`<button
                             class="publish-bar-update"
                             disabled=${publishing}
-                            title=${t('doc.editor.re-read-the-date-and', 're-read the date and the words: a date still ahead re-plans, a date now or past publishes')}
+                            title=${t('doc.editor.re-read-the-date-and', 'publish, or reschedule')}
                             onClick=${publishNow}
                         ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>
                         <button
@@ -733,7 +733,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     ${publishNote.kind === 'scheduled'
                         ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', { when: new Date(publishNote.at).toLocaleString() })
                         : publishNote.kind === 'unpublished'
-                          ? t('doc.editor.taken-down---it-leaves', 'taken down - it leaves other people\'s feeds and shares, but very slowly')
+                          ? t('doc.editor.taken-down---it-leaves', 'taken down')
                           : publishNote.kind === 'unscheduled'
                             ? t('doc.editor.schedule-cancelled', 'schedule cancelled')
                             : t('doc.editor.published', 'published')}
@@ -747,7 +747,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     }}
                 >
                     <p class="feed-unpublish-warn">
-                        ${t('doc.editor.this-removes-it-from-other', "removes it from other people's feeds and shares, but very slowly")}
+                        ${t('doc.editor.this-removes-it-from-other', 'It may take a while to disappear everywhere.')}
                     </p>
                     <div class="feed-unpublish-acts">
                         <button class="feed-unpublish-go" disabled=${publishing} onClick=${takeDown}>

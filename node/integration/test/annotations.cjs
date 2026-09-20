@@ -226,8 +226,8 @@ describe("annotations: private facts about documents", function () {
         assert.equal(over.status, 400, "past the cap is a client error");
         const body = await over.json();
         assert.ok(
-            body.message.includes("becoming") && body.message.includes("document"),
-            `the refusal says the description is becoming a document: ${body.message}`
+            body.message.includes("too long"),
+            `the refusal says the description is too long, plainly: ${body.message}`
         );
     });
 

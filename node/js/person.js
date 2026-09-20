@@ -348,7 +348,7 @@ export const AddressRow = ({ root, via, hosted, slug }) => {
         ${slug &&
         html`<div class="persona-address persona-slug">
             <span class="persona-address-label">${t('person.on-this-node', 'on this node')}</span>
-            <a class="persona-address-value" href=${`/@${slug}`} title=${t('person.this-nodes-short-name', "this node's short name for them - the same name elsewhere is somebody else")}>
+            <a class="persona-address-value" href=${`/@${slug}`} title=${t('person.this-nodes-short-name', 'their short name here')}>
                 <code>${base}/<strong class="persona-slug-name">@${slug}</strong></code>
             </a>
         </div>`}

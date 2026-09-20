@@ -56,7 +56,7 @@ const Subject = ({ row }) => {
     if (row.stranger && row.claimed_name) {
         return html`<q
             class="notif-claimed"
-            title=${t('apps.notifications.what-they-call-themselves-unverified', 'what they call themselves - an unverified claim, not a name this computer has checked')}
+            title=${t('apps.notifications.what-they-call-themselves-unverified', 'unverified name')}
             >${row.claimed_name}</q
         >`;
     }
@@ -118,7 +118,7 @@ const sentence = (r) => {
     if (follows && vouches)
         return t(
             'apps.notifications.follows-you-publicly-and-vouches',
-            'follows you publicly, and vouches for you - they say you two have met'
+            'follows and vouches for you'
         );
     if (follows && r.trust)
         return t(
@@ -193,7 +193,7 @@ export const NotificationsApp = ({ current }) => {
                       <${Icons.notifications} />
                       ${t(
                           'apps.notifications.nothing-yet-when-someone-you',
-                          'nothing yet - when someone you follow makes their relationship with you public, it lands here'
+                          'nothing yet'
                       )}
                   </p>`
                 : html`<div class="notif-list">
@@ -254,7 +254,7 @@ export const NotificationsApp = ({ current }) => {
                                       ${r.stranger &&
                                       html`<span
                                           class="notif-stranger"
-                                          title=${t('apps.notifications.you-dont-follow-them-so', "you don't follow them, so this arrived at your door - their name and picture stay unfetched until you answer")}
+                                          title=${t('apps.notifications.you-dont-follow-them-so', "someone you don't follow")}
                                       >${t('apps.notifications.a-stranger', 'a stranger')}</span>`}
                                   </span>
                                   <span class="notif-cells">

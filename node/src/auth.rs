@@ -136,7 +136,7 @@ pub fn normalize_username(input: &str) -> Result<String, AppError> {
         return Err(AppError::BadRequest(crate::msg!("auth.username-cant-start-or-end", "username can't start or end with - or _")));
     }
     if name.contains("--") || name.contains("__") || name.contains("-_") || name.contains("_-") {
-        return Err(AppError::BadRequest(crate::msg!("auth.username-cant-contain-consecutive-separators", "username can't contain consecutive separators")));
+        return Err(AppError::BadRequest(crate::msg!("auth.username-cant-contain-consecutive-separators", "no double - or _")));
     }
 
     Ok(name)
@@ -219,9 +219,9 @@ pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, Ap
 
     // Uniform failure whether the account is missing or the password is wrong (no user enumeration).
     let (account_id, phc) =
-        row.ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.invalid-credentials", "invalid credentials")))?;
+        row.ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.invalid-credentials", "wrong name or password")))?;
     if !verify_password(password, &phc) {
-        return Err(AppError::Unauthorized(crate::msg!("auth.invalid-credentials-2", "invalid credentials")));
+        return Err(AppError::Unauthorized(crate::msg!("auth.invalid-credentials-2", "wrong name or password")));
     }
 
     let token = generate_token();

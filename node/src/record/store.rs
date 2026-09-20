@@ -628,7 +628,7 @@ impl Devices<'_> {
         if name.len() > Self::MAX_NAME_BYTES {
             return Err(AppError::BadRequest(crate::msg!(
                 "record.store.device-names-are-capped-at",
-                "device names are capped at {limit} bytes - this is a nickname, not a description",
+                "that name is too long ({limit} bytes at most)",
                 limit = Self::MAX_NAME_BYTES,
             )));
         }
@@ -1074,7 +1074,7 @@ impl Documents<'_> {
             .get(doc_id)
             .ok_or_else(|| AppError::NotFound(crate::msg!("record.store.no-such-document", "no such document")))?;
         if doc.diverged() {
-            return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict")));
+            return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "save this note once more before publishing")));
         }
         let resolved = self.resolved(doc).await?;
         let post_key = self.post_key_if(doc_id, trusted_only).await?;
@@ -1140,7 +1140,7 @@ impl Documents<'_> {
                 {
                     return Err(AppError::BadRequest(crate::msg!(
                         "record.store.this-post-has-settled",
-                        "this post has settled - posts can be edited for a day, then what you said is what you said. Take it down and post afresh if it needs changing."
+                        "posts can only be edited for a day. Delete it and post again."
                     )));
                 }
             }
@@ -1477,8 +1477,7 @@ impl Annotations<'_> {
         if value.len() > Self::MAX_VALUE_BYTES {
             return Err(AppError::BadRequest(crate::msg!(
                 "record.store.annotation-value-exceeds-bytes-past",
-                "annotation value exceeds {limit} bytes: past that, a description is becoming \
-                 another document - write one and reference it",
+                "that description is too long ({limit} bytes at most)",
                 limit = Self::MAX_VALUE_BYTES,
             )));
         }
@@ -2111,8 +2110,7 @@ impl Taxonomies<'_> {
             && Self::is_on_roster(&view, doc_id)
             && Self::reaches(&view, &self.store.root, doc_id, taxonomy_id)
         {
-            return Err(AppError::BadRequest(crate::msg!("record.store.placing-this-list-here-would", "placing this list here would create a cycle: the destination is already \
-                 inside it (directly or through nested lists)")));
+            return Err(AppError::BadRequest(crate::msg!("record.store.placing-this-list-here-would", "a list can't go inside itself")));
         }
 
         let element = member_element(root, doc_id);
@@ -2562,7 +2560,7 @@ mod tests {
             .set_name(&pi, &"x".repeat(Devices::MAX_NAME_BYTES + 1))
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("nickname"), "{err}");
+        assert!(err.to_string().contains("too long"), "{err}");
     }
 
     #[tokio::test]
@@ -2767,8 +2765,8 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            err.to_string().contains("another document"),
-            "the refusal names the alternative: {err}"
+            err.to_string().contains("too long"),
+            "the refusal says what is wrong, plainly: {err}"
         );
     }
 
@@ -3013,8 +3011,8 @@ mod tests {
                 .await
                 .unwrap_err();
             assert!(
-                err.to_string().contains("cycle"),
-                "refusal names the cycle: {err}"
+                err.to_string().contains("inside itself"),
+                "refusal names the cycle, plainly: {err}"
             );
         }
 

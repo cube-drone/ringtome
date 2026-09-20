@@ -617,7 +617,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             ${/* The archive's standing (ruling 6): the creator's node keeps its rooms whole
                 unasked; a node whose operator pressed full-sync says so, and may release. */ ''}
             ${room.archived
-                ? html`<span class="label-chip chat-archived" title=${t('apps.chat.this-node-keeps-the-whole-room', 'this node keeps the whole room, not just the latest')}>
+                ? html`<span class="label-chip chat-archived" title=${t('apps.chat.this-node-keeps-the-whole-room', 'this computer keeps the whole conversation')}>
                       ${t('apps.chat.kept-whole-here', 'kept whole here')}
                       ${admin && html`<button class="chat-archive" disabled=${archiving} onClick=${() => setArchive(false)}>${t('apps.chat.release', 'release')}</button>`}
                   </span>`
@@ -629,12 +629,12 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                 html`<button
                     class="chat-leave chat-close"
                     disabled=${closing || !roomDraft}
-                    title=${t('apps.chat.close-the-room-title', 'close the room - the conversation ends, and the record stands')}
+                    title=${t('apps.chat.close-the-room-title', 'close this room for good')}
                     onClick=${closeRoom}
                 >
                     ${closing ? t('apps.chat.closing', 'closing…') : t('apps.chat.close', 'close')}
                 </button>`}
-                <button class="chat-leave chat-delete" title=${t('apps.chat.delete-the-room-title', 'take the room down - the post goes, and the conversation is orphaned')} onClick=${() => setDeleting(true)}>
+                <button class="chat-leave chat-delete" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
                     <${Icons.trash} />
                 </button>
                 ${deleting &&
@@ -672,7 +672,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                     class="chat-older chat-archive-all"
                     disabled=${archiving}
                     onClick=${() => setArchive(true)}
-                    title=${t('apps.chat.pull-the-whole-room-and-keep-it', "pull the room's whole history from its creator's node, and keep it here from now on")}
+                    title=${t('apps.chat.pull-the-whole-room-and-keep-it', 'keep the whole conversation on this computer')}
                 >
                     ${archiving ? t('apps.chat.loading-the-entire-history', 'loading the entire history…') : t('apps.chat.load-the-entire-history-here', 'load the entire history here')}
                 </button>`}
@@ -694,11 +694,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
             ${room.left
                 ? html`<p class="chat-closed chat-left-note">
                       <${Icons.trustPrivate} />
-                      ${t('apps.chat.you-left-this-room', "you left this room - it isn't being updated here, and what you see may be out of date")}
+                      ${t('apps.chat.you-left-this-room', "you left this room. It isn't updating.")}
                       <button class="chat-rejoin" onClick=${rejoin}>${t('apps.chat.rejoin', 'rejoin')}</button>
                   </p>`
                 : history && history.closed
-                ? html`<p class="chat-closed"><${Icons.settled} /> ${t('apps.chat.this-room-is-closed', 'this room is closed - the conversation ended, and the record stands')}</p>`
+                ? html`<p class="chat-closed"><${Icons.settled} /> ${t('apps.chat.this-room-is-closed', 'this room is closed')}</p>`
                 : html`<form
                       class="chat-composer"
                       onSubmit=${(e) => {
@@ -728,7 +728,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin }) => {
                       ${draftBytes > MAX_MESSAGE_BYTES / 2 &&
                       html`<span
                           class=${overLong ? 'chat-composer-count chat-composer-count-over' : 'chat-composer-count'}
-                          title=${t('apps.chat.bytes-of-this-message', 'this message, in bytes, against the most one message may carry')}
+                          title=${t('apps.chat.bytes-of-this-message', 'message length')}
                       >${draftBytes} / ${MAX_MESSAGE_BYTES}</span>`}
                       <button
                           class="chat-composer-attach"

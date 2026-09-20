@@ -499,19 +499,19 @@ pub async fn say(
         return Err(AppError::BadRequest(crate::msg!("chat.that-is-too-long-for-one-message", "that is too long for one message")));
     }
     let Some((head, _)) = room_head(state, author_hex, doc).await else {
-        return Err(AppError::NotFound(crate::msg!("chat.no-such-room-is-held-here", "no such room is held here")));
+        return Err(AppError::NotFound(crate::msg!("chat.no-such-room-is-held-here", "can't find that room")));
     };
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
         return Err(AppError::BadRequest(crate::msg!("chat.that-post-is-not-a-room", "that post is not a room")));
     }
     if head.settled {
-        return Err(AppError::BadRequest(crate::msg!("chat.this-room-is-closed", "this room is closed - the conversation ended, and the record stands")));
+        return Err(AppError::BadRequest(crate::msg!("chat.this-room-is-closed", "this room is closed")));
     }
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| AppError::BadRequest(crate::msg!("chat.bad-room-author", "bad room author")))?;
     // The room's key first: a sealed room seals its words and its pictures under one key.
     let key = if head.trusted_only {
         let Some(key) = crate::idface::key_for(state, author_hex, doc, root_hex, None).await else {
-            return Err(AppError::Forbidden(crate::msg!("chat.the-rooms-key-hasnt-arrived", "the room's key hasn't arrived here - the words would be unreadable")));
+            return Err(AppError::Forbidden(crate::msg!("chat.the-rooms-key-hasnt-arrived", "this room isn't ready on this computer yet")));
         };
         Some(key)
     } else {
@@ -608,7 +608,7 @@ async fn bake_words(
     if refs.iter().any(|r| matches!(r, MediaRef::External { .. })) {
         return Err(AppError::BadRequest(crate::msg!(
             "chat.a-room-cant-bake-web-media",
-            "a room can't bake media from the open web - save the picture and attach it directly"
+            "save the picture and attach it here instead"
         )));
     }
     let docs = data.documents();

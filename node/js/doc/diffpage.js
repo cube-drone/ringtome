@@ -80,7 +80,7 @@ export const DiffPage = ({ app, doc, current }) => {
         <header class="diff-page-head">
             <h2 class="diff-page-title">${row.title || t('doc.diffpage.untitled', 'untitled')}</h2>
             <p class="diff-page-sub">
-                ${t('doc.diffpage.the-private-words-against-the', 'the private words against the public version - what an update would change')}
+                ${t('doc.diffpage.the-private-words-against-the', 'what an update would change')}
             </p>
             <span class="diff-page-acts">
                 <button class="publish-bar-view" onClick=${back}><${Icons.back} /> ${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>

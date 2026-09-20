@@ -29,7 +29,7 @@ export const bareSource = (_error, source) => html`<pre class="reader-plain">${s
 /// The default: what happened, and then the source so nothing is hidden.
 export const marqueeApology = (_error, source) => html`<div>
     <p class="null-sub">
-        ${t('doc.marqueebody.this-marquee-doesnt-parse-right', "this marquee doesn't parse right now (likely a conflict split a block) - showing the source; edit to tidy it.")}
+        ${t('doc.marqueebody.this-marquee-doesnt-parse-right', 'this page has a formatting problem. Showing the plain text.')}
     </p>
     <pre class="reader-plain">${source}</pre>
 </div>`;

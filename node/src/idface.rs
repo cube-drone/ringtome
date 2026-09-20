@@ -1409,7 +1409,7 @@ pub(crate) async fn public_doc_bytes(
         if peek_held(state, &root_hex).await && !peek_room(state, &root_hex).await {
             return Err(AppError::NotFound(crate::msg!("idface.this-look-is-full", "this look is full - follow them to keep everything")));
         }
-        return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "the bytes haven't arrived here yet - headers travel ahead of bodies")));
+        return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "still on its way")));
     };
     // A sealed body opens at the door (PROJECT_PLAN's Post visibility slice 2b): what the store holds and
     // the network spreads is ciphertext; the trusted reader above has earned the words,
@@ -1429,7 +1429,7 @@ pub(crate) async fn public_doc_bytes(
         let Some(key) = key else {
             return Err(AppError::NotFound(crate::msg!(
                 "idface.the-key-hasnt-arrived",
-                "the key hasn't arrived here yet - it travels only between trusted computers"
+                "not shared with you"
             )));
         };
         let Some(plain) = crate::record::private::open_post_body(&bytes, &key) else {

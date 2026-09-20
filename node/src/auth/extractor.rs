@@ -56,11 +56,11 @@ impl FromRequestParts<AppState> for Session {
         let token = jar
             .get(&session_cookie_name(state.config.port))
             .map(|c| c.value().to_string())
-            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "not logged in")))?;
+            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "please sign in again")))?;
 
         let account = account_for_token(&state.node_db, &token)
             .await?
-            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "session invalid or expired")))?;
+            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "please sign in again")))?;
 
         // The presence signal: an authenticated request is a human at the keyboard, and the
         // follow-refresh sweep spends its budget on present humans first.

@@ -88,7 +88,7 @@ export const LockButton = ({ onUnlocked }) => {
     return html`
         <button
             class=${unlocking ? 'seal-lock unlocking' : 'seal-lock'}
-            title=${t('postentry.posted---click-then-wait', 'Posted - click, then wait 15 seconds, to edit this again')}
+            title=${t('postentry.posted---click-then-wait', 'edit (unlocks in 15 seconds)')}
             onClick=${() => setUnlocking(true)}
             disabled=${unlocking}
         >
@@ -277,7 +277,7 @@ const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
             <p class="feed-unpublish-warn">
                 ${t(
                     'postentry.this-removes-it-from-other',
-                    "removes it from other people's feeds and shares, but very slowly"
+                    'It may take a while to disappear everywhere.'
                 )}
             </p>
             <div class="feed-unpublish-acts">
@@ -920,8 +920,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 actions=${html`${item.scheduled
                         ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
                         : backdated
-                          ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beatLabel(item.published_ms)}</span></span>`
-                          : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time - the same beat everywhere on Earth')}>${beatLabel(item.published_ms)}</span></span>`}
+                          ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by the author, written {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`
+                          : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`}
                     ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
                         never the key, and that is not what the button promises - unless the
                         author asked for the hop (Contact tags, ruling 7). */ ''}
@@ -1049,7 +1049,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                             .join(' ')}
                         key=${`${g.key}:${g.value}`}
                         title=${canAgree
-                            ? t('postentry.click-to-agree', 'said by {names} - click to agree, with your own name on it', { names: names.join(', ') })
+                            ? t('postentry.click-to-agree', '{names} - click to agree', { names: names.join(', ') })
                             : soleAuthor
                               ? t('postentry.the-authors-label', "the author's label")
                               : t('postentry.label-by-name', 'label by {name}', { name: names.join(', ') })}
@@ -1126,7 +1126,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                       })()}</span>`
                     : html`<button
                           class="label-add"
-                          title=${t('postentry.say-what-this-post-is', 'say what this post is - the label goes on your own chain, with your name on it')}
+                          title=${t('postentry.say-what-this-post-is', 'add a label, in your name')}
                           onClick=${() => setTagging(true)}
                       >${t('postentry.plus-tag', '+ tag')}</button>`)}
             </div>`}

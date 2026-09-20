@@ -372,7 +372,7 @@ export const NullState = ({ persona }) => {
                 ${busy ? '…' : t('persona.create-a-persona', 'create a persona')}
             </button>
             <p class="null-sub">
-                ${t('persona.every-computer-you-bring-the', "Every computer you bring the persona to fully syncs your persona's stuff everywhere. This computer will be you, too. That's what happens when you...")}
+                ${t('persona.every-computer-you-bring-the', 'This computer becomes you too, with everything synced, when you')}
             </p>
             <button class="skip-link" disabled=${busy} onClick=${run(persona.startJoin)}>
                 ${t('persona.bring-your-persona-from-another', 'bring your persona from another computer.')}
@@ -629,7 +629,7 @@ export const PersonaMenu = ({ persona, session }) => {
                     <span class="persona-menu-icon"><${Icons.computers} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.your-computers-2', 'your computers')}</strong>
-                        <small>${t('persona.the-machines-that-carry-this', 'the machines that carry this persona')}</small>
+                        <small>${t('persona.the-machines-that-carry-this', "the computers you're signed in on")}</small>
                     </span>
                 </a>
                 <a class="persona-menu-item" href="/home/persona/content">
@@ -863,7 +863,7 @@ const NodeSlug = ({ root }) => {
         <label class="profile-field profile-slug">
             <span class="profile-field-label">
                 ${t('persona.your-name-on-this-node', 'your name on this node')}
-                <small>${t('persona.slug-hint', 'a short address, @name, on this node only - first come, first served')}</small>
+                <small>${t('persona.slug-hint', 'your @name here')}</small>
             </span>
             <span class="profile-slug-row">
                 <span class="profile-slug-at">@</span>
@@ -881,7 +881,7 @@ const NodeSlug = ({ root }) => {
                 </button>
             </span>
             ${held.last &&
-            html`<small class="profile-slug-last">${t('persona.also-answers-to', 'also answers to @{last}, which sends readers to your current name', { last: held.last })}</small>`}
+            html`<small class="profile-slug-last">${t('persona.also-answers-to', 'also @{last}', { last: held.last })}</small>`}
             ${note && html`<span class="profile-flash">${note}</span>`}
         </label>
     `;
@@ -929,7 +929,7 @@ export const Personas = ({ persona, current }) => {
         <div class="persona-page">
             <div class="persona-page-head">
                 <h1 class="persona-page-title">${t('persona.your-personas-2', 'your personas')}</h1>
-                <p class="persona-page-sub">${t('persona.personas-hint', 'who you appear to be. Each is its own name, pages and people; this browser uses one at a time.')}</p>
+                <p class="persona-page-sub">${t('persona.personas-hint', 'each has its own name, pages and people')}</p>
             </div>
             <div class="persona-list">
                 ${list.map((p) => {

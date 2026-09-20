@@ -739,7 +739,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                     />
                                     <label
                                         class="feed-settle"
-                                        title=${t('apps.feed.settled-means-no-replies', 'turns off comments for this post, as far as this network can honor it - malicious clients and screenshots exist')}
+                                        title=${t('apps.feed.settled-means-no-replies', 'turn off comments')}
                                     >
                                         <input
                                             type="checkbox"
@@ -750,7 +750,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                     </label>
                                     <label
                                         class="feed-settle"
-                                        title=${t('apps.feed.trusted-only-means', 'sealed: the words go only to the people on the list - everyone else sees that a post exists, and its date')}
+                                        title=${t('apps.feed.trusted-only-means', 'only the people you choose can read it')}
                                     >
                                         ${t('apps.feed.only-show-to', 'only show to')}
                                         <select

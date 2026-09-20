@@ -566,7 +566,7 @@ pub async fn publish_annotation(
     let payload = annotation.encode().map_err(|_| {
         AppError::BadRequest(crate::msg!(
             "record.imaol.annotation-too-long",
-            "that label is too long to state - a tag is 32 characters at most, anything else 1024"
+            "that label is too long"
         ))
     })?;
     append(

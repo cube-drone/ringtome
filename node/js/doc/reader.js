@@ -158,7 +158,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                     html`<${Chip}
                         icon=${Icons.trash}
                         modifier="chip-delete"
-                        title=${t('doc.reader.delete-removes-this-document-from', 'Delete — removes this document from every list (its history is kept)')}
+                        title=${t('doc.reader.delete-removes-this-document-from', 'delete')}
                         onClick=${remove}
                     />`}
                     <${Chip}
@@ -174,8 +174,8 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                     />`}
                     ${doc.diverged &&
                     (doc.resolution === t('doc.reader.conflict-2', 'conflict')
-                        ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited in the same place on two computers; every version is shown below')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
-                        : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'changes from two computers, woven together cleanly')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)}
+                        ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited on two computers at once. Both versions are below.')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
+                        : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'merged from two computers')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)}
                     <${Chip}>${doc.format}</${Chip}>
                     <${Chip}>${t('doc.reader.read-only', 'read-only')}</${Chip}>
                     <${Chip}
@@ -184,7 +184,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                         title=${linkCopied
                             ? t('doc.reader.copied', 'Copied!')
                             : isMedia
-                            ? t('doc.reader.copy-the-files-address-paste', 'Copy the file’s address (paste it into a document as ![](…) to embed it)')
+                            ? t('doc.reader.copy-the-files-address-paste', "copy the file's address")
                             : t('doc.reader.copy-a-link-to-this', 'Copy a link to this document (paste it into another document to crosslink)')}
                         onClick=${copyLink}
                     />

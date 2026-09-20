@@ -93,7 +93,7 @@ describe("public annotations: the wire and the mint", function () {
             body: JSON.stringify({ key: "tag", value: "x".repeat(33) }),
         });
         assert.equal(put.status, 400);
-        assert.match(await put.text(), /32 characters/);
+        assert.match(await put.text(), /too long/);
         const ok = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}`, {
             method: "PUT",
             body: JSON.stringify({ key: "description", value: "y".repeat(600) }),

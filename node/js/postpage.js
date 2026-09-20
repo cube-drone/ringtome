@@ -167,7 +167,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     ${!item.mine &&
                     html`<button
                         class="thread-refresh"
-                        title=${t('postpage.ask-the-author-again', "ask the author's computer again - a hot thread is worth a second glance")}
+                        title=${t('postpage.ask-the-author-again', 'check for new replies')}
                         onClick=${() => setRefreshKey((k) => k + 1)}
                     >${t('postpage.refresh', 'refresh')}</button>`}
                 </h2>
@@ -224,9 +224,9 @@ const PostDossier = ({ author, doc }) => {
     const iso = (ms) => (ms ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : '?');
     const who = (root_, name) => `${name ? `${name} ` : ''}${speakable(root_)}`;
     return html`<details class="post-dossier" onToggle=${(e) => setOpen(e.currentTarget.open)}>
-        <summary>${t('postpage.post-history', 'post history')}</summary>
-        ${data === null && open && html`<p>${t('postpage.reading-the-ledger', 'reading the ledger…')}</p>`}
-        ${data === false && html`<p>${t('postpage.no-ledger-readable-here', 'no ledger readable here')}</p>`}
+        <summary>${t('postpage.post-history', 'history')}</summary>
+        ${data === null && open && html`<p>${t('postpage.reading-the-ledger', 'loading…')}</p>`}
+        ${data === false && html`<p>${t('postpage.no-ledger-readable-here', 'no history here')}</p>`}
         ${data &&
         html`<pre class="post-dossier-log">${[
             `post ${doc} by ${speakable(author)}`,
@@ -316,7 +316,7 @@ const HeldReplies = ({ root, doc, onNod }) => {
     if (!rows || !rows.length) return null;
     return html`<div class="held-replies">
         <p class="held-replies-head">
-            ${t('postpage.held-for-your-nod', 'replies from people you don’t follow, held for your nod')}
+            ${t('postpage.held-for-your-nod', 'replies waiting for your approval')}
         </p>
         ${rows.map(
             (r) => html`<div class="held-reply" key=${`${r.author}:${r.doc_id}`}>
@@ -426,12 +426,12 @@ const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
             is not the commenter's to choose - so no toggle, just the word. */ ''}
         ${sealed &&
         html`<p class="replybox-note">
-            ${t('postpage.this-reply-will-wear-the-authors-seal', "this reply will wear the author's seal - only people the author trusts will read it")}
+            ${t('postpage.this-reply-will-wear-the-authors-seal', 'only people the author trusts will see this')}
         </p>`}
         <${BakeModal} items=${baking} />
         ${draftId &&
         html`<p class="replybox-note">
-            ${t('postpage.replying-is-public-and-shares', 'replying is public - and shares this post with your own followers')}
+            ${t('postpage.replying-is-public-and-shares', 'replies are public')}
         </p>`}
         ${draftId
             ? html`<${Composer}

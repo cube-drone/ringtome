@@ -148,7 +148,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
         const key = seg.split('-').pop();
         return html`<${Card}>
             <h1 class="persona-page-title">${t('idpage.this-address-arrived-mangled', 'this address arrived mangled')}</h1>
-            <p>${t('idpage.the-words-on-this-address', "The words on this address don't match its key, so something got mixed up in transit.")}</p>
+            <p>${t('idpage.the-words-on-this-address', 'This address is damaged.')}</p>
             <p>
                 ${tNodes('idpage.did-you-mean', 'Did you mean {suggestion}?', {
                     suggestion: html`<a href="/id/${parsed.expected}-${key}"
@@ -191,7 +191,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             you=${persona && session && html`<${PersonaMenu} persona=${persona} session=${session} />`}
         >
             ${profile.foreign && !profile.peek &&
-            html`<p class="id-words">${t('idpage.reached-across-the-network--', 'reached across the network - not carried on this node')}</p>`}
+            html`<p class="id-words">${t('idpage.reached-across-the-network--', 'found elsewhere')}</p>`}
             ${profile.peek && !profile.peek_full &&
             html`<p class="id-words">${t('idpage.a-look-at-their-newest', 'a look at their newest posts - follow them to keep up')}</p>`}
             ${profile.peek_full &&

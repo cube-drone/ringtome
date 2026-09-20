@@ -34,7 +34,7 @@ export const SlugPage = ({ slug, current, persona, session, onTitle, searchQuery
     if (who === null || !who.speakable) {
         return html`<div class="persona-page id-page">
             <h1 class="persona-page-title">${t('slugpage.nobody-here-by-that-name', 'nobody on this node goes by that name')}</h1>
-            <p>${t('slugpage.a-name-is-this-nodes', "a short name is this node's own - the same name on another node is somebody else, or nobody. A persona's real address starts with /id/.")}</p>
+            <p>${t('slugpage.a-name-is-this-nodes', 'short names only work on this site. A real address starts with /id/.')}</p>
         </div>`;
     }
     return html`<${IdPage} seg=${who.speakable} current=${current} persona=${persona} session=${session} onTitle=${onTitle} searchQuery=${searchQuery} />`;

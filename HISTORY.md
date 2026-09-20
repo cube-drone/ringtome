@@ -9510,3 +9510,16 @@ propagate, and taken out - a closed room stays closed, and the ruling never prom
 otherwise. The feed suite's owner claim: closed on ada's list and at bea's door, the next
 word refused, a re-publish saying otherwise still settled, and the takedown gone from ada's
 list at once and from bea's once the tombstone lands.
+
+## 2026-09-19: plainer words
+
+Curtis: a pass through the English catalog for places "overly technical" or saying in ten
+words what three would do. Eighty-one phrases rewritten in the catalog and reseeded at
+their call sites: tooltips that explained machinery ("the label goes on your own chain",
+"headers travel ahead of bodies", "a rollout lands with the next slice") now say what
+happens; three copies of the comments-off explanation and three of the takedown warning
+became one short line each; the house words "node" and "persona" gave way to "this
+computer" and "you" wherever a person reads them rather than manages them; and the server
+refusals a person actually meets ("invalid credentials", "consecutive separators", "rate
+limit exceeded", "this note is diverged") speak like the rest of the app. Keys unchanged,
+placeholders kept, the suites' regexes on "closed" and "sealed" still true.

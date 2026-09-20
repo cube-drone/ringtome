@@ -1141,7 +1141,7 @@ async fn room_enter_handler(
     let Some(h) = held_public_header(&state, &author, &doc).await? else {
         return Err(AppError::NotFound(crate::msg!(
             "identity.routes.no-such-room-is-held",
-            "no such room is held here - its author may be unreachable"
+            "can't find that room"
         )));
     };
     if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
@@ -1197,7 +1197,7 @@ async fn room_archive_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await? {
-        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this node's operator decides what it keeps whole")));
+        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this computer's owner can do that")));
     }
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
     crate::chat::set_archived(&state.node_db, &author, &doc, true).await.map_err(AppError::Internal)?;
@@ -1212,7 +1212,7 @@ async fn room_unarchive_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await? {
-        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this node's operator decides what it keeps whole")));
+        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this computer's owner can do that")));
     }
     crate::chat::set_archived(&state.node_db, &author, &doc, false).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "archived": false })))
@@ -1358,7 +1358,7 @@ async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> R
     let Some((h, _)) = crate::chat::room_head(state, author, &doc_id).await else {
         return Err(AppError::NotFound(crate::msg!(
             "identity.routes.no-such-room-is-held",
-            "no such room is held here - its author may be unreachable"
+            "can't find that room"
         )));
     };
     if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
@@ -2553,7 +2553,7 @@ async fn resolve_reply_link(
     if header.format == Some(ringtome_proto::registry::doc_format::ROOM) {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.a-room-takes-no-replies",
-            "a room takes no replies - enter it and say it there"
+            "say it in the room instead"
         )));
     }
     let parent_link = (author, doc);
@@ -3501,7 +3501,7 @@ async fn peers_handler(
     // transport keys that serving records publish anyway. A root we don't host has no
     // honest answer here.
     if !super::is_hosted(&state.node_db, &root).await? {
-        return Err(AppError::NotFound(crate::msg!("identity.routes.this-node-doesnt-host-that", "this node doesn't host that persona")));
+        return Err(AppError::NotFound(crate::msg!("identity.routes.this-node-doesnt-host-that", "not here")));
     }
     let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 16).await?;
     Ok(Json(PeersResponse { peers }))
@@ -4101,7 +4101,7 @@ async fn docs_copy_handler(
     if src.format == crate::record::documents::Format::Room {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.a-room-doesnt-copy",
-            "a room is a conversation, not a note - it doesn't copy into notes"
+            "a room can't be copied"
         )));
     }
     if src.format == crate::record::documents::Format::Book {

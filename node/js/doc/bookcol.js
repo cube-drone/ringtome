@@ -185,7 +185,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
         ${askingTakedown &&
         html`<${Modal} title=${t('doc.bookcol.take-it-down', 'take it down')} onClose=${() => !takingDown && setAskingTakedown(false)}>
             <p class="feed-unpublish-warn">
-                ${t('doc.bookcol.removes-the-book-and-every', "removes the book and every page from other people's feeds and shares, but very slowly; the pages stay in this notebook as drafts")}
+                ${t('doc.bookcol.removes-the-book-and-every', 'It may take a while to disappear everywhere. The pages stay in this notebook.')}
             </p>
             <div class="feed-unpublish-acts">
                 <button class="feed-unpublish-go" disabled=${takingDown} onClick=${takeDown}>
@@ -228,7 +228,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
     return html`<aside class="book-column">
         <${PaneHead} label=${t('doc.bookcol.publish', 'publish')} onTuck=${onTuck} />
         <div class="book-block">
-        <label class="book-switch" title=${t('doc.bookcol.a-book-publishes-as-one', 'a book publishes as one thing: the whole notebook and its tree, and later its changes as one update at a time - never a page on its own')}>
+        <label class="book-switch" title=${t('doc.bookcol.a-book-publishes-as-one', 'publishes the whole notebook as one book')}>
             <input type="checkbox" checked=${on} onChange=${(e) => setBook(bucket, e.currentTarget.checked)} />
             <${Icons.book} /> ${t('doc.bookcol.publish-this-entire-notebook', 'publish this entire notebook')}
         </label>
@@ -266,7 +266,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                                   <input
                                       type="checkbox"
                                       checked=${!hidden.has(`sec:${s.id}`)}
-                                      title=${t('doc.bookcol.unticked-a-hidden-section', 'unticked: a hidden section - it and every page beneath it stay out of the book')}
+                                      title=${t('doc.bookcol.unticked-a-hidden-section', 'hidden from the book')}
                                       onChange=${(e) => mark(`sec:${s.id}`, !e.currentTarget.checked)}
                                   />
                                   ${s.title || t('doc.bookcol.untitled-section', '(untitled section)')}
@@ -276,7 +276,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   </div>`}
                   <div class="book-block">
                   ${!published &&
-                  html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turns off comments for the book, as far as this network can honor it')}>
+                  html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turn off comments')}>
                           <input type="checkbox" checked=${wishes.settled} onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))} />
                           ${t('doc.bookcol.turn-off-rebroadcast-and-comment', 'turn off comments')}
                       </label>
@@ -288,7 +288,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                       class="book-publish"
                       disabled=${asking || moving || (ledger.new.length === 0 && ledger.changed.length === 0 && !!published)}
                       title=${published
-                          ? t('doc.bookcol.roll-out-the-changes-the', 'roll out the changes: the new and changed pages, and the book\'s tree as it is now')
+                          ? t('doc.bookcol.roll-out-the-changes-the', 'publish the changes')
                           : t('doc.bookcol.publish-the-whole-notebook-as', 'publish the whole notebook as one book - every page that is not hidden, and the tree')}
                       onClick=${rollOut}
                   >${asking || moving ? html`<span class="status-spin"><${Icons.spinner} /></span>` : html`<${Icons.docPublic} />`} ${published ? t('doc.bookcol.publish-the-changes', 'publish the changes') : t('doc.bookcol.publish-the-book', 'publish the book')}</button>
@@ -307,8 +307,8 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
             : html`<div class="book-block">
                   <p class="book-off">
                       ${published
-                          ? t('doc.bookcol.this-notebooks-book-is-still', "this notebook's book is still public - switch back on to update it, or take it down; switched off, the pages publish one by one again")
-                          : t('doc.bookcol.this-notebook-publishes-page-by', 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates')}
+                          ? t('doc.bookcol.this-notebooks-book-is-still', 'the book is still published. Switch this on to update it.')
+                          : t('doc.bookcol.this-notebook-publishes-page-by', 'publish this notebook as one book')}
                   </p>
                   ${published && takedownUi}
               </div>`}

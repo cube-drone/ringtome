@@ -216,7 +216,7 @@ describe("taxonomies: ordered lists of documents", function () {
         });
         assert.equal(res.status, 400);
         const body = await res.json();
-        assert.ok(JSON.stringify(body).includes("cycle"), "the refusal names the cycle");
+        assert.ok(JSON.stringify(body).includes("inside itself"), "the refusal names the cycle, plainly");
     });
 
     it("refuses unauthenticated taxonomy requests", async function () {
