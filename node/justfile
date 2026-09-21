@@ -427,7 +427,7 @@ test-data personas="15" actions="15" seed="":
         RINGTOME_TESTDATA_PORTS="$live"
         export RINGTOME_TESTDATA_PORTS
     fi
-    echo "test-data: driving dev nodes $RINGTOME_TESTDATA_PORTS"
+    echo "test-data: driving nodes $RINGTOME_TESTDATA_PORTS"
     cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
 
 # --- scratch nodes (agent/probe testing) ----------------------------------------------------
@@ -749,6 +749,61 @@ ports:
     echo "spare        :$(( {{port_base}} + 25 ))..$(( {{port_base}} + 31 ))   mainline-smoke takes +25/+26"
     echo ""
     echo "dev and integration are different lanes: a playground can stay up through a full ci run."
+
+# --- the desktop shell (DESKTOP.md) ----------------------------------------
+
+# Run the desktop app: one window, one process, the node linked in (DESKTOP.md, Stage 2).
+# Builds the UI first, because the node embeds it. Its own workspace, so `just ci` never
+# builds Tauri - it joins the gates at Stage 4, with the packaging matrix.
+#
+# Dev by default, which means the node serves the UI from disk: `just ui-watch` beside this
+# and a reload in the window picks up an edit. RINGTOME_DATA_DIRECTORY points it at a scratch
+# node; unset, it uses the platform's application-data directory, like the shipped app.
+desktop: ui-build
+    cd "{{workspace}}/desktop" && cargo run
+
+# Compile the shell without running it - what CI will do at Stage 4.
+desktop-check: ui-build
+    cd "{{workspace}}/desktop" && cargo check
+
+# Seed the DESKTOP app's node with the same fake network `test-data` makes.
+#
+# A separate recipe because the app is not on the dev lane and should not be: it picks an
+# ephemeral port on first run and writes it beside its own data (DESKTOP.md's option (a) - a
+# stable origin matters more than a predictable number), so the port probe `test-data` uses
+# cannot find it. Everything else is the same generator: it wants `/health` and the ordinary
+# API, and no test endpoints at all, so it drives a desktop node exactly as it drives a dev one.
+#
+# RINGTOME_DATA_DIRECTORY wins here as it does in the shell, which is how you seed a scratch
+# desktop node instead of your real one.
+desktop-test-data personas="15" actions="15" seed="":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # The identifier comes from the shell's own config rather than a copy here: two spellings of
+    # an app's data directory is a bug that only shows up on somebody else's machine.
+    ident=$(grep -o '"identifier": "[^"]*"' "{{workspace}}/desktop/tauri.conf.json" | head -1 | cut -d'"' -f4)
+    if [ -n "${RINGTOME_DATA_DIRECTORY-}" ]; then
+        dir="$RINGTOME_DATA_DIRECTORY"
+    else
+        case "$(uname -s)" in
+            Darwin) dir="$HOME/Library/Application Support/$ident" ;;
+            Linux)  dir="${XDG_DATA_HOME:-$HOME/.local/share}/$ident" ;;
+            *)      dir="${APPDATA:-$HOME}/$ident" ;;
+        esac
+    fi
+    if [ ! -f "$dir/desktop-port" ]; then
+        echo "desktop-test-data: no port written down at $dir/desktop-port" >&2
+        echo "  run the app once first: 'just desktop'" >&2
+        exit 1
+    fi
+    port=$(cat "$dir/desktop-port")
+    if ! curl -sf -m 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
+        echo "desktop-test-data: nothing answering on $port - the app wrote that port down but is not running." >&2
+        echo "  start it: 'just desktop'" >&2
+        exit 1
+    fi
+    echo "desktop-test-data: driving the desktop node on $port ($dir)"
+    RINGTOME_TESTDATA_PORTS="$port" just test-data {{personas}} {{actions}} {{seed}}
 
 # --- everything ------------------------------------------------------------
 

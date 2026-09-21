@@ -1,0 +1,24 @@
+[package]
+name = "ringtome-desktop"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+# ITS OWN WORKSPACE, following the spike's precedent (see ../spike-tauri/src-tauri/Cargo.toml).
+# Listed as a workspace member, Tauri and the whole webview stack would build on every
+# `cargo test` and every `just ci` run, and Linux CI would grow GTK and WebKitGTK dev packages
+# for a crate the gates do not test. The shell is built by its own recipe (`just desktop`) and
+# joins CI at DESKTOP.md's Stage 4, where the packaging matrix arrives and there is something
+# for CI to do with it.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# The node itself, linked in: one process, no sidecar, no second executable (DESKTOP.md).
+ringtome-node = { path = "../node" }
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+anyhow = "1"
+tracing = "0.1"

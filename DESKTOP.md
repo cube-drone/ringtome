@@ -315,10 +315,27 @@ the same node" is now a cop rather than a promise: `the_binary_assembles_no_node
 `main.rs` grows an `AppState`, a `Router`, a route or a listener, because a second assembly is one
 the shell would never run.
 
-**Stage 2 — the shell, in-process, dev only.** Tauri window, node built and served on a loopback
-listener, page loaded from it. No signing, no updater, no installer. Deliverable: a running app on the
-developer's machine. Settles option (a) above in practice — including that the live-cache WebSocket is
-same-origin and needs nothing new.
+**Stage 2 — the shell, in-process, dev only. Built 2026-09-21.** Tauri window, node built and served
+on a loopback listener, page loaded from it. No signing, no updater, no installer. Deliverable: a
+running app on the developer's machine. Settles option (a) above in practice — including that the
+live-cache WebSocket is same-origin and needs nothing new.
+
+*What landed:* [`desktop/`](desktop/README.md) — its own workspace, by the spike's precedent, so the
+gates never build Tauri; `just desktop` builds the UI bundle and runs it. The shell decides three
+things and no more: the data directory (the platform's app-data dir, `RINGTOME_DATA_DIRECTORY` still
+winning), the port, and that a window exists. Everything else is `ringtome_node::bind`.
+
+Two things the stage taught, both about the *order* of a boot. The library now **binds its listener
+before it assembles anything** — the loops are registered with clones of the state as it is built, so
+a bind that failed after that would leave a half-dead node's background tasks running inside the
+caller's process; the binary never noticed, because a failed bind exits it. And `init_tracing` grew
+`init_tracing_with(config, also)`, because the Stage 1 hazard has a floor above it: the default
+filter is built from the *library's* crate name, so the shell's own lines went to nobody, and the
+first smoke run lost its "the remembered port is taken" warning that way.
+
+Option (a) is settled by running it rather than by argument: a launch picks a free port, writes
+`desktop-port` beside the node's data, and the next launch comes up on the same origin. A port taken
+since last launch costs one warning, one new port written down, and **one** assembly.
 
 **Stage 3 — the token and no-login.** Per-launch secret, initialization-script injection, header
 requirement on the node, single-tenant auto-session on top of it. Closes a live TODO and a known CSRF

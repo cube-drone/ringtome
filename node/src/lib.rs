@@ -255,11 +255,54 @@ async fn unfurl_handler(
     }
 }
 
+/// A node built, its router assembled and its listener BOUND - everything but the serving.
+///
+/// The desktop shell needs exactly this shape (DESKTOP.md's architecture): it must know the
+/// address before it can point a window at it, and "poll the health endpoint until it answers"
+/// is the readiness race that running in-process exists to not have. Binding is also what makes
+/// a port collision an error the caller can answer - pick another, write it down, try again -
+/// rather than a crash at boot.
+pub struct Bound {
+    listener: tokio::net::TcpListener,
+    service: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
+    addr: SocketAddr,
+}
+
+impl Bound {
+    /// Where this node is listening, as the OS agreed it - which is the real port even when the
+    /// caller asked for `0` and let the OS choose.
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+}
+
 /// Build this node and serve it: the one boot sequence, called by both entry points - the
 /// `ringtome` binary an operator runs, and the desktop shell that embeds the node in its own
 /// process (DESKTOP.md's architecture). The caller owns `Config` and the tracing subscriber,
 /// because those are the two things an embedder legitimately wants to decide for itself.
 pub async fn run(config: Config) -> anyhow::Result<()> {
+    serve(bind(config).await?).await
+}
+
+/// Serve a bound node until it stops. The other half of [`run`], split out for the embedder
+/// that had to know the address first.
+pub async fn serve(bound: Bound) -> anyhow::Result<()> {
+    tracing::info!("listening on http://{}", bound.addr);
+    axum::serve(bound.listener, bound.service).await?;
+    Ok(())
+}
+
+/// Everything [`run`] does except the last line: the whole assembly, and the listener bound.
+pub async fn bind(config: Config) -> anyhow::Result<Bound> {
+    // The listener comes FIRST - before the banner, before a byte of state - and the order is
+    // the design (2026-09-21): the loops are registered with clones of the state as it is
+    // built, so a bind that failed after that would leave a half-dead node's background tasks
+    // running in the caller's process. The binary hardly noticed, since a failed bind exits;
+    // an embedder means to answer a taken port by picking another, and it can only do that if
+    // the failure costs nothing and says nothing.
+    let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.bind_address, config.port)).await?;
+    let addr = listener.local_addr()?;
+
     tracing::info!(
         version = %config.app_version,
         environment = ?config.environment,
@@ -303,7 +346,6 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     // entry writers feed the memo at the moment they hold the tip in hand.
     user_dbs.attach_memo(node_db.clone());
 
-    let bind = format!("{}:{}", config.bind_address, config.port);
     let local_test = config.local_test;
     let body_limits = identity::BodyLimits {
         upload: config.max_upload_bytes,
@@ -727,11 +769,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         )
         .into_make_service_with_connect_info::<SocketAddr>();
 
-    let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!("listening on http://{}", bind);
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    Ok(Bound { listener, service: app, addr })
 }
 
 /// The tracing subscriber, built HERE rather than in the binary (DESKTOP.md's quiet Stage 1
@@ -739,11 +777,23 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 /// `ringtome_node::*`, and a filter assembled in the binary from its own crate name would
 /// match nothing at all - no error, just silence.
 pub fn init_tracing(config: &Config) {
+    init_tracing_with(config, &[])
+}
+
+/// ...and the same subscriber for an embedder that logs under its own crate name. The default
+/// filter is built from THIS crate's name, so a shell's own lines land under a target nothing
+/// in the filter mentions and vanish - which is the Stage 1 hazard again, one floor up, and it
+/// cost a smoke test's "the remembered port is taken" warning before it was noticed
+/// (2026-09-21). `RUST_LOG`, when set, still wins outright.
+pub fn init_tracing_with(config: &Config, also: &[&str]) {
+    let mut default = format!("{}=debug,tower_http=debug", env!("CARGO_CRATE_NAME"));
+    for target in also {
+        default.push_str(&format!(",{target}=debug"));
+    }
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!("{}=debug,tower_http=debug", env!("CARGO_CRATE_NAME")).into()
-            }),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| default.into()),
         )
         .with(
             tracing_subscriber::fmt::layer()

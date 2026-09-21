@@ -9985,3 +9985,59 @@ that no longer holds it.
 `Router::new`, a route or a listener, or simply grows past eighty lines. Gate: full `just ci`, as
 the stage demanded - 956 passing, and the one failure on the way was the strings catalogue noticing
 the move, which is the catalogue working.
+
+## 2026-09-21 (cont.): the shell (DESKTOP.md, Stage 2)
+
+A window, a node inside it, one process. `desktop/` is a Tauri v2 app whose whole job is to decide
+three things an embedder decides - where the data lives, which port to ask for, and that a window
+exists - and then call `ringtome_node::bind`. No sidecar, so nothing to orphan; no readiness poll,
+because the listener is bound before there is a URL to open; no second executable, because Stage 1
+made the node a library. `just desktop` builds the UI bundle and runs it.
+
+It is its own workspace, following the spike's precedent: listed as a member, Tauri and the webview
+stack would build on every `cargo test` and every `just ci`, and Linux CI would grow GTK and
+WebKitGTK dev packages for a crate the gates do not test. It joins CI at Stage 4, where the
+packaging matrix gives CI something to do with it.
+
+The data goes in the platform's application-data directory rather than the node's `./data` default,
+which is relative to a working directory an app launched from the dock does not have - and which an
+operator's own `ringtome` must never find moved. `RINGTOME_DATA_DIRECTORY` still wins, which is how
+a developer points the shell at a scratch node.
+
+**Option (a) is settled by running it.** A launch picks a free port, writes `desktop-port` beside
+the node's data, and the next launch comes up on the same origin - which is the whole point, since
+browser storage is partitioned per origin and a floating port silently drops the mirror, the
+remembered columns, the open chat. A port taken since last launch was proved on the bench: held the
+port, seeded the file with it, and watched the app warn, pick another, write it down and come up.
+
+Two things the stage taught, both about the ORDER of a boot, and both found by running it rather
+than by reading it:
+
+**The listener now binds before the node is assembled.** The loops are registered with clones of the
+state as it is built, so a bind that failed after that left a half-dead node's background tasks
+running inside the caller's process. The binary never noticed - a failed bind exits it - and the
+shell's first collision retry booted the node twice before failing, which is exactly the shape that
+would have leaked. Now a taken port costs nothing and says nothing.
+
+**And the subscriber learned about embedders.** `init_tracing` builds its default filter from this
+crate's name, which is the Stage 1 hazard one floor up: the shell's own lines landed under a target
+nothing in the filter mentioned, and the first smoke run lost its "the remembered port is taken"
+warning that way - no error, just silence, again. `init_tracing_with(config, also)` takes the
+embedder's target.
+
+Curtis, immediately: does `just test-data` work on it? The generator does - it only ever wanted
+`/health` and the ordinary API, no test endpoints, so a desktop node is as drivable as a dev one -
+but the recipe cannot FIND the app, because it drives whatever answers on this checkout's dev lane
+and the desktop node is deliberately not there. `just desktop-test-data` reads the port the app
+wrote down and hands the generator that; `RINGTOME_DATA_DIRECTORY` wins, so a scratch desktop node
+can be seeded instead of a real one. Proved by seeding one: three personas born, twelve actions,
+none failed, three rows on the node's public feed. The identifier comes out of the shell's own
+config rather than a copy in the justfile, because two spellings of an app's data directory is a
+bug that only appears on somebody else's machine. One word changed in `test-data` itself: it used
+to announce "driving dev nodes", which became untrue the moment something else could call it.
+
+Gate: full `just ci`, 956 passing, plus `just desktop-check`. What Stage 2 does NOT have, so nobody
+reads this as further along than it is: no signing, no installer, no updater, no tray, no autostart,
+and no launch token - so the app still shows the ordinary login screen, which is Stage 3's job. Open
+for Stage 3, noted in `desktop/README.md` rather than discovered later: the generator registers an
+account per persona, and a node with no login is a node whose registration story has changed.
