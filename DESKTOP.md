@@ -295,11 +295,25 @@ the most consequential sentence in the caveats section.
 Stages are ordered by dependency. Each names what it delivers and what it settles, so a reader
 picking this up cold can tell where the line is without trusting a status note.
 
-**Stage 1 — the `lib.rs` split.** Move the composition root out of `src/main.rs` into a library, leave
-a thin binary over it, and prove the two entry points build the same node. The foundational stage:
-mobile and any Godot client need it too, so it is never throwaway. **This is the stage that can break
-the gates** — it touches the composition root and the architecture cop reasons by file path. Gate:
-full `just ci`, not a subset.
+**Stage 1 — the `lib.rs` split. Built 2026-09-21.** Move the composition root out of `src/main.rs`
+into a library, leave a thin binary over it, and prove the two entry points build the same node. The
+foundational stage: mobile and any Godot client need it too, so it is never throwaway. **This is the
+stage that can break the gates** — it touches the composition root and the architecture cop reasons
+by file path. Gate: full `just ci`, not a subset.
+
+*What landed:* `[lib] name = "ringtome_node"` beside the existing `[[bin]]`; `src/lib.rs` holds the
+module tree, `AppState`, `ActivityMarks`, `ViewEpochs`, the four root handlers, the router assembly
+and `init_tracing`; `src/main.rs` is 29 lines — the `inspect` subcommand, `Config::from_env`, the
+subscriber, and a call into `run(config)`. The predicted hazards behaved as predicted: `crate::`
+paths resolve to the library root, so no module changed; the conventions cop reads `src/` from disk
+and passed untouched; `init_tracing` moved into the library, where `env!("CARGO_CRATE_NAME")`
+expands to the crate that actually logs. Two things the plan did not foresee, both small: the module
+tree had to go `pub` (`AppState`'s public fields name types from a dozen modules, and every item in
+this crate was written as a binary's innards where `pub` meant nothing), and the strings catalogue
+groups by source file, so the one `msg!` that moved was re-keyed `lib.*`. "The two entry points build
+the same node" is now a cop rather than a promise: `the_binary_assembles_no_node_of_its_own` fails if
+`main.rs` grows an `AppState`, a `Router`, a route or a listener, because a second assembly is one
+the shell would never run.
 
 **Stage 2 — the shell, in-process, dev only.** Tauri window, node built and served on a loopback
 listener, page loaded from it. No signing, no updater, no installer. Deliverable: a running app on the

@@ -383,3 +383,27 @@ fn the_client_and_the_wire_cap_a_tag_alike() {
          somebody type a label the door will refuse and nothing says so"
     );
 }
+
+/// The binary stays thin (DESKTOP.md, Stage 1). There is one node, assembled in one place: the
+/// library's `run`. The moment `main.rs` grows its own `AppState { ... }` or its own
+/// `Router::new()`, there are two nodes - the one `just ci` tests and the one the desktop shell
+/// boots - and they drift silently, because nothing fails when a route is mounted in only one of
+/// them. The binary's job is the command line: subcommands, the config's source, the subscriber.
+#[test]
+fn the_binary_assembles_no_node_of_its_own() {
+    let main = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs");
+    let source = std::fs::read_to_string(&main).expect("readable src/main.rs");
+    for needle in ["AppState {", "Router::new(", ".route(", "TcpListener::bind"] {
+        assert!(
+            !source.contains(needle),
+            "src/main.rs contains `{needle}` - the node is assembled in the library (`run`), \
+             and a second assembly here is one the desktop shell would never run"
+        );
+    }
+    assert!(
+        source.lines().count() < 80,
+        "src/main.rs is {} lines. It is the command line's entry point, not a composition \
+         root - if it is growing, the thing it grew belongs in the library beside `run`",
+        source.lines().count()
+    );
+}

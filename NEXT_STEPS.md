@@ -99,9 +99,13 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 *  a mp3 browser
 
 ### Desktop
-* tray sidecar, autostart, app-mode window
-* signing the application so it can actually ship to mac/windows boxes
-* consider: a tauri or embedded browser to offer a more encapsulated experience
+Settled, staged and under way in [DESKTOP.md](DESKTOP.md): Tauri v2 with the node linked in,
+one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
+* **Stage 2** — the shell, in-process, dev only: a window at the node's own loopback URL
+* **Stage 3** — the per-launch token, and no login screen at all on the desktop
+* **Stage 4** — packaging and signing (the stage that costs recurring money)
+* **Stage 5** — autostart and the tray: the desktop app as the user's always-on node
+* **Stage 6** — auto-update and a release channel
 
 ### Marquee Promises
 * Marquee provides fixtures for drop-in functionality: do we still have a use for those?

@@ -952,8 +952,8 @@ export default {
     'idface.that-isnt-a-document-id-3': "that isn't a document id",
     'idface.not-carried-here-and-none': "not carried here, and none of the address's computers answered",
 
-    // --- node/src/main.rs ---
-    'main.the-nodes-unfurl-budget-is': 'link previews are paused for now',
+    // --- node/src/lib.rs ---
+    'lib.the-nodes-unfurl-budget-is': 'link previews are paused for now',
 
     // --- node/src/net/unfurl.rs ---
     'net.unfurl.not-a-url': 'not a URL: {reason}',

@@ -9950,3 +9950,38 @@ no push of hers can land, and ada's node goes and gets it. Each of the three cha
 reverted in turn and the claim failed each time. A fourth change - giving the creator the
 speaker's address off the key lane's ladder - was reverted too, the claim passed without it,
 and it was dropped: plausible is not load-bearing, and only one of those belongs in the tree.
+
+## 2026-09-21: the lib.rs split (DESKTOP.md, Stage 1)
+
+Curtis turned the wheel toward delivery - "two Modes: wrapping up our docker story for node
+management, and wrapping up our tauri story for local deployment", the local one first because it
+is the harder one - and DESKTOP.md's Stage 1 is where that starts: the node becomes a library with
+a thin binary over it, because a node that cannot be linked can only be run, and the desktop shell
+means to embed it in its own process rather than supervise it as a child.
+
+`node/Cargo.toml` grows a `[lib]` beside its `[[bin]]`. `src/lib.rs` holds what a composition root
+holds - the module tree, `AppState`, `ActivityMarks`, `ViewEpochs`, the four root handlers, the
+router assembly, `init_tracing` - and `src/main.rs` is twenty-nine lines: the `inspect` subcommand,
+`Config::from_env`, the subscriber, and `run(config)`. One boot sequence, two entry points, which
+is the whole point: a shell that assembled its own node would drift from the one `just ci` tests,
+and nothing would fail when a route was mounted in only one of them.
+
+The plan's three predictions held. `crate::` paths resolve to the library root, so not one of the
+forty-nine files that use them changed. The conventions cop walks `src/` from disk and greps text,
+so `lib.rs` was one more file to scan and it passed untouched. And `init_tracing` moved into the
+library, which was the quiet hazard worth writing down in advance: tracing targets follow the module
+path, so a filter built in the binary from its own crate name would have matched nothing at all -
+no error, just silence.
+
+Two things the plan did not foresee, both small. The module tree had to go `pub`: `AppState`'s public
+fields name types from a dozen modules, and every item in this crate was written as a binary's
+innards, where `pub` meant nothing - so the tree is public and a note in `lib.rs` says what an
+embedder actually calls, which is four names. And the strings catalogue groups by source file, so
+the one `msg!` that moved was re-keyed from `main.*` to `lib.*` rather than left pointing at a file
+that no longer holds it.
+
+"Prove the two entry points build the same node" is now a cop rather than a promise:
+`the_binary_assembles_no_node_of_its_own` fails if `main.rs` ever grows an `AppState`, a
+`Router::new`, a route or a listener, or simply grows past eighty lines. Gate: full `just ci`, as
+the stage demanded - 956 passing, and the one failure on the way was the strings catalogue noticing
+the move, which is the catalogue working.

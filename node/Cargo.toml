@@ -5,6 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+# The node is a LIBRARY with a thin binary over it (DESKTOP.md, Stage 1): the desktop shell
+# links this crate and runs the node in its own process, and `tests/*.rs` can only `use` a
+# library. Both entry points call one `run(config)`, so there is one node, assembled once.
+[lib]
+name = "ringtome_node"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ringtome"
 path = "src/main.rs"

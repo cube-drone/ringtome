@@ -405,7 +405,7 @@ const JOURNAL_DELTA_CAP: i64 = 1000;
 
 /// One post's journalable facts, computed once per move rather than once per (reader x post).
 #[derive(Clone)]
-pub(crate) struct JournalRow {
+pub struct JournalRow {
     pub(crate) doc_id_hex: String,
     pub(crate) title: String,
     pub(crate) format: String,
