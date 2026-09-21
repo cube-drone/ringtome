@@ -1946,6 +1946,7 @@ mod tests {
             version: [7u8; 32],
             timestamp_ms,
             header: ringtome_proto::registry::DocHeaderPlain {
+                im: false,
                 dated_ms: None,
                 animation: false,
                 part_of: None,

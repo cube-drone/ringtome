@@ -922,6 +922,7 @@ mod tests {
         reply_to: Option<([u8; 32], [u8; 16])>,
     ) -> Vec<u8> {
         let header = crate::registry::DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,

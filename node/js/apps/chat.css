@@ -237,6 +237,43 @@
     font-size: 0.85em;
 }
 
+/* A chat somebody opened with you, unanswered (CHAT.md, ruling 12): its pile reads a
+   little quieter than the chats proper, because nobody has agreed to it yet. */
+.chat-list-requests .chat-row {
+    opacity: 0.85;
+}
+
+/* The two answers, where the composer would be. */
+.chat-request-note {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.chat-request-words {
+    color: var(--ink);
+}
+
+.chat-accept {
+    font-size: 0.9em;
+    color: var(--bg);
+    background: var(--ink);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.1rem 0.9rem;
+    cursor: pointer;
+}
+
+.chat-accept:disabled {
+    cursor: progress;
+}
+
+/* A private chat has no roster to open (CHAT.md, ruling 12): there are two people in it,
+   and one of them is the reader. */
+.chat-people-two {
+    display: inline-flex;
+    align-items: center;
+}
+
 .chat-people-summary {
     display: inline-flex;
     align-items: center;

@@ -52,6 +52,7 @@ import { t } from './i18n.js';
 import { useWarnings } from './warnings.js';
 import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
+import { veilsMedia } from './pure/chatveil.js';
 
 const html = htm.bind(h);
 
@@ -529,16 +530,28 @@ const sinceWords = (ms) => {
     const ago = agoUnit(ms, Date.now());
     return ago ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit) : t('postentry.just-now', 'just now');
 };
-const RoomLine = ({ speaker, words, said_ms, current, author }) => {
+const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
     const profile = useTurbolinks(words || '', 'marquee');
     // A stranger's media wears the veil here too (Curtis, 2026-09-19): the card sits in the
-    // feed, where a dropped image would otherwise land unasked. The reader and the room's
-    // creator are never strangers.
+    // feed, where a dropped image would otherwise land unasked. The rule is the chat's own,
+    // shared (pure/chatveil.js) - including its one subtlety: the room's creator is never a
+    // stranger in a room, and IS one in a chat for two, where the creator is the other
+    // person and opening a chat with somebody is not a relationship with them.
     const person = usePerson(speaker, { current });
     const trust = (person.facts || {}).trust;
     const stranger = !!current && speaker !== current.root && speaker !== author && (!trust || trust === 'none');
     const [revealed, setRevealed] = useState(false);
-    const veiled = stranger && !revealed && words !== null && /!\[|:::media\b/.test(words || '');
+    const veiled =
+        !revealed &&
+        !!current &&
+        veilsMedia({
+            words,
+            speaker,
+            me: current.root,
+            author,
+            im: !!im,
+            trusted: !!trust && trust !== 'none',
+        });
     return html`<li class=${stranger ? 'room-card-line room-card-line-untrusted' : 'room-card-line'}>
         <${PersonChip} root=${speaker} current=${current} />
         <div class="room-card-words">
@@ -574,7 +587,7 @@ const RoomFloor = ({ item, current, post }) => {
     const lines = tail && tail.items ? [...tail.items].reverse() : [];
     const more = tail ? Math.max(0, (tail.total || 0) - lines.length) : 0;
     return html`<ul class="room-card-lines">
-        <${RoomLine} speaker=${item.author} words=${post} said_ms=${item.published_ms} current=${current} author=${item.author} />
+        <${RoomLine} speaker=${item.author} words=${post} said_ms=${item.published_ms} current=${current} author=${item.author} im=${tail && tail.im} />
         ${/* A rule with the count on it: a break in the conversation, not a line of it
             (Curtis, 2026-09-18). */ ''}
         ${more > 0 &&
@@ -585,7 +598,7 @@ const RoomFloor = ({ item, current, post }) => {
                   ? t('postentry.and-one-more', 'and one more')
                   : t('postentry.and-n-more', 'and {n} more', { n: more })}
         </li>`}
-        ${lines.map((m) => html`<${RoomLine} key=${m.hash} speaker=${m.speaker} words=${m.words} said_ms=${m.said_ms} current=${current} author=${item.author} />`)}
+        ${lines.map((m) => html`<${RoomLine} key=${m.hash} speaker=${m.speaker} words=${m.words} said_ms=${m.said_ms} current=${current} author=${item.author} im=${tail && tail.im} />`)}
     </ul>`;
 };
 

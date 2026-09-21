@@ -1055,6 +1055,7 @@ mod tests {
         reply_to: Option<([u8; 32], [u8; 16])>,
     ) -> SignedEntry {
         let payload = crate::registry::DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,

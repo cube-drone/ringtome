@@ -21,8 +21,10 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
+import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
+import { openIm } from './ims.js';
 import { openMirror, useLive } from './mirror.js';
 import { speakable, toBase58 } from './speakable.js';
 import { identityAddress, viaHints } from './pure/portable.js';
@@ -253,6 +255,41 @@ export const PersonRow = ({ root, current, profile, aside }) => {
     `;
 };
 
+/// The button beside somebody's name that opens the chat with them (CHAT.md, ruling 12):
+/// a room sealed to the two of you and nobody else. One chat per pair - the node answers
+/// with the one already going when there is one - so this never makes a second window on
+/// the same conversation, whichever of you opened the first.
+const ChatWithButton = ({ myRoot, root, name }) => {
+    const loc = useLocation();
+    const [going, setGoing] = useState(false);
+    const [error, setError] = useState(null);
+    const open = async () => {
+        if (going) return;
+        setGoing(true);
+        setError(null);
+        try {
+            const room = await openIm(myRoot, root, name);
+            loc.route(`/home/chat/${room.author}/${room.doc_id}`);
+        } catch (e) {
+            setError(e.message || String(e));
+            setGoing(false);
+        }
+    };
+    return html`
+        <button
+            class="person-card-chat"
+            type="button"
+            disabled=${going}
+            title=${t('person.chat-with-them-privately', 'chat with them, privately')}
+            onClick=${open}
+        >
+            <${Icons.chat} />
+            <span>${going ? t('person.opening', 'opening…') : t('person.chat', 'chat')}</span>
+            ${error && html`<small class="person-card-chat-bad">${error}</small>`}
+        </button>
+    `;
+};
+
 /// The whole person: picture, names, the shareable address, their bio, and - for anyone who
 /// isn't you - your relationship with them. For you, `you` is what sits where the
 /// relationship would: the page's own management disclosure (persona.js PersonaMenu).
@@ -262,7 +299,13 @@ export const PersonCard = ({ root, current, profile, you, children }) => {
     return html`
         <div class="person-card">
             <${PersonHex} person=${person} size="card" />
-            <h1 class="person-card-name">${person.primary}</h1>
+            <h1 class="person-card-name">
+                ${person.primary}
+                ${/* The chat sits with their name (Curtis, 2026-09-20), not down in the
+                    relationship panel: talking to somebody is not a dial about them. */ ''}
+                ${!person.isYou && current &&
+                html`<${ChatWithButton} myRoot=${current.root} root=${root} name=${person.primary} />`}
+            </h1>
             ${person.others.length > 0 &&
             html`<p class="person-card-others">${person.others.join(' · ')}</p>`}
             ${person.isYou && you}

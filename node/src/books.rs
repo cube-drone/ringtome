@@ -313,6 +313,7 @@ async fn rollout(
             continue;
         }
         let flags = crate::record::documents::PublishFlags {
+            im: false,
             settled: plan.settled,
             trusted_only: plan.trusted_only,
             seal_of: None, // a book and its pages wear their own author's seal
@@ -430,6 +431,7 @@ async fn rollout(
         data.signer(),
         data.files(),
         crate::record::documents::PublicText {
+            im: false,
             onto: Some((book_id, parents)),
             title: &book_title,
             body: &body,
@@ -495,6 +497,7 @@ async fn rollout(
             data.signer(),
             data.files(),
             crate::record::documents::PublicText {
+                im: false,
                 onto: None,
                 title: &format!("{bucket} updated"),
                 body: &body,

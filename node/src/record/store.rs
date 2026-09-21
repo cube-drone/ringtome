@@ -1067,7 +1067,7 @@ impl Documents<'_> {
         reply: Option<crate::record::documents::ReplyLinks>,
         flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
-        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of, onward, room } = flags;
+        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of, onward, room, im } = flags;
         let view = self.all().await?;
         let doc = view
             .docs
@@ -1175,6 +1175,7 @@ impl Documents<'_> {
                 onward,
                 dated_ms,
                 part_of,
+                im,
             },
         )
         .await?;

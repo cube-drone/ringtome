@@ -162,6 +162,37 @@
     margin: 0.7rem 0 0.1rem;
 }
 
+/* The chat button beside their name: small beside a 1.5rem name, and never the loudest
+   thing on the page - it opens a conversation, it does not announce one. */
+.person-card-chat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    --line: var(--border);
+    --j: 4px;
+    clip-path: var(--jag-1);
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+}
+
+.person-card-chat:hover:not(:disabled) {
+    color: var(--ink);
+}
+
+.person-card-chat:disabled {
+    cursor: progress;
+}
+
+.person-card-chat-bad {
+    color: var(--coral);
+}
+
 .person-card-others {
     color: var(--muted);
     font-size: 0.85rem;

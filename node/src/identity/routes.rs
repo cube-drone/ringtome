@@ -52,6 +52,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             get(rebroadcasts_handler).post(rebroadcast_handler),
         )
         .route("/api/identity/{root}/rooms", get(rooms_handler))
+        .route("/api/identity/{root}/ims/{other}", get(im_find_handler))
         .route(
             "/api/identity/{root}/rooms/{author}/{doc}",
             get(room_enter_handler).delete(room_leave_handler),
@@ -954,6 +955,19 @@ struct RoomItem {
     author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_avatar: Option<String>,
+    /// A private chat (CHAT.md, ruling 12): a room sealed to one other person. The column
+    /// files these on their own shelf and titles them with the other person's name.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    im: bool,
+    /// Who the other person is, when this is an IM: the room's author, or - in one's own
+    /// room - the one person the seal admits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    other: Option<String>,
+    /// A chat somebody this persona has no relationship with opened (Curtis, 2026-09-20):
+    /// a REQUEST, which sits in its own pile, rings nothing and syncs nothing until it is
+    /// accepted. Saying something in it, or pressing accept, is the acceptance.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    request: bool,
 }
 
 /// The rooms this persona entered by link and has not left: `(author_hex, doc_hex)`.
@@ -987,6 +1001,73 @@ async fn rooms_by_standing(data: &store::Store) -> Result<(Vec<(String, String)>
 
 async fn joined_rooms(data: &store::Store) -> Result<Vec<(String, String)>, AppError> {
     Ok(rooms_by_standing(data).await?.0)
+}
+
+/// GET `/api/identity/{root}/ims/{other}` - the private chat with this person, if there
+/// already is one (CHAT.md, ruling 12): one chat per pair, whichever of the two opened it,
+/// so the button on somebody's page lands in the conversation already going rather than
+/// minting a second one beside it. Answers `{author, doc_id}`, or 404 when there is none -
+/// the client then mints the room, which is the one act this door does not do.
+async fn im_find_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, other)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    hex_fixed::<32>(&other, "persona root")?;
+    if other == root {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-private-chat-needs-two",
+            "a private chat needs two people"
+        )));
+    }
+    // Mine first: my own IM rooms, whose one member is them. The audience memo is this
+    // node's own, which is why my side is the cheap side to ask.
+    for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
+        if crate::record::documents::Format::from_wire(p.format) != crate::record::documents::Format::Room {
+            continue;
+        }
+        let doc_hex = hex::encode(p.doc_id);
+        if crate::chat::im_other(&state, &root, &root, &p.doc_id).await.as_deref() == Some(other.as_str()) {
+            return Ok(Json(serde_json::json!({ "author": root, "doc_id": doc_hex })));
+        }
+    }
+    // Then theirs: a room of theirs, marked an IM, that this persona can see at all - an
+    // IM is sealed to one person, so seeing it IS being the other half of it.
+    let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .filter(|r| r.format.as_deref() == Some("room") && r.author_root == other)
+        .collect();
+    // Through the feed's own gate, as the chats column reads it: a room this persona could
+    // not open is not their chat, and landing them in a refusal would be worse than minting
+    // one of their own.
+    let mut theirs: Vec<String> = readable_feed_rows(&state, &root, rows)
+        .await
+        .into_iter()
+        .map(|r| r.doc_id)
+        .collect();
+    let (joined, left) = rooms_by_standing(&data).await?;
+    theirs.extend(
+        joined
+            .into_iter()
+            .chain(left)
+            .filter(|(a, _)| *a == other)
+            .map(|(_, d)| d),
+    );
+    theirs.dedup();
+    for doc_hex in theirs {
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        if !crate::chat::is_im(&state, &other, &doc).await {
+            continue;
+        }
+        return Ok(Json(serde_json::json!({ "author": other, "doc_id": doc_hex })));
+    }
+    Err(AppError::NotFound(crate::msg!(
+        "identity.routes.no-private-chat-with-them-yet",
+        "no private chat with them yet"
+    )))
 }
 
 /// GET `/api/identity/{root}/rooms` - every room this persona may see (CHAT.md, ruling 7):
@@ -1026,16 +1107,43 @@ async fn rooms_handler(
             latest_ms: None,
             seen_ms: None,
             unread: false,
+            im: false,
+            other: None,
+            request: false,
         });
     }
     // The rooms my feed carries, through the feed's own gate.
-    let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
+    let rows: Vec<crate::fanout::FeedRow> = crate::fanout::feed_all(&state.node_db, &root, 5000)
         .await
         .map_err(AppError::Internal)?
         .into_iter()
         .filter(|r| r.format.as_deref() == Some("room"))
         .collect();
-    for r in readable_feed_rows(&state, &root, rows).await {
+    let mut readable = readable_feed_rows(&state, &root, rows.clone()).await;
+    // A private chat is judged the way its DOOR judges it (Curtis, 2026-09-20, having
+    // opened a chat the other side never saw): the author's node is the only one that
+    // knows an audience of one, so the gate's "no" here may only mean "this computer has
+    // not asked yet" - or that it asked in the moment between the post being syncable and
+    // its audience being noted, and is sitting on a ten-minute refusal. So for the room
+    // rows this reader could not judge, and only those the header marks an IM, the key
+    // lane is asked once; the lane's own refusal memo is what keeps "once" honest.
+    let judged: std::collections::HashSet<String> = readable.iter().map(|r| r.doc_id.clone()).collect();
+    for r in rows {
+        if judged.contains(&r.doc_id) {
+            continue;
+        }
+        let Ok(Ok(doc)) = hex::decode(&r.doc_id).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        if !crate::chat::is_im(&state, &r.author_root, &doc).await {
+            continue;
+        }
+        if crate::postkeys::refused(&state.node_db, &r.author_root, &r.doc_id, &root).await.unwrap_or(false) {
+            continue;
+        }
+        if crate::idface::key_for(&state, &r.author_root, &doc, &root, r.via_root.as_deref()).await.is_some() {
+            readable.push(r);
+        }
+    }
+    for r in readable {
         if !seen.insert((r.author_root.clone(), r.doc_id.clone())) {
             continue;
         }
@@ -1057,6 +1165,9 @@ async fn rooms_handler(
             latest_ms: None,
             seen_ms: None,
             unread: false,
+            im: false,
+            other: None,
+            request: false,
         });
     }
     // The rooms I entered by link - still in, or left (Curtis, 2026-09-19).
@@ -1096,6 +1207,9 @@ async fn rooms_handler(
             latest_ms: None,
             seen_ms: None,
             unread: false,
+            im: false,
+            other: None,
+            request: false,
         });
     }
     // Every tag the room wears (Curtis, 2026-09-20), one lookup: the creator's word about
@@ -1130,6 +1244,60 @@ async fn rooms_handler(
                     item.tags.push(a.value.clone());
                 }
             }
+        }
+    }
+    // The chats somebody opened WITH this persona, which no feed carries (Curtis,
+    // 2026-09-20): a chat from a stranger reaches the inbox as a room mention and nothing
+    // else - they are not followed, so no chain of theirs is pulled - and the column lists
+    // it from there. Whether it is a request or an ordinary chat is decided below.
+    for n in data.inbox().page(200).await? {
+        if n.kind != crate::notifications::KIND_ROOM_MENTION {
+            continue;
+        }
+        let (Some(doc), Some(author)) = (n.doc_id.clone(), n.detail.clone()) else { continue };
+        if author.len() != 64 || doc.len() != 32 || seen.contains(&(author.clone(), doc.clone())) {
+            continue;
+        }
+        let Some(h) = held_public_header(&state, &author, &doc).await? else { continue };
+        if h.format != Some(ringtome_proto::registry::doc_format::ROOM) || !h.im {
+            continue;
+        }
+        seen.insert((author.clone(), doc.clone()));
+        items.push(RoomItem {
+            author,
+            doc_id: doc,
+            title: h.title.clone(),
+            published_ms: h.genesis_ms.unwrap_or(0),
+            trusted_only: h.trusted_only,
+            onward: h.onward,
+            via: None,
+            mine: false,
+            joined: false,
+            left: false,
+            tags: Vec::new(),
+            closed: h.settled,
+            author_name: None,
+            author_avatar: None,
+            latest_ms: None,
+            seen_ms: None,
+            unread: false,
+            im: false,
+            other: None,
+            request: false,
+        });
+    }
+    // The private chats (CHAT.md, ruling 12): which rooms are a pair's, and who the other
+    // person is - the room's author when it is theirs, the one person the seal admits when
+    // it is this persona's own. The column needs both to file and to title them.
+    for item in items.iter_mut() {
+        let Ok(Ok(doc)) = hex::decode(&item.doc_id).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        if let Some(other) = crate::chat::im_other(&state, &root, &item.author, &doc).await {
+            item.im = true;
+            // A chat from somebody this persona has no relationship with is a REQUEST
+            // (Curtis, 2026-09-20): the bell's own word for a stranger - nobody whose
+            // chains we pull - and it holds until the chat is accepted, which joining is.
+            item.request = !item.mine && !item.joined && !placed(&data, &other).await?;
+            item.other = Some(other);
         }
     }
     // Bylines, one lookup for everyone named.
@@ -1187,7 +1355,7 @@ async fn room_enter_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     hex_fixed::<32>(&author, "author root")?;
-    hex_fixed::<16>(&doc, "doc id")?;
+    let doc_id = hex_fixed::<16>(&doc, "doc id")?;
     let Some(h) = held_public_header(&state, &author, &doc).await? else {
         return Err(AppError::NotFound(crate::msg!(
             "identity.routes.no-such-room-is-held",
@@ -1198,7 +1366,7 @@ async fn room_enter_handler(
         return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
     }
     let via = crate::fanout::introducer(&state.node_db, &root, &author, &doc).await;
-    if h.trusted_only && !crate::idface::seal_admits(&state, &author, &doc, &root, via.as_deref()).await {
+    if h.trusted_only && author != root && !room_seal_admits(&state, &root, &author, &doc, &doc_id, via.as_deref()).await {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.this-room-is-sealed",
             "this room is sealed - its author shares it only with people they trust"
@@ -1208,15 +1376,29 @@ async fn room_enter_handler(
     let (joined, left) = rooms_by_standing(&data).await?;
     let is_left = left.iter().any(|(a, d)| *a == author && *d == doc);
     let already = joined.iter().any(|(a, d)| *a == author && *d == doc);
-    if !already && !is_left && author != root {
+    // A chat a stranger opened is a REQUEST until it is accepted (Curtis, 2026-09-20):
+    // looking at it is not accepting it, so it neither joins nor goes on the sync beat.
+    // The words are pulled once, here, because a request nobody can read is one nobody can
+    // answer; what it does not get is a standing obligation on this computer.
+    let other = crate::chat::im_other(&state, &root, &author, &doc_id).await;
+    let request = match (&other, already, author == root) {
+        (Some(other), false, false) => !placed(&data, other).await?,
+        _ => false,
+    };
+    if !already && !is_left && author != root && !request {
         data.private_registers(ROOMS_JOINED)
             .set(&key, &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string())
             .await?;
     }
+    if request {
+        if let Err(e) = crate::chat::sync_room(&state, &root, &author, &doc_id).await {
+            tracing::debug!(error = ?e, "a chat request's words did not arrive");
+        }
+    }
     // The node keeps an opened room pulled for a while (CHAT.md, slice 2) - unless this
     // persona left it (Curtis, 2026-09-19): a look at a left room is a look, not a rejoin,
     // and the room stays unsynced until the rejoin door is asked.
-    if !is_left {
+    if !is_left && !request {
         crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
     }
     Ok(Json(serde_json::json!({
@@ -1227,7 +1409,10 @@ async fn room_enter_handler(
         "onward": if h.onward { Some(true) } else { None },
         "published_ms": h.genesis_ms.unwrap_or(0),
         "mine": author == root,
-        "joined": author != root && !is_left,
+        "joined": author != root && !is_left && !request,
+        // A chat a stranger opened, not yet accepted (Curtis, 2026-09-20): the window says
+        // who wants to talk and offers the two answers instead of a composer.
+        "request": if request { Some(true) } else { None },
         "left": is_left,
         // Closed (ruling 10): the settled wish on the post.
         "closed": h.settled,
@@ -1241,6 +1426,10 @@ async fn room_enter_handler(
         // node or by its operator's full-sync.
         "archivist": crate::chat::archivist_here(&state, &author, &doc).await,
         "archived": crate::chat::archived(&state.node_db, &author, &doc).await.unwrap_or(false),
+        // A private chat, and who it is with (ruling 12): the window wears the other
+        // person's face and name, whichever of the two opened it.
+        "im": if h.im { Some(true) } else { None },
+        "other": other,
     })))
 }
 
@@ -1331,6 +1520,16 @@ async fn set_mute(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    // Nobody moderates a private chat (CHAT.md, ruling 12): mute and the badge are powers
+    // over somebody else's record, and between two people the honest answers are to stop
+    // talking and to block - both of which are one person's own, and neither of which asks
+    // this door.
+    if crate::chat::is_im(&state, &author, &doc_id).await {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.nobody-moderates-a-private-chat",
+            "there's no moderating a private chat - block them instead"
+        )));
+    }
     // The creator, or one they deputized (CHAT.md, ruling 8).
     if !crate::chat::may_moderate(&state, &root, &author, &doc).await {
         return Err(AppError::Forbidden(crate::msg!(
@@ -1433,6 +1632,16 @@ async fn set_deputy(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    // Nobody moderates a private chat (CHAT.md, ruling 12): mute and the badge are powers
+    // over somebody else's record, and between two people the honest answers are to stop
+    // talking and to block - both of which are one person's own, and neither of which asks
+    // this door.
+    if crate::chat::is_im(&state, &author, &doc_id).await {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.nobody-moderates-a-private-chat",
+            "there's no moderating a private chat - block them instead"
+        )));
+    }
     if root != author {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.only-the-rooms-creator-deputizes",
@@ -1510,13 +1719,27 @@ async fn room_join_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     room_admits(&state, &root, &author, &doc).await?;
+    accept_room(&state, &data, &root, &author, &doc).await?;
+    Ok(Json(serde_json::json!({ "joined": true })))
+}
+
+/// In from now on: the rejoin's write, and a chat request's acceptance (Curtis,
+/// 2026-09-20) - the room is this persona's to keep, listed, synced and rung, which is
+/// exactly what a request is not until somebody says yes.
+async fn accept_room(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    author: &str,
+    doc: &str,
+) -> Result<(), AppError> {
     if author != root {
         data.private_registers(ROOMS_JOINED)
             .set(&format!("{author}:{doc}"), &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string())
             .await?;
     }
-    crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
-    Ok(Json(serde_json::json!({ "joined": true })))
+    crate::chat::open_room(&state.node_db, root, author, doc).await.map_err(AppError::Internal)?;
+    Ok(())
 }
 
 /// GET `/api/identity/{root}/rooms/{author}/{doc}/live` - the room's live socket (CHAT.md,
@@ -1610,6 +1833,27 @@ async fn serve_room_live(
 
 /// The room's door, for the message doors: admitted or refused with the same words the
 /// enter door uses.
+/// The seal's question at a ROOM's door, asked honestly (Curtis, 2026-09-20, having opened a
+/// chat the other side never heard about): away from the author's node the audience is
+/// unknowable, so a local "no" may only mean "this computer has not asked yet" - and for a
+/// chat sealed to one person who does not follow its author, nothing else ever asks. So the
+/// door asks the key lane once. The author's node judges by the audience it holds and grants
+/// or refuses, and holding the room's key IS admission: every word in the room is sealed
+/// under it. A refusal is remembered by the lane, so a stranger knocking costs one ask.
+async fn room_seal_admits(
+    state: &AppState,
+    root: &str,
+    author: &str,
+    doc: &str,
+    doc_id: &[u8; 16],
+    via: Option<&str>,
+) -> bool {
+    if crate::idface::seal_admits(state, author, doc, root, via).await {
+        return true;
+    }
+    crate::idface::key_for(state, author, doc_id, root, via).await.is_some()
+}
+
 async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> Result<[u8; 16], AppError> {
     let doc_id = hex_fixed::<16>(doc, "doc id")?;
     hex_fixed::<32>(author, "author root")?;
@@ -1626,7 +1870,7 @@ async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> R
     // admitted on their trust, one hop, exactly as the body door admits a shared post. The
     // sharer is the feed journal's byline - a room has no card to carry a `via`.
     let via = crate::fanout::introducer(&state.node_db, root, author, doc).await;
-    if h.trusted_only && author != root && !crate::idface::seal_admits(state, author, doc, root, via.as_deref()).await {
+    if h.trusted_only && author != root && !room_seal_admits(state, root, author, doc, &doc_id, via.as_deref()).await {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.this-room-is-sealed",
             "this room is sealed - its author shares it only with people they trust"
@@ -1667,6 +1911,12 @@ async fn room_say_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    // Answering a chat request accepts it (Curtis, 2026-09-20): talking to somebody IS
+    // agreeing to talk to them, so the button and the first word mean the same thing, and
+    // there is no way to say something into a chat this computer then refuses to keep.
+    if chat_request(&state, &data, &root, &author, &doc).await? {
+        accept_room(&state, &data, &root, &author, &doc).await?;
+    }
     let reacts_to = match req.reacts_to.as_deref() {
         Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
         None => None,
@@ -1713,7 +1963,16 @@ async fn room_history_handler(
         at_ms,
     )
     .await?;
-    Ok(Json(serde_json::json!({ "items": items, "closed": closed, "more": more, "total": total })))
+    // The feed's room card reads this door too, and needs to know what kind of room it is
+    // drawing (Curtis, 2026-09-20): in a chat for two the creator is the other person, and
+    // their picture wears the veil like anybody else's.
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "closed": closed,
+        "more": more,
+        "total": total,
+        "im": if crate::chat::is_im(&state, &author, &doc_id).await { Some(true) } else { None },
+    })))
 }
 
 /// GET `/api/identity/{root}/rooms/{author}/{doc}/chatters` - who has visibly spoken here,
@@ -2158,6 +2417,33 @@ async fn notifications_handler(
             item.doc_published_ms = Some(p.genesis_ms);
         }
     }
+    // A chat request rings nothing (Curtis, 2026-09-20): the word that somebody wants to
+    // talk belongs in the chats column's own pile, where it can be answered, and not in a
+    // bell that says something happened in a conversation this persona never agreed to.
+    // ...and a private chat's POST never rings either, request or not: "they mentioned you
+    // in a post" pointing at the plumbing of a chat is news about nothing. What the chat
+    // says rings, through the room mention, once the chat is somebody's to hear.
+    let mut quiet: Vec<usize> = Vec::new();
+    for (at, item) in items.iter().enumerate() {
+        if item.doc_id.is_empty() {
+            continue;
+        }
+        if item.kind == crate::notifications::KIND_ROOM_MENTION {
+            let Some(author) = item.detail.clone() else { continue };
+            if chat_request(&state, &data, &root, &author, &item.doc_id).await? {
+                quiet.push(at);
+            }
+            continue;
+        }
+        if item.kind == crate::notifications::KIND_MENTIONED
+            && held_public_header(&state, &item.author, &item.doc_id).await?.is_some_and(|h| h.im)
+        {
+            quiet.push(at);
+        }
+    }
+    for at in quiet.into_iter().rev() {
+        items.remove(at);
+    }
     // A room mention's room, by name (Curtis, 2026-09-19): the room post's public title off
     // whatever this node holds of its author; a sealed room's title travels with its words,
     // and the bell's link asks the body door for it instead.
@@ -2218,6 +2504,42 @@ async fn unread_count(state: &AppState, data: &store::Store, root: &str) -> Resu
 /// The bell's rows, assembled: derived beside delivered, deduped by the follow-edge rule
 /// (present twin, or owned sender), seen-state from the reader's watermark. The mini-card
 /// dressing is the handler's own step - the badge count has no use for titles.
+/// Somebody this persona has PLACED: their own ledger says a trust or an interest for them.
+/// That is what "a relationship" means at this door, and unlike a dial - which the chat
+/// machinery itself writes when it pulls a room - nothing but the person writes it.
+async fn placed(data: &store::Store, other: &str) -> Result<bool, AppError> {
+    let said = |v: Option<&String>| v.is_some_and(|v| !v.trim().is_empty() && v.trim() != "none");
+    Ok(data
+        .contacts()
+        .await?
+        .into_iter()
+        .any(|(root, facts)| root == other && (said(facts.get("trust")) || said(facts.get("interest")))))
+}
+
+/// Is this room a chat REQUEST for this persona (Curtis, 2026-09-20)? An IM somebody they
+/// have no relationship with opened - nobody they have placed a trust or an interest on -
+/// and have not accepted, accepting being joining it. A request rings nothing and syncs
+/// nothing; it sits in its own pile until it is answered.
+async fn chat_request(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    author: &str,
+    doc: &str,
+) -> Result<bool, AppError> {
+    if author == root {
+        return Ok(false);
+    }
+    let Ok(doc_id) = hex::decode(doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return Ok(false) };
+    let Ok(doc_id) = doc_id else { return Ok(false) };
+    let Some(other) = crate::chat::im_other(state, root, author, &doc_id).await else { return Ok(false) };
+    let (joined, _left) = rooms_by_standing(data).await?;
+    if joined.iter().any(|(a, d)| a == author && d == doc) {
+        return Ok(false);
+    }
+    Ok(!placed(data, &other).await?)
+}
+
 async fn notification_items(
     state: &AppState,
     data: &store::Store,
@@ -2478,12 +2800,36 @@ struct PublishRequest {
     /// A ROOM (CHAT.md, ruling 1): publish this Marquee draft as a chat room - its title
     /// the name, its words the description. Once a room, always a room.
     room: Option<bool>,
+    /// An IM (CHAT.md, ruling 12): this room is a two-person chat, sealed to the one
+    /// person its words name. Said once, at the mint; the header carries it after that.
+    im: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
 struct ReplyRef {
     author: String,
     doc_id: String,
+}
+
+/// Has this draft already published as an IM (CHAT.md, ruling 12)? The draft's
+/// `published_as` memo names the post; the post's own signed header says what it is. A
+/// draft that has never published is not one yet, whatever this request asks for.
+async fn already_im(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    doc_id: &[u8; 16],
+) -> Result<bool, AppError> {
+    let Some(post) = data
+        .annotations()
+        .field(doc_id, store::PUBLISHED_AS)
+        .await?
+        .and_then(|v| hex::decode(v).ok())
+        .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+    else {
+        return Ok(false);
+    };
+    Ok(held_public_header(state, root, &hex::encode(post)).await?.is_some_and(|h| h.im))
 }
 
 /// The PARENT's own held header, mirror shelf first, fragment shelf second - the shared
@@ -2957,7 +3303,34 @@ async fn publish_handler(
             "a room is a post of its own, not a reply"
         )));
     }
-    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of, onward, room };
+    // An IM (CHAT.md, ruling 12): a room sealed to exactly ONE other person. The door
+    // checks the shape rather than trusting the word - the whole of ruling 12 (nobody
+    // mutes, closes, deletes or passes it along; both sides keep it whole) rests on the
+    // pair being a pair, and the pair is the author plus the one person the seal admits.
+    let im = req.as_ref().and_then(|b| b.im).unwrap_or(false);
+    if im {
+        let named: Vec<String> = draft_mentions(&data, &doc_id)
+            .await?
+            .into_iter()
+            .map(hex::encode)
+            .filter(|m| m != &root)
+            .collect();
+        if !room || audience.as_deref() != Some(crate::postkeys::MENTIONED_AUDIENCE) || named.len() != 1 {
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.an-im-is-a-room-for-two",
+                "a private chat is a room for two - sealed to one other person, and nobody else"
+            )));
+        }
+    }
+    // Closing an IM is not a thing anyone may do (ruling 12): between two people the
+    // honest powers are to stop talking and to block, and both are one person's own.
+    if settled && already_im(&state, &data, &root, &doc_id).await? {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-private-chat-doesnt-close",
+            "a private chat can't be closed - stop talking, or block them"
+        )));
+    }
+    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of, onward, room, im };
     // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
     // until the day. The plan lives on the draft's private meta - device-durable - naming
     // this device's leaf as the one that mints, and the sweep does the rest.
@@ -3091,6 +3464,15 @@ async fn unpublish_handler(
         return Err(AppError::NotFound(crate::msg!(
             "identity.routes.that-post-isnt-on-your-shelf",
             "that post isn't on your public shelf - it may already be taken down"
+        )));
+    }
+    // A private chat is nobody's to take down (CHAT.md, ruling 12): the record is two
+    // people's, not the one who happened to open the window, and deleting the post would
+    // orphan the other person's words. Blocking is the door out.
+    if held_public_header(&state, &root, &hex::encode(post_id)).await?.is_some_and(|h| h.im) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-private-chat-doesnt-delete",
+            "a private chat can't be deleted - it belongs to both of you"
         )));
     }
     // The pin lives and dies with the comment (PROJECT_PLAN's Replies): read the post's own thread
@@ -6536,6 +6918,7 @@ mod media_info_tests {
             timestamp_ms: 0,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                im: false,
                 dated_ms: None,
                 animation: false,
                 part_of: None,

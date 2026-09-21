@@ -1606,6 +1606,14 @@ nothing to be ejected *from*. The epoch machinery works at two exactly as writte
   has to be something a person *did*, with different chrome on the other side of it, and never a property that
   quietly changed underneath them.
 
+**Realized 2026-09-20 as a room of two** (CHAT.md, ruling 12), which amends one line above: the pair's key is the
+room POST's key, sealed to exactly one person through the post's own audience, not an epoch minted for the two of
+them. Everything the argument rests on survives - two chains interleaved at read, no roster, no admission, no
+ejection, membership changing only through identity events - and what the change buys is that a DM is the chat
+machinery with the pair's rules on it (no mute, no close, no delete, no passing along, both sides keeping the whole
+of it) rather than a second messaging system beside it. The epoch scoped to two remains the stronger shape and the
+road back to it is open: the key is a thing the post door hands out, and what hands it out can change.
+
 The honest cost of the cut is the sympathetic three-person case - three friends planning a surprise, a couple and
 their lawyer - which lands in the gated lane along with the thousand-person room. That is a real trade, taken
 deliberately: the alternative is a mutable roster and everything it drags in, at every size above one pair.

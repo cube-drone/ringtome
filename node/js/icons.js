@@ -78,6 +78,7 @@ import {
     Bell,
     ClockCountdown,
     Prohibit,
+    HandPalm,
     Detective,
     GlobeHemisphereWest,
     Swap,
@@ -154,6 +155,8 @@ export const Icons = {
     caretDown: CaretDown,
     // the room's moderation (CHAT.md, ruling 8): the creator's mute
     mute: SpeakerSlash,
+    // ...and a private chat's one power (ruling 12): the raised hand that ends it.
+    block: HandPalm,
     // ...and the badge that lets somebody else do it (ruling 8's moderators list)
     deputy: Siren,
     done: CheckCircle,

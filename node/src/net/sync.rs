@@ -3506,6 +3506,7 @@ mod tests {
         use ringtome_proto::DocHeaderPlain;
         fn post(chain: &mut Chain, id: u8, title: &str) -> SignedEntry {
             let header = DocHeaderPlain {
+                im: false,
                 dated_ms: None,
                 animation: false,
                 part_of: None,

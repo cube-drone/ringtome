@@ -9798,3 +9798,155 @@ a pop-over above the face, and this pane's own frame ate it. `PersonInline` is t
 fifth shape - the mini heptagon with the one name this reader calls them beside it, no hover
 label and no link, since the result line is already the button that opens the room. Capped at
 a third of the line, so a long nickname cannot crowd out the words the search found.
+
+## 2026-09-20 (cont.): IMs - a room sealed to one person
+
+Curtis: a button on anybody's page opens "a Chat window that's sealed to Just Them", and
+what follows from that is a list of things a private chat is NOT. It cannot be deleted,
+muted, deputized or passed along; the trust filter has no say in it; there is no link to its
+post, though the post does sit in the feed - for the two of them, which is what sealing to
+one person means; both parties keep the whole conversation; and opening a chat with somebody
+who already has one open with you opens theirs, because a pair has one chat however it
+started. CHAT.md ruling 12 writes that down, slice 11 builds it.
+
+An IM is a room (ruling 1) with the pair's rules on it, not a second chat system. The words
+of the room's post are a user card naming the other person, so the post is sealed to "the
+people mentioned" (*Contact tags*, ruling 5) with a member list of one - which also makes
+the mention notice that tells them the chat exists, and the feed card each of them sees. The
+header grows `im` (key 23): absent when false, carried forward on re-publication like
+`settled`, and saying THAT there is a pair without saying who, since the audience stays the
+author's own memo. The publish door checks the shape rather than the word - a room, sealed
+to `@mentioned`, naming exactly one person who is not the author - so nothing that is not a
+pair can wear the mark, and every rule below can lean on it.
+
+The rules, each where it belongs. Mute and the badge are refused at the room's own doors,
+close at the publish door, delete at the takedown door: each of those is a power over the
+other person's record, and between two people the honest powers are to stop talking and to
+block. `archivist_here` says yes to any node holding an IM - only the pair can hold one - so
+neither side's budget prunes it and both sync it whole, and the sync beat picks IMs up
+however long since anyone looked, because a room one wandered into going quiet is right and
+the place a friend leaves messages going quiet is not. `GET /ims/{other}` answers the chat
+already going, mine by its audience memo and theirs through the feed's own gate; the client
+mints only on a 404, which is what keeps one chat per pair.
+
+In the window: the title is the other person as this reader calls them today - their
+nickname, else the name they answer to now - never the title the post was minted under, and
+the row and the header wear their face whichever side opened it. The chats column files IMs
+on their own shelf between the rooms and the pile one has left. The chrome drops the eye,
+the share, the post link, leave, close and delete, and offers the block in their place,
+which is the one power a private chat has. `PersonCard` carries the button that starts one.
+Suite: `ims.cjs` - the mint and its refusals, the other side entering and talking, one chat
+per pair from either end, a third person refused however much of the author's they follow,
+and no mute, badge, close or delete.
+
+## 2026-09-20 (cont.): the three roads a private chat takes to the other person
+
+Curtis, from the field: he opened a chat with somebody who followed him back, neither of them
+trusting the other, and they saw nothing - not the chat, not a word in their inbox. The rig
+said it worked, and the rig was right about the case it tested and wrong about the one that
+matters: every claim drove the beats by hand, and the beat it drove - the notification fold -
+is what fetched the room's key. Away from the author's node an audience of ONE is unknowable,
+so the feed's gate refuses a chat until this computer holds its key, and the only thing that
+asks for the key is that fold, on behalf of followers. Everything else was queued behind it.
+
+So a chat for two has its own roads now, none of them the one built for posts sealed to a
+crowd. **Every word said in an IM names the other person**, whatever the words say: that makes
+it a room mention, the one notice kind the inbox's follow-edge rule exempts - no fold reads a
+room chain, so the envelope is the only road - and the bell rings whether they follow, trust,
+or have never heard of the speaker. **The room's door asks the key lane before refusing**: a
+local "no" for a sealed room may only mean "this computer has not asked yet", and the author's
+node, the only one that knows the audience, grants or refuses on the spot - holding the room's
+key is admission, since every word in the room is sealed under it. **The chats column judges
+an IM the way its door does**, asking the lane once for the room rows it could not judge, the
+lane's refusal memo keeping "once" honest, so a followee's chats with other people cost one
+ask rather than one per look.
+
+Three new claims in `ims.cjs`, each falsified before it was believed - reverting the change
+fails the claim: a word rings the other person's bell, trusted or not; a chat with a stranger
+who follows nothing of the author's arrives, opens, and reads what was said; and a chat this
+computer has never asked about still lists, asked of a node with the grant, the key and the
+refusal deleted underneath it.
+
+## 2026-09-20 (cont.): a chat from a stranger is a request
+
+Curtis read what the morning had built and asked the right question: "any user can start a
+chat with any other user, sight unseen, no trust relationship at all?" Yes - and the plan had
+already ruled otherwise. *The Inbound Gate: One Floor, Three Surfaces* names a DM as the first
+of its three surfaces, gated by "they clear your trust floor and you have not muted them", and
+`inbox.rs` says in its own words why that gate refuses nobody today: the pre-Trust classifier
+has no floor to check, so `blocked` is its only live refusal. What the IM work changed was not
+the policy but the reach - before it, a stranger's chat quietly failed to arrive.
+
+Given the floor, message requests, or both, Curtis took requests, which needs no number nobody
+has yet and tells the sender nothing. A request is an IM opened by somebody this persona has
+not PLACED - no trust, no interest on their own ledger - and not yet accepted. The test is the
+ledger and not a dial, because the chat machinery writes a dial itself when it pulls a room,
+and a relationship is something a person says rather than something their computer says for
+them. It rings nothing: not the words, and not the chat's post either, since "they mentioned
+you in a post" pointing at a chat's plumbing is news about nothing. It syncs nothing: looking
+is not accepting, so the words are pulled once to be judged and the room goes on no beat and
+into no register. And it has three answers - accept, which joining is and which answering also
+is (talking to somebody IS agreeing to talk to them, so the button and the first word mean one
+thing); block, which ends it; and walking away, which leaves it where it sits and tells them
+nothing.
+
+The column grew the pile between the IMs and what was left, and the window offers "X wants to
+chat with you" with accept and block where the composer would be. Two claims: a chat from a
+stranger lists as a request, rings nothing, joins nothing and rides no beat, and still reads
+what was said, so there is something to judge; and answering it accepts it, after which it
+files with the chats and rings like one. Stated plainly in ruling 13: this is consent, not
+safety and not spam-proofing - the knock still costs proof-of-work, the stranger tier is still
+a ring, and the floor returns when Trust ships, in front of this rather than instead of it.
+
+## 2026-09-20 (cont.): the veil stands in a chat for two
+
+Curtis: "in other chats, we don't show media from untrusted folk unless you click through
+first - we should do the same in private personal chats if there's no trust relationship
+there." Ruling 12 had said trust is not a dial in an IM and the morning's code took that too
+far: the veil went with the dimming. They are different questions. Dimming is for scanning a
+busy room; the veil is about what arrives unasked, and a stranger's picture arrives unasked
+wherever it is said.
+
+So the two came apart: `untrusted` dresses the line, `veil` decides the media, and an IM takes
+the second without the first. The rule had also grown a case worth writing down, so it moved
+out of the component and into `js/pure/chatveil.js` with vectors: the room's CREATOR is exempt
+in a room - you chose to enter their room, and veiling the host reads as nonsense - and the
+exemption LIFTS in a chat for two, where the creator is the other person and opening a chat
+with you is not a relationship with you. The feed's room card, which had its own inline copy
+of the same rule and the same hole, now reads the shared one; the history door it already
+calls answers `im` so the card knows which kind of room it is drawing.
+
+## 2026-09-20 (cont.): the first word of a chat, and why it went missing
+
+The suite caught what the field report could not name. A claim added with the IMs - bea says
+something, ada hears it - passed alone and failed about half the time inside a full `just ci`,
+and the failing half failed for good: the words sat on the sayer's chain and nowhere else. The
+temptation was to call it load and raise the timeout, which is how a real bug becomes a slow
+test. The rig's logs said otherwise: bea's node reported its push sent, ada's node had no
+trace of bea's root at all, and ada's own room sync warned `peers=0`.
+
+Three things have to be true for a chat's first word to arrive, and none of them was.
+
+**The creator's node has to know who to ask.** Its directory of a room is the set of people it
+has already heard from (CHAT.md ruling 4), which at the first word is nobody; the only road
+was the push a say makes, which tries the first endpoint that answers, once, with nothing
+behind it. The node also knows who the SEAL admits - for an IM, exactly one person - and that
+is who it asks now.
+
+**The other node has to serve its own words.** A sealed room's lane asks who the dialing
+endpoint serves, off the peer ledger, and a pair who do not follow each other hold no such rows
+about each other: the answer was nobody, and bea's node served ada `sent=0` over and over. An
+IM now answers to the room's KEY, exactly as an onward room does. The reservation that keeps a
+plain sealed room strict - an audience can change, and an untrust must stop what comes next -
+has no purchase on a pair, which is the one size whose membership cannot change; there the key
+is the whole story, and it has to be, because the pair need not follow each other at all.
+
+**And a node that has spoken in a room is in it.** "In" was `rooms_open` or one's own post -
+a window being open, not a record being held - so a node that said something and closed the
+window served its own words to nobody, the room's creator included. The memo answers too now.
+
+The claim that proves it: bea says the chat's first word with her node dead to the network, so
+no push of hers can land, and ada's node goes and gets it. Each of the three changes was
+reverted in turn and the claim failed each time. A fourth change - giving the creator the
+speaker's address off the key lane's ladder - was reverted too, the claim passed without it,
+and it was dropped: plausible is not load-bearing, and only one of those belongs in the tree.

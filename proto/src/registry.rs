@@ -633,6 +633,14 @@ pub struct DocHeaderPlain {
     /// controls, where a video with the same container gets a player. Absent when false.
     /// A media fact, so it rides the twin a bake mints exactly as the dimensions do.
     pub animation: bool,
+    /// A TWO-PERSON chat (CHAT.md, ruling 12, 2026-09-20): this room is an IM - a room
+    /// sealed to exactly one other person, which nobody can mute, close, delete or pass
+    /// along, and which both parties keep whole. The pair is the author and the one
+    /// person the seal admits, so the header says THAT there is a pair without saying
+    /// who: the audience stays the author's own private memo, as every audience is.
+    /// Meaningless without `format = room`, and refused at the door there. Absent when
+    /// false; carried forward on re-publication like `settled` - once an IM, always one.
+    pub im: bool,
     /// The BOOK this document is a page of (PROJECT_PLAN's Books, ruling 4, 2026-09-03): the public id
     /// of the notebook's book document. A part is a real post - a permalink, a turbolink, a
     /// rebroadcast of its own - but never a feed row of its own: the fold keeps parts out of
@@ -695,6 +703,7 @@ impl DocHeaderPlain {
             + self.onward as u64
             + self.dated_ms.is_some() as u64
             + self.animation as u64
+            + self.im as u64
             + self.part_of.is_some() as u64;
         if self.thread_root.is_some() && self.reply_to.is_none() {
             return Err(ProtoError::BadEntry("a thread root without a parent"));
@@ -800,6 +809,10 @@ impl DocHeaderPlain {
             w.uint(22);
             w.uint(1);
         }
+        if self.im {
+            w.uint(23);
+            w.uint(1);
+        }
         Ok(w.into_bytes())
     }
 
@@ -821,6 +834,7 @@ impl DocHeaderPlain {
         let mut onward = false;
         let mut dated_ms: Option<i64> = None;
         let mut animation = false;
+        let mut im = false;
         let mut part_of: Option<[u8; 16]> = None;
         while let Some(key) = map.next_key()? {
             match key {
@@ -893,6 +907,7 @@ impl DocHeaderPlain {
                     seal_of = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
                 }
                 22 => onward = map.uint()? != 0,
+                23 => im = map.uint()? != 0,
                 17 => {
                     let d = map.uint()?;
                     dated_ms = Some(
@@ -928,6 +943,7 @@ impl DocHeaderPlain {
             onward,
             dated_ms,
             animation,
+            im,
             part_of,
         };
         if out.sealed_title.as_ref().is_some_and(|t| t.len() > Self::MAX_TITLE_LEN + 128) {
@@ -1691,6 +1707,7 @@ mod tests {
     #[test]
     fn a_settled_header_round_trips_and_absence_means_open() {
         let mut h = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -1733,6 +1750,11 @@ mod tests {
         h.part_of = Some([9u8; 16]);
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().part_of, Some([9u8; 16]), "key 19: a page names its book");
         h.part_of = None;
+        // CHAT.md, ruling 12: a two-person chat says so on the header, and says nothing
+        // about who the other person is - the audience stays the author's own memo.
+        h.im = true;
+        assert!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().im, "key 23: an IM says it is one");
+        h.im = false;
         h.settled = false;
         let open_bytes = h.encode().unwrap();
         assert!(!DocHeaderPlain::decode(&open_bytes).unwrap().settled);
@@ -2027,6 +2049,7 @@ mod tests {
     #[test]
     fn doc_header_reply_links_round_trip_and_pair() {
         let base = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -2085,6 +2108,7 @@ mod tests {
     #[test]
     fn doc_header_refs_round_trip_and_cap() {
         let base = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -2166,6 +2190,7 @@ mod tests {
         // The three parent shapes: genesis (none), ordinary save (one), merge (two).
         for parents in [vec![], vec![[1u8; 32]], vec![[1u8; 32], [2u8; 32]]] {
             let h = DocHeaderPlain {
+                im: false,
                 dated_ms: None,
                 animation: false,
                 part_of: None,
@@ -2194,6 +2219,7 @@ mod tests {
         }
         // format present survives the trip too
         let h = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -2221,6 +2247,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
         let img = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -2248,6 +2275,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
         let vid = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -2278,6 +2306,7 @@ mod tests {
     #[test]
     fn doc_header_enforces_caps() {
         let base = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,

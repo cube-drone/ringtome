@@ -20,7 +20,9 @@ import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { openMirror, useLive } from '../mirror.js';
 import { tagCounts } from '../pure/contacttags.js';
+import { contactCollection } from '../pure/contact.js';
 import { MAX_TAG_CHARS } from '../pure/annotations.js';
+import { veilsMedia } from '../pure/chatveil.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { tagCounts as roomTagCounts } from '../pure/doclist.js';
@@ -34,7 +36,6 @@ const hasTrust = (v) => !!v && v !== 'none';
 /// The preference: hide untrusted speakers' lines in every room this persona reads.
 const HIDE_UNTRUSTED_PREF = 'chat.hide-untrusted';
 /// Whether some words embed media - a picture, a sound, a clip - by Marquee's two spellings.
-export const embedsMedia = (words) => /!\[|:::media\b/.test(words || '');
 /// Whether a line is nothing but emoji (Curtis, 2026-09-19: such a line reads at 150%) - the
 /// picker's `:name:` shortcodes and the glyphs themselves, with their modifiers and joiners,
 /// and whitespace between; up to a handful, so a wall of them stays a wall.
@@ -115,10 +116,22 @@ const roomName = (words, room) =>
 // ---------------------------------------------------------------------------------------------
 // The chats column
 
+/// What a private chat is called (CHAT.md, ruling 12): the other person, as this reader
+/// calls them - their nickname when one is set, else the name they answer to now. Never
+/// the post's own title, which was minted once and would go stale the day they renamed
+/// themselves.
+const imName = (person, room) =>
+    (person && person.primary) ||
+    (room && room.other ? speakable(room.other) : t('apps.chat.a-private-chat', 'a private chat'));
+
 const RoomRow = ({ room, current, selected }) => {
     const loc = useLocation();
     const words = useRoomWords(room);
-    const person = usePerson(room.author, { current });
+    // A private chat wears the other person, whichever of the two opened it (CHAT.md,
+    // ruling 12): their face, and their name as this reader calls them TODAY - a nickname
+    // if one is set, else the name they answer to now, never the title the post was
+    // minted with.
+    const person = usePerson(room.im && room.other ? room.other : room.author, { current });
     // Every row in this list is a chat, so no row wears a chat icon (Curtis, 2026-09-20):
     // the slot holds the face of whoever opened the room, and the title gets the width.
     // Bold where something was said since this persona last looked (the `rooms_seen`
@@ -132,7 +145,7 @@ const RoomRow = ({ room, current, selected }) => {
             <span class="chat-row-name">
                 ${room.closed && html`<${Icons.settled} />`}
                 ${room.trusted_only && html`<${Icons.trustPrivate} />`}
-                ${roomName(words, room)}
+                ${room.im ? person.primary || speakable(room.other || room.author) : roomName(words, room)}
             </span>
             <span class="chat-row-by">
                 <span class="chat-row-when">${room.latest_ms ? whenWords(room.latest_ms) : t('apps.chat.quiet', 'quiet')}</span>
@@ -147,8 +160,16 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
     // 2026-09-19): left rooms are not synced and never bold, until rejoined. Closed rooms
     // sit at the bottom of that pile for everyone - the door sorts them last.
-    const active = (rooms || []).filter((r) => !r.left && !r.closed);
-    const left = (rooms || []).filter((r) => r.left || r.closed);
+    // Private chats have their own shelf (CHAT.md, ruling 12; Curtis, 2026-09-20): above
+    // what was left, below the rooms - they are not rooms one wanders into, and they never
+    // close.
+    const active = (rooms || []).filter((r) => !r.left && !r.closed && !r.im);
+    const ims = (rooms || []).filter((r) => r.im && !r.left && !r.request);
+    // A chat somebody opened with a persona who has no relationship with them (Curtis,
+    // 2026-09-20): its own pile, beneath the chats and above what was left, where it can be
+    // answered. Nothing about it rings, and nothing of it syncs, until it is accepted.
+    const requests = (rooms || []).filter((r) => r.im && r.request);
+    const left = (rooms || []).filter((r) => !r.im && (r.left || r.closed));
     const row = (r) => html`<${RoomRow}
         key=${`${r.author}/${r.doc_id}`}
         room=${r}
@@ -163,6 +184,12 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
         ${rooms && rooms.length === 0
             ? html`<p class="chat-rooms-empty">${filtered ? t('apps.chat.no-chats-wear-those-tags', 'no chats wear those tags') : t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
             : html`<ul class="chat-list">${active.map(row)}</ul>`}
+        ${ims.length > 0 &&
+        html`<p class="chat-list-divider">${t('apps.chat.ims', 'IMs')}</p>
+            <ul class="chat-list">${ims.map(row)}</ul>`}
+        ${requests.length > 0 &&
+        html`<p class="chat-list-divider">${t('apps.chat.requests', 'requests')}</p>
+            <ul class="chat-list chat-list-requests">${requests.map(row)}</ul>`}
         ${left.length > 0 &&
         html`<p class="chat-list-divider">${t('apps.chat.left', 'left')}</p>
             <ul class="chat-list chat-list-left">${left.map(row)}</ul>`}
@@ -395,7 +422,7 @@ const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notic
     <${PersonChip} root=${m.notice_subject} current=${current} />
 </li>`;
 
-const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, hushed, found }) => {
+const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, onMute, hushed, found }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -404,9 +431,14 @@ const Line = ({ m, current, cont, onReact, untrusted, onEdit, onDelete, onMute, 
     // A speaker this reader has not placed reads small and gray: present, unimportant. Their
     // media wears the feed's veil until clicked (Curtis, 2026-09-19: "baddies might want to
     // pop on to a chat channel and drop in nasty images or sounds").
+    // The two are separate questions (Curtis, 2026-09-20): in a chat for two, nobody reads
+    // gray - there is one other person in it and they are who you opened it with - but the
+    // veil is about what arrives unasked, and a stranger's picture arrives unasked wherever
+    // it is said. So `untrusted` dresses the line and `veil` decides the media, and a
+    // private chat with no trust in it takes the second without the first.
     const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : '', onlyEmoji(m.words) ? 'chat-line-emoji' : ''].filter(Boolean).join(' ');
     const [revealed, setRevealed] = useState(false);
-    const veiled = untrusted && !revealed && m.words !== null && embedsMedia(m.words);
+    const veiled = veil && !revealed;
     return html`<li
         class=${found ? `${cls} chat-line-found` : cls}
         data-line=${m.hash}
@@ -521,11 +553,18 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     // Who this reader trusts, off the contacts mirror (Curtis, 2026-09-19): a speaker with
     // no trust placed reads small and gray, and the preference hides them outright. The
     // reader trusts themself, and the room's creator opened the door - both stand.
+    // The other half of a private chat (ruling 12), read among the hooks: `room` is
+    // undefined while the door answers, and this must be asked at every render either way.
+    const other = usePerson((room && room.im && room.other) || null, { current });
     const contacts = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
     const trustOf = new Map((contacts || []).map((c) => [c.root, (c.facts || {}).trust]));
     const trusted = (speaker) => speaker === root || speaker === author || hasTrust(trustOf.get(speaker));
     const [hideUntrusted, setHideUntrusted] = usePref(root, HIDE_UNTRUSTED_PREF, '');
-    const hiding = hideUntrusted === 'yes';
+    // The trust filter has no say in a private chat (CHAT.md, ruling 12; Curtis,
+    // 2026-09-20): an IM is one person's words, and hiding them would leave a conversation
+    // with nothing in it. The tool goes with the rule.
+    const isIm = !!room && !!room.im;
+    const hiding = hideUntrusted === 'yes' && !isIm;
     const keepOffset = useRef(null); // the floor's height before older lines landed
     const [draft, setDraft] = useState('');
     const [sending, setSending] = useState(false);
@@ -895,6 +934,43 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             setDeleting(false);
         }
     };
+    // The way out of a private chat (CHAT.md, ruling 12): there is nobody to appeal to and
+    // nothing to moderate, so the one honest power is to block them - the ordinary contact
+    // block, said on this persona's own ledger and never to them.
+    const [blocking, setBlocking] = useState(false);
+    const blockThem = async () => {
+        const them = room && room.other;
+        if (!them) return;
+        try {
+            await api(`/api/identity/${root}/private/kv/${encodeURIComponent(contactCollection(them))}/blocked`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: 'yes' }),
+            });
+            setBlocking(false);
+            if (onChanged) onChanged();
+            loc.route('/home/chat');
+        } catch (e) {
+            setSendError(e.message || String(e));
+            setBlocking(false);
+        }
+    };
+    // Accepting a chat request (Curtis, 2026-09-20): the same door the rejoin asks - in
+    // from now on, listed, synced and rung with the rest.
+    const [accepting, setAccepting] = useState(false);
+    const acceptChat = async () => {
+        if (accepting) return;
+        setAccepting(true);
+        try {
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/join`, { method: 'POST' });
+            setRoom((r) => r && { ...r, request: false, joined: true });
+            readHistory();
+            if (onChanged) onChanged();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        } finally {
+            setAccepting(false);
+        }
+    };
     // Rejoin (Curtis, 2026-09-19): the room becomes active again and syncs from now on.
     const rejoin = async () => {
         try {
@@ -914,18 +990,24 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             <p class="chat-empty"><${Icons.trustPrivate} /> ${refusal || t('apps.chat.this-room-is-not-open-to-you', 'this room is not open to you')}</p>
         </div>`;
     }
-    const name = roomName(words, room);
+    // A private chat is titled with the other person, always and freshly (ruling 12): what
+    // this reader calls them today, never the name the post was minted under.
+    const name = room.im ? imName(other, room) : roomName(words, room);
     // Muted here (CHAT.md, ruling 8; Curtis, 2026-09-20): the room hid this persona, which
     // they can read as plainly as everyone else, so the composer says so and stands down -
     // nothing typed into it would reach a floor.
     const iAmMuted = (room.muted || []).includes(root);
     // Who may mute here (CHAT.md, ruling 8): the creator, and the deputies they named.
-    const iModerate = room.mine || (room.deputies || []).includes(root);
+    // ...and nobody moderates a private chat (ruling 12): there is no third party to
+    // protect anyone from, and the door refuses the act whatever the chrome offers.
+    const iModerate = !room.im && (room.mine || (room.deputies || []).includes(root));
     const others = (chatters || []).filter((c) => c.root !== author);
     // The floor: the room's post first, said by its creator, then every line oldest to
     // newest; a run of lines by one speaker is attributed once.
     const lines = [];
-    if (words.body) {
+    // A private chat's post is a user card naming the other person - the seal's audience
+    // written out (ruling 12) - so it is not a first line anybody wants to read.
+    if (words.body && !room.im) {
         lines.push({ hash: 'post', speaker: author, said_ms: room.published_ms || 0, words: words.body, post: true });
     }
     // Hidden lines (the preference) collapse to one stub per run, so the floor still says
@@ -945,11 +1027,18 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         <header class="chat-room-head">
             <h2 class="chat-room-name">${name}</h2>
             ${room.trusted_only &&
-            html`<span class="label-chip label-chip-flag"><${Icons.trustPrivate} /> ${room.onward ? t('apps.chat.trusted-and-onward', 'trusted, and onward') : t('apps.chat.sealed', 'sealed')}</span>`}
+            html`<span class="label-chip label-chip-flag"><${Icons.trustPrivate} />
+                ${room.im
+                    ? t('apps.chat.just-the-two-of-you', 'just the two of you')
+                    : room.onward
+                      ? t('apps.chat.trusted-and-onward', 'trusted, and onward')
+                      : t('apps.chat.sealed', 'sealed')}</span>`}
             ${/* The people (Curtis, 2026-09-19): the owner and how many others have spoken,
                 in one box beside the title, the triangle promising the list - who has
                 visibly spoken, newest first, with when; nobody is "in" a room. */ ''}
-            <details class="chat-people">
+            ${room.im
+                ? html`<span class="chat-people-two"><${PersonChip} root=${room.other || author} current=${current} /></span>`
+                : html`<details class="chat-people">
                 <summary class="chat-people-summary">
                     <${PersonChip} root=${author} current=${current} />
                     ${others.length > 0 &&
@@ -985,11 +1074,14 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                         </li>`
                     )}
                 </ul>
-            </details>
+            </details>`}
             ${/* The tools, one strip on the right (Curtis, 2026-09-19): icons with their
-                words on hover. */ ''}
+                words on hover. A private chat keeps two of them: the trust filter has no
+                say there, and neither share, post link, leave, close nor delete is a thing
+                anyone may do to a conversation between two people (ruling 12). */ ''}
             <span class="chat-tools">
-                <button
+                ${!room.im &&
+                html`<button
                     class=${hiding ? 'chat-tool chat-tool-on' : 'chat-tool'}
                     type="button"
                     title=${hiding
@@ -1000,7 +1092,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     onClick=${() => setHideUntrusted(hiding ? 'no' : 'yes')}
                 >
                     ${hiding ? html`<${Icons.eyeClosed} />` : html`<${Icons.eye} />`}
-                </button>
+                </button>`}
                 ${admin &&
                 !room.archivist &&
                 html`<button
@@ -1026,14 +1118,25 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 >
                     <${Icons.colRebroadcast} />
                 </button>`}
-                <a class="chat-tool" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
+                ${!room.im &&
+                html`<a class="chat-tool" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
                     <${Icons.feed} />
-                </a>
-                ${room.joined &&
+                </a>`}
+                ${room.im &&
+                html`<button
+                    class="chat-tool chat-tool-danger"
+                    type="button"
+                    title=${t('apps.chat.block-them', 'block them')}
+                    onClick=${() => setBlocking(true)}
+                ><${Icons.block} /></button>`}
+                ${!room.im &&
+                room.joined &&
                 html`<button class="chat-tool" type="button" title=${t('apps.chat.leave', 'leave')} onClick=${leave}>
                     <${Icons.leave} />
                 </button>`}
-                ${room.closed
+                ${room.im
+                    ? null
+                    : room.closed
                     ? html`<span class="chat-tool chat-tool-on chat-tool-static" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /></span>`
                     : room.mine &&
                       html`<button
@@ -1045,11 +1148,25 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                       >
                           <${Icons.settled} />
                       </button>`}
-                ${room.mine &&
+                ${!room.im &&
+                room.mine &&
                 html`<button class="chat-tool chat-tool-danger" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
                     <${Icons.trash} />
                 </button>`}
             </span>
+            ${blocking &&
+            html`<${Modal}
+                title=${t('apps.chat.block-them-title', 'block them')}
+                onClose=${() => setBlocking(false)}
+            >
+                <p class="feed-unpublish-warn">
+                    ${t('apps.chat.block-them-question', 'Block {who}? You stop seeing anything of theirs, here and everywhere else. They are not told.', { who: name })}
+                </p>
+                <div class="feed-unpublish-acts">
+                    <button class="feed-unpublish-go" onClick=${blockThem}>${t('apps.chat.block', 'block')}</button>
+                    <button class="feed-unpublish-no" onClick=${() => setBlocking(false)}>${t('apps.chat.never-mind', 'never mind')}</button>
+                </div>
+            </${Modal}>`}
             ${deleting &&
             html`<${Modal}
                 title=${t('apps.chat.take-the-room-down', 'take the room down')}
@@ -1102,7 +1219,19 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                               m=${m}
                               current=${current}
                               cont=${i > 0 && lines[i - 1].speaker === m.speaker}
-                              untrusted=${!m.post && !trusted(m.speaker)}
+                              ${/* ...nor does trust dim a line in a private chat (ruling
+                                  12): there is one other person in it, and they are who
+                                  the reader opened it with. */ ''}
+                              untrusted=${!room.im && !m.post && !trusted(m.speaker)}
+                              veil=${!m.post &&
+                                  veilsMedia({
+                                      words: m.words,
+                                      speaker: m.speaker,
+                                      me: root,
+                                      author,
+                                      im: !!room.im,
+                                      trusted: hasTrust(trustOf.get(m.speaker)),
+                                  })}
                               onReact=${m.post || room.left || (history && history.closed) ? null : react}
                               onEdit=${m.post || room.left || (history && history.closed) ? null : beginEdit}
                               onDelete=${m.post || room.left || (history && history.closed) ? null : setDeletingLine}
@@ -1140,7 +1269,20 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             </${Modal}>`}
             ${/* A left room (Curtis, 2026-09-19): no composer - the honest word that it is
                 not being updated, and the way back in. */ ''}
-            ${iAmMuted
+            ${room.request
+                ? html`<div class="chat-closed chat-request-note">
+                      <span class="chat-request-words">
+                          ${t('apps.chat.wants-to-chat-with-you', '{who} wants to chat with you', { who: name })}
+                      </span>
+                      ${/* Two answers and a third that is silence (Curtis, 2026-09-20):
+                          accepting files the chat with the rest; blocking ends it; walking
+                          away leaves it where it is, saying nothing to them either way. */ ''}
+                      <button class="chat-accept" disabled=${accepting} onClick=${acceptChat}>
+                          ${t('apps.chat.accept', 'accept')}
+                      </button>
+                      <button class="chat-rejoin" onClick=${() => setBlocking(true)}>${t('apps.chat.block', 'block')}</button>
+                  </div>`
+                : iAmMuted
                 ? html`<p class="chat-closed chat-muted-note">
                       <${Icons.mute} /> ${t('apps.chat.youve-been-muted-by-the-room', "you've been muted by the room")}
                   </p>`

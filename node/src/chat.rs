@@ -523,6 +523,30 @@ async fn is_room(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
         .is_some_and(|(h, _)| h.format == Some(ringtome_proto::registry::doc_format::ROOM))
 }
 
+/// Is this room a two-person chat (CHAT.md, ruling 12)? The signed header says so, so
+/// every door reads it the same way wherever the room is held, and nobody has to open a
+/// seal to learn what kind of room they are holding.
+pub async fn is_im(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
+    room_head(state, author_hex, doc).await.is_some_and(|(h, _)| h.im)
+}
+
+/// The other person in an IM, as this persona sees it (ruling 12): the author, when the
+/// room is someone else's; the one member the seal admits, when it is this persona's own.
+/// None when the room is not an IM, or when this node cannot say who the pair is.
+pub async fn im_other(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Option<String> {
+    if !is_im(state, author_hex, doc).await {
+        return None;
+    }
+    if author_hex != viewer_hex {
+        return Some(author_hex.to_string());
+    }
+    crate::postkeys::members(&state.node_db, author_hex, &hex::encode(doc))
+        .await
+        .ok()?
+        .into_iter()
+        .find(|m| m != viewer_hex)
+}
+
 /// The room a chain instance names, as this node knows it: the author of a hosted
 /// persona's room post (the node shelf memo), else a room a hosted persona opened.
 async fn room_author_of(node_db: &Db, instance: &[u8; 16]) -> Result<Option<String>> {
@@ -531,9 +555,21 @@ async fn room_author_of(node_db: &Db, instance: &[u8; 16]) -> Result<Option<Stri
         return Ok(Some(author));
     }
     let row: Option<(String,)> = node_db
-        .fetch_optional("SELECT room_author FROM rooms_open WHERE room_doc = ?1 LIMIT 1", (doc_hex,))
+        .fetch_optional("SELECT room_author FROM rooms_open WHERE room_doc = ?1 LIMIT 1", (doc_hex.as_str(),))
         .await
         .context("reading an open room's author")?;
+    if let Some((author,)) = row {
+        return Ok(Some(author));
+    }
+    // ...and a room somebody here has SPOKEN in, whether or not they have it open (Curtis,
+    // 2026-09-20): the memo names the room every held message belongs to, and a node holding
+    // a room's words is in that room by the only definition that matters at the lane. Without
+    // this, the first word of a chat somebody said and then closed the window on would be
+    // served to nobody - not even to the room's own creator, coming to ask for it.
+    let row: Option<(String,)> = node_db
+        .fetch_optional("SELECT room_author FROM room_messages WHERE room_doc = ?1 LIMIT 1", (doc_hex,))
+        .await
+        .context("reading a held room's author")?;
     Ok(row.map(|(a,)| a))
 }
 
@@ -581,7 +617,7 @@ async fn fragment_door_admits(
     }
     let doc_hex = hex::encode(doc);
     let peer: [u8; 32] = *conn.remote_id().as_bytes();
-    if head.onward {
+    if head.onward || head.im {
         if let (Some(proof), Some(key)) = (key_proof, held_room_key(state, doc).await) {
             let ours: [u8; 32] = *state.endpoint.id().as_bytes();
             if proof_shows_key(&key, doc, &[(*doc, proof)], &peer, &ours) {
@@ -647,8 +683,14 @@ pub async fn instances_dialer_may_hold(
             continue;
         }
         // Who the dialer serves, from the peer ledger; any one of them admitted opens the lane.
-        // The key, shown: an onward room answers to it.
-        if head.onward && !key_proofs.is_empty() {
+        // The key, shown: an onward room answers to it - and so does a chat for two (Curtis,
+        // 2026-09-20). The reservation that keeps a plain sealed room strict is that its
+        // audience can change, and an untrust must stop what comes next; an IM's audience is
+        // a PAIR, which is the one size that cannot change (ruling 12), so the key is the
+        // whole story there. It has to be: the pair need not follow each other, and without
+        // it the lane asks the peer ledger for roots neither side has any reason to hold -
+        // which is how a chat's first word could be said and never arrive.
+        if (head.onward || head.im) && !key_proofs.is_empty() {
             if let Some(key) = held_room_key(state, i).await {
                 let prover = crate::pubkey::decode(&crate::net::sync::endpoint_to_id(dialer_hex)).unwrap_or([0u8; 32]);
                 if proof_shows_key(&key, i, key_proofs, &prover, our_endpoint) {
@@ -840,6 +882,21 @@ pub async fn say(
             continue;
         }
         mentions.push(named);
+    }
+    // In a private chat every word is addressed to the other person (CHAT.md, ruling 12;
+    // Curtis, 2026-09-20, having opened one the other side never heard about): the line
+    // names them whether or not the words do, so the room-mention notice knocks on their
+    // door. That road is the one the follow-edge rule exempts - no fold reads a room chain -
+    // and it is the only one that does not wait on a key arriving or a journal filling.
+    // A reaction, an edit, a delete and a moderation notice ring nobody.
+    if head.im && notice.is_none() && reacts_to.is_none() && edits.is_none() && deletes.is_none() {
+        if let Some(other) = im_other(state, root_hex, author_hex, doc).await {
+            if let Some(other) = crate::pubkey::decode(&other) {
+                if !mentions.contains(&other) {
+                    mentions.push(other);
+                }
+            }
+        }
     }
     mentions.truncate(ChatMessage::MAX_MENTIONS);
     tracing::debug!(room = %hex::encode(doc), named = mentions.len(), "room message names people");
@@ -1050,6 +1107,15 @@ async fn head_sealed(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool
 pub async fn archivist_here(state: &AppState, author_hex: &str, doc_hex: &str) -> bool {
     if crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false) {
         return true;
+    }
+    // Both sides of an IM keep the whole conversation (CHAT.md, ruling 12; Curtis,
+    // 2026-09-20): a room sealed to one person is held by nobody but the pair, so a node
+    // that holds this room at all is one of theirs, and neither half of a two-person
+    // record is a cache to be trimmed.
+    if let Ok(Ok(doc)) = hex::decode(doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
+        if is_im(state, author_hex, &doc).await {
+            return true;
+        }
     }
     archived(&state.node_db, author_hex, doc_hex).await.unwrap_or(false)
 }
@@ -2017,7 +2083,20 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     // The directory: local when the creator is hosted here, else the first creator endpoint
     // that answers.
     let mut speakers: Vec<String> = if creator_here {
-        participants(&state.node_db, author_hex, &doc_hex).await?
+        let mut who = participants(&state.node_db, author_hex, &doc_hex).await?;
+        // The people the SEAL admits are speakers too, before they have ever been heard
+        // from (Curtis, 2026-09-20, from a chat whose first word did not arrive): the
+        // creator's node is the directory of record, and a directory listing only those
+        // who already reached it cannot bootstrap the first message of a room sealed to
+        // named people. It waits on the speaker's own push landing - and a push tries the
+        // first endpoint that answers, once, with nothing behind it if that endpoint was
+        // the wrong one. Knowing who may speak is enough to go and ask them.
+        for m in crate::postkeys::members(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+            if !who.contains(&m) {
+                who.push(m);
+            }
+        }
+        who
     } else {
         let mut found: Option<Vec<[u8; 32]>> = None;
         for endpoint in &endpoints {
@@ -2229,7 +2308,7 @@ pub async fn pulse_pass(state: AppState) -> Result<()> {
 /// purpose - live is slice 3's.
 pub async fn sync_pass(state: AppState) -> Result<()> {
     let since = crate::clock::now_ms() - OPEN_ROOM_TTL_MS;
-    let rows: Vec<(String, String, String)> = state
+    let mut rows: Vec<(String, String, String)> = state
         .node_db
         .fetch_all(
             "SELECT root_pubkey, room_author, room_doc FROM rooms_open WHERE opened_ms > ?1
@@ -2238,6 +2317,24 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
         )
         .await
         .context("listing open rooms")?;
+    // An IM is never stale (CHAT.md, ruling 12): a room opened a week ago falls out of the
+    // beat, which is right for a room one wandered into and wrong for the place a friend
+    // leaves messages. The pair's chats stay on the beat whenever they were last looked at.
+    let quiet: Vec<(String, String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT root_pubkey, room_author, room_doc FROM rooms_open WHERE opened_ms <= ?1
+             ORDER BY synced_ms ASC LIMIT 32",
+            (since,),
+        )
+        .await
+        .context("listing the rooms off the beat")?;
+    for (root, author, doc_hex) in quiet {
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        if is_im(&state, &author, &doc).await {
+            rows.push((root, author, doc_hex));
+        }
+    }
     for (root, author, doc_hex) in rows {
         let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
         if !is_room(&state, &author, &doc).await {

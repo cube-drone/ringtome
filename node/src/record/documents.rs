@@ -500,6 +500,7 @@ pub async fn save_version(
     };
 
     let header = DocHeaderPlain {
+        im: false,
         dated_ms: None,
         trusted_only: false,
         settled: false,
@@ -576,6 +577,7 @@ pub async fn retitle(
         return Ok(head.hash);
     }
     let header = DocHeaderPlain {
+        im: false,
         dated_ms: None,
         trusted_only: false,
         settled: false,
@@ -679,6 +681,7 @@ pub async fn save_public_media(
         None => (title, None),
     };
     let header = DocHeaderPlain {
+        im: false,
         dated_ms: None,
         doc_id,
         parents: vec![],
@@ -751,6 +754,9 @@ pub struct PublicText<'a> {
     pub trusted_only: bool,
     /// The book this is a page of (PROJECT_PLAN's Books): set by a rollout, never by the feed's door.
     pub part_of: Option<[u8; 16]>,
+    /// A two-person chat (CHAT.md, ruling 12): this room is an IM. Carried forward on
+    /// re-publication like the room format - once an IM, always an IM.
+    pub im: bool,
     /// The author's preferred date off the draft's `display_date` field (PUBLISH.md),
     /// re-read at every publish - a date change inside the edit window re-sorts the post.
     pub dated_ms: Option<i64>,
@@ -777,7 +783,7 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, seal_of, onward, dated_ms, part_of } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, seal_of, onward, dated_ms, part_of, im } = text;
     let mut format = format;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
@@ -786,7 +792,7 @@ pub async fn save_public_text(
     // A page stays a page across re-publication (PROJECT_PLAN's Books, ruling 4, 2026-09-05): the book
     // it belongs to is carried like the reply link, never re-supplied by the feed's door.
     let mut inherited_part_of: Option<[u8; 16]> = None;
-    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only, onward) = match onto {
+    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only, onward, im) = match onto {
         Some((id, parents)) => {
             // CARRIED from the previous header's own claim, never re-derived: the mint's
             // claim and the entry's stamp are minted milliseconds apart, so a re-derivation
@@ -799,13 +805,13 @@ pub async fn save_public_text(
                     ringtome_proto::Payload::Inline(payload) => {
                         DocHeaderPlain::decode(payload)
                             .ok()
-                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only, h.onward, h.part_of, h.format))
+                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only, h.onward, h.part_of, h.format, h.im))
                     }
                     _ => None,
                 },
                 None => None,
             };
-            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted, carried_onward, carried_part_of, carried_format) =
+            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted, carried_onward, carried_part_of, carried_format, carried_im) =
                 carried.unwrap_or_default();
             inherited_part_of = carried_part_of;
             // Once a room, always a room (CHAT.md, ruling 1): the format is the post's
@@ -831,6 +837,9 @@ pub async fn save_public_text(
                 settled || carried_settled,
                 trusted_only || carried_trusted,
                 onward || carried_onward,
+                // Once an IM, always an IM (ruling 12): the pair's chat cannot be
+                // re-published into an ordinary room, where it could be closed or shared.
+                im || carried_im,
             )
         }
         None => {
@@ -838,7 +847,7 @@ pub async fn save_public_text(
                 Some((parent, root)) => (Some(parent), Some(root)),
                 None => (None, None),
             };
-            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled, trusted_only, onward)
+            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled, trusted_only, onward, im)
         }
     };
     // A trusted-only body is SEALED at mint (PROJECT_PLAN's Post visibility slice 2b): the ciphertext is
@@ -900,6 +909,7 @@ pub async fn save_public_text(
         trusted_only,
         dated_ms,
         animation: false, // words, never a loop
+        im,
         part_of: part_of.or(inherited_part_of),
     seal_of,
     onward,
@@ -938,6 +948,9 @@ pub struct PublishFlags {
     /// A ROOM (CHAT.md, ruling 1): the Marquee draft publishes with the `room` format, its
     /// title the room's name. Carried on re-publication: once a room, always a room.
     pub room: bool,
+    /// An IM (CHAT.md, ruling 12): a room sealed to exactly one other person, which nobody
+    /// mutes, closes, deletes or passes along, and which both parties keep whole.
+    pub im: bool,
 }
 
 /// The draft's `display_date` claim as the header's stamp (PUBLISH.md). The claim is in the
@@ -2238,6 +2251,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_versions")))?;
     let author = hash32(&hex::decode(&author_hex).unwrap_or_default())?;
     let header = DocHeaderPlain {
+        im: false,
         trusted_only: trusted_only != 0,
         onward: onward != 0,
         dated_ms,
@@ -3405,6 +3419,7 @@ mod tests {
         title: &str,
     ) {
         let header = DocHeaderPlain {
+            im: false,
             dated_ms: None,
             animation: false,
             part_of: None,
@@ -5715,6 +5730,7 @@ mod tests {
             timestamp_ms: t,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                im: false,
                 dated_ms: None,
                 animation: false,
                 part_of: None,
