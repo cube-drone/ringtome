@@ -6543,6 +6543,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "ringtome-node",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tokio",

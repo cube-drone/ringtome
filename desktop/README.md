@@ -74,6 +74,32 @@ One thing Stage 3 will have to answer: the generator registers an account per pe
 then means "point it at a scratch node instead" or "single tenancy still takes registrations" is
 not decided here.
 
+## Why the profile tables are copied into `Cargo.toml`
+
+A separate workspace inherits nothing from the root's, profiles included - and the root's are not
+a nicety. `[profile.dev.package."*"] opt-level = 2` and the rav1e/rav1d overrides are what keep a
+debug build's codecs from being ten to thirty times slower, which the root Cargo.toml says in its
+own comments. Without them, the node inside this app took **4.2 seconds** to AVIF-encode an 11KB
+picture that the `ringtome` binary encoded in **187ms**, and the symptom - a `desktop-test-data`
+run crawling, pictures timing out at thirty seconds - read as "Tauri is slow" (2026-09-22). It was
+not. `the_desktop_workspace_keeps_the_dev_profile` in `node/tests/conventions.rs` fails if the two
+files drift.
+
+## Starting over
+
+```sh
+cd ../node && just desktop-clean          # asks first
+cd ../node && just desktop-clean erase    # for the fifth time today
+```
+
+The wipe a schema-generation bump asks for, as `just clean` is for the dev network - but not the
+same act, and it does not share `clean`'s manners. Dev data is throwaway by construction; this is
+the data a real installation keeps, and the keys in it are the one thing nobody can re-download. So
+it says what it is about to delete and how big it is, it asks, and it **refuses while the app is
+running** rather than deleting files out from under it - the port written down is how it checks.
+`RINGTOME_DATA_DIRECTORY` wins here too, which is how you wipe a scratch node and leave your own
+alone.
+
 ## What is not here yet
 
 Stage 2 is dev-only. No signing, no installer, no updater, no tray, no autostart, and no launch

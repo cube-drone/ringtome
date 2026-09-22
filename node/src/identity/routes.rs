@@ -6748,6 +6748,15 @@ async fn stream_handler(
     // Gate BEFORE upgrading: a stranger never gets a socket at all.
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let account_id = session.account.id;
+    // The token's other spelling (DESKTOP.md, Stage 3): a browser's `WebSocket` constructor
+    // has no header argument, so a desktop client offers the launch token as a subprotocol -
+    // and a server that does not ECHO the protocol it accepts makes the browser fail the
+    // connection. Only ever the one this node itself issued, so the echo says nothing a
+    // caller did not already know.
+    let ws = match state.config.launch_token.as_deref() {
+        Some(token) => ws.protocols([format!("{}{token}", crate::auth::WS_TOKEN_PROTOCOL_PREFIX)]),
+        None => ws,
+    };
     Ok(ws.on_upgrade(move |socket| async move {
         if let Err(e) = serve_stream(socket, state, account_id, root.clone(), query.cursor).await
         {

@@ -102,7 +102,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 Settled, staged and under way in [DESKTOP.md](DESKTOP.md): Tauri v2 with the node linked in,
 one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
 * ~~Stage 2 — the shell, in-process, dev only~~ built 2026-09-21: `just desktop`
-* **Stage 3** — the per-launch token, and no login screen at all on the desktop
+* ~~Stage 3 — the per-launch token, and no login screen~~ built 2026-09-21
 * **Stage 4** — packaging and signing (the stage that costs recurring money)
 * **Stage 5** — autostart and the tray: the desktop app as the user's always-on node
 * **Stage 6** — auto-update and a release channel

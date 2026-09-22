@@ -49,6 +49,19 @@ pub struct Config {
     /// encrypted AVIF. Overridable with `RINGTOME_QUARANTINE_DIRECTORY`.
     pub quarantine_directory: PathBuf,
     pub environment: Environment,
+    /// The shell's per-launch secret (DESKTOP.md, Stage 3), when this node is embedded in one.
+    ///
+    /// Never at rest and never in a URL: the desktop shell mints it in memory at launch, sets it
+    /// here, and injects it into its own webview before any page script runs. The node then takes
+    /// it as proof - which is what makes "no login screen" safe, because a cookie can be carried
+    /// by any caller that reaches loopback (another account on a family computer, a page in the
+    /// user's browser navigating itself at a door) and a header cannot: a navigation has no way
+    /// to set one, and a cross-site `fetch` that does is preflighted into a refusal.
+    ///
+    /// `RINGTOME_LAUNCH_TOKEN` fills it in LOCAL-TEST MODE ONLY, where there is no shell to mint
+    /// one - the same posture as the SQL passthrough, and for the same reason: a real node must
+    /// not take its house key from the environment, where `ps` can read it.
+    pub launch_token: Option<String>,
     /// Whether this node serves many accounts (hosted) or one (desktop). See the `Session`
     /// extractor, which branches on it.
     pub tenancy: Tenancy,
@@ -232,6 +245,12 @@ impl Config {
             Ok("1") | Ok("true")
         );
 
+        let launch_token = if local_test {
+            env::var("RINGTOME_LAUNCH_TOKEN").ok().filter(|t| !t.trim().is_empty())
+        } else {
+            None
+        };
+
         let discovery = crate::net::discovery::DiscoveryMode::from_env();
 
         // Pre-crunch upload ceiling. Default by role: a desktop node ingests its own phone media,
@@ -359,6 +378,7 @@ impl Config {
             data_directory,
             quarantine_directory,
             environment,
+            launch_token,
             tenancy,
             local_test,
             discovery,

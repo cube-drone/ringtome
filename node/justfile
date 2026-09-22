@@ -805,6 +805,52 @@ desktop-test-data personas="15" actions="15" seed="":
     echo "desktop-test-data: driving the desktop node on $port ($dir)"
     RINGTOME_TESTDATA_PORTS="$port" just test-data {{personas}} {{actions}} {{seed}}
 
+# Destroy the desktop app's node: its personas, keys, chains and the port it wrote down.
+#
+# The wipe a schema generation bump asks for, as `just clean` is for the dev network - but NOT
+# the same act, and it does not share `clean`'s manners. Dev data is throwaway by construction;
+# this is the data a real installation keeps, and the keys in it are the one thing nobody can
+# re-download. So it asks first, and it refuses while the app is still running rather than
+# deleting files out from under it. `just desktop-clean erase` skips the question, for when you
+# are doing this for the fifth time today.
+#
+# RINGTOME_DATA_DIRECTORY wins, as everywhere else in the desktop story: that is how you wipe a
+# scratch node and leave your own alone.
+desktop-clean confirm="":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    ident=$(grep -o '"identifier": "[^"]*"' "{{workspace}}/desktop/tauri.conf.json" | head -1 | cut -d'"' -f4)
+    if [ -n "${RINGTOME_DATA_DIRECTORY-}" ]; then
+        dir="$RINGTOME_DATA_DIRECTORY"
+    else
+        case "$(uname -s)" in
+            Darwin) dir="$HOME/Library/Application Support/$ident" ;;
+            Linux)  dir="${XDG_DATA_HOME:-$HOME/.local/share}/$ident" ;;
+            *)      dir="${APPDATA:-$HOME}/$ident" ;;
+        esac
+    fi
+    if [ ! -d "$dir" ]; then
+        echo "desktop-clean: nothing to remove - no node at $dir"
+        exit 0
+    fi
+    # Refuse while it is up. The port it wrote down is where it would be answering.
+    if [ -f "$dir/desktop-port" ] && curl -sf -m 2 "http://127.0.0.1:$(cat "$dir/desktop-port")/health" >/dev/null 2>&1; then
+        echo "desktop-clean: the app is running on port $(cat "$dir/desktop-port"). Quit it first." >&2
+        exit 1
+    fi
+    echo "This deletes $dir"
+    echo "  $(du -sh "$dir" 2>/dev/null | cut -f1) of personas, keys and chains. Keys cannot be recovered."
+    if [ "{{confirm}}" != "erase" ]; then
+        printf 'type "erase" to confirm: '
+        read -r answer || answer=""
+        if [ "$answer" != "erase" ]; then
+            echo "nothing removed."
+            exit 1
+        fi
+    fi
+    rm -rf "$dir"
+    echo "gone: every persona, key and chain that app held. The next launch starts empty."
+
 # --- everything ------------------------------------------------------------
 
 # Full local check: UI bundles + UI pure tests, then cargo check, clippy, Rust unit tests, and

@@ -407,3 +407,40 @@ fn the_binary_assembles_no_node_of_its_own() {
         source.lines().count()
     );
 }
+
+/// The desktop workspace keeps the root's dev profile (2026-09-22).
+///
+/// `desktop/` is its own workspace so the gates never build Tauri - and a separate workspace
+/// inherits no profile tables, which is not a nicety here: `[profile.dev.package."*"]` and the
+/// rav1e/rav1d overrides are what keep a debug build's codecs from being ten to thirty times
+/// slower. Without them the node inside the app took 4.2 SECONDS to encode an 11KB picture that
+/// the `ringtome` binary encoded in 187ms, and it read as "Tauri is slow" until it was measured.
+/// Drift between these two files is silent and expensive, so it is a test.
+#[test]
+fn the_desktop_workspace_keeps_the_dev_profile() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml");
+    let desktop = Path::new(env!("CARGO_MANIFEST_DIR")).join("../desktop/Cargo.toml");
+    let profiles = |path: &Path| -> BTreeMap<String, String> {
+        let source = std::fs::read_to_string(path).expect("readable Cargo.toml");
+        let mut out = BTreeMap::new();
+        let mut table: Option<String> = None;
+        for line in source.lines() {
+            let line = line.trim();
+            if line.starts_with('[') {
+                table = line.starts_with("[profile.dev").then(|| line.to_string());
+                continue;
+            }
+            if let (Some(t), true) = (&table, !line.is_empty() && !line.starts_with('#')) {
+                out.insert(format!("{t} {}", line.split('=').next().unwrap().trim()), line.to_string());
+            }
+        }
+        out
+    };
+    assert_eq!(
+        profiles(&root),
+        profiles(&desktop),
+        "the desktop workspace's dev profile no longer matches the root's. A separate workspace \
+         inherits nothing, and what these tables buy is codecs that are not thirty times slower \
+         inside the app than they are in the binary."
+    );
+}

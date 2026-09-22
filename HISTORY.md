@@ -10041,3 +10041,91 @@ reads this as further along than it is: no signing, no installer, no updater, no
 and no launch token - so the app still shows the ordinary login screen, which is Stage 3's job. Open
 for Stage 3, noted in `desktop/README.md` rather than discovered later: the generator registers an
 account per persona, and a node with no login is a node whose registration story has changed.
+
+## 2026-09-21 (cont.): the launch token, and no login screen (DESKTOP.md, Stage 3)
+
+Curtis asked the right question before agreeing to this one - "why would I be logged into my node
+in Chrome? Isn't the whole point of Tauri that it's running both the backend and the browser?" - and
+he was right: the webview has its own cookie jar, so for a desktop-only user a page in their browser
+has no session to borrow and the CSRF vectors do not fire. The plan's justification was written for
+a posture that is ours in DEVELOPMENT (`just start` plus Chrome, where the vectors are live) rather
+than the product's. So the reason changed and the work did not: **the token is the precondition for
+removing the login screen safely.** Auto-minting a cookie instead would hand a session to anything
+that reaches loopback - including another OS account on the family computer this is about to be
+installed on - which is strictly worse than today. A cookie is carried by anyone who can reach the
+port; a header is carried only by code that can set one.
+
+`Config::launch_token` is set by the embedder - and by `RINGTOME_LAUNCH_TOKEN` in local-test mode
+only, where there is no shell to mint one, the same posture the SQL passthrough takes and for the
+same reason: a real node must not take its house key from the environment, where `ps` can read it.
+Under single tenancy a matching token IS the session. `auth::local_account` is this machine's one
+account, minted on first ask with a random password nobody is ever told and no login screen to type
+it into, and the person at the machine is its `node_admin`. The comparison is constant-time, because
+one that returns at the first wrong byte tells a guesser how much of their guess was right.
+
+The shell mints the secret, sets it on the config, and injects it with `initialization_script`,
+which runs before any page script - not the query string, because a URL lands in history, in a log
+and in a screenshot. **Two spellings, because a browser cannot set a header on everything it does:**
+ordinary calls carry `Authorization: Bearer`, and the live-cache WebSocket - whose constructor has
+no header argument at all - carries it as the `ringtome.token.<secret>` subprotocol, which the
+stream door must ECHO or the browser fails the connection.
+
+And the belt, which protects the browser path the token cannot: **a request whose `Sec-Fetch-Site`
+says `cross-site` is anonymous**, whatever cookie rode along. That is precisely the shape
+`SameSite=Lax` still permits - a page navigating itself at a GET door with a side effect - and this
+node has two such doors: a foreign profile fetch dials the endpoints its query names, and entering a
+room joins it. An `Origin` check, which is what this document's author proposed first, would not have
+caught it: browsers do not send `Origin` on GET navigations. Unauthorized rather than Forbidden, so
+the public `/id/` surfaces still answer a stranger from another site anonymously, which is what they
+are.
+
+`just desktop-clean` arrived beside it (Curtis, same day), and deliberately without `just clean`'s
+manners: dev data is throwaway by construction, and this is the data a real installation keeps, so
+the recipe says what it is about to delete and how big it is, asks for the word, and **refuses while
+the app is running** rather than deleting files out from under it - it checks by asking the port the
+app wrote down. `just desktop-clean erase` skips the question for the fifth wipe of the day. All
+three paths were run: nothing-to-remove, a refusal under a live app, and the erase itself.
+
+Proved three ways, since no one of them reaches the whole thing: unit claims for the one-account
+rule and the constant-time compare; an integration claim that a cookie labelled cross-site is nobody
+while the public doors stay open to it; and a run of the app, where the first request it made minted
+the account and there was no login screen, while `curl` with no key and `curl` with a wrong key both
+got 401 and the public door still answered. The rig cannot cover the token path itself - it needs
+single tenancy and the rig's nodes are multi-tenant by design - which is said here rather than left
+for someone to discover by trusting a green suite. Gate: full `just ci`, 957 passing.
+
+## 2026-09-22: "somehow it's going really slowly" - the workspace split took the codec optimizations with it
+
+Curtis, seeding the desktop app: five personas, fifty actions each, and a run that started at 323ms
+per action and decayed to 5113ms, with pictures failing at the generator's thirty-second patience.
+It looked like Tauri: a webview in the process, a runtime shared with the shell, a GUI app's
+scheduling. It was none of those.
+
+Measured rather than reasoned about, in the order the suspects fell. Same seed, same machine: a
+plain scratch node ran 60 actions in 8 seconds, the desktop app took 42. Tauri's runtime is
+`Runtime::new()` - multi-threaded, a worker per core - so not that. A two-second tick inside the app
+fired at 2001-2003ms, so not App Nap or timer coalescing. `ps %cpu` said the app was idle during a
+six-second ingest, which was a red herring: on macOS that column is a decaying lifetime average, not
+an instantaneous reading. CPU TIME, which is cumulative and honest, said the opposite - the app
+burned 33 seconds of CPU where the node burned 0.6 for the same 11KB picture. Instrumenting the
+ingest worker put a number on it: **187ms in the binary, 4248ms in the app.** Twenty-three times, on
+identical input, on the same machine, from the same source.
+
+The cause is in the root `Cargo.toml`, in a comment written long before any of this: "rav1e in true
+debug is 10-30x slower". The root workspace optimizes dependencies in dev builds -
+`[profile.dev.package."*"] opt-level = 2`, and opt-level 3 with the assertions off for rav1e and
+rav1d. **`desktop/` is its own workspace** (Stage 2, so the gates never build Tauri), and a separate
+workspace inherits no profile tables at all. The app was running the same node with its codecs
+compiled at opt-level 0.
+
+The tables are copied into `desktop/Cargo.toml` and pinned by
+`the_desktop_workspace_keeps_the_dev_profile`, which compares both files and fails on drift - the
+cheapest possible guard against a silence that cost an afternoon. The same seed now: **9 seconds in
+the app against the plain node's 8**, and the transcode is 161ms.
+
+Worth keeping, beyond the fix. Nothing in the symptom pointed at the cause: the slow thing was
+CPU-bound work in a dependency, the fast thing was our own code, and the difference was a build
+setting a workspace boundary quietly dropped. And the answer to Curtis's other question - do any
+test-data actions even touch the transcoder? - is yes, and only pictures: `upload-a-picture` and
+`post-a-picture` push an 11KB webp through the ingest, and AVIF encoding is the whole of the heavy
+CPU in a seeding run. No video required to find this.

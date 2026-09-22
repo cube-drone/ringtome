@@ -337,10 +337,47 @@ Option (a) is settled by running it rather than by argument: a launch picks a fr
 `desktop-port` beside the node's data, and the next launch comes up on the same origin. A port taken
 since last launch costs one warning, one new port written down, and **one** assembly.
 
-**Stage 3 — the token and no-login.** Per-launch secret, initialization-script injection, header
-requirement on the node, single-tenant auto-session on top of it. Closes a live TODO and a known CSRF
-hazard, and is independently useful to every non-browser client. Gate: `cargo test -p ringtome-node`
-then full `just ci` — the token touches the auth extractor, which is the HTTP surface.
+**Stage 3 — the token and no-login. Built 2026-09-21.** Per-launch secret, initialization-script
+injection, header requirement on the node, single-tenant auto-session on top of it. Closes a live
+TODO and a known CSRF hazard, and is independently useful to every non-browser client. Gate:
+`cargo test -p ringtome-node` then full `just ci` — the token touches the auth extractor, which is
+the HTTP surface.
+
+*The justification, restated more honestly than this document first had it (Curtis, 2026-09-21):*
+the Tauri webview has its own cookie jar, so for a desktop-only user a page in their browser has no
+session to borrow and the CSRF vectors do not fire. The token is not mainly a patch for a live hole
+— it is **the precondition for removing the login screen safely.** Auto-minting a cookie instead
+would hand a session to anything that reaches loopback, including another OS account on a family
+computer, which is strictly worse than today. A header can only be set by code that can set one.
+
+*What landed:* `Config::launch_token`, set by the embedder (and by `RINGTOME_LAUNCH_TOKEN` in
+local-test mode only, where there is no shell to mint one). Under `Tenancy::Single` a matching token
+IS the session: `auth::local_account` returns this machine's one account, minting it on first ask
+with a random password nobody is ever told, and the person at the machine is its `node_admin`. The
+comparison is constant-time. The shell mints the secret with `auth::mint_launch_token`, sets it on
+the config, and injects it with `initialization_script` — not the query string, because a URL lands
+in history, in a log and in a screenshot.
+
+*Two spellings, because a browser cannot set a header on everything it does.* Ordinary calls carry
+`Authorization: Bearer`; the live-cache WebSocket, whose constructor has no header argument, carries
+the token as the `ringtome.token.<secret>` subprotocol, which the stream door echoes — a server that
+does not echo makes the browser fail the connection. Both are set by code in the shell's own window,
+and neither can be attached by a navigation, which is the point.
+
+*And the belt, which protects the browser-based dev path the token cannot:* a request whose
+`Sec-Fetch-Site` says `cross-site` is **anonymous**, whatever cookie rode along. That is the exact
+shape `SameSite=Lax` still permits — a page navigating itself at a GET door with a side effect, of
+which this node has two (a foreign profile fetch dials the endpoints its query names; entering a
+room joins it). `Origin` would not have caught it, since browsers do not send `Origin` on GET
+navigations. Unauthorized rather than Forbidden, so the public `/id/` surfaces still answer a
+stranger from another site anonymously, which is what they are.
+
+*Proved:* unit claims for the one-account rule and the constant-time compare; an integration claim
+that a cookie labelled cross-site is nobody while the public doors stay open to it; and a run of the
+app itself — the first request it made minted the account and there was no login screen, while
+`curl` with no key and `curl` with the wrong key both got 401 and the public door still answered.
+The rig cannot cover the token path itself: it needs single tenancy, and the rig's nodes are
+multi-tenant by design.
 
 **Stage 4 — packaging and signing.** `cargo tauri build`, the four-way CI matrix, certificates,
 notarization, the updater keypair. Mostly bureaucracy: annoying once, then done. The stage with the

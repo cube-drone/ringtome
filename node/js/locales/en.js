@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 907 phrases across 58 files.
+// 909 phrases across 58 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -790,6 +790,8 @@ export default {
     'auth.invalid-credentials-2': 'wrong name or password',
 
     // --- node/src/auth/extractor.rs ---
+    'auth.extractor.that-is-not-this-computers-key': "that isn't this computer's key",
+    'auth.extractor.that-came-from-another-site': 'that request came from another site',
     'auth.extractor.no-cookies': 'no cookies',
     'auth.extractor.not-logged-in': 'please sign in again',
     'auth.extractor.session-invalid-or-expired': 'please sign in again',

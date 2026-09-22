@@ -25,10 +25,20 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let data_dir = data_directory(app.handle())?;
-            let url = start_node(&data_dir)?;
+            // The key for this launch (DESKTOP.md, Stage 3), minted here and never written
+            // down: the node takes it as proof of being this window, and the window is handed
+            // it by an initialization script - which runs before any page script, so the
+            // client finds it already there. NOT the query string: a URL lands in history, in
+            // a log, in a screenshot, and this is the whole house.
+            let token = ringtome_node::auth::mint_launch_token();
+            let url = start_node(&data_dir, token.clone())?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
                 .title("Ringtome")
                 .inner_size(1280.0, 860.0)
+                .initialization_script(&format!(
+                    "window.__ringtome_launch_token = {};",
+                    serde_json::to_string(&token).expect("a hex string is JSON")
+                ))
                 .build()?;
             Ok(())
         })
@@ -56,9 +66,14 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 /// The port is the remembered one (see [`port`]); if something else took it since last launch the
 /// bind fails, and the answer to that is another port written down rather than a shell that will
 /// not start.
-fn start_node(data_dir: &PathBuf) -> anyhow::Result<String> {
+fn start_node(data_dir: &PathBuf, token: String) -> anyhow::Result<String> {
     let mut config = ringtome_node::config::Config::from_env();
     config.data_directory = data_dir.clone();
+    // One human, one account, and the token is how they say so - which is what removes the
+    // login screen. Set here rather than read from the environment, because these two are
+    // facts about being an app rather than an operator's choice.
+    config.tenancy = ringtome_node::config::Tenancy::Single;
+    config.launch_token = Some(token);
     // Loopback, always: the desktop node is this machine's, and the one place the password floor
     // relaxes is a node that faces nobody (config.rs::password_min_len).
     config.bind_address = "127.0.0.1".to_string();

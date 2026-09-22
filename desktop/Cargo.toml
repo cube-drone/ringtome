@@ -12,6 +12,37 @@ publish = false
 # for CI to do with it.
 [workspace]
 
+# THE PROFILE TABLES, COPIED FROM THE ROOT WORKSPACE - and they must stay copied.
+#
+# A separate workspace inherits nothing from the root's, profiles included, and the root's are
+# not a nicety: `[profile.dev.package."*"] opt-level = 2` and the rav1e/rav1d overrides are what
+# keep a debug build's codecs from being 10-30x slower. Without them here, the node inside this
+# app transcoded an 11KB picture in 4.2 SECONDS where the same code in the `ringtome` binary
+# took 187ms - 23x, on identical input, which read as "Tauri is slow" until it was measured
+# (2026-09-22). `the_desktop_workspace_keeps_the_dev_profile` in node/tests/conventions.rs fails
+# if these drift from the root's.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.rav1e]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev.package.rav1d]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "debuginfo"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -21,4 +52,7 @@ ringtome-node = { path = "../node" }
 tauri = { version = "2", features = [] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 anyhow = "1"
+# One use: JSON-quoting the launch token into the initialization script, so a hex string can
+# never become an injection even if the minting ever changes shape.
+serde_json = "1"
 tracing = "0.1"

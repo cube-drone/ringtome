@@ -1,7 +1,11 @@
-// The one way the UI talks to its node: JSON in, JSON out, the session cookie riding along, and
-// the server's `{ message }` surfaced as the thrown Error's message so a form can show it
-// verbatim. Sessions are an HttpOnly cookie the server sets, so nothing here ever touches a
-// token - `credentials: 'same-origin'` does all of the work.
+// The one way the UI talks to its node: JSON in, JSON out, the session riding along, and the
+// server's `{ message }` surfaced as the thrown Error's message so a form can show it verbatim.
+//
+// The session is an HttpOnly cookie in a browser - `credentials: 'same-origin'` does all of the
+// work - and in the DESKTOP app it is the shell's launch token instead (DESKTOP.md, Stage 3),
+// which the shell put on `window` before any of this ran. The difference is one header, added
+// here and nowhere else: a cookie is carried by anything that reaches loopback, and a header is
+// carried only by code that can set one, which a page navigating itself at our door cannot.
 //
 // Twelve modules each carried a private copy of this function and three had already drifted: two
 // set `err.status` (which the recovery flow's 409 re-homing branch reads) and the other ten
@@ -14,16 +18,42 @@
 // the unload path (see pure/keepalive.js for why that flag is conditional).
 import { t } from './i18n.js';
 
+/// The shell's key for this launch, or nothing at all in a browser. Read per call rather than
+/// cached: it is set before the first script runs, and a value read once at module load would
+/// be a second place for it to go stale.
+const launchToken = () => (typeof window === 'undefined' ? null : window.__ringtome_launch_token || null);
+
+/// The proof this client can offer, as headers. Empty in a browser, where the cookie is the
+/// proof and nothing here should touch a token.
+export function authHeaders() {
+    const token = launchToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/// ...and the same proof for a WebSocket, which has no headers to set: the one string its
+/// constructor takes is the subprotocol list, so the token rides there (the node echoes it).
+/// Empty in a browser, which is what makes `new WebSocket(url)` the ordinary case.
+export function wsProtocols() {
+    const token = launchToken();
+    return token ? [`ringtome.token.${token}`] : [];
+}
+
 export async function api(path, options = {}) {
+    // The caller's own headers are merged rather than replaced, and they win: ours are
+    // defaults, and one of them - the launch token - must survive a caller that sets any.
+    const { headers: given, ...rest } = options;
     const res = await fetch(path, {
         credentials: 'same-origin',
+        ...rest,
         // A FormData body picks its own multipart Content-Type (boundary included) - naming
         // one here would break the upload; everything else that carries a body is JSON.
-        headers:
-            options.body && !(options.body instanceof FormData)
+        headers: {
+            ...(options.body && !(options.body instanceof FormData)
                 ? { 'Content-Type': 'application/json' }
-                : undefined,
-        ...options,
+                : {}),
+            ...authHeaders(),
+            ...(given || {}),
+        },
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -62,7 +92,11 @@ export async function api(path, options = {}) {
 /// words, hex-encoded, so no surface needs a key. `{ text, title }`, the title null unless
 /// the post is sealed and this reader may have it.
 export async function apiTextTitled(path, options = {}) {
-    const res = await fetch(path, { credentials: 'same-origin', ...options });
+    const res = await fetch(path, {
+        credentials: 'same-origin',
+        ...options,
+        headers: { ...authHeaders(), ...(options.headers || {}) },
+    });
     const text = await res.text().catch(() => '');
     if (!res.ok) {
         const err = new Error(`request failed (${res.status})`);
@@ -82,7 +116,11 @@ export async function apiTextTitled(path, options = {}) {
 }
 
 export async function apiText(path, options = {}) {
-    const res = await fetch(path, { credentials: 'same-origin', ...options });
+    const res = await fetch(path, {
+        credentials: 'same-origin',
+        ...options,
+        headers: { ...authHeaders(), ...(options.headers || {}) },
+    });
     const text = await res.text().catch(() => '');
     if (!res.ok) {
         const err = new Error(`request failed (${res.status})`);
@@ -106,6 +144,7 @@ export function xhrUpload(url, body, onPct) {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', url);
         xhr.responseType = 'json';
+        for (const [name, value] of Object.entries(authHeaders())) xhr.setRequestHeader(name, value);
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && onPct) onPct(Math.round((e.loaded / e.total) * 100));
         };

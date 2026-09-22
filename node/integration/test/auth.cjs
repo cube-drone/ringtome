@@ -89,4 +89,34 @@ describe("auth", function () {
         const empty = await register(fetch, uniqueUsername(), "");
         assert.equal(empty.status, 400, "empty is confusion, not a posture");
     });
+
+    /*
+        A cross-site caller is nobody here (DESKTOP.md, Stage 3). `SameSite=Lax` keeps the
+        session cookie off a cross-site `fetch`, but it deliberately SENDS it on a cross-site
+        top-level GET navigation - which a page on the open web can perform on itself, at a
+        door of its choosing, and bounce back from. Two of this node's GET doors have side
+        effects (a foreign profile fetch dials the endpoints its query names; entering a room
+        joins it), so the browser's own label is read and the session ignored. Anonymous, not
+        refused: the public surfaces still answer, because a stranger arriving from another
+        site is exactly an anonymous caller.
+    */
+    it("treats a cross-site request as anonymous, and keeps the public doors open to it", async function () {
+        const fetch = makeFetch();
+        const username = uniqueUsername();
+        const password = "correct horse battery staple";
+        assert.equal((await register(fetch, username, password)).status, 200);
+        assert.equal((await login(fetch, username, password)).status, 200);
+
+        const whoami = await fetch("api/auth/whoami");
+        assert.equal(whoami.status, 200, "the cookie works, as it always has");
+
+        const crossSite = await fetch("api/auth/whoami", { headers: { "Sec-Fetch-Site": "cross-site" } });
+        assert.equal(crossSite.status, 401, "the same cookie, labelled cross-site, is nobody");
+
+        const sameOrigin = await fetch("api/auth/whoami", { headers: { "Sec-Fetch-Site": "same-origin" } });
+        assert.equal(sameOrigin.status, 200, "our own page is unaffected");
+
+        const publicDoor = await fetch("api/node/personas", { headers: { "Sec-Fetch-Site": "cross-site" } });
+        assert.equal(publicDoor.status, 200, "and a public door answers anonymously rather than erroring");
+    });
 });

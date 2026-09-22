@@ -10,7 +10,7 @@ use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
 
-use super::{account_for_token, has_tag, Account, TAG_ADMIN, TAG_NODE_ADMIN};
+use super::{account_for_token, has_tag, local_account, secret_eq, Account, TAG_ADMIN, TAG_NODE_ADMIN};
 use crate::config::Tenancy;
 use crate::error::AppError;
 use crate::AppState;
@@ -41,12 +41,47 @@ impl FromRequestParts<AppState> for Session {
             .await
             .map_err(|_| AppError::Internal(anyhow::anyhow!("missing app state")))?;
 
-        // Single-tenant desktop mode: the OS user is the only tenant, so login is a formality.
-        // TODO(identity): synthesize/auto-provision the single local account and return its
-        // session here, so desktop handlers need no login flow. Until accounts-per-mode wiring
-        // exists, fall through to cookie auth even in single mode.
+        // Single-tenant desktop mode: the OS user is the only tenant, and the shell's launch
+        // token is how they prove it (DESKTOP.md, Stage 3). Possession IS the session, so
+        // there is no login screen - and the reason a token rather than an auto-minted cookie
+        // is that a cookie is carried by any caller who reaches loopback, while a header is
+        // carried only by something that can set one.
         if state.config.tenancy == Tenancy::Single {
-            // intentional fall-through for now
+            if let Some(expected) = state.config.launch_token.as_deref() {
+                if let Some(given) = launch_token_offered(parts) {
+                    if secret_eq(&given, expected) {
+                        let account = local_account(&state.node_db, state.config.local_test).await?;
+                        state.activity.stamp(&account.id.to_string());
+                        return Ok(Session { account });
+                    }
+                    return Err(AppError::Unauthorized(crate::msg!(
+                        "auth.extractor.that-is-not-this-computers-key",
+                        "that isn't this computer's key"
+                    )));
+                }
+            }
+        }
+
+        // A cross-site caller is nobody here, whatever cookie the browser attached.
+        //
+        // `SameSite=Lax` keeps the session off a cross-site `fetch`, but it deliberately DOES
+        // send it on a cross-site top-level GET navigation - and a page on the open web can
+        // perform one on itself, at a door of its choosing, and bounce straight back. That is
+        // enough to make this node act: two GET doors have side effects (a profile fetch dials
+        // the endpoints named in its query, and entering a room joins it). The browser labels
+        // the request honestly, so the door reads the label. Unauthorized rather than Forbidden
+        // on purpose: the public `/id/` surfaces then see an ANONYMOUS caller, which is what a
+        // stranger arriving from another site actually is, rather than an error.
+        if parts
+            .headers
+            .get("sec-fetch-site")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|site| site == "cross-site")
+        {
+            return Err(AppError::Unauthorized(crate::msg!(
+                "auth.extractor.that-came-from-another-site",
+                "that request came from another site"
+            )));
         }
 
         let jar = CookieJar::from_request_parts(parts, &state)
@@ -69,6 +104,40 @@ impl FromRequestParts<AppState> for Session {
         Ok(Session { account })
     }
 }
+
+/// The launch token as this request carries it, if it does.
+///
+/// Two spellings, because a browser cannot set a header on every kind of request it makes:
+/// ordinary calls carry `Authorization: Bearer <token>`, and the live-cache WebSocket - whose
+/// constructor has no header argument at all - carries it as a subprotocol, which is the one
+/// string the `WebSocket` constructor does let a page choose. Both are set by code running in
+/// the shell's own window; neither can be attached by a navigation, which is the whole point.
+fn launch_token_offered(parts: &Parts) -> Option<String> {
+    if let Some(bearer) = parts
+        .headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        return Some(bearer.trim().to_string());
+    }
+    parts
+        .headers
+        .get("sec-websocket-protocol")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|offered| {
+            offered
+                .split(',')
+                .map(str::trim)
+                .find_map(|p| p.strip_prefix(WS_TOKEN_PROTOCOL_PREFIX))
+                .map(str::to_string)
+        })
+}
+
+/// The subprotocol a token rides on, when the request is a WebSocket handshake. The server
+/// must echo the protocol it accepts or the browser fails the connection, so the stream door
+/// spells this prefix too.
+pub const WS_TOKEN_PROTOCOL_PREFIX: &str = "ringtome.token.";
 
 /// `Option<Session>` for the surfaces with two audiences (the `/id/` face): an anonymous
 /// caller is a real caller there, not a rejection. Missing or invalid credentials become

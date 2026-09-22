@@ -11,7 +11,7 @@
 mod extractor;
 mod routes;
 
-pub use extractor::Session;
+pub use extractor::{Session, WS_TOKEN_PROTOCOL_PREFIX};
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};
@@ -201,6 +201,74 @@ pub async fn register(
         id,
         username: username.to_string(),
     })
+}
+
+/// A secret for one run of the desktop shell (DESKTOP.md, Stage 3): the same shape as a
+/// session token, from the same generator, because it is the same kind of thing - a bearer
+/// secret nobody chooses and nobody remembers. It exists in the shell's memory and the node's,
+/// and nowhere else: not on disk, not in the environment, not in a URL.
+pub fn mint_launch_token() -> String {
+    generate_token()
+}
+
+/// Equal, in constant time. A token comparison that returns at the first wrong byte tells
+/// anyone who can time it how much of their guess was right, one byte at a time.
+pub fn secret_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// The one local account, under single tenancy (DESKTOP.md, Stage 3): the account this node
+/// already has, or one minted right now.
+///
+/// A desktop node has exactly one human and no way for them to prove who they are except by
+/// being at the machine - so the launch token is the proof, and this is the account it proves
+/// them to be. The row is an ordinary account, because everything downstream (personas, tags,
+/// sessions) hangs off one and inventing a second kind of caller would touch every door.
+///
+/// The password is random and nobody is ever told it: it exists so the column is not special,
+/// and the user never types it because there is no login screen to type it into. Somebody who
+/// later wants to reach this node from a browser sets one through the ordinary password door -
+/// a residual noted in DESKTOP.md rather than a hole, since a password that cannot be guessed
+/// and is never sent is the safest state for a credential nothing uses.
+pub async fn local_account(db: &Db, local_test: bool) -> Result<Account, AppError> {
+    if let Some(account) = first_account(db).await? {
+        return Ok(account);
+    }
+    match register(db, LOCAL_ACCOUNT_NAME, &generate_token(), 0, local_test, true).await {
+        Ok(account) => {
+            tracing::info!(username = LOCAL_ACCOUNT_NAME, "minted this computer's own account");
+            Ok(account)
+        }
+        // Two first requests raced and the other one won; its row is the answer for both.
+        Err(_) => first_account(db)
+            .await?
+            .ok_or_else(|| AppError::Internal(anyhow!("this node has no account and would not make one"))),
+    }
+}
+
+/// What a desktop node calls its one account. Not shown anywhere a person reads - personas
+/// carry the names - so it only has to be a valid slug and the same one every time.
+const LOCAL_ACCOUNT_NAME: &str = "me";
+
+/// The oldest account on this node, which under single tenancy is the only one.
+async fn first_account(db: &Db) -> Result<Option<Account>, AppError> {
+    let row: Option<(String, String)> = db
+        .fetch_optional(
+            "SELECT id, username FROM accounts ORDER BY created_at_ms, id LIMIT 1",
+            (),
+        )
+        .await
+        .context("reading this node's own account")
+        .map_err(AppError::Internal)?;
+    let Some((id, username)) = row else { return Ok(None) };
+    let Ok(id) = Uuid::parse_str(&id) else {
+        return Err(AppError::Internal(anyhow!("an account row has an unparseable id")));
+    };
+    Ok(Some(Account { id, username }))
 }
 
 /// Verify credentials and, on success, create a session; returns the session token.
@@ -549,5 +617,34 @@ mod tests {
             tags_for(&pool, &account.id).await.unwrap(),
             vec!["gamma".to_string()]
         );
+    }
+
+    /// The desktop's one account (DESKTOP.md, Stage 3): minted on first ask, and the SAME one
+    /// every ask after - because a second one would be a second person, on a machine that has
+    /// one. And the token comparison does not tell a guesser how much of their guess was right.
+    #[tokio::test]
+    async fn this_computers_own_account_is_minted_once_and_kept() {
+        let db = crate::db::test_node_db().await;
+        // `local_test: false` on purpose - it is the desktop's own path, and the flag does more
+        // than pick a fast hash: it also suppresses the first-account-is-node-admin rule, which
+        // is precisely the part this claim cares about.
+        let first = local_account(&db, false).await.expect("an account is minted");
+        let again = local_account(&db, false).await.expect("...and found");
+        assert_eq!(first.id, again.id, "one machine, one account");
+        assert_eq!(first.username, LOCAL_ACCOUNT_NAME);
+        let (n,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM accounts", ()).await.unwrap();
+        assert_eq!(n, 1, "and asking twice did not make two");
+        // It is a node_admin: the person at the machine owns the machine.
+        assert!(has_tag(&db, &first.id, TAG_NODE_ADMIN).await.unwrap());
+    }
+
+    #[test]
+    fn a_secret_compares_whole_or_not_at_all() {
+        let token = generate_token();
+        assert!(secret_eq(&token, &token.clone()));
+        assert!(!secret_eq(&token, &generate_token()));
+        // A right prefix is not a partial yes.
+        assert!(!secret_eq(&token, &token[..token.len() - 2]));
+        assert!(!secret_eq("", &token));
     }
 }
