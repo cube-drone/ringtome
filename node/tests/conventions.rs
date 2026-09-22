@@ -444,3 +444,36 @@ fn the_desktop_workspace_keeps_the_dev_profile() {
          inside the app than they are in the binary."
     );
 }
+
+/// One release, one number (Curtis, 2026-09-22). Five files spell the version and they must agree:
+/// a desktop bundle whose Cargo version disagrees with its `tauri.conf.json` version gives two
+/// answers to "what is running", and the updater believes the wrong one - it compares what the
+/// bundle claims against what the manifest offers. `just release-*` writes all five together;
+/// this is what catches the hand-edit that writes one.
+#[test]
+fn every_file_that_spells_the_version_agrees() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let spots: [(&str, &str); 5] = [
+        ("node/Cargo.toml", "version = \""),
+        ("proto/Cargo.toml", "version = \""),
+        ("desktop/Cargo.toml", "version = \""),
+        ("desktop/tauri.conf.json", "\"version\": \""),
+        ("node/js/package.json", "\"version\": \""),
+    ];
+    let mut said: BTreeMap<&str, String> = BTreeMap::new();
+    for (file, needle) in spots {
+        let source = std::fs::read_to_string(root.join(file)).expect("readable versioned file");
+        // The FIRST occurrence: in a Cargo.toml that is `[package] version`, and in a package.json
+        // the manifest's own version rather than a dependency's.
+        let at = source.find(needle).unwrap_or_else(|| panic!("no version in {file}"));
+        let rest = &source[at + needle.len()..];
+        let end = rest.find('"').expect("a closing quote");
+        said.insert(file, rest[..end].to_string());
+    }
+    let first = said.values().next().expect("five files").clone();
+    assert!(
+        said.values().all(|v| *v == first),
+        "the version is spelled differently in different files: {said:?}. `just release-*` writes \
+         them together; a hand-edit that writes one leaves the app disagreeing with itself."
+    );
+}

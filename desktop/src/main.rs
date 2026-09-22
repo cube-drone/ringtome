@@ -69,6 +69,14 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 fn start_node(data_dir: &PathBuf, token: String) -> anyhow::Result<String> {
     let mut config = ringtome_node::config::Config::from_env();
     config.data_directory = data_dir.clone();
+    // A PACKAGED app is a prod node (DESKTOP.md, Stage 4), and a `cargo run` is a dev one - which
+    // is not a preference but a fact about where the UI comes from: a dev node serves the bundle
+    // from `node/js/target` by absolute path, which exists on the machine that compiled it and
+    // nowhere else. The build profile is the honest signal, and `RINGTOME_ENVIRONMENT` still wins
+    // for anyone who wants to argue with it.
+    if std::env::var("RINGTOME_ENVIRONMENT").is_err() && !cfg!(debug_assertions) {
+        config.environment = ringtome_node::config::Environment::Prod;
+    }
     // One human, one account, and the token is how they say so - which is what removes the
     // login screen. Set here rather than read from the environment, because these two are
     // facts about being an app rather than an operator's choice.

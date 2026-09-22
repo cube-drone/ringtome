@@ -10129,3 +10129,92 @@ setting a workspace boundary quietly dropped. And the answer to Curtis's other q
 test-data actions even touch the transcoder? - is yes, and only pictures: `upload-a-picture` and
 `post-a-picture` push an 11KB webp through the ingest, and AVIF encoding is the whole of the heavy
 CPU in a seeding run. No video required to find this.
+
+## 2026-09-22 (cont.): SIGNING.md, and the Windows money examined
+
+Curtis: Apple and Azure look like the way forward, both look like weeks of real-world waiting, so
+write the guide and build unsigned meanwhile. [SIGNING.md](SIGNING.md) is that guide - the first
+document in this repo addressed to the operator rather than to the code.
+
+It starts with the free thing, because it is the one that cannot be replaced: the updater keypair is
+ours, costs nothing, and losing it means no installed copy can ever update again, since the public
+half is already baked into every binary shipped. Then Apple ($99/yr, individual enrolment, a
+*Developer ID Application* certificate - not Mac App Distribution - exported as a base64 `.p12`, plus
+an App Store Connect API key whose `.p8` downloads exactly once). Then Azure Artifact Signing, with
+the two eligibility traps found by reading Microsoft's own docs rather than assuming: **individual
+validation is open only to developers in the United States or Canada**, and it takes its identity
+from the Azure billing account, which must be of type Individual and must match a government ID
+exactly. Their stated processing time is 1 to 20 business days, which is the whole reason this is a
+document and not a paragraph.
+
+The Windows options were priced rather than guessed. SignPath Foundation is free for open source;
+Certum's open-source certificate is €69 but ships a physical crypto card CI cannot use, and was out
+of stock; the Microsoft Store signs for a one-time $19 but wants an MSIX that Tauri does not emit and
+would own updates instead of our updater; commercial OV and EV run $200-600 a year and now require
+hardware or a cloud HSM either way. Azure is the cheapest thing that signs from CI without hardware -
+and the detail that decides what any of it is worth went in both documents: an OV certificate earns
+SmartScreen's trust over downloads rather than arriving with it, so the warning persists for a while
+regardless, and only EV skips it.
+
+The recommendation recorded with the guide: pay Apple, wait on Windows, and hand round one an
+unsigned build with a right-click-Open instruction, because six people who know you are not the
+audience the $99 protects against.
+
+## 2026-09-22 (cont.): how a release is cut
+
+Curtis, on the gating question - "a full release cycle is practically a lot more expensive than a
+regular build... so how do we gate releases?" - and then the answer he wanted: not a button on
+GitHub but `just release-major` / `release-minor` / `release-micro`, bumping every version in step,
+committing, tagging, pushing, with notes assembled from the commits since the last release. And
+every release gets a NAME from the same wordlist the speakable addresses and the test-data personas
+use: `0.1.0-swear-slick`.
+
+Built as asked, with one split he did not ask for and should know about: **the name is not in the
+version field.** `0.1.0-swear-slick` is a semver *prerelease*, which sorts BEFORE `0.1.0`, so a mix
+of decorated and undecorated versions would order releases wrongly - and macOS wants
+`CFBundleShortVersionString` to be at most three integers, which a word breaks outright. So the
+number stays strict semver everywhere a toolchain reads it and the name rides in the tag, the title
+and the notes. The name is also DERIVED from the number (`js/pure/releasename.js`, FNV-1a over the
+version, two words from the pinned list) rather than drawn at random and stored: a name lives in a
+tag forever, and a stored name is a name that can disagree with the tag.
+
+`node/tools/release.mjs` does the work and refuses what it should: a dirty tree, a branch that is
+not main, a commit the remote has not seen, a tag that already exists. It asks before it acts,
+because the thing it sets off is expensive and irreversible-ish, and `--dry-run` answers "what would
+this do" from whatever tree you are standing in - warning where a real release refuses, since the
+question has to be answerable before you tidy up.
+
+Five files spell the version, so `every_file_that_spells_the_version_agrees` now holds them
+together. It failed the moment it was written: `node/js/package.json` was at 1.0.0 while everything
+else was at 0.0.1 - a drift nobody had noticed, and exactly the kind the updater would later have
+believed. The first release will be `0.1.0-swear-slick`.
+
+## 2026-09-22 (cont.): the release pipeline
+
+`.github/workflows/release.yml`. A `v*` tag - which only `just release-*` makes - builds macOS as a
+universal binary, Linux on 22.04 (an AppImage built against a newer glibc refuses to run on older
+distributions, which is the opposite of an AppImage's purpose), and Windows; signs and notarizes the
+Mac from the `deploy` environment; and publishes a GitHub Release carrying the installers, the
+updater artifacts and `latest.json`. `workflow_dispatch` runs the same build and publishes nothing,
+for when the packaging is what changed. `just ci` stays the per-commit gate and still never builds
+Tauri.
+
+It **degrades rather than fails** when a secret is absent: no App Store Connect key means a signed
+but un-notarized Mac build and a line in the log saying so, because Windows signing is still waiting
+on Azure and a release that is half-signed beats a run that is red. The guard is written in bash
+rather than in an `if:` expression, so it does not depend on being right about when the secrets
+context is visible.
+
+Three things had to become true for any of this to produce a file. Bundling was **off** in
+`tauri.conf.json` (`"active": false`, inherited from the spike). There were no icons but a 64px
+placeholder, so `cargo tauri icon` generated the set. And a packaged app would have run as a **dev**
+node - serving the UI from `node/js/target` by absolute path, which exists on the machine that
+compiled it and nowhere else. That last one is now decided by the build profile: a `cargo run` is a
+dev node with hot reload, a bundle is a prod node with the UI baked in, and `RINGTOME_ENVIRONMENT`
+still wins for anyone who wants to argue.
+
+The updater's public key and the `releases/latest/download/latest.json` endpoint are in the config,
+so releases are updater-ready from the first one - turning that on later would have left every
+release before it unable to be updated FROM. The plugin that does the checking is NOT in the app
+yet, which is the open decision: an installed 0.1.0 can only auto-update if 0.1.0 itself knows how
+to look.

@@ -7,6 +7,11 @@ name: CI
 
 on:
   push:
+    # A release pushes a commit AND a tag for that same commit, which would otherwise run this
+    # gate twice over identical code while release.yml is already building it (2026-09-22). The
+    # branch push still runs it; the tag is the duplicate.
+    tags-ignore:
+      - "v*"
   workflow_dispatch:
 
 jobs:

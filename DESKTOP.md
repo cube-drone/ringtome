@@ -383,6 +383,53 @@ multi-tenant by design.
 notarization, the updater keypair. Mostly bureaucracy: annoying once, then done. The stage with the
 recurring cash cost, so it is the decision point for committing money.
 
+*How a release is cut (settled 2026-09-22).* **A tag, made by hand, by `just release-*`.** Not a
+push to main - a release is a full optimized build of four targets, signed, notarized, and handed to
+every installed copy as a whole new application, which is far more than any commit should set off.
+Not a release branch either: that is machinery for maintaining several lines at once, and there is
+one. `just release` is the minor bump, with `release-major`, `release-micro` and `release-dry`
+beside it; the recipe bumps all five files that spell the version, writes the notes from the commit
+subjects since the last tag ("initial", the first time), commits, tags and pushes, and asks before
+it does any of it.
+
+**Every release has a name as well as a number** - `0.1.0-swear-slick` - drawn from the same pinned
+wordlist as speakable addresses and test-data personas, so the system sounds like one thing. The
+name is DERIVED from the number rather than stored, so it is the same on every machine forever; and
+the number itself stays strict semver everywhere a toolchain reads it, because `0.1.0-swear-slick`
+is a semver *prerelease* that sorts before `0.1.0`, and because macOS wants at most three integers
+in `CFBundleShortVersionString`. The name rides in the tag, the title and the notes.
+`every_file_that_spells_the_version_agrees` is the cop that keeps the five files in step - it caught
+`node/js/package.json` sitting at 1.0.0 within a minute of being written.
+
+*The pipeline (built 2026-09-22).* `.github/workflows/release.yml`: a `v*` tag builds macOS
+(universal), Linux (on 22.04, so the AppImage runs on more than the newest glibc) and Windows,
+signs and notarizes the Mac with the `deploy` environment's secrets, and publishes a GitHub Release
+carrying the installers, the updater artifacts and `latest.json`. `workflow_dispatch` does the same
+build and publishes nothing, for when the packaging itself is what changed. It degrades rather than
+fails when a secret is missing, because Windows signing is still waiting on Azure and a half-signed
+release beats a red run. Bundling is on, the updater's public key and the `releases/latest/download`
+endpoint are in `tauri.conf.json`, and a packaged build runs as a PROD node - decided by the build
+profile rather than by a preference, since a dev node serves the UI from an absolute path that
+exists only on the machine that compiled it.
+
+*Split in two (2026-09-22), because the halves have different clocks.* The paperwork — Apple's $99/yr
+program and Azure Artifact Signing at ~$10/mo — involves identity verification that takes days to
+weeks of real-world waiting, and it is Curtis's to do: [SIGNING.md](SIGNING.md) is the running order,
+the eligibility traps (Azure's individual validation is US/Canada only and reads its identity from
+the billing account) and where each secret lands. Everything else proceeds unsigned in the meantime -
+bundle configuration, icons, a launchable `.dmg`, the four-target CI matrix and the updater end to
+end - because signing is environment variables bolted onto a pipeline that already exists, not a
+different pipeline.
+
+*The Windows money, examined (2026-09-22).* Cheaper paths than a commercial certificate exist and
+were checked rather than assumed: SignPath Foundation is free for open-source projects, Certum's
+open-source certificate is €69 but ships a physical crypto card that CI cannot use and was out of
+stock, the Microsoft Store signs for a one-time $19 but does not take a Tauri bundle without an MSIX
+step and would own updates. Azure is the cheapest thing that signs from CI without hardware. The
+detail that decides how much any of it is worth: an OV certificate - which is all of these - earns
+SmartScreen's trust over downloads rather than arriving with it, so only EV (hardware, several
+hundred a year) silences the warning from the first install, and that is not what we are buying.
+
 **Stage 5 — autostart and the tray.** Per-OS autostart, tray with status light and quit. Per the
 section above, this is where the desktop app starts doing work for the *network* rather than only for
 its user.
@@ -390,6 +437,23 @@ its user.
 **Stage 6 — auto-update and a release channel.** Tauri's updater against a static host. No longer
 load-bearing for security the way electron-updater would have been, which is a reason it comes last
 rather than a reason to skip it.
+
+*How it interacts with signing, since the two are easy to conflate (Curtis, 2026-09-22).* On macOS
+an update is a **whole-bundle replacement**: the artifact is a `.app.tar.gz`, there are no binary
+deltas, and the `.dmg` is for first installs only. The running app verifies the archive's **minisign**
+signature - our updater key, against the public half baked into the running binary - before it
+unpacks anything, then swaps the `.app` and relaunches. Apple's signature and notarization do a
+different job: they are what the SYSTEM checks afterwards, at every launch of the replaced bundle.
+
+Both are load-bearing and neither substitutes for the other. Two consequences to carry:
+
+- **The signing identity must stay consistent across releases.** macOS keys keychain ACLs, TCC grants
+  and the incoming-connection firewall approval to the bundle id *and* the signature; an update
+  signed by a different Team ID can read as a different app, and permissions reset. This node binds a
+  UDP socket, so that firewall grant is not one to make people give twice.
+- **Every update is the whole app to every user** - tens of megabytes each, every version - and it
+  **restarts the node**, which after Stage 5 is somebody's always-on presence on the network. Both
+  argue for deliberate releases and for update-on-quit as the default rather than update-now.
 
 ## Residuals
 

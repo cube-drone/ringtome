@@ -851,6 +851,34 @@ desktop-clean confirm="":
     rm -rf "$dir"
     echo "gone: every persona, key and chain that app held. The next launch starts empty."
 
+# --- releases (DESKTOP.md Stage 4, SIGNING.md) ------------------------------
+
+# Cut a release: bump every version in step, write the notes from the commits since the last
+# one, commit, tag, push - and the tag is what starts the expensive half, a full optimized
+# build of four targets, signed, notarized, and handed to every installed copy as a whole new
+# application. It asks before it acts, because that is a lot to set off by accident.
+#
+# `just release` is the minor one, since that is the ordinary case for a project still finding
+# its shape. The name in the tag (0.1.0-swear-slick) is derived from the number, so it is the
+# same name on every machine forever - see js/pure/releasename.js.
+release: release-minor
+
+# 0.1.0 -> 0.2.0: the ordinary release.
+release-minor *flags:
+    cd "{{justfile_directory()}}" && node tools/release.mjs minor {{flags}}
+
+# 0.1.0 -> 0.1.1: a fix on top of what is out there.
+release-micro *flags:
+    cd "{{justfile_directory()}}" && node tools/release.mjs micro {{flags}}
+
+# 0.1.0 -> 1.0.0: said out loud, on purpose.
+release-major *flags:
+    cd "{{justfile_directory()}}" && node tools/release.mjs major {{flags}}
+
+# What the next release would be and what its notes would say. Writes nothing.
+release-dry part="minor":
+    cd "{{justfile_directory()}}" && node tools/release.mjs {{part}} --dry-run
+
 # --- everything ------------------------------------------------------------
 
 # Full local check: UI bundles + UI pure tests, then cargo check, clippy, Rust unit tests, and

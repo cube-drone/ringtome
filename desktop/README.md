@@ -11,6 +11,18 @@ That is the whole of it. There is no frontend build here and no `npm` step: the 
 node's own loopback URL and the node serves the same bundle a browser gets, from one source of
 truth (`node/src/ui.rs`).
 
+## What you need installed
+
+`cargo run` needs nothing beyond the workspace's usual Rust toolchain - the window and the node are
+both plain cargo. **Bundling** needs Tauri's CLI, which is a separate binary:
+
+```sh
+cargo install tauri-cli --version "^2.0"
+```
+
+That is what `cargo tauri build` and `cargo tauri signer generate` come from, so it is a Stage 4
+prerequisite and the thing to install before following [SIGNING.md](../SIGNING.md).
+
 ## What this crate is, and is not
 
 It is **an embedder**. It decides the three things that belong to whoever hosts a node - where the

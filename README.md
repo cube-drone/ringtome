@@ -57,6 +57,9 @@ federated, unapologetically Old Internet.
     the rollout and the recurring signing costs. The decision itself is canon as of 2026-08-11
     (*Desktop mode: Tauri, with the node embedded*); this document is the execution plan, and it keeps
     the Electron comparison as the record of how the decision was made.
+  - [`SIGNING.md`](SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits on, and the only document
+    here addressed to the operator rather than the code: what to enrol in (Apple, Azure Artifact
+    Signing), the eligibility traps, where each secret lands, and what proceeds unsigned meanwhile.
   - [`MOBILE.md`](MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
     deliberately narrow UI. Corrects a factual premise in *Phones: deferred, by design* and
     carries the availability arithmetic for a network with no always-on infrastructure.
