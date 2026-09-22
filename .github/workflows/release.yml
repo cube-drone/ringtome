@@ -20,7 +20,67 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Ten seconds of checking before ninety minutes of building. Every secret here arrives by
+  # copy-and-paste, and a paste can carry what a terminal DREW rather than what the file held -
+  # zsh's trailing `%` for "no newline" is the one that cost the first release run, twenty
+  # minutes in, with `base64: error decoding input stream` as its only explanation. This says
+  # which secret is wrong, in its shape rather than its contents, before the runners warm up.
+  preflight:
+    environment: deploy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Check the secrets' shapes
+        env:
+          TAURI_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_KEY: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_KEY_ID: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          bad=0
+          # Reports the SHAPE of a secret and never its contents: a length, a verdict, and for a
+          # malformed one the count of characters that have no business being there.
+          check_base64 () {
+            local name="$1" value="$2" wanted="$3"
+            if [ -z "$value" ]; then echo "  $name: absent (that step will be skipped)"; return; fi
+            local clean dropped decoded
+            clean="$(printf '%s' "$value" | tr -cd 'A-Za-z0-9+/=')"
+            dropped=$(( ${#value} - ${#clean} ))
+            decoded="$(printf '%s' "$clean" | base64 -d 2>/dev/null | head -c 120 || true)"
+            if printf '%s' "$decoded" | grep -q "$wanted"; then
+              echo "  $name: ok (${#value} chars)"
+            else
+              echo "  $name: MALFORMED - ${#value} chars, $dropped of them not base64, and what it decodes to does not contain '$wanted'"
+              bad=1
+            fi
+          }
+          echo "secrets in the deploy environment:"
+          check_base64 TAURI_SIGNING_PRIVATE_KEY "$TAURI_KEY" "untrusted comment"
+          check_base64 APPLE_API_KEY_BASE64 "$APPLE_KEY" "BEGIN PRIVATE KEY"
+          # A .p12 is binary, so its decoded head is not text to match on: size is the signal.
+          if [ -n "$APPLE_CERT" ]; then
+            size=$(printf '%s' "$APPLE_CERT" | tr -cd 'A-Za-z0-9+/=' | base64 -d 2>/dev/null | wc -c)
+            if [ "$size" -gt 1000 ]; then echo "  APPLE_CERTIFICATE: ok (decodes to $size bytes)";
+            else echo "  APPLE_CERTIFICATE: MALFORMED - decodes to $size bytes, which is too small for a .p12"; bad=1; fi
+          else
+            echo "  APPLE_CERTIFICATE: absent (the Mac build will be unsigned)"
+          fi
+          case "$APPLE_IDENTITY" in
+            "") echo "  APPLE_SIGNING_IDENTITY: absent" ;;
+            "Developer ID Application: "*"("*")") echo "  APPLE_SIGNING_IDENTITY: ok" ;;
+            *) echo "  APPLE_SIGNING_IDENTITY: MALFORMED - expected 'Developer ID Application: Name (TEAMID)'"; bad=1 ;;
+          esac
+          [ -z "$APPLE_ISSUER" ] && echo "  APPLE_API_ISSUER: absent" || echo "  APPLE_API_ISSUER: ${#APPLE_ISSUER} chars"
+          [ -z "$APPLE_KEY_ID" ] && echo "  APPLE_API_KEY: absent" || echo "  APPLE_API_KEY: ${#APPLE_KEY_ID} chars"
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::a secret is malformed - see above. Set them from the file rather than the clipboard: gh secret set NAME --env deploy < file"
+            exit 1
+          fi
+
   build:
+    needs: preflight
     environment: deploy
     permissions:
       contents: write
@@ -97,8 +157,36 @@ jobs:
             exit 0
           fi
           mkdir -p ~/.appstoreconnect/private_keys
-          printf '%s' "$KEY_BASE64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey.p8
-          echo "APPLE_API_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey.p8"
+          # The secret may hold the `.p8` ITSELF (it is PEM text, perfectly pasteable) or its
+          # base64, and which one got pasted six weeks ago is not something anybody should have
+          # to remember - a wrong guess surfaces as `base64: error decoding input stream`, three
+          # steps from the cause (2026-09-22, the first release run). So: accept either, strip
+          # whatever wrapping the paste picked up, and check the RESULT rather than the input.
+          if printf '%s' "$KEY_BASE64" | grep -q "BEGIN PRIVATE KEY"; then
+            printf '%s\n' "$KEY_BASE64" > "$KEY_PATH"
+          else
+            # Everything outside the base64 alphabet goes: a paste from a terminal can carry
+            # soft-wrap whitespace, and zsh prints a trailing `%` to mean "no newline here" that
+            # is very easy to select along with the value (2026-09-22, the first release run -
+            # the file on disk decoded perfectly, so the difference was in the paste).
+            CLEAN="$(printf '%s' "$KEY_BASE64" | tr -cd 'A-Za-z0-9+/=')"
+            DROPPED=$(( ${#KEY_BASE64} - ${#CLEAN} ))
+            # `[ ... ] && echo` would be the last command's status, and this step runs under
+            # `bash -e`: a CLEAN secret would then exit here, succeeding its way into a failure.
+            if [ "$DROPPED" -gt 0 ]; then
+              echo "note: dropped $DROPPED character(s) that are not base64"
+            fi
+            printf '%s' "$CLEAN" | base64 -d > "$KEY_PATH" 2>/dev/null \
+              || printf '%s' "$CLEAN" | base64 -D > "$KEY_PATH" 2>/dev/null || true
+          fi
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_PATH"; then
+            # Diagnosis without disclosure: the shape of the secret, never the secret.
+            echo "::error::APPLE_API_KEY_BASE64 did not yield a private key. It is ${#KEY_BASE64} characters long; a base64'd .p8 is usually ~340 and ends in '='. Re-set it with: openssl base64 -A -in AuthKey_XXXXXXXX.p8 | pbcopy"
+            exit 1
+          fi
+          echo "notarization key ready (${#KEY_BASE64} characters in, $(wc -c < "$KEY_PATH") bytes out)"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Build, sign, and publish
         uses: tauri-apps/tauri-action@v0
