@@ -1,0 +1,8 @@
+# Every migration rung that has shipped in a release, and the sha256 of its file.
+#
+# A rung listed here is FROZEN: databases on people's machines have climbed it, and changing it
+# would leave them disagreeing with every fresh database (and refused on the next open - see
+# src/migrations.rs). `tests/conventions.rs` holds each line against the file; `just release-*`
+# appends the rungs a release ships and never rewrites a line.
+node/0053_baseline.sql 207033d2dca95755ca144dd814b8b31f3c7363b2f11e82b8f2f812f6da01cee0
+user/0026_baseline.sql 081f5213b771d4572edd8c3776dd19f846202425d0f4f26df94b60986f80d815

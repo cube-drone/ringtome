@@ -44,10 +44,10 @@ data/
 Everything in `users/*.db` outside the `entries` table is a disposable projection, rebuildable by
 replaying the log. `node.db` and the key files are the only things that aren't.
 
-**Migration policy:** until a database exists that can't be casually deleted (first testnode, a
-friend's node, your daily driver), schema changes squash into `0001` and dev data dirs get
-deleted (`rm -rf ./data`). The moment any deployment matters, migrations freeze and become
-append-only forever.
+**Migrations:** every schema change is a new numbered rung under `migrations/node/` or
+`migrations/user/`, climbed in place when a database opens. Released rungs are frozen. How to
+write one: [`migrations/README.md`](migrations/README.md). (Before 0.1.0, changes were squashed
+into one file and dev data was deleted instead. That ended with the first release.)
 
 ## Testing
 

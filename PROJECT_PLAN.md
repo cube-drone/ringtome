@@ -2215,6 +2215,16 @@ front of *recoverable* state, and that is made true by construction rather than 
   the journal - which is what recovery actually rides anyway). Turso's version is pinned
   (`=0.7.0`) for reproducibility, not safety; the tool lands with Tier 6, before User 1's data
   exists to lose.
+- **Migrations are a ladder (settled 2026-09-23).** Once 0.1.x put a node on a real machine,
+  the squash-and-rebuild policy ended. Each database kind has a ladder of numbered SQL rungs
+  (`node/src/migrations.rs`, how-to in `node/migrations/README.md`), climbed in place on
+  open, one transaction per rung. The baseline rung is the schema 0.1.x shipped, numbered at
+  its old generation, so every released database is already on the ladder. Released rungs are
+  pinned by hash and frozen. **Chains never migrate**: their entries are signed bytes and the
+  format only grows. What migrates is the views folded from them: a user rung names the
+  services whose views it invalidates, and those views drop and rebuild from the entries. The
+  gap still open is node rungs that need to re-derive a memo from personas' chains. That needs
+  a code rung, to be built when the first such change arrives.
 
 **Views persist now (the persistence dial, revisited).** The store's original discipline - views
 recomputed in memory per read, never persisted, because "a decrypted view on disk would be a

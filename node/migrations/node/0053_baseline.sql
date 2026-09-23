@@ -1,9 +1,9 @@
 -- The node database (node.db): everything node-level in one place.
 --
--- MIGRATION POLICY: until a database exists that cannot be casually deleted (the first testnode,
--- a friend's node, your own daily-driver), schema changes are squashed into THIS file and dev
--- data dirs are deleted. The moment any deployment matters, this file freezes and migrations
--- become append-only forever. (Squashed 2026-07-07 from six pre-deployment migrations.)
+-- THE BASELINE RUNG of the node ladder (src/migrations.rs): the schema exactly as releases
+-- 0.1.0-0.1.2 shipped it, stamped generation 53 - fifty-three pre-launch generations squashed
+-- into one file (git remembers them). FROZEN: it is pinned in migrations/released.txt, and every
+-- change from here is a new rung beside it (migrations/README.md).
 
 -- ---------------------------------------------------------------------------------------------
 -- Boot history. Local-only diagnostic (never exposed over the network); recording a boot also

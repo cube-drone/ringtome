@@ -159,3 +159,8 @@ flate2 = "1.1.9"
 blake3 = "1.8.5"
 iroh-gossip = "0.101"
 bytes = "1.12.1"
+
+[dev-dependencies]
+# The released-migrations pin (tests/conventions.rs) checks sha256, because the release script
+# that writes the pin is JavaScript, and sha256 is the hash node:crypto has built in.
+sha2 = "0.10"

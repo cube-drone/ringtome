@@ -935,7 +935,7 @@ pub async fn get_profile(db: &Db) -> Result<Vec<ProfileField>, AppError> {
 /// refold the whole log. Drop + replay still holds everywhere; the replay is just deferred to
 /// the first reader that can decrypt.
 /// Every service that can feed a view - the argument that means "drop everything".
-fn every_service() -> std::collections::BTreeSet<u32> {
+pub(crate) fn every_service() -> std::collections::BTreeSet<u32> {
     [
         service::PROFILE_PUBLIC,
         service::POSTS,
@@ -1667,6 +1667,34 @@ mod tests {
         assert_eq!(profile.len(), 2);
         assert_eq!(profile[1].field, "name");
         assert_eq!(profile[1].value, "Hats Ahoy");
+    }
+
+    /// A migration rung's refold (src/migrations.rs, "chains are not migrated; their views
+    /// are"): a rung that changes how a view folds names the services feeding it, and the view
+    /// comes back from the entries. Lives here rather than beside the ladder because the rung
+    /// has to name this module's table. Here the rung wrecks `profile_view` outright - the
+    /// harshest version of "the old fold is wrong" - and the refold restores it.
+    #[tokio::test]
+    async fn a_refold_rung_rebuilds_its_views_from_the_chains() {
+        let db = crate::db::test_user_db().await;
+        let key = SigningKey::from_bytes(&[5u8; 32]);
+        set_profile_field(&db, &key, "name", "Hats Ahoy")
+            .await
+            .unwrap();
+
+        let mut ladder = crate::migrations::USER.to_vec();
+        let top = ladder.last().unwrap().version;
+        ladder.push(crate::migrations::Rung {
+            version: top + 1,
+            name: "9999_wreck_the_profile.sql",
+            sql: "DELETE FROM profile_view;",
+            refold: &[service::PROFILE_PUBLIC],
+        });
+        crate::migrations::climb(&db, &ladder, "user").await.unwrap();
+
+        let profile = get_profile(&db).await.unwrap();
+        assert_eq!(profile.len(), 1);
+        assert_eq!(profile[0].value, "Hats Ahoy");
     }
 
     #[tokio::test]

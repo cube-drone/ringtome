@@ -8,10 +8,10 @@
 //!   identity gets its own file: one identity's queries physically cannot touch another's, and
 //!   sync-in / drop / front / back-up are per-file operations that match the chain model.
 //!
-//! Both kinds share the open recipe (`open_database`) and each has one embedded schema, applied
-//! to fresh databases and generation-checked on existing ones (pre-launch: rebuild, never
-//! migrate in place - see the generation constants). The per-user DBs are held in a bounded
-//! cache of open handles, since a busy node cannot keep every user's file open at once.
+//! Both kinds share the open recipe (`open_database`) and each climbs its own migration ladder
+//! on open (`crate::migrations` - a fresh database climbs every rung, an existing one the rungs
+//! above its stamp). The per-user DBs are held in a bounded cache of open handles, since a busy
+//! node cannot keep every user's file open at once.
 //!
 //! **At-rest encryption.** Every database gets its own random 32-byte key, sealed in the node
 //! keystore (`data/keys/db-<name>.key`, AAD = the database's logical name) and handed to Turso's
@@ -28,20 +28,6 @@ use turso::{Builder, EncryptionOpts, IntoParams, Value};
 use crate::keystore::Keystore;
 use crate::record::journal::Journal;
 
-/// Schema for `node.db`, embedded into the binary at compile time.
-const NODE_SCHEMA: &str = include_str!("../migrations/node/0001_schema.sql");
-/// Schema for the per-user databases, embedded at compile time: the entries log and its
-/// materialized views (see `imaol`, `record::documents`, `record::private`).
-const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profile.sql");
-
-/// Schema **generations**, stamped into `PRAGMA user_version`. Pre-launch policy: there is no
-/// in-place migration - one schema file per database kind, edited freely, and a database whose
-/// stamp doesn't match is refused with rebuild guidance (per-user data replays from the journal
-/// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
-/// changes. A real migration ladder is launch-gated work, built alongside the backup story,
-/// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 53; // 53: room_messages.notice - a mute said in the room (CHAT.md ruling 8, 2026-09-20); 52: 52: room_reactions - emoji replies (CHAT.md slice 9, 2026-09-19); 51: 51: room_archives - the full-sync button (CHAT.md slice 4, 2026-09-18); 50: 50: room_messages, rooms_open - the room lane (CHAT.md slice 2, 2026-09-18); 49: 49: chain_heads.instance - the chain key's third element (CHAT.md slice 0, 2026-09-18); 48: 48: onward on feed_journal (Contact tags, ruling 7, 2026-09-18); 47: 47: node_slugs (PROJECT_PLAN's The node's public face, 2026-09-16); 46: 46: node_shelf, node_listing - the node's public face (PROJECT_PLAN's The node's public face, 2026-09-15); 45: 45: post_key_grants, refusals per reader persona (2026-09-14); 44: 44: post_audience_members - a post sealed to the people it mentions (2026-09-14); 43: 43: audiences - post_keys.audience, post_key_refusals, doc_annotations.holder_doc (2026-09-10); 42: sealed labels on doc_annotations
-const USER_SCHEMA_GENERATION: i64 = 26; // 26: entries.instance, equivocations.instance - the chain key's third element (CHAT.md slice 0, 2026-09-18); 25: 25: onward on doc_versions and doc_heads (header key 22; Contact tags, ruling 7, 2026-09-18); 24: 24: part_of on the doc memos (header key 19) - a notebook published as a book (PROJECT_PLAN's Books, 2026-09-03)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -633,59 +619,11 @@ fn connect(database: turso::Database) -> Result<Db> {
     })
 }
 
-/// Apply `schema` to a fresh database and stamp its generation; accept a matching stamp; refuse
-/// everything else with rebuild guidance (the pre-launch no-in-place-migration policy - see the
-/// generation constants).
-///
-/// Apply-and-stamp rides one transaction: a half-applied schema with the generation unstamped
-/// would fail every later boot on the already-created tables, so either both land or neither
-/// does.
-async fn migrate(db: &Db, schema: &str, generation: i64, what: &str) -> Result<()> {
-    let (version,): (i64,) = db
-        .fetch_one("PRAGMA user_version", ())
-        .await
-        .context("reading schema generation")?;
-    if version == generation {
-        return Ok(());
-    }
-    if version != 0 {
-        bail!(
-            "{what} database is schema generation {version}, this build wants {generation}; \
-             pre-launch there is no in-place migration - delete the database and rebuild \
-             (per-user data replays from its journal or re-syncs from a peer)"
-        );
-    }
-    db.execute("BEGIN", ())
-        .await
-        .context("starting schema transaction")?;
-    let applied: Result<()> = async {
-        db.execute_batch(schema)
-            .await
-            .with_context(|| format!("applying {what} schema"))?;
-        db.execute(&format!("PRAGMA user_version = {generation}"), ())
-            .await
-            .context("stamping schema generation")?;
-        Ok(())
-    }
-    .await;
-    match applied {
-        Ok(()) => db
-            .execute("COMMIT", ())
-            .await
-            .context("committing schema")
-            .map(|_| ()),
-        Err(e) => {
-            let _ = db.execute("ROLLBACK", ()).await;
-            Err(e)
-        }
-    }
-}
-
 /// Open and migrate the node database at `<data_dir>/node.db`.
 pub async fn open_node_db(data_directory: &Path, keystore: &Keystore) -> Result<Db> {
     let path = data_directory.join("node.db");
     let db = open_database(&path, keystore).await?;
-    migrate(&db, NODE_SCHEMA, NODE_SCHEMA_GENERATION, "node")
+    crate::migrations::climb(&db, crate::migrations::NODE, "node")
         .await
         .context("running node migrations")?;
     Ok(db)
@@ -695,7 +633,7 @@ pub async fn open_node_db(data_directory: &Path, keystore: &Keystore) -> Result<
 #[cfg(test)]
 pub async fn test_node_db() -> Db {
     let db = test_memory_db().await;
-    migrate(&db, NODE_SCHEMA, NODE_SCHEMA_GENERATION, "node")
+    crate::migrations::climb(&db, crate::migrations::NODE, "node")
         .await
         .unwrap();
     db
@@ -706,7 +644,7 @@ pub async fn test_node_db() -> Db {
 #[cfg(test)]
 pub async fn test_user_db() -> Db {
     let db = test_memory_db().await;
-    migrate(&db, USER_SCHEMA, USER_SCHEMA_GENERATION, "user")
+    crate::migrations::climb(&db, crate::migrations::USER, "user")
         .await
         .unwrap();
     db
@@ -719,8 +657,9 @@ pub async fn test_user_db_with_journal(journal: Journal) -> Db {
     test_user_db().await.with_journal(journal)
 }
 
+/// A bare in-memory database, unmigrated - for tests that climb a ladder of their own.
 #[cfg(test)]
-async fn test_memory_db() -> Db {
+pub(crate) async fn test_memory_db() -> Db {
     let database = Builder::new_local(":memory:").build().await.unwrap();
     connect(database).unwrap()
 }
@@ -988,7 +927,7 @@ impl UserDbManager {
     async fn open(&self, root_pubkey: &str) -> Result<Db> {
         let path = self.path_for(root_pubkey);
         let db = open_database(&path, &self.keystore).await?;
-        migrate(&db, USER_SCHEMA, USER_SCHEMA_GENERATION, "user")
+        crate::migrations::climb(&db, crate::migrations::USER, "user")
             .await
             .with_context(|| format!("running user migrations for {root_pubkey}"))?;
 
@@ -1042,10 +981,10 @@ impl UserDbManager {
             .await
             .with_context(|| format!("probing entries for journal init of {root_pubkey}"))?
         {
-            // The invariant's OTHER direction - the pre-launch migration promise ("per-user
-            // data replays from its journal") actually kept: an EMPTY database under a
-            // non-empty journal is a rebuilt file (the schema-generation bail told the
-            // operator to delete it), and the journal is its insurance. Replay every frame
+            // The invariant's OTHER direction - the rebuild promise ("per-user data replays
+            // from its journal") actually kept: an EMPTY database under a non-empty journal is
+            // a rebuilt file (deleted after a refused climb, or lost to the beta engine), and
+            // the journal is its insurance. Replay every frame
             // through the ordinary validated ingest - the gate re-checks every signature and
             // hash-link, so a tampered journal can inject nothing (field-found 2026-08-02:
             // the un-replayed rebuild left empty key trees, which the persona screen then
@@ -1287,9 +1226,9 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
-        // The schema generation is stamped, and a key file was minted for the database.
+        // The database is stamped at the node ladder's top rung, and a key file was minted.
         let (version,): (i64,) = db.fetch_one("PRAGMA user_version", ()).await.unwrap();
-        assert_eq!(version, NODE_SCHEMA_GENERATION);
+        assert_eq!(version, crate::migrations::NODE.last().unwrap().version);
         assert!(ks.contains("db-node"));
 
         // At-rest encryption is real: the file must not start with the plaintext SQLite magic.
@@ -1309,29 +1248,6 @@ mod tests {
         assert_eq!(count, 1);
 
         tokio::fs::remove_dir_all(&dir).await.ok();
-    }
-
-    #[tokio::test]
-    async fn stale_schema_generation_refuses_with_rebuild_guidance() {
-        // Pre-launch policy: an out-of-generation database is refused, never migrated in place.
-        let db = test_memory_db().await;
-        db.execute("PRAGMA user_version = 1", ()).await.unwrap();
-
-        let err = migrate(&db, USER_SCHEMA, USER_SCHEMA_GENERATION, "user")
-            .await
-            .unwrap_err();
-        assert!(
-            err.to_string().contains("rebuild"),
-            "refusal points at the rebuild path: {err}"
-        );
-
-        // A matching stamp is the idempotent-boot no-op; the fresh path stamps the generation.
-        let fresh = test_user_db().await;
-        migrate(&fresh, USER_SCHEMA, USER_SCHEMA_GENERATION, "user")
-            .await
-            .unwrap();
-        let (version,): (i64,) = fresh.fetch_one("PRAGMA user_version", ()).await.unwrap();
-        assert_eq!(version, USER_SCHEMA_GENERATION);
     }
 
     #[tokio::test]

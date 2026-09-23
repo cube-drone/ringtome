@@ -10218,3 +10218,35 @@ so releases are updater-ready from the first one - turning that on later would h
 release before it unable to be updated FROM. The plugin that does the checking is NOT in the app
 yet, which is the open decision: an installed 0.1.0 can only auto-update if 0.1.0 itself knows how
 to look.
+
+## 2026-09-23: migrations are a ladder
+
+Releases 0.1.0-0.1.2 put a real node on Curtis's machine, which ended the pre-launch policy of
+squashing every schema change into one file and refusing any database whose stamp didn't match
+("delete it and rebuild"). Each database kind now has a **ladder** (`node/src/migrations.rs`,
+how-to in `node/migrations/README.md`): numbered SQL rungs, climbed in place when a database
+opens, one transaction per rung together with its stamp and its row in a new `schema_ladder` table.
+
+- **The baseline continues the old count.** The squashed schemas became `node/0053_baseline.sql`
+  and `user/0026_baseline.sql`, numbered at the generations all three releases shipped with, so
+  every database a release wrote is already on its ladder. With no ladder record, it is *adopted*
+  on first open. A smaller stamp (a pre-release dev database) still gets the rebuild guidance.
+- **Refusals that remain:** a database stamped above this build's top rung (written by a newer
+  build; nothing migrates down), and a rung whose text changed after this database climbed it
+  (the dev case - a released rung can't change, below).
+- **Released rungs are frozen.** `node/migrations/released.txt` pins each shipped rung by sha256;
+  `just release-*` appends new rungs and refuses to release if a pinned one has changed;
+  `tests/conventions.rs::released_migrations_never_change` holds the pin on every CI run.
+  Both paths were probed by planting the violation.
+- **Chains don't migrate; their views do.** Entries are signed bytes that only grow additively. A
+  user rung that changes how a view folds lists the services feeding it in `refold`, and the climb
+  drops those views and their watermarks in the rung's transaction (`imaol::refold_after_eviction`,
+  the forgery-eviction machinery), so the view rebuilds itself from the entries. The test for it
+  (`imaol::a_refold_rung_rebuilds_its_views_from_the_chains`) wipes `profile_view` in a rung and
+  gets it back. With the refold removed, the test goes red.
+- **Open:** node rungs are SQL only. Re-deriving a node memo from personas' chains needs a code
+  rung, to be built when the first such change arrives.
+
+STYLE.md's User-1 rule now says ship day has come for the databases. PROJECT_PLAN's Substrate
+section records the decision, and `just clean` / `desktop-clean` no longer claim a schema change
+needs them.

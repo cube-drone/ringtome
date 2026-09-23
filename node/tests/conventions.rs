@@ -26,6 +26,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // around them stays sync's.
         ("identity_peers", vec!["net/sync.rs", "net/frontier.rs"]),
         ("boot_timestamps", vec!["db.rs"]),
+        ("schema_ladder", vec!["migrations.rs"]),
         ("ingest_job", vec!["ingest.rs"]),
         ("foreign_fetches", vec!["idface.rs"]),
         ("post_replies", vec!["replies.rs"]),
@@ -476,4 +477,31 @@ fn every_file_that_spells_the_version_agrees() {
         "the version is spelled differently in different files: {said:?}. `just release-*` writes \
          them together; a hand-edit that writes one leaves the app disagreeing with itself."
     );
+}
+
+/// A released migration rung never changes (src/migrations.rs): every machine that ran the
+/// release has climbed it, so an edit would make fresh databases and old ones two different
+/// schemas under one stamp. `migrations/released.txt` is the pin `just release-*` writes, and
+/// this is what holds it - including against a comment fix, because the node's own record of a
+/// climbed rung is a hash of the whole file too.
+#[test]
+fn released_migrations_never_change() {
+    use sha2::{Digest, Sha256};
+    let migrations = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let pins = std::fs::read_to_string(migrations.join("released.txt")).expect("the pin file");
+    let mut pinned = 0;
+    for line in pins.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let (file, want) = line.split_once(' ').expect("`<kind>/<file> <sha256>`");
+        let bytes = std::fs::read(migrations.join(file))
+            .unwrap_or_else(|_| panic!("released rung {file} is gone; a shipped rung is never deleted"));
+        let have = hex::encode(Sha256::digest(&bytes));
+        assert_eq!(
+            have,
+            want.trim(),
+            "released rung {file} has changed since it shipped. Put the file back and write the \
+             change as a NEW rung (migrations/README.md)."
+        );
+        pinned += 1;
+    }
+    assert!(pinned >= 2, "both baselines are pinned");
 }

@@ -522,15 +522,16 @@ kill:
 # decrypts the databases, so removing them together is the only honest option - a database
 # without its key refuses to open, on purpose.
 #
-# What it is FOR: the node refuses to boot after a schema generation bump ("pre-launch there is
-# no in-place migration - delete the database and rebuild"). This is that delete.
+# What it is FOR: a fresh start, and the one database the migration ladder refuses - a dev
+# database that climbed a rung which was edited afterwards, or one from before the ladder
+# (migrations/README.md). This is that delete.
 #
 # Covers `start` / `run` (./data, which also contains the integration rig's ./data/test*),
 # `start-two` (adds ./data-b, ./data-dht), `start-three` (adds ./data-c) and `start-n` (adds
 # ./data-2.. ./data-N, all swept by the data-* glob). Kills any running
 # node first, so nothing is holding a file open while it disappears.
 #
-# DESTROYS every dev persona, key and chain - the wipe a schema generation bump asks for.
+# DESTROYS every dev persona, key and chain.
 #
 # The one recipe that still depends on the machine-wide `kill`, and deliberately: it is deleting
 # the files out from under whatever is holding them open, and a foreground `just start` in another
@@ -807,8 +808,8 @@ desktop-test-data personas="15" actions="15" seed="":
 
 # Destroy the desktop app's node: its personas, keys, chains and the port it wrote down.
 #
-# The wipe a schema generation bump asks for, as `just clean` is for the dev network - but NOT
-# the same act, and it does not share `clean`'s manners. Dev data is throwaway by construction;
+# A fresh start for the app, as `just clean` is for the dev network - schema changes no longer
+# need one, they migrate in place (migrations/README.md) - but NOT the same act, and it does not share `clean`'s manners. Dev data is throwaway by construction;
 # this is the data a real installation keeps, and the keys in it are the one thing nobody can
 # re-download. So it asks first, and it refuses while the app is still running rather than
 # deleting files out from under it. `just desktop-clean erase` skips the question, for when you

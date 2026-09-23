@@ -104,8 +104,8 @@ cd ../node && just desktop-clean          # asks first
 cd ../node && just desktop-clean erase    # for the fifth time today
 ```
 
-The wipe a schema-generation bump asks for, as `just clean` is for the dev network - but not the
-same act, and it does not share `clean`'s manners. Dev data is throwaway by construction; this is
+A fresh start, as `just clean` is for the dev network (schema changes don't need one: databases
+migrate in place, see `node/migrations/README.md`) - but not the same act, and it does not share `clean`'s manners. Dev data is throwaway by construction; this is
 the data a real installation keeps, and the keys in it are the one thing nobody can re-download. So
 it says what it is about to delete and how big it is, it asks, and it **refuses while the app is
 running** rather than deleting files out from under it - the port written down is how it checks.

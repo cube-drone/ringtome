@@ -44,6 +44,7 @@ pub mod keystore;
 pub mod loops;
 pub mod media;
 pub mod message;
+pub mod migrations;
 pub mod net;
 pub mod nodeface;
 pub mod nodeshelf;

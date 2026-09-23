@@ -14,6 +14,7 @@
 // the tag and the title - see js/pure/releasename.js for why that split is not decoration.
 
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
@@ -121,6 +122,42 @@ function writeVersions(next, dryRun) {
     return touched;
 }
 
+/// Pin the migration rungs this release ships (node/src/migrations.rs): every rung already in
+/// `released.txt` must still hash the same - a release is refused rather than ship an edited rung
+/// to machines that already climbed the old one - and every rung not yet listed is appended,
+/// which freezes it from here on. Lines are only ever added, never rewritten.
+const PINS = 'node/migrations/released.txt';
+function pinMigrations(dryRun) {
+    const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'node/migrations', file))).digest('hex');
+    const text = read(PINS);
+    const pinned = new Map();
+    for (const line of text.split('\n').map((l) => l.trim())) {
+        if (!line || line.startsWith('#')) continue;
+        const [file, hash] = line.split(/\s+/);
+        pinned.set(file, hash);
+    }
+    for (const [file, hash] of pinned) {
+        if (!fs.existsSync(path.join(ROOT, 'node/migrations', file))) {
+            throw new Error(`released migration ${file} is gone; a shipped rung is never deleted.`);
+        }
+        if (sha256(file) !== hash) {
+            throw new Error(`released migration ${file} has changed since it shipped; put it back and write the change as a new rung.`);
+        }
+    }
+    const fresh = [];
+    for (const kind of ['node', 'user']) {
+        const dir = path.join(ROOT, 'node/migrations', kind);
+        for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) {
+            const file = `${kind}/${name}`;
+            if (!pinned.has(file)) fresh.push(`${file} ${sha256(file)}`);
+        }
+    }
+    if (fresh.length && !dryRun) {
+        fs.writeFileSync(path.join(ROOT, PINS), text.replace(/\n*$/, '\n') + fresh.join('\n') + '\n');
+    }
+    return fresh.map((l) => l.split(' ')[0]);
+}
+
 /// The lockfiles carry our own crates' versions, so a release that did not refresh them would
 /// leave the next `cargo` command with a diff to commit. Two workspaces, because the desktop shell
 /// is its own (DESKTOP.md, Stage 2).
@@ -181,6 +218,9 @@ async function main() {
 
     const touched = writeVersions(next, dryRun);
     for (const t of touched) console.log(`  ${dryRun ? 'would write' : 'wrote'} ${t}`);
+    const rungs = pinMigrations(dryRun);
+    for (const r of rungs) console.log(`  ${dryRun ? 'would freeze' : 'froze'} migration ${r}`);
+    if (rungs.length === 0) console.log('  no new migrations to freeze');
 
     if (dryRun) {
     console.log('\n  --dry-run: nothing written, nothing committed, nothing pushed.\n');
@@ -193,6 +233,7 @@ async function main() {
     rl.close();
     if (answer.trim().toLowerCase() !== 'y') {
         for (const spot of VERSIONED) git('checkout', '--', spot.file);
+        git('checkout', '--', PINS);
         console.log('  nothing released; the version files are back as they were.');
         process.exit(1);
     }

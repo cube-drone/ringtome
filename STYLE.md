@@ -155,16 +155,20 @@
   disciplinary** (the COSE-style envelope that makes re-serialization impossible; a map reader
   that makes canonicality unforgettable). Security invariants may buy machinery; convenience may
   not.
+- **Ship day has come for the databases (2026-09-23)**: releases put a real node on a real
+  machine, so schema changes are migration rungs now, never edits to a released file
+  (`node/migrations/README.md`). The rule below still governs everything that has no installed
+  copy yet (wire churn before others run it, client caches, formats nobody has written).
 - **Until User 1, there is no install base — and no ceremony for one.** Before anything ships,
   there is no data to lose and nobody to migrate: breaking changes are always on the table,
-  schema changes squash into `0001` (rebuild, never migrate-in-place), file formats may churn,
+  file formats may churn (schemas squashed into `0001` until 0.1.0; see above),
   and safe-update machinery — migration paths, compat shims, upgrade gates — is deferred until
   an install base exists to be safe *for*. Any invariant whose justification quietly assumes
   active users ("upgrades must round-trip", "we can't change that column") should be challenged
   on sight. Two things this rule does **not** license: sloppy *design* of formats (they are
   still designed to last, because ship day freezes them — the wire format gets test vectors
   precisely so it can survive its own success), and forgetting that **ship day flips this rule
-  permanently** — the same discipline that squashes migrations today writes them forever after.
+  permanently** — the discipline that once squashed migrations now writes them forever after.
 - **The second copy is the finding.** Every deduplication worth doing in this codebase announced
   itself the same way: the same code written twice, the copies drifting, and *one of them missing
   a clause* - a reader that never retried a pending body, a filter silently lacking its

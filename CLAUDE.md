@@ -42,5 +42,5 @@
 - **The two recipes that are still machine-wide** — warn before running either while anything
   is up, including in another checkout. `just kill` shoots every ringtome on the machine; it is
   a panic button for a wedged box and nothing depends on it any more. `just clean` depends on
-  it AND destroys this checkout's data directories — personas, keys, chains — which is what a
-  schema generation bump asks for and nothing else.
+  it AND destroys this checkout's data directories — personas, keys, chains. Schema changes
+  no longer ask for it: they are migration rungs, climbed in place (`node/migrations/README.md`).
