@@ -875,6 +875,18 @@ release-micro *flags:
 release-major *flags:
     cd "{{justfile_directory()}}" && node tools/release.mjs major {{flags}}
 
+# Run the release pipeline WITHOUT releasing anything: builds all three platforms, signs what
+# it can, notarizes nothing, publishes nothing, and leaves the installers as artifacts on the
+# run. What to use when the thing being debugged is the pipeline rather than the app - it costs
+# no version number and does not wait on Apple's notary queue, whose tail is unbounded.
+release-trial:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    gh workflow run release.yml || exit 1
+    echo "started; watching (ctrl-c is safe - the run continues)"
+    sleep 6
+    gh run watch "$(gh run list --workflow=release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+
 # What the next release would be and what its notes would say. Writes nothing.
 release-dry part="minor":
     cd "{{justfile_directory()}}" && node tools/release.mjs {{part}} --dry-run

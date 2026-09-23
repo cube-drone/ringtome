@@ -18,6 +18,11 @@ on:
       - "v*"
   # A packaging dry run: builds every target and uploads the artifacts, creates no release.
   workflow_dispatch:
+    inputs:
+      notarize:
+        description: "Notarize the macOS build (Apple's queue has an unbounded tail; off for iteration)"
+        type: boolean
+        default: false
 
 jobs:
   # Ten seconds of checking before ninety minutes of building. Every secret here arrives by
@@ -145,8 +150,13 @@ jobs:
 
       # Apple's notarization key is a FILE, so the secret is its base64 and this writes it out.
       # Skipped, with the rest of the Apple environment, when the secret is not there yet.
+      # Notarization is skipped on a dispatch run unless asked for: Apple's notary queue is
+      # usually minutes and occasionally HOURS, and a stuck one blocks the artifacts entirely
+      # (2026-09-22: over an hour, with Apple's own status page reporting no incident). A tag is
+      # a real release and always notarizes; a dispatch is for finding out what the pipeline
+      # gets wrong, where waiting on Apple teaches nothing.
       - name: Apple notarization key
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-latest' && (github.event_name != 'workflow_dispatch' || inputs.notarize)
         env:
           KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
         run: |
@@ -201,8 +211,10 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          # Empty on an un-notarized run: the bundler notarizes if and only if it has credentials,
+          # so withholding them IS the switch.
+          APPLE_API_ISSUER: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_KEY || '' }}
           # Windows is unsigned until Azure Artifact Signing's identity validation lands
           # (SIGNING.md §2); users get SmartScreen's wall and click through it.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
