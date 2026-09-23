@@ -10250,3 +10250,28 @@ opens, one transaction per rung together with its stamp and its row in a new `sc
 STYLE.md's User-1 rule now says ship day has come for the databases. PROJECT_PLAN's Substrate
 section records the decision, and `just clean` / `desktop-clean` no longer claim a schema change
 needs them.
+
+## 2026-09-23 (cont.): the history dig no longer finishes a shelf that isn't here yet
+
+The `journalfill` claim ("a late follow's feed digs past the window") failed about one run in
+five on a clean HEAD - the migration work's `just ci` caught it, and CLAUDE.md's rule sent it to a
+clean-tree rerun rather than a shrug. The failing run's node log made it a product bug, not a
+timing one, and in one line: `history dig reached its floor` 59ms after the author's peek fetch
+returned, before a single post had landed.
+
+The window: the first look at the author is a **peek** (identity chains now, twenty posts as
+fragments behind the page), and the follow that comes next promotes the peek to a whole fetch
+*inside the follow's own request*. Between the subscription row and that fetch's return, the pair
+is already an eager follow and the author's database exists with no posts in it - and the
+free-running fill loop (one second apart in the rig) fell into it. `dig_one` read one empty page,
+which it cannot tell from an exhausted shelf, wrote `done`, and nothing reopens a finished dig,
+so the thirty posts that arrived a moment later never reached the feed. The old guard ("is their
+shelf even here" as a database stat) was the same hazard one step earlier.
+
+Two changes in the node. `fill_pass` skips an author while `state.peeked` marks them - set by the
+peek fetch, cleared by the whole one - leaving the pair undug rather than done. And a whole fetch
+that clears that mark restarts every reader's dig of that author (`fanout::restart_history_dig`),
+because any verdict written against the peek's shelf was a verdict on the wrong shelf. The
+residual, named on `fill_pass`: a persona whose first fetch is whole (pasted address, never
+peeked) can still be dug mid-landing if a beat falls inside that one exchange; nothing marks an
+exchange in flight per root today.

@@ -822,6 +822,13 @@ async fn fetch_foreign_with(
                     });
                 }
             } else {
+                // A peek becoming whole: whatever the history dig concluded about the peek's
+                // shelf was about a different shelf (fanout::fill_pass).
+                if state.peeked.is_behind(root_hex) {
+                    if let Err(e) = crate::fanout::restart_history_dig(&state.node_db, root_hex).await {
+                        tracing::warn!(root = %root_hex, "could not restart the history dig: {e:#}");
+                    }
+                }
                 state.peeked.clear(root_hex);
             }
             return true;

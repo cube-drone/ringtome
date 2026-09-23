@@ -1107,6 +1107,14 @@ pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &
 /// Per (reader, author) rather than per author because history is per relationship: each
 /// edge has its own follow point, its own cursor, and its own done. The dig journals with
 /// `via_root = NULL` - the reader follows this author, and direct is the stronger claim.
+///
+/// **`done` is a verdict on a WHOLE shelf**, and a short page cannot tell "exhausted" from
+/// "still landing", so the pass refuses to dig a shelf that is known to be partial (no
+/// database yet; held as a peek) and a whole fetch that replaces a peek restarts the dig
+/// (`restart_history_dig`). The residual: a persona whose FIRST fetch is whole (followed by
+/// pasted address, never peeked) can be dug mid-landing, if a beat falls inside that one
+/// exchange. Nothing marks an exchange in flight per root today; the window is one
+/// request wide and no test has fallen into it.
 pub async fn fill_pass(state: AppState) -> Result<()> {
     let mut pairs = crate::net::subscriptions::eager_follows(&state.node_db).await?;
     for root in crate::identity::hosted_roots(&state.node_db)
@@ -1155,6 +1163,19 @@ pub async fn fill_pass(state: AppState) -> Result<()> {
         // polite empty for that case reads as "shelf exhausted", which would mark the pair
         // done and hollow out its history when the chain finally lands.
         if state.user_dbs.db_mtime_ms(&author).is_none() {
+            continue;
+        }
+        // The same hazard one step later (2026-09-23, the journalfill claim failing ~1 run in
+        // 5): a PEEK's database is here - identity chains land first - and holds no posts,
+        // because a peek's shelf is twenty fragments that arrive behind the page (PROJECT_PLAN's
+        // Peeks, ruling 4), or is still landing. A follow promotes the peek to a whole fetch
+        // INSIDE the follow's own request, so between the subscription row and the fetch's
+        // return the pair is already an eager follow over an empty shelf; the free-running
+        // loop read one empty page, wrote `done`, and the thirty posts of history that
+        // arrived a moment later never reached the feed, because nothing reopens a finished
+        // dig. The mark is set by the peek fetch and cleared by the whole one; until then
+        // the pair stays UNDUG rather than done.
+        if state.peeked.is_behind(&author) {
             continue;
         }
         match dig_one(&state, &reader, &author, cursor).await {
@@ -1215,6 +1236,19 @@ async fn dig_one(
     if done {
         tracing::info!(reader = %reader_root, author = %author_root, "history dig reached its floor");
     }
+    Ok(())
+}
+
+/// Forget every reader's dig of one author, so each starts over from the newest page on
+/// the next beat. For the moment a shelf becomes whole where it was partial before - a peek
+/// promoted by a follow (`idface::fetch_foreign_with`) - because any `done` written against
+/// the partial shelf was a verdict on the wrong shelf. Cheap to redo: the dig is local reads,
+/// a page per beat.
+pub async fn restart_history_dig(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
+    node_db
+        .execute("DELETE FROM journal_fill WHERE author_root = ?1", (author_root,))
+        .await
+        .context("restarting an author's history dig")?;
     Ok(())
 }
 
