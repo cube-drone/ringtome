@@ -10275,3 +10275,29 @@ because any verdict written against the peek's shelf was a verdict on the wrong 
 residual, named on `fill_pass`: a persona whose first fetch is whole (pasted address, never
 peeked) can still be dug mid-landing if a beat falls inside that one exchange; nothing marks an
 exchange in flight per root today.
+
+## 2026-09-23 (cont.): Windows signing, with no secret
+
+Azure Artifact Signing is live (Curtis: identity validated, the account and a Public Trust profile
+active, and the `deploy` environment federated to an Entra app by OIDC - no client secret). The
+release workflow now signs the Windows build through it.
+
+The shape: the build job asks GitHub for an OIDC token (`id-token: write`), `azure/login` trades it
+for an Azure CLI session, and Microsoft's own `signtool` with the Artifact Signing dlib does the
+signing, authenticating through that session by `DefaultAzureCredential` (every other credential in
+its chain is excluded in `metadata.json`, so a failure is one 401 rather than a tour). The dlib and a
+current SDK's signtool are fetched as NuGet packages, because the dlib refuses SDK builds older than
+10.0.2261 and a runner image's SDK is nobody's promise. Tauri calls `desktop/tools/sign-windows.ps1`
+per file - the exe before it is wrapped, then each installer - through `bundle.windows.signCommand`
+in a new `desktop/tauri.windows.conf.json`, which Tauri merges on Windows only, so Mac and Linux
+builds never see it. Every signature is timestamped: the certificate Microsoft issues lives three
+days.
+
+The community `artifact-signing-cli` the Tauri docs suggest was not used - it authenticates by
+client secret only, and there isn't one. Six environment variables (not secrets; none is
+confidential) carry the rest: the three GUIDs, the region endpoint, the account and the profile
+name. Preflight checks their shapes and insists on all six or none; absent, the Windows build is
+unsigned with a note, the same posture as a Mac build without Apple's credentials. Also
+`.github/workflows/ci.yml`: the tag exclusion added for releases had silenced CI on every branch
+push (a `push` trigger naming only a tag filter runs for tags only - five commits went unchecked);
+`branches: ["**"]` beside it restores the per-push gate.

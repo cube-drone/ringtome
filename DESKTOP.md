@@ -406,7 +406,7 @@ in `CFBundleShortVersionString`. The name rides in the tag, the title and the no
 signs and notarizes the Mac with the `deploy` environment's secrets, and publishes a GitHub Release
 carrying the installers, the updater artifacts and `latest.json`. `workflow_dispatch` does the same
 build and publishes nothing, for when the packaging itself is what changed. It degrades rather than
-fails when a secret is missing, because Windows signing is still waiting on Azure and a half-signed
+fails when a secret is missing (Windows signing landed by OIDC on 2026-09-23, SIGNING.md §2), and a half-signed
 release beats a red run. Bundling is on, the updater's public key and the `releases/latest/download`
 endpoint are in `tauri.conf.json`, and a packaged build runs as a PROD node - decided by the build
 profile rather than by a preference, since a dev node serves the UI from an absolute path that

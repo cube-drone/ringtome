@@ -6,9 +6,11 @@
 # Apple, handed to every installed copy as a complete new application. `just ci` remains the
 # per-commit gate and never builds Tauri - that is why `desktop/` is its own workspace.
 #
-# Secrets come from the `deploy` environment (SIGNING.md), and the build degrades rather than fails
-# when one is absent: no Apple credentials means an unsigned macOS build rather than a red run,
-# because Windows signing is still waiting on Azure and a half-signed release is better than none.
+# Credentials come from the `deploy` environment (SIGNING.md), and the build degrades rather than
+# fails when one is absent: no Apple credentials means an unsigned macOS build, no Azure variables an
+# unsigned Windows one, each with a line in the log - a half-signed release is better than none.
+# Windows signs through Azure Artifact Signing with no secret at all: the job asks GitHub for an
+# OIDC token and Azure accepts it (`id-token: write` below), so there is nothing to paste or rotate.
 
 name: Release
 
@@ -43,6 +45,15 @@ jobs:
           APPLE_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_KEY_ID: ${{ secrets.APPLE_API_KEY }}
+          # Azure's six are environment VARIABLES, not secrets: none of them is confidential (the
+          # OIDC federation is what proves the job is ours), and a variable can be read back and
+          # checked by eye, which a secret cannot.
+          AZ_CLIENT: ${{ vars.AZURE_CLIENT_ID }}
+          AZ_TENANT: ${{ vars.AZURE_TENANT_ID }}
+          AZ_SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZ_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZ_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZ_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
         run: |
           bad=0
           # Reports the SHAPE of a secret and never its contents: a length, a verdict, and for a
@@ -79,8 +90,44 @@ jobs:
           esac
           [ -z "$APPLE_ISSUER" ] && echo "  APPLE_API_ISSUER: absent" || echo "  APPLE_API_ISSUER: ${#APPLE_ISSUER} chars"
           [ -z "$APPLE_KEY_ID" ] && echo "  APPLE_API_KEY: absent" || echo "  APPLE_API_KEY: ${#APPLE_KEY_ID} chars"
+          echo "variables in the deploy environment (Windows signing):"
+          # All six or none: a partial set means an azure/login that fails or a signtool that
+          # 403s forty minutes in, and either is better learned here.
+          azure_set=0; azure_total=6
+          check_guid () {
+            local name="$1" value="$2"
+            if [ -z "$value" ]; then echo "  $name: absent"; return; fi
+            azure_set=$((azure_set + 1))
+            if printf '%s' "$value" | grep -Eq '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'; then
+              echo "  $name: ok"
+            else
+              echo "  $name: MALFORMED - expected a GUID"; bad=1
+            fi
+          }
+          check_guid AZURE_CLIENT_ID "$AZ_CLIENT"
+          check_guid AZURE_TENANT_ID "$AZ_TENANT"
+          check_guid AZURE_SUBSCRIPTION_ID "$AZ_SUBSCRIPTION"
+          if [ -z "$AZ_ENDPOINT" ]; then echo "  AZURE_SIGNING_ENDPOINT: absent";
+          else
+            azure_set=$((azure_set + 1))
+            if printf '%s' "$AZ_ENDPOINT" | grep -Eq '^https://[a-z0-9]+\.codesigning\.azure\.net/?$'; then
+              echo "  AZURE_SIGNING_ENDPOINT: ok ($AZ_ENDPOINT)"
+            else
+              echo "  AZURE_SIGNING_ENDPOINT: MALFORMED - expected https://<region>.codesigning.azure.net (SIGNING.md section 2 has the table)"; bad=1
+            fi
+          fi
+          for pair in "AZURE_SIGNING_ACCOUNT=$AZ_ACCOUNT" "AZURE_SIGNING_PROFILE=$AZ_PROFILE"; do
+            name="${pair%%=*}"; value="${pair#*=}"
+            if [ -z "$value" ]; then echo "  $name: absent"; else azure_set=$((azure_set + 1)); echo "  $name: ok ($value)"; fi
+          done
+          if [ "$azure_set" -eq 0 ]; then
+            echo "  (none set: the Windows build will be unsigned)"
+          elif [ "$azure_set" -ne "$azure_total" ]; then
+            echo "::error::$azure_set of $azure_total Azure variables are set; Windows signing needs all of them or none"
+            bad=1
+          fi
           if [ "$bad" -ne 0 ]; then
-            echo "::error::a secret is malformed - see above. Set them from the file rather than the clipboard: gh secret set NAME --env deploy < file"
+            echo "::error::a credential is malformed - see above. Set secrets from the file rather than the clipboard: gh secret set NAME --env deploy < file; variables with gh variable set NAME --env deploy --body VALUE"
             exit 1
           fi
 
@@ -89,6 +136,9 @@ jobs:
     environment: deploy
     permissions:
       contents: write
+      # The Windows signer's whole credential: GitHub mints an OIDC token naming this repo and
+      # the `deploy` environment, and the Azure app's federated credential trusts exactly that.
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -198,6 +248,61 @@ jobs:
           echo "notarization key ready (${#KEY_BASE64} characters in, $(wc -c < "$KEY_PATH") bytes out)"
           echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
+      # Windows signing (SIGNING.md section 2). Both steps are skipped entirely when the Azure
+      # variables are absent, and the sign script then leaves every file unsigned with a note.
+      - name: Azure login (OIDC)
+        if: matrix.platform == 'windows-latest' && vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Microsoft's own route: signtool from the Windows SDK build tools with the Artifact
+      # Signing dlib plugged in, both fetched as NuGet packages so nothing depends on what the
+      # runner image happens to carry (the dlib refuses SDK builds older than 10.0.2261). The
+      # metadata file is what the dlib reads; the credentials it tries are cut down to the one
+      # that can work here, so a failure is one clear 401 rather than a tour of every method.
+      - name: Azure signing tools
+        if: matrix.platform == 'windows-latest' && vars.AZURE_CLIENT_ID != ''
+        shell: pwsh
+        env:
+          AZ_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZ_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZ_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP "azsign"
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          nuget install Microsoft.Windows.SDK.BuildTools -x -OutputDirectory $tools | Out-Null
+          nuget install Microsoft.ArtifactSigning.Client -x -OutputDirectory $tools | Out-Null
+          $signtool = Get-ChildItem -Path $tools -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          $dlib = Get-ChildItem -Path $tools -Recurse -Filter Azure.CodeSigning.Dlib.dll |
+            Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+          if (-not $signtool -or -not $dlib) {
+            Write-Error "could not find signtool.exe ($signtool) or the Artifact Signing dlib ($dlib) under $tools"
+            exit 1
+          }
+          $metadata = Join-Path $tools "metadata.json"
+          @{
+            Endpoint = $env:AZ_ENDPOINT
+            CodeSigningAccountName = $env:AZ_ACCOUNT
+            CertificateProfileName = $env:AZ_PROFILE
+            CorrelationId = "ringtome $env:GITHUB_REF_NAME $env:GITHUB_RUN_ID"
+            ExcludeCredentials = @(
+              "EnvironmentCredential", "ManagedIdentityCredential", "WorkloadIdentityCredential",
+              "SharedTokenCacheCredential", "VisualStudioCredential", "VisualStudioCodeCredential",
+              "AzurePowerShellCredential", "AzureDeveloperCliCredential", "InteractiveBrowserCredential"
+            )
+          } | ConvertTo-Json | Set-Content -Path $metadata -Encoding utf8
+          "RINGTOME_SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
+          "RINGTOME_SIGN_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          "RINGTOME_SIGN_METADATA=$metadata" >> $env:GITHUB_ENV
+          Write-Host "signtool: $($signtool.FullName)"
+          Write-Host "dlib:     $($dlib.FullName)"
+          Write-Host "account:  $env:AZ_ACCOUNT / $env:AZ_PROFILE at $env:AZ_ENDPOINT"
+
       - name: Build, sign, and publish
         uses: tauri-apps/tauri-action@v0
         env:
@@ -215,8 +320,9 @@ jobs:
           # so withholding them IS the switch.
           APPLE_API_ISSUER: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_ISSUER || '' }}
           APPLE_API_KEY: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_KEY || '' }}
-          # Windows is unsigned until Azure Artifact Signing's identity validation lands
-          # (SIGNING.md §2); users get SmartScreen's wall and click through it.
+          # Windows: nothing to pass. The bundler calls desktop/tools/sign-windows.ps1 per file
+          # (tauri.windows.conf.json), which reads the RINGTOME_SIGN_* paths the tools step
+          # exported and signs through the Azure CLI's OIDC session.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop

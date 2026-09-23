@@ -270,26 +270,55 @@ cannot sign from CI without a machine of our own to plug it into.
 **Processing takes 1 to 20 business days.** That is Microsoft's own figure, and it is why this
 document exists rather than a paragraph in a chat message.
 
-### What that turns into
+### What that turns into (wired 2026-09-23)
 
-An app registration (service principal) for CI, giving `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
-`AZURE_TENANT_ID` — plus three plain facts we put in config rather than secrets: the **endpoint URI**
-for your region, the **account name**, and the **certificate profile name**. Signing itself is
-`cargo install artifact-signing-cli` and a `signCommand` in `tauri.conf.json`; I will wire that when
-the profile exists.
+**No secret.** An Entra app registration with a **federated credential** that trusts GitHub's OIDC
+token for this repository's `deploy` environment: the release job asks GitHub for a token
+(`permissions: id-token: write`), `azure/login` hands it to Azure, and the Azure CLI on the runner is
+signed in for the rest of the job. Nothing is pasted, nothing expires, nothing can leak from a log.
+The app registration needs the **Artifact Signing Certificate Profile Signer** role on the account.
+
+Six **environment variables** (not secrets — none is confidential) in the `deploy` environment:
+
+```
+AZURE_CLIENT_ID          the app registration's client id (a GUID)
+AZURE_TENANT_ID          the Entra tenant (a GUID)
+AZURE_SUBSCRIPTION_ID    the subscription the signing account lives in (a GUID)
+AZURE_SIGNING_ENDPOINT   https://<region>.codesigning.azure.net - the region's URI, e.g. wus2, eus, cus
+AZURE_SIGNING_ACCOUNT    the Artifact Signing account's name
+AZURE_SIGNING_PROFILE    the Public Trust certificate profile's name
+```
+
+Set with `gh variable set NAME --env deploy --body VALUE`. The preflight job checks their shapes and
+insists on all six or none; the endpoint's region must match where the account AND profile were
+created, or signing fails with a 403 that says nothing about regions.
+
+How signing actually happens: Microsoft's `signtool` with the Artifact Signing dlib
+(`desktop/tools/sign-windows.ps1`, called per file by `bundle.windows.signCommand` in
+`desktop/tauri.windows.conf.json`). The dlib authenticates through the CLI session above. The
+certificate Microsoft issues is valid for **three days** — every signature is timestamped against
+`timestamp.acs.microsoft.com`, which is what keeps it valid after that. The community
+`artifact-signing-cli` the Tauri docs mention was not used: it authenticates by client secret only.
 
 ---
 
 ## 3. Where the secrets go
 
-GitHub repository secrets (Settings → Secrets and variables → Actions). The CI matrix reads exactly
-these names; nothing else needs to know them:
+The `deploy` GitHub environment (Settings → Environments). The release workflow reads exactly these
+names; nothing else needs to know them. Secrets (`gh secret set NAME --env deploy < file`):
 
 ```
 APPLE_CERTIFICATE              APPLE_CERTIFICATE_PASSWORD     APPLE_SIGNING_IDENTITY
 APPLE_API_ISSUER               APPLE_API_KEY                  APPLE_API_KEY_BASE64
-AZURE_CLIENT_ID                AZURE_CLIENT_SECRET            AZURE_TENANT_ID
 TAURI_SIGNING_PRIVATE_KEY      TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+```
+
+Variables (`gh variable set NAME --env deploy --body VALUE`) — Windows signs by OIDC, so its six are
+plain facts, listed in §2:
+
+```
+AZURE_CLIENT_ID                AZURE_TENANT_ID                AZURE_SUBSCRIPTION_ID
+AZURE_SIGNING_ENDPOINT         AZURE_SIGNING_ACCOUNT          AZURE_SIGNING_PROFILE
 ```
 
 Rules that are boring until the day they are not: no secret goes in the repo, in
