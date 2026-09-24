@@ -10301,3 +10301,40 @@ unsigned with a note, the same posture as a Mac build without Apple's credential
 `.github/workflows/ci.yml`: the tag exclusion added for releases had silenced CI on every branch
 push (a `push` trigger naming only a tag filter runs for tags only - five commits went unchecked);
 `branches: ["**"]` beside it restores the per-push gate.
+
+## 2026-09-23 (cont.): the app updates itself
+
+DESKTOP.md's Stage 6, built while Windows signing baked. `desktop/src/update.rs`: a packaged build
+asks `latest.json` on the newest GitHub Release for a newer version thirty seconds after launch and
+every six hours after; the updater plugin downloads the platform's artifact and verifies its minisign
+signature against the public key in `tauri.conf.json` before the bytes are handed over; the bytes
+wait in managed state and install on `RunEvent::Exit`, so the next launch is the new version and
+this one never restarted under anybody. That is update-on-quit, which DESKTOP.md had already argued
+for: an update is the whole app, and installing it restarts the node, which is somebody's presence on
+the network. One native dialog per version offers "restart now" for whoever wants it sooner
+(`tauri-plugin-dialog`, on a blocking worker thread - the runtime has a node to run). Everything is
+driven from Rust, so the webview gets no capability and the plugins' JS surface stays off. A dev
+build never checks - no bundle to replace, a version that means nothing. Windows installs in
+`passive` mode (progress bar, no clicks). Untested end to end until two consecutive releases exist
+with this code in the older one; the first release carrying it is what makes the next one the test.
+## 2026-09-23 (cont.): nodes on different releases can talk
+
+Curtis asked how sync copes with a field of wildly varying versions, and the honest answer was "it
+doesn't, and nothing tests it". The entry format was already built to outlive versions (a version
+tag, unknown header keys skipped and carried through, append-only type ids), but the sync
+*conversation* was not: the Hello decoded only at arities 4 through 8, exactly, and each of its four
+later slots had been a silent wire break - survivable only because every node was rebuilt from one
+tree on the same day. The next slot would have made every released node drop the connection with
+`unknown sync message`.
+
+Two changes, made now while every installed copy is Curtis's own (a reader only tolerates what it
+was built to tolerate; 0.1.x readers cannot be helped after the fact). **Messages are additive**
+(`ringtome-proto/src/sync.rs`): a reader requires the slots its table was born with, takes the ones it
+knows after them, and skips any past that whatever their shape - Hello, Entry and Done alike, so the
+two that have never grown can. A truncated tail is still malformed; skipping reads real items. The
+encoder now writes every Hello slot every time, since leaving trailing empties off no longer buys
+anything. **The Hello carries the sender's app version** as its ninth slot, a fact and never a
+switch: the node logs the peer's version at debug, and at info when the peer is AHEAD, since that is
+the direction where the fix is on this end. PROJECT_PLAN's versioning section gains the three rules
+(additive messages; a new entry field must degrade safely for a reader that ignores it, with the `im`
+flag as the model; a cross-version rig as the proof, still to build).

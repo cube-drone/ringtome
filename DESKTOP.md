@@ -438,6 +438,14 @@ its user.
 load-bearing for security the way electron-updater would have been, which is a reason it comes last
 rather than a reason to skip it.
 
+*Built 2026-09-23, `desktop/src/update.rs`.* A packaged build checks `latest.json` on the newest
+GitHub Release thirty seconds after launch and every six hours after, downloads a newer release in
+the background (the plugin verifies the minisign signature before handing over the bytes), and
+installs it as the app exits - update-on-quit, per the consequences below - with one dialog per
+version offering "restart now". Driven from Rust, so the webview gets no capability. A dev build never
+checks: it has no bundle to replace. The residual is the `.deb` on Linux, which the updater cannot
+touch; the AppImage is the Linux artifact that self-updates.
+
 *How it interacts with signing, since the two are easy to conflate (Curtis, 2026-09-22).* On macOS
 an update is a **whole-bundle replacement**: the artifact is a `.app.tar.gz`, there are no binary
 deltas, and the `.dmg` is for first installs only. The running app verifies the archive's **minisign**

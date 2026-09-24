@@ -1598,6 +1598,32 @@ pub async fn sync_room_with_peer(
     sync_with_peer_asking(state, root_hex, addr, ROOM_SCOPE, &[room], Ask::default()).await
 }
 
+/// What a peer's Hello says about the build it runs (the version slot, 2026-09-23). A fact,
+/// never a switch: nothing branches on it. It is logged so that the first time two releases
+/// disagree about an exchange, the log says which two - and loudly when the peer is AHEAD,
+/// because that is the one direction where the fix is on this end (the app updates itself,
+/// DESKTOP.md Stage 6). A peer that predates the slot says nothing, and is noted as such.
+fn note_peer_version(state: &AppState, peer_id: &[u8; 32], theirs: &str) {
+    let ours = state.config.app_version.as_str();
+    let peer = hex::encode(peer_id);
+    if theirs.is_empty() {
+        tracing::debug!(%peer, %ours, "peer's build predates the version slot");
+        return;
+    }
+    let newer = match (
+        crate::semver::semver_to_comparable_integer(theirs),
+        crate::semver::semver_to_comparable_integer(ours),
+    ) {
+        (Ok(t), Ok(o)) => t > o,
+        _ => false,
+    };
+    if newer {
+        tracing::info!(%peer, %theirs, %ours, "peer runs a newer Ringtome than this node");
+    } else {
+        tracing::debug!(%peer, %theirs, %ours, "peer version");
+    }
+}
+
 /// `sync_with_peer_scoped` with the depth named (PROJECT_PLAN's Peeks, slice 5): `below` asks the peer for
 /// entries beneath the posts chain's floor - scrollback's backfill.
 pub async fn sync_with_peer_asking(
@@ -1675,6 +1701,7 @@ async fn exchange_on(
             // for every room named whose key this node holds, so an onward room's chains
             // come to whoever can read them rather than only to the creator's own circle.
             key_proofs: crate::chat::key_proofs_for(state, instances, &our_id, &peer_id).await,
+            version: state.config.app_version.clone(),
         },
     )
     .await?;
@@ -1685,6 +1712,7 @@ async fn exchange_on(
             root: peer_root,
             frontiers,
             proof,
+            version,
             // (the responder echoes our scope and zeros for depth; our own `wanted` and
             // `ask` are authoritative)
             ..
@@ -1692,6 +1720,7 @@ async fn exchange_on(
             if peer_root != root {
                 bail!("peer answered for a different identity");
             }
+            note_peer_version(state, &peer_id, &version);
             (frontiers, proof)
         }
         other => bail!("expected Hello from peer, got {other:?}"),
@@ -1942,7 +1971,11 @@ async fn serve_on(
             below,
             instances,
             key_proofs,
-        }) => (root, frontiers, proof, wanted, Ask { ceiling, below }, instances, key_proofs),
+            version,
+        }) => {
+            note_peer_version(&state, &peer_id, &version);
+            (root, frontiers, proof, wanted, Ask { ceiling, below }, instances, key_proofs)
+        }
         other => bail!("expected Hello, got {other:?}"),
     };
     let root_hex = hex::encode(root);
@@ -1979,6 +2012,7 @@ async fn serve_on(
                 below: 0,
                 instances: Vec::new(),
                 key_proofs: Vec::new(),
+                version: state.config.app_version.clone(),
             },
         )
         .await?;
@@ -2080,6 +2114,7 @@ async fn serve_on(
             below: 0,
             instances: instances.clone(),
             key_proofs: Vec::new(),
+            version: state.config.app_version.clone(),
         },
     )
     .await?;

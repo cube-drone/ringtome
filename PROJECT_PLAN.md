@@ -1767,6 +1767,31 @@ and vice versa. Cross-context signature-replay bugs are common and stupid; domai
 - **Test vectors are mandatory:** the spec publishes "this logical entry MUST produce exactly these bytes and this
   hash / this signature," so independent implementations stay bit-compatible. These are the conformance boundary.
 
+### Many versions on one network (settled 2026-09-23)
+
+Once the app updates itself and releases are days apart, the network is never on one version. Three
+rules make that survivable, each with its enforcement named:
+
+- **Sync messages grow by appending slots; a reader skips what it does not know.** Within one ALPN
+  a message is `[tag, ...slots]`: a reader requires the slots its table was born with, takes the ones it
+  recognises after them, gives an absent slot its pre-slot default, and steps over any it cannot name.
+  Slots are never removed, reordered or given a new meaning - that is a new ALPN, which two endpoints
+  on different tables fail to negotiate rather than misread. (`ringtome-proto/src/sync.rs`; before this
+  the Hello's decoder took an exact arity range, and each of its four later slots had been a silent
+  break survivable only because every node was rebuilt from one tree.) The app version rides as the
+  Hello's last slot: a fact the receiver logs, never a switch anything branches on.
+- **A new entry field must degrade safely for a reader that ignores it.** The entry format's additive
+  rule (above) guarantees an old reader *skips* an unknown header key and forwards the bytes intact; it
+  does not guarantee the old reader's *reading* is safe. The test for a new key is "what does a node
+  that has never heard of it show?", and the answer must never widen visibility, weaken a seal, or
+  change the meaning of a key that already exists. The `im` flag (header key 23) is the model: an old
+  reader sees a sealed room it cannot open, which is the correct fallback. A key that only makes sense
+  alongside a change to an existing key's meaning is not additive and needs the version tag.
+- **The proof is a cross-version rig, not an argument.** `just integration` with one node built from
+  the last release tag and the rest from HEAD is the only thing that makes either rule true rather
+  than asserted. It costs a second Rust build, so it belongs on the release workflow rather than every
+  commit. Not built yet (2026-09-23); until it is, the two rules above are held by review.
+
 ### A debug tool, not text on the wire
 
 Binary sacrifices human readability, which is recovered cheaply by a `ringtome inspect <entry>` tool that

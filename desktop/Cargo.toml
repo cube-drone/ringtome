@@ -56,3 +56,8 @@ anyhow = "1"
 # never become an injection even if the minting ever changes shape.
 serde_json = "1"
 tracing = "0.1"
+# Stage 6 (DESKTOP.md): the updater fetches and verifies a newer release, the dialog is the one
+# question it asks ("restart now?"). Both are driven from Rust (src/update.rs), so neither needs
+# a capability granted to the webview.
+tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"

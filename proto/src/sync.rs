@@ -11,16 +11,25 @@
 //! the node; a message decoding successfully says nothing about whether its contents should be
 //! believed.
 //!
-//! Wire shape: each message is a canonical CBOR array `[tag, ...fields]`:
+//! Wire shape: each message is a canonical CBOR array `[tag, ...slots]`:
 //!
-//! | tag | message | fields                                                        |
-//! |-----|---------|---------------------------------------------------------------|
-//! | 0   | Hello   | bstr(32) root, array of [bstr(32) author, uint service, uint floor, uint head] |
-//! | 1   | Entry   | bstr envelope bytes (opaque; the author's exact bytes)        |
-//! | 2   | Done    | -                                                             |
+//! | tag | message | slots, in order                                                     |
+//! |-----|---------|---------------------------------------------------------------------|
+//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version |
+//! | 1   | Entry   | bstr envelope bytes (opaque; the author's exact bytes)              |
+//! | 2   | Done    | -                                                                   |
 //!
-//! Protocol *version* lives in the ALPN ([`SYNC_ALPN`]), not in the messages: two endpoints that
-//! negotiate the ALPN agree on this whole table, and a future v2 is a new ALPN string.
+//! **Messages grow by appending slots, and a reader skips the slots it does not know.** This
+//! is the rule that lets nodes on different releases talk (2026-09-23; before it, each of the
+//! Hello's four later slots had been a silent break, survivable only because every node was
+//! rebuilt from one tree). A reader requires the slots its own version was born with and takes
+//! any it recognises after those; an absent slot means its pre-slot default; anything past the
+//! last slot it knows is skipped, whatever its shape. So a newer sender's Hello decodes on an
+//! older node, and an older sender's on a newer one. Slots are never removed, reordered or
+//! given a new meaning - that is a *breaking* change, and a breaking change is a new ALPN
+//! string ([`SYNC_ALPN`]), which two endpoints on different tables simply fail to negotiate.
+//! Protocol *version* therefore lives in the ALPN; the app version rides in the Hello as a
+//! fact about the peer, never as a switch.
 
 use crate::cbor::{Reader, Writer};
 use crate::entry::MAX_ENTRY_BYTES;
@@ -47,6 +56,18 @@ pub const MAX_WANTED_INSTANCES: usize = 32;
 const TAG_HELLO: u64 = 0;
 const TAG_ENTRY: u64 = 1;
 const TAG_DONE: u64 = 2;
+
+/// The slots each message needs to be one at all: the tag plus what the first release of the
+/// table required. Anything after these is optional and skippable.
+const HELLO_MIN_ARITY: u64 = 4;
+const ENTRY_MIN_ARITY: u64 = 2;
+const DONE_MIN_ARITY: u64 = 1;
+/// How many slots this build writes for a Hello, and the last one it reads.
+const HELLO_ARITY: u64 = 9;
+
+/// Cap on the version slot's text: a semver string is a dozen characters, and a page of it
+/// is not a version.
+pub const MAX_VERSION_LEN: usize = 64;
 
 /// One chain's held range: this peer holds entries `floor..=head` of `(author, service)`.
 /// v1 nodes always hold full chains (`floor == 0`); the wire carries the floor anyway because
@@ -185,6 +206,10 @@ pub enum SyncMessage {
         /// Empty is every instance, the pre-rooms wire shape (arity-6 Hellos decode to it).
         instances: Vec<[u8; 16]>,
         key_proofs: Vec<([u8; 16], [u8; 32])>,
+        /// The sender's app version (2026-09-23), a fact rather than a switch: nothing in the
+        /// exchange branches on it, but the receiver can say "this peer runs 0.4 and I run
+        /// 0.1" when something disagrees. Empty from a sender that predates the slot.
+        version: String,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -205,6 +230,7 @@ impl SyncMessage {
                 below,
                 instances,
                 key_proofs,
+                version,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -218,13 +244,12 @@ impl SyncMessage {
                 if key_proofs.len() > MAX_WANTED_INSTANCES {
                     return Err(ProtoError::BadEntry("too many key proofs"));
                 }
-                w.array(if !key_proofs.is_empty() {
-                    8
-                } else if instances.is_empty() {
-                    6
-                } else {
-                    7
-                });
+                if version.len() > MAX_VERSION_LEN {
+                    return Err(ProtoError::BadEntry("version text too long"));
+                }
+                // Every slot, every time: since readers skip what they don't know, there is no
+                // longer a reason to shorten the frame by leaving trailing empties off.
+                w.array(HELLO_ARITY);
                 w.uint(TAG_HELLO);
                 w.bytes(root);
                 w.array(frontiers.len() as u64);
@@ -260,23 +285,21 @@ impl SyncMessage {
                 w.array(2);
                 w.uint(*ceiling);
                 w.uint(*below);
-                // The instance slot, only when scoped: a room-scoped exchange.
-                if !instances.is_empty() || !key_proofs.is_empty() {
-                    w.array(instances.len() as u64);
-                    for i in instances {
-                        w.bytes(i);
-                    }
+                // The instance slot: empty is every instance; non-empty is a room-scoped exchange.
+                w.array(instances.len() as u64);
+                for i in instances {
+                    w.bytes(i);
                 }
-                // The key slot (2026-09-20): `(instance, proof)` pairs, written only when
-                // this node can show the key to a room it is asking about.
-                if !key_proofs.is_empty() {
-                    w.array(key_proofs.len() as u64);
-                    for (instance, proof) in key_proofs {
-                        w.array(2);
-                        w.bytes(instance);
-                        w.bytes(proof);
-                    }
+                // The key slot (2026-09-20): `(instance, proof)` for each room whose key this
+                // node can show.
+                w.array(key_proofs.len() as u64);
+                for (instance, proof) in key_proofs {
+                    w.array(2);
+                    w.bytes(instance);
+                    w.bytes(proof);
                 }
+                // The version slot (2026-09-23).
+                w.text(version);
             }
             SyncMessage::Entry(bytes) => {
                 if bytes.len() > MAX_ENTRY_BYTES {
@@ -300,8 +323,9 @@ impl SyncMessage {
         }
         let mut r = Reader::new(bytes);
         let arity = r.array()?;
-        let msg = match (r.uint()?, arity) {
-            (TAG_HELLO, arity @ 4..=8) => {
+        let tag = r.uint()?;
+        let msg = match tag {
+            TAG_HELLO if arity >= HELLO_MIN_ARITY => {
                 let root = r.bytes_fixed::<32>()?;
                 let n = r.array()?;
                 if n > MAX_FRONTIERS as u64 {
@@ -400,6 +424,17 @@ impl SyncMessage {
                 } else {
                     Vec::new()
                 };
+                // Arity 9 carries the sender's version (2026-09-23); older shapes say nothing.
+                let version = if arity >= 9 {
+                    let text = r.text()?;
+                    if text.len() > MAX_VERSION_LEN {
+                        return Err(ProtoError::BadEntry("version text too long"));
+                    }
+                    text.to_string()
+                } else {
+                    String::new()
+                };
+                skip_trailing(&mut r, arity, HELLO_ARITY)?;
                 SyncMessage::Hello {
                     root,
                     frontiers,
@@ -409,21 +444,36 @@ impl SyncMessage {
                     below,
                     instances,
                     key_proofs,
+                    version,
                 }
             }
-            (TAG_ENTRY, 2) => {
+            TAG_ENTRY if arity >= ENTRY_MIN_ARITY => {
                 let b = r.bytes()?;
                 if b.len() > MAX_ENTRY_BYTES {
                     return Err(ProtoError::BadEntry("entry exceeds size limit"));
                 }
+                skip_trailing(&mut r, arity, ENTRY_MIN_ARITY)?;
                 SyncMessage::Entry(b.to_vec())
             }
-            (TAG_DONE, 1) => SyncMessage::Done,
+            TAG_DONE if arity >= DONE_MIN_ARITY => {
+                skip_trailing(&mut r, arity, DONE_MIN_ARITY)?;
+                SyncMessage::Done
+            }
             _ => return Err(ProtoError::BadEntry("unknown sync message")),
         };
         r.finish()?;
         Ok(msg)
     }
+}
+
+/// The additive rule's other half: slots past the last one this build knows are a newer
+/// sender's, and are stepped over whatever they hold. Each is still a well-formed canonical
+/// item (the reader refuses anything else), so garbage cannot hide in the tail.
+fn skip_trailing(r: &mut Reader<'_>, arity: u64, known: u64) -> Result<(), ProtoError> {
+    for _ in known..arity {
+        r.skip_value()?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -466,6 +516,7 @@ mod tests {
             below: 0,
             instances: vec![],
             key_proofs: Vec::new(),
+            version: String::new(),
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -479,6 +530,7 @@ mod tests {
             below: 0,
             instances: vec![],
             key_proofs: Vec::new(),
+            version: String::new(),
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
@@ -489,6 +541,7 @@ mod tests {
             below: 0,
             instances: vec![],
             key_proofs: Vec::new(),
+            version: String::new(),
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -499,8 +552,37 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_version_slot_round_trips() {
+        let hello = SyncMessage::Hello {
+            root: [7u8; 32],
+            frontiers: vec![],
+            proof: None,
+            wanted: vec![],
+            ceiling: 0,
+            below: 0,
+            instances: vec![],
+            key_proofs: Vec::new(),
+            version: "0.1.4".to_string(),
+        };
+        let bytes = hello.encode().unwrap();
+        assert_eq!(SyncMessage::decode(&bytes).unwrap(), hello);
+        let long = SyncMessage::Hello {
+            root: [7u8; 32],
+            frontiers: vec![],
+            proof: None,
+            wanted: vec![],
+            ceiling: 0,
+            below: 0,
+            instances: vec![],
+            key_proofs: Vec::new(),
+            version: "x".repeat(MAX_VERSION_LEN + 1),
+        };
+        assert_eq!(long.encode(), Err(ProtoError::BadEntry("version text too long")));
+    }
+
     /// The pre-scoping Hello (arity 4, no wanted slot) still decodes - as unscoped, which
-    /// is exactly what it always meant. Encode now always writes arity 5.
+    /// is exactly what it always meant: every later slot reads as its default.
     #[test]
     fn an_arity_four_hello_decodes_as_unscoped() {
         let mut w = Writer::new();
@@ -521,6 +603,7 @@ mod tests {
                 below: 0,
                 instances: vec![],
                 key_proofs: Vec::new(),
+                version: String::new(),
             }
         );
     }
@@ -536,6 +619,7 @@ mod tests {
             below: 0,
             instances: vec![],
             key_proofs: Vec::new(),
+            version: String::new(),
         };
         assert_eq!(
             msg.encode(),
@@ -544,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_tags_and_arities_are_rejected() {
+    fn unknown_tags_and_short_frames_are_rejected() {
         // Tag 9 doesn't exist.
         let mut w = Writer::new();
         w.array(1);
@@ -553,12 +637,88 @@ mod tests {
             SyncMessage::decode(&w.into_bytes()),
             Err(ProtoError::BadEntry("unknown sync message"))
         );
-
-        // Done with a stray extra field.
+        // A Hello missing a slot its first release required is not a Hello.
         let mut w = Writer::new();
-        w.array(2);
-        w.uint(TAG_DONE);
+        w.array(3);
+        w.uint(TAG_HELLO);
+        w.bytes(&[7u8; 32]);
+        w.array(0);
+        assert_eq!(
+            SyncMessage::decode(&w.into_bytes()),
+            Err(ProtoError::BadEntry("unknown sync message"))
+        );
+        // An Entry with no bytes slot.
+        let mut w = Writer::new();
+        w.array(1);
+        w.uint(TAG_ENTRY);
+        assert!(SyncMessage::decode(&w.into_bytes()).is_err());
+    }
+
+    /// The additive rule, from the older reader's side: a frame from a build that appended
+    /// slots this one has never heard of decodes to what this one knows, and the tail's shape
+    /// is not its business - a text, a nested array, a map, a huge integer, all skipped.
+    #[test]
+    fn slots_past_the_ones_we_know_are_skipped() {
+        let mut w = Writer::new();
+        w.array(HELLO_ARITY + 4);
+        w.uint(TAG_HELLO);
+        w.bytes(&[7u8; 32]);
+        w.array(0); // frontiers
+        w.array(0); // proof
+        w.array(0); // wanted
+        w.array(2); // depth
         w.uint(0);
+        w.uint(0);
+        w.array(0); // instances
+        w.array(0); // key proofs
+        w.text("9.9.9"); // version
+        w.text("a future slot"); // and four this build cannot name
+        w.array(2);
+        w.uint(1);
+        w.uint(2);
+        w.map(1);
+        w.uint(3);
+        w.bytes(&[1, 2, 3]);
+        w.uint(u64::MAX);
+        let msg = SyncMessage::decode(&w.into_bytes()).unwrap();
+        let SyncMessage::Hello { version, wanted, .. } = msg else {
+            panic!("a Hello");
+        };
+        assert_eq!(version, "9.9.9");
+        assert!(wanted.is_empty());
+
+        // The same for the two frames that have never grown, so that they can.
+        let mut w = Writer::new();
+        w.array(3);
+        w.uint(TAG_DONE);
+        w.text("later");
+        w.uint(7);
+        assert_eq!(SyncMessage::decode(&w.into_bytes()).unwrap(), SyncMessage::Done);
+        let mut w = Writer::new();
+        w.array(3);
+        w.uint(TAG_ENTRY);
+        w.bytes(&[0x82, 0x41, 0x00, 0x41, 0x00]);
+        w.array(0);
+        assert_eq!(
+            SyncMessage::decode(&w.into_bytes()).unwrap(),
+            SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00])
+        );
+
+        // A truncated tail is still a malformed frame: skipping reads real items only.
+        let mut w = Writer::new();
+        w.array(HELLO_ARITY + 1);
+        w.uint(TAG_HELLO);
+        w.bytes(&[7u8; 32]);
+        w.array(0);
+        w.array(0);
+        w.array(0);
+        w.array(2);
+        w.uint(0);
+        w.uint(0);
+        w.array(0);
+        w.array(0);
+        w.text("0.2.0");
+        // ...and nothing where the tenth slot should be.
         assert!(SyncMessage::decode(&w.into_bytes()).is_err());
     }
 
@@ -580,6 +740,7 @@ mod tests {
             below: 0,
             instances: vec![],
             key_proofs: Vec::new(),
+            version: String::new(),
         };
         assert!(bad.encode().is_err());
 

@@ -103,9 +103,11 @@ Settled, staged and under way in [DESKTOP.md](DESKTOP.md): Tauri v2 with the nod
 one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
 * ~~Stage 2 — the shell, in-process, dev only~~ built 2026-09-21: `just desktop`
 * ~~Stage 3 — the per-launch token, and no login screen~~ built 2026-09-21
-* **Stage 4** — packaging and signing (the stage that costs recurring money)
+* ~~Stage 4 — packaging and signing~~ built 2026-09-22/23: `just release-*`, Mac signed and
+  notarized, Windows signing by Azure OIDC (its first signed run is the proof still owed)
 * **Stage 5** — autostart and the tray: the desktop app as the user's always-on node
-* **Stage 6** — auto-update and a release channel
+* ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
+  update-on-quit; proven only once two releases carry it
 
 ### Marquee Promises
 * Marquee provides fixtures for drop-in functionality: do we still have a use for those?

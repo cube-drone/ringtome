@@ -6,23 +6,27 @@
 //! to ship or to notarize - because the node is a library (Stage 1) and this links it.
 //!
 //! What this file must never become is a second composition root. It decides three things that
-//! belong to an embedder - where the data lives, which port to ask for, and that the window exists
-//! - and then calls `ringtome_node::bind`. Everything else about what a node IS stays in the
+//! belong to an embedder - where the data lives, which port to ask for, and that the window exists;
+//! then it calls `ringtome_node::bind`. Everything else about what a node IS stays in the
 //! library, where `just ci` tests it.
 //!
-//! Stage 2 is dev-only: no signing, no updater, no installer, no tray, no autostart. The
-//! environment is left to `RINGTOME_ENVIRONMENT`, which means a plain `just desktop` runs the node
-//! in dev mode and serves the UI from disk - edit `node/js`, hit reload, see it - and Stage 4 will
-//! be where a packaged build says `prod` and eats the bundle baked into the binary.
+//! No tray and no autostart yet (Stage 5). The environment is left to `RINGTOME_ENVIRONMENT`,
+//! which means a plain `just desktop` runs the node in dev mode and serves the UI from disk -
+//! edit `node/js`, hit reload, see it - while a packaged build says `prod` and eats the bundle
+//! baked into the binary. Updates (Stage 6) are `update.rs`: fetched in the background,
+//! installed on the way out.
 
 mod port;
+mod update;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = data_directory(app.handle())?;
             // The key for this launch (DESKTOP.md, Stage 3), minted here and never written
@@ -35,15 +39,23 @@ fn main() {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
                 .title("Ringtome")
                 .inner_size(1280.0, 860.0)
-                .initialization_script(&format!(
+                .initialization_script(format!(
                     "window.__ringtome_launch_token = {};",
                     serde_json::to_string(&token).expect("a hex string is JSON")
                 ))
                 .build()?;
+            update::start(app.handle().clone());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("running the Ringtome desktop shell");
+        .build(tauri::generate_context!())
+        .expect("building the Ringtome desktop shell")
+        .run(|app, event| {
+            // The update-on-quit half of Stage 6: a downloaded update installs as the app goes,
+            // so the next launch is the new version and this one never restarted under anybody.
+            if let tauri::RunEvent::Exit = event {
+                update::install_pending(app);
+            }
+        });
 }
 
 /// Where this app keeps its node: the platform's own application-data directory, named by the
@@ -66,9 +78,9 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 /// The port is the remembered one (see [`port`]); if something else took it since last launch the
 /// bind fails, and the answer to that is another port written down rather than a shell that will
 /// not start.
-fn start_node(data_dir: &PathBuf, token: String) -> anyhow::Result<String> {
+fn start_node(data_dir: &Path, token: String) -> anyhow::Result<String> {
     let mut config = ringtome_node::config::Config::from_env();
-    config.data_directory = data_dir.clone();
+    config.data_directory = data_dir.to_path_buf();
     // A PACKAGED app is a prod node (DESKTOP.md, Stage 4), and a `cargo run` is a dev one - which
     // is not a preference but a fact about where the UI comes from: a dev node serves the bundle
     // from `node/js/target` by absolute path, which exists on the machine that compiled it and
