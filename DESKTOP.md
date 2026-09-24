@@ -439,7 +439,8 @@ load-bearing for security the way electron-updater would have been, which is a r
 rather than a reason to skip it.
 
 *Built 2026-09-23, `desktop/src/update.rs`.* A packaged build checks `latest.json` on the newest
-GitHub Release thirty seconds after launch and every six hours after, downloads a newer release in
+GitHub Release thirty seconds after launch and every ten minutes after (a cadence for a product
+changing daily; raise it when releases slow), downloads a newer release in
 the background (the plugin verifies the minisign signature before handing over the bytes), and
 installs it as the app exits - update-on-quit, per the consequences below - with one dialog per
 version offering "restart now". Driven from Rust, so the webview gets no capability. A dev build never

@@ -30,8 +30,11 @@ use tauri_plugin_updater::UpdaterExt;
 /// The first look, after launch: late enough that the node is up and the window painted, since
 /// nothing about an update is urgent.
 const FIRST_CHECK: Duration = Duration::from_secs(30);
-/// Between looks. A release is a deliberate act (`just release-*`), not a stream.
-const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+/// Between looks. Ten minutes while the product is changing daily (Curtis, 2026-09-24): a
+/// check is one small GET against the release CDN, and a download happens only when the
+/// version moved, so the cadence costs nothing and buys every install the day's releases
+/// within minutes. Raise it when releases are weeks apart and nobody is waiting on one.
+const CHECK_EVERY: Duration = Duration::from_secs(10 * 60);
 
 /// A verified, downloaded update waiting for the app to quit.
 struct Pending {
