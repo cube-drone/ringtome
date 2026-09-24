@@ -6631,7 +6631,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "ringtome-node",
@@ -6646,7 +6646,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "argon2",
@@ -6700,7 +6700,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "blake3",
  "ed25519-dalek 2.2.0",
