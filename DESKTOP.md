@@ -442,8 +442,12 @@ macOS a hidden Ringtome leaves the dock. A second launch focuses the running win
 building a second node against the same data directory. The tray's status line is the version and
 the node's address for now; a real status light (peers, syncing) is a later refinement. Stage 6 is
 amended to match: a node that is never quit would never update, so a pending update installs and
-restarts on its own once the window has been hidden fifteen minutes. Residual: on Linux the tray
-needs libayatana-appindicator on the user's system, which the AppImage does not carry.
+restarts on its own once the window has been hidden fifteen minutes. On Linux the tray is a
+runtime library (libayatana-appindicator, `dlopen`ed by the tray crate) plus a panel that renders
+StatusNotifierItems: the `.deb` declares the library as a dependency, the AppImage cannot carry it,
+and a machine without it gets no tray - in which case close quits rather than hides, and a hidden
+launch shows itself, because a hidden window with no way back is a node nobody can reach. Stock
+GNOME additionally needs the AppIndicator extension to render any tray at all.
 
 **Stage 6 — auto-update and a release channel.** Tauri's updater against a static host. No longer
 load-bearing for security the way electron-updater would have been, which is a reason it comes last

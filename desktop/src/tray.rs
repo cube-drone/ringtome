@@ -6,7 +6,9 @@
 //! **Close hides; Quit quits.** The window's close button hides it and the node runs on; the
 //! tray's Quit is the one act that stops the node (and installs a pending update on the way
 //! out, `update::install_pending`). On macOS the dock icon goes with the window, so a hidden
-//! Ringtome reads as a background presence rather than a stuck app.
+//! Ringtome reads as a background presence rather than a stuck app. On a machine with no
+//! tray to come back through ([`TrayPresent`]) close quits instead - hidden with no way
+//! back would be a node nobody can reach.
 //!
 //! **Start at login, on by default** (Curtis, 2026-09-24: affordances to tune this can come
 //! later). Enabled once, on the first packaged launch, through the platform's own mechanism
@@ -31,13 +33,37 @@ pub const HIDDEN_ARG: &str = "--hidden";
 /// presence is what keeps a user's later "no" from being overridden at every launch.
 const AUTOSTART_MARKER: &str = "autostart-offered";
 
+/// Whether this launch got a tray. On Linux the tray is a runtime library
+/// (libayatana-appindicator, loaded by `dlopen`) that a machine may simply not have, and a
+/// panel that may not render it; without one, a hidden window could never be reopened or quit
+/// from, so close must quit instead (`main`'s window-event handler asks this).
+pub struct TrayPresent(pub bool);
+
 /// Was this launch asked to stay out of sight (a login item, or a hand-typed `--hidden`)?
 pub fn launched_hidden() -> bool {
     std::env::args().any(|a| a == HIDDEN_ARG)
 }
 
-/// Build the tray and its menu. Called once from `main`'s setup.
-pub fn build(app: &AppHandle, data_dir: &Path, url: &str) -> tauri::Result<()> {
+/// Build the tray and its menu, or record that this machine cannot show one. Called once from
+/// `main`'s setup, and never fails it: an app that refuses to start because a panel library is
+/// missing has confused the ornament with the point.
+pub fn build(app: &AppHandle, data_dir: &Path, url: &str) {
+    match try_build(app, url) {
+        Ok(()) => app.manage(TrayPresent(true)),
+        Err(e) => {
+            tracing::warn!(error = %e, "no tray on this machine: closing the window will quit Ringtome");
+            app.manage(TrayPresent(false))
+        }
+    };
+    offer_autostart(app, data_dir);
+}
+
+/// Does this launch have a tray to come back through?
+pub fn present(app: &AppHandle) -> bool {
+    app.try_state::<TrayPresent>().is_some_and(|t| t.0)
+}
+
+fn try_build(app: &AppHandle, url: &str) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Ringtome", true, None::<&str>)?;
     let status = MenuItem::with_id(
         app,
@@ -92,8 +118,6 @@ pub fn build(app: &AppHandle, data_dir: &Path, url: &str) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
-
-    offer_autostart(app, data_dir);
     Ok(())
 }
 

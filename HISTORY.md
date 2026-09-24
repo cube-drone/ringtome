@@ -10410,5 +10410,8 @@ the port and the database lock in that order.
 Stage 6 had assumed people quit, and with a tray they don't - so `update.rs` gains the quiet
 restart: a downloaded update installs and restarts on its own once the window has been hidden
 fifteen minutes (nobody is watching; the node is gone for seconds), the once-per-version dialog
-stays for a window that is open, and no dialog is raised at a hidden one. Residual: the Linux tray
-wants libayatana-appindicator on the user's system.
+stays for a window that is open, and no dialog is raised at a hidden one. On Linux the tray is a
+`dlopen`ed library (libayatana-appindicator) the machine may not have: the `.deb` depends on it,
+and without it the app still starts - close quits instead of hiding, and a hidden launch shows
+itself, since a hidden window with no way back is a node nobody can reach. (The first cut failed
+setup outright on a missing library; explaining what the library was is what caught it.)

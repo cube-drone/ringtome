@@ -37,10 +37,17 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .on_window_event(|window, event| {
-            // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on.
+            // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on. Unless
+            // there is no tray to come back through, in which case close means quit - and the
+            // exit hook below still installs a pending update on the way out.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                tray::hide_window(window.app_handle());
+                let app = window.app_handle();
+                if tray::present(app) {
+                    api.prevent_close();
+                    tray::hide_window(app);
+                } else {
+                    app.exit(0);
+                }
             }
         })
         .setup(|app| {
@@ -63,9 +70,13 @@ fn main() {
                 ))
                 .build()?;
             update::start(app.handle().clone());
-            tray::build(app.handle(), &data_dir, &url)?;
-            if hidden {
+            tray::build(app.handle(), &data_dir, &url);
+            // A hidden launch with nothing to come back through would be a node nobody can
+            // reach; without a tray, the window shows regardless.
+            if hidden && tray::present(app.handle()) {
                 tray::hide_window(app.handle());
+            } else if hidden {
+                tray::show_window(app.handle());
             }
             Ok(())
         })
