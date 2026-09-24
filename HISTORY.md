@@ -10338,3 +10338,16 @@ switch: the node logs the peer's version at debug, and at info when the peer is 
 the direction where the fix is on this end. PROJECT_PLAN's versioning section gains the three rules
 (additive messages; a new entry field must degrade safely for a reader that ignores it, with the `im`
 flag as the model; a cross-version rig as the proof, still to build).
+
+## 2026-09-24: the Windows sign command, by absolute path
+
+The first signed Windows run got as far as `Signing ringtome-desktop.exe with a custom signing
+command` and stopped with `failed to run powershell` - the bundler's wording for "the command
+exited non-zero", with the command's own output shown only under `--verbose`. The bundler's source
+(`tauri-bundler/src/bundle/windows/sign.rs`) runs the command from the process's working directory,
+not the project's, so the overlay's relative `tools/sign-windows.ps1` was the likely cause. The
+overlay is gone: the workflow's tools step now writes the sign command with the script's absolute
+runner path and merges it into the build with `--config`, which also keeps a local Windows build
+unsigned by construction. The Windows build runs `--verbose`, the script keeps a transcript in
+`RUNNER_TEMP`, and a failure step prints it - so the next failure, if there is one, says what
+signtool said.

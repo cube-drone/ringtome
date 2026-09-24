@@ -294,8 +294,9 @@ insists on all six or none; the endpoint's region must match where the account A
 created, or signing fails with a 403 that says nothing about regions.
 
 How signing actually happens: Microsoft's `signtool` with the Artifact Signing dlib
-(`desktop/tools/sign-windows.ps1`, called per file by `bundle.windows.signCommand` in
-`desktop/tauri.windows.conf.json`). The dlib authenticates through the CLI session above. The
+(`desktop/tools/sign-windows.ps1`, called per file as `bundle.windows.signCommand` - configured by
+the workflow's tools step and merged into the build with `--config`, since the bundler needs the
+script's absolute path and a local build should stay unsigned). The dlib authenticates through the CLI session above. The
 certificate Microsoft issues is valid for **three days** — every signature is timestamped against
 `timestamp.acs.microsoft.com`, which is what keeps it valid after that. The community
 `artifact-signing-cli` the Tauri docs mention was not used: it authenticates by client secret only.

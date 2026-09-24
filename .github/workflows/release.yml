@@ -153,8 +153,11 @@ jobs:
           - platform: ubuntu-22.04
             args: ""
             rust-targets: ""
+          # Verbose, because the bundler reports a failed sign command as `failed to run
+          # powershell` and prints what the command actually said only at this level
+          # (2026-09-23, the first signed Windows run).
           - platform: windows-latest
-            args: ""
+            args: --verbose
             rust-targets: ""
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 90
@@ -299,8 +302,27 @@ jobs:
           "RINGTOME_SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
           "RINGTOME_SIGN_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
           "RINGTOME_SIGN_METADATA=$metadata" >> $env:GITHUB_ENV
+          # The bundler's sign command, as a config merged into the build (`--config` below)
+          # rather than a file in the repo: the bundler runs the command from whatever the
+          # process's working directory happens to be, so the script's path has to be absolute,
+          # and an absolute runner path is nothing to commit. A local Windows build, with no
+          # such config, is simply unsigned.
+          $script = Join-Path $env:GITHUB_WORKSPACE "desktop\tools\sign-windows.ps1"
+          $signConfig = Join-Path $tools "sign.json"
+          @{
+            bundle = @{
+              windows = @{
+                signCommand = @{
+                  cmd = "powershell"
+                  args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $script, "%1")
+                }
+              }
+            }
+          } | ConvertTo-Json -Depth 6 | Set-Content -Path $signConfig -Encoding utf8
+          "RINGTOME_SIGN_CONFIG=$signConfig" >> $env:GITHUB_ENV
           Write-Host "signtool: $($signtool.FullName)"
           Write-Host "dlib:     $($dlib.FullName)"
+          Write-Host "script:   $script"
           Write-Host "account:  $env:AZ_ACCOUNT / $env:AZ_PROFILE at $env:AZ_ENDPOINT"
 
       - name: Build, sign, and publish
@@ -320,9 +342,9 @@ jobs:
           # so withholding them IS the switch.
           APPLE_API_ISSUER: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_ISSUER || '' }}
           APPLE_API_KEY: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_KEY || '' }}
-          # Windows: nothing to pass. The bundler calls desktop/tools/sign-windows.ps1 per file
-          # (tauri.windows.conf.json), which reads the RINGTOME_SIGN_* paths the tools step
-          # exported and signs through the Azure CLI's OIDC session.
+          # Windows: nothing to pass. The `--config` in `args` names desktop/tools/sign-windows.ps1
+          # as the bundler's sign command; the script reads the RINGTOME_SIGN_* paths the tools
+          # step exported and signs through the Azure CLI's OIDC session.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop
@@ -336,7 +358,18 @@ jobs:
           prerelease: false
           # `latest.json`, which is what an installed app polls to learn there is an update.
           includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          # Plus the Windows sign command, when the tools step wrote one (RINGTOME_SIGN_CONFIG
+          # is empty on every other platform and on a Windows run without the Azure variables).
+          args: ${{ matrix.args }}${{ env.RINGTOME_SIGN_CONFIG != '' && format(' --config {0}', env.RINGTOME_SIGN_CONFIG) || '' }}
+
+      # The sign script keeps its own transcript (desktop/tools/sign-windows.ps1) because the
+      # bundler shows none of its output on failure; this puts it in the log where it belongs.
+      - name: Windows signing transcript
+        if: failure() && matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "sign-windows.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no transcript: the sign script never started - the --verbose build log above has the bundler's own words" }
 
       # A dry run has no release to upload to, so the artifacts land on the run itself.
       - name: Keep the artifacts (dry run)
