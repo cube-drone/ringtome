@@ -10363,3 +10363,33 @@ died. No ordering of build and login is safe against that, so the sign script no
 it asks the runner's ID-token endpoint (exposed to every step under `id-token: write`) for a fresh
 token and runs `az login --federated-token` seconds before each signature. The early `azure/login`
 stays as the check that federation works before the build spends its half hour.
+
+## 2026-09-24 (cont.): a blob is held until its row lands
+
+Two CI-only failures a day apart, on unrelated claims, with one symptom: a node could not find
+bytes it had itself written moments earlier. `pins` got "this note's words haven't arrived" from a
+publish two requests after the save; `video_posts` served the twin's body to the author and
+reported it absent to the trusted reader two lines later, on the same node. The only thing in this
+system that makes a present blob absent is the reaper, and the reaper's blind spot was already
+known: a blob's temp tag rode the recent ring for a grace window (the 2026-08-25 fix, after
+journalfill's publishes met the rig's GC cadence), and the rig's window is 500ms. On a laptop the
+gap between a put and the append that references it is milliseconds; on a loaded 4-vCPU ARM runner
+carrying five nodes it is not. Cutting the rig's grace to 1ms reproduced the pins failure locally
+three of three - the falsifying question, answered.
+
+The fix takes the clock out of it, in two halves. First, `put_encrypted` and `put_public` return
+a `files::Put` that owns the store's temp tag, and every caller holds it until its row has
+committed - the document save releases it right after its append, the ingest and the two public
+mints hold theirs through their appends. Six call sites in three files; no other path puts a blob.
+That alone was not enough: pins still failed two of three at a 1ms grace, because a GC round's
+live-set walk cannot see a row appended after the walk began, and a `Put` released right after
+that append left the blob to the ring's clock. So, second, the ring's clock is gone: an entry is
+stamped with the GC round current when it was noted (a `Put` notes its hash as it drops), the mark
+phase keeps every entry and then drops the ones stamped before the round it is running - their
+rows were in what its walk read - and an entry stamped mid-walk stays for exactly one more. A round
+is the only unit a snapshot's staleness is measured in. `RINGTOME_TEST_REAP_GRACE_MS` no longer
+exists; the rig's reaper still fires every two seconds. The 2026-08-25 test is rewritten to pin the
+guard's lifetime; both claims pass with the reaper firing every 100ms and no grace at all. The
+residual, named on `Put`: the compiler makes a caller name the value but cannot make it live past
+the append - a `Put` dropped as a temporary would reopen the first gap - so the site comments say
+"held until the append", and a fresh site should too.

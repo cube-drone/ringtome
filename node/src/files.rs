@@ -38,9 +38,43 @@ type ArmedGc = std::sync::Arc<std::sync::OnceLock<(LiveSource, Store)>>;
 /// closes every window except the put that lands between the protect snapshot and the
 /// clear, and that window ate a 75ms-old body on CI (2026-08-25, journalfill). Entries
 /// prune by grace on every insert and every GC round, which is what releases the tags.
-type RecentRing = std::sync::Arc<
-    std::sync::Mutex<Vec<(Hash, std::time::Instant, Option<iroh_blobs::api::TempTag>)>>,
->;
+/// Hashes whose ledger row has JUST landed (or is landing), each stamped with the GC round
+/// that was current when it was noted. The mark phase protects every entry and then drops
+/// the ones stamped before the round it is running - see `gc_config` for why that, and only
+/// that, is the right lifetime.
+type RecentRing = std::sync::Arc<std::sync::Mutex<Vec<(Hash, u64)>>>;
+/// How many GC rounds have started. The ring's clock: rounds, never seconds.
+type GcRounds = std::sync::Arc<std::sync::atomic::AtomicU64>;
+
+/// A blob just stored, and the hold that keeps it out of the reaper's sweep. **Keep this
+/// alive until the row that names `hash` has committed** - the header append, the fragment
+/// row, whatever makes the blob reachable from the ledgers the mark phase walks. Dropping it
+/// releases the store's temp tag; from then on only a ledger reference (or the recent ring's
+/// short grace) protects the bytes.
+///
+/// Why a value the caller holds rather than a clock (2026-09-24): the ring used to hold each
+/// put's temp tag for a grace window, and the rig's 500ms window was long enough on a laptop
+/// and short enough on a loaded CI runner that two claims a day apart lost a body between
+/// its put and its append (pins' "words haven't arrived", the video twin present for one read
+/// and gone for the next). Reproduced locally at a 1ms grace, three of three. The gap the tag
+/// covers is "the row is about to land", and only the code landing the row knows when that is.
+pub struct Put {
+    pub hash: Hash,
+    ring: RecentRing,
+    rounds: GcRounds,
+    _tag: iroh_blobs::api::TempTag,
+}
+
+impl Drop for Put {
+    /// Released: the row is in. The hash goes on the ring, stamped with the current round,
+    /// so a GC walk that began before the row landed (and so cannot see it) still keeps the
+    /// bytes; the next round's walk sees the row, and the ring lets go. Runs before the
+    /// tag field drops, so there is no instant with neither hold.
+    fn drop(&mut self) {
+        let round = self.rounds.load(std::sync::atomic::Ordering::SeqCst);
+        self.ring.lock().expect("recent ring poisoned").push((self.hash, round));
+    }
+}
 
 pub type LiveSource = std::sync::Arc<
     dyn Fn() -> std::pin::Pin<
@@ -48,25 +82,6 @@ pub type LiveSource = std::sync::Arc<
         > + Send
         + Sync,
 >;
-
-/// Blobs put or fetched this recently are protected regardless of the ledgers: a put returns
-/// its hash BEFORE the caller writes the row that references it, and the reaper must not win
-/// that race. Ten minutes is oceans beside the milliseconds the row-write takes. Tests shrink
-/// it (`RINGTOME_TEST_REAP_GRACE_MS`) so a reap is watchable inside one suite.
-///
-/// Read LIVE on every use, deliberately not latched in a process-wide OnceLock: the
-/// unit-test binary is one process running many tests, and a latch let whichever test touched
-/// a store first freeze the grace for every test after it - the reaper test's shrunk value
-/// lost that race exactly when the runner was slow enough to serialize the suite, which is
-/// how CI was red for a day while every parallel local run stayed green (found 2026-08-16).
-/// The read is an env scan, paid per put/fetch and per GC round - nothing on a hot path.
-fn recent_grace() -> std::time::Duration {
-    std::env::var("RINGTOME_TEST_REAP_GRACE_MS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .map(std::time::Duration::from_millis)
-        .unwrap_or(std::time::Duration::from_secs(600))
-}
 
 /// The blob-serving ALPN. New protocol beside the sync ALPN on the same endpoint.
 pub const BLOB_ALPN: &[u8] = iroh_blobs::ALPN;
@@ -106,9 +121,10 @@ pub struct FileStore {
     /// node's ledgers exist (`reaper::arm`). Until then the GC callback aborts every run - an
     /// unarmed reaper reaps nothing.
     armed: ArmedGc,
-    /// Hashes put or fetched recently, protected from the reaper while their referencing rows
-    /// land (see [`recent_grace`]).
+    /// Hashes whose referencing rows just landed, protected from the reaper for one full GC
+    /// round (see the ring's type and `gc_config`).
     recent: RecentRing,
+    rounds: GcRounds,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
     /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
     /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
@@ -119,29 +135,31 @@ impl FileStore {
     /// In-memory store - tests and ephemeral nodes. GC runs fast here (the unit tests want to
     /// watch it), and reaps nothing until armed, which tests almost never do.
     pub fn memory() -> Self {
-        let (armed, recent) = Self::gc_state();
+        let (armed, recent, rounds) = Self::gc_state();
         Self {
             backend: Backend::Mem(MemStore::new_with_opts(iroh_blobs::store::mem::Options {
                 gc_config: Some(Self::gc_config(
                     std::time::Duration::from_millis(200),
                     armed.clone(),
                     recent.clone(),
+                    rounds.clone(),
                 )),
             })),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             unplugged: crate::net::p2p::Unplugged::default(),
             armed,
             recent,
+            rounds,
         }
     }
 
     /// Persistent redb-backed store rooted at `path` (created if absent). `gc_interval` paces
     /// the blob reaper's rounds; the reaper still reaps nothing until `arm_gc` is called.
     pub async fn fs(path: impl AsRef<Path>, gc_interval: std::time::Duration) -> Result<Self> {
-        let (armed, recent) = Self::gc_state();
+        let (armed, recent, rounds) = Self::gc_state();
         let path = path.as_ref();
         let mut options = iroh_blobs::store::fs::options::Options::new(path);
-        options.gc = Some(Self::gc_config(gc_interval, armed.clone(), recent.clone()));
+        options.gc = Some(Self::gc_config(gc_interval, armed.clone(), recent.clone(), rounds.clone()));
         let store = FsStore::load_with_opts(path.join("blobs.db"), options)
             .await
             .context("opening blob store")?;
@@ -151,11 +169,12 @@ impl FileStore {
             unplugged: crate::net::p2p::Unplugged::default(),
             armed,
             recent,
+            rounds,
         })
     }
 
-    fn gc_state() -> (ArmedGc, RecentRing) {
-        (Default::default(), Default::default())
+    fn gc_state() -> (ArmedGc, RecentRing, GcRounds) {
+        (Default::default(), Default::default(), Default::default())
     }
 
     /// Arm the reaper: from now on, GC runs mark from `source` (plus the recent ring) and
@@ -166,21 +185,12 @@ impl FileStore {
 
     /// Note a blob as recently touched, so the reaper cannot win the race against the row
     /// that is about to reference it.
+    /// A blob that arrived by the network: on the ring for a round, stamped now. Its real
+    /// protection is the want that asked for it (`reaper::live_set`, the wants ledger); this
+    /// is the belt for the moment between the fetch and that ledger's reconciliation.
     fn note_recent(&self, hash: Hash) {
-        self.note_recent_inner(hash, None);
-    }
-
-    /// Note a fresh PUT: the hash rides the ring WITH its temp tag, so the mark phase sees
-    /// a live root even when the put landed inside the reaper's snapshot-to-clear window.
-    fn note_recent_tagged(&self, tag: iroh_blobs::api::TempTag) {
-        self.note_recent_inner(*tag.as_ref(), Some(tag));
-    }
-
-    fn note_recent_inner(&self, hash: Hash, tag: Option<iroh_blobs::api::TempTag>) {
-        let mut ring = self.recent.lock().expect("recent ring poisoned");
-        let cutoff = std::time::Instant::now() - recent_grace();
-        ring.retain(|(_, at, _)| *at > cutoff);
-        ring.push((hash, std::time::Instant::now(), tag));
+        let round = self.rounds.load(std::sync::atomic::Ordering::SeqCst);
+        self.recent.lock().expect("recent ring poisoned").push((hash, round));
     }
 
     /// The GC hook, shared by both backends: iroh-blobs runs the sweep on its own interval and
@@ -193,6 +203,7 @@ impl FileStore {
         interval: std::time::Duration,
         armed: ArmedGc,
         recent: RecentRing,
+        rounds: GcRounds,
     ) -> iroh_blobs::store::GcConfig {
         use iroh_blobs::store::ProtectOutcome;
         iroh_blobs::store::GcConfig {
@@ -203,7 +214,11 @@ impl FileStore {
             add_protected: Some(std::sync::Arc::new(move |live| {
                 let armed = armed.clone();
                 let recent = recent.clone();
+                let rounds = rounds.clone();
                 let work = tokio::spawn(async move {
+                    // This round's number, taken BEFORE the walk: anything noted from here
+                    // on carries it, and is kept through the NEXT round too.
+                    let this_round = rounds.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                     let Some((source, store)) = armed.get() else {
                         return None; // unarmed reaps nothing
                     };
@@ -215,13 +230,17 @@ impl FileStore {
                         }
                     };
                     {
-                        // Prune, not just filter: dropping an expired entry is what
-                        // releases its temp tag, and the GC round is the one place this
-                        // runs even when no new put ever comes.
-                        let cutoff = std::time::Instant::now() - recent_grace();
+                        // Every ring entry is kept THIS round. Then the ones stamped before
+                        // this round go: they were noted before this walk began, so their
+                        // rows are in what the walk read, and the ledger carries them now.
+                        // An entry stamped with this round was noted mid-walk - its row may
+                        // be younger than the snapshot - and stays for one more. No clock
+                        // anywhere (2026-09-24): the grace this used to run on lost to a
+                        // slow CI runner twice in a day, and a round is the only unit a
+                        // snapshot's staleness is actually measured in.
                         let mut ring = recent.lock().expect("recent ring poisoned");
-                        ring.retain(|(_, at, _)| *at > cutoff);
-                        keep.extend(ring.iter().map(|(h, _, _)| *h));
+                        keep.extend(ring.iter().map(|(h, _)| *h));
+                        ring.retain(|(_, noted)| *noted >= this_round);
                     }
                     // Tag hygiene: a tag here is `add_bytes` bookkeeping, never a reference -
                     // the ledgers are the references - and iroh's mark phase treats tags as
@@ -290,14 +309,15 @@ impl FileStore {
         BlobsProtocol::new(self.store(), None)
     }
 
-    /// Encrypt a body under an epoch key and store it; returns the ciphertext content hash a note
-    /// header points at via `file_hash`.
+    /// Encrypt a body under an epoch key and store it. The [`Put`]'s hash is the ciphertext
+    /// content hash a note header points at via `file_hash`; the `Put` itself is held until
+    /// that header has been appended.
     pub async fn put_encrypted(
         &self,
         epoch: u64,
         epoch_key: &[u8; 32],
         plaintext: &[u8],
-    ) -> Result<Hash> {
+    ) -> Result<Put> {
         let blob = encrypt_file(epoch, epoch_key, plaintext)?;
         // Gate one: never originate an over-cap blob. Legit callers are already bounded upstream
         // (the HTTP document cap, the transcode's output bound); this is the floor under all of it,
@@ -316,15 +336,14 @@ impl FileStore {
             .await
             .context("storing blob")?;
         let hash = *tag.as_ref();
-        self.note_recent_tagged(tag);
-        Ok(hash)
+        Ok(Put { hash, ring: self.recent.clone(), rounds: self.rounds.clone(), _tag: tag })
     }
 
     /// Store a PUBLIC body: plaintext into the same content-addressed store, no key in the
     /// question - the public lane's bodies (avatar first, posts to follow). The privacy rule
     /// that forbids dedup for private bodies inverts here: plaintext is content-addressed
     /// plainly, and identical public bytes sharing a hash is fine and free.
-    pub async fn put_public(&self, plaintext: &[u8]) -> Result<Hash> {
+    pub async fn put_public(&self, plaintext: &[u8]) -> Result<Put> {
         if plaintext.len() as u64 > self.max_blob_bytes {
             bail!(
                 "blob is {} bytes, over the {}-byte cap",
@@ -339,8 +358,7 @@ impl FileStore {
             .await
             .context("storing public blob")?;
         let hash = *tag.as_ref();
-        self.note_recent_tagged(tag);
-        Ok(hash)
+        Ok(Put { hash, ring: self.recent.clone(), rounds: self.rounds.clone(), _tag: tag })
     }
 
     /// What hash a public body WILL have, without storing it - the same content address
@@ -540,7 +558,7 @@ mod tests {
         let hash = files_a
             .put_encrypted(epoch, &key, &plaintext)
             .await
-            .unwrap();
+            .unwrap().hash;
 
         let addr_a = crate::net::sync::endpoint_addr(
             &ep_a.id().to_string(),
@@ -572,7 +590,7 @@ mod tests {
         let hash = store_a
             .put_encrypted(epoch, &key, &plaintext)
             .await
-            .unwrap();
+            .unwrap().hash;
         let _router_a = Router::builder(ep_a.clone())
             .accept(BLOB_ALPN, store_a.protocol())
             .spawn();
@@ -605,11 +623,11 @@ mod tests {
             "an over-cap body is refused at put"
         );
         // Under the cap still stores fine.
-        let hash = store
+        let put = store
             .put_encrypted(1, &[0u8; 32], b"a small body")
             .await
             .unwrap();
-        assert!(store.has(hash).await);
+        assert!(store.has(put.hash).await);
     }
 
     /// Gate two: a node refuses to *pull* a blob past its cap, aborting mid-stream, even when a
@@ -633,7 +651,7 @@ mod tests {
         // A permissive peer (generous cap) holds and serves the oversized blob.
         let ep_a = test_endpoint().await;
         let store_a = FileStore::memory().with_max_blob_bytes(64 * 1024 * 1024);
-        let hash = store_a.put_encrypted(epoch, &key, &big).await.unwrap();
+        let hash = store_a.put_encrypted(epoch, &key, &big).await.unwrap().hash;
         let _router_a = Router::builder(ep_a.clone())
             .accept(BLOB_ALPN, store_a.protocol())
             .spawn();
@@ -656,31 +674,36 @@ mod tests {
         );
     }
 
-    /// A put's protection must OUTLIVE the put call. The reaper's protect snapshot (the
-    /// live-set walk plus the recent ring) is taken BEFORE iroh clears write-time
-    /// protection, so a blob put between the snapshot and the clear falls through every
-    /// net - not in the walk (its referencing row is younger than the walk), not in the
-    /// ring (read at snapshot time), write-protection wiped by the clear - EXCEPT a live
-    /// TempTag, which the mark phase reads AFTER the clear. Caught 2026-08-25 on CI:
-    /// journalfill's rapid publishes met the rig's 2-second GC cadence and a 75ms-old
-    /// body died between its create and its publish ("blob not readable locally: encode
-    /// error"). The ring holds each put's TempTag for the grace window - exactly the
-    /// "referencing row is about to land" gap the ring has always stood for.
+    /// The reaper's one blind spot, closed twice. The GC's protect snapshot (the live-set
+    /// walk plus the recent ring) is taken BEFORE iroh clears write-time protection, so a
+    /// blob put between the snapshot and the clear falls through every net - EXCEPT a live
+    /// TempTag, which the mark phase reads AFTER the clear. First close (2026-08-25, CI:
+    /// journalfill's rapid publishes met the rig's 2-second GC cadence): the ring held each
+    /// put's tag for the grace window. Second close (2026-09-24, CI again: the rig's 500ms
+    /// grace lost to a slow runner twice in a day, reproduced at 1ms three of three): the
+    /// tag lives exactly as long as the [`Put`] the caller holds, and the caller holds it
+    /// until the referencing row has committed - no clock in it.
     #[tokio::test]
-    async fn a_fresh_puts_temp_tag_outlives_the_put() {
+    async fn a_puts_temp_tag_lives_as_long_as_the_put_does() {
         let store = FileStore::memory();
-        let hash = store.put_public(b"fresh words, row still landing").await.unwrap();
-        let mut tts = store.store().tags().list_temp_tags().await.unwrap();
-        let mut held = false;
-        while let Some(tt) = tts.next().await {
-            if tt.hash == hash {
-                held = true;
+        let put = store.put_public(b"fresh words, row still landing").await.unwrap();
+        let hash = put.hash;
+        let tagged = |store: &FileStore| {
+            let store = store.store().clone();
+            async move {
+                let mut tts = store.tags().list_temp_tags().await.unwrap();
+                let mut held = false;
+                while let Some(tt) = tts.next().await {
+                    if tt.hash == hash {
+                        held = true;
+                    }
+                }
+                held
             }
-        }
-        assert!(
-            held,
-            "the put's temp tag lives on past its return - the reaper's one blind spot"
-        );
+        };
+        assert!(tagged(&store).await, "held: the put is the reaper's live root");
+        drop(put);
+        assert!(!tagged(&store).await, "released with the put - a ledger row carries it from here");
     }
 
     /// The blob reaper end to end, in memory: two blobs, one referenced, one not - the armed
@@ -688,10 +711,9 @@ mod tests {
     /// the store is armed (the unarmed abort is the safety the whole design leans on).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_reaper_collects_what_nothing_references() {
-        std::env::set_var("RINGTOME_TEST_REAP_GRACE_MS", "50");
         let store = FileStore::memory();
-        let keep = store.put_public(b"keep me").await.unwrap();
-        let dead = store.put_public(b"reap me").await.unwrap();
+        let keep = store.put_public(b"keep me").await.unwrap().hash;
+        let dead = store.put_public(b"reap me").await.unwrap().hash;
 
         // Unarmed: several GC intervals pass and both stand. A reaper that cannot see the
         // ledgers must not reap.

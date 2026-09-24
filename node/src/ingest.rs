@@ -261,28 +261,20 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     // The thumbnail (when the lane produced one - image thumb, audio waveform; video has none yet)
     // is its own sibling blob, never inline in the header. The body - the crushed AVIF/WebM/APNG/
     // Opus - rides save_version's normal store-and-append path (with blob reuse).
-    let thumb_hash = match &ingested.thumb_avif {
-        Some(thumb) => Some(
-            *state
-                .files
-                .put_encrypted(epoch, &epoch_key, thumb)
-                .await?
-                .as_bytes(),
-        ),
+    // Both puts are HELD (`files::Put`) until `save_version` below has appended the header
+    // that names them; dropped earlier, the reaper could take them in between.
+    let held_thumb = match &ingested.thumb_avif {
+        Some(thumb) => Some(state.files.put_encrypted(epoch, &epoch_key, thumb).await?),
         None => None,
     };
+    let thumb_hash = held_thumb.as_ref().map(|p| *p.hash.as_bytes());
 
     // The hover-preview clip (video WebM output only) is likewise its own sibling blob.
-    let preview_hash = match &ingested.preview_webm {
-        Some(preview) => Some(
-            *state
-                .files
-                .put_encrypted(epoch, &epoch_key, preview)
-                .await?
-                .as_bytes(),
-        ),
+    let held_preview = match &ingested.preview_webm {
+        Some(preview) => Some(state.files.put_encrypted(epoch, &epoch_key, preview).await?),
         None => None,
     };
+    let preview_hash = held_preview.as_ref().map(|p| *p.hash.as_bytes());
 
     save_version(
         &db,

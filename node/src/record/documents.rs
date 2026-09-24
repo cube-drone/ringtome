@@ -486,17 +486,19 @@ pub async fn save_version(
     // fingerprint proves equality without touching the bytes, so the storage that random-nonce
     // encryption "cost" comes back exactly where the encrypted headers can vouch for it.
     // (Scoped to one document by construction: body_hash is doc_id-keyed.)
-    let file_hash = match doc.and_then(|d| {
+    // A fresh put is HELD (`files::Put`) until the append below has landed the header that
+    // names it - the reaper's blind spot between a blob and its row.
+    let (file_hash, held_body) = match doc.and_then(|d| {
         d.versions
             .values()
             .find(|v| v.header.body_hash == body_hash)
             .map(|v| v.header.file_hash)
     }) {
-        Some(existing) => existing,
-        None => *files
-            .put_encrypted(epoch, &epoch_key, &save.body)
-            .await?
-            .as_bytes(),
+        Some(existing) => (existing, None),
+        None => {
+            let put = files.put_encrypted(epoch, &epoch_key, &save.body).await?;
+            (*put.hash.as_bytes(), Some(put))
+        }
     };
 
     let header = DocHeaderPlain {
@@ -537,6 +539,8 @@ pub async fn save_version(
         Payload::Inline(payload),
     )
     .await?;
+    // The row is in; the ledger carries the body from here.
+    drop(held_body);
     Ok(*signed.hash())
 }
 
@@ -650,24 +654,25 @@ pub async fn save_public_media(
         Some(_) => DocHeaderPlain::body_hash(&doc_id, &ingested.body),
         None => *crate::files::FileStore::public_hash(&ingested.body).as_bytes(),
     };
-    let body_hash = files
+    // Both puts are HELD (`files::Put`) until the append below has landed the twin's header.
+    let held_body = files
         .put_public(&stored_body)
         .await
         .map_err(AppError::Internal)?;
-    let mut thumb_hash = None;
+    let mut held_thumb = None;
     if let Some(thumb) = &ingested.thumb_avif {
         let stored_thumb = match &post_key {
             Some(key) => crate::record::private::seal_post_body(key, thumb)?,
             None => thumb.clone(),
         };
-        thumb_hash = Some(
-            *files
+        held_thumb = Some(
+            files
                 .put_public(&stored_thumb)
                 .await
-                .map_err(AppError::Internal)?
-                .as_bytes(),
+                .map_err(AppError::Internal)?,
         );
     }
+    let thumb_hash = held_thumb.as_ref().map(|p| *p.hash.as_bytes());
     // A sealed twin's title is sealed too (ruling 5): a picture called "ultrasound" is
     // as personal as the post it belongs to. Sealed under the same post key, beside the
     // bytes, and blank on the public face.
@@ -685,7 +690,7 @@ pub async fn save_public_media(
         dated_ms: None,
         doc_id,
         parents: vec![],
-        file_hash: *body_hash.as_bytes(),
+        file_hash: *held_body.hash.as_bytes(),
         // Public bodies are plaintext and content-addressed; sealed twins carry the keyed
         // plaintext fingerprint instead, the text mint's own rule.
         body_hash: plain_body_hash,
@@ -866,7 +871,8 @@ pub async fn save_public_text(
     } else {
         (body.as_bytes().to_vec(), *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes())
     };
-    let file_hash = files
+    // HELD (`files::Put`) until the append below has landed the header that names it.
+    let held_body = files
         .put_public(&stored)
         .await
         .map_err(AppError::Internal)?;
@@ -889,7 +895,7 @@ pub async fn save_public_text(
     let header = DocHeaderPlain {
         doc_id,
         parents,
-        file_hash: *file_hash.as_bytes(),
+        file_hash: *held_body.hash.as_bytes(),
         // Public bodies are plaintext and content-addressed: the file hash IS the body's
         // honest fingerprint. Sealed bodies carry the keyed plaintext fingerprint instead.
         body_hash,
