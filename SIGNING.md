@@ -277,6 +277,10 @@ token for this repository's `deploy` environment: the release job asks GitHub fo
 (`permissions: id-token: write`), `azure/login` hands it to Azure, and the Azure CLI on the runner is
 signed in for the rest of the job. Nothing is pasted, nothing expires, nothing can leak from a log.
 The app registration needs the **Artifact Signing Certificate Profile Signer** role on the account.
+One wrinkle worth knowing: a GitHub OIDC token lives **five minutes**, and the Azure CLI redeems it
+per resource, so a login before a half-hour build is stale by the time `signtool` asks for Artifact
+Signing. The sign script therefore mints a fresh ID token and logs in again right before each
+signature; the workflow's early `azure/login` is just the fast check that federation works.
 
 Six **environment variables** (not secrets — none is confidential) in the `deploy` environment:
 

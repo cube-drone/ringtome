@@ -342,9 +342,12 @@ jobs:
           # so withholding them IS the switch.
           APPLE_API_ISSUER: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_ISSUER || '' }}
           APPLE_API_KEY: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_KEY || '' }}
-          # Windows: nothing to pass. The `--config` in `args` names desktop/tools/sign-windows.ps1
-          # as the bundler's sign command; the script reads the RINGTOME_SIGN_* paths the tools
-          # step exported and signs through the Azure CLI's OIDC session.
+          # Windows: the `--config` in `args` names desktop/tools/sign-windows.ps1 as the bundler's
+          # sign command; the script reads the RINGTOME_SIGN_* paths the tools step exported, and
+          # these two are what it logs in with - freshly, per signature, because the OIDC token
+          # `azure/login` used above is five minutes old by the time the build finishes.
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop

@@ -10351,3 +10351,15 @@ runner path and merges it into the build with `--config`, which also keeps a loc
 unsigned by construction. The Windows build runs `--verbose`, the script keeps a transcript in
 `RUNNER_TEMP`, and a failure step prints it - so the next failure, if there is one, says what
 signtool said.
+
+## 2026-09-24 (cont.): the five-minute assertion
+
+The run after the absolute-path fix reached signtool, and signtool reached Azure, which answered
+`AADSTS700024: client assertion is not within its valid time range` - valid from 08:58, expired
+09:03, asked at 09:26. A GitHub OIDC token lives five minutes; `azure/login` redeemed it once for the
+resource `az login` asks about, and Artifact Signing is a different resource, so the dlib's
+`AzureCliCredential` sent the CLI back to redeem the same assertion twenty-three minutes after it
+died. No ordering of build and login is safe against that, so the sign script now logs in itself:
+it asks the runner's ID-token endpoint (exposed to every step under `id-token: write`) for a fresh
+token and runs `az login --federated-token` seconds before each signature. The early `azure/login`
+stays as the check that federation works before the build spends its half hour.

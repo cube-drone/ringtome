@@ -59,8 +59,37 @@ foreach ($tool in @($env:RINGTOME_SIGNTOOL, $env:RINGTOME_SIGN_DLIB, $env:RINGTO
 
 # Native commands write to stderr freely and `$ErrorActionPreference = Stop` would turn the
 # first such line into a terminating error before signtool has said what went wrong - so the
-# two calls below run with it relaxed, and their exit codes are the verdict.
+# calls below run with it relaxed, and their exit codes are the verdict.
 $ErrorActionPreference = "Continue"
+
+# Log in again, NOW. The workflow's `azure/login` ran before the build, on a GitHub OIDC token
+# that is valid for five minutes; the Azure CLI redeems that token for an access token per
+# RESOURCE, and Artifact Signing is a resource `az login` never asked about - so the first
+# signature, twenty-seven minutes of compiling later, found the CLI trying to redeem an
+# assertion that had expired at minute five (2026-09-24: AADSTS700024, "client assertion is
+# not within its valid time range"). The runner mints a fresh ID token on request for as long
+# as the job has `id-token: write`, so this asks for one and logs in with it, seconds before
+# signtool needs the session. Skipped outside Actions, where the CLI session is whoever's.
+if ($env:ACTIONS_ID_TOKEN_REQUEST_URL -and $env:AZURE_CLIENT_ID -and $env:AZURE_TENANT_ID) {
+    try {
+        $minted = Invoke-RestMethod -Method Get `
+            -Uri "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=api://AzureADTokenExchange" `
+            -Headers @{ Authorization = "bearer $($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)" }
+    } catch {
+        Say "could not mint a GitHub ID token: $_"
+        exit 1
+    }
+    az login --service-principal --username $env:AZURE_CLIENT_ID --tenant $env:AZURE_TENANT_ID `
+        --federated-token $minted.value --output none 2>&1 | ForEach-Object { Say "  az: $_" }
+    if ($LASTEXITCODE -ne 0) {
+        Say "az login with a fresh federated token failed with exit code $LASTEXITCODE"
+        exit 1
+    }
+    Say "azure session refreshed for this signature"
+} else {
+    Say "no GitHub ID-token endpoint or Azure identity in the environment; using the CLI session as it stands"
+}
+
 Say "signing $File"
 $out = & $env:RINGTOME_SIGNTOOL sign /v /debug /fd SHA256 `
     /tr "http://timestamp.acs.microsoft.com" /td SHA256 `
