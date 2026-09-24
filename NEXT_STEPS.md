@@ -105,7 +105,8 @@ one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
 * ~~Stage 3 — the per-launch token, and no login screen~~ built 2026-09-21
 * ~~Stage 4 — packaging and signing~~ built 2026-09-22/23: `just release-*`, Mac signed and
   notarized, Windows signing by Azure OIDC (its first signed run is the proof still owed)
-* **Stage 5** — autostart and the tray: the desktop app as the user's always-on node
+* ~~Stage 5 — autostart and the tray~~ built 2026-09-24: `desktop/src/tray.rs`; close hides,
+  start at login on by default, one instance, quiet restart for updates
 * ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
   update-on-quit; proven only once two releases carry it
 

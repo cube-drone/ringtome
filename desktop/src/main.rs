@@ -10,13 +10,14 @@
 //! then it calls `ringtome_node::bind`. Everything else about what a node IS stays in the
 //! library, where `just ci` tests it.
 //!
-//! No tray and no autostart yet (Stage 5). The environment is left to `RINGTOME_ENVIRONMENT`,
-//! which means a plain `just desktop` runs the node in dev mode and serves the UI from disk -
-//! edit `node/js`, hit reload, see it - while a packaged build says `prod` and eats the bundle
-//! baked into the binary. Updates (Stage 6) are `update.rs`: fetched in the background,
-//! installed on the way out.
+//! The environment is left to `RINGTOME_ENVIRONMENT`, which means a plain `just desktop` runs
+//! the node in dev mode and serves the UI from disk - edit `node/js`, hit reload, see it -
+//! while a packaged build says `prod` and eats the bundle baked into the binary. The tray, the
+//! hide-not-close window and start-at-login (Stage 5) are `tray.rs`; updates (Stage 6) are
+//! `update.rs`: fetched in the background, installed when nobody is looking.
 
 mod port;
+mod tray;
 mod update;
 
 use std::path::{Path, PathBuf};
@@ -25,8 +26,23 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
     tauri::Builder::default()
+        // First, so a second launch is answered before anything else is built.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_window(app);
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![tray::HIDDEN_ARG]),
+        ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                tray::hide_window(window.app_handle());
+            }
+        })
         .setup(|app| {
             let data_dir = data_directory(app.handle())?;
             // The key for this launch (DESKTOP.md, Stage 3), minted here and never written
@@ -36,15 +52,21 @@ fn main() {
             // a log, in a screenshot, and this is the whole house.
             let token = ringtome_node::auth::mint_launch_token();
             let url = start_node(&data_dir, token.clone())?;
+            let hidden = tray::launched_hidden();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
                 .title("Ringtome")
                 .inner_size(1280.0, 860.0)
+                .visible(!hidden)
                 .initialization_script(format!(
                     "window.__ringtome_launch_token = {};",
                     serde_json::to_string(&token).expect("a hex string is JSON")
                 ))
                 .build()?;
             update::start(app.handle().clone());
+            tray::build(app.handle(), &data_dir, &url)?;
+            if hidden {
+                tray::hide_window(app.handle());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

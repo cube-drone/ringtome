@@ -434,6 +434,17 @@ hundred a year) silences the warning from the first install, and that is not wha
 section above, this is where the desktop app starts doing work for the *network* rather than only for
 its user.
 
+*Built 2026-09-24, `desktop/src/tray.rs`.* Close hides the window and the node runs on; the tray's
+Quit is the one act that stops it. Start at login is on by default - enabled once, on a packaged
+build's first launch, through the platform's own mechanism (a Launch Agent, a Run key, an XDG
+autostart entry), and the tray's toggle owns it from then on; a login launch starts hidden, and on
+macOS a hidden Ringtome leaves the dock. A second launch focuses the running window instead of
+building a second node against the same data directory. The tray's status line is the version and
+the node's address for now; a real status light (peers, syncing) is a later refinement. Stage 6 is
+amended to match: a node that is never quit would never update, so a pending update installs and
+restarts on its own once the window has been hidden fifteen minutes. Residual: on Linux the tray
+needs libayatana-appindicator on the user's system, which the AppImage does not carry.
+
 **Stage 6 — auto-update and a release channel.** Tauri's updater against a static host. No longer
 load-bearing for security the way electron-updater would have been, which is a reason it comes last
 rather than a reason to skip it.

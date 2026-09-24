@@ -1,11 +1,13 @@
 //! Auto-update (DESKTOP.md, Stage 6): the app looks for a newer release, fetches it in the
 //! background, and installs it when the user quits.
 //!
-//! **Update-on-quit, not update-now.** An update is the whole app, tens of megabytes, and
-//! installing it restarts the node - which is somebody's presence on the network, and after
-//! Stage 5 an always-on one. So the default is to install the next time the app is closing
-//! anyway, and the user is offered "restart now" exactly once per version for when they'd
-//! rather have it sooner. Both roads verify the download the same way: the updater plugin
+//! **Update when nobody is looking.** An update is the whole app, tens of megabytes, and
+//! installing it restarts the node - which is somebody's presence on the network, and since
+//! Stage 5 an always-on one that is rarely quit. So: a downloaded update installs when the
+//! app quits, OR on its own once the window has been hidden for [`QUIET_BEFORE_RESTART`]
+//! (nobody is watching; the node is gone for seconds), and while the window is open the
+//! user is offered "restart now" exactly once per version for when they'd rather have it
+//! sooner (Curtis, 2026-09-24: the hidden-window restart over a never-quit node). Both roads verify the download the same way: the updater plugin
 //! checks the archive's minisign signature against the public key baked into this binary
 //! (`tauri.conf.json`, `plugins.updater.pubkey`) before it will hand the bytes over, and
 //! Apple's and Microsoft's signatures on the new bundle are the system's business at the next
@@ -30,6 +32,11 @@ use tauri_plugin_updater::UpdaterExt;
 /// The first look, after launch: late enough that the node is up and the window painted, since
 /// nothing about an update is urgent.
 const FIRST_CHECK: Duration = Duration::from_secs(30);
+/// How long the window stays hidden before a pending update installs itself and restarts.
+const QUIET_BEFORE_RESTART: Duration = Duration::from_secs(15 * 60);
+/// How often the quiet-restart check looks.
+const QUIET_CHECK_EVERY: Duration = Duration::from_secs(60);
+
 /// Between looks. Ten minutes while the product is changing daily (Curtis, 2026-09-24): a
 /// check is one small GET against the release CDN, and a download happens only when the
 /// version moved, so the cadence costs nothing and buys every install the day's releases
@@ -43,9 +50,27 @@ struct Pending {
     update: tauri_plugin_updater::Update,
 }
 
-/// The one pending update, held by Tauri's managed state so the exit hook can find it.
+/// The one pending update, held by Tauri's managed state so the exit hook can find it - and
+/// since when the window has been hidden, for the quiet restart.
 #[derive(Default)]
-pub struct Waiting(Mutex<Option<Pending>>);
+pub struct Waiting {
+    pending: Mutex<Option<Pending>>,
+    hidden_since: Mutex<Option<std::time::Instant>>,
+}
+
+/// The window went away (tray.rs): the quiet clock starts.
+pub fn window_hidden(app: &AppHandle) {
+    if let Some(w) = app.try_state::<Waiting>() {
+        *w.hidden_since.lock().unwrap() = Some(std::time::Instant::now());
+    }
+}
+
+/// The window is back: no restart under a person.
+pub fn window_shown(app: &AppHandle) {
+    if let Some(w) = app.try_state::<Waiting>() {
+        *w.hidden_since.lock().unwrap() = None;
+    }
+}
 
 /// Start the loop. Called once from `main`, after the plugins are registered.
 pub fn start(app: AppHandle) {
@@ -54,13 +79,31 @@ pub fn start(app: AppHandle) {
         return;
     }
     app.manage(Waiting::default());
+    let checker = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
-            if let Err(e) = check_once(&app).await {
+            if let Err(e) = check_once(&checker).await {
                 tracing::warn!(error = %e, "update check failed");
             }
             tokio::time::sleep(CHECK_EVERY).await;
+        }
+    });
+    // The quiet restart: a pending update, a window nobody has looked at for a while.
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(QUIET_CHECK_EVERY).await;
+            let quiet = {
+                let waiting = app.state::<Waiting>();
+                let pending = waiting.pending.lock().unwrap().is_some();
+                let hidden = waiting.hidden_since.lock().unwrap();
+                pending && hidden.is_some_and(|since| since.elapsed() >= QUIET_BEFORE_RESTART)
+            };
+            if quiet {
+                tracing::info!("the window has been hidden a while: installing the update and restarting");
+                install_pending(&app);
+                app.restart();
+            }
         }
     });
 }
@@ -69,7 +112,7 @@ pub fn start(app: AppHandle) {
 async fn check_once(app: &AppHandle) -> anyhow::Result<()> {
     // Nothing to ask while one is already waiting: a second download would only re-fetch the
     // same bytes (or a newer version, which the next quit-and-relaunch reaches anyway).
-    if app.state::<Waiting>().0.lock().unwrap().is_some() {
+    if app.state::<Waiting>().pending.lock().unwrap().is_some() {
         return Ok(());
     }
     let Some(update) = app.updater()?.check().await? else {
@@ -82,19 +125,24 @@ async fn check_once(app: &AppHandle) -> anyhow::Result<()> {
         .download(|_chunk, _total| {}, || {})
         .await?;
     tracing::info!(%version, bytes = bytes.len(), "update downloaded and verified; it installs when the app quits");
-    *app.state::<Waiting>().0.lock().unwrap() = Some(Pending {
+    *app.state::<Waiting>().pending.lock().unwrap() = Some(Pending {
         version: version.clone(),
         bytes,
         update,
     });
 
+    // Nobody to ask while the window is hidden: the quiet restart takes it from here.
+    if app.state::<Waiting>().hidden_since.lock().unwrap().is_some() {
+        return Ok(());
+    }
     // Once, and blocking on a worker thread rather than the runtime: a dialog waits on a
     // person, and the runtime has a node to run.
     let ask = app.clone();
     let now = tauri::async_runtime::spawn_blocking(move || {
         ask.dialog()
             .message(format!(
-                "Ringtome {version} is downloaded. It will install the next time you quit.\n\n\
+                "Ringtome {version} is downloaded. It will install the next time you quit, or \
+                 on its own once this window has been closed for a while.\n\n\
                  Restart now to update immediately? Your node will be offline for a few seconds."
             ))
             .title("Update ready")
@@ -119,7 +167,7 @@ pub fn install_pending(app: &AppHandle) {
     let Some(waiting) = app.try_state::<Waiting>() else {
         return; // a dev build never managed the state
     };
-    let Some(pending) = waiting.0.lock().unwrap().take() else {
+    let Some(pending) = waiting.pending.lock().unwrap().take() else {
         return;
     };
     tracing::info!(version = %pending.version, "installing the update");

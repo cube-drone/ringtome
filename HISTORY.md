@@ -10393,3 +10393,22 @@ guard's lifetime; both claims pass with the reaper firing every 100ms and no gra
 residual, named on `Put`: the compiler makes a caller name the value but cannot make it live past
 the append - a `Put` dropped as a temporary would reopen the first gap - so the site comments say
 "held until the append", and a fresh site should too.
+
+## 2026-09-24 (cont.): the app that stays
+
+DESKTOP.md's Stage 5, the last of the arc: `desktop/src/tray.rs`. The window's close button hides
+it and the node runs on; the tray has Open, a status line (the version and the node's address, for
+now), Start at login, and Quit - the one act that stops the node and, on the way out, installs a
+pending update. Start at login is on by default, per Curtis (affordances to tune this come later):
+enabled once on a packaged build's first launch through the platform's own mechanism
+(`tauri-plugin-autostart`: a Launch Agent, a Run key, an XDG entry), with a marker file beside the
+node's data so a user's later "no" is never overridden; a login launch starts hidden, and on macOS a
+hidden Ringtome leaves the dock. `tauri-plugin-single-instance`, registered first, makes a second
+launch focus the window rather than build a second node against the same data directory and lose
+the port and the database lock in that order.
+
+Stage 6 had assumed people quit, and with a tray they don't - so `update.rs` gains the quiet
+restart: a downloaded update installs and restarts on its own once the window has been hidden
+fifteen minutes (nobody is watching; the node is gone for seconds), the once-per-version dialog
+stays for a window that is open, and no dialog is raised at a hidden one. Residual: the Linux tray
+wants libayatana-appindicator on the user's system.

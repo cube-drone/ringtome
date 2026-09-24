@@ -49,7 +49,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # The node itself, linked in: one process, no sidecar, no second executable (DESKTOP.md).
 ringtome-node = { path = "../node" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 anyhow = "1"
 # One use: JSON-quoting the launch token into the initialization script, so a hex string can
@@ -61,3 +61,7 @@ tracing = "0.1"
 # a capability granted to the webview.
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
+# Stage 5 (DESKTOP.md): the always-on node. Autostart through each platform's own mechanism;
+# single-instance so a second launch focuses the window instead of fighting for the port.
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
