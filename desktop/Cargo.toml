@@ -72,5 +72,6 @@ tauri-plugin-dialog = "2"
 # single-instance so a second launch focuses the window instead of fighting for the port.
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
-# Desktop notifications whenever a badge would light (src/alerts.rs), driven from Rust.
-tauri-plugin-notification = "2"
+# Desktop notifications whenever a badge would light (src/alerts.rs). Directly, not through the
+# Tauri plugin, whose desktop show() discards the handle that reports a click.
+notify-rust = "4.18"

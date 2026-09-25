@@ -454,9 +454,10 @@ badge in the app would light, the OS says so - unless the window is visible and 
 the badge itself is the notice. The node decides and words every alert from exactly the rows the
 two dock badges count (the bell's list, the chat badge's rooms), announcing each unseen item once
 and never the backlog present at launch; the shell only decides whether anyone needs telling.
-Clicking one brings the window back where the platform routes the click to the app (macOS's
-activation is `RunEvent::Reopen`); the alert's route - the bell, or the room - rides along but is
-not yet followed, because the notification plugin reports no click on desktop.
+Clicking one lands in the room or the bell it is about: the shell calls `notify-rust` directly
+(the Tauri plugin's desktop `show()` discarded the handle that reports the click, on every
+platform), brings the window forward, and hands the alert's route to the UI's router through the
+page history - no reload.
 
 **Stage 6 — auto-update and a release channel.** Tauri's updater against a static host. No longer
 load-bearing for security the way electron-updater would have been, which is a reason it comes last

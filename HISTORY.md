@@ -10536,3 +10536,18 @@ executable, `CFBundleName` and the unchanged identifier all as intended. The she
 names the binary's crate, so it moved with it. And start-at-login, when on, is re-written at every
 launch: it records the executable's path, so a rename or a moved app left it pointing at nothing -
 now it heals, including the 0.1.x copies whose login item names `ringtome-desktop`.
+
+## 2026-09-25 (cont.): a notification's click lands where it points
+
+Curtis: "the desktop app should also have the notification click land you in the exact room or
+bell." The Tauri notification plugin reports no click on desktop, and the obvious conclusion was
+that nothing could - but its source said otherwise: `notify-rust` 4.18, underneath it, returns a
+handle whose `wait_for_action` reports a click on every platform (the XDG "default" action, macOS's
+contents-clicked, the Windows toast's activation), and the plugin's desktop `show()` simply drops
+it. Its permission calls are hard-wired `Granted` on desktop, so the plugin bought nothing else.
+`desktop/src/alerts.rs` now calls `notify-rust` directly, carrying over the plugin's per-platform
+setup (macOS `set_application` to the bundle identifier, Terminal's in dev; the Windows toast's app
+id only when installed), waits for each click on the blocking pool (capped at 32 outstanding, past
+which a notification shows without a click to follow), and on a click brings the window forward
+and pushes the alert's route onto the page's history with a `popstate`, which preact-iso follows
+without a reload. The Windows-only lines first compile on the next release's Windows runner.

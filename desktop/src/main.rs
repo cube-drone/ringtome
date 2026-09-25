@@ -37,7 +37,6 @@ fn main() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .on_window_event(|window, event| {
             // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on. Unless
             // there is no tray to come back through, in which case close means quit - and the
@@ -91,8 +90,8 @@ fn main() {
             if let tauri::RunEvent::Exit = event {
                 update::install_pending(app);
             }
-            // The dock icon clicked, or a notification clicked (macOS activates the app, and
-            // this is how Tauri says so): a hidden window comes back.
+            // The dock icon clicked (macOS activates the app, and this is how Tauri says so): a
+            // hidden window comes back. A notification's own click is followed in alerts.rs.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 tray::show_window(app);
