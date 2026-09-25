@@ -7036,7 +7036,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "notify-rust",
@@ -7055,7 +7055,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -7099,6 +7099,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "symphonia",
+ "tar",
  "thiserror 2.0.20",
  "tokio",
  "tower-http",
@@ -7113,7 +7114,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "blake3",
  "ed25519-dalek 2.2.0",
