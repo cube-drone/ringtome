@@ -307,6 +307,19 @@ certificate Microsoft issues is valid for **three days** — every signature is 
 
 ---
 
+### ...and it signs the server node too (2026-09-25)
+
+The same key signs every `ringtome-server-…tar.gz` (the `server-publish` job, the one server job in the
+`deploy` environment), and `server-latest.json` carries those signatures for the server's own updater
+- the supervisor (NEXT_STEPS, *Server nodes*). One key, one public half, two kinds of update. The job
+verifies every signature with the stock `minisign` tool against the public key committed in
+`desktop/tauri.conf.json` before it uploads anything.
+
+The container image is signed differently, with no key at all: **cosign keyless** (Sigstore) turns
+the workflow's GitHub OIDC token into a short-lived certificate saying "cube-drone/ringtome's release
+workflow, at this tag", and signs the image's digest with it. Nothing to store, rotate or lose.
+SERVER.md has the verification commands for both.
+
 ## 3. Where the secrets go
 
 The `deploy` GitHub environment (Settings → Environments). The release workflow reads exactly these

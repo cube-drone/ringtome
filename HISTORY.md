@@ -10762,3 +10762,22 @@ binary (the Dockerfile only copies, so a stand-in proves everything but the node
 executable. The 0.1.9 image was never pushed; the next release (or `just release-trial`, which builds
 without pushing) carries the fix - a rerun of the 0.1.9 job would read the workflow at its tag, with
 the old Dockerfile.
+
+## 2026-09-25 (cont.): the server's downloads are signed
+
+Before the supervisor, what it will trust. `server-publish` now signs every server tarball with the
+desktop updater's key (`tauri signer sign`, the same tool and key as the desktop's updates - one key,
+one public half in `desktop/tauri.conf.json`), verifies each signature with the stock `minisign`
+against that committed public key before uploading anything (a wrong key or password fails the release
+rather than shipping signatures the supervisor would refuse), and publishes `server-latest.json` - the
+version, and per architecture the URL, signature and sha256 - which GitHub serves at the fixed address
+`releases/latest/download/server-latest.json`. It is the only server job in the `deploy` environment,
+because it is the only one that holds the key. Rehearsed with a throwaway key: the `.sig` decodes to a
+standard minisign signature (Ed25519 over a BLAKE2b prehash, which the stock tool and the
+`minisign-verify` crate both read), and the workflow's own manifest script, extracted verbatim, wrote
+the expected manifest; the stock-tool verification step first runs on the next tag.
+
+The container image is signed keylessly with cosign (Sigstore): the workflow's GitHub OIDC token
+becomes a short-lived certificate for "cube-drone/ringtome's release workflow at this tag", and the
+image is signed by digest, never by tag. SERVER.md has the verification commands for both; SIGNING.md
+records that the updater key now signs two kinds of update.

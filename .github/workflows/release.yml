@@ -482,19 +482,88 @@ jobs:
           path: image/
 
   # The server tarballs join the release the desktop jobs created - after them, so there is a
-  # release to join - and the notes gain a "which download is which" section, once.
+  # release to join - SIGNED, with a manifest a supervisor can poll, and the notes gain a "which
+  # download is which" section, once.
+  #
+  # Signed with the desktop updater's own key (SIGNING.md §0) - one key, one public half already in
+  # desktop/tauri.conf.json - because the thing that will download these and run them unattended is
+  # the server's updater: the supervisor (NEXT_STEPS, *Server nodes*). This is the one server job in
+  # the `deploy` environment, and only because it holds that key.
   server-publish:
     needs: [server, build]
     if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.server.result == 'success' }}
     runs-on: ubuntu-24.04
+    environment: deploy
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: server-*
           merge-multiple: true
           path: dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # `tauri signer sign` writes <file>.sig: base64 of a minisign signature - the format the
+      # desktop's latest.json carries, and what the supervisor will verify.
+      - name: Sign the server tarballs
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for f in dist/*.tar.gz; do
+            npx --yes @tauri-apps/cli@2 signer sign "$f"
+          done
+          ls -l dist
+
+      # Proven, not assumed: every signature verifies with the stock minisign tool against the
+      # PUBLIC key committed in desktop/tauri.conf.json. A wrong key, a wrong password or a format
+      # the supervisor would refuse fails the release here instead of shipping.
+      - name: Verify the signatures against the committed public key
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          python3 -c "import json,base64;print(base64.b64decode(json.load(open('desktop/tauri.conf.json'))['plugins']['updater']['pubkey']).decode())" > pubkey.minisign
+          for f in dist/*.tar.gz; do
+            base64 -d "$f.sig" > "$f.minisig"
+            minisign -V -p pubkey.minisign -m "$f" -x "$f.minisig"
+            rm "$f.minisig"
+          done
+
+      # The supervisor's one fixed address: releases/latest/download/server-latest.json.
+      - name: The server manifest
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import glob, json, os, re, datetime
+          tag, repo = os.environ["TAG"], os.environ["REPO"]
+          platforms = {}
+          for tarball in sorted(glob.glob("dist/*.tar.gz")):
+              name = os.path.basename(tarball)
+              arch = re.search(r"-linux-(x86_64|aarch64)\.tar\.gz$", name).group(1)
+              platforms[f"linux-{arch}"] = {
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+                  "signature": open(tarball + ".sig").read().strip(),
+                  "sha256": open(tarball + ".sha256").read().split()[0],
+              }
+          version = tag[1:].split("-")[0]
+          manifest = {
+              "version": version,
+              "name": tag[1:],
+              "tag": tag,
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "notes": f"https://github.com/{repo}/releases/tag/{tag}",
+              "platforms": platforms,
+          }
+          json.dump(manifest, open("dist/server-latest.json", "w"), indent=2)
+          print(json.dumps(manifest, indent=2))
+          PY
 
       - name: Attach the server node to the release
         env:
@@ -528,6 +597,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # cosign's keyless signing: GitHub mints an OIDC token naming this workflow, Sigstore
+      # certifies it for a moment, and the signature says "built by cube-drone/ringtome's release
+      # workflow at this tag" - no key to keep, nothing to rotate.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -559,6 +632,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: server
           platforms: linux/amd64,linux/arm64
@@ -569,3 +643,15 @@ jobs:
             org.opencontainers.image.title=ringtome
             org.opencontainers.image.description=A Ringtome server node - the protocol under Horse Drawing Tycoon 2 (SERVER.md)
             org.opencontainers.image.version=${{ steps.tags.outputs.version }}
+
+      # Keyless (Sigstore): anyone can check the image came from this repository's release workflow
+      # at a release tag - SERVER.md has the `cosign verify` line. Signed by DIGEST, never by tag:
+      # a tag can move, a digest is the image.
+      - uses: sigstore/cosign-installer@v3
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Sign the image
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"

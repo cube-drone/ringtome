@@ -14,6 +14,32 @@ Each release on GitHub carries two kinds of download, and it is worth knowing wh
 The server node also ships as a container image: `ghcr.io/cube-drone/ringtome:<version>` (and
 `:latest`), for `linux/amd64` and `linux/arm64`.
 
+## Checking what you downloaded
+
+Every server tarball is signed with the same key that signs the desktop app's updates, and each
+release carries `server-latest.json` - the version, and for each architecture the tarball's URL,
+signature and sha256 - at a fixed address that always names the newest release:
+`https://github.com/cube-drone/ringtome/releases/latest/download/server-latest.json`.
+
+To check a tarball by hand with [minisign](https://jedisct1.github.io/minisign/): the `.sig` beside
+it is the signature, base64-wrapped.
+
+```sh
+base64 -d ringtome-server-…-linux-x86_64.tar.gz.sig > tarball.minisig
+minisign -V -P RWS8OTS+AgxV50ecE3P4OKhhLRQrosZc08PVRsF6mcQjK3wWIM9LzRgx \
+  -m ringtome-server-…-linux-x86_64.tar.gz -x tarball.minisig
+```
+
+The container image is signed keylessly with [cosign](https://docs.sigstore.dev/): the signature
+says it was built by this repository's release workflow at a release tag, with no key to trust but
+GitHub's.
+
+```sh
+cosign verify ghcr.io/cube-drone/ringtome:<version> \
+  --certificate-identity-regexp '^https://github.com/cube-drone/ringtome/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## Which to use
 
 **The container**, if you already deploy with Docker or anything that runs OCI images. **The
