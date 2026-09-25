@@ -4,6 +4,13 @@ version = "0.1.6"
 edition = "2021"
 publish = false
 
+# The executable carries the PRODUCT's name (2026-09-25): a person meets it in Login Items, the
+# menu bar of a dev run, a Linux process list. The package name above is plumbing and stays. On
+# macOS the bundled executable is renamed once more, spaces and all (tauri.macos.conf.json).
+[[bin]]
+name = "horse-drawing-tycoon-2"
+path = "src/main.rs"
+
 # ITS OWN WORKSPACE, following the spike's precedent (see ../spike-tauri/src-tauri/Cargo.toml).
 # Listed as a workspace member, Tauri and the whole webview stack would build on every
 # `cargo test` and every `just ci` run, and Linux CI would grow GTK and WebKitGTK dev packages
@@ -65,3 +72,5 @@ tauri-plugin-dialog = "2"
 # single-instance so a second launch focuses the window instead of fighting for the port.
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
+# Desktop notifications whenever a badge would light (src/alerts.rs), driven from Rust.
+tauri-plugin-notification = "2"

@@ -607,6 +607,7 @@ mod tests {
             peeked: Default::default(),
             gossip: iroh_gossip::net::Gossip::builder().spawn(ep_a.clone()),
             live: Default::default(),
+            attention: crate::attention::Attention::new(false),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

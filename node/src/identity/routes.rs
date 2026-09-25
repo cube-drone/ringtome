@@ -2329,47 +2329,47 @@ async fn feed_handler(
 const NOTIFICATIONS_PAGE: u32 = 100;
 
 #[derive(Serialize)]
-struct NotificationItem {
-    author: String,
-    kind: String,
+pub(crate) struct NotificationItem {
+    pub(crate) author: String,
+    pub(crate) kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    trust: Option<String>,
+    pub(crate) trust: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    interest: Option<String>,
+    pub(crate) interest: Option<String>,
     /// The row's own words, for kinds that carry some - 'tagged': the label(s) themselves.
     #[serde(skip_serializing_if = "Option::is_none")]
-    detail: Option<String>,
+    pub(crate) detail: Option<String>,
     /// The referenced post's title and date, joined server-side for the bell's mini-card
     /// (2026-08-26): the doc is the READER's own post, so their open store answers in one
     /// read - no client fan-out, and the bell renders instantly. Absent when the row names
     /// no doc, or the post has since left the public shelf (the card degrades to a bare
     /// link whose 404 is the honest answer).
     #[serde(skip_serializing_if = "Option::is_none")]
-    doc_title: Option<String>,
+    pub(crate) doc_title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    doc_published_ms: Option<i64>,
-    updated_ms: i64,
+    pub(crate) doc_published_ms: Option<i64>,
+    pub(crate) updated_ms: i64,
     /// Above or below the reader's seen-watermark - their private-chain fact, so read-on-the-
     /// phone is read-on-the-laptop.
-    seen: bool,
+    pub(crate) seen: bool,
     /// This one ARRIVED (an envelope from someone the reader does not sync) rather than being
     /// derived from chains the reader already pulls. The client renders a stranger from their
     /// root alone - see the byline note on the handler.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
-    stranger: bool,
+    pub(crate) stranger: bool,
     /// Which document, for kinds about one (a share). Empty for relationship kinds.
     #[serde(skip_serializing_if = "String::is_empty")]
-    doc_id: String,
+    pub(crate) doc_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    author_name: Option<String>,
+    pub(crate) author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    author_avatar: Option<String>,
+    pub(crate) author_avatar: Option<String>,
     /// What a STRANGER says they are called - a claim off the envelope, never a fetched
     /// profile. Kept in its own field rather than folded into `author_name` precisely so the
     /// client cannot render it where a verified name goes: it is shown beside the identity
     /// derived from their root, never in place of it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    claimed_name: Option<String>,
+    pub(crate) claimed_name: Option<String>,
 }
 
 /// GET `/api/identity/{root}/notifications` - one list, two sources.
@@ -2417,33 +2417,6 @@ async fn notifications_handler(
             item.doc_published_ms = Some(p.genesis_ms);
         }
     }
-    // A chat request rings nothing (Curtis, 2026-09-20): the word that somebody wants to
-    // talk belongs in the chats column's own pile, where it can be answered, and not in a
-    // bell that says something happened in a conversation this persona never agreed to.
-    // ...and a private chat's POST never rings either, request or not: "they mentioned you
-    // in a post" pointing at the plumbing of a chat is news about nothing. What the chat
-    // says rings, through the room mention, once the chat is somebody's to hear.
-    let mut quiet: Vec<usize> = Vec::new();
-    for (at, item) in items.iter().enumerate() {
-        if item.doc_id.is_empty() {
-            continue;
-        }
-        if item.kind == crate::notifications::KIND_ROOM_MENTION {
-            let Some(author) = item.detail.clone() else { continue };
-            if chat_request(&state, &data, &root, &author, &item.doc_id).await? {
-                quiet.push(at);
-            }
-            continue;
-        }
-        if item.kind == crate::notifications::KIND_MENTIONED
-            && held_public_header(&state, &item.author, &item.doc_id).await?.is_some_and(|h| h.im)
-        {
-            quiet.push(at);
-        }
-    }
-    for at in quiet.into_iter().rev() {
-        items.remove(at);
-    }
     // A room mention's room, by name (Curtis, 2026-09-19): the room post's public title off
     // whatever this node holds of its author; a sealed room's title travels with its words,
     // and the bell's link asks the body door for it instead.
@@ -2468,6 +2441,17 @@ async fn notifications_handler(
 /// at it (the `rooms_seen` register); a room never looked at counts whole. Off the node's
 /// room memo, so a room nobody here holds counts nothing, honestly.
 async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
+    let mut total = 0u64;
+    for (author, doc, since) in chat_rooms_with_seen(data, root).await? {
+        total += crate::chat::unseen_in(state, &author, &doc, since, root).await.map_err(AppError::Internal)?;
+    }
+    Ok(total)
+}
+
+/// The rooms the chat badge counts - this persona's own, and those entered and not left - each
+/// with when the persona last looked at it (`rooms_seen`; 0 for never). One list for the badge
+/// and the desktop alerts (attention.rs), so the two can never disagree about which rooms speak.
+pub(crate) async fn chat_rooms_with_seen(data: &store::Store, root: &str) -> Result<Vec<(String, String, i64)>, AppError> {
     let mut rooms: Vec<(String, String)> = Vec::new();
     for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
         if crate::record::documents::Format::from_wire(p.format) == crate::record::documents::Format::Room {
@@ -2481,19 +2465,20 @@ async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) ->
         }
     }
     if rooms.is_empty() {
-        return Ok(0);
+        return Ok(Vec::new());
     }
     let (seen_rows, _) = data.private_registers(ROOMS_SEEN).all().await?;
     let seen: std::collections::HashMap<String, i64> = seen_rows
         .into_iter()
         .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|ms| (r.key, ms)))
         .collect();
-    let mut total = 0u64;
-    for (author, doc) in rooms {
-        let since = seen.get(&format!("{author}:{doc}")).copied().unwrap_or(0);
-        total += crate::chat::unseen_in(state, &author, &doc, since, root).await.map_err(AppError::Internal)?;
-    }
-    Ok(total)
+    Ok(rooms
+        .into_iter()
+        .map(|(author, doc)| {
+            let since = seen.get(&format!("{author}:{doc}")).copied().unwrap_or(0);
+            (author, doc, since)
+        })
+        .collect())
 }
 
 async fn unread_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
@@ -2540,7 +2525,7 @@ async fn chat_request(
     Ok(!placed(data, &other).await?)
 }
 
-async fn notification_items(
+pub(crate) async fn notification_items(
     state: &AppState,
     data: &store::Store,
     root: &str,
@@ -2643,6 +2628,36 @@ async fn notification_items(
         doc_published_ms: None,
         updated_ms: n.timestamp_ms,
     }));
+    // The rows nobody is shown, dropped HERE rather than in the bell's handler (2026-09-25)
+    // so the dock badge, the bell and the desktop alerts all read one list: the handler-only
+    // version let the badge count rows the bell hid, which "mark all read" could not clear.
+    // A chat request rings nothing (Curtis, 2026-09-20): the word that somebody wants to
+    // talk belongs in the chats column's own pile, where it can be answered, and not in a
+    // bell that says something happened in a conversation this persona never agreed to.
+    // ...and a private chat's POST never rings either, request or not: "they mentioned you
+    // in a post" pointing at the plumbing of a chat is news about nothing. What the chat
+    // says rings, through the room mention, once the chat is somebody's to hear.
+    let mut quiet: Vec<usize> = Vec::new();
+    for (at, item) in items.iter().enumerate() {
+        if item.doc_id.is_empty() {
+            continue;
+        }
+        if item.kind == crate::notifications::KIND_ROOM_MENTION {
+            let Some(author) = item.detail.clone() else { continue };
+            if chat_request(state, data, root, &author, &item.doc_id).await? {
+                quiet.push(at);
+            }
+            continue;
+        }
+        if item.kind == crate::notifications::KIND_MENTIONED
+            && held_public_header(state, &item.author, &item.doc_id).await?.is_some_and(|h| h.im)
+        {
+            quiet.push(at);
+        }
+    }
+    for at in quiet.into_iter().rev() {
+        items.remove(at);
+    }
     items.sort_by_key(|i| std::cmp::Reverse(i.updated_ms));
     items.truncate(NOTIFICATIONS_PAGE as usize);
     Ok((items, watermark))
@@ -2834,7 +2849,7 @@ async fn already_im(
 
 /// The PARENT's own held header, mirror shelf first, fragment shelf second - the shared
 /// lookup for every honest door that must honor the header's own flags.
-async fn held_public_header(
+pub(crate) async fn held_public_header(
     state: &AppState,
     author_hex: &str,
     doc_hex: &str,

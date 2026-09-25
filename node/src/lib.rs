@@ -59,6 +59,7 @@ pub mod publish;
 pub mod rate_limit;
 pub mod rebroadcast;
 pub mod annotations;
+pub mod attention;
 pub mod replies;
 pub mod reaper;
 pub mod record;
@@ -136,6 +137,9 @@ pub struct AppState {
     /// The topics this node is in right now, with their presence: in memory, since a live
     /// space is exactly what a boot loses.
     pub live: chat::Live,
+    /// The badges' moments, said out loud for an embedder (attention.rs): the desktop app
+    /// subscribes through [`Bound::attention`] and turns each into a notification.
+    pub attention: attention::Attention,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -267,6 +271,7 @@ pub struct Bound {
     listener: tokio::net::TcpListener,
     service: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
     addr: SocketAddr,
+    attention: attention::Attention,
 }
 
 impl Bound {
@@ -274,6 +279,12 @@ impl Bound {
     /// caller asked for `0` and let the OS choose.
     pub fn addr(&self) -> SocketAddr {
         self.addr
+    }
+
+    /// Listen for the moments a badge lights (attention.rs) - the desktop app's notifications.
+    /// Subscribe before [`serve`] consumes the `Bound`; the receiver outlives it.
+    pub fn attention(&self) -> tokio::sync::broadcast::Receiver<attention::Alert> {
+        self.attention.subscribe()
     }
 }
 
@@ -393,6 +404,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let gossip = iroh_gossip::net::Gossip::builder()
         .max_message_size(32 * 1024)
         .spawn(endpoint.clone());
+    // Read before `config` moves into the state: the recorder is a local-test fixture.
+    let record_attention = config.local_test;
     let state = AppState {
         config,
         node_db,
@@ -415,6 +428,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         peeked: net::admission::Behind::default(),
         gossip,
         live: chat::Live::default(),
+        attention: attention::Attention::new(record_attention),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
@@ -569,6 +583,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
+    // Attention (attention.rs): idle unless somebody listens.
+    tokio::spawn(attention::watch(state.clone()));
     // The room-sync beat (CHAT.md, slice 2): every room a hosted persona opened lately,
     // pulled from the creator's node. Slow on purpose - the beat is the honest floor,
     // and live delivery is slice 3's.
@@ -751,9 +767,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route(
                 "/test/plug-in",
                 axum::routing::post(test_endpoints::plug_in),
+            )
+            .route(
+                "/test/attention",
+                axum::routing::get(test_endpoints::attention),
             );
     }
 
+    let attention = state.attention.clone();
     let app = app
         .with_state(state)
         .layer(
@@ -770,7 +791,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         )
         .into_make_service_with_connect_info::<SocketAddr>();
 
-    Ok(Bound { listener, service: app, addr })
+    Ok(Bound { listener, service: app, addr, attention })
 }
 
 /// The tracing subscriber, built HERE rather than in the binary (DESKTOP.md's quiet Stage 1

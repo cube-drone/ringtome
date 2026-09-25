@@ -1710,6 +1710,77 @@ pub async fn unseen_in(state: &AppState, author_hex: &str, doc_hex: &str, since_
     Ok(rows.iter().filter(|(who, _)| !muted.contains(who)).map(|(_, n)| (*n).max(0) as u64).sum())
 }
 
+/// One unseen line, as a desktop alert wants it (attention.rs): who, when, and the words
+/// when this node can read them.
+pub struct UnseenLine {
+    /// The entry's hash, hex: what makes "already announced" answerable.
+    pub hash: String,
+    pub speaker: String,
+    pub speaker_name: Option<String>,
+    pub said_ms: i64,
+    /// The words as shown (an edit's, when edited), opened with the room's key when sealed;
+    /// `None` for a sealed line this reader has no key for, or a moderation notice.
+    pub words: Option<String>,
+}
+
+/// The lines [`unseen_in`] counts, newest first and at most `limit` of them: the same rows
+/// (said since `since_ms`, not by `not_speaker`, not deleted, no muted speaker), opened into
+/// words the way [`history`] opens them.
+pub async fn unseen_lines(
+    state: &AppState,
+    author_hex: &str,
+    doc_hex: &str,
+    since_ms: i64,
+    not_speaker: &str,
+    limit: i64,
+) -> Result<Vec<UnseenLine>> {
+    // (speaker, said_ms, entry_hash, body as shown, sealed, notice kind)
+    type LineRow = (String, i64, Vec<u8>, Vec<u8>, i64, Option<i64>);
+    let rows: Vec<LineRow> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, said_ms, entry_hash, COALESCE(edit_body, body),
+                    CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END, notice_kind
+             FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms > ?3 AND speaker_root != ?4 AND deleted = 0
+             ORDER BY said_ms DESC LIMIT ?5",
+            (author_hex, doc_hex, since_ms, not_speaker, limit),
+        )
+        .await
+        .context("reading a room's unseen lines")?;
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let muted = muted_in(state, not_speaker, author_hex, doc_hex).await;
+    let rows: Vec<_> = rows.into_iter().filter(|r| !muted.contains(&r.0)).collect();
+    let key = match (rows.iter().any(|r| r.4 != 0), hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())) {
+        (true, Some(doc)) => room_key(state, author_hex, &doc, not_speaker).await,
+        _ => None,
+    };
+    let speakers: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &speakers).await.unwrap_or_default();
+    Ok(rows
+        .into_iter()
+        .map(|(speaker, said_ms, hash, body, sealed, notice)| {
+            let words = if notice.is_some() {
+                None
+            } else if sealed != 0 {
+                key.and_then(|k| crate::record::private::open_post_body(&body, &k))
+                    .and_then(|b| String::from_utf8(b).ok())
+            } else {
+                String::from_utf8(body).ok()
+            };
+            UnseenLine {
+                hash: hex::encode(hash),
+                speaker_name: bylines.get(&speaker).and_then(|b| b.name.clone()),
+                speaker,
+                said_ms,
+                words,
+            }
+        })
+        .collect())
+}
+
 /// When each room this node holds last heard a message: `(room_author, room_doc) ->
 /// said_ms` - what the chats column sorts and bolds by (Curtis, 2026-09-18).
 pub async fn latest_by_room(node_db: &Db) -> Result<HashMap<(String, String), i64>> {

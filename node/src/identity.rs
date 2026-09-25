@@ -14,7 +14,7 @@
 //! loaders. Revocation stays here too: it is key-tree lifecycle, and it is one function.
 
 pub mod adoption;
-mod routes;
+pub(crate) mod routes;
 pub(crate) mod serving;
 
 pub use routes::{router, BodyLimits};

@@ -541,3 +541,17 @@ pub async fn revalidation_mode(
     tracing::warn!(mode = %req.mode, "LOCAL_TEST revalidation mode override");
     Ok(Json(serde_json::json!({ "mode": req.mode })))
 }
+
+#[derive(serde::Deserialize)]
+pub struct AttentionQuery {
+    pub root: String,
+}
+
+/// GET `/test/attention?root=` - the alerts the attention watcher has raised for one persona,
+/// oldest first (attention.rs's local-test recorder): what the desktop app would have shown.
+pub async fn attention(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<AttentionQuery>,
+) -> Json<Vec<crate::attention::Alert>> {
+    Json(state.attention.recorded(&q.root))
+}

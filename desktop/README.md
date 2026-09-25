@@ -60,7 +60,7 @@ binary. `RINGTOME_DATA_DIRECTORY` still wins when set, which is how you point th
 node:
 
 ```sh
-RINGTOME_DATA_DIRECTORY=/tmp/ringtome-desktop RINGTOME_DISCOVERY=off cargo run
+RINGTOME_DATA_DIRECTORY=/tmp/horse-drawing-tycoon-2 RINGTOME_DISCOVERY=off cargo run
 ```
 
 ## Filling it with something to look at
@@ -81,7 +81,7 @@ the ordinary API - no test endpoints, so a desktop node is as drivable as a dev 
 your real one:
 
 ```sh
-RINGTOME_DATA_DIRECTORY=/tmp/ringtome-desktop just desktop-test-data 3 4
+RINGTOME_DATA_DIRECTORY=/tmp/horse-drawing-tycoon-2 just desktop-test-data 3 4
 ```
 
 One thing Stage 3 will have to answer: the generator registers an account per persona, and

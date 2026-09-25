@@ -10489,3 +10489,50 @@ things kept it on purpose: the bundle identifier `net.lassam.ringtome` (it names
 the OS permission grants and the login item), the release-name seed (or every release name
 changes), and browser-storage keys (or their contents are orphaned). README, PROJECT_PLAN (*Two
 names*, under Vision), GLOSSARY, CLAUDE.md and the desktop docs say which name means what.
+
+## 2026-09-25 (cont.): the badge, said out loud
+
+Curtis: "anytime something happens that would trigger a badge lighting up in app, we pop a desktop
+notification". The survey first: two numeric badges - the bell (derived notification rows beside
+delivered inbox notices, per persona) and the chat app (unseen lines in the rooms a persona is in) -
+recounted by the live-cache stream on the write-nudge bus and a guarded one-second tick. Nothing
+in-process said "something badge-worthy happened"; the stream diffs counts.
+
+So `node/src/attention.rs` reads exactly what the badges count from - `notification_items`, and a
+new `chat::unseen_lines` beside the badge's `unseen_in` over one shared room list
+(`chat_rooms_with_seen`) - and announces whatever is unseen and not yet announced, worded in the
+bell's own sentences (a room line quotes its words, opened with the room's key when sealed). Two
+rules carry it: "not yet announced" is the SET of unseen items the persona's last pass saw, never a
+time mark, because a line said while its speaker's node was offline arrives late wearing an old
+stamp and is exactly the news worth hearing; and a persona's first successful pass announces
+nothing, so a launch never replays the backlog the badge already shows. (The first cut counted the
+tick's guard as "looked", which is written before the pass - it would have replayed the backlog at
+every launch; caught on re-reading, before a test ran.) More than three at once collapse into one
+alert per room and one for the bell. Woken like the stream, and idle unless somebody subscribes.
+
+The survey also found a real bug, fixed on the way: the filter that keeps chat requests and IM
+"mentioned" rows out of the bell ran only in the bell's handler, so the dock badge counted rows the
+bell never showed and "mark all read" could not clear. It lives in `notification_items` now, where
+the badge, the bell and the alerts all read it.
+
+The shell (`desktop/src/alerts.rs`, `tauri-plugin-notification`) subscribes through
+`Bound::attention`, skips an alert while the window is visible and focused, asks macOS's permission
+once, and `RunEvent::Reopen` brings a hidden window back. `attention.cjs` proves it against the rig
+through a local-test recorder (`/test/attention`): a line alerts with its room and words, one's own
+line never does, a seen line never alerts while the next one does, and a bell row alerts in the
+bell's words - three of three, red with the watcher's memory removed. Open: an alert's route rides
+along unfollowed, since the plugin reports no click on desktop.
+
+## 2026-09-25 (cont.): the executable's name, too
+
+Curtis: "the app appears to be called ringtome-desktop". The product-name rename changed the
+bundle, not the executable inside it, which Tauri names after the crate's binary - and macOS shows
+the executable's name wherever it points at the file itself: Login Items (the start-at-login entry
+is a path), parts of Activity Monitor, and every unbundled dev run. Now the binary target is
+`horse-drawing-tycoon-2` (the package keeps `ringtome-desktop`, which nobody sees), and on macOS
+`mainBinaryName` renames the bundled executable once more to "Horse Drawing Tycoon 2"
+(`desktop/tauri.macos.conf.json`); a local `cargo tauri build --debug --bundles app` shows the
+executable, `CFBundleName` and the unchanged identifier all as intended. The shell's log filter
+names the binary's crate, so it moved with it. And start-at-login, when on, is re-written at every
+launch: it records the executable's path, so a rename or a moved app left it pointing at nothing -
+now it heals, including the 0.1.x copies whose login item names `ringtome-desktop`.

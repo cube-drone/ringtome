@@ -128,6 +128,16 @@ fn offer_autostart(app: &AppHandle, data_dir: &Path) {
     }
     let marker = data_dir.join(AUTOSTART_MARKER);
     if marker.exists() {
+        // Offered before: the person's answer stands - but if it is "on", write it again, so
+        // the login item names THIS executable. It records a path, and a renamed executable
+        // (Ringtome to Horse Drawing Tycoon 2, 2026-09-25) or a moved app leaves the old entry
+        // pointing at nothing; re-enabling on every launch makes that heal itself.
+        let launch = app.autolaunch();
+        if launch.is_enabled().unwrap_or(false) {
+            if let Err(e) = launch.enable() {
+                tracing::warn!(error = %e, "could not refresh start at login");
+            }
+        }
         return;
     }
     match app.autolaunch().enable() {

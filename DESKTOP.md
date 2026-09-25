@@ -449,6 +449,15 @@ and a machine without it gets no tray - in which case close quits rather than hi
 launch shows itself, because a hidden window with no way back is a node nobody can reach. Stock
 GNOME additionally needs the AppIndicator extension to render any tray at all.
 
+*Notifications (2026-09-25, `desktop/src/alerts.rs` over `node/src/attention.rs`).* Whenever a
+badge in the app would light, the OS says so - unless the window is visible and focused, where
+the badge itself is the notice. The node decides and words every alert from exactly the rows the
+two dock badges count (the bell's list, the chat badge's rooms), announcing each unseen item once
+and never the backlog present at launch; the shell only decides whether anyone needs telling.
+Clicking one brings the window back where the platform routes the click to the app (macOS's
+activation is `RunEvent::Reopen`); the alert's route - the bell, or the room - rides along but is
+not yet followed, because the notification plugin reports no click on desktop.
+
 **Stage 6 — auto-update and a release channel.** Tauri's updater against a static host. No longer
 load-bearing for security the way electron-updater would have been, which is a reason it comes last
 rather than a reason to skip it.

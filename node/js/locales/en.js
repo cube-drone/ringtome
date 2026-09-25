@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 909 phrases across 58 files.
+// 933 phrases across 59 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -777,6 +777,32 @@ export default {
     'warnings.blurred-hint': 'posts tagged with these are partially hidden but still accessible',
     'warnings.hidden-tags': 'hidden',
     'warnings.hidden-hint': 'posts tagged with these will not be displayed on your feed at all',
+
+    // --- node/src/attention.rs ---
+    'attention.speaker-in-room': '{who} in {room}',
+    'attention.a-new-message': 'a new message',
+    'attention.notifications': 'Notifications',
+    'attention.n-new-notifications': '{n} new notifications',
+    'attention.n-new-messages': '{n} new messages - latest: {words}',
+    'attention.claimed-name': '"{name}" (unverified)',
+    'attention.shared-your-post': 'shared your post "{t}"',
+    'attention.shared-something-of-yours': 'shared something of yours',
+    'attention.replied-to-your-post': 'replied to your post "{t}"',
+    'attention.replied-to-one-of-your-posts': 'replied to one of your posts',
+    'attention.labelled-post-words': 'labelled "{t}" "{words}"',
+    'attention.labelled-a-post-words': 'labelled one of your posts "{words}"',
+    'attention.labelled-post': 'labelled your post "{t}"',
+    'attention.labelled-a-post': 'labelled one of your posts',
+    'attention.mentioned-you-in-a-post': 'mentioned you in a post',
+    'attention.mentioned-you-in-room': 'mentioned you in {room}',
+    'attention.mentioned-you-in-a-room': 'mentioned you in a room',
+    'attention.follows-and-vouches': 'follows and vouches for you',
+    'attention.follows-and-trusts': 'follows you publicly, and publishes their trust in you',
+    'attention.follows-you': 'follows you, publicly',
+    'attention.vouches-for-you': 'vouches for you, publicly',
+    'attention.trusts-you': 'publishes their trust in you',
+    'attention.a-room': 'a room',
+    'attention.someone': 'someone',
 
     // --- node/src/auth.rs ---
     'auth.password-cant-be-empty': "password can't be empty",

@@ -16,6 +16,7 @@
 //! hide-not-close window and start-at-login (Stage 5) are `tray.rs`; updates (Stage 6) are
 //! `update.rs`: fetched in the background, installed when nobody is looking.
 
+mod alerts;
 mod port;
 mod tray;
 mod update;
@@ -36,6 +37,7 @@ fn main() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .on_window_event(|window, event| {
             // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on. Unless
             // there is no tray to come back through, in which case close means quit - and the
@@ -58,7 +60,7 @@ fn main() {
             // client finds it already there. NOT the query string: a URL lands in history, in
             // a log, in a screenshot, and this is the whole house.
             let token = ringtome_node::auth::mint_launch_token();
-            let url = start_node(&data_dir, token.clone())?;
+            let (url, attention) = start_node(&data_dir, token.clone())?;
             let hidden = tray::launched_hidden();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
                 .title("Horse Drawing Tycoon 2")
@@ -71,6 +73,7 @@ fn main() {
                 .build()?;
             update::start(app.handle().clone());
             tray::build(app.handle(), &data_dir, &url);
+            alerts::start(app.handle().clone(), attention);
             // A hidden launch with nothing to come back through would be a node nobody can
             // reach; without a tray, the window shows regardless.
             if hidden && tray::present(app.handle()) {
@@ -87,6 +90,12 @@ fn main() {
             // so the next launch is the new version and this one never restarted under anybody.
             if let tauri::RunEvent::Exit = event {
                 update::install_pending(app);
+            }
+            // The dock icon clicked, or a notification clicked (macOS activates the app, and
+            // this is how Tauri says so): a hidden window comes back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::show_window(app);
             }
         });
 }
@@ -106,12 +115,16 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 }
 
 /// Build the node, bind it, and hand back the URL the window should open - having started the
-/// server on Tauri's own runtime, which is the tokio runtime this app already has.
+/// server on Tauri's own runtime, which is the tokio runtime this app already has - and the
+/// node's attention feed (src/alerts.rs), subscribed before `serve` consumes the binding.
 ///
 /// The port is the remembered one (see [`port`]); if something else took it since last launch the
 /// bind fails, and the answer to that is another port written down rather than a shell that will
 /// not start.
-fn start_node(data_dir: &Path, token: String) -> anyhow::Result<String> {
+fn start_node(
+    data_dir: &Path,
+    token: String,
+) -> anyhow::Result<(String, tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>)> {
     let mut config = ringtome_node::config::Config::from_env();
     config.data_directory = data_dir.to_path_buf();
     // A PACKAGED app is a prod node (DESKTOP.md, Stage 4), and a `cargo run` is a dev one - which
@@ -132,8 +145,9 @@ fn start_node(data_dir: &Path, token: String) -> anyhow::Result<String> {
     config.bind_address = "127.0.0.1".to_string();
     config.port = port::remembered_or_fresh(data_dir)?;
     // The shell's own target, said out loud: the library builds its default filter from its own
-    // crate name, so without this the lines below are logged to nobody.
-    ringtome_node::init_tracing_with(&config, &["ringtome_desktop"]);
+    // crate name, so without this the lines below are logged to nobody. It is the BINARY's crate
+    // name (Cargo.toml's [[bin]]), not the package's - rename one, rename this.
+    ringtome_node::init_tracing_with(&config, &["horse_drawing_tycoon_2"]);
 
     // One retry, and it costs one assembly rather than two: the library binds its listener
     // before it builds anything, so a taken port fails early and leaves nothing running.
@@ -146,13 +160,14 @@ fn start_node(data_dir: &Path, token: String) -> anyhow::Result<String> {
         }
     };
     let url = format!("http://{}/", bound.addr());
+    let attention = bound.attention();
     tracing::info!(%url, data_dir = %data_dir.display(), "ringtome desktop: node up");
     tauri::async_runtime::spawn(async move {
         if let Err(e) = ringtome_node::serve(bound).await {
             tracing::error!(error = ?e, "the node stopped serving");
         }
     });
-    Ok(url)
+    Ok((url, attention))
 }
 
 /// The boot, awaited before the window exists - which is the whole readiness story: by the time
