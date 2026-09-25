@@ -26,7 +26,7 @@ use ringtome_proto::directory::SignedServingRecord;
 #[derive(Debug, Clone)]
 pub enum DiscoveryMode {
     /// No publishing, no resolution. Adoption codes (which carry bootstrap addresses) still
-    /// work; anything else needs explicit addresses. The conservative default.
+    /// work; anything else needs explicit addresses. A debug build's default.
     Off,
     /// Shared-folder simulation for local/test use: `RINGTOME_DISCOVERY=local:/some/path`.
     Local(PathBuf),
@@ -35,13 +35,24 @@ pub enum DiscoveryMode {
 }
 
 impl DiscoveryMode {
+    /// `RINGTOME_DISCOVERY`, or the build's default: a RELEASE build is on the real network
+    /// (`mainline`), a debug build is dark (`off`) - 2026-09-25, packaging server nodes: a
+    /// downloaded binary that published nothing and resolved nobody was the same trap the desktop
+    /// app fell into, and a server has even less reason to be alone. `off` is now a word of its
+    /// own, since "anything unrecognised means off" only held while off was the one default.
     pub fn from_env() -> Self {
         match std::env::var("RINGTOME_DISCOVERY").as_deref() {
             Ok("mainline") => DiscoveryMode::Mainline,
+            Ok("off") => DiscoveryMode::Off,
             Ok(s) if s.starts_with("local:") => {
                 DiscoveryMode::Local(PathBuf::from(s.trim_start_matches("local:")))
             }
-            _ => DiscoveryMode::Off,
+            Ok(other) => {
+                eprintln!("RINGTOME_DISCOVERY={other:?} is not off, mainline or local:<path> - treating it as off");
+                DiscoveryMode::Off
+            }
+            Err(_) if cfg!(debug_assertions) => DiscoveryMode::Off,
+            Err(_) => DiscoveryMode::Mainline,
         }
     }
 }

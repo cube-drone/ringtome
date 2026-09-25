@@ -77,8 +77,9 @@ pub struct Config {
     /// parameters (fast, weak). Never enable on a node that is reachable by anyone but the
     /// developer running its tests.
     pub local_test: bool,
-    /// How this node publishes/resolves discovery records (`RINGTOME_DISCOVERY`): `off`
-    /// (default), `local:<path>` (shared-folder simulation), or `mainline` (real DHT + relays).
+    /// How this node publishes/resolves discovery records (`RINGTOME_DISCOVERY`): `off`,
+    /// `local:<path>` (shared-folder simulation), or `mainline` (real DHT + relays). Default:
+    /// `mainline` in a release build, `off` in a debug one (DiscoveryMode::from_env).
     /// Also selects the iroh preset: mainline gets `N0`, everything else `Minimal`.
     pub discovery: crate::net::discovery::DiscoveryMode,
     /// The pre-crunch upload ceiling: the largest RAW media a client may POST before transcode
@@ -241,9 +242,15 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| env::temp_dir().join("ringtome-upload-quarantine"));
 
+        // A RELEASE build is a prod node unless told otherwise (2026-09-25, packaging server
+        // nodes): a dev node serves its UI from a path on the machine that compiled it, which
+        // exists nowhere else, so a downloaded binary left at the old default served a broken
+        // page. A debug build - `just start`, the rig - keeps dev, which is what hot reload is.
         let environment = match env::var("RINGTOME_ENVIRONMENT").as_deref() {
             Ok("prod") => Environment::Prod,
-            _ => Environment::Dev,
+            Ok("dev") => Environment::Dev,
+            _ if cfg!(debug_assertions) => Environment::Dev,
+            _ => Environment::Prod,
         };
 
         let tenancy = match env::var("RINGTOME_TENANCY").as_deref() {

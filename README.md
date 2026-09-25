@@ -73,6 +73,9 @@ federated, unapologetically Old Internet.
   - [`SIGNING.md`](SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits on, and the only document
     here addressed to the operator rather than the code: what to enrol in (Apple, Azure Artifact
     Signing), the eligibility traps, where each secret lands, and what proceeds unsigned meanwhile.
+  - [`SERVER.md`](SERVER.md) — running a Ringtome node on a server: which release download is which,
+    the container image, the settings, HTTPS (the operator's own proxy), the peer-to-peer port, the
+    data directory that IS the node, and why every upgrade takes a backup first.
   - [`MOBILE.md`](MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
     deliberately narrow UI. Corrects a factual premise in *Phones: deferred, by design* and
     carries the availability arithmetic for a network with no always-on infrastructure.

@@ -25,3 +25,6 @@ node_modules/
 
 # generated fake-network credentials (`just test-data`)
 **/harness/testdata-state.json
+
+# The release workflow lays the server binaries out here for the image build (SERVER.md).
+server/bin/

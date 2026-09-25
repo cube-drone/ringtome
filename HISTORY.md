@@ -10681,3 +10681,29 @@ that port - IPv4 required, so a taken port fails the boot loudly instead of list
 forwarded; IPv6 allowed to fail, as iroh's own default is. Unset keeps today's behaviour. A malformed
 value reads as unset, and the bound port is in the boot log. `net::p2p::port_tests` binds a fixed port
 and sees it, sees a second node refused it, and sees unset left alone - red with the setting ignored.
+
+## 2026-09-25 (cont.): server nodes ship with the release
+
+The packaging half of NEXT_STEPS's *Server nodes*. Every release now carries, beside the desktop
+installers, the server node twice: `ringtome-server-<version>-<name>-linux-{x86_64,aarch64}.tar.gz`
+(the binary, `SERVER.md`, the licence, and a sha256 beside each) and the same binaries as a multi-arch
+image, `ghcr.io/cube-drone/ringtome:<version>`, `:<version>-<name>` and `:latest`. The names keep the
+two kinds apart - `ringtome-server-` against Tauri's `Horse Drawing Tycoon 2_` - and the release notes
+gain a "which download is which" section, once.
+
+The builds are native, each architecture on its own runner, inside `debian:bullseye`: glibc 2.31 with
+plain gcc, which is why `cargo-zigbuild` (the same baseline by cross-compiling against Zig's glibc
+stubs) was dropped - `aws-lc-sys` is the node's one piece of C, and gcc is its most-trodden path. A
+step reads the newest glibc symbol out of the binary and refuses anything past 2.31. The image
+(`server/Dockerfile`) is distroless/cc with no RUN step, so a multi-arch build needs no emulation; it
+runs as uid 65532 with `/data` owned by it, and sets its defaults out loud (`prod`, `mainline`, HTTP on
+5281, P2P on 5282/udp) so `docker inspect` tells the truth. A dry run builds the image without pushing.
+
+The node changed with it: a RELEASE build now defaults to `prod` and `mainline` (a debug build keeps
+`dev` and `off`, so `just start` and the rig are untouched) - a downloaded binary at the old defaults
+served a UI from a path on the build machine and published to nobody, the desktop's discovery trap
+again. `RINGTOME_DISCOVERY` gained an explicit `off`, and an unrecognised value says so on stderr.
+`SERVER.md` is the operator's page: the settings, HTTPS as the operator's own proxy (Web Push and
+friends need a secure origin), the P2P port, the data directory that holds the keys, and "take a copy
+before every upgrade", since the migration ladder never goes down. None of the workflow runs until a
+tag, which is its first proof.
