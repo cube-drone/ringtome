@@ -10450,3 +10450,23 @@ with the polite empty exchange, and `fetch_foreign_with` counted any completed e
 so "fetched nothing from a housemate" recorded a fetch of a persona this node knew nothing about and
 answered a page for it. The rule now: an exchange that delivers nothing to a node that holds
 nothing of the persona is not a fetch; a revalidation that finds nothing new still is.
+
+## 2026-09-25: the reaper's blind spot, closed a third time - from our own hand
+
+The commit carrying the `Put` guard and the round-stamped ring still lost two bodies on CI
+(`budgets`' before-hook, `publish`'s reconsidered words), and this time the rig's logs were there to
+read: `blob not readable locally: encode error` - iroh's word for a blob that is not in the store -
+on a publish fifteen milliseconds after its save, mid-way through a tight loop of a hundred and
+fifty posts. Locally the same claims pass with the reaper firing every 100ms. The window the ring
+did not cover: a `Put` released AFTER the round's callback had read the ring and BEFORE iroh's
+sweep ran. Its ring entry carried the current round, which that callback had already finished
+reading; its temp tag was gone by the time the sweep looked. On a laptop the callback-to-sweep gap
+is microseconds; on a loaded ARM runner walking hundreds of personas it is not.
+
+The fix stops leaning on iroh's temp-tag timing at all. The file layer counts every blob a live
+`Put` holds (`outstanding`), and the mark phase keeps all of them from our own hand, read before
+the ring so a release between the two reads lands in one or the other. A blob is now protected by
+our mark while held, by the ring for one round after release, and by the ledger from the next walk
+on - and no phase of it depends on what iroh does with tags or when. The reaper test grows a held
+blob that stands through every round and is collected once released with no row behind it. Proven
+only where it failed: CI.

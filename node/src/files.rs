@@ -45,6 +45,10 @@ type ArmedGc = std::sync::Arc<std::sync::OnceLock<(LiveSource, Store)>>;
 type RecentRing = std::sync::Arc<std::sync::Mutex<Vec<(Hash, u64)>>>;
 /// How many GC rounds have started. The ring's clock: rounds, never seconds.
 type GcRounds = std::sync::Arc<std::sync::atomic::AtomicU64>;
+/// Every blob some caller currently HOLDS a [`Put`] for, counted (two puts of the same
+/// bytes share a hash). The mark phase keeps all of them, from our own hand: a held blob
+/// must survive whatever iroh does with temp tags and whenever it does it.
+type Outstanding = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<Hash, u32>>>;
 
 /// A blob just stored, and the hold that keeps it out of the reaper's sweep. **Keep this
 /// alive until the row that names `hash` has committed** - the header append, the fragment
@@ -62,17 +66,43 @@ pub struct Put {
     pub hash: Hash,
     ring: RecentRing,
     rounds: GcRounds,
+    outstanding: Outstanding,
     _tag: iroh_blobs::api::TempTag,
+}
+
+impl Put {
+    fn new(store: &FileStore, hash: Hash, tag: iroh_blobs::api::TempTag) -> Self {
+        *store
+            .outstanding
+            .lock()
+            .expect("outstanding puts poisoned")
+            .entry(hash)
+            .or_insert(0) += 1;
+        Put {
+            hash,
+            ring: store.recent.clone(),
+            rounds: store.rounds.clone(),
+            outstanding: store.outstanding.clone(),
+            _tag: tag,
+        }
+    }
 }
 
 impl Drop for Put {
     /// Released: the row is in. The hash goes on the ring, stamped with the current round,
     /// so a GC walk that began before the row landed (and so cannot see it) still keeps the
-    /// bytes; the next round's walk sees the row, and the ring lets go. Runs before the
-    /// tag field drops, so there is no instant with neither hold.
+    /// bytes; the next round's walk sees the row, and the ring lets go. The ring entry is
+    /// written BEFORE the outstanding count drops, so there is no instant with neither hold.
     fn drop(&mut self) {
         let round = self.rounds.load(std::sync::atomic::Ordering::SeqCst);
         self.ring.lock().expect("recent ring poisoned").push((self.hash, round));
+        let mut outstanding = self.outstanding.lock().expect("outstanding puts poisoned");
+        if let Some(count) = outstanding.get_mut(&self.hash) {
+            *count -= 1;
+            if *count == 0 {
+                outstanding.remove(&self.hash);
+            }
+        }
     }
 }
 
@@ -125,6 +155,8 @@ pub struct FileStore {
     /// round (see the ring's type and `gc_config`).
     recent: RecentRing,
     rounds: GcRounds,
+    /// Blobs held by a live [`Put`] right now - the mark keeps them all (see `gc_config`).
+    outstanding: Outstanding,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
     /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
     /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
@@ -135,7 +167,7 @@ impl FileStore {
     /// In-memory store - tests and ephemeral nodes. GC runs fast here (the unit tests want to
     /// watch it), and reaps nothing until armed, which tests almost never do.
     pub fn memory() -> Self {
-        let (armed, recent, rounds) = Self::gc_state();
+        let (armed, recent, rounds, outstanding) = Self::gc_state();
         Self {
             backend: Backend::Mem(MemStore::new_with_opts(iroh_blobs::store::mem::Options {
                 gc_config: Some(Self::gc_config(
@@ -143,6 +175,7 @@ impl FileStore {
                     armed.clone(),
                     recent.clone(),
                     rounds.clone(),
+                    outstanding.clone(),
                 )),
             })),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
@@ -150,16 +183,23 @@ impl FileStore {
             armed,
             recent,
             rounds,
+            outstanding,
         }
     }
 
     /// Persistent redb-backed store rooted at `path` (created if absent). `gc_interval` paces
     /// the blob reaper's rounds; the reaper still reaps nothing until `arm_gc` is called.
     pub async fn fs(path: impl AsRef<Path>, gc_interval: std::time::Duration) -> Result<Self> {
-        let (armed, recent, rounds) = Self::gc_state();
+        let (armed, recent, rounds, outstanding) = Self::gc_state();
         let path = path.as_ref();
         let mut options = iroh_blobs::store::fs::options::Options::new(path);
-        options.gc = Some(Self::gc_config(gc_interval, armed.clone(), recent.clone(), rounds.clone()));
+        options.gc = Some(Self::gc_config(
+            gc_interval,
+            armed.clone(),
+            recent.clone(),
+            rounds.clone(),
+            outstanding.clone(),
+        ));
         let store = FsStore::load_with_opts(path.join("blobs.db"), options)
             .await
             .context("opening blob store")?;
@@ -170,11 +210,12 @@ impl FileStore {
             armed,
             recent,
             rounds,
+            outstanding,
         })
     }
 
-    fn gc_state() -> (ArmedGc, RecentRing, GcRounds) {
-        (Default::default(), Default::default(), Default::default())
+    fn gc_state() -> (ArmedGc, RecentRing, GcRounds, Outstanding) {
+        (Default::default(), Default::default(), Default::default(), Default::default())
     }
 
     /// Arm the reaper: from now on, GC runs mark from `source` (plus the recent ring) and
@@ -204,6 +245,7 @@ impl FileStore {
         armed: ArmedGc,
         recent: RecentRing,
         rounds: GcRounds,
+        outstanding: Outstanding,
     ) -> iroh_blobs::store::GcConfig {
         use iroh_blobs::store::ProtectOutcome;
         iroh_blobs::store::GcConfig {
@@ -215,6 +257,7 @@ impl FileStore {
                 let armed = armed.clone();
                 let recent = recent.clone();
                 let rounds = rounds.clone();
+                let outstanding = outstanding.clone();
                 let work = tokio::spawn(async move {
                     // This round's number, taken BEFORE the walk: anything noted from here
                     // on carries it, and is kept through the NEXT round too.
@@ -230,6 +273,21 @@ impl FileStore {
                         }
                     };
                     {
+                        // Every blob a live `Put` holds is kept, from our own hand
+                        // (2026-09-24, the third close of the reaper's blind spot): the
+                        // temp tag alone was not enough on CI, where a `Put` released
+                        // AFTER this callback had read the ring and BEFORE iroh's sweep
+                        // ran had neither a ring entry this round could see nor a tag by
+                        // the time the sweep looked. Read under the same lock discipline
+                        // as the ring, and before it, so a release between the two reads
+                        // lands in one or the other.
+                        let held: Vec<Hash> = outstanding
+                            .lock()
+                            .expect("outstanding puts poisoned")
+                            .keys()
+                            .copied()
+                            .collect();
+                        keep.extend(held);
                         // Every ring entry is kept THIS round. Then the ones stamped before
                         // this round go: they were noted before this walk began, so their
                         // rows are in what the walk read, and the ledger carries them now.
@@ -336,7 +394,7 @@ impl FileStore {
             .await
             .context("storing blob")?;
         let hash = *tag.as_ref();
-        Ok(Put { hash, ring: self.recent.clone(), rounds: self.rounds.clone(), _tag: tag })
+        Ok(Put::new(self, hash, tag))
     }
 
     /// Store a PUBLIC body: plaintext into the same content-addressed store, no key in the
@@ -358,7 +416,7 @@ impl FileStore {
             .await
             .context("storing public blob")?;
         let hash = *tag.as_ref();
-        Ok(Put { hash, ring: self.recent.clone(), rounds: self.rounds.clone(), _tag: tag })
+        Ok(Put::new(self, hash, tag))
     }
 
     /// What hash a public body WILL have, without storing it - the same content address
@@ -720,13 +778,18 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(700)).await;
         assert!(store.has(keep).await && store.has(dead).await, "unarmed reaps nothing");
 
+        // And one nobody references but somebody HOLDS: a row on its way (2026-09-24).
+        let held = store.put_public(b"row still landing").await.unwrap();
+        let held_hash = held.hash;
+
         let live: std::collections::HashSet<Hash> = [keep].into_iter().collect();
         store.arm_gc(std::sync::Arc::new(move || {
             let live = live.clone();
             Box::pin(async move { Ok(live) })
         }));
 
-        // Armed: the dead blob goes within a few rounds; the referenced one never does.
+        // Armed: the dead blob goes within a few rounds; the referenced one never does,
+        // and neither does the held one - from our own mark, whatever iroh's tags do.
         let mut reaped = false;
         for _ in 0..50 {
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -737,5 +800,17 @@ mod tests {
         }
         assert!(reaped, "the unreferenced blob was collected");
         assert!(store.has(keep).await, "the referenced blob stands");
+        assert!(store.has(held_hash).await, "the held blob stands through every round");
+        // Released with no row behind it, it is collected too - within a round or two.
+        drop(held);
+        let mut gone = false;
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            if !store.has(held_hash).await {
+                gone = true;
+                break;
+            }
+        }
+        assert!(gone, "the released blob with no row was collected");
     }
 }
