@@ -727,6 +727,105 @@ async fn fetch_foreign_with(
         None => peek_held(state, root_hex).await,
     };
     let scope: &'static [u32] = if peek { crate::net::sync::PEEK_SCOPE } else { &[] };
+    // Whether anything of theirs is here before the dials go out. An exchange that delivers
+    // NOTHING to a node that holds NOTHING is not a fetch (2026-09-24): a housemate's serve
+    // gate answers strangers with the polite empty exchange, and counting that as a win
+    // recorded a fetch of a persona this node still knew nothing about, and answered a page
+    // for it. A revalidation that finds nothing new is still a success: we held them.
+    let held_before = state.user_dbs.db_mtime_ms(root_hex).is_some();
+
+    // Round one: the persona's own machinery. The zeroth hint is the root itself: a founding
+    // node signs with the root AS its leaf, so its serving record lives under the root key -
+    // which makes a bare root resolve with no hint at all, for every persona whose founding
+    // node still publishes. (The announce rendezvous, when built, covers the personas whose
+    // founder is gone.)
+    let own: Vec<String> = std::iter::once(root_hex.to_string())
+        .chain(via.iter().take(10).cloned())
+        .collect();
+    let mut won = race(state, root_hex, scope, ask, max_passes, held_before, own).await;
+
+    // Round two, only when round one reached nobody: the household (the cohort rung, decided
+    // 2026-08-15; moved here 2026-09-24 so that EVERY foreign fetch has it - the first look
+    // at a persona and a follow's promotion used to walk only the hints, and a phone opening
+    // a sleeping author's page for the first time got "none of the address's computers
+    // answered" while its own desktop held that author whole). A FALLBACK and never a
+    // racer: when the persona's own node answers it must be the one that answers, because
+    // what a fetch records (`last_via`) is where the doors ask next - replies, the peek's
+    // shelf, the bodies behind a ceiling - and a housemate that won the race by a
+    // millisecond has none of that authority. The cohort's rows exist because a ceremony
+    // bound those machines to one of our personas, and the sync door there answers for
+    // anyone their users follow or have fetched.
+    if won.is_none() {
+        let household: Vec<String> = crate::net::sync::cohort_endpoints(state)
+            .await
+            .unwrap_or_default();
+        if !household.is_empty() {
+            won = race(state, root_hex, scope, ask, max_passes, held_before, household).await;
+        }
+    }
+
+    let Some((key_hex, received)) = won else {
+        return false;
+    };
+    tracing::info!(root = %root_hex, via = %key_hex, received, peek,
+        "fetched foreign identity on member request");
+    if let Err(e) = record_foreign_fetch(state, root_hex, &key_hex).await {
+        tracing::warn!(root = %root_hex, "could not record foreign fetch: {e:#}");
+    }
+    if peek {
+        state.peeked.mark(root_hex);
+        // The shelf lands BEHIND the answer (ruling 9, render at first entry - Curtis,
+        // 2026-09-05: "my first look at the page is completely blank"): the page gets
+        // the persona the moment their chains are here and says the posts are still
+        // arriving; the in-flight set is what it reads, and it polls until clear.
+        let shelf_state = state.clone();
+        let shelf_root = root_hex.to_string();
+        let shelf_via = key_hex.clone();
+        if state.refreshing.lock().unwrap().insert(root_hex.to_string()) {
+            tokio::spawn(async move {
+                let held = peek_shelf(&shelf_state, &shelf_root, &shelf_via).await;
+                shelf_state.refreshing.lock().unwrap().remove(&shelf_root);
+                tracing::info!(root = %shelf_root, via = %shelf_via, held, "peek: shelf fetched as fragments");
+            });
+        }
+    } else {
+        // A peek becoming whole: whatever the history dig concluded about the peek's
+        // shelf was about a different shelf (fanout::fill_pass).
+        if state.peeked.is_behind(root_hex) {
+            if let Err(e) = crate::fanout::restart_history_dig(&state.node_db, root_hex).await {
+                tracing::warn!(root = %root_hex, "could not restart the history dig: {e:#}");
+            }
+        }
+        state.peeked.clear(root_hex);
+    }
+    true
+}
+
+/// One round of the ladder: dial every candidate IN PARALLEL and take the first that answers
+/// with something - with the `?via=` list widened to ten keys (2026-08-02, keeping
+/// fast-moving identities alive), a sequential ladder's worst case would be ten timeouts end
+/// to end, and a page can't wait for that. Each task runs the ordinary sync exchange (an
+/// unproven requester with empty frontiers receives exactly the public lane - the same
+/// from-empty path adoption exercises), the gate validates everything against `root`, and
+/// concurrent winners are safe (single-writer chains, duplicate-skip ingest; the also-rans
+/// are DETACHED to finish, never aborted - see below). Candidates arrive base58 or hex, and
+/// each may be either kind of key (2026-08-07, "hints become leaves"): an identity LEAF -
+/// resolved through its signed serving record, which must name OUR target root or the hint
+/// is discarded - or a bare endpoint id, the original transport-layer form. Leaves are tried
+/// as leaves first; a key that resolves no serving record falls back to being dialed as an
+/// endpoint. The resolve-a-bare-root announce backstop remains NEXT_STEPS.
+///
+/// Returns the winning key and how much it delivered, or `None` when nobody answered with
+/// anything this node could use.
+async fn race(
+    state: &AppState,
+    root_hex: &str,
+    scope: &'static [u32],
+    ask: crate::net::sync::Ask,
+    max_passes: usize,
+    held_before: bool,
+    candidates: Vec<String>,
+) -> Option<(String, u64)> {
     // Detach, never cancel (2026-08-24, closing REFACTOR's visit-ladder entry): the old
     // shape aborted the also-rans on first success (JoinSet::abort_all) and cancelled each
     // exchange at its 8s deadline (timeout around the future), and every one of those
@@ -738,12 +837,7 @@ async fn fetch_foreign_with(
     // winners bound the WAIT and detach the work (the `speculative::acquire_one` idiom),
     // and a late also-ran just leaves a warmer mirror (duplicate-skip ingest).
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<(String, u64)>>(16);
-    // The zeroth hint is the root itself: a founding node signs with the root AS its leaf,
-    // so its serving record lives under the root key - which makes a bare root resolve with
-    // no hint at all, for every persona whose founding node still publishes. (The announce
-    // rendezvous, when built, covers the personas whose founder is gone.)
-    let implicit = std::iter::once(root_hex.to_string());
-    for candidate in implicit.chain(via.iter().take(10).cloned()) {
+    for candidate in candidates {
         let candidate = &candidate;
         // A hint in neither spelling costs a shrug, never the ladder.
         let Some(key_hex) = speakable::node_key_from_via(candidate) else {
@@ -800,41 +894,14 @@ async fn fetch_foreign_with(
     drop(tx); // the channel closes when the last candidate reports (or none were spawnable)
     while let Some(outcome) = rx.recv().await {
         if let Some((key_hex, received)) = outcome {
-            tracing::info!(root = %root_hex, via = %key_hex, received, peek,
-                "fetched foreign identity on member request");
-            if let Err(e) = record_foreign_fetch(state, root_hex, &key_hex).await {
-                tracing::warn!(root = %root_hex, "could not record foreign fetch: {e:#}");
+            if received == 0 && !held_before {
+                tracing::debug!(root = %root_hex, via = %key_hex, "answered, but had nothing of them: not a fetch");
+                continue;
             }
-            if peek {
-                state.peeked.mark(root_hex);
-                // The shelf lands BEHIND the answer (ruling 9, render at first entry - Curtis,
-                // 2026-09-05: "my first look at the page is completely blank"): the page gets
-                // the persona the moment their chains are here and says the posts are still
-                // arriving; the in-flight set is what it reads, and it polls until clear.
-                let shelf_state = state.clone();
-                let shelf_root = root_hex.to_string();
-                let shelf_via = key_hex.clone();
-                if state.refreshing.lock().unwrap().insert(root_hex.to_string()) {
-                    tokio::spawn(async move {
-                        let held = peek_shelf(&shelf_state, &shelf_root, &shelf_via).await;
-                        shelf_state.refreshing.lock().unwrap().remove(&shelf_root);
-                        tracing::info!(root = %shelf_root, via = %shelf_via, held, "peek: shelf fetched as fragments");
-                    });
-                }
-            } else {
-                // A peek becoming whole: whatever the history dig concluded about the peek's
-                // shelf was about a different shelf (fanout::fill_pass).
-                if state.peeked.is_behind(root_hex) {
-                    if let Err(e) = crate::fanout::restart_history_dig(&state.node_db, root_hex).await {
-                        tracing::warn!(root = %root_hex, "could not restart the history dig: {e:#}");
-                    }
-                }
-                state.peeked.clear(root_hex);
-            }
-            return true;
+            return Some((key_hex, received));
         }
     }
-    false
+    None
 }
 
 /// Start a background revalidation of a foreign persona, unless one is already running for it.
@@ -868,20 +935,9 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
                 via.push(leaf);
             }
         }
-        // The cohort, last (2026-08-15): our own personas' sibling nodes hold the followed
-        // world we slept through, and the sync door already answers for any persona their
-        // users follow. This is FRONTIER GOSSIP's fetch half - the AM-node scenario: every
-        // hint above names the followed persona's own machinery, and when all of it is dark
-        // (the author left; we hold nothing of their tree), the sibling that stayed up is
-        // the one candidate that still exists.
-        for endpoint in crate::net::sync::cohort_endpoints(&task_state)
-            .await
-            .unwrap_or_default()
-        {
-            if !via.contains(&endpoint) {
-                via.push(endpoint);
-            }
-        }
+        // The cohort - our own personas' sibling nodes, which hold the followed world we
+        // slept through (FRONTIER GOSSIP's fetch half, the AM-node scenario, 2026-08-15) -
+        // is the last rung of EVERY foreign fetch now, added inside `fetch_foreign_with`.
         let ok = fetch_foreign(&task_state, &root_hex, &via).await;
         if !ok {
             tracing::debug!(root = %root_hex, "background revalidation reached nobody");

@@ -52,7 +52,7 @@ const base58 = async (host) => {
     function () {
         this.timeout(1200000);
 
-        let author, authorRoot, cora, coraRoot;
+        let author, authorRoot, cora, coraRoot, coraOnE;
 
         before(async function () {
             author = await makeUserFetch({ prefix: "gossauthor" });
@@ -81,7 +81,7 @@ const base58 = async (host) => {
             // Cora's second node, by the real ceremony - and settled until echo's own
             // subscriptions memo knows the follow, proving the cohort input paths carry the
             // LEDGER before any darkness. What they do not yet carry is the followed world.
-            const coraOnE = await makeUserFetch({ prefix: "gosscorae", host: HOST_E });
+            coraOnE = await makeUserFetch({ prefix: "gosscorae", host: HOST_E });
             const request = await (
                 await coraOnE("api/identity/adopt/begin", { method: "POST" })
             ).json();
@@ -180,6 +180,63 @@ const base58 = async (host) => {
                     "and the words healed from the sibling that stayed up"
                 );
             }
+        });
+
+        it("a FIRST look at a departed author is answered by the household", async () => {
+            // Not the wake pass: a persona this node holds NOTHING of, looked at for the
+            // first time with no hint at all - the phone opening a page (2026-09-24). Until
+            // the cohort rode every foreign fetch it walked only the hints, and answered
+            // "none of the address's computers answered" while the sibling held them whole.
+            //
+            // The sibling holds them WHOLE because it follows them (the shelf door answers
+            // off a chain a node holds, never off a peek's fragments - "nothing to say is a
+            // fact, not a fault"). Echo sleeps through the follow so it cannot learn it and
+            // fetch ahead of the look; if its own refresh still wins that race after it wakes,
+            // the property below holds by the other road, and the claim says so.
+            const stranger = await makeUserFetch({ prefix: "gossstranger" });
+            const strangerRoot = (
+                await (await stranger("api/identity", { method: "POST" })).json()
+            ).root_pubkey;
+            await stranger(`api/identity/${strangerRoot}/serve`, { method: "POST" });
+            const made = await (
+                await stranger(`api/identity/${strangerRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({ title: "household", body: "held by the sibling", format: "plaintext" }),
+                })
+            ).json();
+            const pub = await stranger(`api/identity/${strangerRoot}/docs/${made.doc_id}/publish`, { method: "POST" });
+            assert.equal(pub.status, 200, await pub.text());
+
+            await unplug(HOST_E);
+            const viaStranger = await base58(stranger);
+            assert.equal((await cora(`api/id/${strangerRoot}/profile?via=${viaStranger}`)).status, 200);
+            await cora(`api/identity/${coraRoot}/private/kv/contact:${strangerRoot}/interest`, {
+                method: "PUT",
+                body: JSON.stringify({ value: "high" }),
+            });
+            await pullAndFold(HOST_C, strangerRoot);
+            assert.ok(
+                (await feedOf(coraRoot, HOST_C)).some((r) => r.title === "household"),
+                "the awake sibling holds the stranger whole"
+            );
+
+            // The author leaves; echo wakes and looks, first thing, with no hint.
+            await unplug(HOST);
+            await plugIn(HOST_E);
+            const before = (await sql(`SELECT 1 AS ok FROM foreign_fetches WHERE root_pubkey = '${strangerRoot}'`, HOST_E)).rows.length;
+            const look = await coraOnE(`api/id/${strangerRoot}/profile`);
+            assert.equal(look.status, 200, `the household answered the look: ${await look.clone().text()}`);
+            if (before) console.log("      (echo's own refresh fetched them first; the look was answered from the mirror)");
+
+            // Their shelf follows, from the sibling's whole copy: the page keeps asking while
+            // `refreshing` says so. Bounded, every round a real read.
+            let titles = [];
+            for (let i = 0; i < 40 && !titles.includes("household"); i++) {
+                const page = await (await coraOnE(`api/id/${strangerRoot}/profile`)).json();
+                titles = (page.posts || []).map((p) => p.title);
+                if (!titles.includes("household")) await new Promise((r) => setTimeout(r, 500));
+            }
+            assert.ok(titles.includes("household"), `the household's copy of their shelf: ${titles}`);
         });
     }
 );

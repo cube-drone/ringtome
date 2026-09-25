@@ -10415,3 +10415,38 @@ stays for a window that is open, and no dialog is raised at a hidden one. On Lin
 and without it the app still starts - close quits instead of hiding, and a hidden launch shows
 itself, since a hidden window with no way back is a node nobody can reach. (The first cut failed
 setup outright on a missing library; explaining what the library was is what caught it.)
+
+## 2026-09-24 (cont.): the household answers the first look
+
+Curtis's phone question ("if my identity lives on PC A and also on my phone, most of the phone's
+look at the network comes from syncing with PC A - right?") turned out to be more built than the
+conversation first claimed: the cohort - every sibling endpoint of every persona this node hosts -
+has been the last rung of the revalidate ladder, the fragment walk and blob healing since
+2026-08-15, and `cohort.cjs` proves the waking sibling catches up on an author who left. What it did
+not cover were the two FIRST looks at a persona: a page visit to someone this node holds nothing of,
+and a follow promoting a peek. Both walked only the hints, so a phone opening a sleeping author's
+page for the first time got "none of the address's computers answered" while its own desktop held
+that author whole.
+
+The cohort now rides inside `fetch_foreign_with` itself, so every foreign fetch has it; the two
+places that pushed it by hand (the revalidate ladder, the pull beat) stopped, one copy being the
+rule. And it rides as a FALLBACK ROUND, not a racer: the persona's own machinery is dialed first, in
+parallel as before, and the household is asked only when nobody answered. The first cut put the
+cohort into the race, and the full suite said why the 2026-08-15 decision had made it the LAST rung:
+a housemate that wins the race by a millisecond becomes `last_via`, which is where the doors ask
+next - the replies door, the peek's shelf, the bodies behind a ceiling - and it has none of that
+authority (three claims red: comments' blank node, the peek's ceiling). Revalidation had been racing
+the cohort the same way since August; it falls back now too. `cohort.cjs` gains the first-look claim: the sibling
+follows an author and holds them whole, the looking node sleeps through the follow so it cannot fetch
+ahead, the author leaves, and the looking node's very first look, with no hint, is answered by the
+household and their shelf follows. Three of three; red with the cohort removed. One ruling met on
+the way and left standing: a node that holds an author only as a peek answers an EMPTY shelf ("nothing
+to say is a fact, not a fault"), so a household member that merely visited someone can vouch for who
+they are but not list their posts - the follow is what makes a sibling a source.
+
+The first full `just ci` with the cohort on every ladder went red in three claims, all one cause: a
+hintless ask about a root NOBODY holds now reached a housemate, whose serve gate answers strangers
+with the polite empty exchange, and `fetch_foreign_with` counted any completed exchange as a win -
+so "fetched nothing from a housemate" recorded a fetch of a persona this node knew nothing about and
+answered a page for it. The rule now: an exchange that delivers nothing to a node that holds
+nothing of the persona is not a fetch; a revalidation that finds nothing new still is.

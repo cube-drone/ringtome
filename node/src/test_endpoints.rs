@@ -72,18 +72,9 @@ pub async fn beat(
         ("pull", Some(r)) => {
             // The reader-driven fetch ladder, synchronously - widened the way
             // `spawn_revalidate` widens it, so the beat walks the SAME candidate list a
-            // background revalidation would: stored tree leaves first, then the cohort
-            // rung (our own personas' sibling nodes - the only candidate left when the
-            // followed persona's whole machinery is dark).
-            let mut via = crate::idface::stored_tree_leaves(&state, r).await;
-            for endpoint in crate::net::sync::cohort_endpoints(&state)
-                .await
-                .unwrap_or_default()
-            {
-                if !via.contains(&endpoint) {
-                    via.push(endpoint);
-                }
-            }
+            // background revalidation would: stored tree leaves, then the cohort rung
+            // (our own personas' sibling nodes), which every foreign fetch carries.
+            let via = crate::idface::stored_tree_leaves(&state, r).await;
             let fetched = crate::idface::fetch_foreign(&state, r, &via).await;
             tracing::info!(root = %r, fetched, "TEST BEAT: pull");
             Ok(())
