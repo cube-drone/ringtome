@@ -12,7 +12,7 @@
 import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { EditorView, keymap, placeholder as cmPlaceholder, drawSelection } from '@codemirror/view';
+import { EditorView, keymap, placeholder as cmPlaceholder, drawSelection, tooltips } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin } from '../pure/portable.js';
@@ -81,6 +81,15 @@ export const LiveMarquee = ({
                     ...(completions && completions.length
                         ? [autocompletion({ override: completions, icons: false })]
                         : []),
+                    // The pickers live at the page's root, not inside the editor (Curtis,
+                    // 2026-09-25: the feed composer's edges cut the emoji and people pickers
+                    // off). CodeMirror draws tooltips inside its own DOM by default, so any
+                    // ancestor that clips its overflow - a composer, a panel, a scroller -
+                    // clips them too; parented on <body> they are positioned against the
+                    // viewport, which CodeMirror also keeps them inside. Their styling
+                    // survives the move: doc/completions.css is unscoped, and every token it
+                    // reads is defined on :root (tokens.css).
+                    tooltips({ parent: document.body }),
                     marqueeConf.current.of(marquee({ profile })),
                     EditorView.updateListener.of((u) => {
                         if (u.docChanged && !syncing.current) {

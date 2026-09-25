@@ -10630,3 +10630,13 @@ worker shows it over the focused tab it was clicked from. Every push's outcome i
 "Delivered" with nothing on screen reads as the OS withholding it.
 Resolved the same night: every alert had been delivered all along - macOS's scheduled Do Not
 Disturb filed them silently in Notification Center. The test's "delivered" hint now names Focus modes.
+
+## 2026-09-25 (cont.): pickers that fit
+
+Curtis: in the feed composer, the emoji and people pickers were cut off at the composer's edges.
+They are CodeMirror autocompletion tooltips, which CodeMirror draws inside the editor's own DOM, so
+any ancestor that clips its overflow clips them. The one shared editor surface (`doc/livemarquee.js`,
+under both the post and the chat composers) now parents its tooltips on `<body>` -
+`tooltips({ parent: document.body })` - where they are positioned against the viewport. Styling
+survives the move because `doc/completions.css` is unscoped and every token it reads lives on
+`:root`. Checked by eye only; the UI has no automated tests.
