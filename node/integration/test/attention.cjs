@@ -239,6 +239,15 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             assert.match(alert.title, /the kitchen/);
             assert.equal(alert.route, `/home/chat/${adaRoot}/${kitchen}`, "and knows where the click lands");
 
+            // The diagnostic: a test push, now, reported per service - and marked to show even
+            // over a focused tab, since that is where the button is.
+            const test = await (await j(ada, `api/identity/${adaRoot}/push/test`, {})).json();
+            assert.deepEqual(test.deliveries.map((d) => d.outcome), ["delivered"], JSON.stringify(test));
+            assert.equal(test.deliveries[0].service, "127.0.0.1");
+            const tested = decryptPush(pushes[pushes.length - 1].body, ua, auth);
+            assert.equal(tested.always, true, "a test push shows even over a focused tab");
+            assert.ok(!alert.always, "an ordinary alert does not");
+
             // The browser let go (410): the next push forgets the subscription.
             answer = 410;
             const before = pushes.length;

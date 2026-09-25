@@ -230,7 +230,7 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
     }
 
     let mut chat = HashSet::new();
-    for (author, doc, since) in crate::identity::routes::chat_rooms_with_seen(&data, root)
+    for (author, doc, since) in crate::identity::routes::chat_rooms_with_seen(state, &data, root)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?
     {

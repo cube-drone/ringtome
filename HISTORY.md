@@ -10604,3 +10604,29 @@ through 0.1.6 ran a node that published nothing and resolved nobody. A packaged 
 that a bundle is a `prod` node (the build profile), with the environment variable still able to
 override. Unproven until a release carries it: two installed copies on different networks should
 find each other by address alone.
+
+## 2026-09-25 (cont.): housemates
+
+Curtis's first real session - Firefox and Chrome as two accounts on one dev node, plus the desktop
+app - found two failures, and neither was in any claim, because every chat and attention claim put
+its two people on different nodes. `housemates.cjs` now puts them on one, with his exact
+relationships (B trusts A, does not follow): A's chat does reach B's column (by the IM's
+auto-mention in B's inbox), but B's "chat with A" minted a SECOND chat for the pair, and A's words
+never rang for B - only a wordless "mentioned you in a room".
+
+One cause: a private chat somebody opens with you reaches you by your inbox alone (the opener need
+not be followed), and only the chats column read that road. `routes::ims_addressed_to` is now that
+road, read three ways: the column; the find-or-open, which returns the addressed chat before minting
+anything (never a second chat per pair); and the chat badge's room list (so the alerts too), which
+counts an addressed chat that is not a request and not left - an IM from someone you have placed is
+yours to hear, joined or not. The claim is green; so are the IM, attention and room-lane files.
+
+The browsers stayed silent, and the rig cannot see why: it proves the node's pushes are correctly
+encrypted and signed, but a real one crosses Mozilla's or Google's service, the browser's worker,
+and macOS's own permission for that browser. So the bell's push control gained "send a test"
+(`webpush::push_test`): a push now, to every browser subscribed for the persona, with each push
+service's answer shown (a refusal carries the service's own words), and flagged `always` so the
+worker shows it over the focused tab it was clicked from. Every push's outcome is logged at info.
+"Delivered" with nothing on screen reads as the OS withholding it.
+Resolved the same night: every alert had been delivered all along - macOS's scheduled Do Not
+Disturb filed them silently in Notification Center. The test's "delivered" hint now names Focus modes.

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 938 phrases across 60 files.
+// 943 phrases across 61 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -770,6 +770,9 @@ export default {
     'push.blocked': "notifications are blocked for this site - your browser's settings can allow them",
     'push.stop-notifying': 'stop notifying this browser',
     'push.notify-this-browser': 'notify me in this browser',
+    'push.send-a-test': 'send a test',
+    'push.no-browsers': 'no browser is subscribed for this persona',
+    'push.delivered-but-nothing': 'delivered; if nothing popped up, look in your notification centre - a Focus mode like Do Not Disturb files them silently, and on a Mac System Settings > Notifications decides for this browser',
 
     // --- node/js/slugpage.js ---
     'slugpage.looking': 'looking…',
@@ -1069,4 +1072,8 @@ export default {
     'ui.unknown-font-filename': 'unknown font: {filename}',
     'ui.invalid-version-requested': 'invalid version: {requested}',
     'ui.requested-version-requested-is-newer': 'requested version {requested} is newer than running version {current}',
+
+    // --- node/src/webpush.rs ---
+    'webpush.test-title': 'Horse Drawing Tycoon 2',
+    'webpush.test-body': 'notifications are working in this browser',
 };

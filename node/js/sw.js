@@ -23,7 +23,8 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
         (async () => {
             const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-            if (windows.some((w) => w.focused && w.visibilityState === 'visible')) return;
+            // The test push (webpush.rs's push_test) is clicked FROM a focused tab: it always shows.
+            if (!alert.always && windows.some((w) => w.focused && w.visibilityState === 'visible')) return;
             await self.registration.showNotification(alert.title || 'Horse Drawing Tycoon 2', {
                 body: alert.body || '',
                 data: { route: alert.route || '/home' },

@@ -276,7 +276,9 @@ pub async fn deliver(state: AppState) {
     let mut alerts = state.attention.subscribe();
     loop {
         match alerts.recv().await {
-            Ok(alert) => push_to_all(&state, &alert).await,
+            Ok(alert) => {
+                push_to_all(&state, &alert, false).await;
+            }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
                 tracing::debug!(missed, "push delivery lagged");
             }
@@ -285,16 +287,56 @@ pub async fn deliver(state: AppState) {
     }
 }
 
-async fn push_to_all(state: &AppState, alert: &crate::attention::Alert) {
+/// One browser's answer to one push, as a person debugging it needs to read it.
+#[derive(Debug, serde::Serialize)]
+pub struct Delivery {
+    /// The push service, by host (`fcm.googleapis.com`, `updates.push.services.mozilla.com`...).
+    pub service: String,
+    /// "delivered", "gone" (the browser let go; forgotten), "refused <status>", or the error.
+    pub outcome: String,
+}
+
+/// Push a test notification to every browser this persona is subscribed at, now, and say what
+/// each push service answered - the diagnostic for "I turned it on and nothing came" (Curtis,
+/// 2026-09-25). "Delivered" and nothing on screen means the browser or the OS is withholding it;
+/// anything else is the service's own answer.
+pub async fn push_test(state: &AppState, root: &str) -> Result<Vec<Delivery>> {
+    let alert = crate::attention::Alert {
+        root: root.to_string(),
+        title: crate::msg!("webpush.test-title", "Horse Drawing Tycoon 2").english,
+        body: crate::msg!("webpush.test-body", "notifications are working in this browser").english,
+        route: "/home/notifications".to_string(),
+    };
+    Ok(push_to_all(state, &alert, true).await)
+}
+
+/// `always`: show even when a tab of ours is in front - the test, which is clicked from one.
+async fn push_to_all(state: &AppState, alert: &crate::attention::Alert, always: bool) -> Vec<Delivery> {
     let subs = match subscriptions(&state.node_db, &alert.root).await {
         Ok(subs) if !subs.is_empty() => subs,
-        _ => return,
+        _ => return Vec::new(),
     };
+    let mut report = Vec::new();
     let body: String = alert.body.chars().take(MAX_BODY_CHARS).collect();
-    let payload = serde_json::json!({ "title": alert.title, "body": body, "route": alert.route }).to_string();
+    let payload = serde_json::json!({ "title": alert.title, "body": body, "route": alert.route, "always": always }).to_string();
     for (endpoint, p256dh, auth) in subs {
-        match push_one(state, &endpoint, &p256dh, &auth, payload.as_bytes()).await {
+        let service = reqwest::Url::parse(&endpoint)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_default();
+        let outcome = push_one(state, &endpoint, &p256dh, &auth, payload.as_bytes()).await;
+        report.push(Delivery {
+            service: service.clone(),
+            outcome: match &outcome {
+                Ok(Outcome::Delivered) => "delivered".to_string(),
+                Ok(Outcome::Gone) => "gone".to_string(),
+                Ok(Outcome::Refused(status, why)) => format!("refused {status}: {why}"),
+                Err(e) => format!("failed: {e:#}"),
+            },
+        });
+        match outcome {
             Ok(Outcome::Delivered) => {
+                tracing::info!(root = %alert.root, %service, "pushed");
                 let _ = state
                     .node_db
                     .execute(
@@ -309,19 +351,22 @@ async fn push_to_all(state: &AppState, alert: &crate::attention::Alert) {
                     tracing::warn!(error = %e, "could not forget a gone subscription");
                 }
             }
-            Ok(Outcome::Refused(status)) => {
-                tracing::warn!(root = %alert.root, status, "the push service refused a push");
+            Ok(Outcome::Refused(status, why)) => {
+                tracing::warn!(root = %alert.root, %service, status, %why, "the push service refused a push");
             }
-            Err(e) => tracing::debug!(root = %alert.root, error = %e, "a push failed"),
+            Err(e) => tracing::warn!(root = %alert.root, %service, error = %e, "a push failed"),
         }
     }
+    report
 }
 
 enum Outcome {
     Delivered,
     /// 404 or 410: the subscription is dead - the browser unsubscribed, or expired it.
     Gone,
-    Refused(u16),
+    /// Anything else, with the service's own words (a push service explains a refusal in its
+    /// body: a bad VAPID token, a payload too large, a rate limit).
+    Refused(u16, String),
 }
 
 async fn push_one(state: &AppState, endpoint: &str, p256dh: &[u8], auth: &[u8], payload: &[u8]) -> Result<Outcome> {
@@ -344,7 +389,10 @@ async fn push_one(state: &AppState, endpoint: &str, p256dh: &[u8], auth: &[u8], 
     Ok(match status {
         200..=299 => Outcome::Delivered,
         404 | 410 => Outcome::Gone,
-        other => Outcome::Refused(other),
+        other => {
+            let why: String = response.text().await.unwrap_or_default().chars().take(300).collect();
+            Outcome::Refused(other, why)
+        }
     })
 }
 

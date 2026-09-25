@@ -105,6 +105,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // Web Push (webpush.rs): the node's public key, and this browser's subscription.
         .route("/api/identity/{root}/push", get(push_key_handler).post(push_subscribe_handler))
         .route("/api/identity/{root}/push/forget", post(push_forget_handler))
+        .route("/api/identity/{root}/push/test", post(push_test_handler))
         .route("/api/identity/{root}/serve", post(serve_handler))
         .route(
             "/api/identity/{root}/keys/{target}/revoke",
@@ -1035,8 +1036,14 @@ async fn im_find_handler(
             return Ok(Json(serde_json::json!({ "author": root, "doc_id": doc_hex })));
         }
     }
-    // Then theirs: a room of theirs, marked an IM, that this persona can see at all - an
-    // IM is sealed to one person, so seeing it IS being the other half of it.
+    // Then theirs, addressed to me: the chat they opened with me, as my inbox holds it - which
+    // is how it reaches a persona that does not follow them (2026-09-25: a trusted, unfollowed
+    // opener's chat was missed here, and "chat with them" minted a second chat for the pair).
+    if let Some((author, doc)) = ims_addressed_to(&state, &data, &root).await?.into_iter().find(|(a, _)| *a == other) {
+        return Ok(Json(serde_json::json!({ "author": author, "doc_id": doc })));
+    }
+    // Then theirs by any other road: a room of theirs, marked an IM, that this persona can see
+    // at all - an IM is sealed to one person, so seeing it IS being the other half of it.
     let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
         .await
         .map_err(AppError::Internal)?
@@ -1071,6 +1078,37 @@ async fn im_find_handler(
         "identity.routes.no-private-chat-with-them-yet",
         "no private chat with them yet"
     )))
+}
+
+/// The private chats somebody opened WITH this persona (CHAT.md, ruling 12), as they reach it:
+/// a room mention in its inbox - the IM's auto-mention of its one member - naming an IM room
+/// this node holds the header of. No feed carries them (the opener need not be followed), so
+/// this is their only road, and three readers share it (2026-09-25): the chats column, the
+/// find-or-open that must never mint a second chat for a pair, and the chat badge, which counts
+/// the ones that are not requests. Before it was shared, only the column read this road - a
+/// trusted, unfollowed opener's chat listed for its member but did not ring, and the member's
+/// "chat with them" minted a duplicate.
+pub(crate) async fn ims_addressed_to(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+) -> Result<Vec<(String, String)>, AppError> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for n in data.inbox().page(200).await? {
+        if n.kind != crate::notifications::KIND_ROOM_MENTION {
+            continue;
+        }
+        let (Some(doc), Some(author)) = (n.doc_id.clone(), n.detail.clone()) else { continue };
+        if author.len() != 64 || doc.len() != 32 || author == root || out.contains(&(author.clone(), doc.clone())) {
+            continue;
+        }
+        let Some(h) = held_public_header(state, &author, &doc).await? else { continue };
+        if h.format != Some(ringtome_proto::registry::doc_format::ROOM) || !h.im {
+            continue;
+        }
+        out.push((author, doc));
+    }
+    Ok(out)
 }
 
 /// GET `/api/identity/{root}/rooms` - every room this persona may see (CHAT.md, ruling 7):
@@ -1253,18 +1291,11 @@ async fn rooms_handler(
     // 2026-09-20): a chat from a stranger reaches the inbox as a room mention and nothing
     // else - they are not followed, so no chain of theirs is pulled - and the column lists
     // it from there. Whether it is a request or an ordinary chat is decided below.
-    for n in data.inbox().page(200).await? {
-        if n.kind != crate::notifications::KIND_ROOM_MENTION {
-            continue;
-        }
-        let (Some(doc), Some(author)) = (n.doc_id.clone(), n.detail.clone()) else { continue };
-        if author.len() != 64 || doc.len() != 32 || seen.contains(&(author.clone(), doc.clone())) {
+    for (author, doc) in ims_addressed_to(&state, &data, &root).await? {
+        if seen.contains(&(author.clone(), doc.clone())) {
             continue;
         }
         let Some(h) = held_public_header(&state, &author, &doc).await? else { continue };
-        if h.format != Some(ringtome_proto::registry::doc_format::ROOM) || !h.im {
-            continue;
-        }
         seen.insert((author.clone(), doc.clone()));
         items.push(RoomItem {
             author,
@@ -2421,6 +2452,18 @@ async fn push_subscribe_handler(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// POST `/api/identity/{root}/push/test` - push a test notification to this persona's browsers
+/// now, and say what each push service answered (webpush.rs's diagnostic).
+async fn push_test_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    let report = crate::webpush::push_test(&state, &root).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "deliveries": report })))
+}
+
 #[derive(serde::Deserialize)]
 struct PushForget {
     endpoint: String,
@@ -2489,26 +2532,37 @@ async fn notifications_handler(
 /// room memo, so a room nobody here holds counts nothing, honestly.
 async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
     let mut total = 0u64;
-    for (author, doc, since) in chat_rooms_with_seen(data, root).await? {
+    for (author, doc, since) in chat_rooms_with_seen(state, data, root).await? {
         total += crate::chat::unseen_in(state, &author, &doc, since, root).await.map_err(AppError::Internal)?;
     }
     Ok(total)
 }
 
-/// The rooms the chat badge counts - this persona's own, and those entered and not left - each
-/// with when the persona last looked at it (`rooms_seen`; 0 for never). One list for the badge
-/// and the desktop alerts (attention.rs), so the two can never disagree about which rooms speak.
-pub(crate) async fn chat_rooms_with_seen(data: &store::Store, root: &str) -> Result<Vec<(String, String, i64)>, AppError> {
+/// The rooms the chat badge counts - this persona's own, those entered and not left, and the
+/// private chats somebody opened with it that are not requests (2026-09-25: an IM from someone
+/// you have placed is yours to hear, joined or not) - each with when the persona last looked at
+/// it (`rooms_seen`; 0 for never). One list for the badge and the alerts (attention.rs), so the
+/// two can never disagree about which rooms speak.
+pub(crate) async fn chat_rooms_with_seen(state: &AppState, data: &store::Store, root: &str) -> Result<Vec<(String, String, i64)>, AppError> {
     let mut rooms: Vec<(String, String)> = Vec::new();
     for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
         if crate::record::documents::Format::from_wire(p.format) == crate::record::documents::Format::Room {
             rooms.push((root.to_string(), hex::encode(p.doc_id)));
         }
     }
-    let (joined, _left) = rooms_by_standing(data).await?;
+    let (joined, left) = rooms_by_standing(data).await?;
     for (author, doc) in joined {
         if !rooms.contains(&(author.clone(), doc.clone())) {
             rooms.push((author, doc));
+        }
+    }
+    for (author, doc) in ims_addressed_to(state, data, root).await? {
+        let pair = (author.clone(), doc.clone());
+        if rooms.contains(&pair) || left.contains(&pair) {
+            continue;
+        }
+        if !chat_request(state, data, root, &author, &doc).await? {
+            rooms.push(pair);
         }
     }
     if rooms.is_empty() {

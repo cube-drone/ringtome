@@ -41,6 +41,7 @@ export const PushToggle = ({ root }) => {
     const [on, setOn] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
+    const [report, setReport] = useState(null);
 
     useEffect(() => {
         if (state !== 'ready') return undefined;
@@ -106,6 +107,24 @@ export const PushToggle = ({ root }) => {
         }
     };
 
+    // The diagnostic (webpush.rs's push_test): push now, and say what each push service answered.
+    // "Delivered" with nothing on screen means the browser or the OS is withholding it - on a Mac,
+    // System Settings > Notifications, for this browser, or a Focus mode (2026-09-25: Curtis's
+    // first live test "failed" at night because Do Not Disturb filed every alert silently).
+    const sendTest = async () => {
+        setBusy(true);
+        setError(null);
+        setReport(null);
+        try {
+            const { deliveries } = await api(`/api/identity/${root}/push/test`, { method: 'POST' });
+            setReport(deliveries || []);
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+
     if (state === 'desktop' || state === 'unsupported') return null;
     if (state === 'insecure') {
         return html`<p class="push-note">${t('push.needs-https', 'notifications in this browser need https (or localhost)')}</p>`;
@@ -117,7 +136,16 @@ export const PushToggle = ({ root }) => {
         <button class="push-button" disabled=${busy} onClick=${on ? turnOff : turnOn}>
             ${on ? t('push.stop-notifying', 'stop notifying this browser') : t('push.notify-this-browser', 'notify me in this browser')}
         </button>
+        ${on && html`<button class="push-button" disabled=${busy} onClick=${sendTest}>${t('push.send-a-test', 'send a test')}</button>`}
         ${error && html`<span class="push-error">${error}</span>`}
+        ${report &&
+        html`<span class="push-note">
+            ${report.length === 0
+                ? t('push.no-browsers', 'no browser is subscribed for this persona')
+                : report.map((d) => `${d.service}: ${d.outcome}`).join(' · ')}
+            ${report.some((d) => d.outcome === 'delivered') &&
+            html` - ${t('push.delivered-but-nothing', 'delivered; if nothing popped up, look in your notification centre - a Focus mode like Do Not Disturb files them silently, and on a Mac System Settings > Notifications decides for this browser')}`}
+        </span>`}
     </div>`;
 };
 
