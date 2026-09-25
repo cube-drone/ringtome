@@ -96,10 +96,59 @@ pub async fn homepage(State(state): State<AppState>) -> Html<String> {
 pub fn app_page(state: &AppState, head: &str) -> String {
     let version = &state.config.app_version;
     let environment = if state.config.is_dev() { "dev" } else { "prod" };
+    // A dev node names the branch it was run from, which the version label shows in place of a
+    // release name (js/version.js; Curtis, 2026-09-25: "0.1.7-cloth-vowel" is right for a release,
+    // "main" or "feature-dinglebingle" for a local build). Read per page, so switching branches
+    // shows up on the next reload without a rebuild; a prod node - every packaged app - says
+    // nothing, and shows its release.
+    let branch = if state.config.is_dev() {
+        dev_branch()
+            .map(|b| format!("\n    <meta name=\"app-branch\" content=\"{}\">", escape_attr(&b)))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     HOME_PAGE
         .replace("$HEAD$", head)
         .replace("$VERSION$", version)
+        .replace("$BRANCH$", &branch)
         .replace("$ENVIRONMENT$", environment)
+}
+
+/// The checkout this dev node was built from - the repository above the node crate.
+const REPO_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+
+/// The branch the checkout is on: `.git/HEAD`, read directly (no `git` process per page). A
+/// worktree's `.git` is a FILE naming its real git directory, which is followed; a detached HEAD
+/// names its commit, shortened. None when there is no checkout to read.
+fn dev_branch() -> Option<String> {
+    let dot_git = std::path::Path::new(REPO_DIR).join(".git");
+    let git_dir = if dot_git.is_file() {
+        let pointer = std::fs::read_to_string(&dot_git).ok()?;
+        let target = pointer.trim().strip_prefix("gitdir:")?.trim().to_string();
+        let target = std::path::PathBuf::from(target);
+        if target.is_absolute() { target } else { std::path::Path::new(REPO_DIR).join(target) }
+    } else {
+        dot_git
+    };
+    branch_from_head(&std::fs::read_to_string(git_dir.join("HEAD")).ok()?)
+}
+
+/// `HEAD`'s contents to a name: `ref: refs/heads/<branch>` is the branch, a bare hash is a
+/// detached checkout and shows its first seven characters.
+fn branch_from_head(head: &str) -> Option<String> {
+    let head = head.trim();
+    if let Some(r) = head.strip_prefix("ref:") {
+        let r = r.trim();
+        return Some(r.strip_prefix("refs/heads/").unwrap_or(r).to_string()).filter(|b| !b.is_empty());
+    }
+    (head.len() >= 7 && head.chars().all(|c| c.is_ascii_hexdigit())).then(|| head[..7].to_string())
+}
+
+/// Enough escaping for an attribute value: a branch name is the developer's own, but `&`, `<`
+/// and quotes are all legal in one.
+fn escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 /// Serve the JS bundle. Only versions ≤ current are served (see module doc).
@@ -194,4 +243,31 @@ fn check_version(requested: &str, current: &str) -> Result<(), AppError> {
         return Err(AppError::BadRequest(crate::msg!("ui.requested-version-requested-is-newer", "requested version {requested} is newer than running version {current}", requested = requested, current = current)));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn head_names_the_branch_or_the_commit() {
+        assert_eq!(branch_from_head("ref: refs/heads/main\n").as_deref(), Some("main"));
+        assert_eq!(
+            branch_from_head("ref: refs/heads/feature/dinglebingle").as_deref(),
+            Some("feature/dinglebingle"),
+            "a slashed branch keeps its slashes"
+        );
+        assert_eq!(
+            branch_from_head("03310cd4f2a1b9e8c7d6e5f4a3b2c1d0e9f8a7b6\n").as_deref(),
+            Some("03310cd"),
+            "a detached checkout shows its commit"
+        );
+        assert_eq!(branch_from_head("ref: "), None);
+        assert_eq!(branch_from_head("not a head"), None);
+    }
+
+    #[test]
+    fn a_branch_name_cannot_break_out_of_its_attribute() {
+        assert_eq!(escape_attr(r#"a"b<c>&d"#), "a&quot;b&lt;c&gt;&amp;d");
+    }
 }

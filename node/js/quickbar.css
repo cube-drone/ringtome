@@ -62,8 +62,10 @@
     white-space: nowrap;
 }
 
-.quickbar-version:hover,
-.quickbar-version:focus-visible {
+/* Only the release's label is a link; a dev build's branch is just words, and an underline would
+   promise a click it does not keep. */
+a.quickbar-version:hover,
+a.quickbar-version:focus-visible {
     opacity: 1;
     text-decoration: underline;
 }

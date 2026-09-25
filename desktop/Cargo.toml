@@ -75,3 +75,5 @@ tauri-plugin-single-instance = "2"
 # Desktop notifications whenever a badge would light (src/alerts.rs). Directly, not through the
 # Tauri plugin, whose desktop show() discards the handle that reports a click.
 notify-rust = "4.18"
+# Links that leave the app open in the system browser (src/links.rs), driven from Rust.
+tauri-plugin-opener = "2"

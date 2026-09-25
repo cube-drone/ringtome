@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 944 phrases across 62 files.
+// 945 phrases across 62 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -780,6 +780,7 @@ export default {
     'slugpage.a-name-is-this-nodes': 'short names only work on this site. A real address starts with /id/.',
 
     // --- node/js/version.js ---
+    'version.dev-build': 'a development build of {branch}, on {version}',
     'version.release-notes': 'the release notes for this version',
 
     // --- node/js/warnings.js ---

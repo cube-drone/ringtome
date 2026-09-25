@@ -10651,3 +10651,21 @@ actually running (after an update, the new one). The name and the URL come from
 with its own vector. The bar spreads its items apart, so the label takes the free space with an
 auto margin and sits beside the clock rather than mid-bar. A scratch node's page was fetched to see
 the meta filled.
+Then, per Curtis: a dev build is no release, whatever version the checkout carries, so a DEV node
+names its branch instead - `<meta name="app-branch">`, read per page straight from `.git/HEAD` (a
+worktree's `.git` file followed, a detached HEAD shown as its short commit), so switching branches
+shows on the next reload with no rebuild. The label then reads `main` or `feature-dinglebingle`,
+unlinked; a prod node, which every packaged app is, still shows its release and its notes. Checked
+on a scratch node in each environment.
+
+## 2026-09-25 (cont.): links that leave the app
+
+Curtis: the version label's link did nothing in the desktop app. A Tauri window is a webview with no
+browser around it - a `target="_blank"` link asks for a new window, which the webview drops without
+a word, and a plain link to another site would carry the app's only window away. So every external
+link in the app (turbolinks, a post's links, the release notes) was dead or destructive there. The
+shell now judges both roads (`desktop/src/links.rs`, `on_navigation` and `on_new_window`): the node's
+own origin navigates as usual, and a new-window request for it lands in the app's one window; `http`,
+`https` and `mailto` go to the system's browser or mail app through `tauri-plugin-opener`; any other
+scheme is refused, so a page cannot make the app launch arbitrary URL handlers. `is_ours` has a unit
+test (another port or another host spelling is another origin). The click itself needs a real window.

@@ -17,6 +17,7 @@
 //! `update.rs`: fetched in the background, installed when nobody is looking.
 
 mod alerts;
+mod links;
 mod port;
 mod tray;
 mod update;
@@ -37,6 +38,7 @@ fn main() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .on_window_event(|window, event| {
             // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on. Unless
             // there is no tray to come back through, in which case close means quit - and the
@@ -61,7 +63,17 @@ fn main() {
             let token = ringtome_node::auth::mint_launch_token();
             let (url, attention) = start_node(&data_dir, token.clone())?;
             let hidden = tray::launched_hidden();
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
+            // Links that leave the app go to the system browser (links.rs): judged against the
+            // node's own origin, for navigations and for new-window requests alike.
+            let origin: tauri::Url = url.parse()?;
+            let (nav_app, nav_origin) = (app.handle().clone(), origin.clone());
+            let (win_app, win_origin) = (app.handle().clone(), origin.clone());
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
+                .on_navigation(move |target| links::navigation(&nav_app, &nav_origin, target))
+                .on_new_window(move |target, _features| {
+                    links::new_window(&win_app, &win_origin, target);
+                    tauri::webview::NewWindowResponse::Deny
+                })
                 .title("Horse Drawing Tycoon 2")
                 .inner_size(1280.0, 860.0)
                 .visible(!hidden)
