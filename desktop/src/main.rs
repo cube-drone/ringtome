@@ -134,6 +134,16 @@ fn start_node(
     if std::env::var("RINGTOME_ENVIRONMENT").is_err() && !cfg!(debug_assertions) {
         config.environment = ringtome_node::config::Environment::Prod;
     }
+    // ...and a packaged app is on the real network. The node's own default is `off` - right for
+    // an operator's binary, which is told where it lives - and the shell took it until
+    // 2026-09-25, so every release before then shipped a node that published nothing and
+    // resolved nobody: it could reach a friend only through an adoption code's inline address.
+    // Mainline (the real DHT, and iroh's relays with it) is what "find the people you follow"
+    // means for an app on somebody's laptop. A dev run keeps whatever `just desktop` gives it
+    // (the dev network's local directory), and `RINGTOME_DISCOVERY` wins over both.
+    if std::env::var("RINGTOME_DISCOVERY").is_err() && !cfg!(debug_assertions) {
+        config.discovery = ringtome_node::net::discovery::DiscoveryMode::Mainline;
+    }
     // One human, one account, and the token is how they say so - which is what removes the
     // login screen. Set here rather than read from the environment, because these two are
     // facts about being an app rather than an operator's choice.

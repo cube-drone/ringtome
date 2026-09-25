@@ -10586,3 +10586,21 @@ implementation independent of the node's), verifies the VAPID JWT against the ke
 carries, and answers 410 once. The pushed alert decrypts to the words, the room and the route, signed
 by the key the browser subscribed against, and the 410 deletes the subscription - red when the sender
 ignores 410. The browser itself is the one manual step: Chrome or Firefox against a localhost node.
+
+## 2026-09-25 (cont.): the app that found nobody
+
+Curtis noticed `just desktop` and `just start` could not reach each other and asked whether they
+used separate discovery mocks. Worse: neither used any. `RINGTOME_DISCOVERY` unset means `off` -
+nothing published, nothing resolved, and iroh's minimal preset with no relays - and the shared mock
+(`local:./data-dht`) was set only by start-two/-three/-n, the scratch nodes and the rig. A lone
+`just start` and the desktop app were each alone in the dark, reachable only by an adoption code's
+inline address. `just start`, `just run` and `just desktop` now share the checkout's directory by
+absolute path - `just desktop` runs from `desktop/`, where a relative `./data-dht` would silently
+have been a second directory - and `RINGTOME_DISCOVERY` still wins.
+
+The same default was in the shipped app: the shell never set discovery, so every packaged release
+through 0.1.6 ran a node that published nothing and resolved nobody. A packaged build is now a
+`mainline` node - the real DHT, and iroh's relays with it - decided where it was already decided
+that a bundle is a `prod` node (the build profile), with the environment variable still able to
+override. Unproven until a release carries it: two installed copies on different networks should
+find each other by address alone.

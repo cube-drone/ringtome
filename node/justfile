@@ -109,7 +109,7 @@ test-unit:
 
 # Run the node in the foreground (Ctrl-C to stop). Uses the default data dir.
 run:
-    cd "{{workspace}}" && RINGTOME_PORT={{port}} cargo run --bin ringtome
+    cd "{{workspace}}" && RINGTOME_PORT={{port}} RINGTOME_DISCOVERY=local:{{workspace}}/data-dht cargo run --bin ringtome
 
 # Boot the server + UI watchers in one terminal. Ctrl-C tears everything down.
 start: ui-install
@@ -145,9 +145,12 @@ start: ui-install
     }
     trap cleanup EXIT
 
-    # Rust server (foreground — Ctrl-C lands here first), on this checkout's dev port.
+    # Rust server (foreground — Ctrl-C lands here first), on this checkout's dev port. On the
+    # checkout's shared local directory (`data-dht`, absolute), the one start-two/-three/-n and
+    # `just desktop` use: without it a lone dev node resolves nobody and nobody resolves it, and
+    # a desktop app beside it looks like a network partition (2026-09-25).
     echo "node A on http://localhost:{{port}}"
-    RINGTOME_PORT={{port}} cargo run --bin ringtome
+    RINGTOME_PORT={{port}} RINGTOME_DISCOVERY=local:{{workspace}}/data-dht cargo run --bin ringtome
 
 # Two dev nodes on one machine, one Ctrl-C: the adoption-ceremony playground. Node A on the dev
 # port (default data dir, hostname name), node B on the next one (./data-b, named
@@ -760,8 +763,13 @@ ports:
 # Dev by default, which means the node serves the UI from disk: `just ui-watch` beside this
 # and a reload in the window picks up an edit. RINGTOME_DATA_DIRECTORY points it at a scratch
 # node; unset, it uses the platform's application-data directory, like the shipped app.
+#
+# On the dev network's local directory by default (the absolute path: this runs from desktop/,
+# where a relative `./data-dht` would quietly be a SECOND directory - the partition this line
+# exists to prevent), so the app finds `just start*` nodes and they find it. RINGTOME_DISCOVERY
+# still wins.
 desktop: ui-build
-    cd "{{workspace}}/desktop" && cargo run
+    cd "{{workspace}}/desktop" && RINGTOME_DISCOVERY="${RINGTOME_DISCOVERY:-local:{{workspace}}/data-dht}" cargo run
 
 # Compile the shell without running it - what CI will do at Stage 4.
 desktop-check: ui-build
