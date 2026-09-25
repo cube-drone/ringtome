@@ -60,3 +60,7 @@ export function releaseName(version) {
 
 /// What a release is called in full, for a tag or a title: `0.1.0-lady-smirk`.
 export const releaseTag = (version) => `${version}-${releaseName(version)}`;
+
+/// Where a release's notes live: its GitHub release page, by the tag `just release-*` pushed
+/// (`v` + the full name - node/tools/release.mjs). The UI's version link opens it.
+export const releaseUrl = (version) => `https://github.com/cube-drone/ringtome/releases/tag/v${releaseTag(version)}`;

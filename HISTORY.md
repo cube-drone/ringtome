@@ -10640,3 +10640,14 @@ under both the post and the chat composers) now parents its tooltips on `<body>`
 `tooltips({ parent: document.body })` - where they are positioned against the viewport. Styling
 survives the move because `doc/completions.css` is unscoped and every token it reads lives on
 `:root`. Checked by eye only; the UI has no automated tests.
+
+## 2026-09-25 (cont.): which build is this
+
+The running version sits just left of the clock - `0.1.7-<name>` - and opens that release's GitHub
+page. The node already stamps its Cargo version into the shell's script URLs; the shell now also
+carries it as `<meta name="app-version">`, which `js/version.js` reads, so the label names what is
+actually running (after an update, the new one). The name and the URL come from
+`pure/releasename.js` - `releaseTag`, as the release script named the tag, and a new `releaseUrl`
+with its own vector. The bar spreads its items apart, so the label takes the free space with an
+auto margin and sits beside the clock rather than mid-bar. A scratch node's page was fetched to see
+the meta filled.

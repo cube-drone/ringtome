@@ -46,6 +46,28 @@
     margin-top: 6px;
 }
 
+/* The running build, just left of the clock (js/version.js): quieter than the clock, a link to the
+   release's notes. The bar spreads its items apart (space-between); an auto left margin takes that
+   free space instead, so the version sits beside the clock rather than floating mid-bar. The same
+   6px top margin as the clock centres it in the band. */
+.quickbar-version {
+    align-self: center;
+    margin: 6px 0.6rem 0 auto;
+    color: var(--dock-text);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    opacity: 0.65;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.quickbar-version:hover,
+.quickbar-version:focus-visible {
+    opacity: 1;
+    text-decoration: underline;
+}
+
 /* The app dock: one heptagon per app, icon only (the console glyphs without their names), a fast
    switch between apps. The current app's tile sits full; the rest dim back. */
 .quickbar-apps {

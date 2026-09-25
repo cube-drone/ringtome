@@ -40,6 +40,7 @@ import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
+import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID, BUCKET_PREFIX } from './pure/naming.js';
@@ -306,6 +307,7 @@ const Inside = ({ session }) => {
                     </span>`;
                 })}
             </span>
+            <${Version} />
             <${Clock} />
         </footer>
     `;

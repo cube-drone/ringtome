@@ -6,9 +6,9 @@
 */
 const assert = require('node:assert');
 
-let parseVersion, bumpVersion, releaseName, releaseTag, WORDS;
+let parseVersion, bumpVersion, releaseName, releaseTag, releaseUrl, WORDS;
 before(async () => {
-    ({ parseVersion, bumpVersion, releaseName, releaseTag } = await import('../../../js/pure/releasename.js'));
+    ({ parseVersion, bumpVersion, releaseName, releaseTag, releaseUrl } = await import('../../../js/pure/releasename.js'));
     ({ WORDS } = await import('../../../js/pure/words.js'));
 });
 
@@ -45,6 +45,13 @@ describe('release names', () => {
             assert.ok(WORDS.includes(b), `${b} is a word from the list`);
             assert.notEqual(a, b, 'never the same word twice');
         }
+    });
+
+    it('links a version to its release page, by the tag the release pushed', () => {
+        assert.equal(
+            releaseUrl('0.1.0'),
+            `https://github.com/cube-drone/ringtome/releases/tag/v0.1.0-${releaseName('0.1.0')}`
+        );
     });
 
     it('gives neighbouring versions unrelated names, which is the point of a name', () => {
