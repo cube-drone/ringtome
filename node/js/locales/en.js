@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 945 phrases across 62 files.
+// 947 phrases across 63 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -842,6 +842,10 @@ export default {
     'auth.routes.no-account-2': 'no account "{username}"',
     'auth.routes.only-a-nodeadmin-may-grant': 'only a node_admin may grant or revoke node_admin',
     'auth.routes.no-account-3': 'no account "{username}"',
+
+    // --- node/src/backup.rs ---
+    'backup.only-the-machine-or-an-admin': 'backups are for this machine itself or a node administrator',
+    'backup.no-such-backup': 'no such backup',
 
     // --- node/src/chat.rs ---
     'chat.say-something': 'say something',

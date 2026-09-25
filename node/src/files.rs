@@ -45,6 +45,11 @@ type ArmedGc = std::sync::Arc<std::sync::OnceLock<(LiveSource, Store)>>;
 type RecentRing = std::sync::Arc<std::sync::Mutex<Vec<(Hash, u64)>>>;
 /// How many GC rounds have started. The ring's clock: rounds, never seconds.
 type GcRounds = std::sync::Arc<std::sync::atomic::AtomicU64>;
+/// The write gate (backup.rs, 2026-09-25): every write into the store - a put, a network fetch -
+/// holds it shared, the reaper skips its round rather than wait, and a backup holds it exclusive
+/// for the few seconds it takes to copy the store's metadata database, the one part of the
+/// directory a live copy could tear. Reads never touch it: serving blobs to peers never stops.
+type WriteGate = std::sync::Arc<tokio::sync::RwLock<()>>;
 /// Every blob some caller currently HOLDS a [`Put`] for, counted (two puts of the same
 /// bytes share a hash). The mark phase keeps all of them, from our own hand: a held blob
 /// must survive whatever iroh does with temp tags and whenever it does it.
@@ -157,6 +162,8 @@ pub struct FileStore {
     rounds: GcRounds,
     /// Blobs held by a live [`Put`] right now - the mark keeps them all (see `gc_config`).
     outstanding: Outstanding,
+    /// See [`WriteGate`].
+    gate: WriteGate,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
     /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
     /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
@@ -168,6 +175,7 @@ impl FileStore {
     /// watch it), and reaps nothing until armed, which tests almost never do.
     pub fn memory() -> Self {
         let (armed, recent, rounds, outstanding) = Self::gc_state();
+        let gate = WriteGate::default();
         Self {
             backend: Backend::Mem(MemStore::new_with_opts(iroh_blobs::store::mem::Options {
                 gc_config: Some(Self::gc_config(
@@ -176,6 +184,7 @@ impl FileStore {
                     recent.clone(),
                     rounds.clone(),
                     outstanding.clone(),
+                    gate.clone(),
                 )),
             })),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
@@ -184,6 +193,7 @@ impl FileStore {
             recent,
             rounds,
             outstanding,
+            gate,
         }
     }
 
@@ -191,6 +201,7 @@ impl FileStore {
     /// the blob reaper's rounds; the reaper still reaps nothing until `arm_gc` is called.
     pub async fn fs(path: impl AsRef<Path>, gc_interval: std::time::Duration) -> Result<Self> {
         let (armed, recent, rounds, outstanding) = Self::gc_state();
+        let gate = WriteGate::default();
         let path = path.as_ref();
         let mut options = iroh_blobs::store::fs::options::Options::new(path);
         options.gc = Some(Self::gc_config(
@@ -199,6 +210,7 @@ impl FileStore {
             recent.clone(),
             rounds.clone(),
             outstanding.clone(),
+            gate.clone(),
         ));
         let store = FsStore::load_with_opts(path.join("blobs.db"), options)
             .await
@@ -211,7 +223,14 @@ impl FileStore {
             recent,
             rounds,
             outstanding,
+            gate,
         })
+    }
+
+    /// Hold every write into the store still until the guard drops (backup.rs): waits for writes
+    /// in flight to finish, and the reaper skips its rounds meanwhile. Reads carry on.
+    pub async fn quiet(&self) -> tokio::sync::OwnedRwLockWriteGuard<()> {
+        self.gate.clone().write_owned().await
     }
 
     fn gc_state() -> (ArmedGc, RecentRing, GcRounds, Outstanding) {
@@ -246,6 +265,7 @@ impl FileStore {
         recent: RecentRing,
         rounds: GcRounds,
         outstanding: Outstanding,
+        gate: WriteGate,
     ) -> iroh_blobs::store::GcConfig {
         use iroh_blobs::store::ProtectOutcome;
         iroh_blobs::store::GcConfig {
@@ -258,7 +278,13 @@ impl FileStore {
                 let recent = recent.clone();
                 let rounds = rounds.clone();
                 let outstanding = outstanding.clone();
+                let gate = gate.clone();
                 let work = tokio::spawn(async move {
+                    // A backup is copying the store: skip this round rather than delete under it.
+                    let Ok(_quiet) = gate.try_read() else {
+                        tracing::debug!("blob reaper: a backup holds the store still - round skipped");
+                        return None;
+                    };
                     // This round's number, taken BEFORE the walk: anything noted from here
                     // on carries it, and is kept through the NEXT round too.
                     let this_round = rounds.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
@@ -387,6 +413,7 @@ impl FileStore {
                 self.max_blob_bytes
             );
         }
+        let _writing = self.gate.read().await;
         let tag = self
             .store()
             .add_bytes(blob)
@@ -409,6 +436,7 @@ impl FileStore {
                 self.max_blob_bytes
             );
         }
+        let _writing = self.gate.read().await;
         let tag = self
             .store()
             .add_bytes(plaintext.to_vec())
@@ -492,6 +520,7 @@ impl FileStore {
     /// malicious peer can't sneak an over-cap blob past - and we drop the stream, cancelling the
     /// transfer, having pulled at most ~cap bytes rather than the whole thing.
     async fn fetch_on(&self, conn: Connection, hash: Hash) -> Result<()> {
+        let _writing = self.gate.read().await;
         let mut progress = self.store().remote().fetch(conn, hash).stream();
         while let Some(item) = progress.next().await {
             match item {
@@ -609,6 +638,7 @@ mod tests {
             live: Default::default(),
             attention: crate::attention::Attention::new(false),
             webpush: crate::webpush::WebPush::load(&crate::keystore::Keystore::load(&dir).unwrap(), false).unwrap(),
+            backups: Default::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

@@ -555,3 +555,41 @@ pub async fn attention(
 ) -> Json<Vec<crate::attention::Alert>> {
     Json(state.attention.recorded(&q.root))
 }
+
+#[derive(serde::Deserialize)]
+pub struct BackupVerify {
+    /// An unpacked backup: what would become a restored node's data directory.
+    pub dir: String,
+    /// A persona to read back out of it.
+    pub root: String,
+}
+
+/// POST `/test/backup-verify` - open an unpacked backup with the node's own code, as a restore
+/// would (backup.rs): the keystore beside it, `node.db` (climbing its migrations), and one persona
+/// through the ordinary user-database manager - which validates its journal and replays it if the
+/// database came back empty. Answers what it found, so a claim can check a backup RESTORES.
+pub async fn backup_verify(Json(req): Json<BackupVerify>) -> Result<Json<serde_json::Value>, AppError> {
+    let dir = std::path::PathBuf::from(&req.dir);
+    let found: anyhow::Result<serde_json::Value> = async {
+        let keystore = crate::keystore::Keystore::load(&dir)?;
+        let node_db = crate::db::open_node_db(&dir, &keystore).await?;
+        let hosted = crate::identity::hosted_roots(&node_db)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .contains(&req.root);
+        let users = crate::db::UserDbManager::new(&dir, keystore, 4);
+        let db = users.held(&req.root).await?;
+        let has_entries = !crate::record::imaol::entries_are_empty(&db)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let titles: Vec<String> = crate::record::documents::public_docs(&db, None, 50)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .into_iter()
+            .map(|p| p.title)
+            .collect();
+        Ok(serde_json::json!({ "hosted": hosted, "has_entries": has_entries, "titles": titles }))
+    }
+    .await;
+    found.map(Json).map_err(AppError::Internal)
+}

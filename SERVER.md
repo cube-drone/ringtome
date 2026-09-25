@@ -67,6 +67,28 @@ iroh's relays - but every connection takes the long way round. On a plain Linux 
 them and identify the node**. Lose it and the node, and everyone's accounts on it, are gone; copy it
 and you have copied the node. Back it up, and keep the backup as private as you keep the server.
 
+## Backups
+
+The node backs itself up without stopping. Ask it from the machine itself (or as a node
+administrator):
+
+```sh
+curl -X POST http://127.0.0.1:5281/api/admin/backup           # -> 202 {"id": "20260925T183012Z", ...}
+curl http://127.0.0.1:5281/api/admin/backup/20260925T183012Z  # 202 + the log while it runs; 200 when done
+```
+
+The result is `backup_<UTC time>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY`. Each database is copied
+under its own lock (a brief pause for that one database, never the node), the journals after them,
+the blob store's metadata behind a moment's write pause, and the archive is renamed into place only
+once it is whole. **It contains the keys** - `envelope.key` and the key files - so it restores on its
+own, and anyone holding it holds the node. To restore: stop the node, unpack the archive into an
+empty data directory, start the node.
+
+A request that arrived through a proxy (an `X-Forwarded-For` header) is refused unless it carries a
+node administrator's session. A proxy on the same machine that adds no such header would look like
+the machine itself - but the endpoint only ever writes the archive to disk and reports its path, so
+the most such a request can do is start a backup, never read one.
+
 ## Upgrading
 
 An upgrade is a restart onto a newer binary or image: the node brings its databases forward
@@ -84,6 +106,7 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_PORT` | `5281` | the HTTP port |
 | `RINGTOME_P2P_PORT` | chosen by the OS (image: `5282`) | the UDP port for peer-to-peer (QUIC) |
 | `RINGTOME_DATA_DIRECTORY` | `./data` (image: `/data`) | databases and keys - see above |
+| `RINGTOME_BACKUP_DIRECTORY` | `<data directory>/backups` | where backups are written (left out of the backups themselves) - ideally another disk |
 | `RINGTOME_PUBLIC_URL` | unset | the HTTPS address people reach this node at |
 | `RINGTOME_DISCOVERY` | `mainline` | `mainline` (the public DHT and relays), `off` (no discovery), or `local:<path>` (a private test network sharing a folder) |
 | `RINGTOME_ENVIRONMENT` | `prod` | `prod`, or `dev` (serves the UI from the source tree - development only) |

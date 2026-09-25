@@ -393,6 +393,31 @@ impl Db {
         Ok(())
     }
 
+    /// Copy this database's files while nothing writes them (backup.rs): its log folded into the
+    /// main file first where a reader allows, then the statement lock held across the copy of the
+    /// file AND its log, so the pair on the other side is one consistent state however busy the
+    /// node is. Every statement on this handle waits for the copy - milliseconds for a small
+    /// database, and one database at a time, never the whole node at once.
+    pub async fn copy_quiesced(&self, files: &[(PathBuf, PathBuf)]) -> Result<u64> {
+        if let Err(e) = self.checkpoint().await {
+            tracing::debug!(error = %e, "backup: checkpoint before copy failed; copying the log too");
+        }
+        let _guard = self.stmt_lock.lock().await;
+        let mut bytes = 0u64;
+        for (from, to) in files {
+            if !from.exists() {
+                continue;
+            }
+            if let Some(dir) = to.parent() {
+                tokio::fs::create_dir_all(dir).await.with_context(|| format!("creating {}", dir.display()))?;
+            }
+            bytes += tokio::fs::copy(from, to)
+                .await
+                .with_context(|| format!("copying {}", from.display()))?;
+        }
+        Ok(bytes)
+    }
+
     /// Hold this identity's ingest gate for the duration of one sync-gate batch. Under eager
     /// push, simultaneous bidirectional exchanges on one root are routine (A pushes to B while
     /// B pushes to A, both carrying the same re-offered entries); two concurrent ingests race
@@ -772,6 +797,13 @@ impl UserDbManager {
             .iter()
             .map(|(root, db)| (root.as_ref().clone(), db))
             .collect()
+    }
+
+    /// A persona database's files - the database and its log - for the backup (backup.rs).
+    pub fn files_of(&self, root_pubkey: &str) -> Vec<PathBuf> {
+        let db = self.path_for(root_pubkey);
+        let wal = PathBuf::from(format!("{}-wal", db.display()));
+        vec![db, wal]
     }
 
     fn path_for(&self, root_pubkey: &str) -> PathBuf {

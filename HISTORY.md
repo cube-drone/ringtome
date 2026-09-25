@@ -10719,3 +10719,33 @@ this - binaries that run on almost any Linux - and carry a modern gcc, git and c
 is gone with its whole class of failure. The baseline moved to glibc 2.28 (RHEL 8, Debian 10, Ubuntu
 20.04 and after), a little wider than 2.31; the workflow's check, the Dockerfile, SERVER.md, the
 release-notes guide and NEXT_STEPS say 2.28 now.
+
+## 2026-09-25 (cont.): the node backs itself up, running
+
+The supervisor's precondition (NEXT_STEPS, *Server nodes*): `POST /api/admin/backup` packs the
+running node into `backup_<UTC time>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY` (default
+`<data>/backups`, left out of the backup), returning a ticket at once; `GET /api/admin/backup/{id}`
+answers 202 with the log while it runs, 200 with the path when the archive is whole, 500 with the
+log if it failed. One runs at a time. The door is the machine itself (`is_direct_loopback`) or a
+`node_admin` session - with the loopback check's known gap (a same-host proxy that adds no
+forwarding header looks local) tolerable here because the endpoint writes to disk and reports a
+path, never bytes: a fooled check can start a backup, not read one.
+
+No shutdown, because the node is already built to survive a crash - so a backup shaped like "the
+instant the power failed" is valid, and the only thing to prevent is a file copied mid-write. Turso
+0.7 has no online backup API and iroh-blobs no snapshot, so it is ours, in order (`backup.rs`):
+every database under its own statement lock with its log folded in (`Db::copy_quiesced` - one
+database still at a time, never the node), THEN the journals and head checkpoints live (append-only,
+torn tail trimmed by design - and copied after the databases, a journal can only hold more than its
+database did, the invariant a restored node needs), then keys and the rest, then the blob store: its
+immutable content files live and its metadata behind a new write gate in `FileStore` (every put and
+network fetch holds it shared, the reaper skips a round rather than wait, reads never touch it).
+Staged, packed as `.partial`, renamed whole. The archive holds `envelope.key` and the key files, so
+it restores on its own - and is exactly as sensitive as the node.
+
+`backup.cjs` proves it restores rather than listing files: a post is published, a backup taken from
+the machine itself (a proxied request is refused, 403), the archive unpacked, and a local-test
+endpoint opens the copy with the node's own code - the keystore, node.db climbing its migrations,
+the persona through the ordinary user-database manager - and finds the persona hosted, its chain, and
+its post by title. Red with the keys left out. The conventions cop pins the backup's whole-node walk
+beside the reaper's, the other legitimate one.

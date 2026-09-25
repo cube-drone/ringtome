@@ -60,6 +60,7 @@ pub mod rate_limit;
 pub mod rebroadcast;
 pub mod annotations;
 pub mod attention;
+pub mod backup;
 pub mod webpush;
 pub mod replies;
 pub mod reaper;
@@ -143,6 +144,8 @@ pub struct AppState {
     pub attention: attention::Attention,
     /// The Web Push sender's key and client (webpush.rs).
     pub webpush: webpush::WebPush,
+    /// Backup tickets: the one running and the last few finished (backup.rs).
+    pub backups: backup::Backups,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -436,6 +439,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         live: chat::Live::default(),
         attention: attention::Attention::new(record_attention),
         webpush,
+        backups: backup::Backups::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
@@ -734,6 +738,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         )
         .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
+        // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
+        .route("/api/admin/backup", axum::routing::post(backup::start_handler))
+        .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))
         .merge(identity::router(body_limits));
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
@@ -780,6 +787,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route(
                 "/test/attention",
                 axum::routing::get(test_endpoints::attention),
+            )
+            .route(
+                "/test/backup-verify",
+                axum::routing::post(test_endpoints::backup_verify),
             );
     }
 

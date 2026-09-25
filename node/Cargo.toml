@@ -163,6 +163,8 @@ unsafe-libopus = "0.2"
 rubato = "4"
 gethostname = "1.1.0"
 flate2 = "1.1.9"
+# Backups (backup.rs): the data directory packed as one .tar.gz.
+tar = "0.4"
 blake3 = "1.8.5"
 iroh-gossip = "0.101"
 bytes = "1.12.1"

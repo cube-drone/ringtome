@@ -48,6 +48,11 @@ pub struct Config {
     pub p2p_port: Option<u16>,
     /// Where per-user databases, key files, and other node state live.
     pub data_directory: PathBuf,
+    /// Where backups are written (`RINGTOME_BACKUP_DIRECTORY`, backup.rs): one
+    /// `backup_<UTC time>.tar.gz` per run. Default `<data directory>/backups`, which the backup
+    /// itself leaves out. It holds the node's keys as well as its data - as private as the data
+    /// directory, and ideally on another disk.
+    pub backup_directory: PathBuf,
     /// Where uploaded media sits, in the clear, between arrival and transcode - deliberately
     /// disposable (defaults under the system temp dir). If a reboot wipes it mid-queue the
     /// affected uploads just fail and the user re-uploads; nothing durable is ever staged here.
@@ -238,6 +243,12 @@ impl Config {
             .unwrap_or_else(|_| "./data".to_string())
             .into();
 
+        let backup_directory: PathBuf = env::var("RINGTOME_BACKUP_DIRECTORY")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| data_directory.join("backups"));
+
         let quarantine_directory = env::var("RINGTOME_QUARANTINE_DIRECTORY")
             .map(PathBuf::from)
             .unwrap_or_else(|_| env::temp_dir().join("ringtome-upload-quarantine"));
@@ -395,6 +406,7 @@ impl Config {
             port,
             p2p_port,
             data_directory,
+            backup_directory,
             quarantine_directory,
             environment,
             launch_token,
