@@ -40,6 +40,12 @@ pub struct Config {
     /// binds `127.0.0.1`.
     pub bind_address: String,
     pub port: u16,
+    /// The UDP port iroh's QUIC listens on (`RINGTOME_P2P_PORT`). Unset - the default - lets the
+    /// OS pick a free one at boot, which is right for a laptop and wrong for a container or a
+    /// firewall, where the port has to be known ahead of time to be published or opened
+    /// (2026-09-25). A malformed value reads as unset; the port actually bound is logged at
+    /// boot ("iroh endpoint online"), so a typo shows in the first lines.
+    pub p2p_port: Option<u16>,
     /// Where per-user databases, key files, and other node state live.
     pub data_directory: PathBuf,
     /// Where uploaded media sits, in the clear, between arrival and transcode - deliberately
@@ -222,6 +228,11 @@ impl Config {
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(5281);
 
+        let p2p_port = env::var("RINGTOME_P2P_PORT")
+            .ok()
+            .and_then(|s| s.trim().parse::<u16>().ok())
+            .filter(|p| *p != 0);
+
         let data_directory: PathBuf = env::var("RINGTOME_DATA_DIRECTORY")
             .unwrap_or_else(|_| "./data".to_string())
             .into();
@@ -375,6 +386,7 @@ impl Config {
             app_version,
             bind_address,
             port,
+            p2p_port,
             data_directory,
             quarantine_directory,
             environment,

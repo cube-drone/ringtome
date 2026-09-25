@@ -110,6 +110,19 @@ one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
 * ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
   update-on-quit; proven only once two releases carry it
 
+### Server nodes
+Two tasks, split on purpose (Curtis, 2026-09-25): packaging for the widest range of deployments,
+and then an easy path for people who want one.
+* **Packaging** - the server binary (glibc 2.31 baseline via cargo-zigbuild, x86_64 + aarch64) on
+  every release, the same binaries as a multi-arch image on `ghcr.io/cube-drone/ringtome`
+  (distroless/cc), a release build that defaults to `prod` + `mainline`, a configurable P2P port
+  (`RINGTOME_P2P_PORT`), and `SERVER.md`. Deliberately unopinionated: HTTPS is the operator's own
+  proxy, and nothing is bundled around the node.
+* **An easy path, later** - documented sample compose files (with and without a bundled HTTPS
+  proxy), and a small supervisor that fetches and verifies new binaries (the desktop updater's
+  minisign key and manifest), takes a backup of the data directory before each upgrade (the
+  migration ladder never goes back down), and restarts the node.
+
 ### Marquee Promises
 * Marquee provides fixtures for drop-in functionality: do we still have a use for those?
 * Marquee provides tools to build whole websites: do we still plan to let users host a geocities-style-page?

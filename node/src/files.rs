@@ -578,7 +578,7 @@ mod tests {
         // Node A, assembled from the same constructors main() uses.
         let keystore = crate::keystore::Keystore::load(&dir).unwrap();
         let ep_a =
-            crate::net::p2p::build_endpoint(&keystore, &crate::net::discovery::DiscoveryMode::Off)
+            crate::net::p2p::build_endpoint(&keystore, &crate::net::discovery::DiscoveryMode::Off, None)
                 .await
                 .unwrap();
         let files_a = std::sync::Arc::new(FileStore::memory());

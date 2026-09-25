@@ -10669,3 +10669,15 @@ own origin navigates as usual, and a new-window request for it lands in the app'
 `https` and `mailto` go to the system's browser or mail app through `tauri-plugin-opener`; any other
 scheme is refused, so a page cannot make the app launch arbitrary URL handlers. `is_ours` has a unit
 test (another port or another host spelling is another origin). The click itself needs a real window.
+
+## 2026-09-25 (cont.): a P2P port you can name
+
+The first piece of packaging server nodes (NEXT_STEPS, *Server nodes*), done first because nothing
+else has a workaround for it: iroh's QUIC listened on whatever UDP port the OS handed out at boot, so a
+container could not publish it and a firewall could not open it ahead of time - a containerised node
+could still talk through iroh's relays, but never directly. `RINGTOME_P2P_PORT` now names it: set, the
+endpoint replaces iroh's default sockets (every interface, an OS-chosen port) with the same sockets on
+that port - IPv4 required, so a taken port fails the boot loudly instead of listening somewhere nobody
+forwarded; IPv6 allowed to fail, as iroh's own default is. Unset keeps today's behaviour. A malformed
+value reads as unset, and the bound port is in the boot log. `net::p2p::port_tests` binds a fixed port
+and sees it, sees a second node refused it, and sees unset left alone - red with the setting ignored.

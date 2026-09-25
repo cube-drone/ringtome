@@ -369,7 +369,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     };
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
-    let endpoint = net::p2p::build_endpoint(&keystore, &config.discovery).await?;
+    let endpoint = net::p2p::build_endpoint(&keystore, &config.discovery, config.p2p_port).await?;
     let directory = net::discovery::Directory::build(&config.discovery)?;
     // The blob-layer size invariant tracks the document cap (plus a little AEAD/framing headroom),
     // so "nothing over ~10MB moves on the network" is enforced where bytes actually cross between

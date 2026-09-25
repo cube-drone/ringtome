@@ -229,12 +229,29 @@ fn load_or_create_node_key(keystore: &Keystore) -> Result<SecretKey> {
 pub async fn build_endpoint(
     keystore: &Keystore,
     mode: &crate::net::discovery::DiscoveryMode,
+    p2p_port: Option<u16>,
 ) -> Result<Endpoint> {
     let secret = load_or_create_node_key(keystore)?;
-    let builder = match mode {
+    let mut builder = match mode {
         crate::net::discovery::DiscoveryMode::Mainline => Endpoint::builder(presets::N0),
         _ => Endpoint::builder(presets::Minimal),
     };
+    // A fixed port (`RINGTOME_P2P_PORT`, config.rs) replaces iroh's own default sockets - every
+    // interface, a port the OS picks - with the same sockets on a known port, so a container
+    // can publish it and a firewall can open it. IPv4 is required: a taken port fails the boot
+    // loudly rather than quietly listening somewhere nobody forwarded. IPv6 may fail, exactly as
+    // iroh's own default is allowed to on a host without it.
+    if let Some(port) = p2p_port {
+        builder = builder
+            .clear_ip_transports()
+            .bind_addr(std::net::SocketAddr::from(([0, 0, 0, 0], port)))
+            .map_err(|e| anyhow!("the P2P port {port} (IPv4): {e}"))?
+            .bind_addr_with_opts(
+                std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port)),
+                iroh::endpoint::BindOpts::default().set_is_required(false),
+            )
+            .map_err(|e| anyhow!("the P2P port {port} (IPv6): {e}"))?;
+    }
     // Transport limits set by us, not left to the library (PROJECT_PLAN's Peeks, ruling 14): a connection
     // that goes quiet is gone in thirty seconds, a keep-alive keeps a long validate from
     // reading as quiet, and one connection may not fan out into unbounded streams.
@@ -394,4 +411,53 @@ pub async fn read_frame(recv: &mut RecvStream) -> Result<Option<SyncMessage>> {
         .context("reading frame body")?;
     let msg = SyncMessage::decode(&body).map_err(|e| anyhow!("undecodable sync frame: {e}"))?;
     Ok(Some(msg))
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = UNIQUE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("ringtome-p2p-port-{tag}-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A free UDP port, as the OS hands one out - released before the endpoint claims it.
+    fn free_udp_port() -> u16 {
+        std::net::UdpSocket::bind("0.0.0.0:0").unwrap().local_addr().unwrap().port()
+    }
+
+    /// `RINGTOME_P2P_PORT` (2026-09-25): an endpoint told a port listens on it - which is what
+    /// lets a container publish it - and a second node asking for the same port fails its boot
+    /// rather than quietly listening somewhere nobody forwarded.
+    #[tokio::test]
+    async fn a_fixed_p2p_port_is_the_port_bound_and_a_taken_one_refuses() {
+        std::env::remove_var("RINGTOME_ENVELOPE_KEY");
+        let port = free_udp_port();
+        let dir = scratch("a");
+        let ks = Keystore::load(&dir).unwrap();
+        let ep = build_endpoint(&ks, &crate::net::discovery::DiscoveryMode::Off, Some(port)).await.unwrap();
+        let bound: Vec<u16> = ep.bound_sockets().iter().map(|s| s.port()).collect();
+        assert!(bound.contains(&port), "bound {bound:?}, asked for {port}");
+
+        let dir_b = scratch("b");
+        let ks_b = Keystore::load(&dir_b).unwrap();
+        let second = build_endpoint(&ks_b, &crate::net::discovery::DiscoveryMode::Off, Some(port)).await;
+        assert!(second.is_err(), "a taken port fails the boot");
+
+        // And unset keeps iroh's own choice: some port, not ours.
+        let dir_c = scratch("c");
+        let ks_c = Keystore::load(&dir_c).unwrap();
+        let free = build_endpoint(&ks_c, &crate::net::discovery::DiscoveryMode::Off, None).await.unwrap();
+        assert!(free.bound_sockets().iter().all(|s| s.port() != port));
+
+        ep.close().await;
+        free.close().await;
+        for d in [dir, dir_b, dir_c] {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
 }
