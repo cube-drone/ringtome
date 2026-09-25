@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# A Ringtome server node (SERVER.md). The binary is the release's own, built for glibc 2.31 in the
+# A Ringtome server node (SERVER.md). The binary is the release's own, built for glibc 2.28 in the
 # release workflow's `server` job and copied in here - this file compiles nothing, so the image for
 # each architecture is that architecture's binary on a base with glibc and CA certificates, and a
 # multi-arch build needs no emulation (there is no RUN step to emulate).

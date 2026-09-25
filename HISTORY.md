@@ -10707,3 +10707,15 @@ again. `RINGTOME_DISCOVERY` gained an explicit `off`, and an unrecognised value 
 friends need a secure origin), the P2P port, the data directory that holds the keys, and "take a copy
 before every upgrade", since the migration ladder never goes down. None of the workflow runs until a
 tag, which is its first proof.
+
+## 2026-09-25 (cont.): the retired base image
+
+The first release run's server jobs failed on both architectures at `apt-get install`: every package
+from `debian-security` 404'd. Not GitHub - Debian 11 had reached the end of its support in August
+2026, and its security updates had moved off the main mirror to archive.debian.org, leaving the
+index pointing at files that were gone. Choosing a just-retired OS was the error. The server build
+now runs in PyPA's `manylinux_2_28` images (AlmaLinux 8, maintained to 2029), which exist for exactly
+this - binaries that run on almost any Linux - and carry a modern gcc, git and curl, so the apt step
+is gone with its whole class of failure. The baseline moved to glibc 2.28 (RHEL 8, Debian 10, Ubuntu
+20.04 and after), a little wider than 2.31; the workflow's check, the Dockerfile, SERVER.md, the
+release-notes guide and NEXT_STEPS say 2.28 now.

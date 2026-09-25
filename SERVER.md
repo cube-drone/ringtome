@@ -18,7 +18,7 @@ The server node also ships as a container image: `ghcr.io/cube-drone/ringtome:<v
 
 **The container**, if you already deploy with Docker or anything that runs OCI images. **The
 binary**, if you would rather run it under systemd directly: it needs nothing but a Linux with
-glibc 2.31 or newer (Debian 11, Ubuntu 20.04, RHEL 9 and everything after), on x86_64 or aarch64.
+glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04 and everything after), on x86_64 or aarch64.
 
 ## The container
 

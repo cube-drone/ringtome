@@ -113,7 +113,7 @@ one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
 ### Server nodes
 Two tasks, split on purpose (Curtis, 2026-09-25): packaging for the widest range of deployments,
 and then an easy path for people who want one.
-* ~~**Packaging**~~ built 2026-09-25: the server binary (glibc 2.31, built natively in Debian 11,
+* ~~**Packaging**~~ built 2026-09-25: the server binary (glibc 2.28, built natively in manylinux_2_28,
   x86_64 + aarch64) on every release as `ringtome-server-...`, the same binaries as a multi-arch
   image on `ghcr.io/cube-drone/ringtome` (distroless/cc), release builds defaulting to `prod` +
   `mainline`, `RINGTOME_P2P_PORT`, and `SERVER.md`. Unproven until a tag runs the new jobs.
