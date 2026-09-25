@@ -18,6 +18,7 @@ import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
 import { MiniPost } from '../postentry.js';
+import { PushToggle } from '../push.js';
 import { agoUnit } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
 
@@ -182,12 +183,13 @@ export const NotificationsApp = ({ current }) => {
 
     return html`
         <div class="notif-app">
-            ${unseen > 0 &&
-            html`<div class="notif-bar">
-                <button class="notif-mark-read" onClick=${markAllRead}>
+            <div class="notif-bar">
+                <${PushToggle} root=${root} />
+                ${unseen > 0 &&
+                html`<button class="notif-mark-read" onClick=${markAllRead}>
                     ${t('apps.notifications.mark-all-read', 'mark all read')}
-                </button>
-            </div>`}
+                </button>`}
+            </div>
             ${page && items.length === 0
                 ? html`<p class="notif-empty">
                       <${Icons.notifications} />

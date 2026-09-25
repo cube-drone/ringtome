@@ -2825,6 +2825,25 @@ everything. An under-stamped envelope gets `NeedsStamp(bits)`, a door held open,
 the sender's willingness and never re-ground for a price already cleared; a node charging more
 than it would pay warns about itself at boot. Only the zero-standing lane ever pays.
 
+#### Saying it out loud: desktop notifications and Web Push (settled 2026-09-25)
+
+Whenever a badge would light, the person hears about it off-screen. The deciding happens once, in
+the node (`attention.rs`): it reads exactly the rows the two dock badges count - the bell's list and
+the chat badge's rooms - and raises an alert for each unseen item not yet announced, so an alert can
+never disagree with the badge. "Not yet announced" is a set of items, never a time mark (a line
+said while its speaker's node was offline arrives late with an old stamp and is still news), and a
+persona's first look announces nothing (a launch never replays the backlog). Two listeners:
+
+- **The desktop app** shows each alert as an OS notification unless its window is in front, and a
+  click lands in the room or the bell.
+- **Web Push**, for a browser with no tab open. The node is the push *sender*: a browser that opts
+  in (per browser, per persona) hands over its vendor's push endpoint and a key, and the node
+  encrypts each alert to that key (RFC 8291) and signs the request with its own VAPID key (RFC 8292)
+  - no vendor account, no API keys. **The accepted trade:** delivery rides Google's, Mozilla's or
+  Apple's push service, which carries only ciphertext but learns *when* a browser is notified, and
+  a hosted node makes outbound HTTPS requests to those services. It is opt-in per browser for that
+  reason, and never offered in the desktop app, which needs none of it.
+
 #### The feed is fanned out, not fetched
 
 A fan-in read is three hundred encrypted files thrashing a capped handle cache, so the fold

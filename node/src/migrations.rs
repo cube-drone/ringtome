@@ -65,12 +65,20 @@ pub struct Rung {
 }
 
 /// The ladder for `node.db`.
-pub const NODE: &[Rung] = &[Rung {
-    version: 53,
-    name: "0053_baseline.sql",
-    sql: include_str!("../migrations/node/0053_baseline.sql"),
-    refold: &[],
-}];
+pub const NODE: &[Rung] = &[
+    Rung {
+        version: 53,
+        name: "0053_baseline.sql",
+        sql: include_str!("../migrations/node/0053_baseline.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 54,
+        name: "0054_push_subscriptions.sql",
+        sql: include_str!("../migrations/node/0054_push_subscriptions.sql"),
+        refold: &[],
+    },
+];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).
 pub const USER: &[Rung] = &[Rung {

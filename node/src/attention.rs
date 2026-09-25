@@ -23,8 +23,11 @@
 //! **Woken like the live stream** (`routes::serve_stream`): the write-nudge bus names the root
 //! that wrote (the bell's fold nudges, inbox transcription is a write), and a one-second tick
 //! guarded by the database's mtime and the persona's view epoch catches room messages, which
-//! bump the epoch rather than write. Idle, a tick costs two stats per persona. And when nobody is
-//! listening - no subscriber, no test recorder - a pass does no work at all.
+//! bump the epoch rather than write. Idle, a tick costs two stats per persona.
+//!
+//! **Only the personas somebody is listening for.** An embedder (the desktop app) and the test
+//! recorder listen for everyone; Web Push (webpush.rs) listens only for the personas with a
+//! subscription. A hosted node whose members never turned push on does no work here at all.
 //!
 //! What this does NOT do: decide whether anyone is looking. The embedder knows whether its
 //! window is focused; this knows only that the badge lit.
@@ -62,18 +65,44 @@ pub struct Alert {
 pub struct Attention {
     tx: tokio::sync::broadcast::Sender<Alert>,
     recorded: Option<Arc<Mutex<VecDeque<Alert>>>>,
+    /// Somebody listens for every persona (the desktop app, the recorder).
+    everyone: Arc<std::sync::atomic::AtomicBool>,
+    /// The personas Web Push listens for: those with at least one subscription.
+    push_roots: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Attention {
     pub fn new(record: bool) -> Self {
         let (tx, _) = tokio::sync::broadcast::channel(64);
-        Self { tx, recorded: record.then(Default::default) }
+        Self {
+            tx,
+            recorded: record.then(Default::default),
+            everyone: Arc::new(std::sync::atomic::AtomicBool::new(record)),
+            push_roots: Default::default(),
+        }
     }
 
     /// Listen for alerts. A receiver that falls behind skips ahead (broadcast's lag), which
     /// for notifications is the right failure: the oldest news is the least worth showing.
+    /// Subscribing alone watches nobody new: say whom with [`Self::watch_everyone`] or
+    /// [`Self::watch_for_push`].
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<Alert> {
         self.tx.subscribe()
+    }
+
+    /// Watch every persona this node hosts - the embedder's choice (`Bound::attention`).
+    pub fn watch_everyone(&self) {
+        self.everyone.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Watch one persona for Web Push (a subscription exists).
+    pub fn watch_for_push(&self, root: &str) {
+        self.push_roots.lock().expect("push roots poisoned").insert(root.to_string());
+    }
+
+    /// Stop watching one persona for Web Push (its last subscription went).
+    pub fn unwatch_for_push(&self, root: &str) {
+        self.push_roots.lock().expect("push roots poisoned").remove(root);
     }
 
     /// The recorder's alerts for one persona, oldest first - the test rig's read.
@@ -84,8 +113,16 @@ impl Attention {
             .unwrap_or_default()
     }
 
-    fn wanted(&self) -> bool {
-        self.tx.receiver_count() > 0 || self.recorded.is_some()
+    /// Is anybody listening for this persona?
+    fn wanted(&self, root: &str) -> bool {
+        self.everyone.load(std::sync::atomic::Ordering::SeqCst)
+            || self.push_roots.lock().expect("push roots poisoned").contains(root)
+    }
+
+    /// Is anybody listening for anyone? (What lets an idle tick skip even the hosted-roots read.)
+    fn any_wanted(&self) -> bool {
+        self.everyone.load(std::sync::atomic::Ordering::SeqCst)
+            || !self.push_roots.lock().expect("push roots poisoned").is_empty()
     }
 
     fn publish(&self, alert: Alert) {
@@ -121,9 +158,9 @@ pub async fn watch(state: AppState) {
         let mut everyone = false;
         tokio::select! {
             _ = tick.tick() => {
-                if !state.attention.wanted() { continue; }
+                if !state.attention.any_wanted() { continue; }
                 let Ok(roots) = crate::identity::hosted_roots(&state.node_db).await else { continue };
-                for root in roots {
+                for root in roots.into_iter().filter(|r| state.attention.wanted(r)) {
                     let now = (state.user_dbs.db_mtime_ms(&root), state.view_epochs.get(&root));
                     if guards.get(&root) != Some(&now) {
                         guards.insert(root.clone(), now);
@@ -132,7 +169,7 @@ pub async fn watch(state: AppState) {
                 }
             }
             who = crate::db::await_write_nudge(&mut nudge) => {
-                if !state.attention.wanted() { continue; }
+                if !state.attention.any_wanted() { continue; }
                 match who {
                     Some(root) => { guards.remove(&root); dirty.insert(root); }
                     None => everyone = true, // lagged: nobody can rule themselves out
@@ -141,7 +178,7 @@ pub async fn watch(state: AppState) {
         }
         let Ok(hosted) = crate::identity::hosted_roots(&state.node_db).await else { continue };
         let many = hosted.len() > 1;
-        for root in hosted.iter().filter(|r| everyone || dirty.contains(*r)) {
+        for root in hosted.iter().filter(|r| (everyone || dirty.contains(*r)) && state.attention.wanted(r)) {
             // Primed means a pass has SUCCEEDED for this persona: only then is its set a
             // record of what was already unseen. (Not "the tick has seen it" - the guard is
             // written before the pass, and counting that replayed the backlog at launch.)

@@ -12,6 +12,7 @@ import { h, render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
+import { PushRoutes } from './push.js';
 
 import { useSession, Welcome } from './auth.js';
 import {
@@ -564,6 +565,7 @@ const App = () => {
     return html`
         <${LocationProvider} scope="/home">
             <${ErrorBoundary} onError=${error => console.error(error)}>
+                <${PushRoutes} />
                 <div class="app-main">
                     <${Inside} session=${session} />
                 </div>

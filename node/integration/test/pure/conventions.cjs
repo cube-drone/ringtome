@@ -174,6 +174,9 @@ describe('the pure core', () => {
         ['localStorage', /\blocalStorage\s*[.[]/],
         ['Dexie', /\bnew\s+Dexie\b|\bDexie\s*\./],
         ['IndexedDB', /\bindexedDB\s*[.[]/],
+        // A service worker's world (js/sw.js, 2026-09-25): no window, no document - `self` is
+        // the worker's global, and what it reaches through it is as much the browser as `window`.
+        ['service worker', /\bself\s*\.\s*(clients|registration|addEventListener|skipWaiting)\b/],
     ];
 
     for (const name of PURE) {

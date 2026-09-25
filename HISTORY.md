@@ -10551,3 +10551,38 @@ id only when installed), waits for each click on the blocking pool (capped at 32
 which a notification shows without a click to follow), and on a click brings the window forward
 and pushes the alert's route onto the page's history with a `popstate`, which preact-iso follows
 without a reload. The Windows-only lines first compile on the next release's Windows runner.
+
+## 2026-09-25 (cont.): Web Push
+
+A browser with no tab open now hears when a badge lights. Curtis took the trade knowingly - delivery
+rides the browser vendors' push services, which see timing and not content - after asking whether it
+needed Google, Mozilla or Apple credentials (it doesn't: VAPID is a keypair the node mints itself)
+and whether it works on localhost (it does: localhost is a secure context, and delivery needs only
+outbound HTTPS from the node).
+
+The node is the sender (`node/src/webpush.rs`): RFC 8291 payload encryption and RFC 8292 VAPID,
+hand-rolled on RustCrypto (`p256`, `hkdf`, `aes-gcm`; `sha2` promoted from a dev-dependency) rather
+than the `web-push` crate, whose encryption leans on OpenSSL. RFC 8291's worked example is the unit
+test and comes out byte for byte. The VAPID key is minted once into the keystore. Subscriptions live
+in `node.db`'s `push_subscriptions` - **the migration ladder's first real rung, 0054** - one row per
+browser per persona; a 404 or 410 from the push service deletes the row. The sender is a second
+listener on the attention watcher, which now watches only the personas somebody listens for:
+everyone for the desktop app and the test recorder, only subscribed personas for Web Push - a hosted
+node whose members never opted in does no work for it.
+
+The browser half: `js/sw.js`, served unbundled and `no-cache` from `/sw.js` so its scope is the whole
+app, shows a push unless one of our tabs is focused and visible, and on a click focuses a tab and
+routes it (a message the page's `PushRoutes` hands to the router) or opens one at the route; and a
+"notify me in this browser" control in the bell (`js/push.js`), on per browser and per persona - it
+asks the node which endpoints it pushes to, and turning it off tells the node to forget this persona
+here without unsubscribing the browser, whose subscription may serve another persona. It is absent in
+the desktop app and explains itself on an insecure origin or after a denial. Its decisions are pure
+functions (`js/pure/push.js`) with vectors. The purity cop learned service-worker globals on the way:
+`sw.js` imports nothing, and `self.clients` is as much the browser as `window`.
+
+The proof (`attention.cjs`): the test process plays the browser and its push service - an http server
+on loopback that receives each push, decrypts it with its own P-256 key using Node's crypto (an
+implementation independent of the node's), verifies the VAPID JWT against the key the request
+carries, and answers 410 once. The pushed alert decrypts to the words, the room and the route, signed
+by the key the browser subscribed against, and the 410 deletes the subscription - red when the sender
+ignores 410. The browser itself is the one manual step: Chrome or Firefox against a localhost node.

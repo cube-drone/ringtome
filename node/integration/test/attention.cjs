@@ -7,15 +7,22 @@
       * a line somebody else says in a room I'm in alerts me, with the room and the words;
         my own line never does;
       * a line I have SEEN never alerts, however it arrives - and the next unseen one still does;
-      * a row that lights my bell alerts me, in the bell's words, pointing at the bell.
+      * a row that lights my bell alerts me, in the bell's words, pointing at the bell;
+      * and a browser that asked for Web Push hears the same alert with no tab open: this file
+        plays the browser AND its vendor's push service - an http server on loopback that
+        receives each push, decrypts it with its own key per RFC 8291 using Node's crypto (an
+        implementation independent of the node's), verifies the VAPID signature against the key
+        the request carries, and answers 410 once to prove a dead subscription is let go.
 */
 const assert = require("node:assert");
+const crypto = require("node:crypto");
+const http = require("node:http");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST, HOST_B, makeFetch } = require("./fetch.cjs");
+const { HOST, HOST_B, makeFetch, sql } = require("./fetch.cjs");
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -140,5 +147,113 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const alert = await alertWith((a) => a.route === "/home/notifications" && /replied/.test(a.body));
         assert.ok(alert, `the bell's row alerted: ${JSON.stringify(await alertsFor(adaRoot))}`);
         assert.match(alert.body, /sourdough notes/, "naming the post, as the bell's card does");
+    });
+
+    /// The receiving half of RFC 8291, independently: what a browser does with a push.
+    const decryptPush = (body, ua, auth) => {
+        const salt = body.subarray(0, 16);
+        const idlen = body[20];
+        const asPublic = body.subarray(21, 21 + idlen);
+        const sealed = body.subarray(21 + idlen);
+        const shared = ua.computeSecret(asPublic);
+        const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), ua.getPublicKey(), asPublic]);
+        const ikm = Buffer.from(crypto.hkdfSync("sha256", shared, auth, keyInfo, 32));
+        const cek = Buffer.from(crypto.hkdfSync("sha256", ikm, salt, Buffer.from("Content-Encoding: aes128gcm\0"), 16));
+        const nonce = Buffer.from(crypto.hkdfSync("sha256", ikm, salt, Buffer.from("Content-Encoding: nonce\0"), 12));
+        const decipher = crypto.createDecipheriv("aes-128-gcm", cek, nonce);
+        decipher.setAuthTag(sealed.subarray(sealed.length - 16));
+        const record = Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - 16)), decipher.final()]);
+        let end = record.length - 1;
+        while (end >= 0 && record[end] === 0) end--; // padding
+        assert.equal(record[end], 2, "the last record ends in the 0x02 delimiter");
+        return JSON.parse(record.subarray(0, end).toString("utf8"));
+    };
+
+    /// RFC 8292: the token verifies against the key the header carries, for this origin.
+    const verifyVapid = (header, audience) => {
+        const m = /^vapid t=([^,]+), k=(.+)$/.exec(header || "");
+        assert.ok(m, `a VAPID authorization header: ${header}`);
+        const [, token, k] = m;
+        const [h, c, sig] = token.split(".");
+        const raw = Buffer.from(k, "base64url");
+        const key = crypto.createPublicKey({
+            key: { kty: "EC", crv: "P-256", x: raw.subarray(1, 33).toString("base64url"), y: raw.subarray(33, 65).toString("base64url") },
+            format: "jwk",
+        });
+        const ok = crypto.verify("sha256", Buffer.from(`${h}.${c}`), { key, dsaEncoding: "ieee-p1363" }, Buffer.from(sig, "base64url"));
+        assert.ok(ok, "the VAPID signature verifies against its own key");
+        const claims = JSON.parse(Buffer.from(c, "base64url").toString("utf8"));
+        assert.equal(claims.aud, audience, "the audience is the push service's origin");
+        assert.ok(claims.exp > Date.now() / 1000, "and it has not expired");
+        assert.match(claims.sub, /^https:|^mailto:/, "and it says who is pushing");
+        return k;
+    };
+
+    it("Web Push: a subscribed browser hears the alert, encrypted to it and signed by the node", async () => {
+        // The fake push service: records every push, answers as told.
+        const pushes = [];
+        let answer = 201;
+        const server = http.createServer((req, res) => {
+            const chunks = [];
+            req.on("data", (c) => chunks.push(c));
+            req.on("end", () => {
+                pushes.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks) });
+                res.writeHead(answer);
+                res.end();
+            });
+        });
+        await new Promise((r) => server.listen(0, "127.0.0.1", r));
+        const origin = `http://127.0.0.1:${server.address().port}`;
+        try {
+            // The browser: its own keypair and secret, as PushManager.subscribe() would mint.
+            const ua = crypto.createECDH("prime256v1");
+            ua.generateKeys();
+            const auth = crypto.randomBytes(16);
+            const key = await (await ada(`api/identity/${adaRoot}/push`)).json();
+            assert.equal(Buffer.from(key.public_key, "base64url").length, 65, "the node's key is an uncompressed P-256 point");
+
+            // A subscription the node cannot use is refused at the door.
+            const bad = await j(ada, `api/identity/${adaRoot}/push`, { endpoint: "not a url", keys: { p256dh: "x", auth: "y" } });
+            assert.equal(bad.status, 400, await bad.text());
+
+            const sub = await j(ada, `api/identity/${adaRoot}/push`, {
+                endpoint: `${origin}/push/ada-browser`,
+                keys: { p256dh: ua.getPublicKey().toString("base64url"), auth: auth.toString("base64url") },
+            });
+            assert.equal(sub.status, 200, await sub.text());
+
+            assert.equal((await say(bea, beaRoot, "anyone for toast")).status, 200);
+            assert.ok(await heldOnAda("anyone for toast"), "ada's node holds bea's line");
+            let got = null;
+            for (let i = 0; i < 40 && !got; i++) {
+                got = pushes.find((p) => p.path === "/push/ada-browser");
+                if (!got) await wait(250);
+            }
+            assert.ok(got, "the node pushed to the browser's endpoint");
+            assert.equal(got.headers["content-encoding"], "aes128gcm");
+            assert.ok(Number(got.headers.ttl) > 0, "with a TTL");
+            const signedWith = verifyVapid(got.headers.authorization, origin);
+            assert.equal(signedWith, key.public_key, "signed by the key the browser subscribed against");
+            const alert = decryptPush(got.body, ua, auth);
+            assert.equal(alert.body, "anyone for toast", "the browser reads the words");
+            assert.match(alert.title, /the kitchen/);
+            assert.equal(alert.route, `/home/chat/${adaRoot}/${kitchen}`, "and knows where the click lands");
+
+            // The browser let go (410): the next push forgets the subscription.
+            answer = 410;
+            const before = pushes.length;
+            assert.equal((await say(bea, beaRoot, "last call for toast")).status, 200);
+            assert.ok(await heldOnAda("last call for toast"));
+            for (let i = 0; i < 40 && pushes.length === before; i++) await wait(250);
+            assert.ok(pushes.length > before, "the next alert was pushed, and refused");
+            let rows = [1];
+            for (let i = 0; i < 20 && rows.length; i++) {
+                rows = (await sql(`SELECT 1 AS n FROM push_subscriptions WHERE root_pubkey = '${adaRoot}'`, HOST)).rows;
+                if (rows.length) await wait(250);
+            }
+            assert.equal(rows.length, 0, "a 410 deletes the subscription");
+        } finally {
+            server.close();
+        }
     });
 });

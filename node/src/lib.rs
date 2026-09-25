@@ -60,6 +60,7 @@ pub mod rate_limit;
 pub mod rebroadcast;
 pub mod annotations;
 pub mod attention;
+pub mod webpush;
 pub mod replies;
 pub mod reaper;
 pub mod record;
@@ -140,6 +141,8 @@ pub struct AppState {
     /// The badges' moments, said out loud for an embedder (attention.rs): the desktop app
     /// subscribes through [`Bound::attention`] and turns each into a notification.
     pub attention: attention::Attention,
+    /// The Web Push sender's key and client (webpush.rs).
+    pub webpush: webpush::WebPush,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -284,6 +287,7 @@ impl Bound {
     /// Listen for the moments a badge lights (attention.rs) - the desktop app's notifications.
     /// Subscribe before [`serve`] consumes the `Bound`; the receiver outlives it.
     pub fn attention(&self) -> tokio::sync::broadcast::Receiver<attention::Alert> {
+        self.attention.watch_everyone();
         self.attention.subscribe()
     }
 }
@@ -404,8 +408,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let gossip = iroh_gossip::net::Gossip::builder()
         .max_message_size(32 * 1024)
         .spawn(endpoint.clone());
-    // Read before `config` moves into the state: the recorder is a local-test fixture.
+    // Read before `config` moves into the state: the recorder is a local-test fixture, and so is
+    // a push endpoint over plain http (the rig's fake push service).
     let record_attention = config.local_test;
+    let webpush = webpush::WebPush::load(&keystore, config.local_test).map_err(|e| e.context("loading the Web Push key"))?;
     let state = AppState {
         config,
         node_db,
@@ -429,6 +435,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         gossip,
         live: chat::Live::default(),
         attention: attention::Attention::new(record_attention),
+        webpush,
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
@@ -583,8 +590,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
-    // Attention (attention.rs): idle unless somebody listens.
+    // Attention (attention.rs): idle unless somebody listens. Web Push is one listener.
     tokio::spawn(attention::watch(state.clone()));
+    tokio::spawn(webpush::deliver(state.clone()));
     // The room-sync beat (CHAT.md, slice 2): every room a hosted persona opened lately,
     // pulled from the creator's node. Slow on purpose - the beat is the honest floor,
     // and live delivery is slice 3's.
@@ -702,6 +710,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/in/{*wildcard}", get(ui::homepage))
         // Versioned static assets (CDN cache-safe)
         .route("/static/{version}/app.js", get(ui::app_js))
+        .route("/sw.js", get(ui::service_worker))
         .route("/static/{version}/app.css", get(ui::app_css))
         // Marquee font files (embedded in binary, read from disk in dev)
         .route("/fonts/{filename}", get(ui::font))

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 933 phrases across 59 files.
+// 938 phrases across 60 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -765,6 +765,12 @@ export default {
     'posts.reading-further-back': 'reading further back…',
     'posts.load-more': 'load more',
 
+    // --- node/js/push.js ---
+    'push.needs-https': 'notifications in this browser need https (or localhost)',
+    'push.blocked': "notifications are blocked for this site - your browser's settings can allow them",
+    'push.stop-notifying': 'stop notifying this browser',
+    'push.notify-this-browser': 'notify me in this browser',
+
     // --- node/js/slugpage.js ---
     'slugpage.looking': 'looking…',
     'slugpage.nobody-here-by-that-name': 'nobody on this node goes by that name',
@@ -885,6 +891,7 @@ export default {
     'identity.routes.only-the-rooms-creator-deputizes': "only the room's creator deputizes",
     'identity.routes.you-are-the-creator': "you are the room's creator",
     'identity.routes.the-room-could-not-go-live': 'the room could not go live: {why}',
+    'identity.routes.not-a-push-subscription': 'not a push subscription this node can use: {e}',
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',

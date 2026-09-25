@@ -73,6 +73,13 @@ pkarr = "5"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2"] }
 url = "2"
 base64 = "0.22.1"
+# Web Push (webpush.rs): RFC 8291 payload encryption (P-256 ECDH, HKDF-SHA256, AES-128-GCM) and
+# RFC 8292 VAPID (an ES256 JWT). Hand-rolled on RustCrypto rather than the `web-push` crate, whose
+# encryption leans on OpenSSL - this tree has none, and the desktop cross-builds are why.
+p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
+hkdf = "0.12"
+sha2 = "0.10"
+aes-gcm = "0.10"
 dryoc = "0.8.0"
 iroh-blobs = "0.103.0"
 # StreamExt for consuming iroh-blobs' fetch-progress stream (same crate iroh-blobs uses), so a
@@ -160,7 +167,6 @@ blake3 = "1.8.5"
 iroh-gossip = "0.101"
 bytes = "1.12.1"
 
-[dev-dependencies]
-# The released-migrations pin (tests/conventions.rs) checks sha256, because the release script
-# that writes the pin is JavaScript, and sha256 is the hash node:crypto has built in.
-sha2 = "0.10"
+# (sha2 is a regular dependency now - Web Push's HKDF - and the released-migrations pin in
+# tests/conventions.rs uses it from there: sha256, because the release script that writes the pin
+# is JavaScript, and sha256 is the hash node:crypto has built in.)

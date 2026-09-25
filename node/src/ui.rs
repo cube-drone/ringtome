@@ -33,6 +33,9 @@ const CSS: &str = include_str!("../js/target/css/bundle.css");
 // regardless of the process's working directory (the justfile runs cargo from the workspace
 // root, not from node/).
 const JS_DEV_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/target/js/bundle.js");
+/// The Web Push service worker (js/sw.js): its own script, never bundled.
+const SERVICE_WORKER: &str = include_str!("../js/sw.js");
+const SERVICE_WORKER_DEV_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/sw.js");
 const CSS_DEV_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/target/css/bundle.css");
 
 // --- Marquee fonts: all 31 woff2 faces, baked into the binary ---
@@ -114,6 +117,25 @@ pub async fn app_js(
     } else {
         Ok(([(axum::http::header::CONTENT_TYPE, "application/javascript")], JS.to_string()))
     }
+}
+
+/// Serve the service worker at `/sw.js` - the origin's root, which is what lets its scope cover
+/// the whole app - unversioned and `no-cache`: the browser compares it byte for byte on every
+/// navigation and installs a changed one, so a stale cached copy would pin old behaviour.
+pub async fn service_worker(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
+    let contents = if state.config.is_dev() {
+        std::fs::read_to_string(SERVICE_WORKER_DEV_PATH)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("failed to read the service worker from {}: {}", SERVICE_WORKER_DEV_PATH, e)))?
+    } else {
+        SERVICE_WORKER.to_string()
+    };
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "application/javascript"),
+            (axum::http::header::CACHE_CONTROL, "no-cache"),
+        ],
+        contents,
+    ))
 }
 
 /// Serve the CSS bundle. Same versioning rules as JS.

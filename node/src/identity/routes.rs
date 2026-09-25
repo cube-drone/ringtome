@@ -102,6 +102,9 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/notifications",
             get(notifications_handler),
         )
+        // Web Push (webpush.rs): the node's public key, and this browser's subscription.
+        .route("/api/identity/{root}/push", get(push_key_handler).post(push_subscribe_handler))
+        .route("/api/identity/{root}/push/forget", post(push_forget_handler))
         .route("/api/identity/{root}/serve", post(serve_handler))
         .route(
             "/api/identity/{root}/keys/{target}/revoke",
@@ -2391,6 +2394,50 @@ pub(crate) struct NotificationItem {
 /// Seen-state is a single watermark register (`notifications_seen/watermark`, a PUT to the
 /// existing private KV surface): rows newer than it are unseen, and "mark read" is one write
 /// that travels to every device. Per-row seen granularity waits for a kind that needs it.
+/// GET `/api/identity/{root}/push` - the key a browser subscribes against (webpush.rs), and the
+/// endpoints this persona is already pushed to, so a browser can tell whether it is one of them.
+async fn push_key_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    let endpoints = crate::webpush::endpoints(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "public_key": state.webpush.public_key(), "endpoints": endpoints })))
+}
+
+/// POST `/api/identity/{root}/push` - this browser's push subscription, as
+/// `PushSubscription.toJSON()` spells it: notify this persona here while no tab is open.
+async fn push_subscribe_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(sub): Json<crate::webpush::Subscription>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    crate::webpush::subscribe(&state, &root, &sub)
+        .await
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.not-a-push-subscription", "not a push subscription this node can use: {e}", e = e)))?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(serde::Deserialize)]
+struct PushForget {
+    endpoint: String,
+}
+
+/// POST `/api/identity/{root}/push/forget` - stop notifying this browser.
+async fn push_forget_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<PushForget>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    crate::webpush::unsubscribe(&state, &root, &req.endpoint).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 async fn notifications_handler(
     session: Session,
     State(state): State<AppState>,
