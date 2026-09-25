@@ -10749,3 +10749,16 @@ endpoint opens the copy with the node's own code - the keystore, node.db climbin
 the persona through the ordinary user-database manager - and finds the persona hosted, its chain, and
 its post by title. Red with the keys left out. The conventions cop pins the backup's whole-node walk
 beside the reaper's, the other legitimate one.
+
+## 2026-09-25 (cont.): the folder git would not keep
+
+0.1.9's release succeeded everywhere but the image: `COPY volume/`, then `data/`, found no `/data` in
+the build context. The Dockerfile copied an empty placeholder folder, `server/data/`, to give the
+non-root user a writable `/data` - and `.gitignore`'s `**/data/` (the dev node's data) had quietly kept
+that folder out of every commit. Local builds had it, CI's checkout did not. Renamed to
+`server/volume/`, which no rule matches; verified by a local single-architecture build with a stand-in
+binary (the Dockerfile only copies, so a stand-in proves everything but the node running): user
+65532, both ports, the volume, all six defaults in `ENV`, `/data` owned by 65532, the binary
+executable. The 0.1.9 image was never pushed; the next release (or `just release-trial`, which builds
+without pushing) carries the fix - a rerun of the 0.1.9 job would read the workflow at its tag, with
+the old Dockerfile.

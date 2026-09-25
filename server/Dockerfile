@@ -12,7 +12,9 @@ ARG TARGETARCH
 COPY --chmod=0755 bin/${TARGETARCH}/ringtome /usr/local/bin/ringtome
 # The data directory, owned by the image's non-root user so a fresh named volume starts writable.
 # It holds the node's KEYS beside its databases: the volume is the node's identity. Back it up.
-COPY --chown=65532:65532 data/ /data/
+# (Copied from `volume/`, an empty placeholder: a folder named `data` is exactly what .gitignore's
+# `**/data/` keeps out of the repository - 2026-09-25, the first image build found `/data` missing.)
+COPY --chown=65532:65532 volume/ /data/
 
 # Said out loud rather than left to the binary's defaults, so `docker inspect` and this file tell
 # the truth about what the container is (a release binary defaults to the same prod + mainline).
