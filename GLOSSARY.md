@@ -4,6 +4,14 @@ The project's vocabulary, grouped by layer. Terms marked *(planned)* exist in PR
 not yet in code. The second section is the Cozyweb language mapping — which of these words users
 are ever allowed to meet, and in what costume.
 
+## Names
+
+- **Ringtome** — the protocol, and the reference node that speaks it (`ringtome`, `ringtome-proto`).
+  Chains, identities, sync, the trust web. What another implementation would implement.
+- **Horse Drawing Tycoon 2** — the consumer application built on Ringtome: the desktop app and the UI, at
+  horsedrawingtycoon.com. What a person installs and opens. (2026-09-25; see PROJECT_PLAN's *Two
+  names*.)
+
 ## Identity
 
 - **identity** — a person(a). Cryptographically: a tree of ed25519 keypairs. The root's public

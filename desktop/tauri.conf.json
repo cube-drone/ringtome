@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Ringtome",
+  "productName": "Horse Drawing Tycoon 2",
   "version": "0.1.6",
   "identifier": "net.lassam.ringtome",
   "build": {
@@ -23,7 +23,7 @@
       "icons/icon.ico"
     ],
     "shortDescription": "A place to keep and share what you make.",
-    "longDescription": "Ringtome: your own node on a peer-to-peer social network, running on your own computer.",
+    "longDescription": "Horse Drawing Tycoon 2: a game about drawing horses, with your own node on the Ringtome peer-to-peer social network running inside it.",
     "copyright": "Copyright (c) 2026 Curtis Lassam",
     "category": "SocialNetworking",
     "createUpdaterArtifacts": true,

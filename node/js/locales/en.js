@@ -210,7 +210,7 @@ export default {
     'apps.people.cleared': 'cleared',
 
     // --- node/js/auth.js ---
-    'auth.ringtome': 'ringtome',
+    'auth.app-name': 'horse drawing tycoon 2',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
     'auth.spare-key': 'spare key',
@@ -220,7 +220,7 @@ export default {
     'auth.move-me-in': 'move me in',
     'auth.let-me-back-in': 'let me back in',
     'auth.back-to-signing-in': 'back to signing in',
-    'auth.ringtome-2': 'ringtome',
+    'auth.app-name-2': 'horse drawing tycoon 2',
     'auth.a-cozy-corner-of-the': 'a cozy corner of the internet',
     'auth.sign-in': 'sign in',
     'auth.new-here': 'new here?',

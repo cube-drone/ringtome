@@ -312,7 +312,7 @@ fn tombstone(te: &CrushError) -> String {
     match te {
         // Lead with what a person needs; keep the codec detail parenthesized for debugging.
         CrushError::Unsupported(f) => format!(
-            "this isn't a kind of media Ringtome can store yet - images, audio, and a few video codecs ({f})"
+            "this isn't a kind of media Horse Drawing Tycoon 2 can store yet - images, audio, and a few video codecs ({f})"
         ),
         CrushError::Decode(e) => format!("couldn't process the media ({e})"),
         CrushError::TooLong(e) => format!("too long to store ({e})"),

@@ -1,4 +1,4 @@
-# Ringtome — Phones
+# Horse Drawing Tycoon 2 — Phones
 
 **Status: a soft shape, not a plan.** Written 2026-08-11. PROJECT_PLAN's *Phones: deferred, by
 design* is canon and this does not overturn it — but one of that section's premises is factually

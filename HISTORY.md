@@ -10470,3 +10470,22 @@ our mark while held, by the ring for one round after release, and by the ledger 
 on - and no phase of it depends on what iroh does with tags or when. The reaper test grows a held
 blob that stands through every round and is collected once released with no row behind it. Proven
 only where it failed: CI.
+
+## 2026-09-25: Horse Drawing Tycoon 2
+
+The application earned its name, and its address: **Horse Drawing Tycoon 2**, at
+horsedrawingtycoon.com - the sequel to a tycoon game about drawing horses that Curtis built eleven
+years ago on a bar bet, after a video-game idea generator proposed it. Ringtome stays the name of
+the protocol; the social network lives inside the dumb game.
+
+The line drawn: what a person installs, opens or reads became Horse Drawing Tycoon 2 - the desktop
+product name and window title, the tray menu and tooltip, the update dialog, both page `<title>`s,
+the login heading (its catalog key renamed from `auth.ringtome` to `auth.app-name` too, since a key
+naming the old brand is a small lie), the upload and ingest refusals, and the spare-key file's header
+and filename (read back by its `spare key:` line, never its header, so old files still unlock).
+What is the protocol kept its name: ALPNs, signature domains, crates, the `ringtome` binary,
+`RINGTOME_*` variables, test vectors, and the node's own log lines about peers. Three user-meetable
+things kept it on purpose: the bundle identifier `net.lassam.ringtome` (it names the data directory,
+the OS permission grants and the login item), the release-name seed (or every release name
+changes), and browser-storage keys (or their contents are orphaned). README, PROJECT_PLAN (*Two
+names*, under Vision), GLOSSARY, CLAUDE.md and the desktop docs say which name means what.

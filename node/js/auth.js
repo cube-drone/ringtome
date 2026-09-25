@@ -151,7 +151,7 @@ export const Welcome = ({ session }) => {
     if (mode === 'recover') {
         return html`
             <div class="welcome">
-                <h1 class="welcome-title">${t('auth.ringtome', 'ringtome')}</h1>
+                <h1 class="welcome-title">${t('auth.app-name', 'horse drawing tycoon 2')}</h1>
                 <p class="welcome-sub">${t('auth.locked-out-your-spare-key', 'locked out? your spare key gets you back in.')}</p>
                 <form class="welcome-form" onSubmit=${submit}>
                     <label>
@@ -217,7 +217,7 @@ export const Welcome = ({ session }) => {
 
     return html`
         <div class="welcome">
-            <h1 class="welcome-title">${t('auth.ringtome-2', 'ringtome')}</h1>
+            <h1 class="welcome-title">${t('auth.app-name-2', 'horse drawing tycoon 2')}</h1>
             <p class="welcome-sub">${t('auth.a-cozy-corner-of-the', 'a cozy corner of the internet')}</p>
 
             <div class="welcome-tabs">

@@ -454,7 +454,7 @@ export const SpareKeyCeremony = ({ persona }) => {
 
     const download = () => {
         const contents = [
-            'RINGTOME SPARE KEY - keep this somewhere safe and private.',
+            'HORSE DRAWING TYCOON 2 SPARE KEY - keep this somewhere safe and private.',
             'If you ever lose every computer that is you, this brings you back.',
             '',
             `persona: ${root}`,
@@ -463,7 +463,7 @@ export const SpareKeyCeremony = ({ persona }) => {
         const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain' }));
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ringtome-spare-key-${shortcode(root)}.txt`;
+        a.download = `horse-drawing-tycoon-2-spare-key-${shortcode(root)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
     };

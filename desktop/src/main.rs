@@ -1,4 +1,4 @@
-//! Ringtome for the desktop: one window, one process, the node inside it.
+//! Horse Drawing Tycoon 2 for the desktop: one window, one process, the Ringtome node inside it.
 //!
 //! DESKTOP.md's architecture in three steps, and this file is all three: build the node, serve it
 //! on a loopback listener on the runtime the shell is already using, open the window at its URL.
@@ -61,7 +61,7 @@ fn main() {
             let url = start_node(&data_dir, token.clone())?;
             let hidden = tray::launched_hidden();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
-                .title("Ringtome")
+                .title("Horse Drawing Tycoon 2")
                 .inner_size(1280.0, 860.0)
                 .visible(!hidden)
                 .initialization_script(format!(
@@ -81,7 +81,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("building the Ringtome desktop shell")
+        .expect("building the Horse Drawing Tycoon 2 desktop shell")
         .run(|app, event| {
             // The update-on-quit half of Stage 6: a downloaded update installs as the app goes,
             // so the next launch is the new version and this one never restarted under anybody.

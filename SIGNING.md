@@ -1,4 +1,4 @@
-# Signing Ringtome — the paperwork, in order
+# Signing Horse Drawing Tycoon 2 — the paperwork, in order
 
 Everything in here is Curtis's to do, because it is identity and money rather than code. It exists
 because both processes involve **real-world waiting** — Apple verifies a human, Microsoft verifies a
@@ -9,7 +9,7 @@ right order and let the unsigned build carry on meanwhile.
 built, or the unsigned artifacts, which the CI matrix produces without a single certificate.
 
 **What signing buys, stated plainly, so the money is spent knowingly:** on macOS it is the
-difference between an app that opens and one that says "Ringtome is damaged and can't be opened",
+difference between an app that opens and one that says "Horse Drawing Tycoon 2 is damaged and can't be opened",
 which is what Gatekeeper tells a user about unsigned software downloaded from the web. On Windows it
 is the difference between SmartScreen's blue wall and a normal install — *eventually*: an OV
 certificate, which is what both of these are, earns its reputation over downloads rather than
@@ -21,7 +21,7 @@ SmartScreen from the first download, and that is not what we are buying.
 ## 0. First, the free one — do this today
 
 The updater's signing key is **ours**, costs nothing, and is the one secret in this document that
-cannot be replaced. If it is lost, no installed copy of Ringtome can ever update itself again; there
+cannot be replaced. If it is lost, no installed copy of Horse Drawing Tycoon 2 can ever update itself again; there
 is no recovery, because the public half is baked into every binary already shipped.
 
 The command lives in Tauri's CLI, which is a separate install - and one Stage 4 needs regardless,

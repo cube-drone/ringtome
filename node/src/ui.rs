@@ -84,7 +84,7 @@ const EMBEDDED_FONTS: &[(&str, &[u8])] = &[
 
 /// Render the SPA shell, replacing `$VERSION$` with the running app version.
 pub async fn homepage(State(state): State<AppState>) -> Html<String> {
-    Html(app_page(&state, "<title>Ringtome</title>"))
+    Html(app_page(&state, "<title>Horse Drawing Tycoon 2</title>"))
 }
 
 /// The app's page with a head of the caller's choosing (PROJECT_PLAN's The node's public face, ruling 8): the title

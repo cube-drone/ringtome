@@ -16,6 +16,23 @@ Any pointed notes about the fundamental untrustworthiness of nostalgia-goggles o
  to a nostalgic cycle that is constantly rolling forward in time can be forwarded respectfully to `/dev/null` for 
  further consideration.
 
+### Two names: the protocol and the game (settled 2026-09-25)
+
+**Ringtome** names the protocol and its reference node: the chains, identities, sync, trust web,
+the wire strings (`ringtome/sync/0`), the signature domains (`ringtome-v0/...`) and the conformance
+vectors. **Horse Drawing Tycoon 2** names the consumer application built on it - what a person installs, opens,
+and sees - at horsedrawingtycoon.com: the sequel to a tycoon game about drawing horses (Curtis,
+2011's bar bet), with the social network living inside the game. The two goals above belong to
+the product; the product's name is Horse Drawing Tycoon 2, and "Ringtome" in this document means the
+protocol and the node unless a passage predates the split and plainly means the app.
+
+What keeps the old name even though a person can meet it: the bundle identifier
+(`net.lassam.ringtome` - it names the app's data directory, its OS permission grants and its login
+item, so changing it would make the renamed app a stranger to its own data), the release-name seed
+(`ringtome/<version>`, or every release name would change), and browser-storage keys (renaming them
+would orphan what they hold). The "gamey product layer" GODOT.md furnishes the argument for is this
+product's future, not a different one.
+
 ### Federation vs. P2P
 
 Both federation and P2P are rife with problems that we hope to present a compelling solution to.

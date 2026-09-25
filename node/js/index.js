@@ -574,7 +574,7 @@ const App = () => {
 
 function main() {
     let app = document.getElementById('app');
-    console.log("Ringtome UI loaded!");
+    console.log("Horse Drawing Tycoon 2 UI loaded!");
     // Before the first render: `t` reads the active catalog at call time, so a locale chosen after
     // paint would leave the first screen in English. This also stamps `<html lang>`, which is where
     // a screen reader takes its pronunciation from.

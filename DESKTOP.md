@@ -1,4 +1,4 @@
-# Ringtome — Desktop Delivery (Tauri, with the node embedded)
+# Horse Drawing Tycoon 2 — Desktop Delivery (Tauri, with the Ringtome node embedded)
 
 **The shape: one binary.** Tauri v2 for the window, the node linked in as a library and running on the
 same tokio runtime — no child process, no sidecar, no second executable. In-process from the start
@@ -438,7 +438,7 @@ its user.
 Quit is the one act that stops it. Start at login is on by default - enabled once, on a packaged
 build's first launch, through the platform's own mechanism (a Launch Agent, a Run key, an XDG
 autostart entry), and the tray's toggle owns it from then on; a login launch starts hidden, and on
-macOS a hidden Ringtome leaves the dock. A second launch focuses the running window instead of
+macOS a hidden Horse Drawing Tycoon 2 leaves the dock. A second launch focuses the running window instead of
 building a second node against the same data directory. The tray's status line is the version and
 the node's address for now; a real status light (peers, syncing) is a later refinement. Stage 6 is
 amended to match: a node that is never quit would never update, so a pending update installs and

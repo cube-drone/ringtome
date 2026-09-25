@@ -1,4 +1,7 @@
-# Ringtome for the desktop
+# Horse Drawing Tycoon 2 for the desktop
+
+The consumer application, with the Ringtome node linked in (the protocol keeps its name; see the
+root README's *Two names*).
 
 One window, one process, the node inside it. [`../DESKTOP.md`](../DESKTOP.md) is the design and the
 staging; this is how to run what exists.

@@ -1,5 +1,18 @@
 # ringtome
 
+**Two names, one repository** (2026-09-25):
+
+- **Ringtome** is the *protocol*: signed append-only chains, roaming key-tree identities, sync over
+  [iroh](https://iroh.computer/), the trust web. The `ringtome` node, the `ringtome-proto` crate, the
+  wire (`ringtome/sync/0`), the signature domains and the test vectors all keep the name.
+- **Horse Drawing Tycoon 2** is the *consumer application* built on it - the desktop app, the UI people
+  actually use, at [horsedrawingtycoon.com](https://horsedrawingtycoon.com). The sequel to a
+  tycoon game about drawing horses, built on a bar bet eleven years ago; the social network lives
+  inside the dumb game, which is exactly where it should live.
+
+When a sentence is about bytes, chains or peers, it says Ringtome; when it is about what a person
+installs, opens or sees, it says Horse Drawing Tycoon 2.
+
 A cozy p2p retro-web social network: IRC-flavored chat, bulletin boards, geocities-style pages,
 webrings, hit counters, MIDI files. Identities are cryptographic key trees that roam between
 nodes; content lives in signed append-only logs replicated over [iroh](https://iroh.computer/);

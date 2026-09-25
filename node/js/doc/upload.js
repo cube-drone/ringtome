@@ -143,7 +143,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
             if (!accepted(file)) {
                 patchRow(i, {
                     phase: 'failed',
-                    error: `Ringtome can't store this kind of file yet - images, audio, and some video (this is ${file.type}).`,
+                    error: `Horse Drawing Tycoon 2 can't store this kind of file yet - images, audio, and some video (this is ${file.type}).`,
                 });
                 onFailed && onFailed(i); // the host removes this file's in-document placeholder
                 return;

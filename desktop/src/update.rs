@@ -141,7 +141,7 @@ async fn check_once(app: &AppHandle) -> anyhow::Result<()> {
     let now = tauri::async_runtime::spawn_blocking(move || {
         ask.dialog()
             .message(format!(
-                "Ringtome {version} is downloaded. It will install the next time you quit, or \
+                "Horse Drawing Tycoon 2 {version} is downloaded. It will install the next time you quit, or \
                  on its own once this window has been closed for a while.\n\n\
                  Restart now to update immediately? Your node will be offline for a few seconds."
             ))

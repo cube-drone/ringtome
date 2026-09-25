@@ -6,7 +6,7 @@
 //! **Close hides; Quit quits.** The window's close button hides it and the node runs on; the
 //! tray's Quit is the one act that stops the node (and installs a pending update on the way
 //! out, `update::install_pending`). On macOS the dock icon goes with the window, so a hidden
-//! Ringtome reads as a background presence rather than a stuck app. On a machine with no
+//! Horse Drawing Tycoon 2 reads as a background presence rather than a stuck app. On a machine with no
 //! tray to come back through ([`TrayPresent`]) close quits instead - hidden with no way
 //! back would be a node nobody can reach.
 //!
@@ -51,7 +51,7 @@ pub fn build(app: &AppHandle, data_dir: &Path, url: &str) {
     match try_build(app, url) {
         Ok(()) => app.manage(TrayPresent(true)),
         Err(e) => {
-            tracing::warn!(error = %e, "no tray on this machine: closing the window will quit Ringtome");
+            tracing::warn!(error = %e, "no tray on this machine: closing the window will quit Horse Drawing Tycoon 2");
             app.manage(TrayPresent(false))
         }
     };
@@ -64,11 +64,11 @@ pub fn present(app: &AppHandle) -> bool {
 }
 
 fn try_build(app: &AppHandle, url: &str) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Ringtome", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Horse Drawing Tycoon 2", true, None::<&str>)?;
     let status = MenuItem::with_id(
         app,
         "status",
-        format!("Ringtome {} · node at {url}", env!("CARGO_PKG_VERSION")),
+        format!("Horse Drawing Tycoon 2 {} · node at {url}", env!("CARGO_PKG_VERSION")),
         false,
         None::<&str>,
     )?;
@@ -80,7 +80,7 @@ fn try_build(app: &AppHandle, url: &str) -> tauri::Result<()> {
         app.autolaunch().is_enabled().unwrap_or(false),
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Ringtome", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Horse Drawing Tycoon 2", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -99,7 +99,7 @@ fn try_build(app: &AppHandle, url: &str) -> tauri::Result<()> {
         .ok_or_else(|| tauri::Error::AssetNotFound("the app icon".into()))?;
     TrayIconBuilder::with_id("ringtome")
         .icon(icon)
-        .tooltip("Ringtome")
+        .tooltip("Horse Drawing Tycoon 2")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {

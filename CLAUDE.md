@@ -7,6 +7,11 @@
 - For recent status, read **the tail of `HISTORY.md` and the git log**; `NEXT_STEPS.md` for
   what's in motion and the standing residuals.
 - Read `STYLE.md` before writing code.
+- **Two names** (2026-09-25): **Ringtome** is the protocol and its node - wire strings, crates,
+  env vars, signature domains, chains. **Horse Drawing Tycoon 2** is the consumer application - anything a
+  person installs, opens or reads on screen. New user-facing copy says Horse Drawing Tycoon 2; never rename a
+  protocol string, and never rename the bundle identifier or a storage key (PROJECT_PLAN's *Two
+  names* says why).
 - Do not add history to `NEXT_STEPS.md`: it's only for work that needs to get done, history goes in `HISTORY.md`.
 - **HISTORY rides the work, unprompted** (2026-08-08): when a piece of work wraps — gates
   green, NEXT_STEPS item struck — append its `HISTORY.md` entry in the same pass, don't wait
