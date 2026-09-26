@@ -23,6 +23,10 @@ import { t } from './i18n.js';
 /// be a second place for it to go stale.
 const launchToken = () => (typeof window === 'undefined' ? null : window.__ringtome_launch_token || null);
 
+/// Is this the desktop app, rather than a browser? The shell's key is on the window only there.
+/// What decides "Device" over "Server", and "show in folder" over "download".
+export const isDevice = () => !!launchToken();
+
 /// The proof this client can offer, as headers. Empty in a browser, where the cookie is the
 /// proof and nothing here should touch a token.
 export function authHeaders() {

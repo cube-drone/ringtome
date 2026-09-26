@@ -6,11 +6,11 @@
 const assert = require('node:assert');
 
 let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
-    bucketHolds, featuresOf, itemNoun, itemPlural, homeAppFor, editorModes;
+    bucketHolds, featuresOf, itemNoun, itemPlural, homeAppFor, editorModes, appsFor, consoleCellsFor;
 let Icons;
 before(async () => {
     ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds, homeAppFor,
-       featuresOf, itemNoun, itemPlural, editorModes } = await import('../../../js/pure/apps.js'));
+       featuresOf, itemNoun, itemPlural, editorModes, appsFor, consoleCellsFor } = await import('../../../js/pure/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 
@@ -207,6 +207,28 @@ describe('app registry', () => {
 
         it('is safe on no app', () => {
             assert.equal(appLabel(null, 'Curtis'), '');
+        });
+
+        it("names the settings app for what the person holds - never 'node'", () => {
+            assert.equal(appLabel(appById('device'), 'Curtis'), 'Server', 'a browser reaching a server');
+            assert.equal(appLabel(appById('device'), 'Curtis', true), 'Device', 'the desktop app');
+            assert.equal(appLabel(appById('notes'), 'Curtis', true), 'Writer', 'an app with one name keeps it');
+        });
+    });
+
+    // The settings app is for the people who look after the place (apps/device.js); the node
+    // refuses everyone else at every door, and these keep the tile out of their way.
+    describe('administrator-only apps', () => {
+        it('shows the settings app to an administrator and nobody else', () => {
+            assert.ok(appsFor(true).some((a) => a.id === 'device'));
+            assert.ok(!appsFor(false).some((a) => a.id === 'device'));
+            assert.deepEqual(appsFor(false).map((a) => a.id), appsFor(true).map((a) => a.id).filter((id) => id !== 'device'), 'and hides nothing else');
+        });
+
+        it('keeps the console honeycomb whole either way', () => {
+            assert.ok(consoleCellsFor(true).some((a) => a.id === 'device'));
+            assert.ok(!consoleCellsFor(false).some((a) => a.id === 'device'));
+            assert.ok(consoleCellsFor(false).some((a) => a.blank), 'the filler cells stay');
         });
     });
 

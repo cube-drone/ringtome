@@ -30,6 +30,13 @@
 //! disk and reports its path, never its bytes. A fooled check can start a backup; it cannot read
 //! one.
 //!
+//! **Reading one back** (the Server app's Backups page, 2026-09-25) is a different door with a
+//! stricter lock: listing, downloading and revealing archives take a `node_admin` SESSION and
+//! nothing else - loopback alone never qualifies, because these doors do hand the archive over. A
+//! download names an archive by its exact `backup_<UTC>.tar.gz` name, never a path. On a desktop
+//! app the archives are already on the person's own disk, so the page shows them in the file
+//! manager instead (shell.rs, `Reveal`).
+//!
 //! **What the archive holds is the node** - the databases AND the keys that decrypt them
 //! (`envelope.key` included, unless the operator keeps it in `RINGTOME_ENVELOPE_KEY`, which the
 //! log then says). Anyone with the archive has the node. Restoring is unpacking it into an empty
@@ -44,7 +51,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
-use crate::auth::Session;
+use crate::auth::{NodeAdminSession, Session};
 use crate::error::AppError;
 use crate::request_context::RequestContext;
 use crate::AppState;
@@ -342,9 +349,121 @@ pub async fn ticket_handler(
     Ok((status, Json(ticket)))
 }
 
+// ---------------------------------------------------------------------------------------------
+// Reading them back: the Backups page.
+
+/// Is `name` exactly an archive this module writes - `backup_YYYYMMDDTHHMMSSZ.tar.gz`? The only
+/// shape the download and reveal doors accept, so no request can name anything else on the disk.
+pub fn is_archive_name(name: &str) -> bool {
+    let Some(stamp) = name.strip_prefix("backup_").and_then(|n| n.strip_suffix(".tar.gz")) else {
+        return false;
+    };
+    let b = stamp.as_bytes();
+    b.len() == 16
+        && b[..8].iter().all(u8::is_ascii_digit)
+        && b[8] == b'T'
+        && b[9..15].iter().all(u8::is_ascii_digit)
+        && b[15] == b'Z'
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Archive {
+    pub name: String,
+    pub bytes: u64,
+}
+
+/// The finished archives in the backup directory, newest first (the names sort as they read).
+pub fn archives(state: &AppState) -> Result<Vec<Archive>> {
+    let dir = &state.config.backup_directory;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", dir.display())),
+    };
+    let mut found: Vec<Archive> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            let meta = e.metadata().ok()?;
+            (is_archive_name(&name) && meta.is_file()).then_some(Archive { name, bytes: meta.len() })
+        })
+        .collect();
+    found.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(found)
+}
+
+fn archive_path(state: &AppState, name: &str) -> Result<PathBuf, AppError> {
+    let path = state.config.backup_directory.join(name);
+    if !is_archive_name(name) || !path.is_file() {
+        return Err(AppError::NotFound(crate::msg!("backup.no-such-backup", "no such backup")));
+    }
+    Ok(path)
+}
+
+/// GET `/api/admin/backups` - the finished archives, newest first.
+pub async fn list_handler(State(state): State<AppState>, _admin: NodeAdminSession) -> Result<Json<Vec<Archive>>, AppError> {
+    Ok(Json(archives(&state).map_err(AppError::Internal)?))
+}
+
+/// GET `/api/admin/backups/{name}` - one archive's bytes, as a download.
+pub async fn download_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+    UrlPath(name): UrlPath<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let path = archive_path(&state, &name)?;
+    let file = tokio::fs::File::open(&path)
+        .await
+        .with_context(|| format!("opening {}", path.display()))
+        .map_err(AppError::Internal)?;
+    let bytes = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file));
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "application/gzip".to_string()),
+            (axum::http::header::CONTENT_LENGTH, bytes.to_string()),
+            // The name is one `is_archive_name` accepted: nothing in it needs quoting.
+            (axum::http::header::CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\"")),
+        ],
+        body,
+    ))
+}
+
+/// POST `/api/admin/backups/{name}/reveal` - a desktop app shows the archive in the file manager.
+pub async fn reveal_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+    UrlPath(name): UrlPath<String>,
+) -> Result<StatusCode, AppError> {
+    let path = archive_path(&state, &name)?;
+    if !crate::registration::is_device(&state) || !state.shell.ask(crate::shell::ShellRequest::Reveal { path }) {
+        return Err(AppError::NotFound(crate::msg!(
+            "backup.only-the-desktop-app-shows-files",
+            "only the desktop app can show a file on this computer"
+        )));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_archive_name_names_an_archive() {
+        assert!(is_archive_name("backup_20260925T183012Z.tar.gz"));
+        for not in [
+            "backup_20260925T183012Z.tar.gz.partial",
+            "../backup_20260925T183012Z.tar.gz",
+            "backup_2026092XT183012Z.tar.gz",
+            "backup_20260925T183012.tar.gz",
+            "backup_.tar.gz",
+            "envelope.key",
+            "",
+        ] {
+            assert!(!is_archive_name(not), "{not:?}");
+        }
+    }
 
     #[test]
     fn a_stamp_reads_as_utc_and_sorts() {

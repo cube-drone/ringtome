@@ -35,8 +35,9 @@ import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
+import { DeviceApp } from './apps/device.js';
 import { ChatApp } from './apps/chat.js';
-import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
+import { appsFor, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
@@ -45,6 +46,7 @@ import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID, BUCKET_PREFIX } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
+import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
 import { speakable } from './speakable.js';
@@ -280,7 +282,7 @@ const Inside = ({ session }) => {
         <footer class="quickbar">
             <span class="quickbar-apps">
                 ${open &&
-                liveApps.map((app) => {
+                appsFor(nodeAdmin).map((app) => {
                     // Your own /id page is the persona app's home now: the lead tile lights there.
                     const isActive =
                         app.id === PERSONA_APP_ID
@@ -297,9 +299,9 @@ const Inside = ({ session }) => {
                             ]
                                 .filter(Boolean)
                                 .join(' ')}
-                            title=${appLabel(app, personaName)}
+                            title=${appLabel(app, personaName, isDevice())}
                             onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
-                        ><span class="quickbar-hex-face"><${iconFor(app)} /></span></button>
+                        ><span class="quickbar-hex-face"><${iconFor(app, isDevice())} /></span></button>
                         ${/* Outside the heptagon, not inside it: the hex is clip-pathed,
                             and a badge within it would be cut to the shape. */ ''}
                         ${badge > 0 &&
@@ -361,7 +363,7 @@ const Inside = ({ session }) => {
         (appHere &&
         html`<header class="app-header">
             <span class="app-header-lead">
-                <span class="app-header-title">${appLabel(appHere, personaName)}</span>
+                <span class="app-header-title">${appLabel(appHere, personaName, isDevice())}</span>
                 ${/* A switcher over one notebook offers a choice that isn't one. */ ''}
                 ${!!appHere.style &&
                 !appHere.soleBucket &&
@@ -446,6 +448,7 @@ const Inside = ({ session }) => {
                 path="/home"
                 onLaunch=${(id) => loc.route('/home/' + id)}
                 personaName=${personaName}
+                admin=${nodeAdmin}
             />
             <${PersonaHome} path="/home/persona" persona=${persona} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
@@ -455,6 +458,8 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
             <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
+            <${DeviceApp} path="/home/device" admin=${nodeAdmin} />
+            <${DeviceApp} path="/home/device/:page" admin=${nodeAdmin} />
             <${ChatApp} path="/home/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />

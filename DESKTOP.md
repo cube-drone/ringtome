@@ -493,6 +493,35 @@ Both are load-bearing and neither substitutes for the other. Two consequences to
   **restarts the node**, which after Stage 5 is somebody's always-on presence on the network. Both
   argue for deliberate releases and for update-on-quit as the default rather than update-now.
 
+## Multi-user mode (2026-09-25)
+
+The app's owner is its `node_admin`, so they see a **Device** app (the same app a server's
+administrator sees as **Server**, `node/js/apps/device.js`). Its Registration page carries the switch
+Curtis asked for: *let other people have accounts on this computer*. Turning it on:
+
+- gives the owner's account - `me`, with a random password nobody was told (Stage 3) - a sign-in name
+  and a password they choose, at the network's 8-character floor, so they can sign in from another
+  device's browser too;
+- sets who else may sign up (a shared sign-up password, or open); a device's default is `closed`;
+- asks the shell to **listen on the local network** from the next start and restarts the app
+  (`node/src/shell.rs` asks, `desktop/src/requests.rs` does it). The choice is the `desktop-network`
+  file beside `desktop-port`, because the bind is decided before the node exists. The window itself
+  stays on `127.0.0.1`: its URL is its origin, and the mirror lives in that origin.
+
+Turning it off closes sign-ups and goes back to this computer only; the accounts made meanwhile stay,
+reachable from this computer's browser. The Device app's Backups page shows an archive in the file
+manager instead of downloading it - it is already on this disk.
+
+*The honest cost:* another device reaches this app over **plain HTTP** on the LAN. Passwords cross the
+network unencrypted, and a browser treats `http://192.168.x.x` as an insecure context, so the web
+client there loses what needs one (notifications, the service worker). The switch says "at home, not
+on a café's wifi"; HTTPS on a LAN is its own project.
+
+*Proved:* `device.cjs` starts a single-tenant node the way the app runs one and drives the switch:
+refused switches change nothing, the owner signs in by their new name, the policy holds at the
+signup door, and the node asks its shell for exactly the right thing. *Not proved:* the shell's half -
+writing the file, restarting, and binding `0.0.0.0` - which only a run of the real app shows.
+
 ## Residuals
 
 - **The spike's two open items**, which this decision does not close: no end-to-end video ingest run

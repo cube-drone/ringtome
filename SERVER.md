@@ -147,10 +147,21 @@ iroh's relays - but every connection takes the long way round. On a plain Linux 
 them and identify the node**. Lose it and the node, and everyone's accounts on it, are gone; copy it
 and you have copied the node. Back it up, and keep the backup as private as you keep the server.
 
+## The Server app
+
+An account holding `node_admin` - the first account made on a server - sees a **Server** app among
+its apps. It has two pages:
+
+- **Registration**: who may make an account here. `open` (anyone who reaches the node, rate-limited
+  per address - a fresh server's default), `password` (sign-up asks for a password you choose and
+  share by hand), or `closed`.
+- **Backups**: make a backup and watch it go, and download the ones already made (below). Restoring
+  is not in the app yet.
+
 ## Backups
 
-The node backs itself up without stopping. Ask it from the machine itself (or as a node
-administrator):
+The node backs itself up without stopping. Ask it from the Server app, from the machine itself, or
+as a node administrator:
 
 ```sh
 curl -X POST http://127.0.0.1:5281/api/admin/backup           # -> 202 {"id": "20260925T183012Z", ...}
@@ -167,7 +178,9 @@ empty data directory, start the node.
 A request that arrived through a proxy (an `X-Forwarded-For` header) is refused unless it carries a
 node administrator's session. A proxy on the same machine that adds no such header would look like
 the machine itself - but the endpoint only ever writes the archive to disk and reports its path, so
-the most such a request can do is start a backup, never read one.
+the most such a request can do is start a backup, never read one. Reading one back - the list, and
+the download in the Server app (`GET /api/admin/backups`, `GET /api/admin/backups/<name>`) - takes a
+node administrator's session, never the machine alone.
 
 ## Upgrading
 

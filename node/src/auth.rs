@@ -11,7 +11,7 @@
 mod extractor;
 mod routes;
 
-pub use extractor::{Session, WS_TOKEN_PROTOCOL_PREFIX};
+pub use extractor::{NodeAdminSession, Session, WS_TOKEN_PROTOCOL_PREFIX};
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};
@@ -67,7 +67,7 @@ fn hasher(fast: bool) -> Argon2<'static> {
     }
 }
 
-fn hash_password(password: &str, fast: bool) -> Result<String> {
+pub(crate) fn hash_password(password: &str, fast: bool) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     hasher(fast)
         .hash_password(password.as_bytes(), &salt)
@@ -78,7 +78,7 @@ fn hash_password(password: &str, fast: bool) -> Result<String> {
 /// Enforce the node's password floor (`Config::password_min_len` - 8 facing the network, 1 on
 /// a loopback-only node, where a short PIN is an honest posture because reaching the prompt
 /// already required physical access).
-fn check_password_len(password: &str, min: usize) -> Result<(), AppError> {
+pub(crate) fn check_password_len(password: &str, min: usize) -> Result<(), AppError> {
     if password.len() >= min {
         return Ok(());
     }
@@ -93,7 +93,7 @@ fn check_password_len(password: &str, min: usize) -> Result<(), AppError> {
     }))
 }
 
-fn verify_password(password: &str, phc: &str) -> bool {
+pub(crate) fn verify_password(password: &str, phc: &str) -> bool {
     match PasswordHash::new(phc) {
         Ok(parsed) => Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
@@ -371,6 +371,23 @@ pub async fn set_password(
     .await
     .context("updating password")
     .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// Give an account a new sign-in name (registration.rs: a desktop app's `me` becoming a name its
+/// owner chose, for multi-user mode). The caller checked it is free; the UNIQUE index is the last
+/// word if two renames race.
+pub async fn rename_account(db: &Db, account_id: &str, new_username: &str) -> Result<(), AppError> {
+    let username = normalize_username(new_username)?;
+    db.execute("UPDATE accounts SET username = ?1 WHERE id = ?2", (username.as_str(), account_id))
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE constraint failed") {
+                AppError::BadRequest(crate::msg!("auth.username-username-is-taken", "username \"{username}\" is taken", username = username))
+            } else {
+                AppError::Internal(anyhow!("renaming account: {e}"))
+            }
+        })?;
     Ok(())
 }
 

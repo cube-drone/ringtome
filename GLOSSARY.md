@@ -11,6 +11,10 @@ are ever allowed to meet, and in what costume.
 - **Horse Drawing Tycoon 2** — the consumer application built on Ringtome: the desktop app and the UI, at
   horsedrawingtycoon.com. What a person installs and opens. (2026-09-25; see PROJECT_PLAN's *Two
   names*.)
+- **Server / Device** — what a person calls the node when they administer it: the settings app is
+  **Server** in a browser and **Device** in the desktop app (`node/js/apps/device.js`). "Node" is the
+  protocol's word and stays off those screens. **Multi-user mode** is a Device opened up to other
+  people's accounts over the local network. (2026-09-25)
 
 ## Identity
 

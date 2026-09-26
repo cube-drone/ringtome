@@ -4,9 +4,10 @@
 import { h } from 'preact';
 import htm from 'htm';
 
-import { APPS, appLabel } from './pure/apps.js';
+import { consoleCellsFor, appLabel } from './pure/apps.js';
 import { tileLabel } from './pure/tilelabel.js';
 import { iconFor } from './icons.js';
+import { isDevice } from './net.js';
 
 const html = htm.bind(h);
 
@@ -27,12 +28,12 @@ function chunk(arr, n) {
 function Hex(app, key, onLaunch, personaName) {
     // A long name SHRINKS rather than being cut - the rule and its calibration live in
     // pure/tilelabel.js. The full name still lives in the header and the tooltip either way.
-    const label = appLabel(app, personaName) || '';
+    const label = appLabel(app, personaName, isDevice()) || '';
     const { text, scale } = tileLabel(label);
     const content = app.blank
         ? ''
         : html`
-              <span class="app-tile-icon"><${iconFor(app)} /></span>
+              <span class="app-tile-icon"><${iconFor(app, isDevice())} /></span>
               <span
                   class="app-tile-name"
                   title=${label}
@@ -46,8 +47,8 @@ function Hex(app, key, onLaunch, personaName) {
         : html`<div class=${cls} key=${key}>${stack}</div>`;
 }
 
-export const Console = ({ onLaunch, personaName }) => {
-    const rows = chunk(APPS, COLUMNS);
+export const Console = ({ onLaunch, personaName, admin }) => {
+    const rows = chunk(consoleCellsFor(admin), COLUMNS);
     return html`
         <div class="console">
             <div class="hex-comb">

@@ -58,6 +58,8 @@ pub mod pubkey;
 pub mod publish;
 pub mod rate_limit;
 pub mod rebroadcast;
+pub mod registration;
+pub mod shell;
 pub mod annotations;
 pub mod attention;
 pub mod backup;
@@ -146,6 +148,9 @@ pub struct AppState {
     pub webpush: webpush::WebPush,
     /// Backup tickets: the one running and the last few finished (backup.rs).
     pub backups: backup::Backups,
+    /// What the node asks of a desktop shell around it (shell.rs): restart listening elsewhere,
+    /// show a file. The shell subscribes through [`Bound::shell_requests`].
+    pub shell: shell::Shell,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -278,6 +283,7 @@ pub struct Bound {
     service: axum::extract::connect_info::IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
     addr: SocketAddr,
     attention: attention::Attention,
+    shell: shell::Shell,
 }
 
 impl Bound {
@@ -292,6 +298,11 @@ impl Bound {
     pub fn attention(&self) -> tokio::sync::broadcast::Receiver<attention::Alert> {
         self.attention.watch_everyone();
         self.attention.subscribe()
+    }
+
+    /// Listen for what the node asks of its shell (shell.rs). Subscribe before [`serve`].
+    pub fn shell_requests(&self) -> tokio::sync::broadcast::Receiver<shell::ShellRequest> {
+        self.shell.subscribe()
     }
 }
 
@@ -440,6 +451,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         attention: attention::Attention::new(record_attention),
         webpush,
         backups: backup::Backups::default(),
+        shell: shell::Shell::new(record_attention),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
@@ -738,9 +750,13 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         )
         .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
+        .merge(registration::routes::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))
+        .route("/api/admin/backups", axum::routing::get(backup::list_handler))
+        .route("/api/admin/backups/{name}", axum::routing::get(backup::download_handler))
+        .route("/api/admin/backups/{name}/reveal", axum::routing::post(backup::reveal_handler))
         .merge(identity::router(body_limits));
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
@@ -791,10 +807,12 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route(
                 "/test/backup-verify",
                 axum::routing::post(test_endpoints::backup_verify),
-            );
+            )
+            .route("/test/shell", axum::routing::get(test_endpoints::shell_requests));
     }
 
     let attention = state.attention.clone();
+    let shell = state.shell.clone();
     let app = app
         .with_state(state)
         .layer(
@@ -811,7 +829,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         )
         .into_make_service_with_connect_info::<SocketAddr>();
 
-    Ok(Bound { listener, service: app, addr, attention })
+    Ok(Bound { listener, service: app, addr, attention, shell })
 }
 
 /// The tracing subscriber, built HERE rather than in the binary (DESKTOP.md's quiet Stage 1

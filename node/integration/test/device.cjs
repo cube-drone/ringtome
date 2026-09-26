@@ -1,0 +1,247 @@
+/*
+    The Server app (Device, in the desktop app) - node/src/registration.rs and the backup doors in
+    node/src/backup.rs (Curtis, 2026-09-25). Two halves:
+
+    On a SERVER (the rig's own node): who may sign up is the administrator's choice - open, a
+    shared sign-up password, or closed - enforced at the one door that makes accounts; the choice
+    and every backup door are for node administrators only; and a backup can be listed and
+    downloaded whole, by its exact name and nothing else.
+
+    On a DEVICE - a single-tenant node like the desktop app's, which this file starts itself, since
+    the rig's nodes are all servers: sign-ups start closed, and multi-user mode gives the owner's
+    account a name and password of their choosing, sets the policy, and asks the app around it to
+    listen on the network (read back from the node's local-test record of what it asked its shell).
+    A refused switch changes nothing. The app is never really restarted here - that half is the
+    shell's (desktop/src/requests.rs) - so this proves what the node decides and asks, not the
+    rebinding.
+*/
+const assert = require("node:assert");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawn } = require("node:child_process");
+const dns = require("node:dns");
+dns.setDefaultResultOrder("ipv4first");
+
+const { makeUserFetch } = require("./helpers.cjs");
+const { HOST, makeFetch, sql } = require("./fetch.cjs");
+
+const WORKSPACE = path.resolve(__dirname, "..", "..", "..");
+const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+const j = (who, p, body, method = "POST") => who(p, { method, body: JSON.stringify(body) });
+
+async function nodeAdmin(prefix, host = HOST) {
+    const user = await makeUserFetch({ prefix, host });
+    await sql(`INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES ('${user.account.id}', 'node_admin')`, host);
+    return user;
+}
+
+/// Sign up at `host` as a stranger would: a fresh cookie jar, no session.
+const signUp = (username, password, registration_password, host = HOST) =>
+    j(makeFetch(host), "api/auth/register", { username, password, registration_password });
+
+describe("the Server app: registration and backups, for administrators", function () {
+    this.timeout(600000);
+
+    let admin, plain;
+    const setMode = (mode, password) => j(admin, "api/admin/registration", { mode, password }, "PUT");
+
+    before(async () => {
+        admin = await nodeAdmin("devadm");
+        plain = await makeUserFetch({ prefix: "devplain" });
+    });
+
+    it("its doors are for node administrators only", async () => {
+        for (const [p, method] of [
+            ["api/admin/registration", "GET"],
+            ["api/admin/registration", "PUT"],
+            ["api/admin/backups", "GET"],
+            ["api/admin/backups/backup_20260925T183012Z.tar.gz", "GET"],
+        ]) {
+            const r = await plain(p, { method, body: method === "PUT" ? JSON.stringify({ mode: "closed" }) : undefined });
+            assert.equal(r.status, 403, `${method} ${p} for a plain account`);
+            assert.equal((await makeFetch()(p, { method })).status, 401, `${method} ${p} for nobody`);
+        }
+        const status = await (await admin("api/admin/registration")).json();
+        assert.equal(status.device, false, "a server says so");
+        assert.equal(status.mode, "open", "and starts open, as every server did before this");
+        assert.equal(status.chosen, false);
+    });
+
+    it("sign-ups follow the administrator's choice: a shared password, then closed, then open again", async () => {
+        const name = (tag) => `dev${tag}${crypto.randomBytes(3).toString("hex")}`;
+        try {
+            const noPassword = await setMode("password");
+            assert.equal(noPassword.status, 400, "the first switch to password needs one");
+
+            assert.equal((await setMode("password", "bring a friend")).status, 200);
+            assert.deepEqual(await (await makeFetch()("api/registration")).json(), { mode: "password" }, "the signup screen can ask");
+            assert.equal((await signUp(name("a"), "password123")).status, 403, "no sign-up password");
+            assert.equal((await signUp(name("b"), "password123", "bring an enemy")).status, 403, "the wrong one");
+            const right = await signUp(name("c"), "password123", "bring a friend");
+            assert.equal(right.status, 200, await right.text());
+
+            assert.equal((await setMode("closed")).status, 200);
+            assert.equal((await makeFetch()("api/registration").then((r) => r.json())).mode, "closed");
+            assert.equal((await signUp(name("d"), "password123", "bring a friend")).status, 403, "closed means nobody, password or not");
+
+            assert.equal((await setMode("password")).status, 200, "back to password keeps the one already set");
+            assert.equal((await signUp(name("e"), "password123", "bring a friend")).status, 200);
+        } finally {
+            assert.equal((await setMode("open")).status, 200, "the rig's node goes back to open for every other file");
+        }
+        assert.equal((await signUp(name("f"), "password123")).status, 200, "open again");
+        assert.equal((await j(admin, "api/admin/device/multi-user", { username: "x", password: "y", mode: "open" })).status, 404, "multi-user mode is the desktop app's");
+    });
+
+    it("a backup is listed, and downloads whole - by its exact name and nothing else", async () => {
+        const started = await admin("api/admin/backup", { method: "POST" });
+        assert.equal(started.status, 202);
+        const { id } = await started.json();
+        let done = null;
+        for (let i = 0; i < 240 && !done; i++) {
+            const r = await admin(`api/admin/backup/${id}`);
+            if (r.status === 200) done = await r.json();
+            else await wait(250);
+        }
+        assert.ok(done, "the backup finished");
+        const name = path.basename(done.path);
+        try {
+            const list = await (await admin("api/admin/backups")).json();
+            const row = list.find((a) => a.name === name);
+            assert.ok(row, `listed: ${JSON.stringify(list)}`);
+            const onDisk = fs.statSync(path.resolve(WORKSPACE, done.path)).size;
+            assert.equal(row.bytes, onDisk);
+
+            const download = await admin(`api/admin/backups/${name}`);
+            assert.equal(download.status, 200);
+            assert.equal(download.headers.get("content-disposition"), `attachment; filename="${name}"`);
+            const bytes = Buffer.from(await download.arrayBuffer());
+            assert.equal(bytes.length, onDisk, "every byte");
+            assert.equal(bytes[0], 0x1f, "a gzip stream");
+
+            assert.equal((await plain(`api/admin/backups/${name}`)).status, 403, "never to anyone else");
+            for (const not of ["envelope.key", "node.db", "..%2Fenvelope.key", `${name}.partial`]) {
+                assert.equal((await admin(`api/admin/backups/${not}`)).status, 404, `nothing but an archive: ${not}`);
+            }
+            assert.equal((await admin(`api/admin/backups/${name}/reveal`, { method: "POST" })).status, 404, "a server has no file manager to show it in");
+        } finally {
+            fs.rmSync(path.resolve(WORKSPACE, done.path), { force: true });
+        }
+    });
+});
+
+const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
+
+(DEVICE_PORT ? describe : describe.skip)("the Device app: a desktop app opening up to other people", function () {
+    this.timeout(600000);
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const host = `127.0.0.1:${DEVICE_PORT}`;
+    let tmp, child;
+    /// The desktop window: the launch token is the session.
+    const owner = (p, opts = {}) =>
+        fetch(`http://${host}/${p}`, {
+            ...opts,
+            headers: { Authorization: `Bearer ${token}`, ...(opts.body ? { "Content-Type": "application/json" } : {}) },
+        });
+    const shellAsked = async () => (await fetch(`http://${host}/test/shell`)).json();
+
+    before(async () => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ringtome-device-"));
+        child = spawn(path.join(WORKSPACE, "target", "debug", "ringtome"), [], {
+            cwd: WORKSPACE,
+            stdio: ["ignore", fs.openSync(path.join(tmp, "node.log"), "a"), fs.openSync(path.join(tmp, "node.log"), "a")],
+            env: {
+                ...process.env,
+                RINGTOME_PORT: DEVICE_PORT,
+                RINGTOME_DATA_DIRECTORY: path.join(tmp, "data"),
+                RINGTOME_LOCAL_TEST: "1",
+                RINGTOME_TENANCY: "single",
+                RINGTOME_LAUNCH_TOKEN: token,
+                RINGTOME_DISCOVERY: "off",
+                RINGTOME_NODE_NAME: "a-laptop",
+            },
+        });
+        for (let i = 0; i < 200; i++) {
+            try {
+                if ((await fetch(`http://${host}/health`)).ok) break;
+            } catch {}
+            await wait(100);
+        }
+        // The first launch-token request mints this computer's account; local-test mode skips the
+        // first-account-is-administrator rule (auth.rs), so the test grants what the app would have.
+        const me = await (await owner("api/auth/whoami")).json();
+        await sql(`INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES ('${me.id}', 'node_admin')`, host);
+    });
+
+    after(() => {
+        if (child) child.kill("SIGKILL");
+        if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("starts closed: the app is its owner's until they open it up", async () => {
+        assert.equal((await (await fetch(`http://${host}/api/registration`)).json()).mode, "closed");
+        assert.equal((await signUp("stranger", "password123", undefined, host)).status, 403);
+        const status = await (await owner("api/admin/registration")).json();
+        assert.equal(status.device, true);
+        assert.equal(status.listening, false, "this computer only");
+        assert.equal(status.username, "me", "the account nobody named");
+    });
+
+    it("a refused switch changes nothing", async () => {
+        const short = await j(owner, "api/admin/device/multi-user", { username: "ada", password: "short", mode: "open" });
+        assert.equal(short.status, 400, "a password that will face the network keeps the network's floor");
+        const noSignup = await j(owner, "api/admin/device/multi-user", { username: "ada", password: "correct horse", mode: "password" });
+        assert.equal(noSignup.status, 400, "password mode needs a sign-up password");
+        assert.equal((await (await owner("api/auth/whoami")).json()).username, "me", "still unnamed");
+        assert.deepEqual(await shellAsked(), [], "and the app was asked for nothing");
+        assert.equal((await (await fetch(`http://${host}/api/registration`)).json()).mode, "closed");
+    });
+
+    it("multi-user mode: the owner's own name and password, a sign-up policy, and the network", async () => {
+        const on = await j(owner, "api/admin/device/multi-user", {
+            username: "Ada",
+            password: "correct horse",
+            mode: "password",
+            registration_password: "come on in",
+        });
+        const onText = await on.text();
+        assert.equal(on.status, 200, onText);
+        assert.deepEqual(JSON.parse(onText), { restarting: true });
+        assert.deepEqual(await shellAsked(), [{ kind: "listen_on_network", on: true }], "the app is asked to listen on the network");
+
+        assert.equal((await (await owner("api/auth/whoami")).json()).username, "ada", "the window is still its owner, now named");
+        const browser = makeFetch(host);
+        const login = await j(browser, "api/auth/login", { username: "ada", password: "correct horse" });
+        assert.equal(login.status, 200, "and the owner can sign in from a browser");
+
+        assert.equal((await signUp("friend", "password123", "come on in", host)).status, 200, "a friend with the sign-up password");
+        assert.equal((await signUp("stranger", "password123", "let me in", host)).status, 403, "a stranger without it");
+    });
+
+    it("a backup shows in the file manager rather than downloading", async () => {
+        const { id } = await (await owner("api/admin/backup", { method: "POST" })).json();
+        let done = null;
+        for (let i = 0; i < 240 && !done; i++) {
+            const r = await owner(`api/admin/backup/${id}`);
+            if (r.status === 200) done = await r.json();
+            else await wait(250);
+        }
+        assert.ok(done, "the backup finished");
+        const name = path.basename(done.path);
+        assert.equal((await owner(`api/admin/backups/${name}/reveal`, { method: "POST" })).status, 204);
+        const asked = await shellAsked();
+        assert.deepEqual(asked[asked.length - 1], { kind: "reveal", path: done.path });
+    });
+
+    it("off again: nobody new, and this computer only from the next start", async () => {
+        const off = await owner("api/admin/device/multi-user", { method: "DELETE" });
+        assert.equal(off.status, 200);
+        const asked = await shellAsked();
+        assert.deepEqual(asked[asked.length - 1], { kind: "listen_on_network", on: false });
+        assert.equal((await (await fetch(`http://${host}/api/registration`)).json()).mode, "closed");
+        assert.equal((await signUp("latecomer", "password123", "come on in", host)).status, 403);
+    });
+});

@@ -10862,3 +10862,41 @@ caps a release's text at 125,000), cut at an entry heading, with a link to the f
 the page only - not in the tag, the commit or `latest.json`. Mechanical by choice (Curtis): nothing in
 the pipeline calls a model. Rehearsed against the real tags: 0.1.10 would have carried the three
 entries written between it and 0.1.9.
+
+## 2026-09-25 (cont.): the Server app (Device, on a desktop)
+
+Curtis: a place for administering the node that never says "node" - **Server** in a browser,
+**Device** in the desktop app - shown only to `node_admin` accounts, with two pages to start.
+
+**Registration** (`registration.rs`, node rung 0055 `registration_policy`): who may make an account -
+`open`, `password` (one sign-up password the operator shares by hand) or `closed`, enforced at the
+one door that makes accounts from outside (`/api/auth/register` asks `admit` first), readable by the
+signup screen (`GET /api/registration`), which then asks for the sign-up password or drops "new here?".
+Defaults keep what shipped: a server starts `open`, a device `closed`. This is PROJECT_PLAN's
+*Registration Modes* in a smaller shape - `password` stands in for invite tokens.
+
+**Multi-user mode**, the Device's version of that page: the owner's account (`me`, random password,
+DESKTOP.md Stage 3) gets a sign-in name and password of their choosing at the network's 8-character
+floor, the policy is set, and the node asks its shell to listen on the local network from the next
+start. Asking is new plumbing: `shell.rs`, the node-to-shell twin of attention.rs (`Bound::
+shell_requests`), which the shell answers in `desktop/src/requests.rs` - write `desktop-network` beside
+`desktop-port`, restart - and which also carries "show this file" for backups. Everything is checked
+before anything is written, so a refused switch changes nothing. The window stays on `127.0.0.1` when
+the node binds `0.0.0.0` - a found trap: `bound.addr()` would have made the window's origin
+`0.0.0.0:<port>`, a different origin from the one the mirror lives in.
+
+**Backups**: make one and watch its ticket's log, then the list (`GET /api/admin/backups`) with
+date-from-name and size; a server downloads (`GET /api/admin/backups/<name>`, streamed, exact archive
+names only), a device shows it in the file manager. Reading archives back takes a `node_admin`
+session, never loopback alone - the start door's "a fooled loopback check can start a backup, never
+read one" still holds.
+
+`device.cjs`: on the rig's server, the doors refuse plain accounts (403) and nobody (401); password,
+wrong password, closed and open all behave at the signup door; a backup lists and downloads byte for
+byte, and nothing but an archive name downloads. On a single-tenant node the test starts itself (the
+rig's are all servers, `just ports` +29): closed by default, refused switches change nothing, the
+owner signs in by their new name from a browser, a friend with the sign-up password gets in and a
+stranger does not, the node asks its shell for the network and for a reveal, and off closes it again.
+Red with the admission check planted out (four claims). Pure tests for the registry's admin-only app
+and its two names, and for the backups page's date and size. Not run: the shell's half in a real app
+(NEXT_STEPS), and nobody has clicked through the pages yet.

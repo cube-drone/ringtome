@@ -19,6 +19,7 @@
 mod alerts;
 mod links;
 mod port;
+mod requests;
 mod tray;
 mod update;
 
@@ -61,7 +62,7 @@ fn main() {
             // client finds it already there. NOT the query string: a URL lands in history, in
             // a log, in a screenshot, and this is the whole house.
             let token = ringtome_node::auth::mint_launch_token();
-            let (url, attention) = start_node(&data_dir, token.clone())?;
+            let (url, attention, requests) = start_node(&data_dir, token.clone())?;
             let hidden = tray::launched_hidden();
             // Links that leave the app go to the system browser (links.rs): judged against the
             // node's own origin, for navigations and for new-window requests alike.
@@ -85,6 +86,7 @@ fn main() {
             update::start(app.handle().clone());
             tray::build(app.handle(), &data_dir, &url);
             alerts::start(app.handle().clone(), attention);
+            requests::start(app.handle().clone(), data_dir.clone(), requests);
             // A hidden launch with nothing to come back through would be a node nobody can
             // reach; without a tray, the window shows regardless.
             if hidden && tray::present(app.handle()) {
@@ -127,7 +129,8 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 
 /// Build the node, bind it, and hand back the URL the window should open - having started the
 /// server on Tauri's own runtime, which is the tokio runtime this app already has - and the
-/// node's attention feed (src/alerts.rs), subscribed before `serve` consumes the binding.
+/// node's two feeds to the shell, its attention (src/alerts.rs) and its requests
+/// (src/requests.rs), both subscribed before `serve` consumes the binding.
 ///
 /// The port is the remembered one (see [`port`]); if something else took it since last launch the
 /// bind fails, and the answer to that is another port written down rather than a shell that will
@@ -135,7 +138,11 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 fn start_node(
     data_dir: &Path,
     token: String,
-) -> anyhow::Result<(String, tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>)> {
+) -> anyhow::Result<(
+    String,
+    tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>,
+    tokio::sync::broadcast::Receiver<ringtome_node::shell::ShellRequest>,
+)> {
     let mut config = ringtome_node::config::Config::from_env();
     config.data_directory = data_dir.to_path_buf();
     // A PACKAGED app is a prod node (DESKTOP.md, Stage 4), and a `cargo run` is a dev one - which
@@ -161,9 +168,11 @@ fn start_node(
     // facts about being an app rather than an operator's choice.
     config.tenancy = ringtome_node::config::Tenancy::Single;
     config.launch_token = Some(token);
-    // Loopback, always: the desktop node is this machine's, and the one place the password floor
-    // relaxes is a node that faces nobody (config.rs::password_min_len).
-    config.bind_address = "127.0.0.1".to_string();
+    // Loopback, unless its owner turned on multi-user mode (requests.rs, `network`): the desktop
+    // node is this machine's, and the one place the password floor relaxes is a node that faces
+    // nobody (config.rs::password_min_len) - which a node listening on the network is not, so the
+    // floor comes back with the wider bind, by the same rule.
+    config.bind_address = if requests::network::listening(data_dir) { "0.0.0.0" } else { "127.0.0.1" }.to_string();
     config.port = port::remembered_or_fresh(data_dir)?;
     // The shell's own target, said out loud: the library builds its default filter from its own
     // crate name, so without this the lines below are logged to nobody. It is the BINARY's crate
@@ -180,15 +189,19 @@ fn start_node(
             bind_blocking(config.clone())?
         }
     };
-    let url = format!("http://{}/", bound.addr());
+    // The window is always this computer's own: 127.0.0.1 even when the node listens on every
+    // interface, because the URL is the origin, the origin partitions browser storage (port.rs),
+    // and `http://0.0.0.0:<port>` would be a different origin from the one the mirror lives in.
+    let url = format!("http://127.0.0.1:{}/", bound.addr().port());
     let attention = bound.attention();
+    let requests = bound.shell_requests();
     tracing::info!(%url, data_dir = %data_dir.display(), "ringtome desktop: node up");
     tauri::async_runtime::spawn(async move {
         if let Err(e) = ringtome_node::serve(bound).await {
             tracing::error!(error = ?e, "the node stopped serving");
         }
     });
-    Ok((url, attention))
+    Ok((url, attention, requests))
 }
 
 /// The boot, awaited before the window exists - which is the whole readiness story: by the time

@@ -37,10 +37,10 @@ export function useSession() {
 
     // Register does not set the session cookie (it just makes the account), so
     // signing up is register-then-login in one motion.
-    const register = async (username, password) => {
+    const register = async (username, password, registrationPassword) => {
         await api('/api/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify({ username, password, registration_password: registrationPassword || null }),
         });
         await login(username, password);
     };
@@ -51,6 +51,20 @@ export function useSession() {
     };
 
     return { account, checking, login, register, logout };
+}
+
+// Who may sign up here (node/src/registration.rs): 'open', 'password' (a shared sign-up
+// password), or 'closed'. Asked once per visit to the front door; null until it answers, and
+// 'open' if it cannot be asked - the node refuses at the door either way, so a wrong guess costs
+// one error message, never an account.
+function useRegistrationMode() {
+    const [mode, setMode] = useState(null);
+    useEffect(() => {
+        api('/api/registration')
+            .then((r) => setMode(r.mode || 'open'))
+            .catch(() => setMode('open'));
+    }, []);
+    return mode;
 }
 
 // Live username availability for the signup form, debounced so we're not
@@ -100,6 +114,10 @@ export const Welcome = ({ session }) => {
     // account holds siblings") - the proven persona then moves to a fresh account.
     const [needsNewName, setNeedsNewName] = useState(false);
     const [newUsername, setNewUsername] = useState('');
+    const [signupPassword, setSignupPassword] = useState('');
+    const registration = useRegistrationMode();
+    const signupsClosed = registration === 'closed';
+    const askSignupPassword = registration === 'password';
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const registering = mode === 'register';
@@ -127,7 +145,7 @@ export const Welcome = ({ session }) => {
                 // Re-homed personas live under the new name; in-place resets keep the old.
                 await session.login(res.rehomed ? newUsername : username, password);
             } else if (registering) {
-                await session.register(username, password);
+                await session.register(username, password, signupPassword);
             } else {
                 await session.login(username, password);
             }
@@ -225,10 +243,11 @@ export const Welcome = ({ session }) => {
                     class=${mode === 'login' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('login')}
                 >${t('auth.sign-in', 'sign in')}</button>
-                <button
+                ${!signupsClosed &&
+                html`<button
                     class=${registering ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('register')}
-                >${t('auth.new-here', 'new here?')}</button>
+                >${t('auth.new-here', 'new here?')}</button>`}
             </div>
 
             <form class="welcome-form" onSubmit=${submit}>
@@ -257,6 +276,19 @@ export const Welcome = ({ session }) => {
                         required
                     />
                 </label>
+
+                ${registering && askSignupPassword &&
+                html`<label>
+                    ${t('auth.sign-up-password', 'sign-up password')}
+                    <input
+                        type="password"
+                        value=${signupPassword}
+                        onInput=${(e) => setSignupPassword(e.currentTarget.value)}
+                        autocomplete="off"
+                        required
+                    />
+                </label>
+                <p class="field-note">${t('auth.whoever-invited-you-has-it', 'whoever invited you has it')}</p>`}
 
                 ${error && html`<p class="form-error">${error}</p>`}
 

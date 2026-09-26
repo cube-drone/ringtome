@@ -1039,6 +1039,12 @@ public reads):
 Today's rate-limited open registration becomes the `open` setting; the dial itself and tokens are early,
 node-local work (no new protocol).
 
+*Built 2026-09-25 (registration.rs), in a simpler shape than the dial above:* **`open`, `password`,
+`closed`**, chosen by a node administrator in the Server app (the Device app on a desktop). `password`
+- one sign-up password the operator shares by hand - stands in for `invite` until tokens exist, and
+`trusted` waits for the trust layer. The defaults kept what shipped rather than the `invite` default
+above: a server starts `open`, as every server did, and a desktop app starts `closed`.
+
 ### Phase 2: Passkeys / WebAuthn (Planned)
 
 - Passkey support as an additional (and eventually preferred) authentication method.

@@ -109,6 +109,10 @@ one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
   start at login on by default, one instance, quiet restart for updates
 * ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
   update-on-quit; proven only once two releases carry it
+* **Try multi-user mode in the real app** (built 2026-09-25, DESKTOP.md's *Multi-user mode*): the
+  shell's half - the `desktop-network` file, the restart, binding `0.0.0.0` with the window staying on
+  `127.0.0.1` - has only been compiled, never run. Turn it on, reach the app from a phone on the same
+  wifi, sign in by the new name, sign up a second account with the sign-up password, turn it off.
 * **Prove all-or-nothing releases on the next tag** (built 2026-09-25): the first run of the
   `publish` job - the draft, `crane tag` on the digest-only image, the flip. Its first test is a
   real partial failure: kill one build and check that nothing appears on the releases page, on GHCR
@@ -130,6 +134,8 @@ and then an easy path for people who want one.
   node and a deliberately broken release. Unproven against real GitHub until a tag publishes
   `server-latest.json`.
 * **Sample compose files** - documented, with and without a bundled HTTPS proxy.
+* **Restore from a backup in the Server/Device app** - the Backups page makes, lists and downloads
+  them (2026-09-25); putting one back still means stopping the node and unpacking by hand.
 * **A wedged node** - the supervisor restarts a node that exits, not one that stays up and stops
   answering `/health`; a liveness watchdog is the missing half, if a wedge is ever seen.
 

@@ -45,6 +45,9 @@ pub fn router() -> Router<AppState> {
 struct Credentials {
     username: String,
     password: String,
+    /// The sign-up password, when the node asks for one (registration.rs). Ignored by login.
+    #[serde(default)]
+    registration_password: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -85,6 +88,8 @@ async fn register_handler(
         .rate_limiter
         .check_ctx("register", &ctx, REGISTER_LIMIT, HOUR_MS)
         .await?;
+    // Who may sign up here at all (registration.rs): open, a shared password, or nobody new.
+    crate::registration::admit(&state, creds.registration_password.as_deref()).await?;
 
     let account = register(
         &state.node_db,

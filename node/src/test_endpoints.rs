@@ -556,6 +556,12 @@ pub async fn attention(
     Json(state.attention.recorded(&q.root))
 }
 
+/// GET `/test/shell` - everything the node has asked of a desktop shell (shell.rs), oldest first:
+/// what a device node in the rig would have had its app do.
+pub async fn shell_requests(State(state): State<AppState>) -> Json<Vec<crate::shell::ShellRequest>> {
+    Json(state.shell.recorded())
+}
+
 #[derive(serde::Deserialize)]
 pub struct BackupVerify {
     /// An unpacked backup: what would become a restored node's data directory.

@@ -147,6 +147,22 @@ export const APPS = [
         bucketNoun: 'Lost & Found',
         itemNoun: 'file',
     },
+    {
+        id: 'device',
+        // The place's own settings, for its administrators only (apps/device.js): who may sign
+        // up, and backups (Curtis, 2026-09-25). Named for what the person is holding - "Device"
+        // in the desktop app, where it is their own computer, and "Server" in a browser reaching
+        // one - and never "node", a word people using this should not need. Not a documents app.
+        name: 'Server',
+        deviceName: 'Device',
+        icon: 'server',
+        deviceIcon: 'device',
+        live: true,
+        // Shown only to an account holding `node_admin` (`appsFor`); the node refuses everyone
+        // else at every door regardless.
+        admin: true,
+        itemNoun: 'setting',
+    },
     { blank: true },
 ];
 
@@ -197,6 +213,14 @@ export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.featu
 /// The launchable apps, in registry order (the console tiles).
 export const liveApps = APPS.filter((a) => a.live);
 
+/// The launchable apps THIS person sees: an administrator-only app (`admin`) only for someone
+/// who administers the place. The dock's list.
+export const appsFor = (admin) => liveApps.filter((a) => !a.admin || admin);
+
+/// The console's honeycomb for this person: the registry, blanks included, minus the apps they
+/// may not open.
+export const consoleCellsFor = (admin) => APPS.filter((a) => a.blank || !a.admin || admin);
+
 /// The document apps: live apps that own a document surface (a `style`). System apps like Persona
 /// have none and carry their own routes instead. Internal - the styles set below is what callers
 /// actually want.
@@ -208,8 +232,15 @@ export const appById = (id) => liveApps.find((a) => a.id === id) || null;
 /// The label a tile or the app header shows for an app. Persona wears the CURRENT persona's name
 /// (so "Persona" reads as whoever you are); every other app is its registry name. `personaName`
 /// is the live name, '' when unset - then the persona app falls back to its own registry name.
-export const appLabel = (app, personaName) =>
-    app && app.id === 'persona' && personaName ? personaName : app ? app.name : '';
+///
+/// `device` is true in the desktop app, where an app with a `deviceName` wears it instead
+/// (the Server app reads "Device" there).
+export const appLabel = (app, personaName, device = false) =>
+    app && app.id === 'persona' && personaName
+        ? personaName
+        : app
+        ? (device && app.deviceName) || app.name
+        : '';
 
 /// The set of names that are app-types in their own right (so a like-named bucket is implicit).
 /// Document apps only - a system app (Persona) has no style and names no bucket type.

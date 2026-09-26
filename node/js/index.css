@@ -37,6 +37,7 @@
 @import "./copyinto.css";     /* copy into private notes: the button, the modal, the copy chain */
 @import "./apps/notifications.css"; /* the bell: derived events from people you follow */
 @import "./apps/chat.css";    /* rooms: the list, the new-room form, one room's view */
+@import "./apps/device.css";  /* Device / Server: registration and backups, for administrators */
 @import "./modal.css";        /* the house modal */
 @import "./doc/upload.css";   /* the upload flow inside it */
 

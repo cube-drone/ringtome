@@ -639,6 +639,7 @@ mod tests {
             attention: crate::attention::Attention::new(false),
             webpush: crate::webpush::WebPush::load(&crate::keystore::Keystore::load(&dir).unwrap(), false).unwrap(),
             backups: Default::default(),
+            shell: crate::shell::Shell::new(false),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

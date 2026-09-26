@@ -20,6 +20,8 @@ import {
     IdentificationCard,
     Gear,
     Desktop,
+    HardDrives,
+    Laptop,
     HandWaving,
     Tag,
     Trash,
@@ -204,13 +206,20 @@ export const Icons = {
     hidden: EyeSlash,
     // Rooms (CHAT.md): the app tile, and the chip a room post wears.
     chat: ChatsCircle,
+    // The place's own settings (apps/device.js): a rack of drives for a server, a laptop for
+    // the desktop app - the app wears whichever the person is holding.
+    server: HardDrives,
+    device: Laptop,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than
 /// a component so that it can stay import-free and testable; this is where the name becomes a
 /// drawing. An unknown name degrades to the page glyph rather than crashing a render - and
 /// integration/test/pure/apps.cjs asserts no registry entry actually relies on that.
-export const iconFor = (app) => (app && Icons[app.icon]) || Icons.page;
+///
+/// `device` is true in the desktop app, where an app with a `deviceIcon` wears it instead.
+export const iconFor = (app, device = false) =>
+    (app && device && app.deviceIcon && Icons[app.deviceIcon]) || (app && Icons[app.icon]) || Icons.page;
 
 /// The icon a MEDIA document's format earns in listings (tree rows, the note picker), or null
 /// for text formats - text rows keep their default look. Wire names from the server's

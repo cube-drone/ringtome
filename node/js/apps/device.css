@@ -1,0 +1,71 @@
+/* The Device / Server app (apps/device.js): the place's own settings. Built from the persona pages'
+   parts - the computers list, the removal-option buttons - with a little of its own. */
+
+.device {
+    max-width: 520px;
+    margin: 4vh auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.device-menu,
+.device-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.device-menu a.removal-option {
+    text-decoration: none;
+}
+
+.device-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.device-field input {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--border);
+    padding: 0.45rem 0.6rem;
+}
+
+.device-field input:focus {
+    outline: 2px solid var(--glow);
+    border-color: var(--teal);
+}
+
+.device-warning {
+    margin: 0;
+    padding: 0.6rem 0.8rem;
+    background: var(--surface-2);
+    border-left: 3px solid var(--peach);
+    color: var(--ink-soft);
+    line-height: 1.5;
+}
+
+.device-addresses {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--ink);
+}
+
+.device-ticket {
+    background: var(--surface);
+    padding: 0.6rem 0.8rem;
+}
+
+.device-log {
+    margin: 0.4rem 0 0;
+    padding-left: 1.2rem;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
