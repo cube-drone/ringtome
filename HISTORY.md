@@ -11056,3 +11056,20 @@ The swatch row under it is now white and black, then the last ten colours this d
 first (Curtis). `recentColours` reads them off the drawing's own strokes rather than keeping a list:
 nothing new to store or sync, the row is the same on every computer the drawing is on, and an undone
 stroke takes its colour with it. Tested in `pure/drawing.cjs`.
+
+## 2026-09-26 (cont.): one publish bar
+
+Curtis: Drawing's publishing should work and look the way Writer's does, and duplicate and
+copy-into-a-notebook belong beside the title. Writer's publish bar came out of `editor.js` into
+`doc/publishbar.js`, verbatim in look and verbs - standing colours, the two wishes, view, update while
+the post's day lasts, unpublish through the takedown modal, schedule cancel - and each surface now
+brings only its door (`publish(extra, setBaking)`) and its answer to "has this changed since?".
+Writer's answer is still its words against the public words (and the diff page); a drawing's is its
+version against the one it published: the drawing door now stamps `published_head` on the drawing
+(kept off the public labels with `published_as` and the seal key - red when planted in), so the bar
+offers "update" once a stroke moves the head. The drawing door grew what the bar sends: `settled`,
+`trusted_only` (sealing the picture under the post's key, as baked media is) and `tz_offset_min` for a
+claimed date - a past date dates the post, a future one is refused in words, since schedules mint
+words and drawings have none. The drawing's tools column lost its publish and copy buttons; the title
+row gained copy-a-picture, duplicate and Writer's save-status chip. `drawing.cjs` grew two claims:
+wishes, dates and the change stamp; trusted only sealing the post and its picture.

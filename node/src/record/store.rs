@@ -61,6 +61,9 @@ use crate::AppState;
 /// The annotation field naming a note's published form (its post's doc_id, hex). Private,
 /// like every annotation: the world sees the post, only you see which note it came from.
 pub const PUBLISHED_AS: &str = "published_as";
+/// A drawing's note of the version it last published (DRAWING.md): the publish bar offers "update"
+/// once the drawing's head has moved past it. Words compare their words instead.
+pub const PUBLISHED_HEAD: &str = "published_head";
 /// The draft's private copy of its post's sealing key (PROJECT_PLAN's Post visibility slice 2b) - device-
 /// durable because the draft chain reaches every member device, and excluded from publish
 /// replication exactly like `published_as`: bookkeeping, never a label.

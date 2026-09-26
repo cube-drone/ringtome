@@ -28,7 +28,7 @@ import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { readBody, writeBody, addStroke, undo, strokeId, encodePoints, decodePoints, MAX_SIZE, FIXED_COLOURS, recentColours } from '../pure/drawing.js';
-import { publishedState } from '../pure/feed.js';
+import { PublishBar } from './publishbar.js';
 
 const html = htm.bind(h);
 
@@ -110,10 +110,15 @@ export async function copyPictureInto(root, drawing, title, bucket, isNew) {
 
 /// Publish a drawing as a picture (DRAWING.md): flattened here, laundered and posted by the node's
 /// drawing door - the post is the picture, titled as the drawing is. Publishing again replaces it
-/// within the post's day; after that the node says to take it down and post again.
-export async function publishDrawing(root, docId, drawing) {
+/// within the post's day; after that the node says to take it down and post again. `extra` is the
+/// publish bar's two wishes (turn off comments, trusted only); the timezone offset resolves a claimed
+/// date the way Writer's publish does (PUBLISH.md ruling 7).
+export async function publishDrawing(root, docId, drawing, extra = {}) {
     const picture = await flattenToBlob(drawing);
-    return xhrUpload(`/api/identity/${root}/docs/${docId}/publish/drawing`, picture);
+    const query = new URLSearchParams({ tz_offset_min: String(-new Date().getTimezoneOffset()) });
+    if (extra.settled) query.set('settled', 'true');
+    if (extra.trusted_only) query.set('trusted_only', 'true');
+    return xhrUpload(`/api/identity/${root}/docs/${docId}/publish/drawing?${query}`, picture);
 }
 
 /// Duplicate a drawing (DRAWING.md): the node's own private copy door, strokes and tags and all, into
@@ -189,31 +194,15 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const [actionError, setActionError] = useState(null);
     const [busy, setBusy] = useState(false);
 
-    const { postId, published } = publishedState(session.row);
-    const publish = async () => {
-        setBusy(true);
-        setActionError(null);
-        try {
-            await session.save(); // the node publishes the drawing's saved state as its draft
-            await publishDrawing(root, docId, drawing);
-        } catch (e) {
-            setActionError(e.message);
-        } finally {
-            setBusy(false);
-        }
+    // The publish bar (doc/publishbar.js), shared with Writer: the drawing's door, and "does it
+    // differ?" answered by the node's note of which version it last published (`published_head`) -
+    // any stroke since moves the drawing's head past it.
+    const publishThis = async (extra) => {
+        await session.save(); // the node publishes the drawing's saved state as its draft
+        return publishDrawing(root, docId, drawing, extra || {});
     };
-    const unpublish = async () => {
-        if (!confirm(t('doc.drawing.unpublish-confirm', 'Take this drawing down? The post leaves your page, and the people who have it are told it is gone.'))) return;
-        setBusy(true);
-        setActionError(null);
-        try {
-            await api(`/api/identity/${root}/posts/${postId}`, { method: 'DELETE' });
-        } catch (e) {
-            setActionError(e.message);
-        } finally {
-            setBusy(false);
-        }
-    };
+    const row = session.row;
+    const differs = !!(row && row.fields && row.fields.published_head && row.head !== row.fields.published_head);
 
     const duplicate = async () => {
         setBusy(true);
@@ -362,39 +351,6 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               <p class="drawing-count">
                   ${t('doc.drawing.strokes', '{count} strokes', { count: drawing.strokes.length })}
               </p>
-              <div class="drawing-actions">
-                  <button class="drawing-tool" disabled=${busy || !opened} onClick=${duplicate}>
-                      <${Icons.copy} /> ${t('doc.drawing.duplicate', 'duplicate')}
-                  </button>
-                  <button class="drawing-tool" disabled=${busy || !opened} onClick=${() => setCopying(true)}>
-                      <${Icons.fileImage} /> ${t('doc.drawing.copy-into-a-notebook', 'copy into a notebook')}
-                  </button>
-              </div>
-              <div class=${published ? 'drawing-actions drawing-published' : 'drawing-actions'}>
-                  ${published
-                      ? html`<p class="drawing-standing"><${Icons.docPublic} /> ${t('doc.drawing.published', 'published')}</p>
-                            <a class="drawing-tool" href=${`/id/${root}/post/${postId}`}>
-                                <${Icons.link} /> ${t('doc.drawing.view', 'view the post')}
-                            </a>
-                            <button class="drawing-tool" disabled=${busy || !opened} onClick=${publish}>
-                                <${Icons.update} /> ${t('doc.drawing.publish-again', 'publish it again, as it is now')}
-                            </button>
-                            <button class="drawing-tool" disabled=${busy} onClick=${unpublish}>
-                                <${Icons.unpublish} /> ${t('doc.drawing.unpublish', 'unpublish')}
-                            </button>`
-                      : html`<button class="drawing-tool" disabled=${busy || !opened} onClick=${publish}>
-                            <${Icons.docPublic} /> ${t('doc.drawing.publish', 'publish')}
-                        </button>`}
-              </div>
-              ${actionError && html`<p class="form-error">${actionError}</p>`}
-              ${copying &&
-              html`<${CopyIntoModal}
-                  current=${{ root }}
-                  source=${{ author: root, doc_id: docId, private: true }}
-                  heading=${t('doc.drawing.copy-a-picture-of-it', 'copy a picture of this drawing into a notebook')}
-                  copyWith=${(bucket, isNew) => copyPictureInto(root, drawing, session.title, bucket, isNew)}
-                  onClose=${() => setCopying(false)}
-              />`}
           </aside>${resizer('tools')}`;
 
     const header = html`<header class="drawing-head">
@@ -409,9 +365,42 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             onBlur=${() => session.save()}
         />
         <span class="reader-chips">
-            ${session.status === 'saving' && html`<${Chip}>${t('doc.drawing.saving', 'saving…')}</${Chip}>`}
+            <${Chip}
+                icon=${Icons.copy}
+                title=${t('doc.drawing.copy-a-picture-into-a-notebook', 'copy a picture of this drawing into a notebook')}
+                onClick=${() => opened && setCopying(true)}
+            />
+            ${copying &&
+            html`<${CopyIntoModal}
+                current=${{ root }}
+                source=${{ author: root, doc_id: docId, private: true }}
+                heading=${t('doc.drawing.copy-a-picture-of-it', 'copy a picture of this drawing into a notebook')}
+                copyWith=${(bucket, isNew) => copyPictureInto(root, drawing, session.title, bucket, isNew)}
+                onClose=${() => setCopying(false)}
+            />`}
+            <${Chip}
+                icon=${Icons.pageNew}
+                title=${busy ? t('doc.drawing.duplicating', 'duplicating…') : t('doc.drawing.duplicate-this-drawing', 'duplicate - a new drawing, strokes and all')}
+                onClick=${() => opened && !busy && duplicate()}
+            />
             ${onDeleted &&
+            row &&
+            !row.fields?.published_as &&
             html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`}
+            <${Chip}
+                modifier=${session.status === 'error' ? 'chip-diverged' : null}
+                title=${session.status === 'clean'
+                    ? t('doc.drawing.saved', 'saved')
+                    : session.status === 'error'
+                    ? session.error || t('doc.drawing.not-saved', 'not saved - it will try again')
+                    : t('doc.drawing.saving', 'saving…')}
+            >
+                ${session.status === 'clean'
+                    ? html`<${Icons.saved} />`
+                    : session.status === 'error'
+                    ? html`<${Icons.warn} />`
+                    : html`<span class="status-spin"><${Icons.spinner} /></span>`}
+            </${Chip}>
             <${Chip}
                 icon=${Icons.tag}
                 on=${showMeta}
@@ -422,11 +411,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         </span>
         ${showMeta && html`<div class="editor-meta"><${Annotations} root=${root} docId=${docId} /></div>`}
         ${session.error && html`<p class="form-error">${session.error}</p>`}
+        ${actionError && html`<p class="form-error">${actionError}</p>`}
     </header>`;
 
     return html`${toolsColumn}
         <div class="drawing">
             ${header}
+            <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
             <div class="drawing-stage">
                 ${!opened
                     ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`

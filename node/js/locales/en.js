@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1011 phrases across 68 files.
+// 1009 phrases across 69 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -391,7 +391,6 @@ export default {
     'doc.diffpage.private-only': 'private only',
 
     // --- node/js/doc/drawing.js ---
-    'doc.drawing.unpublish-confirm': 'Take this drawing down? The post leaves your page, and the people who have it are told it is gone.',
     'doc.drawing.tools': 'tools',
     'doc.drawing.brush': 'brush',
     'doc.drawing.eraser': 'eraser',
@@ -400,17 +399,15 @@ export default {
     'doc.drawing.colour': 'colour',
     'doc.drawing.undo': 'undo',
     'doc.drawing.strokes': '{count} strokes',
-    'doc.drawing.duplicate': 'duplicate',
-    'doc.drawing.copy-into-a-notebook': 'copy into a notebook',
-    'doc.drawing.published': 'published',
-    'doc.drawing.view': 'view the post',
-    'doc.drawing.publish-again': 'publish it again, as it is now',
-    'doc.drawing.unpublish': 'unpublish',
-    'doc.drawing.publish': 'publish',
-    'doc.drawing.copy-a-picture-of-it': 'copy a picture of this drawing into a notebook',
     'doc.drawing.untitled': 'untitled',
-    'doc.drawing.saving': 'saving…',
+    'doc.drawing.copy-a-picture-into-a-notebook': 'copy a picture of this drawing into a notebook',
+    'doc.drawing.copy-a-picture-of-it': 'copy a picture of this drawing into a notebook',
+    'doc.drawing.duplicating': 'duplicating…',
+    'doc.drawing.duplicate-this-drawing': 'duplicate - a new drawing, strokes and all',
     'doc.drawing.delete': 'delete',
+    'doc.drawing.saved': 'saved',
+    'doc.drawing.not-saved': 'not saved - it will try again',
+    'doc.drawing.saving': 'saving…',
     'doc.drawing.tags': 'tags, date & description',
     'doc.drawing.opening': 'opening…',
 
@@ -425,9 +422,27 @@ export default {
     'doc.editor.hide-from-the-book': 'hide from the book',
     'doc.editor.the-book-rolls-out-from': 'publish from the Publish column',
     'doc.editor.publish-the-changes': 'publish the changes',
+
+    // --- node/js/doc/marqueebody.js ---
+    'doc.marqueebody.this-marquee-doesnt-parse-right': 'this page has a formatting problem. Showing the plain text.',
+    'doc.marqueebody.marquee-doesnt-parse': "marquee doesn't parse: {message}",
+
+    // --- node/js/doc/publish.js ---
+    'postentry.preparing-media-for-the-network': 'preparing media for the network…',
+    'postentry.fetching': 'fetching',
+    'postentry.yours': 'yours',
+    'postentry.ready': 'ready',
+    'postentry.failed': 'failed',
+    'postentry.failed-2': 'failed',
+
+    // --- node/js/doc/publishbar.js ---
     'doc.editor.scheduled-for': 'scheduled for {when}',
     'doc.editor.live-on-your-public-feed': 'live on your public feed',
     'doc.editor.private': 'private',
+    'doc.editor.scheduled-for-2': 'scheduled for {when}',
+    'doc.editor.taken-down---it-leaves': 'taken down',
+    'doc.editor.schedule-cancelled': 'schedule cancelled',
+    'doc.editor.published': 'published',
     'doc.editor.settled-means': 'turn off comments',
     'doc.editor.turn-off-rebroadcast-and-comment': 'turn off comments',
     'doc.editor.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
@@ -447,27 +462,11 @@ export default {
     'doc.editor.re-read-the-date-and': 'publish, or reschedule',
     'doc.editor.cancel-the-schedule---the': 'cancel the schedule - the words stay private',
     'doc.editor.cancel': 'cancel',
-    'doc.editor.scheduled-for-2': 'scheduled for {when}',
-    'doc.editor.taken-down---it-leaves': 'taken down',
-    'doc.editor.schedule-cancelled': 'schedule cancelled',
-    'doc.editor.published': 'published',
     'doc.editor.take-it-down': 'take it down',
     'doc.editor.this-removes-it-from-other': 'It may take a while to disappear everywhere.',
     'doc.editor.taking-it-down': 'taking it down…',
     'doc.editor.yes-take-it-down': 'yes, take it down',
     'doc.editor.keep-it': 'keep it',
-
-    // --- node/js/doc/marqueebody.js ---
-    'doc.marqueebody.this-marquee-doesnt-parse-right': 'this page has a formatting problem. Showing the plain text.',
-    'doc.marqueebody.marquee-doesnt-parse': "marquee doesn't parse: {message}",
-
-    // --- node/js/doc/publish.js ---
-    'postentry.preparing-media-for-the-network': 'preparing media for the network…',
-    'postentry.fetching': 'fetching',
-    'postentry.yours': 'yours',
-    'postentry.ready': 'ready',
-    'postentry.failed': 'failed',
-    'postentry.failed-2': 'failed',
 
     // --- node/js/doc/reader.js ---
     'doc.reader.pick-something-on-the-left': 'pick something on the left, or make something new.',
@@ -975,6 +974,7 @@ export default {
     'identity.routes.a-room-takes-no-replies': 'say it in the room instead',
     'identity.routes.no-such-drawing': 'no such drawing',
     'identity.routes.only-a-drawing-publishes-here': 'only a drawing publishes by this door',
+    'identity.routes.a-drawing-cant-be-scheduled': "a drawing can't be scheduled yet - clear its date, or give it one that has passed",
     'identity.routes.that-picture-didnt-work': "that picture didn't work: {e}",
     'identity.routes.a-drawing-is-a-still-picture': 'a drawing publishes as a still picture',
     'identity.routes.mention-someone-first': 'mention someone first - a post for the people mentioned needs a user card in the words',

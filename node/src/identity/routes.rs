@@ -3347,10 +3347,28 @@ async fn resolve_reply_link(
 /// `DELETE /posts/{post}` takes it down.
 ///
 /// One drawing at a time, with no taxonomy: a set of drawings published together is a later door.
+///
+/// The query carries what Writer's publish bar sends in its body (the bar is shared, doc/publishbar.js):
+/// `settled` and `trusted_only`, the two wishes, and `tz_offset_min` for a claimed date. A claimed
+/// date in the past dates the post, as Writer's does; a future one would be a schedule, and the
+/// sweep that mints schedules publishes words, not drawings - so it is refused, in words. After
+/// posting, the drawing is stamped with the version it published (`published_head`), which is how
+/// the bar knows a drawing has changed since.
+#[derive(serde::Deserialize, Default)]
+struct DrawingPublish {
+    #[serde(default)]
+    settled: bool,
+    #[serde(default)]
+    trusted_only: bool,
+    #[serde(default)]
+    tz_offset_min: i32,
+}
+
 async fn publish_drawing_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
+    Query(req): Query<DrawingPublish>,
     picture: Bytes,
 ) -> Result<Json<PublishResponse>, AppError> {
     use crate::record::documents::Format;
@@ -3369,6 +3387,24 @@ async fn publish_drawing_handler(
         )));
     }
     let title = docs.resolved(doc).await?.title;
+    let head = doc.display_head().map(|v| hex::encode(v.hash));
+
+    // The date, resolved as Writer's publish resolves it (PUBLISH.md): a claim in the past dates
+    // the post; a future one is a schedule, which drawings do not have.
+    let dated_ms = data
+        .annotations()
+        .field(&doc_id, store::DISPLAY_DATE)
+        .await?
+        .and_then(|v| crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), req.tz_offset_min));
+    if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-drawing-cant-be-scheduled",
+            "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
+        )));
+    }
+    // Trusted only seals the post, and the picture under the post's own key - as baked media is -
+    // or the post would ship a public copy of the very picture it seals. Once sealed, always sealed.
+    let post_key = docs.post_key_if(&doc_id, req.trusted_only).await?;
 
     // The same laundering every picture gets - decode, re-encode, never trust the bytes.
     let bytes = picture.to_vec();
@@ -3384,16 +3420,16 @@ async fn publish_drawing_handler(
     }
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
-    let twin = crate::record::documents::save_public_media(&db, &signer, &state.files, &title, ingested, None, None, false).await?;
+    let twin = crate::record::documents::save_public_media(&db, &signer, &state.files, &title, ingested, post_key, None, false).await?;
 
     // The alt text is the title, kept to what Marquee's `![...]` holds without a question.
     let alt: String = title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')' | '\n' | '\r')).collect();
     let target = crate::record::bake::public_media_target(&root, &twin, Format::Avif, false);
     let body = format!("![{}]({target})\n", if alt.trim().is_empty() { "a drawing" } else { alt.trim() });
     let flags = crate::record::documents::PublishFlags {
-        settled: false,
-        trusted_only: false,
-        dated_ms: None,
+        settled: req.settled,
+        trusted_only: post_key.is_some(),
+        dated_ms,
         part_of: None,
         seal_of: None,
         onward: false,
@@ -3402,12 +3438,15 @@ async fn publish_drawing_handler(
     };
     let post_id = docs.publish(&doc_id, Some(body), vec![twin], None, flags).await?;
     after_posted(&state, &data, &root, &doc_id, post_id, None, flags).await?;
+    if let Some(head) = head {
+        data.annotations().set_field(&doc_id, store::PUBLISHED_HEAD, &head).await?;
+    }
     crate::fold::fold_now(&state, &root).await;
     Ok(Json(PublishResponse {
         post_id: Some(hex::encode(post_id)),
         scheduled_for: None,
-        published_ms: Some(crate::clock::now_ms()),
-        dated_ms: None,
+        published_ms: Some(dated_ms.unwrap_or_else(crate::clock::now_ms)),
+        dated_ms,
         baking: None,
     }))
 }
@@ -4264,6 +4303,7 @@ async fn replicate_annotations(
             continue;
         }
         if field == store::PUBLISHED_AS
+            || field == store::PUBLISHED_HEAD
             || field == store::TRUSTED_KEY
             || field == store::PUBLISH_PLAN
             || field == store::DISPLAY_DATE

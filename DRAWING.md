@@ -147,8 +147,16 @@ string like any other), `doc/annotations.js` for tags.
   `POST /docs/<drawing>/publish/drawing`, which takes the flattened `.webp`, crushes it inline (as
   the avatar door does), mints its public twin, and posts a Marquee post whose title is the
   drawing's and whose body is the picture. The drawing remembers its post (`published_as`, as a
-  draft does), wears the same private/public icon on its row, and offers "view" and "unpublish". A
-  changed drawing can be published again, which replaces the old post.
+  draft does) and wears the same private/public icon on its row.
+- **The publish bar is Writer's** (`doc/publishbar.js`, shared - Curtis 2026-09-26: "work and look the
+  same in both"): the same standing colours, the two wishes (turn off comments, trusted only - which
+  seals the picture under the post's key too), a past claimed date dating the post, view, update
+  while the post's day lasts, and unpublish through the same takedown modal. Where Writer compares
+  words to know the draft has changed, a drawing compares versions: the door stamps the drawing with
+  the version it published (`published_head`, private bookkeeping like `published_as`), and any
+  stroke since moves the head past it. A future date is refused - drawings have no schedule yet.
+- **Duplicate and copy-into-a-notebook are chips beside the title**, with tags, delete and the
+  save status - the same row Writer's chips live in.
 
 ## Slices
 

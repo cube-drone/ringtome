@@ -12,6 +12,11 @@
     stands in for with a real PNG - filed into the notebook the moment it is uploaded, before the
     node has even made it an image, and an image once it has.
 
+    The publish bar, shared with Writer (Curtis, 2026-09-26): its two wishes and a past claimed date
+    ride a drawing's publish as they ride a note's, a future date is refused (drawings have no
+    schedule), trusted only seals the post AND its picture, and the drawing stamps the version it
+    published, so the bar can tell when the drawing has moved on - a stamp that stays private.
+
     Slice 4, publishing: a drawing publishes as a picture - the node launders what the page flattened
     into an AVIF twin and posts a Marquee post that is that picture, titled as the drawing is; the
     drawing remembers its post as a draft does, publishing again updates that post, and taking it down
@@ -179,5 +184,56 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         assert.equal(r.status, 400);
         const plain = await ada(`${docs()}/${doc}/publish`, { method: "POST" });
         assert.equal(plain.status, 400, "and a drawing never posts through the words door as strokes");
+    });
+
+    it("wears the publish bar's wishes and date, and knows when it has changed since", async () => {
+        const made = await (await j(ada, docs(), { title: "an old horse", body: body([stroke(A, 1)]), format: "drawing" })).json();
+        const id = made.doc_id;
+        const field = (name, value) => j(ada, `${docs()}/${id}/annotations/fields/${name}`, { value }, "PUT");
+        const row = async () => (await (await ada(docs())).json()).docs.find((d) => d.doc_id === id);
+        const publish = async (query = "") => ada(`${docs()}/${id}/publish/drawing?tz_offset_min=0${query}`, { method: "POST", body: makePng(40, 30), file: true });
+
+        await field("display_date", "2099-01-01");
+        const future = await publish();
+        assert.equal(future.status, 400, "a drawing has no schedule");
+        assert.match(await future.text(), /scheduled/);
+
+        await field("display_date", "2020-05-01");
+        const first = await publish("&settled=true");
+        const firstText = await first.text();
+        assert.equal(first.status, 200, firstText);
+        const { post_id, dated_ms } = JSON.parse(firstText);
+        assert.ok(dated_ms && dated_ms < Date.UTC(2020, 5, 1), `the claimed date dates the post: ${dated_ms}`);
+        const permalink = async () => (await ada(`api/id/${root}/posts/${post_id}`)).json();
+        assert.equal((await permalink()).settled, true, "comments off, as asked");
+
+        let r = await row();
+        assert.equal(r.fields.published_head, r.head, "the drawing stamps the version it published");
+
+        const detail = await (await ada(`${docs()}/${id}`)).json();
+        await j(ada, `${docs()}/${id}`, { title: "an old horse", body: body([stroke(A, 1), stroke(B, 2)]), parents: detail.save_parents, format: "drawing" }, "PUT");
+        r = await row();
+        assert.notEqual(r.head, r.fields.published_head, "a stroke since moves it past what was published");
+
+        const again = await publish();
+        assert.equal(again.status, 200, await again.text());
+        r = await row();
+        assert.equal(r.fields.published_head, r.head, "an update stamps the new version");
+        const labels = ((await permalink()).annotations || []).map((a) => a.key);
+        assert.ok(!labels.includes("published_head") && !labels.includes("published_as"), `the stamp stays private: ${labels}`);
+    });
+
+    it("trusted only seals the post, and its picture with it", async () => {
+        const made = await (await j(ada, docs(), { title: "a secret horse", body: body([stroke(C, 1)]), format: "drawing" })).json();
+        const r = await ada(`${docs()}/${made.doc_id}/publish/drawing?trusted_only=true`, { method: "POST", body: makePng(40, 30), file: true });
+        const text = await r.text();
+        assert.equal(r.status, 200, text);
+        const post = JSON.parse(text).post_id;
+        const words = await (await ada(`id/${root}/docs/${post}/body`)).text();
+        const target = /\((\/id\/[^)]+)\)/.exec(words);
+        assert.ok(target, `the author reads their own post: ${words}`);
+        const anon = makeFetch();
+        assert.notEqual((await anon(`id/${root}/docs/${post}/body`)).status, 200, "a stranger cannot read the post");
+        assert.notEqual((await anon(target[1].slice(1))).status, 200, "nor fetch its picture");
     });
 });
