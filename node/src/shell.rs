@@ -1,9 +1,9 @@
 //! Requests from the node to the desktop shell that embeds it (desktop/src/main.rs).
 //!
-//! The other direction from attention.rs, and the same shape: the node cannot restart the app or
-//! open a file manager - it is a library inside somebody else's process - so it says what it wants
-//! and the shell, if there is one, does it. A server node has nobody listening, and says so to its
-//! caller: [`Shell::ask`] answers whether anybody heard.
+//! The other direction from attention.rs, and the same shape. The node cannot open a file manager,
+//! being a library inside somebody else's process, so it says what it wants and the shell, if there
+//! is one, does it. A server node has nobody listening, and says so to its caller: [`Shell::ask`]
+//! answers whether anybody heard.
 //!
 //! In local-test mode every request is also recorded, so the rig can see what a device node asked
 //! for without a shell to ask (`/test/shell`).
@@ -18,10 +18,6 @@ use tokio::sync::broadcast;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ShellRequest {
-    /// Listen on the local network (true) or on this computer only (false), from the next start -
-    /// and restart now to get there (registration.rs, multi-user mode). The binding is the shell's
-    /// to decide, because it is decided before the node exists.
-    ListenOnNetwork { on: bool },
     /// Show this file in the system's file manager (backup.rs: a desktop app's backups are
     /// already on the person's own disk, so "download" means "show me where").
     Reveal { path: PathBuf },

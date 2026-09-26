@@ -13,8 +13,7 @@ are ever allowed to meet, and in what costume.
   names*.)
 - **Server / Device** — what a person calls the node when they administer it: the settings app is
   **Server** in a browser and **Device** in the desktop app (`node/js/apps/device.js`). "Node" is the
-  protocol's word and stays off those screens. **Multi-user mode** is a Device opened up to other
-  people's accounts over the local network. (2026-09-25)
+  protocol's word and stays off those screens. (2026-09-25)
 
 ## Identity
 

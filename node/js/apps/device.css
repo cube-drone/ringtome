@@ -42,21 +42,6 @@
     border-color: var(--teal);
 }
 
-.device-warning {
-    margin: 0;
-    padding: 0.6rem 0.8rem;
-    background: var(--surface-2);
-    border-left: 3px solid var(--peach);
-    color: var(--ink-soft);
-    line-height: 1.5;
-}
-
-.device-addresses {
-    margin: 0;
-    padding-left: 1.2rem;
-    color: var(--ink);
-}
-
 .device-ticket {
     background: var(--surface);
     padding: 0.6rem 0.8rem;

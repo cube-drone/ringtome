@@ -5436,7 +5436,6 @@ dependencies = [
  "iroh-gossip",
  "moka",
  "n0-future",
- "netdev",
  "ogg",
  "p256",
  "pkarr",

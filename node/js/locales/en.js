@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 999 phrases across 66 files.
+// 982 phrases across 66 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -118,7 +118,6 @@ export default {
     'device.only-for-the-people-who-look-after-this': 'These settings are only for the people who look after this place.',
     'device.registration': 'Registration',
     'device.backups': 'Backups',
-    'device.let-other-people-use-this-computer': 'let other people have accounts here, and choose who may sign up',
     'device.who-may-sign-up-here': 'who may sign up here',
     'device.copies-of-everything-to-keep-safe': 'copies of everything here, to keep somewhere safe',
     'device.mode-open': 'open',
@@ -133,21 +132,6 @@ export default {
     'device.who-may-make-an-account-here': 'Who may make an account here:',
     'device.saved': 'saved',
     'device.save': 'save',
-    'device.the-two-passwords-dont-match': "the two passwords don't match",
-    'device.restarting-to-open-up': 'Restarting to let your network in…',
-    'device.only-you-use-this': 'Right now only you, on this computer, use Horse Drawing Tycoon 2 here. Multi-user mode lets other people on your network have accounts on this computer too - and lets you sign in to yours from their devices.',
-    'device.your-account-gets-a-name': 'Your account gets a sign-in name and a password, since other people can reach the sign-in screen from now on:',
-    'device.your-sign-in-name': 'your sign-in name',
-    'device.your-password': 'your password',
-    'device.your-password-again': 'your password, again',
-    'device.who-else-may-sign-up': 'Who else may make an account:',
-    'device.the-network-can-reach-this-computer': "Your network will be able to reach this computer, and the connection between them isn't encrypted - so turn this on at home, not on a café's wifi.",
-    'device.turn-on-multi-user-mode': 'turn on multi-user mode and restart',
-    'device.turn-multi-user-mode-off-confirm': "Turn multi-user mode off? Nobody new can sign up, and only this computer can reach it after a restart. Accounts people already made stay, but they can't reach them from their own devices.",
-    'device.restarting-to-close-up': 'Restarting for this computer only…',
-    'device.multi-user-mode-is-on': 'Multi-user mode is on. People on your network reach this computer at:',
-    'device.no-network-right-now': '(no network connection right now)',
-    'device.turn-multi-user-mode-off': 'turn multi-user mode off',
     'device.a-backup-holds-everything': 'A backup is a copy of everything here - every account, and the keys that unlock them. Whoever has one has all of it, so keep it as safe as this place itself.',
     'device.backing-up': 'backing up…',
     'device.make-a-backup-now': 'make a backup now',
@@ -1122,7 +1106,6 @@ export default {
 
     // --- node/src/registration/routes.rs ---
     'registration.routes.unknown-mode': 'sign-ups are open, password, or closed',
-    'registration.routes.only-in-the-desktop-app': 'multi-user mode is for the desktop app; a server already hosts other people',
 
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',

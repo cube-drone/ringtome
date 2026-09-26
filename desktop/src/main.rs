@@ -86,7 +86,7 @@ fn main() {
             update::start(app.handle().clone());
             tray::build(app.handle(), &data_dir, &url);
             alerts::start(app.handle().clone(), attention);
-            requests::start(app.handle().clone(), data_dir.clone(), requests);
+            requests::start(app.handle().clone(), requests);
             // A hidden launch with nothing to come back through would be a node nobody can
             // reach; without a tray, the window shows regardless.
             if hidden && tray::present(app.handle()) {
@@ -168,11 +168,9 @@ fn start_node(
     // facts about being an app rather than an operator's choice.
     config.tenancy = ringtome_node::config::Tenancy::Single;
     config.launch_token = Some(token);
-    // Loopback, unless its owner turned on multi-user mode (requests.rs, `network`): the desktop
-    // node is this machine's, and the one place the password floor relaxes is a node that faces
-    // nobody (config.rs::password_min_len) - which a node listening on the network is not, so the
-    // floor comes back with the wider bind, by the same rule.
-    config.bind_address = if requests::network::listening(data_dir) { "0.0.0.0" } else { "127.0.0.1" }.to_string();
+    // Loopback, always: the desktop node is this machine's, and the one place the password floor
+    // relaxes is a node that faces nobody (config.rs::password_min_len).
+    config.bind_address = "127.0.0.1".to_string();
     config.port = port::remembered_or_fresh(data_dir)?;
     // The shell's own target, said out loud: the library builds its default filter from its own
     // crate name, so without this the lines below are logged to nobody. It is the BINARY's crate
@@ -189,10 +187,7 @@ fn start_node(
             bind_blocking(config.clone())?
         }
     };
-    // The window is always this computer's own: 127.0.0.1 even when the node listens on every
-    // interface, because the URL is the origin, the origin partitions browser storage (port.rs),
-    // and `http://0.0.0.0:<port>` would be a different origin from the one the mirror lives in.
-    let url = format!("http://127.0.0.1:{}/", bound.addr().port());
+    let url = format!("http://{}/", bound.addr());
     let attention = bound.attention();
     let requests = bound.shell_requests();
     tracing::info!(%url, data_dir = %data_dir.display(), "ringtome desktop: node up");

@@ -374,23 +374,6 @@ pub async fn set_password(
     Ok(())
 }
 
-/// Give an account a new sign-in name (registration.rs: a desktop app's `me` becoming a name its
-/// owner chose, for multi-user mode). The caller checked it is free; the UNIQUE index is the last
-/// word if two renames race.
-pub async fn rename_account(db: &Db, account_id: &str, new_username: &str) -> Result<(), AppError> {
-    let username = normalize_username(new_username)?;
-    db.execute("UPDATE accounts SET username = ?1 WHERE id = ?2", (username.as_str(), account_id))
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("UNIQUE constraint failed") {
-                AppError::BadRequest(crate::msg!("auth.username-username-is-taken", "username \"{username}\" is taken", username = username))
-            } else {
-                AppError::Internal(anyhow!("renaming account: {e}"))
-            }
-        })?;
-    Ok(())
-}
-
 /// Drop every session an account holds - standard hygiene after a password reset, so whoever
 /// prompted the reset is the only one still standing (with their fresh login).
 pub async fn purge_sessions(db: &Db, account_id: &str) -> Result<(), AppError> {

@@ -1,24 +1,20 @@
-//! Who may make an account here, and a desktop app's switch into hosting other people.
+//! Who may make an account here.
 //!
 //! **The policy** (Curtis, 2026-09-25) is one of three, chosen by a node administrator in the
-//! Server app (the Device app, on a desktop):
+//! Server app:
 //!
 //! - `open` - anyone who can reach the node may sign up (rate-limited per address, as before);
 //! - `password` - sign-up asks for a password the administrator chose and shares by hand;
 //! - `closed` - nobody new.
 //!
 //! No choice made means the default for the kind of node: `open` for a server, which is what every
-//! server did before this existed, and `closed` for a device - a desktop app hosts only its owner
-//! until they say otherwise. This is the simple, shippable form of PROJECT_PLAN's *Registration
-//! Modes*: `password` stands in for invite tokens until those exist, and `trusted` waits for the
-//! trust layer.
+//! server did before this existed, and `closed` for a device - a desktop app is its owner's alone,
+//! and its sign-up door otherwise stands open to anything else on the same computer that finds the
+//! port. This is the simple, shippable form of PROJECT_PLAN's *Registration Modes*: `password`
+//! stands in for invite tokens until those exist, and `trusted` waits for the trust layer.
 //!
-//! **Multi-user mode** is a desktop app opening up: its owner's account - named `me`, with a
-//! random password nobody was told (auth.rs, `local_account`) - gets a sign-in name and a password
-//! of the owner's choosing, registration gets a policy, and the app asks its shell to listen on the
-//! local network from the next start (shell.rs), because an app only this computer can reach hosts
-//! nobody. Turning it off closes registration and goes back to this computer only; the accounts
-//! made meanwhile keep existing, reachable from this computer's browser.
+//! A desktop app's owner has no page for this: a device hosting other people - on one shared
+//! computer, say - is a shape not settled yet (NEXT_STEPS), so the Device app shows only Backups.
 //!
 //! Enforcement is in the one door that makes accounts from outside: `/api/auth/register` asks
 //! [`admit`] first.
@@ -32,9 +28,9 @@ use crate::db::Db;
 use crate::error::AppError;
 use crate::AppState;
 
-/// The password floor for anything that will face a network: the node's own floor for a
-/// network-facing bind (config.rs, `password_min_len`), applied before the bind moves.
-pub const NETWORK_PASSWORD_MIN: usize = 8;
+/// The sign-up password's floor: the node's own floor for a network-facing bind (config.rs,
+/// `password_min_len`), since a password shared among strangers had better not be short.
+const SIGNUP_PASSWORD_MIN: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -100,7 +96,7 @@ pub async fn set(state: &AppState, mode: Mode, password: Option<&str>) -> Result
     let current = policy(state).await?;
     let password_hash = match (mode, password.filter(|p| !p.is_empty())) {
         (_, Some(password)) => {
-            crate::auth::check_password_len(password, NETWORK_PASSWORD_MIN)?;
+            crate::auth::check_password_len(password, SIGNUP_PASSWORD_MIN)?;
             Some(crate::auth::hash_password(password, state.config.local_test).map_err(AppError::Internal)?)
         }
         (Mode::Password, None) if !current.has_password() => {
@@ -174,30 +170,4 @@ pub async fn admit(state: &AppState, offered: Option<&str>) -> Result<(), AppErr
             }
         }
     }
-}
-
-/// Is this node listening beyond this computer? Read off the bind, which is the truth of it.
-pub fn listening_on_network(state: &AppState) -> bool {
-    !state
-        .config
-        .bind_address
-        .parse::<std::net::IpAddr>()
-        .map(|ip| ip.is_loopback())
-        .unwrap_or(false)
-}
-
-/// Where people on the local network would reach this node: one `http://<address>:<port>` per
-/// IPv4 address on an interface that is up and not loopback. Empty when none is.
-pub fn network_addresses(state: &AppState) -> Vec<String> {
-    let port = state.config.port;
-    let mut out: Vec<String> = netdev::get_interfaces()
-        .into_iter()
-        .filter(|i| i.is_up() && !i.is_loopback())
-        .flat_map(|i| i.ipv4.into_iter().map(|net| net.addr()))
-        .filter(|ip| !ip.is_loopback() && !ip.is_link_local() && !ip.is_unspecified())
-        .map(|ip| format!("http://{ip}:{port}"))
-        .collect();
-    out.sort();
-    out.dedup();
-    out
 }

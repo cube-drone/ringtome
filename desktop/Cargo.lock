@@ -7083,7 +7083,6 @@ dependencies = [
  "iroh-gossip",
  "moka",
  "n0-future",
- "netdev 0.45.1",
  "ogg",
  "p256",
  "pkarr",

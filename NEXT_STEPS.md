@@ -109,10 +109,10 @@ one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
   start at login on by default, one instance, quiet restart for updates
 * ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
   update-on-quit; proven only once two releases carry it
-* **Try multi-user mode in the real app** (built 2026-09-25, DESKTOP.md's *Multi-user mode*): the
-  shell's half - the `desktop-network` file, the restart, binding `0.0.0.0` with the window staying on
-  `127.0.0.1` - has only been compiled, never run. Turn it on, reach the app from a phone on the same
-  wifi, sign in by the new name, sign up a second account with the sign-up password, turn it off.
+* **Local accounts, shaped later** (Curtis, 2026-09-25): signing in to the desktop app with a
+  password instead of the launch token's auto-login, and whether one computer should host several
+  people's accounts at all. A first cut (the app listening on the LAN) guessed the second one wrong
+  and came out again; nothing is needed yet.
 * **Prove all-or-nothing releases on the next tag** (built 2026-09-25): the first run of the
   `publish` job - the draft, `crane tag` on the digest-only image, the flip. Its first test is a
   real partial failure: kill one build and check that nothing appears on the releases page, on GHCR

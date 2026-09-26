@@ -10900,3 +10900,18 @@ stranger does not, the node asks its shell for the network and for a reveal, and
 Red with the admission check planted out (four claims). Pure tests for the registry's admin-only app
 and its two names, and for the backups page's date and size. Not run: the shell's half in a real app
 (NEXT_STEPS), and nobody has clicked through the pages yet.
+
+## 2026-09-25 (cont.): multi-user mode, taken back out
+
+The Device app's multi-user mode guessed the wrong shape. Curtis meant several people sharing one
+computer; what was built opened the app to the LAN. On reflection the concept is not shaped enough to
+build at all - what he actually wants eventually is local sign-in with a password instead of
+auto-login, and not yet (NEXT_STEPS, *Local accounts, shaped later*). So it came out: the multi-user
+doors, the account rename, the shell's listen-on-the-network request and the `desktop-network` file,
+the LAN addresses (and the `netdev` dependency with them), and their claims in `device.cjs`. The
+desktop always binds loopback again, as before.
+
+What stays: the registration policy and its page, for servers; a device's sign-ups `closed` by
+default, which also shuts the door another program on the same computer could have registered
+through; the Backups page on both, with a desktop showing an archive in the file manager through
+`shell.rs`, whose one request is now `Reveal`. On a desktop the Device app offers Backups only.
