@@ -37,8 +37,8 @@ const VERSIONED = [
     { file: 'node/js/package.json', find: /"version": "([^"]+)"/ },
 ];
 
-// Deliberately NOT bumped: `api_old/` (an archive), `spike-tauri/` (a spike, pinned at 0.0.0), and
-// `node/integration/package.json` (a test harness that ships to nobody). A version means "what a
+// Deliberately NOT bumped: `spike-tauri/` (a spike, pinned at 0.0.0) and `node/integration/package.json`
+// (a test harness that ships to nobody). A version means "what a
 // user is running"; nothing there is run by a user.
 
 function read(file) {

@@ -10931,3 +10931,26 @@ server jobs did not, `publish` was skipped, and nothing of 0.1.11 appeared anywh
 the latest release. Re-running cannot rescue 0.1.11 (a re-run reads the workflow at its tag, which has
 the broken line), so the fix ships as the next release; the `v0.1.11-heave-print` tag stays behind
 with no release.
+
+## 2026-09-26 (cont.): 0.1.12's Mac stash, and a blip that should not cost an hour
+
+0.1.12 got everything right except the Mac's stash: a clean build, notarization accepted, then
+`Failed to CreateArtifact: Unable to make request: ENOTFOUND` - the same lost DNS lookup that sank
+0.1.10's Mac upload, at the same place, the first network call after the 50-minute build. Checked
+rather than assumed transient: the same job's cache save, forty seconds later, sent 1.8 GB to GitHub
+at full speed. The gate held again (`publish` skipped; nothing of 0.1.12 visible).
+
+The stash now tries three times - at once, after 30 seconds, after two more minutes, the later tries
+overwriting anything a failed one left - with the path list in one job-level variable so the three
+cannot drift. A build that genuinely produced nothing still fails, on the last try. 0.1.12 itself
+needs only "Re-run failed jobs": its workflow is right apart from the missing retry.
+
+## 2026-09-26 (cont.): api_old, deleted
+
+The prior-generation codebase (Groovelet) had been kept in-tree as a reference since the start, and
+its autopsy (`API_OLD.md`) is long done. With Dependabot switched on, 38 of 45 open alerts were in
+its two lockfiles - code nothing builds or runs, raising alerts forever. Curtis: the original
+repository still exists, so the copy goes. `API_OLD.md` stays as the record of what was kept and cut,
+now saying the code lives only in its original repository; README's workspace table, PROJECT_PLAN's
+layout tree and `release.mjs`'s list of unversioned directories no longer mention it. Its alerts close
+once the deletion reaches the default branch.

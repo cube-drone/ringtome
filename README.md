@@ -136,7 +136,6 @@ PROJECT_PLAN section.
 | `video-ingest/` | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README. |
 | `spike-tauri/` | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](DESKTOP.md). |
 | `sample_media/` | Fixture media for exercising the ingest pipeline. |
-| `api_old/` | The previous-generation codebase. Reference only; see the autopsy ([`API_OLD.md`](API_OLD.md)). |
 
 (`data/` and `scratch/` are runtime output from local test runs, not source.)
 

@@ -1,8 +1,11 @@
 # api_old — Autopsy and Salvage Report
 
-`api_old/` is the prior-generation codebase: **Groovelet**, a multi-tenant community platform
-(Rust + Axum + SQLite + a Preact frontend, ~9,300 lines of Rust). PROJECT_PLAN.md designates it a
-"reference and pattern library" for the new `node/` crate. This document is the inventory: what it
+`api_old/` was the prior-generation codebase: **Groovelet**, a multi-tenant community platform
+(Rust + Axum + SQLite + a Preact frontend, ~9,300 lines of Rust). PROJECT_PLAN.md designated it a
+"reference and pattern library" for the new `node/` crate. **The copy in this repository was deleted
+on 2026-09-26** (Curtis): the salvage below was done, and the original lives on in the repository it
+was copied from, so paths like `api_old/js/` below name that code, not anything here. This
+document is the inventory: what it
 got right, what it got wrong, and which lessons are load-bearing for Ringtome. It is organized as
 **keep** (patterns to carry forward), **cut** (patterns to deliberately avoid), and **cautionary
 tales** (bugs and structural traps worth remembering when building the same feature the second

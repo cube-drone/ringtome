@@ -175,6 +175,22 @@ jobs:
             rust-targets: ""
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 90
+    env:
+      # What the stash steps upload (three tries, below): every installer and its updater signature.
+      STASH_PATHS: |
+        desktop/target/**/release/bundle/**/*.dmg
+        desktop/target/**/release/bundle/**/*.app.tar.gz
+        desktop/target/**/release/bundle/**/*.app.tar.gz.sig
+        desktop/target/**/release/bundle/**/*.AppImage
+        desktop/target/**/release/bundle/**/*.AppImage.sig
+        desktop/target/**/release/bundle/**/*.deb
+        desktop/target/**/release/bundle/**/*.deb.sig
+        desktop/target/**/release/bundle/**/*.rpm
+        desktop/target/**/release/bundle/**/*.rpm.sig
+        desktop/target/**/release/bundle/**/*.exe
+        desktop/target/**/release/bundle/**/*.exe.sig
+        desktop/target/**/release/bundle/**/*.msi
+        desktop/target/**/release/bundle/**/*.msi.sig
 
     steps:
       - uses: actions/checkout@v4
@@ -383,25 +399,50 @@ jobs:
 
       # The stash: every installer and every updater signature, for `publish` (or, on a dry run,
       # for whoever is debugging the pipeline). A build that produced nothing fails here.
+      #
+      # Tried three times, because this is the first network call after the longest step, and the
+      # macOS runner has twice lost DNS for a moment right there: 0.1.10's upload and 0.1.12's stash
+      # both died on `ENOTFOUND` after a clean, notarized build - and 0.1.12's own cache save, forty
+      # seconds later, sent 1.8 GB at full speed. A blip should not cost the hour behind it. The
+      # later tries overwrite anything a failed one left half-made.
       - name: Stash the artifacts
+        id: stash
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}
-          path: |
-            desktop/target/**/release/bundle/**/*.dmg
-            desktop/target/**/release/bundle/**/*.app.tar.gz
-            desktop/target/**/release/bundle/**/*.app.tar.gz.sig
-            desktop/target/**/release/bundle/**/*.AppImage
-            desktop/target/**/release/bundle/**/*.AppImage.sig
-            desktop/target/**/release/bundle/**/*.deb
-            desktop/target/**/release/bundle/**/*.deb.sig
-            desktop/target/**/release/bundle/**/*.rpm
-            desktop/target/**/release/bundle/**/*.rpm.sig
-            desktop/target/**/release/bundle/**/*.exe
-            desktop/target/**/release/bundle/**/*.exe.sig
-            desktop/target/**/release/bundle/**/*.msi
-            desktop/target/**/release/bundle/**/*.msi.sig
+          path: ${{ env.STASH_PATHS }}
           if-no-files-found: error
+
+      - name: Wait out a network blip
+        if: steps.stash.outcome == 'failure'
+        shell: bash
+        run: sleep 30
+
+      - name: Stash the artifacts (second try)
+        id: stash2
+        if: steps.stash.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: ${{ env.STASH_PATHS }}
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Wait out a longer one
+        if: steps.stash.outcome == 'failure' && steps.stash2.outcome == 'failure'
+        shell: bash
+        run: sleep 120
+
+      - name: Stash the artifacts (last try)
+        if: steps.stash.outcome == 'failure' && steps.stash2.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: ${{ env.STASH_PATHS }}
+          if-no-files-found: error
+          overwrite: true
 
   # The SERVER node (SERVER.md): the same `ringtome` binary an operator runs, built per architecture
   # on the architecture itself - no cross-compiling - inside PyPA's manylinux_2_28 image (AlmaLinux 8,

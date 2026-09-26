@@ -4526,7 +4526,6 @@ ringtome/
 ├── proto/     ← ringtome-proto: the conformance boundary (canonical bytes, chains, key tree, sync messages)
 ├── node/      ← the connector node binary (see node/README.md; store.rs is the application data map)
 ├── spec/      ← published test vectors ("this logical value MUST produce exactly these bytes")
-├── api_old/   ← prior-generation codebase, reference only (see API_OLD.md)
 └── *.md       ← the documents (README.md is the map)
 ```
 
