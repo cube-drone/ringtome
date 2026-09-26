@@ -727,6 +727,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // Versioned static assets (CDN cache-safe)
         .route("/static/{version}/app.js", get(ui::app_js))
         .route("/sw.js", get(ui::service_worker))
+        .route("/favicon.ico", get(ui::favicon))
+        .route("/apple-touch-icon.png", get(ui::apple_touch_icon))
         .route("/static/{version}/app.css", get(ui::app_css))
         // Marquee font files (embedded in binary, read from disk in dev)
         .route("/fonts/{filename}", get(ui::font))

@@ -10970,3 +10970,19 @@ names in 0.1.12's real stashes (downloaded from the run) and still has to reprod
 `latest.json` exactly; red with the rename planted out. And the script, run over the real stashes of
 0.1.12's run, now calls the set whole and writes every platform key. 0.1.12 cannot be re-run into a
 release - the re-run would use the script at its tag - so the fix ships as the next one.
+
+## 2026-09-26 (cont.): the horse is the icon
+
+Curtis's hand-drawn logo (`branding/hdt_logo.png`, the horse in a purple ring) is now every icon.
+Checked first rather than assumed: at 16 px it is a purple-and-brown blob, readable from 32 and a horse
+from 48, on light, dark and the app's sand; but 256 px is the largest it exists at (the Krita source
+is a 256 raster too), and it runs nearly to the canvas edge. So two 1024 masters, made by scaling:
+`hdt_logo_1024.png` with its margins as drawn, the source for Tauri's whole set (Windows, Linux, the
+tray - which uses the window icon - and the web), and `hdt_logo_1024_macos.png` at 824 on 1024,
+Apple's grid, for `icon.icns` alone, so the Dock icon sits at its neighbours' size. The brush strokes
+wear the 4x scale well. `tauri icon`'s android/ and ios/ output was dropped: no such app.
+
+The web gets `/favicon.ico` (16, 32, 48) and a 180 px `/apple-touch-icon.png` on the app's cream,
+since iOS paints transparency black - embedded in the binary, served from the root where browsers
+look unasked, and linked from the page. `health.cjs` checks both are served as what they claim and
+linked. `branding/README.md` has the commands to remake it all when the logo changes.
