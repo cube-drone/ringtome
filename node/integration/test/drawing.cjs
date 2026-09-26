@@ -236,4 +236,20 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         assert.notEqual((await anon(`id/${root}/docs/${post}/body`)).status, 200, "a stranger cannot read the post");
         assert.notEqual((await anon(target[1].slice(1))).status, 200, "nor fetch its picture");
     });
+
+    it("keeps a pen stroke's pressure through a save and a merge", async () => {
+        const pen = { ...stroke("d000000000000004", 9), pressure: [15, 60, 100] };
+        const made = await (await j(ada, docs(), { title: "a pressed horse", body: body([pen]), format: "drawing" })).json();
+        const read = async () => (await ada(`${docs()}/${made.doc_id}`)).json();
+        assert.equal((await read()).body, body([pen]), "saved and read back with its pressure");
+        // Fork it: the merge keeps each stroke's pressure as it was.
+        const parents = (await read()).save_parents;
+        const other = stroke("e000000000000005", 10);
+        await j(ada, `${docs()}/${made.doc_id}`, { title: "a pressed horse", body: body([pen, other]), parents, format: "drawing" }, "PUT");
+        const third = { ...stroke("f000000000000006", 11), pressure: [100, 50, 5] };
+        await j(ada, `${docs()}/${made.doc_id}`, { title: "a pressed horse", body: body([pen, third]), parents, format: "drawing" }, "PUT");
+        const merged = await read();
+        assert.equal(merged.resolution, "merged", "a real fork, merged");
+        assert.equal(merged.body, body([pen, other, third]), "every stroke's pressure intact through the merge");
+    });
 });

@@ -53,6 +53,14 @@ skip-no-op saves, head checks, sync, retention.
   the one before - which keeps a long stroke small: most steps are one or two digits.
 - **A stroke's `id`** is random (64 bits, hex), minted when the stroke is drawn; **`t`** is when.
   Together they give every device the same order: strokes sort by `(t, id)`.
+- **A pen stroke carries its pressure** (Curtis, 2026-09-26): `"pressure": [20, 55, 90]`, one whole
+  number 0-100 per point, after `points`; a mouse or finger stroke has none and is one width. The
+  stroke's `size` is its width at full pressure, and at pressure p it is `size × (0.15 + 0.85·p)` - the
+  lightest touch still leaves a line. A list that does not fit its points (the wrong length, a value
+  out of range or not whole) is dropped and the stroke kept; the node reads it by the same rule, and
+  the shared vectors hold both to it. Added without a body version: one drawing predated it.
+  The page reads `pressure` only from a pen (`pointerType`), and takes every coalesced sample, so a
+  fast pen curve stays a curve.
 - **The eraser is a stroke** with `tool: "eraser"`: drawn as `destination-out`, it removes whatever
   is under it from the strokes before it. That is what makes merge safe to be simple (below).
 

@@ -265,6 +265,156 @@
         "undone": []
       },
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "a pen stroke keeps its pressure, one per point, after its points",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "pressure": [
+              20,
+              55,
+              90
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[20,55,90]}],\"undone\":[]}"
+    },
+    {
+      "name": "pressure that does not fit its points is dropped, and the stroke kept",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "pressure": [
+              20,
+              55
+            ]
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "pressure": [
+              20,
+              150,
+              90
+            ]
+          },
+          {
+            "id": "c000000000000003",
+            "t": 3,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "pressure": [
+              20,
+              5.5,
+              90
+            ]
+          },
+          {
+            "id": "e000000000000004",
+            "t": 4,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "pressure": "hard"
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"e000000000000004\",\"t\":4,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "an eraser keeps its pressure too",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "e000000000000004",
+            "t": 2,
+            "tool": "eraser",
+            "size": 30,
+            "points": [
+              0,
+              0,
+              5,
+              5
+            ],
+            "pressure": [
+              100,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e000000000000004\",\"t\":2,\"tool\":\"eraser\",\"size\":30,\"points\":[0,0,5,5],\"pressure\":[100,0]}],\"undone\":[]}"
     }
   ],
   "merge": [
@@ -299,6 +449,14 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"a000000000000001\"]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":4,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"a000000000000001\"]}"
+    },
+    {
+      "name": "pen strokes merge with their pressure",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[10,20,30]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[90,80,70]},{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[10,20,30]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[90,80,70]},{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
     },
     {
       "name": "an unreadable head adds nothing",

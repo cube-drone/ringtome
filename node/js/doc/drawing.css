@@ -93,20 +93,16 @@
     gap: 0.6rem;
 }
 
+/* The title row is Writer's (.reader-head: the positioned parent the tags dropdown hangs from),
+   wrapping when the column is narrow. */
 .drawing-head {
-    display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
 }
 
 .drawing-head .editor-title {
     flex: 1;
     min-width: 8rem;
-}
-
-.drawing-head .editor-meta {
-    flex-basis: 100%;
 }
 
 /* The stage centres the paper and lets it grow to the space, keeping the drawing's shape. */

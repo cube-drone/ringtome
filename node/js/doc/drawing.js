@@ -27,7 +27,7 @@ import { ColourPicker } from './colourpicker.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
-import { readBody, writeBody, addStroke, undo, strokeId, encodePoints, decodePoints, MAX_SIZE, FIXED_COLOURS, recentColours } from '../pure/drawing.js';
+import { readBody, writeBody, addStroke, undo, strokeId, encodeSamples, decodePoints, pressureWidth, MAX_SIZE, FIXED_COLOURS, recentColours } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 
 const html = htm.bind(h);
@@ -38,22 +38,36 @@ const BACKING = 2;
 // ---------------------------------------------------------------------------------------------
 // Painting
 
-function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points)) {
+/// Paint one stroke. `points` are absolute [x, y]; `pressure` (0..100 per point) makes a pen stroke's
+/// width follow the pen - painted segment by segment, each as wide as the average of its two ends,
+/// with round caps so the joins close. Without it, one path at one width.
+function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), pressure = stroke.pressure) {
     ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
     ctx.strokeStyle = ctx.fillStyle = stroke.tool === 'eraser' ? '#000' : stroke.color;
-    ctx.lineWidth = stroke.size * scale;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    const width = (i) => stroke.size * scale * (pressure ? pressureWidth(pressure[i]) : 1);
     if (points.length === 1) {
         ctx.beginPath();
-        ctx.arc(points[0][0] * scale, points[0][1] * scale, (stroke.size * scale) / 2, 0, Math.PI * 2);
+        ctx.arc(points[0][0] * scale, points[0][1] * scale, width(0) / 2, 0, Math.PI * 2);
         ctx.fill();
         return;
     }
-    ctx.beginPath();
-    ctx.moveTo(points[0][0] * scale, points[0][1] * scale);
-    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
-    ctx.stroke();
+    if (!pressure) {
+        ctx.lineWidth = width(0);
+        ctx.beginPath();
+        ctx.moveTo(points[0][0] * scale, points[0][1] * scale);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
+        ctx.stroke();
+        return;
+    }
+    for (let i = 1; i < points.length; i++) {
+        ctx.lineWidth = (width(i - 1) + width(i)) / 2;
+        ctx.beginPath();
+        ctx.moveTo(points[i - 1][0] * scale, points[i - 1][1] * scale);
+        ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
+        ctx.stroke();
+    }
 }
 
 /// Every standing stroke, in order, onto a canvas that holds only strokes.
@@ -220,6 +234,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const drawing = useMemo(() => readBody(session.body), [session.body]);
     const [tools, setTools] = useTools();
     const [showMeta, setShowMeta] = useState(false);
+    // The tags panel is Writer's dropdown, anchored to the title row (`.reader-head` is its
+    // positioned parent) and dismissed the way Writer's is: a mousedown outside it and its chip.
+    const metaChipRef = useRef(null);
+    const metaPanelRef = useRef(null);
+    useEffect(() => {
+        if (!showMeta) return undefined;
+        const onDown = (e) => {
+            const inChip = metaChipRef.current && metaChipRef.current.contains(e.target);
+            const inPanel = metaPanelRef.current && metaPanelRef.current.contains(e.target);
+            if (!inChip && !inPanel) setShowMeta(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [showMeta]);
     const canvasRef = useRef(null);
     const cursorRef = useRef(null);
     const live = useRef(null); // the stroke being drawn: { stroke, points }
@@ -254,35 +282,49 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         cursor.style.display = 'block';
     };
 
+    // A sample is [x, y] in the drawing's units, plus the pen's pressure (0..1) when a pen drew it -
+    // the Pointer Events API carries it on every event; a mouse reports a flat 0.5 and a finger
+    // whatever its screen says, so only a pen's is believed. A pen stroke's width follows it.
+    const sampleOf = (e, pen) => (pen ? [...toDrawing(e), e.pressure] : toDrawing(e));
+    const asPressure = (sample) => (sample.length > 2 ? Math.round(sample[2] * 100) : undefined);
+
     const onPointerDown = (e) => {
         if (!opened || e.button > 0) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
-        const first = toDrawing(e);
+        const pen = e.pointerType === 'pen';
+        const first = sampleOf(e, pen);
         const stroke = { id: strokeId(), t: Date.now(), tool: tools.tool, size: Math.round(size) };
         if (tools.tool === 'brush') stroke.color = tools.color;
-        live.current = { stroke, points: [first] };
+        live.current = { stroke, pen, samples: [first] };
         const ctx = canvasRef.current.getContext('2d');
-        paintStroke(ctx, stroke, BACKING, [first]);
+        paintStroke(ctx, stroke, BACKING, [first], pen ? [asPressure(first)] : undefined);
     };
 
     const onPointerMove = (e) => {
         moveCursor(e);
         const l = live.current;
         if (!l) return;
-        const next = toDrawing(e);
-        const last = l.points[l.points.length - 1];
-        if (Math.abs(next[0] - last[0]) < 0.5 && Math.abs(next[1] - last[1]) < 0.5) return;
-        l.points.push(next);
         const ctx = canvasRef.current.getContext('2d');
-        paintStroke(ctx, l.stroke, BACKING, [last, next]);
+        // Every sample the browser gathered since the last frame, not just the last one: a pen
+        // reports far faster than the screen draws, and a fast curve drawn from frame-rate samples
+        // comes out as straight lines.
+        const events = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
+        for (const ev of events.length ? events : [e]) {
+            const next = sampleOf(ev, l.pen);
+            const last = l.samples[l.samples.length - 1];
+            if (Math.abs(next[0] - last[0]) < 0.5 && Math.abs(next[1] - last[1]) < 0.5) continue;
+            l.samples.push(next);
+            paintStroke(ctx, l.stroke, BACKING, [last, next], l.pen ? [asPressure(last), asPressure(next)] : undefined);
+        }
     };
 
     const finishStroke = () => {
         const l = live.current;
         live.current = null;
         if (!l) return;
-        const stroke = { ...l.stroke, points: encodePoints(l.points) };
+        const { points, pressure } = encodeSamples(l.samples);
+        const stroke = { ...l.stroke, points, ...(pressure ? { pressure } : {}) };
         session.setBody(writeBody(addStroke(drawing, stroke)));
         session.touched();
     };
@@ -353,7 +395,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               </p>
           </aside>${resizer('tools')}`;
 
-    const header = html`<header class="drawing-head">
+    const header = html`<header class="reader-head drawing-head">
         <input
             class="editor-title"
             value=${session.title}
@@ -401,15 +443,17 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                     ? html`<${Icons.warn} />`
                     : html`<span class="status-spin"><${Icons.spinner} /></span>`}
             </${Chip}>
-            <${Chip}
-                icon=${Icons.tag}
-                on=${showMeta}
-                title=${t('doc.drawing.tags', 'tags, date & description')}
-                onClick=${() => setShowMeta((v) => !v)}
-            />
+            <span class="editor-meta-anchor" ref=${metaChipRef}>
+                <${Chip}
+                    icon=${Icons.tag}
+                    on=${showMeta}
+                    title=${t('doc.drawing.tags', 'tags, date & description')}
+                    onClick=${() => setShowMeta((v) => !v)}
+                />
+            </span>
             <${NavChips} nav=${nav} />
         </span>
-        ${showMeta && html`<div class="editor-meta"><${Annotations} root=${root} docId=${docId} /></div>`}
+        ${showMeta && html`<div class="editor-meta" ref=${metaPanelRef}><${Annotations} root=${root} docId=${docId} /></div>`}
         ${session.error && html`<p class="form-error">${session.error}</p>`}
         ${actionError && html`<p class="form-error">${actionError}</p>`}
     </header>`;

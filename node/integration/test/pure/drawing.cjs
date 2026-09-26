@@ -156,3 +156,25 @@ describe("a drawing's recent colours", () => {
         assert.deepEqual(d.recentColours(d.blankDrawing()), []);
     });
 });
+
+// Pressure (Curtis, 2026-09-26): a pen stroke keeps one 0..100 per point; a mouse stroke keeps none.
+describe('a pen stroke', () => {
+    it('keeps a pressure for every point it keeps, in step even when a repeat is dropped', () => {
+        const { points, pressure } = d.encodeSamples([[10, 10, 0.2], [12, 11, 0.5], [12, 11, 0.9], [15, 11, 1.4]]);
+        assert.deepEqual(points, [10, 10, 2, 1, 3, 0]);
+        assert.deepEqual(pressure, [20, 50, 100], 'the repeat left with its pressure; full is 100');
+    });
+
+    it('has no pressure when drawn with a mouse, or when any sample lacks one', () => {
+        assert.equal(d.encodeSamples([[1, 1], [2, 2]]).pressure, null);
+        assert.equal(d.encodeSamples([[1, 1, 0.5], [2, 2]]).pressure, null);
+        assert.deepEqual(d.encodeSamples([[4, 4]]).points, [4, 4], 'a dab');
+    });
+
+    it('is never thinner than a hair, and full width at full pressure', () => {
+        assert.equal(d.pressureWidth(100), 1);
+        assert.ok(Math.abs(d.pressureWidth(0) - 0.15) < 1e-9);
+        assert.ok(d.pressureWidth(50) > d.pressureWidth(10));
+        assert.equal(d.pressureWidth(500), 1, 'clamped');
+    });
+});

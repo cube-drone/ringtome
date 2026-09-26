@@ -26,6 +26,8 @@ pub const CANVAS_HEIGHT: i64 = 600;
 pub const BACKGROUND: &str = "#fffefb";
 /// The largest brush or eraser, in canvas units.
 pub const MAX_SIZE: i64 = 200;
+/// A pen's pressure at a point: a whole number from 0 (the lightest touch) to 100 (full).
+pub const MAX_PRESSURE: i64 = 100;
 /// JavaScript's `Number.MAX_SAFE_INTEGER`: the largest whole number the browser writes exactly.
 const MAX_SAFE: i64 = (1 << 53) - 1;
 
@@ -40,6 +42,10 @@ pub struct Stroke {
     pub size: i64,
     /// Delta-coded: the first point absolute, every later one the step from the one before.
     pub points: Vec<i64>,
+    /// A pen stroke's pressure, one 0..=100 per point; absent for a mouse or a finger, whose stroke
+    /// is one width throughout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pressure: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -111,7 +117,13 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
     } else {
         Some(o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string())
     };
-    Some(Stroke { id, t, tool, color, size, points })
+    // A pressure list that does not fit its points is dropped, not the stroke (pure/drawing.js).
+    let pressure = o
+        .get("pressure")
+        .and_then(Value::as_array)
+        .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
+        .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
+    Some(Stroke { id, t, tool, color, size, points, pressure })
 }
 
 fn order(a: &Stroke, b: &Stroke) -> std::cmp::Ordering {

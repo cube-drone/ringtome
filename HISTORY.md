@@ -11073,3 +11073,24 @@ claimed date - a past date dates the post, a future one is refused in words, sin
 words and drawings have none. The drawing's tools column lost its publish and copy buttons; the title
 row gained copy-a-picture, duplicate and Writer's save-status chip. `drawing.cjs` grew two claims:
 wishes, dates and the change stamp; trusted only sealing the post and its picture.
+
+The drawing's tag chip did nothing visible (Curtis): the tags panel is Writer's absolutely-positioned
+dropdown, hung from the title row - and `.reader-head`, which the drawing's title row did not wear,
+is what makes that row its positioned parent. The panel was placing itself against some distant
+ancestor instead. The drawing's title row is now a `reader-head` (Writer's anchor and look), the chip
+sits in Writer's anchor span, and a mousedown outside closes the panel as Writer's does.
+
+## 2026-09-26 (cont.): pen pressure
+
+Browsers carry a pen's pressure on every pointer event (Pointer Events: `pressure`, with
+`pointerType` saying it is a pen), and Curtis asked for it. A pen stroke now keeps one whole 0-100
+per point beside its points; its `size` becomes its width at full pressure, and each segment is
+painted at the average of its ends (never thinner than 15% - a light touch still marks). Only a pen's
+pressure is believed - a mouse reports a flat 0.5 - and the surface now takes every coalesced sample,
+since a pen reports far faster than frames and a fast curve drawn from frame-rate samples flattens.
+No new body version, by Curtis's word (one drawing predated it): the field is optional, and a list
+that does not fit its points is dropped with the stroke kept - by the same rule in `pure/drawing.js`
+and `drawing.rs`, held by new vector cases (the old cases' bytes unchanged; red with the node
+dropping pressure). `drawing.cjs` checks pressure survives a save and a real merge. Not yet drawn
+with a real pen - Chromium browsers and iPad Safari are the likeliest to report it, and the desktop
+app's macOS and Linux webviews are worth a test.

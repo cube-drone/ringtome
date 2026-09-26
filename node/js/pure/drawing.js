@@ -37,6 +37,42 @@ export function blankDrawing() {
 // ---------------------------------------------------------------------------------------------
 // Points: delta-coded integers, [x0, y0, dx1, dy1, dx2, dy2, ...]
 
+/// A pen's pressure, as a stroke stores it: a whole number from 0 (the lightest touch) to 100 (full).
+export const MAX_PRESSURE = 100;
+
+/// Samples as the pointer gave them - [x, y] from a mouse or finger, [x, y, pressure 0..1] from a
+/// pen - to the stored form: `points` delta-coded as `encodePoints` makes them, and `pressure` one
+/// whole 0..100 per KEPT point (a repeated position is dropped with its pressure, so the two lists
+/// stay in step), or null when any sample has no pressure - a mouse stroke is one width throughout.
+export function encodeSamples(samples) {
+    const pen = samples.length > 0 && samples.every((s) => Number.isFinite(s[2]));
+    const points = [];
+    const pressure = [];
+    let px = 0;
+    let py = 0;
+    for (let i = 0; i < samples.length; i++) {
+        const x = Math.round(samples[i][0]);
+        const y = Math.round(samples[i][1]);
+        if (i === 0) {
+            points.push(x, y);
+        } else if (x !== px || y !== py) {
+            points.push(x - px, y - py);
+        } else {
+            continue;
+        }
+        if (pen) pressure.push(Math.max(0, Math.min(MAX_PRESSURE, Math.round(samples[i][2] * MAX_PRESSURE))));
+        px = x;
+        py = y;
+    }
+    return { points, pressure: pen ? pressure : null };
+}
+
+/// How wide a stroke is at a pressure, as a share of its `size` (its width at full pressure). Never
+/// nothing: the lightest touch still leaves a line.
+export function pressureWidth(pressure) {
+    return 0.15 + 0.85 * (Math.max(0, Math.min(MAX_PRESSURE, pressure)) / MAX_PRESSURE);
+}
+
 /// Absolute points [[x, y], ...] (any numbers) to the stored form: rounded to whole canvas units,
 /// the first absolute and every later one the step from the one before. A step of zero in both is
 /// dropped - it paints nothing - except that a lone point (a dab) keeps itself.
@@ -158,9 +194,17 @@ function asStroke(s) {
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
     if (!Array.isArray(s.points) || s.points.length < 2 || !s.points.every(Number.isSafeInteger)) return null;
-    if (s.tool === 'eraser') return { id: s.id, t: s.t, tool: 'eraser', size: s.size, points: s.points };
+    // A pen's pressure: one whole 0..100 per point. A list that does not fit its points is dropped,
+    // not the stroke - the stroke still paints, one width throughout.
+    const pressure =
+        Array.isArray(s.pressure) &&
+        s.pressure.length === Math.floor(s.points.length / 2) &&
+        s.pressure.every((p) => Number.isSafeInteger(p) && p >= 0 && p <= MAX_PRESSURE)
+            ? { pressure: s.pressure }
+            : {};
+    if (s.tool === 'eraser') return { id: s.id, t: s.t, tool: 'eraser', size: s.size, points: s.points, ...pressure };
     if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
-    return { id: s.id, t: s.t, tool: 'brush', color: s.color, size: s.size, points: s.points };
+    return { id: s.id, t: s.t, tool: 'brush', color: s.color, size: s.size, points: s.points, ...pressure };
 }
 
 /// The merge of any number of versions of one drawing: every stroke of any of them, minus every
