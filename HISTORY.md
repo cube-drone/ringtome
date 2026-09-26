@@ -10915,3 +10915,19 @@ What stays: the registration policy and its page, for servers; a device's sign-u
 default, which also shuts the door another program on the same computer could have registered
 through; the Backups page on both, with a desktop showing an archive in the file manager through
 `shell.rs`, whose one request is now `Reveal`. On a desktop the Device app offers Backups only.
+
+## 2026-09-26: 0.1.11 held back whole - the gate's first catch
+
+0.1.11's two server jobs failed at Package: `cp: cannot stat target/release/ringtome-supervisor`.
+The build line was `-p ringtome-node --bin ringtome -p ringtome-supervisor`, and `--bin` applies to
+every package on the line, so the supervisor's package was narrowed to a binary it does not have and
+built nothing - confirmed locally, where that line compiles the node and never the supervisor. It now
+names both binaries. The glibc step before Package had passed over the missing file, because an empty
+version made `[ "" -gt 28 ]` err to false inside its `if`; it now fails on a binary that is not there
+or yields no glibc version (both refusals exercised locally with stand-ins).
+
+The all-or-nothing gate's first real test, and it held: all three desktop builds succeeded, the
+server jobs did not, `publish` was skipped, and nothing of 0.1.11 appeared anywhere - 0.1.10 stayed
+the latest release. Re-running cannot rescue 0.1.11 (a re-run reads the workflow at its tag, which has
+the broken line), so the fix ships as the next release; the `v0.1.11-heave-print` tag stays behind
+with no release.

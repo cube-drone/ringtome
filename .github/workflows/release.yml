@@ -454,17 +454,32 @@ jobs:
 
       # The supervisor rides in the same tarball: the stable parent that runs, updates and backs up
       # the node (SERVER.md, "The supervisor"). Same versions, same glibc floor, same job.
+      #
+      # BOTH binaries by name: `--bin` applies to every `-p` on the line, so `--bin ringtome` alone
+      # quietly narrowed the supervisor's package to a binary it does not have and built nothing
+      # for it (0.1.11's release, 2026-09-26: `cp: cannot stat target/release/ringtome-supervisor`).
       - name: Build the server node and its supervisor
-        run: cargo build --release --locked -p ringtome-node --bin ringtome -p ringtome-supervisor
+        run: cargo build --release --locked -p ringtome-node -p ringtome-supervisor --bin ringtome --bin ringtome-supervisor
 
       # The promise this job exists to keep, checked rather than assumed: the newest glibc symbol
       # the binary asks for.
       - name: glibc baseline
         run: |
           for binary in ringtome ringtome-supervisor; do
+            # A binary that is not there, or that names no glibc symbol, is a failed check - not a
+            # pass. Without this, a missing file read as "" and `[ "" -gt 28 ]` erred to false
+            # inside the `if`, and the step went green over nothing (2026-09-26).
+            if [ ! -f "target/release/$binary" ]; then
+              echo "::error::target/release/$binary was not built"
+              exit 1
+            fi
             newest=$(objdump -T "target/release/$binary" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
             minor=$(printf '%s' "$newest" | cut -d_ -f2 | cut -d. -f2)
             echo "$binary: newest glibc symbol $newest"
+            if ! [ "$minor" -ge 0 ] 2>/dev/null; then
+              echo "::error::could not read a glibc version from $binary ('$newest')"
+              exit 1
+            fi
             if [ "$minor" -gt 28 ]; then
               echo "::error::$binary needs $newest, newer than the 2.28 baseline"
               exit 1
