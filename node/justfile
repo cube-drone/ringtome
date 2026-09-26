@@ -58,6 +58,9 @@ int_d := shell('echo $(( $1 + 24 ))', port_base)
 # 4-hop cascade tests need four p2p-capable nodes, and delta - deliberately dark - cannot
 # dial or be dialled, which is its whole job.
 int_e := shell('echo $(( $1 + 27 ))', port_base)
+# The node supervisor.cjs runs under ringtome-supervisor. The TEST starts it (the supervisor is
+# the thing under test, so the rig cannot boot it), on this port, in its own temp directory.
+int_sup := shell('echo $(( $1 + 28 ))', port_base)
 
 # List available recipes.
 default:
@@ -689,7 +692,7 @@ integration: build
     cd "{{justfile_directory()}}/integration"
     RINGTOME_TEST_HOST="127.0.0.1:$pa" RINGTOME_TEST_HOST_B="127.0.0.1:$pb" \
         RINGTOME_TEST_HOST_C="127.0.0.1:$pc" RINGTOME_TEST_HOST_DARK="127.0.0.1:$pd" \
-        RINGTOME_TEST_HOST_E="127.0.0.1:$pe" \
+        RINGTOME_TEST_HOST_E="127.0.0.1:$pe" RINGTOME_TEST_SUPERVISOR_PORT={{int_sup}} \
         RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" \
         RINGTOME_TEST_DATA_DIR="{{workspace}}/{{test_data}}" npm test -- ${RINGTOME_TEST_GREP:+--grep "$RINGTOME_TEST_GREP"}
 
@@ -749,8 +752,8 @@ ports:
     echo ""
     echo "dev          :{{port}}..$(( {{port_base}} + 16 ))   just start / start-two / start-three / start-n"
     echo "scratch      :$(( {{port_base}} + 17 ))..$(( {{port_base}} + 19 ))   just scratch 1|2|3"
-    echo "integration  :{{int_a}}..{{int_d}}   just integration / just ci"
-    echo "spare        :$(( {{port_base}} + 25 ))..$(( {{port_base}} + 31 ))   mainline-smoke takes +25/+26"
+    echo "integration  :{{int_a}}..{{int_d}}, :{{int_e}}, :{{int_sup}}   just integration / just ci (the last two sit in the spare lane)"
+    echo "spare        :$(( {{port_base}} + 25 ))..$(( {{port_base}} + 31 ))   mainline-smoke takes +25/+26; integration +27/+28"
     echo ""
     echo "dev and integration are different lanes: a playground can stay up through a full ci run."
 

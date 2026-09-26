@@ -311,7 +311,8 @@ certificate Microsoft issues is valid for **three days** — every signature is 
 
 The same key signs every `ringtome-server-…tar.gz` (the `server-publish` job, the one server job in the
 `deploy` environment), and `server-latest.json` carries those signatures for the server's own updater
-- the supervisor (NEXT_STEPS, *Server nodes*). One key, one public half, two kinds of update. The job
+- `ringtome-supervisor` (`supervisor/src/manifest.rs`, `verify`; the public half is compiled into
+`supervisor/src/config.rs`). One key, one public half, two kinds of update. The job
 verifies every signature with the stock `minisign` tool against the public key committed in
 `desktop/tauri.conf.json` before it uploads anything.
 

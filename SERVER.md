@@ -9,7 +9,7 @@ Each release on GitHub carries two kinds of download, and it is worth knowing wh
 | file | what it is |
 |---|---|
 | `Horse Drawing Tycoon 2_…` (`.dmg`, `.exe`, `.msi`, `.AppImage`, `.deb`, `.rpm`) | the **desktop app**: a window, a tray, updates itself |
-| `ringtome-server-<version>-<name>-linux-<arch>.tar.gz` | the **server node**: one binary, no window, for a Linux host |
+| `ringtome-server-<version>-<name>-linux-<arch>.tar.gz` | the **server node** for a Linux host, no window: `ringtome` (the node) and `ringtome-supervisor` (which keeps it running, updated and backed up) |
 
 The server node also ships as a container image: `ghcr.io/cube-drone/ringtome:<version>` (and
 `:latest`), for `linux/amd64` and `linux/arm64`.
@@ -42,9 +42,11 @@ cosign verify ghcr.io/cube-drone/ringtome:<version> \
 
 ## Which to use
 
-**The container**, if you already deploy with Docker or anything that runs OCI images. **The
-binary**, if you would rather run it under systemd directly: it needs nothing but a Linux with
-glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04 and everything after), on x86_64 or aarch64.
+**The container**, if you already deploy with Docker or anything that runs OCI images - updating
+it is your container tooling's job. **The supervisor**, if you want a node that keeps itself up to
+date and backed up on a plain Linux host. **The binary alone**, if you would rather do all of that
+yourself. The tarball needs nothing but a Linux with glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu
+20.04 and everything after), on x86_64 or aarch64.
 
 ## The container
 
@@ -70,7 +72,59 @@ RINGTOME_BIND_ADDRESS=0.0.0.0 RINGTOME_DATA_DIRECTORY=/var/lib/ringtome \
 ```
 
 A release binary is a production node on the public network by default. Supervise it the way you
-supervise anything else (a systemd unit, `Restart=always`).
+supervise anything else (a systemd unit, `Restart=always`) - or let the supervisor do it.
+
+## The supervisor
+
+`ringtome-supervisor` is a small program that runs the node as its child and does the three things
+a node on a server needs and systemd cannot know how to do:
+
+- **keeps it running**: restarts the node when it exits, waiting a little longer after each quick
+  crash (up to a minute);
+- **keeps it current**: checks `server-latest.json` hourly, and installs a newer release only after
+  checking its sha256 **and** its signature against the release key built into the supervisor;
+- **keeps it safe to update**: backs the node up before each update, starts the new version, and
+  waits for it to answer `/health` and stay healthy for a minute. If it doesn't, the supervisor
+  **rolls back** - the previous binary *and* the backup, since nothing migrates down - and never
+  tries that version again. A newer release is tried, since it may be the fix.
+
+The backup before an update is taken live through the node's own backup endpoint, so the node only
+stops for the swap; if the node won't answer, it is stopped and its data directory archived directly.
+No backup, no update - unless you turn backups off (below). A restore moves the data directory's
+contents aside into `.rollback-<time>` first, and removes that once the restored node is healthy.
+
+The supervisor does not update itself. It is meant to change rarely; replace it by hand from a newer
+tarball when a release says to.
+
+```ini
+# /etc/systemd/system/ringtome.service
+[Unit]
+Description=Ringtome server node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ringtome
+WorkingDirectory=/var/lib/ringtome
+ExecStart=/opt/ringtome/ringtome-supervisor
+Environment=RINGTOME_BIND_ADDRESS=0.0.0.0
+Environment=RINGTOME_P2P_PORT=5282
+Environment=RINGTOME_PUBLIC_URL=https://node.example.com
+Restart=always
+# Long enough for the node's own grace period (RINGTOME_STOP_GRACE_SECONDS).
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target
+```
+
+With that unit, the node's data is `/var/lib/ringtome/data`, installed versions and the state file
+are in `/var/lib/ringtome/ringtome-supervisor/`, and backups go to
+`/var/lib/ringtome/ringtome-supervisor/backups/`. On first start the supervisor adopts the `ringtome`
+it was unpacked beside, so the node you checked is the one that runs; after that it downloads its
+own. Everything the node reads from the environment is passed through, so configure the node here
+exactly as you would without the supervisor. `state.json` says what is running, what ran before, and
+what was skipped; `node.pid` holds the node's process id.
 
 ## HTTPS is required - and it is yours
 
@@ -117,10 +171,11 @@ the most such a request can do is start a backup, never read one.
 
 ## Upgrading
 
-An upgrade is a restart onto a newer binary or image: the node brings its databases forward
-(migrations run on start), and that is the whole procedure. **There is no going back** - a node
-refuses to open databases a newer version has already upgraded, since nothing migrates down. So take
-a copy of the data directory before each upgrade; it is your rollback.
+Under the supervisor, upgrading is automatic (above). Otherwise, an upgrade is a restart onto a
+newer binary or image: the node brings its databases forward (migrations run on start), and that is
+the whole procedure. **There is no going back** - a node refuses to open databases a newer version
+has already upgraded, since nothing migrates down. So take a backup before each upgrade; it is your
+rollback.
 
 ## Settings
 
@@ -145,3 +200,21 @@ Everything is an environment variable. The ones an operator is likely to want:
 
 The rest (sync and admission budgets, proof-of-work prices) have defaults sized for a small hosted
 node and are documented where they are read, in `node/src/config.rs`.
+
+The supervisor reads these as well (and `RINGTOME_DATA_DIRECTORY`, `RINGTOME_BIND_ADDRESS` and
+`RINGTOME_PORT` above, to find the node):
+
+| variable | default | meaning |
+|---|---|---|
+| `RINGTOME_SUPERVISOR_DIRECTORY` | `./ringtome-supervisor` | installed node versions, `state.json`, `node.pid` |
+| `RINGTOME_BACKUP_DIRECTORY` | `<supervisor directory>/backups` | as above; under the supervisor it must be **outside** the data directory, since a restore replaces the data directory's contents |
+| `RINGTOME_BACKUP_STRATEGY` | `on-update` | `on-update` (before each update), `hourly`, `nightly` (04:00 UTC) - the last two also back up before updates - or `none`, which updates without a backup: a failed update then rolls back the binary but not the data, and the older binary will refuse data the newer one migrated |
+| `RINGTOME_BACKUP_RETENTION` | `7` | how many `backup_*.tar.gz` to keep, newest first - including ones you made by hand |
+| `RINGTOME_AUTO_UPDATE` | `true` | `false` runs the installed node and never looks for another |
+| `RINGTOME_UPDATE_CHECK_SECONDS` | `3600` | how often to look for a release |
+| `RINGTOME_UPDATE_HEALTH_TIMEOUT_SECONDS` | `600` | how long a new version has to answer `/health` (migrations run first) |
+| `RINGTOME_UPDATE_PROBATION_SECONDS` | `60` | how long it must then stay up and healthy |
+| `RINGTOME_STOP_GRACE_SECONDS` | `30` | how long the node gets to exit after SIGTERM |
+| `RINGTOME_UPDATE_MANIFEST_URL` | this repository's `server-latest.json` | where releases are described - for a fork's own releases |
+| `RINGTOME_UPDATE_PUBLIC_KEY` | this repository's release key | the minisign public key releases must be signed with - for a fork's own releases |
+| `RINGTOME_SUPERVISOR_LOG` | `info` | the supervisor's own log filter |

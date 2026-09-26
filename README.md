@@ -130,6 +130,7 @@ PROJECT_PLAN section.
 |---|---|
 | `proto/` | **ringtome-proto** — the protocol layer: canonical bytes, signing, chains, the key tree, sync messages, serving records. Pure (no IO); the conformance boundary. See [`proto/README.md`](proto/README.md). |
 | `node/` | **ringtome-node** — the connector node: HTTP server, accounts, storage, iroh sync, discovery, ingest, and the embedded Preact UI (`node/js`, `node/html`, baked into the binary). The one binary. See [`node/README.md`](node/README.md). |
+| `supervisor/` | **ringtome-supervisor** — the stable parent of a server node: runs it, installs signed releases, backs it up, rolls a failed update back (binary and data). Shares a wire contract with the node, not code. See [`supervisor/README.md`](supervisor/README.md). |
 | `node/integration/` | The JS integration suite: boots real nodes, drives real HTTP, proves multi-node scenarios (`just integration`). |
 | `spec/` | Test vectors ("this logical value MUST produce exactly these bytes"). Prose specs land here too, eventually. |
 | `video-ingest/` | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README. |

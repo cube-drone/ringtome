@@ -31,6 +31,7 @@ const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8'
 const VERSIONED = [
     { file: 'node/Cargo.toml', find: /^version = "([^"]+)"$/m, source: true },
     { file: 'proto/Cargo.toml', find: /^version = "([^"]+)"$/m },
+    { file: 'supervisor/Cargo.toml', find: /^version = "([^"]+)"$/m },
     { file: 'desktop/Cargo.toml', find: /^version = "([^"]+)"$/m },
     { file: 'desktop/tauri.conf.json', find: /"version": "([^"]+)"/ },
     { file: 'node/js/package.json', find: /"version": "([^"]+)"/ },

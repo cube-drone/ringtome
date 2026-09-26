@@ -1,0 +1,33 @@
+[package]
+name = "ringtome-supervisor"
+version = "0.1.10"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Keeps a Ringtome server node running, current, and backed up (see SERVER.md)."
+
+# Deliberately NOT a dependent of ringtome-node: the supervisor is the stable parent that
+# outlives many node versions, so it must not drag the node's whole tree (iroh, codecs, the
+# database engine) into a program whose job is to be small and rarely change. What the two share
+# is a wire contract - `/health`, `/api/admin/backup`, the release manifest - not code.
+[dependencies]
+anyhow = "1"
+base64 = "0.22.1"
+flate2 = "1.1.9"
+hex = "0.4"
+libc = "0.2"
+minisign-verify = "0.2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tar = "0.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time", "signal", "fs", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# Signing, for the verification tests only: the supervisor itself never holds a secret key.
+blake2 = "0.10"
+ed25519-dalek = "2"

@@ -120,10 +120,14 @@ and then an easy path for people who want one.
 * ~~**Backups, the node's half**~~ built 2026-09-25: `POST /api/admin/backup` (the machine itself
   or a node admin) packs the running node into `backup_<UTC>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY`,
   as a ticket that reports progress; `backup.cjs` restores one and finds the post it published.
-* **An easy path, later** - documented sample compose files (with and without a bundled HTTPS
-  proxy), and a small supervisor that fetches and verifies new binaries (the desktop updater's
-  minisign key and manifest), takes a backup of the data directory before each upgrade (the
-  migration ladder never goes back down), and restarts the node.
+* ~~**The supervisor**~~ built 2026-09-25: `supervisor/`, shipped in the server tarball. Runs and
+  restarts the node, installs releases that pass the sha256 and the release key, backs up before
+  each update, and rolls a failed one back (binary and data); `supervisor.cjs` proves it with a real
+  node and a deliberately broken release. Unproven against real GitHub until a tag publishes
+  `server-latest.json`.
+* **Sample compose files** - documented, with and without a bundled HTTPS proxy.
+* **A wedged node** - the supervisor restarts a node that exits, not one that stays up and stops
+  answering `/health`; a liveness watchdog is the missing half, if a wedge is ever seen.
 
 ### Marquee Promises
 * Marquee provides fixtures for drop-in functionality: do we still have a use for those?

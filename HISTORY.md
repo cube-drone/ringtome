@@ -10781,3 +10781,38 @@ The container image is signed keylessly with cosign (Sigstore): the workflow's G
 becomes a short-lived certificate for "cube-drone/ringtome's release workflow at this tag", and the
 image is signed by digest, never by tag. SERVER.md has the verification commands for both; SIGNING.md
 records that the updater key now signs two kinds of update.
+
+## 2026-09-25 (cont.): ringtome-supervisor
+
+The stable parent a server node was missing: `supervisor/`, a new workspace crate, shipped in every
+server tarball beside `ringtome`. Deliberately not a dependent of the node - it outlives many node
+versions, so it shares a wire contract (`/health`, `/api/admin/backup`, `server-latest.json`) rather
+than code, and builds in seconds. It runs the node as its child and restarts it with backoff; polls
+the manifest hourly and installs a newer release only after the sha256 AND the minisign signature
+against the release key compiled into it (the desktop updater's key - a unit test reads
+`desktop/tauri.conf.json` and fails if the two ever drift, red when planted); backs up before each
+update (live through the node's endpoint, falling back to archiving a stopped data directory - no
+backup, no update); starts the new version and holds it to `/health` plus a probation minute; and
+on failure rolls back BOTH halves - the previous binary and the backup, since nothing migrates down -
+and skips that version for good. An update is recorded as pending before the new version starts, so a
+supervisor killed mid-update proves it again on its next start instead of trusting it. Backups follow
+Curtis's shape: `RINGTOME_BACKUP_STRATEGY` none/on-update/hourly/nightly, `RINGTOME_BACKUP_RETENTION`
+7; under the supervisor the backup directory defaults outside the data directory and is refused
+inside it, because a restore replaces the data directory's contents (moved aside into
+`.rollback-<time>`, a rename even on a mount point, and cleared once the restored node is healthy).
+On first start it adopts the `ringtome` it was unpacked beside, as its own version (one job builds
+both from one commit). On Linux the child gets `PR_SET_PDEATHSIG`, which is per-thread - hence a
+current-thread runtime.
+
+`supervisor.cjs` plays GitHub: a loopback server with a manifest and tarballs signed the way `tauri
+signer sign` signs (Node's crypto, an implementation independent of the verifier), a real
+`target/debug/ringtome` inside every good release, and a broken one that scribbles in the data
+directory and dies. One story: the first install comes up; a stranger-signed release is refused and
+not skipped; the broken release is rolled back - binary, data (its scribble gone, a pre-update marker
+back), aside directory cleared, never retried; the next good release goes in with the previous kept;
+SIGTERM takes the node down too. Red with the restore planted out. The test's node sits on a new rig
+port, `+28` in the spare lane (`just ports`). The release job builds, glibc-checks and packs both
+binaries; SERVER.md has the supervisor section, a systemd unit, and its settings.
+`supervisor/README.md` is the operator's and contributor's guide: what it is for, a deploy from
+download to systemd, its settings, how to update the supervisor itself (by hand, on purpose), and
+the crate's own rules.
