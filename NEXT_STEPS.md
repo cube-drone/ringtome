@@ -8,12 +8,26 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ## Near-Term Goals
 
+### Launch to Website
+* Actually Deploy the Thing (Registration Off)
+* API Keys for automated autopost?
+* Logging & graphs
+* "Attract Mode"
+ * Select a user as the "primary display user"
+ * Let them choose a front page document or use their top pin or something.
+ * An automatically generated "get started with HDT" page that contains links to the HDT deliverables?
+   OR special marquee tags for HDT deliverables
+* RSS for website users
+
+### Actual Horse Drawing & Tycooning
+* Drawing app
+* Multiplayer Drawing App (use chat as the heart)
+* HorseBucks and Other Currencies
+
 ### Chat
-* 2-way encrypted p2p chats (we already have most of this)
 * Opus took a crack at fixing chat search losing visible context, but wasn't smart enough; revisit with Fable
 
 ### Notifications
-* Have the app pop a real notification when stuff happens
 * Change the favicon when stuff happens
 
 ### Localization
@@ -63,11 +77,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * storage management
 * reporting flow
 * full-node blocks ("do not carry this user")
-* **Hosted Deploy Story** - Ringtome on docker hub, with deployment instructions
 * Registration management:
   * Capped registrations (We can only have 30 accounts on this node)
-  * Closed nodes (no registration)
-  * Invite nodes (registration with invites from node op)
   * Viral nodes (registration with invites from anybody on the node already)
   * Slow-viral nodes (^ they only get limited registration codes)
   * Trust nodes (registration if the node has already heard of you and trusts you)
@@ -99,40 +110,14 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 *  a mp3 browser
 
 ### Desktop
-Settled, staged and under way in [DESKTOP.md](DESKTOP.md): Tauri v2 with the node linked in,
-one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
-* ~~Stage 2 — the shell, in-process, dev only~~ built 2026-09-21: `just desktop`
-* ~~Stage 3 — the per-launch token, and no login screen~~ built 2026-09-21
-* ~~Stage 4 — packaging and signing~~ built 2026-09-22/23: `just release-*`, Mac signed and
-  notarized, Windows signing by Azure OIDC (its first signed run is the proof still owed)
-* ~~Stage 5 — autostart and the tray~~ built 2026-09-24: `desktop/src/tray.rs`; close hides,
-  start at login on by default, one instance, quiet restart for updates
-* ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
-  update-on-quit; proven only once two releases carry it
 * **Local accounts, shaped later** (Curtis, 2026-09-25): signing in to the desktop app with a
   password instead of the launch token's auto-login, and whether one computer should host several
   people's accounts at all. A first cut (the app listening on the LAN) guessed the second one wrong
   and came out again; nothing is needed yet.
-* **Prove all-or-nothing releases on the next tag** (built 2026-09-25): the first run of the
-  `publish` job - the draft, `crane tag` on the digest-only image, the flip. Its first test is a
-  real partial failure: kill one build and check that nothing appears on the releases page, on GHCR
-  or in `latest.json`, and that "Re-run failed jobs" finishes the release.
 
 ### Server nodes
 Two tasks, split on purpose (Curtis, 2026-09-25): packaging for the widest range of deployments,
 and then an easy path for people who want one.
-* ~~**Packaging**~~ built 2026-09-25: the server binary (glibc 2.28, built natively in manylinux_2_28,
-  x86_64 + aarch64) on every release as `ringtome-server-...`, the same binaries as a multi-arch
-  image on `ghcr.io/cube-drone/ringtome` (distroless/cc), release builds defaulting to `prod` +
-  `mainline`, `RINGTOME_P2P_PORT`, and `SERVER.md`. Unproven until a tag runs the new jobs.
-* ~~**Backups, the node's half**~~ built 2026-09-25: `POST /api/admin/backup` (the machine itself
-  or a node admin) packs the running node into `backup_<UTC>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY`,
-  as a ticket that reports progress; `backup.cjs` restores one and finds the post it published.
-* ~~**The supervisor**~~ built 2026-09-25: `supervisor/`, shipped in the server tarball. Runs and
-  restarts the node, installs releases that pass the sha256 and the release key, backs up before
-  each update, and rolls a failed one back (binary and data); `supervisor.cjs` proves it with a real
-  node and a deliberately broken release. Unproven against real GitHub until a tag publishes
-  `server-latest.json`.
 * **Sample compose files** - documented, with and without a bundled HTTPS proxy.
 * **Restore from a backup in the Server/Device app** - the Backups page makes, lists and downloads
   them (2026-09-25); putting one back still means stopping the node and unpacking by hand.
