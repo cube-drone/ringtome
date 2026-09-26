@@ -384,7 +384,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                           onTuck=${() => toggleTuck('tags')}
                       />${resizer('tags')}`)}
                 ${tucked.has('list')
-                    ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleTuck('list')} />`
+                    ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
                     : html`<aside class="notes-list">
                     <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     ${/* The everything-view is for finding, not making - new things are born

@@ -11094,3 +11094,6 @@ and `drawing.rs`, held by new vector cases (the old cases' bytes unchanged; red 
 dropping pressure). `drawing.cjs` checks pressure survives a save and a real merge. Not yet drawn
 with a real pen - Chromium browsers and iPad Safari are the likeliest to report it, and the desktop
 app's macOS and Linux webviews are worth a test.
+
+The list column's tucked rail said "items" in every documents app while its open header said the
+app's own plural (Curtis, on Drawing). The rail now wears the same plural - "drawings", "notes", "files".
