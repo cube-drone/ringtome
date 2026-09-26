@@ -10954,3 +10954,19 @@ repository still exists, so the copy goes. `API_OLD.md` stays as the record of w
 now saying the code lives only in its original repository; README's workspace table, PROJECT_PLAN's
 layout tree and `release.mjs`'s list of unversioned directories no longer mention it. Its alerts close
 once the deletion reaches the default branch.
+
+## 2026-09-26 (cont.): 0.1.12's publish, and a name copied from the wrong place
+
+After the Mac re-run, every 0.1.12 job was green and `publish` refused the set: "the Mac update:
+expected one file, found none". The bundler writes the Mac update as `Horse Drawing Tycoon
+2.app.tar.gz`; the `_universal` in every release page's asset name was tauri-action's, added as it
+uploaded. `release-assemble.mjs` had taken its patterns from the release pages - and so had its test,
+whose stand-in files therefore proved the script against a layout no build produces. The gate did its
+job a third time: nothing of 0.1.12 appeared.
+
+`publishedName` now gives the Mac update (and its `.sig`) the `_universal` name every release has
+used, so an installed Mac app's update URL keeps its shape. The test builds its stand-ins from the
+names in 0.1.12's real stashes (downloaded from the run) and still has to reproduce 0.1.7's published
+`latest.json` exactly; red with the rename planted out. And the script, run over the real stashes of
+0.1.12's run, now calls the set whole and writes every platform key. 0.1.12 cannot be re-run into a
+release - the re-run would use the script at its tag - so the fix ships as the next one.

@@ -5,7 +5,8 @@
     racing itself once per platform.
 
     The invariant worth pinning is that nothing changes for an installed app: laid out the way the
-    bundler names things (spaces and all), 0.1.7's artifacts - the last release every platform
+    bundler names things (spaces and all, and the Mac update with no architecture - names copied from
+    the real stashes of 0.1.12's run, not from a release page), 0.1.7's artifacts - the last release every platform
     reached - with 0.1.7's real signatures must assemble into exactly the `latest.json` tauri-action
     published for it (`fixtures/latest-0.1.7.json`): every key, every URL, every signature.
 */
@@ -26,7 +27,9 @@ before(async () => {
 /// platform key's signature is its `.sig`.
 const DESKTOP = [
     ['desktop-macos-latest/universal-apple-darwin/release/bundle/dmg', 'Horse Drawing Tycoon 2_0.1.7_universal.dmg', null],
-    ['desktop-macos-latest/universal-apple-darwin/release/bundle/macos', 'Horse Drawing Tycoon 2_universal.app.tar.gz', 'darwin-aarch64'],
+    // The bundler's own name, WITHOUT the `_universal` the release page shows: tauri-action added
+    // that on upload (0.1.12 found out the hard way - see release-assemble.mjs, `publishedName`).
+    ['desktop-macos-latest/universal-apple-darwin/release/bundle/macos', 'Horse Drawing Tycoon 2.app.tar.gz', 'darwin-aarch64'],
     ['desktop-ubuntu-22.04/release/bundle/appimage', 'Horse Drawing Tycoon 2_0.1.7_amd64.AppImage', 'linux-x86_64-appimage'],
     ['desktop-ubuntu-22.04/release/bundle/deb', 'Horse Drawing Tycoon 2_0.1.7_amd64.deb', 'linux-x86_64-deb'],
     ['desktop-ubuntu-22.04/release/bundle/rpm', 'Horse Drawing Tycoon 2-0.1.7-1.x86_64.rpm', 'linux-x86_64-rpm'],
@@ -75,7 +78,7 @@ describe('assembling a release', () => {
     });
 
     it('refuses the set 0.1.10 shipped: everything but the Mac', () => {
-        const { root, artifacts, out } = stashes((n) => /universal/.test(n));
+        const { root, artifacts, out } = stashes((n) => /universal|\.app\.tar\.gz/.test(n)); // every Mac file
         try {
             const { problems } = assemble(TAG, artifacts, out, '');
             assert.deepEqual(problems.map((p) => p.split(':')[0]).sort(), ['the Mac disk image', 'the Mac update']);
@@ -83,6 +86,14 @@ describe('assembling a release', () => {
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }
+    });
+
+    it("publishes the Mac update under the name every release has used, whatever the bundler called it", async () => {
+        const { publishedName } = await import('../../../tools/release-assemble.mjs');
+        assert.equal(publishedName('x/Horse Drawing Tycoon 2.app.tar.gz'), 'Horse.Drawing.Tycoon.2_universal.app.tar.gz');
+        assert.equal(publishedName('x/Horse Drawing Tycoon 2.app.tar.gz.sig'), 'Horse.Drawing.Tycoon.2_universal.app.tar.gz.sig');
+        assert.equal(publishedName('x/Horse Drawing Tycoon 2_universal.app.tar.gz'), 'Horse.Drawing.Tycoon.2_universal.app.tar.gz', 'never twice');
+        assert.equal(publishedName('x/Horse Drawing Tycoon 2_0.1.12_universal.dmg'), 'Horse.Drawing.Tycoon.2_0.1.12_universal.dmg', 'the disk image is left alone');
     });
 
     it('refuses an updater file without its signature, a server node without its checksum, and a stale build', () => {

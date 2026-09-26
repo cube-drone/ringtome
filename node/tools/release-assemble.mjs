@@ -13,8 +13,9 @@
 //   node node/tools/release-assemble.mjs <tag> <artifacts dir> <out dir> [notes file]
 //
 // The artifacts dir is whatever the stashes unpacked to, in any layout; every file is found by its
-// name. The out dir receives each file ONCE, flat, spaces turned to dots - the name GitHub would
-// give the asset anyway, and the name `latest.json` must point at - plus `latest.json` itself.
+// name. The out dir receives each file ONCE, flat, under its published name (`publishedName`: spaces
+// turned to dots, as GitHub would anyway, and the Mac update's architecture) - the name
+// `latest.json` must point at - plus `latest.json` itself.
 // Exits non-zero, naming every missing piece, when the set is not whole.
 
 import fs from 'node:fs';
@@ -31,7 +32,7 @@ function expected(tag) {
     const f = full.replaceAll('.', '\\.');
     return [
         { what: 'the Mac disk image', pattern: new RegExp(`_${v}_universal\\.dmg$`) },
-        { what: 'the Mac update', pattern: /_universal\.app\.tar\.gz$/, updater: true },
+        { what: 'the Mac update', pattern: /_universal\.app\.tar\.gz$/, updater: true }, // named by `publishedName`
         { what: 'the Linux AppImage', pattern: new RegExp(`_${v}_amd64\\.AppImage$`), updater: true },
         { what: 'the Linux .deb', pattern: new RegExp(`_${v}_amd64\\.deb$`), updater: true },
         { what: 'the Linux .rpm', pattern: new RegExp(`-${v}-1\\.x86_64\\.rpm$`), updater: true },
@@ -50,12 +51,25 @@ function walk(dir) {
     });
 }
 
+/// The name a stashed file is published under: spaces turned to dots, as GitHub would, and the Mac
+/// update given the architecture tauri-action always added when it uploaded one. The bundler writes
+/// `Horse Drawing Tycoon 2.app.tar.gz`; every release through 0.1.10 published
+/// `..._universal.app.tar.gz`, and the URL an installed Mac app follows should keep its shape.
+/// (Field-found 2026-09-26: 0.1.12's publish refused a whole set for want of `_universal`, which
+/// this script had copied from the release page rather than from the bundler's own output. The
+/// universal build is the only Mac build, so `universal` is the only architecture there is.)
+export function publishedName(file) {
+    const name = path.basename(file).replaceAll(' ', '.');
+    const update = /^(.*?)(?<!_universal)\.app\.tar\.gz(\.sig)?$/.exec(name);
+    return update ? `${update[1]}_universal.app.tar.gz${update[2] || ''}` : name;
+}
+
 /// Lay the artifacts out flat under `out`. Returns the set of names, or the problems.
 function gather(artifacts, out) {
     const names = new Map();
     const problems = [];
     for (const file of walk(artifacts)) {
-        const name = path.basename(file).replaceAll(' ', '.');
+        const name = publishedName(file);
         if (names.has(name)) {
             problems.push(`two artifacts would both be ${name}: ${names.get(name)} and ${file}`);
             continue;
