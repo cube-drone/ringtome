@@ -67,17 +67,29 @@ skip-no-op saves, head checks, sync, retention.
 
 ### Layers
 
-A layer is an entry in the body's `layers`: `{ "id", "n", "z", "opacity", "hidden", "t" }` - its
-number (for "layer 2"), its place in the stack, a whole-percent opacity, whether it is hidden, and
+A layer is an entry in the body's `layers`: `{ "id", "n", "name"?, "z", "opacity", "hidden", "t" }` -
+its number (for "layer 2"), the name it was given if any, its place in the stack, a whole-percent opacity, whether it is hidden, and
 when it last changed. A stroke names its layer (`"layer": "<id>"`, right after its `t`); a stroke that
 names none is on the **base layer** (id sixteen zeros), which every drawing has, fully opaque and
 shown until an entry says otherwise. `layers` is written only when there are entries, so a drawing
 with none is the bytes it was before layers existed (no body version, by Curtis's word).
 
 **Merging** keeps every layer from every version; where two versions changed one layer, the later
-change (`t`) wins, and a tie breaks on (z, opacity, hidden, n) - any fixed order, so long as the browser
-and the node share it (the vectors hold them to it). Strokes merge as ever, each keeping its layer.
+change (`t`) wins, and a tie breaks on (z, opacity, hidden, n, name) - any fixed order, so long as the
+browser and the node share it (the vectors hold them to it). Names compare by their UTF-8 bytes,
+which is Rust's order; JavaScript's own `<` compares UTF-16 units and disagrees about some pairs
+(`～` against `🐴`), so the page compares bytes too. Strokes merge as ever, each keeping its layer.
 Moving a layer renumbers the stack's `z`s and touches only the layers whose place changed.
+
+**Names** (Curtis, 2026-09-26): a layer is "layer N" until it is renamed - double-click its name, or
+the pencil under it. A name is trimmed; a blank one gives the number back. A name is a free string -
+the one in the body - so it is narrowed to where the two languages cannot disagree about its bytes:
+at most 120 UTF-8 bytes, no control characters (their JSON escapes differ between writers), no lone
+surrogate (JavaScript holds one; Rust refuses it). A name outside that is never written by the page,
+and dropped by the node - the layer kept, with its number. A duplicate keeps its source's name.
+
+In the layers column each row is the layer's thumbnail beside its name, with what can be done to it -
+hide, rename, duplicate, trash - on a line under the name, "to give the name some room to breathe".
 
 **Painting**: each layer on a canvas of its own - so an eraser stroke erases within its own layer -
 then stacked bottom-first at their opacities, the hidden ones left out. The white a drawing starts on
@@ -109,6 +121,25 @@ commute); undone like any stroke. A move shifts everything on its layer drawn **
 base layer's white fill by all of them - so what is drawn after a grab lands where it was drawn, and a
 layer grabbed off the edge and back loses nothing. A stroke another computer drew at the same moment
 moves with the layer exactly when it was drawn before the grab: decided by time, the same everywhere.
+
+### Deleting and duplicating layers
+
+Per-layer trash and duplicate buttons (Curtis, 2026-09-26), built the way grabbing is - as entries in
+the history, so they merge by the union and undo like a stroke:
+
+- **Trash** is `{ "tool": "delete", "layer": … }`. While it stands, the layer and everything on it
+  are gone; undo takes the entry back and the layer returns whole. Deleted on one computer and drawn
+  on at another, the union keeps both - the layer stays deleted, the new stroke hidden with it and
+  recoverable by undo. The base layer can go too, and the floor shows.
+- **Duplicate** adds a layer just above its source, with its opacity and visibility, beginning with
+  `{ "tool": "copy", "layer": <new>, "from": <source> }` - which paints the source **as it stood at
+  that moment** (its entries before the copy, in the one order), not copies of each stroke under new
+  ids. So one undo takes the copied content back (the new, empty layer stays until thrown away);
+  later strokes on the source do not leak into the copy; and a copy outlives its source being thrown
+  away. What a layer paints is `effectiveOps`: the base layer's fill first (so a copy of the base layer
+  carries its white), then its entries, each copy replaced by its source's earlier steps - and the
+  grab offsets apply to all of it. A copy only ever reaches strictly earlier entries, so even two
+  layers copying each other cannot loop.
 
 ### Undo is a recorded removal, so a merge cannot bring a stroke back
 
@@ -229,5 +260,5 @@ Slices 1-4 built 2026-09-26; `drawing.cjs` is their acceptance, `pure/drawing.cj
 4. **Publish, view, unpublish.**
 5. **Layers** (built 2026-09-26): the column, the model, the merge.
 6. **Later, named so they are not forgotten**: more tools, redo, resizing the canvas, node-kept
-   thumbnails for long lists, publishing a set of drawings together, deleting and renaming layers,
-   and reordering layers by touch (dragging rows is mouse and pen only today).
+   thumbnails for long lists, publishing a set of drawings together, renaming layers, and
+   reordering layers by touch (dragging rows is mouse and pen only today).

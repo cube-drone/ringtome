@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1017 phrases across 69 files.
+// 1022 phrases across 69 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -391,6 +391,8 @@ export default {
     'doc.diffpage.private-only': 'private only',
 
     // --- node/js/doc/drawing.js ---
+    'doc.drawing.layer-n': 'layer {n}',
+    'doc.drawing.layer-name': 'layer name',
     'doc.drawing.brush': 'brush',
     'doc.drawing.eraser': 'eraser',
     'doc.drawing.grab': 'grab - move the whole layer',
@@ -403,10 +405,13 @@ export default {
     'doc.drawing.layers': 'layers',
     'doc.drawing.opacity': 'opacity',
     'doc.drawing.new-layer': 'new layer',
-    'doc.drawing.layer-n': 'layer {n}',
     'doc.drawing.show-layer': 'show this layer',
     'doc.drawing.hide-layer': 'hide this layer',
+    'doc.drawing.rename-layer': 'rename this layer',
+    'doc.drawing.duplicate-layer': 'duplicate this layer',
+    'doc.drawing.trash-layer': 'throw this layer away (undo brings it back)',
     'doc.drawing.this-layer-is-hidden': 'this layer is hidden - show it to draw on it',
+    'doc.drawing.no-layers': 'no layers - make a new one to draw on',
     'doc.drawing.untitled': 'untitled',
     'doc.drawing.copy-a-picture-into-a-notebook': 'copy a picture of this drawing into a notebook',
     'doc.drawing.copy-a-picture-of-it': 'copy a picture of this drawing into a notebook',

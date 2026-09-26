@@ -211,17 +211,49 @@ function asLayer(l) {
     if (!Number.isSafeInteger(l.opacity) || l.opacity < 0 || l.opacity > MAX_OPACITY) return null;
     if (typeof l.hidden !== 'boolean') return null;
     if (!Number.isSafeInteger(l.t) || l.t < 0) return null;
-    return { id: l.id, n: l.n, z: l.z, opacity: l.opacity, hidden: l.hidden, t: l.t };
+    // A name the layer was given; one that cannot be kept is dropped, and the layer kept, unnamed.
+    const name = isLayerName(l.name) ? { name: l.name } : {};
+    return { id: l.id, n: l.n, ...name, z: l.z, opacity: l.opacity, hidden: l.hidden, t: l.t };
+}
+
+/// The longest layer name, in UTF-8 bytes - counted as the node counts them.
+export const MAX_NAME_BYTES = 120;
+
+/// Can this be kept as a layer's name? A non-empty string of at most MAX_NAME_BYTES, with no control
+/// characters and no unpaired surrogate. These are exactly the places two JSON implementations could
+/// disagree - how a control character is escaped, and a lone surrogate, which JavaScript takes and
+/// Rust refuses - so the name is simply not allowed to go there.
+export function isLayerName(name) {
+    if (typeof name !== 'string' || name.length === 0) return false;
+    for (let i = 0; i < name.length; i++) {
+        const c = name.charCodeAt(i);
+        if (c < 0x20 || c === 0x7f) return false;
+    }
+    try {
+        encodeURIComponent(name); // throws on an unpaired surrogate
+    } catch {
+        return false;
+    }
+    return new TextEncoder().encode(name).length <= MAX_NAME_BYTES;
+}
+
+/// Compare two strings by their UTF-8 bytes - the order Rust's strings sort in. JavaScript's own `<`
+/// compares UTF-16 code units, which orders some pairs differently.
+function compareUtf8(a, b) {
+    const x = new TextEncoder().encode(a);
+    const y = new TextEncoder().encode(b);
+    for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+    return x.length - y.length;
 }
 
 /// Of two entries for one layer, does `a` win? The later change (`t`); on a tie, the larger of
-/// (z, opacity, hidden, n) - any total order would do, so long as every computer uses this one.
+/// (z, opacity, hidden, n, name) - any total order would do, so long as every computer uses this one.
 function layerWins(a, b) {
     const key = (l) => [l.t, l.z, l.opacity, l.hidden ? 1 : 0, l.n];
     const ka = key(a);
     const kb = key(b);
     for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] > kb[i];
-    return false;
+    return compareUtf8(a.name || '', b.name || '') > 0;
 }
 
 /// A stroke as the body keeps it, or null when it cannot be painted: only the fields a stroke has,
@@ -237,6 +269,14 @@ function asStroke(s) {
     if (s.tool === 'move') {
         if (!Number.isSafeInteger(s.dx) || !Number.isSafeInteger(s.dy)) return null;
         return { id: s.id, t: s.t, ...onLayer, tool: 'move', dx: s.dx, dy: s.dy };
+    }
+    // A layer thrown away (`delete`), and a layer begun as a copy of another (`copy`, `from` naming
+    // it - the base layer spelled out, since `from` is always named). Entries, like a move, so they
+    // merge by the union and undo like a stroke (DRAWING.md, "Deleting and duplicating layers").
+    if (s.tool === 'delete') return { id: s.id, t: s.t, ...onLayer, tool: 'delete' };
+    if (s.tool === 'copy') {
+        if (typeof s.from !== 'string' || !HEX16.test(s.from)) return null;
+        return { id: s.id, t: s.t, ...onLayer, tool: 'copy', from: s.from };
     }
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
@@ -371,7 +411,15 @@ export function layersOf(drawing) {
         if (!layers.has(id)) layers.set(id, { id, n: 1, z: 0, opacity: MAX_OPACITY, hidden: false, t: 0 });
     }
     for (const l of drawing.layers || []) layers.set(l.id, l);
-    return [...layers.values()].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const deleted = deletedLayers(drawing);
+    return [...layers.values()]
+        .filter((l) => !deleted.has(l.id))
+        .sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/// The layers a standing `delete` entry has thrown away. Undo the entry and the layer is back.
+export function deletedLayers(drawing) {
+    return new Set(drawing.strokes.filter((s) => s.tool === 'delete').map((s) => s.layer || BASE_LAYER));
 }
 
 /// The strokes on one layer, in painting order.
@@ -391,13 +439,20 @@ export function addLayer(drawing, id, now) {
     return upsertLayer(drawing, { id, n, z, opacity: MAX_OPACITY, hidden: false, t: now });
 }
 
-/// Change a layer's `hidden` or `opacity`.
+/// Change a layer's `hidden`, `opacity` or `name`.
 export function setLayer(drawing, id, change, now) {
     const current = layersOf(drawing).find((l) => l.id === id);
     if (!current) return drawing;
     const next = { ...current, t: now };
     if (typeof change.hidden === 'boolean') next.hidden = change.hidden;
     if (Number.isFinite(change.opacity)) next.opacity = Math.max(0, Math.min(MAX_OPACITY, Math.round(change.opacity)));
+    // A name (Curtis, 2026-09-26): trimmed; an empty one takes the name away, back to "layer N".
+    if (typeof change.name === 'string') {
+        const name = change.name.trim();
+        if (!name) delete next.name;
+        else if (isLayerName(name)) next.name = name;
+        else return drawing; // a name the drawing could not keep changes nothing
+    }
     return upsertLayer(drawing, next);
 }
 
@@ -440,4 +495,45 @@ export function offsetsOf(ops) {
         }
     }
     return { each, total: [dx, dy] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Deleting and duplicating layers (Curtis, 2026-09-26), as entries - so they merge by the union and
+// undo like a stroke, and nothing here can conflict.
+
+/// Throw a layer away: one `delete` entry. It hides the layer and everything on it for as long as
+/// it stands; undo takes the entry back, and the layer with it.
+export function deleteLayer(drawing, layerId, entryId, now) {
+    const entry = { id: entryId, t: now, tool: 'delete' };
+    if (layerId !== BASE_LAYER) entry.layer = layerId;
+    return addStroke(drawing, entry);
+}
+
+/// Duplicate a layer: a new layer just above it, with its opacity and visibility, beginning with a
+/// `copy` entry - which paints the source as it stood at that moment (every source entry before it
+/// in the one order), not a copy of each stroke under new ids. One entry, so one undo takes the
+/// copied content back (the new, empty layer stays until thrown away).
+export function duplicateLayer(drawing, sourceId, newLayerId, entryId, now) {
+    const source = layersOf(drawing).find((l) => l.id === sourceId);
+    if (!source) return drawing;
+    let out = addLayer(drawing, newLayerId, now);
+    const name = source.name ? { name: source.name } : {};
+    out = setLayer(out, newLayerId, { opacity: source.opacity, hidden: source.hidden, ...name }, now);
+    const order = layersOf(out).filter((l) => l.id !== newLayerId);
+    out = moveLayer(out, newLayerId, order.findIndex((l) => l.id === sourceId) + 1, now);
+    return addStroke(out, { id: entryId, t: now, layer: newLayerId, tool: 'copy', from: sourceId });
+}
+
+/// What a layer paints, in order: the base layer's white fill first (a `fill` step, which a copy of
+/// the base layer carries too), then its entries - with each `copy` replaced by its source's own
+/// steps from before it. The fill and the copies are steps like any other, so the grab offsets
+/// (`offsetsOf`) apply to them as to strokes.
+export function effectiveOps(drawing, layerId, before = null) {
+    const out = layerId === BASE_LAYER ? [{ tool: 'fill' }] : [];
+    for (const op of strokesOn(drawing, layerId)) {
+        if (before && strokeOrder(op, before) >= 0) break;
+        if (op.tool === 'copy') out.push(...effectiveOps(drawing, op.from, op));
+        else if (op.tool !== 'delete') out.push(op);
+    }
+    return out;
 }

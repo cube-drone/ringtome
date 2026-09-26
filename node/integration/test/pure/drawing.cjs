@@ -272,3 +272,88 @@ describe('grabbing a layer', () => {
         assert.deepEqual(d.offsetsOf(d.strokesOn(merged, d.BASE_LAYER)).total, [10, -20], 'both moves stand');
     });
 });
+
+// Deleting and duplicating layers (Curtis, 2026-09-26): entries again, so union-merged and undoable.
+describe('deleting and duplicating layers', () => {
+    const L2 = 'aaaaaaaaaaaaaaa2';
+    const L3 = 'aaaaaaaaaaaaaaa3';
+    const brush = (id, t, layer) => ({ id, t, ...(layer ? { layer } : {}), tool: 'brush', color: '#123456', size: 3, points: [1, 1] });
+
+    it('a delete throws the layer away, and undo brings it back whole', () => {
+        let body = d.addLayer(d.blankDrawing(), L2, 1);
+        body = d.addStroke(body, brush('b000000000000001', 2, L2));
+        body = d.deleteLayer(body, L2, 'c000000000000002', 3);
+        assert.deepEqual(d.layersOf(body).map((l) => l.id), [d.BASE_LAYER], 'gone');
+        body = d.undo(body);
+        assert.deepEqual(d.layersOf(body).map((l) => l.id), [d.BASE_LAYER, L2], 'back');
+        assert.equal(d.strokesOn(body, L2).length, 1, 'with its strokes');
+        assert.deepEqual(d.layersOf(d.deleteLayer(d.blankDrawing(), d.BASE_LAYER, 'c000000000000003', 1)), [], 'even the base layer can go');
+    });
+
+    it('a delete merges as a union: deleted on one computer, drawn on at another, it stays deleted', () => {
+        const base = d.addLayer(d.blankDrawing(), L2, 1);
+        const here = d.deleteLayer(base, L2, 'c000000000000002', 5);
+        const there = d.addStroke(base, brush('b000000000000001', 6, L2));
+        const merged = d.mergeBodies(here, there);
+        assert.equal(d.writeBody(merged), d.writeBody(d.mergeBodies(there, here)));
+        assert.ok(!d.layersOf(merged).some((l) => l.id === L2));
+        const brushes = (b) => d.strokesOn(b, L2).filter((s) => s.tool === 'brush').length;
+        assert.equal(brushes(merged), 1, 'the stroke drawn there is kept, hidden with its layer');
+        assert.equal(brushes(d.undo(merged)), 0, 'undo takes the newest entry - that stroke - first');
+    });
+
+    it('a duplicate sits just above its source and paints the source as it stood', () => {
+        let body = d.addLayer(d.blankDrawing(), L2, 1);
+        body = d.addLayer(body, 'aaaaaaaaaaaaaaa9', 1);
+        body = d.addStroke(body, brush('b000000000000001', 2, L2));
+        body = d.setLayer(body, L2, { opacity: 40, name: 'mane' }, 3);
+        body = d.duplicateLayer(body, L2, L3, 'c000000000000002', 4);
+        body = d.addStroke(body, brush('b000000000000003', 5, L2)); // after the copy: the source's alone
+        assert.deepEqual(d.layersOf(body).map((l) => l.id), [d.BASE_LAYER, L2, L3, 'aaaaaaaaaaaaaaa9'], 'right above its source');
+        assert.equal(d.layersOf(body).find((l) => l.id === L3).opacity, 40, 'with its opacity');
+        assert.equal(d.layersOf(body).find((l) => l.id === L3).name, 'mane', 'and its name');
+        assert.deepEqual(d.effectiveOps(body, L3).map((o) => o.id), ['b000000000000001'], 'the source as it stood at the copy');
+        assert.deepEqual(d.effectiveOps(body, L2).map((o) => o.id), ['b000000000000001', 'b000000000000003']);
+        assert.deepEqual(d.effectiveOps(d.undo(d.undo(body)), L3), [], 'undo takes the copied content back');
+    });
+
+    it("a copy of the base layer carries its white fill, and a grab after the copy moves the copy's content", () => {
+        let body = d.addStroke(d.blankDrawing(), brush('b000000000000001', 1));
+        body = d.duplicateLayer(body, d.BASE_LAYER, L2, 'c000000000000002', 2);
+        body = d.addStroke(body, { id: 'd000000000000004', t: 3, layer: L2, tool: 'move', dx: 7, dy: 0 });
+        const ops = d.effectiveOps(body, L2);
+        assert.deepEqual(ops.map((o) => o.tool), ['fill', 'brush', 'move']);
+        assert.deepEqual(d.offsetsOf(ops).each.slice(0, 2), [[7, 0], [7, 0]], 'fill and stroke both moved');
+        assert.deepEqual(d.offsetsOf(d.effectiveOps(body, d.BASE_LAYER)).total, [0, 0], 'the source never moved');
+    });
+});
+
+describe('naming a layer', () => {
+    const L2 = 'aaaaaaaaaaaaaaa2';
+
+    it('keeps a name, trimmed, and clearing it goes back to the number', () => {
+        let body = d.addLayer(d.blankDrawing(), L2, 1);
+        body = d.setLayer(body, L2, { name: '  the mane  ' }, 2);
+        assert.equal(d.layersOf(body).find((l) => l.id === L2).name, 'the mane');
+        assert.equal(d.layersOf(d.readBody(d.writeBody(body))).find((l) => l.id === L2).name, 'the mane', 'written and read back');
+        body = d.setLayer(body, L2, { name: '   ' }, 3);
+        assert.ok(!('name' in d.layersOf(body).find((l) => l.id === L2)), 'blank clears it');
+    });
+
+    it('refuses a name that cannot be kept, changing nothing', () => {
+        const body = d.addLayer(d.blankDrawing(), L2, 1);
+        for (const bad of ['tab\there', 'x'.repeat(121), '\uD800 lone']) {
+            assert.equal(d.setLayer(body, L2, { name: bad }, 2), body, JSON.stringify(bad));
+        }
+        assert.ok(d.isLayerName('é'.repeat(60)) && !d.isLayerName('é'.repeat(61)), 'the limit is UTF-8 bytes');
+    });
+
+    it('breaks a same-moment rename tie by UTF-8 bytes, whichever way round', () => {
+        const base = d.addLayer(d.blankDrawing(), L2, 1);
+        const a = d.setLayer(base, L2, { name: '\uFF5E' }, 9);
+        const b = d.setLayer(base, L2, { name: '🐴' }, 9);
+        const ab = d.mergeBodies(a, b);
+        assert.equal(d.writeBody(ab), d.writeBody(d.mergeBodies(b, a)));
+        assert.equal(d.layersOf(ab).find((l) => l.id === L2).name, '🐴', 'four UTF-8 bytes from F0 outrank EF - though UTF-16 says otherwise');
+    });
+});

@@ -31,6 +31,15 @@ pub const MAX_SIZE: i64 = 200;
 pub const MAX_PRESSURE: i64 = 100;
 /// A layer's opacity: a whole percent.
 pub const MAX_OPACITY: i64 = 100;
+/// The longest layer name, in UTF-8 bytes.
+pub const MAX_NAME_BYTES: usize = 120;
+
+/// Can this be kept as a layer's name? The browser's `isLayerName`: non-empty, at most
+/// MAX_NAME_BYTES, no control characters. (An unpaired surrogate cannot reach a Rust `String` at all:
+/// serde refuses the whole body, which the browser's rule keeps anyone from writing.)
+fn is_layer_name(name: &str) -> bool {
+    !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7f)
+}
 /// The layer every drawing starts with, and the one a stroke naming no layer is on.
 pub const BASE_LAYER: &str = "0000000000000000";
 /// JavaScript's `Number.MAX_SAFE_INTEGER`: the largest whole number the browser writes exactly.
@@ -63,6 +72,9 @@ pub struct Stroke {
     pub dx: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dy: Option<i64>,
+    /// A copy's source layer (DRAWING.md, "Deleting and duplicating layers"); only a copy has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
 }
 
 /// A layer (DRAWING.md, "Layers"): its number, its place in the stack, its opacity, whether it is
@@ -71,6 +83,9 @@ pub struct Stroke {
 pub struct Layer {
     pub id: String,
     pub n: i64,
+    /// A name the layer was given; absent, it is "layer n".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub z: i64,
     pub opacity: i64,
     pub hidden: bool,
@@ -81,7 +96,9 @@ impl Layer {
     /// Of two entries for one layer, does `self` win? The later change; on a tie, the larger of
     /// (z, opacity, hidden, n) - the browser's `layerWins`, exactly.
     fn wins_over(&self, other: &Layer) -> bool {
-        let key = |l: &Layer| (l.t, l.z, l.opacity, l.hidden as i64, l.n);
+        // Names compare by UTF-8 bytes - what `String`'s order is, and what the browser's
+        // `compareUtf8` reproduces, since JavaScript's own `<` compares UTF-16 code units.
+        let key = |l: &Layer| (l.t, l.z, l.opacity, l.hidden as i64, l.n, l.name.clone().unwrap_or_default());
         key(self) > key(other)
     }
 }
@@ -149,9 +166,11 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
     let tool = match o.get("tool")?.as_str()? {
         "brush" => "brush",
         "eraser" => "eraser",
-        // A grab: the whole layer shifted - an entry in the history, merged and undone as a stroke is.
-        "move" => {
-            return Some(Stroke {
+        // A grab, a layer thrown away, a layer begun as a copy: entries in the history, merged and
+        // undone as a stroke is - each with only its own fields.
+        "move" | "delete" | "copy" => {
+            let kind = o.get("tool")?.as_str()?;
+            let mut entry = Stroke {
                 id,
                 t,
                 layer,
@@ -160,9 +179,22 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 size: None,
                 points: None,
                 pressure: None,
-                dx: Some(o.get("dx").and_then(safe_int)?),
-                dy: Some(o.get("dy").and_then(safe_int)?),
-            })
+                dx: None,
+                dy: None,
+                from: None,
+            };
+            match kind {
+                "move" => {
+                    entry.dx = Some(o.get("dx").and_then(safe_int)?);
+                    entry.dy = Some(o.get("dy").and_then(safe_int)?);
+                }
+                "delete" => entry.tool = "delete",
+                _ => {
+                    entry.tool = "copy";
+                    entry.from = Some(o.get("from")?.as_str().filter(|f| is_hex16(f))?.to_string());
+                }
+            }
+            return Some(entry);
         }
         _ => return None,
     };
@@ -185,7 +217,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
         .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, dx: None, dy: None })
+    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, dx: None, dy: None, from: None })
 }
 
 fn as_layer(v: &Value) -> Option<Layer> {
@@ -193,6 +225,7 @@ fn as_layer(v: &Value) -> Option<Layer> {
     Some(Layer {
         id: o.get("id")?.as_str().filter(|s| is_hex16(s))?.to_string(),
         n: o.get("n").and_then(safe_int).filter(|n| *n >= 1)?,
+        name: o.get("name").and_then(Value::as_str).filter(|n| is_layer_name(n)).map(str::to_string),
         z: o.get("z").and_then(safe_int)?,
         opacity: o.get("opacity").and_then(safe_int).filter(|p| (0..=MAX_OPACITY).contains(p))?,
         hidden: o.get("hidden")?.as_bool()?,

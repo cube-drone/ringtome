@@ -291,4 +291,49 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         const undone = model.undo(drawing);
         assert.deepEqual(model.offsetsOf(model.strokesOn(undone, model.BASE_LAYER)).total, [10, 0], "and undo takes the newest back");
     });
+
+    it("a layer duplicated here and thrown away there merges as the page merges it", async () => {
+        const L2 = "aaaaaaaaaaaaaaa2", L3 = "aaaaaaaaaaaaaaa3";
+        let start = model.addLayer(model.readBody(body([])), L2, 1);
+        start = model.addStroke(start, { ...stroke("a300000000000001", 2), layer: L2 });
+        const made = await (await j(ada, docs(), { title: "a copied horse", body: writeBody(start), format: "drawing" })).json();
+        const read = async () => (await ada(`${docs()}/${made.doc_id}`)).json();
+        const parents = (await read()).save_parents;
+        const here = model.duplicateLayer(start, L2, L3, "b300000000000002", 10);
+        const there = model.deleteLayer(start, L2, "c300000000000003", 11);
+        for (const side of [here, there]) {
+            await j(ada, `${docs()}/${made.doc_id}`, { title: "a copied horse", body: writeBody(side), parents, format: "drawing" }, "PUT");
+        }
+        const merged = await read();
+        assert.equal(merged.body, writeBody(model.mergeBodies(here, there)), "the node's merge is the page's");
+        const drawing = model.readBody(merged.body);
+        assert.deepEqual(model.layersOf(drawing).map((l) => l.id), [model.BASE_LAYER, L3], "the source is gone; its copy stays");
+        assert.deepEqual(model.effectiveOps(drawing, L3).map((o) => o.id), ["a300000000000001"], "holding what the source held");
+    });
+
+    it("two computers naming one layer at once agree with the page, and a name it cannot keep is dropped", async () => {
+        const L2 = "aaaaaaaaaaaaaaa2";
+        const start = model.addLayer(model.readBody(body([])), L2, 1);
+        const made = await (await j(ada, docs(), { title: "a named horse", body: writeBody(start), format: "drawing" })).json();
+        const read = async () => (await ada(`${docs()}/${made.doc_id}`)).json();
+        const parents = (await read()).save_parents;
+        // The same instant, so the tie breaks on the name - where JavaScript's own string order and
+        // UTF-8's part ways.
+        const here = model.setLayer(start, L2, { name: "\uFF5E" }, 9);
+        const there = model.setLayer(start, L2, { name: "🐴 the mane" }, 9);
+        for (const side of [here, there]) {
+            await j(ada, `${docs()}/${made.doc_id}`, { title: "a named horse", body: writeBody(side), parents, format: "drawing" }, "PUT");
+        }
+        const merged = await read();
+        assert.equal(merged.body, writeBody(model.mergeBodies(here, there)), "the node's merge is the page's");
+        assert.equal(model.layersOf(model.readBody(merged.body))[1].name, "🐴 the mane");
+
+        // A body written by hand, not by the page: the node keeps the layer and drops the name.
+        const raw = JSON.parse(writeBody(start));
+        raw.layers[0].name = "tab\there";
+        await j(ada, `${docs()}/${made.doc_id}`, { title: "a named horse", body: JSON.stringify(raw), parents: merged.save_parents, format: "drawing" }, "PUT");
+        const kept = model.layersOf(model.readBody((await read()).body));
+        assert.deepEqual([kept[1].id, "name" in kept[1]], [L2, false]);
+    });
 });
+

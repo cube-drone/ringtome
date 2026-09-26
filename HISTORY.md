@@ -11147,3 +11147,33 @@ of them), so nothing is lost off the edge and what comes after lands where it wa
 for the move entry and for concurrent grabs (red with the node dropping moves); model tests for the
 offsets, undo and merge; `drawing.cjs` forks two grabs on the real node and checks both stand, byte for
 byte as the page merges them. No drawing has been grabbed by a person yet.
+
+## 2026-09-26 (cont.): trash and duplicate, per layer
+
+Each layer row gained duplicate and trash buttons, built as grabbing was: entries in the history, so
+they merge by the union and undo like a stroke - nothing new can conflict. Trash is a `delete` entry
+that hides the layer and all it holds while it stands; undo brings it back whole, and a layer deleted
+on one computer and drawn on at another stays deleted, the new stroke hidden with it. Duplicate adds
+a layer just above its source with a single `copy` entry that paints the source as it stood at that
+moment - not the strokes re-minted - so one undo removes the copied content, later source strokes do
+not leak in, and the copy outlives the source's deletion. `effectiveOps` is now what a layer paints:
+the base layer's fill as a first step (a copy of the base layer carries its white), then its entries,
+copies expanded to their sources' earlier steps; grab offsets apply to all of it, and a copy reaches
+only strictly earlier entries, so it cannot loop. Vector cases for both entries and for delete-vs-draw
+(red with the node misreading a copy as a delete), four model tests, and `drawing.cjs` merging a
+duplicate made here with its source's deletion there on the real node, byte for byte as the page does.
+
+## 2026-09-26 (cont.): naming layers
+
+A layer can be renamed - double-click its name, or the pencil - and each layer row is now two lines:
+the thumbnail beside the name, and under the name the row's options (hide, rename, duplicate, trash),
+"to give the name some room to breathe". The name is an optional `name` on the layer entry, merged
+with the rest of the entry by last-writer-wins; a blank name gives "layer N" back, and a duplicate
+keeps its source's name. A name is the first free string in a drawing body, so it is narrowed to
+where JavaScript and Rust cannot write different bytes: at most 120 UTF-8 bytes, no control
+characters, no lone surrogate - the page will not write one, the node drops one and keeps the layer.
+The layer tie-break now ends on the name, compared by UTF-8 bytes on both sides, since JavaScript's
+own string order (UTF-16 units) disagrees with Rust's about pairs like `～` and `🐴`. Vector cases for
+a kept name, five refused ones and the byte-order tie (red with the page comparing UTF-16); model
+tests for rename, clearing, refusal and the tie; `drawing.cjs` forks a same-instant rename on the
+real node, byte for byte as the page merges it, and sends a hand-built bad name the node drops.

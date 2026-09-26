@@ -44,11 +44,14 @@ import {
     recentColours,
     BASE_LAYER,
     layersOf,
-    strokesOn,
     addLayer,
     setLayer,
     moveLayer,
     offsetsOf,
+    effectiveOps,
+    deleteLayer,
+    duplicateLayer,
+    MAX_NAME_BYTES,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 
@@ -92,30 +95,32 @@ function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), p
     }
 }
 
-/// One layer's strokes, in order, onto a canvas of its own (DRAWING.md, "Layers"): transparent
-/// wherever the layer has nothing, so an eraser stroke erases only the layer it is on. The base
-/// layer starts filled with the drawing's `background` - the white a drawing begins on - so erasing
-/// on it cuts through to transparency like any other layer.
+/// One layer onto a canvas of its own (DRAWING.md, "Layers"): transparent wherever the layer has
+/// nothing, so an eraser stroke erases only the layer it is on. The base layer starts filled with
+/// the drawing's `background` - the white a drawing begins on - so erasing on it cuts through to
+/// transparency like any other layer.
 export function paintLayer(canvas, drawing, layerId) {
     const ctx = canvas.getContext('2d');
     const scale = canvas.width / drawing.width;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // A grab (a `move` entry) shifts everything drawn on the layer before it: each entry is painted
-    // offset by the moves after it, the base layer's fill by all of them - so a layer grabbed away
-    // and back loses nothing at the edge (pure/drawing.js, `offsetsOf`).
-    const ops = strokesOn(drawing, layerId);
-    const { each, total } = offsetsOf(ops);
-    if (layerId === BASE_LAYER) {
-        ctx.fillStyle = drawing.background;
-        ctx.fillRect(total[0] * scale, total[1] * scale, canvas.width, canvas.height);
-    }
+    // What the layer paints (pure/drawing.js, `effectiveOps`): the base layer's fill first, a copy's
+    // source as it stood, then its own strokes. A grab (a `move`) shifts everything before it: each
+    // step is painted offset by the moves after it (`offsetsOf`), so a layer grabbed away and back
+    // loses nothing at the edge.
+    const ops = effectiveOps(drawing, layerId);
+    const { each } = offsetsOf(ops);
     ops.forEach((op, i) => {
         if (op.tool === 'move') return;
         ctx.save();
         ctx.translate(each[i][0] * scale, each[i][1] * scale);
-        paintStroke(ctx, op, scale);
+        if (op.tool === 'fill') {
+            ctx.fillStyle = drawing.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+            paintStroke(ctx, op, scale);
+        }
         ctx.restore();
     });
     ctx.restore();
@@ -273,7 +278,39 @@ export const DrawingThumb = ({ root, doc, big }) => {
 };
 
 // ---------------------------------------------------------------------------------------------
-// The layers column's thumbnails: each layer alone, drawn from its own canvas.
+// The layers column's pieces: the field a name is typed into, and the thumbnails - each layer alone,
+// drawn from its own canvas.
+
+// The field a layer's name is typed into, in the name's place: focused and selected on arrival, kept
+// on Enter or blur, dropped on Escape. `done` stops the blur that follows an Escape from keeping it.
+const LayerNameField = ({ layer, onCommit, onCancel }) => {
+    const ref = useRef(null);
+    const done = useRef(false);
+    useEffect(() => {
+        ref.current.focus();
+        ref.current.select();
+    }, []);
+    const finish = (keep) => {
+        if (done.current) return;
+        done.current = true;
+        if (keep) onCommit(layer, ref.current.value);
+        else onCancel();
+    };
+    return html`<input
+        ref=${ref}
+        class="drawing-layer-name-field"
+        value=${layer.name || ''}
+        placeholder=${t('doc.drawing.layer-n', 'layer {n}', { n: layer.n })}
+        maxlength=${MAX_NAME_BYTES}
+        aria-label=${t('doc.drawing.layer-name', 'layer name')}
+        onClick=${(e) => e.stopPropagation()}
+        onKeyDown=${(e) => {
+            if (e.key === 'Enter') finish(true);
+            else if (e.key === 'Escape') finish(false);
+        }}
+        onBlur=${() => finish(true)}
+    />`;
+};
 
 const LayerThumb = ({ source, painted }) => {
     const ref = useRef(null);
@@ -350,6 +387,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // and the top one again if the picked one stops existing (a merge can do that).
     const layers = useMemo(() => layersOf(drawing), [drawing]);
     const [currentId, setCurrentId] = useState(null);
+    const [renaming, setRenaming] = useState(null); // the id of the layer whose name is being typed
     const current = layers.find((l) => l.id === currentId) || layers[layers.length - 1];
 
     // Every layer on a canvas of its own, repainted from the body whenever it changes - every save,
@@ -570,13 +608,30 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
           </aside>${resizer('tools')}`;
 
     // The layers column: the current layer's opacity on top of the stack, a new layer, and the stack
-    // itself top-first - each row the layer alone, its name, its eye; drag a row to move it, click it
-    // to draw on it.
+    // itself top-first - each row the layer alone beside its name, and under the name (Curtis,
+    // 2026-09-26: "to give the name some room to breathe") what can be done to it: hide, rename,
+    // duplicate, trash. Drag a row to move it, click it to draw on it, double-click its name to rename.
     const newLayer = () => {
         const id = strokeId();
         changeLayers(addLayer(drawing, id, Date.now()));
         setCurrentId(id);
     };
+    // Per layer (Curtis, 2026-09-26): duplicate it just above, or throw it away - entries both, so
+    // undo takes either back (pure/drawing.js).
+    const copyLayer = (layerId) => {
+        const id = strokeId();
+        changeLayers(duplicateLayer(drawing, layerId, id, strokeId(), Date.now()));
+        setCurrentId(id);
+    };
+    const trashLayer = (layerId) => changeLayers(deleteLayer(drawing, layerId, strokeId(), Date.now()));
+    // A name (Curtis, 2026-09-26): typed in place of the name, kept on Enter or on leaving the field,
+    // dropped on Escape. A blank name goes back to the number; one the drawing cannot keep - too long,
+    // a control character - changes nothing (pure/drawing.js, `setLayer`).
+    const commitName = (layer, typed) => {
+        setRenaming(null);
+        if (typed.trim() !== (layer.name || '')) changeLayers(setLayer(drawing, layer.id, { name: typed }, Date.now()));
+    };
+    const layerName = (layer) => layer.name || t('doc.drawing.layer-n', 'layer {n}', { n: layer.n });
     const dropOnto = (e, stackIndex) => {
         e.preventDefault();
         const id = e.dataTransfer.getData('text/x-drawing-layer');
@@ -608,7 +663,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       return html`<li
                           key=${layer.id}
                           class=${isCurrent ? 'drawing-layer current' : 'drawing-layer'}
-                          draggable=${true}
+                          draggable=${renaming !== layer.id}
                           onDragStart=${(e) => {
                               e.dataTransfer.setData('text/x-drawing-layer', layer.id);
                               e.dataTransfer.effectAllowed = 'move';
@@ -618,22 +673,58 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           onClick=${() => setCurrentId(layer.id)}
                       >
                           <${LayerThumb} source=${layerCanvases.current.get(layer.id)} painted=${painted} />
-                          <span class=${layer.hidden ? 'drawing-layer-name hidden' : 'drawing-layer-name'}>
-                              ${t('doc.drawing.layer-n', 'layer {n}', { n: layer.n })}
+                          ${renaming === layer.id
+                              ? html`<${LayerNameField} layer=${layer} onCommit=${commitName} onCancel=${() => setRenaming(null)} />`
+                              : html`<span
+                                    class=${layer.hidden ? 'drawing-layer-name hidden' : 'drawing-layer-name'}
+                                    title=${layerName(layer)}
+                                    onDblClick=${(e) => {
+                                        e.stopPropagation();
+                                        if (opened) setRenaming(layer.id);
+                                    }}
+                                >${layerName(layer)}</span>`}
+                          <span class="drawing-layer-acts">
+                              <button
+                                  class="drawing-layer-eye"
+                                  title=${layer.hidden ? t('doc.drawing.show-layer', 'show this layer') : t('doc.drawing.hide-layer', 'hide this layer')}
+                                  onClick=${(e) => {
+                                      e.stopPropagation();
+                                      changeLayers(setLayer(drawing, layer.id, { hidden: !layer.hidden }, Date.now()));
+                                  }}
+                              ><${layer.hidden ? Icons.eyeClosed : Icons.eye} /></button>
+                              <button
+                                  class="drawing-layer-eye"
+                                  title=${t('doc.drawing.rename-layer', 'rename this layer')}
+                                  disabled=${!opened}
+                                  onClick=${(e) => {
+                                      e.stopPropagation();
+                                      setRenaming(layer.id);
+                                  }}
+                              ><${Icons.rename} /></button>
+                              <button
+                                  class="drawing-layer-eye"
+                                  title=${t('doc.drawing.duplicate-layer', 'duplicate this layer')}
+                                  onClick=${(e) => {
+                                      e.stopPropagation();
+                                      copyLayer(layer.id);
+                                  }}
+                              ><${Icons.copy} /></button>
+                              <button
+                                  class="drawing-layer-eye"
+                                  title=${t('doc.drawing.trash-layer', 'throw this layer away (undo brings it back)')}
+                                  onClick=${(e) => {
+                                      e.stopPropagation();
+                                      trashLayer(layer.id);
+                                  }}
+                              ><${Icons.trash} /></button>
                           </span>
-                          <button
-                              class="drawing-layer-eye"
-                              title=${layer.hidden ? t('doc.drawing.show-layer', 'show this layer') : t('doc.drawing.hide-layer', 'hide this layer')}
-                              onClick=${(e) => {
-                                  e.stopPropagation();
-                                  changeLayers(setLayer(drawing, layer.id, { hidden: !layer.hidden }, Date.now()));
-                              }}
-                          ><${layer.hidden ? Icons.eyeClosed : Icons.eye} /></button>
                       </li>`;
                   })}
               </ol>
               ${current && current.hidden &&
               html`<p class="null-sub">${t('doc.drawing.this-layer-is-hidden', 'this layer is hidden - show it to draw on it')}</p>`}
+              ${!layers.length &&
+              html`<p class="null-sub">${t('doc.drawing.no-layers', 'no layers - make a new one to draw on')}</p>`}
           </aside>${resizer('layers')}`;
 
     const header = html`<header class="reader-head drawing-head">

@@ -598,6 +598,161 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
     },
     {
+      "name": "a delete and a copy are entries of their own, each with only its fields",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "layer": "aaaaaaaaaaaaaaa2",
+            "tool": "delete",
+            "dx": 3,
+            "from": "aaaaaaaaaaaaaaa3"
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "delete"
+          },
+          {
+            "id": "c000000000000003",
+            "t": 3,
+            "layer": "aaaaaaaaaaaaaaa4",
+            "tool": "copy",
+            "from": "0000000000000000",
+            "color": "#123456"
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"delete\"},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"delete\"},{\"id\":\"c000000000000003\",\"t\":3,\"layer\":\"aaaaaaaaaaaaaaa4\",\"tool\":\"copy\",\"from\":\"0000000000000000\"}],\"undone\":[]}"
+    },
+    {
+      "name": "a copy naming no readable source is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "copy"
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "copy",
+            "from": "NOPE"
+          },
+          {
+            "id": "c000000000000003",
+            "t": 3,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "a layer keeps its name, after its number, non-ASCII and all",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "layers": [
+          {
+            "id": "aaaaaaaaaaaaaaa2",
+            "n": 2,
+            "name": "Ströke 🐴 \\ \"quoted\"",
+            "z": 1,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          }
+        ],
+        "strokes": [],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"name\":\"Ströke 🐴 \\\\ \\\"quoted\\\"\",\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":5}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "a name that cannot be kept is dropped, and the layer kept",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "layers": [
+          {
+            "id": "aaaaaaaaaaaaaaa2",
+            "n": 2,
+            "name": "tab\there",
+            "z": 1,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa3",
+            "n": 3,
+            "name": "",
+            "z": 2,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa4",
+            "n": 4,
+            "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "z": 3,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa5",
+            "n": 5,
+            "name": 7,
+            "z": 4,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa6",
+            "n": 6,
+            "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+            "z": 5,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          }
+        ],
+        "strokes": [],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa3\",\"n\":3,\"z\":2,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa4\",\"n\":4,\"z\":3,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa5\",\"n\":5,\"z\":4,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa6\",\"n\":6,\"name\":\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"z\":5,\"opacity\":100,\"hidden\":false,\"t\":5}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
@@ -699,6 +854,22 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"c000000000000003\",\"t\":6,\"tool\":\"move\",\"dx\":0,\"dy\":-20}],\"undone\":[]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":5,\"tool\":\"move\",\"dx\":10,\"dy\":0},{\"id\":\"c000000000000003\",\"t\":6,\"tool\":\"move\",\"dx\":0,\"dy\":-20}],\"undone\":[]}"
+    },
+    {
+      "name": "deleted here, drawn on there: the union keeps both entries",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"b000000000000002\",\"t\":5,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"delete\"}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":6,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"b000000000000002\",\"t\":5,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"delete\"},{\"id\":\"c000000000000003\",\"t\":6,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "two renames at the same moment: the tie breaks by UTF-8 bytes, not UTF-16",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"name\":\"～\",\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"name\":\"🐴\",\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"name\":\"🐴\",\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}"
     },
     {
       "name": "an unreadable head adds nothing",
