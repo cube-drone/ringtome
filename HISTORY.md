@@ -10827,3 +10827,31 @@ tick asked first, found no word yet, and stamped the memo; the claim's beat then
 not due. Reproduced on demand before fixing (a 500ms pulse and a planted 1.5s pause before the word):
 red on the old code with CI's exact signature, green on the new. The test beat now runs `pulse_now`,
 the same pass with the memo set aside (the per-pass cap still holds); the loop keeps its pacing.
+
+## 2026-09-25 (cont.): releases are all or nothing
+
+0.1.10 was live for Linux and Windows and missing for the Mac: the Mac build compiled and notarized,
+then lost its upload to one failed DNS lookup of api.github.com, and by then every other job had
+already published its part - so the Linux and Windows updaters moved and the Mac's did not. Six of the
+nine tagged releases before it had some part fail. Curtis: a version ships only if every part of it
+ships at once.
+
+Now no build job can publish (their token is read-only): each stashes its artifacts on the run, and
+one last job, `publish`, runs only if every build, the server signing (`server-publish`, renamed
+`server-sign`, which now only signs and stashes) and the image succeeded. It checks the set is whole
+(`node/tools/release-assemble.mjs`: every installer, every updater `.sig`, both server nodes with
+`.sig` and `.sha256`, every name carrying this tag's version), writes the desktop's `latest.json`
+itself, verifies every updater signature against the committed public key, uploads everything to a
+draft (invisible to `releases/latest`, where both updaters look), gives the image its tags - it is
+now pushed by digest only, signed, and pullable by no tag until this moment - and turns the draft
+into the release. A failed build is "Re-run failed jobs"; a failed upload is a re-run of `publish`
+alone, nothing rebuilt. The builds also no longer race each other to rewrite `latest.json`.
+
+`releaseassemble.cjs` pins what an installed app sees: 0.1.7's artifacts, laid out under the
+bundler's names with 0.1.7's real signatures, assemble into exactly the `latest.json` tauri-action
+published (committed as a fixture) - every key, URL and signature; red with the Windows default
+pointed at the setup .exe. It also refuses 0.1.10's set, an unsigned updater file, an unchecksummed
+server node and a stale build. actionlint passes. The workflow itself first runs on the next tag.
+
+Found on the way: the version cop did not know `supervisor/Cargo.toml`, though the supervisor adopts
+the node beside it as its own version; it does now (red when planted).

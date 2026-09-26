@@ -1,0 +1,51 @@
+{
+  "version": "0.1.7",
+  "notes": "release 0.1.7 - cloth-vowel\n\n- a little style fix\n- notifications enabled\n- We apparently forgot to enable discovery\n- web notifications\n- notification clickthrough on desktop\n- notifications maybe\n- the big HDT swapover\n- still tryna fix the blob reaper in CI\n- sync mechanics\n- linux works if there's no tray available\n- tray magnifique\n- faster release cadence\n- blob-reapin' CI fix",
+  "pub_date": "2026-09-25T11:42:16.528Z",
+  "platforms": {
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNTJXdTAwWU1zdEpOSitkSHliWDZ5QThWdUc3M0lBNytSVHhWYmlBRklFNmdKOXBDUERhekJrVlJORDA1cmlkQWU2MWM1ZkpVazNqR1F3RnpvZHhIVUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM0NjMyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMl8wLjEuN19hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMS43CjJIMjJqVFZMSXVjZzMzMEloc3FSOEdyNFNoVFVEMHZNVndxbHFKZ21HYnIwNThaK0UveGdYWTlIcERiUFVTSDNKVkkxSFo3VmdmdDZ1RTVLZERTVUF3PT0K",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_0.1.7_amd64.AppImage"
+    },
+    "linux-x86_64-appimage": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNTJXdTAwWU1zdEpOSitkSHliWDZ5QThWdUc3M0lBNytSVHhWYmlBRklFNmdKOXBDUERhekJrVlJORDA1cmlkQWU2MWM1ZkpVazNqR1F3RnpvZHhIVUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM0NjMyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMl8wLjEuN19hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMS43CjJIMjJqVFZMSXVjZzMzMEloc3FSOEdyNFNoVFVEMHZNVndxbHFKZ21HYnIwNThaK0UveGdYWTlIcERiUFVTSDNKVkkxSFo3VmdmdDZ1RTVLZERTVUF3PT0K",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_0.1.7_amd64.AppImage"
+    },
+    "linux-x86_64-deb": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNXoxUzM5c1ZLN0R1SEJRQWNEblVKcVVDcnl3c3NsTUxKaHFqVGpBYWZTQ2xFT0NkOFF2WUxndnlTM2czc1JaVERjNmZQbUVjcDh3Vll5Sm1xem9xWWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM0NjMyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMl8wLjEuN19hbWQ2NC5kZWIJdmVyc2lvbjowLjEuNwpPczZ1MFdMZys1eHp6S29pUENMYmIrT3ZWb1JjWkNvN0g4d01TRTB5Rzh5clA1bnRlaVFEUytwYWpTYWtyU2U3QXZLZjVEUUdGZ2g3aGlhYjdZcERBZz09Cg==",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_0.1.7_amd64.deb"
+    },
+    "linux-x86_64-rpm": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNTRQRGRnNmtiNlJ6K2hsWXBMVVhKWSs5WU5GOFRvejZudEM4ZHhLeWlHbUVXKzN1VTM5Y3dlZ3BqQ1VWMXJ0TmdNS0VnRkZodTYzc1JVN0dkWG1iaUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM0NjMyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMi0wLjEuNy0xLng4Nl82NC5ycG0JdmVyc2lvbjowLjEuNwpWc0ZDT0Nvc0ZTeU9vYlhxU2ducnVtcW94b3V1MnhVOUZtWjdsQVhYL3kwMDFROUpieiszN1dsMXFEMm5ZZ2tFLytVZVoveWZEQ3VHUzcxK3FESDVDUT09Cg==",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2-0.1.7-1.x86_64.rpm"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNTliQXlaaDh3RElXbGR2TlNkZFpuZGFUcTZQL3FFbWhBYkJ6VjB0cGNXVVpHZ1VHcFNZRm52T2ZocXltclRvb1hUOXZhUytJeWo5SFdEYWRFQnZYZXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM1NDIyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMl8wLjEuN194NjRfZW4tVVMubXNpCXZlcnNpb246MC4xLjcKMXgvUG9oMlJSODlZblhNcFhFb0IvSWVvcTdNUFNWYlJobWdvM2JSem1nS3dudHNUR0Y1Nk9ZM1E0N3hxU0k3WmpZOFB0dU1oVlpqUTNFQ2hnSW5zRGc9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_0.1.7_x64_en-US.msi"
+    },
+    "windows-x86_64-msi": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNTliQXlaaDh3RElXbGR2TlNkZFpuZGFUcTZQL3FFbWhBYkJ6VjB0cGNXVVpHZ1VHcFNZRm52T2ZocXltclRvb1hUOXZhUytJeWo5SFdEYWRFQnZYZXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM1NDIyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMl8wLjEuN194NjRfZW4tVVMubXNpCXZlcnNpb246MC4xLjcKMXgvUG9oMlJSODlZblhNcFhFb0IvSWVvcTdNUFNWYlJobWdvM2JSem1nS3dudHNUR0Y1Nk9ZM1E0N3hxU0k3WmpZOFB0dU1oVlpqUTNFQ2hnSW5zRGc9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_0.1.7_x64_en-US.msi"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNXd6b08zYytoRERROFRGNVA2QTdlRXl5OThxbnNTbWxRaVZzREJpMFl6eEpJNmpvRU9Rei95SkFYQlZ0cnRVaEZnQm5ncmVvQ0dQV05Lbi9jbmhWNFFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM1NDIyCWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMl8wLjEuN194NjQtc2V0dXAuZXhlCXZlcnNpb246MC4xLjcKZ0thYjJpSXplUmgyQWYyL3NLcG1naUNHVlgzNnBlMHFaTnVvUkRmT1BRWkFqWHRmR2cxcjlDbC9FVmpraFVuWnoreGhEdFJCeCtmMFdxeVNRUTQxQ1E9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_0.1.7_x64-setup.exe"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNS8vMUxUSkF5VGNHNWZZVmJWTmtMVWJUdFhWdkpWbUFHcmZPRGx3aVpEczNzSmNkWWduQ2N3dlg2RllYalRQaHhrUXJhSDNxdU9VM0ppUzRVQld4Z0FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM2NTI3CWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMi5hcHAudGFyLmd6CXZlcnNpb246MC4xLjcKME1RWURQTDhOTGlqNWRGSHVhWUxrR2ZDdU81SzdQalBCemNWcXlOSElWWnQxcXpac283L3BPWFVISTZielVuY3FuY3BMWWZLcmp1R3VBTXFoa3JVQnc9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_universal.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNS8vMUxUSkF5VGNHNWZZVmJWTmtMVWJUdFhWdkpWbUFHcmZPRGx3aVpEczNzSmNkWWduQ2N3dlg2RllYalRQaHhrUXJhSDNxdU9VM0ppUzRVQld4Z0FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM2NTI3CWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMi5hcHAudGFyLmd6CXZlcnNpb246MC4xLjcKME1RWURQTDhOTGlqNWRGSHVhWUxrR2ZDdU81SzdQalBCemNWcXlOSElWWnQxcXpac283L3BPWFVISTZielVuY3FuY3BMWWZLcmp1R3VBTXFoa3JVQnc9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_universal.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNS8vMUxUSkF5VGNHNWZZVmJWTmtMVWJUdFhWdkpWbUFHcmZPRGx3aVpEczNzSmNkWWduQ2N3dlg2RllYalRQaHhrUXJhSDNxdU9VM0ppUzRVQld4Z0FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM2NTI3CWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMi5hcHAudGFyLmd6CXZlcnNpb246MC4xLjcKME1RWURQTDhOTGlqNWRGSHVhWUxrR2ZDdU81SzdQalBCemNWcXlOSElWWnQxcXpac283L3BPWFVISTZielVuY3FuY3BMWWZLcmp1R3VBTXFoa3JVQnc9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_universal.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOE9UUytBZ3hWNS8vMUxUSkF5VGNHNWZZVmJWTmtMVWJUdFhWdkpWbUFHcmZPRGx3aVpEczNzSmNkWWduQ2N3dlg2RllYalRQaHhrUXJhSDNxdU9VM0ppUzRVQld4Z0FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzM2NTI3CWZpbGU6SG9yc2UgRHJhd2luZyBUeWNvb24gMi5hcHAudGFyLmd6CXZlcnNpb246MC4xLjcKME1RWURQTDhOTGlqNWRGSHVhWUxrR2ZDdU81SzdQalBCemNWcXlOSElWWnQxcXpac283L3BPWFVISTZielVuY3FuY3BMWWZLcmp1R3VBTXFoa3JVQnc9PQo=",
+      "url": "https://github.com/cube-drone/ringtome/releases/download/v0.1.7-cloth-vowel/Horse.Drawing.Tycoon.2_universal.app.tar.gz"
+    }
+  }
+}

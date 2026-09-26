@@ -109,6 +109,10 @@ one process. Stage 1 (the `lib.rs` split) is built; the rest, in order:
   start at login on by default, one instance, quiet restart for updates
 * ~~Stage 6 — auto-update and a release channel~~ built 2026-09-23: `desktop/src/update.rs`,
   update-on-quit; proven only once two releases carry it
+* **Prove all-or-nothing releases on the next tag** (built 2026-09-25): the first run of the
+  `publish` job - the draft, `crane tag` on the digest-only image, the flip. Its first test is a
+  real partial failure: kill one build and check that nothing appears on the releases page, on GHCR
+  or in `latest.json`, and that "Re-run failed jobs" finishes the release.
 
 ### Server nodes
 Two tasks, split on purpose (Curtis, 2026-09-25): packaging for the widest range of deployments,

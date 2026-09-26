@@ -13,7 +13,7 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 
 /// Where the newest release is described. GitHub's `latest/download` always names the newest
-/// non-prerelease release's asset; `release.yml`'s `server-publish` job writes it.
+/// non-draft, non-prerelease release's asset; `release.yml`'s `server-sign` job writes it.
 pub const DEFAULT_MANIFEST_URL: &str =
     "https://github.com/cube-drone/ringtome/releases/latest/download/server-latest.json";
 

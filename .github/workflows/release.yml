@@ -1,6 +1,18 @@
 # The expensive half: a tag builds the app for every platform, signs what can be signed, and
 # publishes a GitHub Release with the installers and the updater's manifest.
 #
+# ALL OR NOTHING (Curtis, 2026-09-25). Every build job only BUILDS: its artifacts are stashed on the
+# run, and no build job can touch the release (its token is read-only). The last job, `publish`,
+# runs only when every build, the server signing and the image all succeeded; it checks the set is
+# whole (node/tools/release-assemble.mjs), writes the desktop updater's `latest.json`, uploads it all
+# to a draft, tags the image, and only then turns the draft into the release. Until that moment
+# nothing is visible: a draft is invisible to `releases/latest`, which is where both updaters look.
+# Before this, 0.1.10 went out to Linux and Windows while its Mac build - built and notarized - lost
+# its upload to a DNS failure, and six of nine tagged releases had some part fail.
+#
+# When a job fails, "Re-run failed jobs" retries it and then `publish`; a failure in `publish` itself
+# (an upload, say) is a re-run of that one job, with nothing rebuilt.
+#
 # It is deliberately NOT on push. `just release-*` makes the tag by hand (node/tools/release.mjs),
 # and the tag is the whole gate: a release is a full optimized build of four artifacts, notarized by
 # Apple, handed to every installed copy as a complete new application. `just ci` remains the
@@ -135,7 +147,9 @@ jobs:
     needs: preflight
     environment: deploy
     permissions:
-      contents: write
+      # Read-only on purpose: a build stashes its artifacts and cannot publish anything, so a
+      # platform that fails cannot leave the others shipped without it (see the header).
+      contents: read
       # The Windows signer's whole credential: GitHub mints an OIDC token naming this repo and
       # the `deploy` environment, and the Azure app's federated credential trusts exactly that.
       id-token: write
@@ -325,7 +339,9 @@ jobs:
           Write-Host "script:   $script"
           Write-Host "account:  $env:AZ_ACCOUNT / $env:AZ_PROFILE at $env:AZ_ENDPOINT"
 
-      - name: Build, sign, and publish
+      # No tagName and no releaseId: tauri-action builds, bundles and signs, and publishes nothing.
+      # The updater's `.sig` files come from the bundler itself (`createUpdaterArtifacts`).
+      - name: Build and sign
         uses: tauri-apps/tauri-action@v0
         env:
           # The updater's own signature (SIGNING.md §0): minisign over the update artifact, checked
@@ -348,19 +364,10 @@ jobs:
           # `azure/login` used above is five minutes old by the time the build finishes.
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          # Read-only here (the job's permissions), so it can read and never publish.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop
-          # Empty on a dry run, which builds everything and publishes nothing.
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          # `v0.1.0-swear-slick` reads as `0.1.0-swear-slick` on the release page.
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('{0}', github.ref_name) || '' }}
-          # The notes `just release-*` wrote into the tag's annotation.
-          releaseBody: ${{ startsWith(github.ref, 'refs/tags/') && github.event.head_commit.message || '' }}
-          releaseDraft: false
-          prerelease: false
-          # `latest.json`, which is what an installed app polls to learn there is an update.
-          includeUpdaterJson: true
           # Plus the Windows sign command, when the tools step wrote one (RINGTOME_SIGN_CONFIG
           # is empty on every other platform and on a Windows run without the Azure variables).
           args: ${{ matrix.args }}${{ env.RINGTOME_SIGN_CONFIG != '' && format(' --config {0}', env.RINGTOME_SIGN_CONFIG) || '' }}
@@ -374,20 +381,27 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "sign-windows.log"
           if (Test-Path $log) { Get-Content $log } else { Write-Host "no transcript: the sign script never started - the --verbose build log above has the bundler's own words" }
 
-      # A dry run has no release to upload to, so the artifacts land on the run itself.
-      - name: Keep the artifacts (dry run)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      # The stash: every installer and every updater signature, for `publish` (or, on a dry run,
+      # for whoever is debugging the pipeline). A build that produced nothing fails here.
+      - name: Stash the artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ringtome-${{ matrix.platform }}
+          name: desktop-${{ matrix.platform }}
           path: |
             desktop/target/**/release/bundle/**/*.dmg
-            desktop/target/**/release/bundle/**/*.app.tar.gz*
-            desktop/target/**/release/bundle/**/*.AppImage*
+            desktop/target/**/release/bundle/**/*.app.tar.gz
+            desktop/target/**/release/bundle/**/*.app.tar.gz.sig
+            desktop/target/**/release/bundle/**/*.AppImage
+            desktop/target/**/release/bundle/**/*.AppImage.sig
             desktop/target/**/release/bundle/**/*.deb
+            desktop/target/**/release/bundle/**/*.deb.sig
+            desktop/target/**/release/bundle/**/*.rpm
+            desktop/target/**/release/bundle/**/*.rpm.sig
             desktop/target/**/release/bundle/**/*.exe
+            desktop/target/**/release/bundle/**/*.exe.sig
             desktop/target/**/release/bundle/**/*.msi
-          if-no-files-found: warn
+            desktop/target/**/release/bundle/**/*.msi.sig
+          if-no-files-found: error
 
   # The SERVER node (SERVER.md): the same `ringtome` binary an operator runs, built per architecture
   # on the architecture itself - no cross-compiling - inside PyPA's manylinux_2_28 image (AlmaLinux 8,
@@ -485,21 +499,20 @@ jobs:
           name: image-bin-${{ matrix.docker }}
           path: image/
 
-  # The server tarballs join the release the desktop jobs created - after them, so there is a
-  # release to join - SIGNED, with a manifest a supervisor can poll, and the notes gain a "which
-  # download is which" section, once.
+  # The server tarballs, SIGNED, with the manifest a supervisor polls - stashed for `publish`, like
+  # everything else.
   #
   # Signed with the desktop updater's own key (SIGNING.md §0) - one key, one public half already in
   # desktop/tauri.conf.json - because the thing that will download these and run them unattended is
   # the server's updater: ringtome-supervisor (`supervisor/`). This is the one server job in
   # the `deploy` environment, and only because it holds that key.
-  server-publish:
-    needs: [server, build]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.server.result == 'success' }}
+  server-sign:
+    needs: server
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-24.04
     environment: deploy
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -569,35 +582,21 @@ jobs:
           print(json.dumps(manifest, indent=2))
           PY
 
-      - name: Attach the server node to the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
-        run: |
-          # Every desktop build failing leaves no release; the server node still ships.
-          if ! gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
-            gh release create "$TAG" -R "$REPO" --verify-tag --notes-from-tag --title "$TAG"
-          fi
-          gh release upload "$TAG" -R "$REPO" --clobber dist/*
-          body=$(gh release view "$TAG" -R "$REPO" --json body -q .body)
-          if ! printf '%s' "$body" | grep -q "Which download is which"; then
-            {
-              printf '%s\n\n' "$body"
-              echo "### Which download is which"
-              echo
-              echo "- **Horse Drawing Tycoon 2** (\`.dmg\`, \`.exe\`, \`.msi\`, \`.AppImage\`, \`.deb\`, \`.rpm\`) - the desktop app: a window and a tray, and it updates itself."
-              echo "- **\`ringtome-server-...-linux-x86_64\` / \`-aarch64\`** - the server node for a Linux host (glibc 2.28+): the node, and \`ringtome-supervisor\` to keep it running, updated and backed up. Also \`ghcr.io/cube-drone/ringtome:${TAG#v}\`. See [SERVER.md](https://github.com/${REPO}/blob/${TAG}/SERVER.md)."
-            } > notes.md
-            gh release edit "$TAG" -R "$REPO" --notes-file notes.md
-          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-release
+          path: dist/*
+          if-no-files-found: error
 
-  # The container: the two binaries above on distroless/cc, one multi-arch image. Pushed to GHCR on
-  # a tag (`:<version>`, `:<version>-<name>`, `:latest`); on a dry run built and not pushed, which
-  # still proves the Dockerfile.
+  # The container: the two binaries above on distroless/cc, one multi-arch image. On a tag it is
+  # pushed to GHCR BY DIGEST ONLY - present, signed, and named by no tag, so nobody pulls it yet;
+  # `publish` gives it `:<version>`, `:<version>-<name>` and `:latest` with the rest of the release.
+  # On a dry run it is built and not pushed, which still proves the Dockerfile.
   image:
     needs: server
     runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -619,11 +618,12 @@ jobs:
         run: |
           version=$(grep -m1 '^version = ' node/Cargo.toml | cut -d'"' -f2)
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          tags="${image}:${version}"
+          # By digest on a tag (the bare name), by version on a dry run (never pushed).
           if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
-            tags="${tags},${image}:${GITHUB_REF_NAME#v},${image}:latest"
+            echo "tags=${image}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${image}:${version}" >> "$GITHUB_OUTPUT"
           fi
-          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
@@ -640,8 +640,10 @@ jobs:
         with:
           context: server
           platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          push: false
           tags: ${{ steps.tags.outputs.tags }}
+          # The push, by digest: the image lands in the registry with no tag to pull it by.
+          outputs: ${{ startsWith(github.ref, 'refs/tags/') && 'type=image,push-by-digest=true,name-canonical=true,push=true' || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=ringtome
@@ -650,7 +652,7 @@ jobs:
 
       # Keyless (Sigstore): anyone can check the image came from this repository's release workflow
       # at a release tag - SERVER.md has the `cosign verify` line. Signed by DIGEST, never by tag:
-      # a tag can move, a digest is the image.
+      # a tag can move, a digest is the image - and `publish` tags exactly this digest.
       - uses: sigstore/cosign-installer@v3
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
 
@@ -659,3 +661,85 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"
+
+  # The gate. Runs only when EVERY job above succeeded (no `always()`: a failed or skipped need
+  # skips this), and it is the only job that can make anything visible. Order matters: everything
+  # invisible first (the whole set checked, uploaded to a draft), then the two visible acts back to
+  # back - the image's tags, then the release. A failure between those two is a re-run of this job,
+  # which is safe to repeat: it reuses the draft, re-uploads with --clobber, re-tags the same digest.
+  publish:
+    needs: [build, server-sign, image]
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{desktop-*,server-release}"
+          path: artifacts
+
+      # The notes `just release-*` wrote (the tagged commit's message), which also go into
+      # latest.json for the desktop's "what's new".
+      - name: Is the set whole?
+        env:
+          NOTES: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n' "$NOTES" > notes.txt
+          node node/tools/release-assemble.mjs "$TAG" artifacts release notes.txt
+
+      # The same check the supervisor and the installed apps make, made first: every updater
+      # signature verifies against the public key committed in desktop/tauri.conf.json.
+      - name: Verify every updater signature
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          python3 -c "import json,base64;print(base64.b64decode(json.load(open('desktop/tauri.conf.json'))['plugins']['updater']['pubkey']).decode())" > pubkey.minisign
+          for sig in release/*.sig; do
+            base64 -d "$sig" > check.minisig
+            minisign -V -q -p pubkey.minisign -m "${sig%.sig}" -x check.minisig
+            echo "verified ${sig%.sig}"
+          done
+
+      - name: Upload to a draft
+        run: |
+          if ! gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            {
+              cat notes.txt
+              echo
+              echo "### Which download is which"
+              echo
+              echo "- **Horse Drawing Tycoon 2** (\`.dmg\`, \`.exe\`, \`.msi\`, \`.AppImage\`, \`.deb\`, \`.rpm\`) - the desktop app: a window and a tray, and it updates itself."
+              echo "- **\`ringtome-server-...-linux-x86_64\` / \`-aarch64\`** - the server node for a Linux host (glibc 2.28+): the node, and \`ringtome-supervisor\` to keep it running, updated and backed up. Also \`ghcr.io/cube-drone/ringtome:${TAG#v}\`. See [SERVER.md](https://github.com/${REPO}/blob/${TAG}/SERVER.md)."
+            } > body.md
+            gh release create "$TAG" -R "$REPO" --verify-tag --draft --title "$TAG" --notes-file body.md
+          fi
+          gh release upload "$TAG" -R "$REPO" --clobber release/*
+
+      - uses: imjasonh/setup-crane@v0.4
+
+      # `crane tag` adds a tag to the manifest already in the registry - the digest cosign signed -
+      # rather than building a new one.
+      - name: Tag the image
+        env:
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+          version=$(grep -m1 '^version = ' node/Cargo.toml | cut -d'"' -f2)
+          for tag in "$version" "${TAG#v}" latest; do
+            crane tag "${image}@${DIGEST}" "$tag"
+          done
+
+      - name: Release
+        run: gh release edit "$TAG" -R "$REPO" --draft=false --latest

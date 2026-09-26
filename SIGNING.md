@@ -309,7 +309,7 @@ certificate Microsoft issues is valid for **three days** — every signature is 
 
 ### ...and it signs the server node too (2026-09-25)
 
-The same key signs every `ringtome-server-…tar.gz` (the `server-publish` job, the one server job in the
+The same key signs every `ringtome-server-…tar.gz` (the `server-sign` job, the one server job in the
 `deploy` environment), and `server-latest.json` carries those signatures for the server's own updater
 - `ringtome-supervisor` (`supervisor/src/manifest.rs`, `verify`; the public half is compiled into
 `supervisor/src/config.rs`). One key, one public half, two kinds of update. The job

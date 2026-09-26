@@ -404,8 +404,12 @@ in `CFBundleShortVersionString`. The name rides in the tag, the title and the no
 *The pipeline (built 2026-09-22).* `.github/workflows/release.yml`: a `v*` tag builds macOS
 (universal), Linux (on 22.04, so the AppImage runs on more than the newest glibc) and Windows,
 signs and notarizes the Mac with the `deploy` environment's secrets, and publishes a GitHub Release
-carrying the installers, the updater artifacts and `latest.json`. `workflow_dispatch` does the same
-build and publishes nothing, for when the packaging itself is what changed. It degrades rather than
+carrying the installers, the updater artifacts and `latest.json` - **all or nothing** (2026-09-25):
+the builds only stash their artifacts, and one last `publish` job, which runs only when every other
+job succeeded, checks the set is whole (`node/tools/release-assemble.mjs`), writes `latest.json`,
+and turns a draft into the release. A failed platform ships nothing, anywhere; "Re-run failed jobs"
+finishes it. `workflow_dispatch` does the same build and publishes nothing, for when the packaging
+itself is what changed. It degrades rather than
 fails when a secret is missing (Windows signing landed by OIDC on 2026-09-23, SIGNING.md §2), and a half-signed
 release beats a red run. Bundling is on, the updater's public key and the `releases/latest/download`
 endpoint are in `tauri.conf.json`, and a packaged build runs as a PROD node - decided by the build

@@ -1,6 +1,7 @@
 //! The release manifest and the checks a download must pass before it is ever executed.
 //!
-//! `server-latest.json` is written by `release.yml`'s `server-publish` job:
+//! `server-latest.json` is written by `release.yml`'s `server-sign` job and published with the
+//! rest of the release by its `publish` job:
 //!
 //! ```json
 //! {"version": "0.1.10", "name": "0.1.10-cape-jab", "tag": "v0.1.10-cape-jab", "pub_date": "...",

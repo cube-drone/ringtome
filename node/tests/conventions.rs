@@ -451,17 +451,19 @@ fn the_desktop_workspace_keeps_the_dev_profile() {
     );
 }
 
-/// One release, one number (Curtis, 2026-09-22). Five files spell the version and they must agree:
+/// One release, one number (Curtis, 2026-09-22). Six files spell the version and they must agree:
 /// a desktop bundle whose Cargo version disagrees with its `tauri.conf.json` version gives two
 /// answers to "what is running", and the updater believes the wrong one - it compares what the
-/// bundle claims against what the manifest offers. `just release-*` writes all five together;
-/// this is what catches the hand-edit that writes one.
+/// bundle claims against what the manifest offers. `just release-*` writes all six together;
+/// this is what catches the hand-edit that writes one. The supervisor is one of them because it
+/// adopts the node it shipped beside AS ITS OWN VERSION (supervisor/src/install.rs, `adopt`).
 #[test]
 fn every_file_that_spells_the_version_agrees() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let spots: [(&str, &str); 5] = [
+    let spots: [(&str, &str); 6] = [
         ("node/Cargo.toml", "version = \""),
         ("proto/Cargo.toml", "version = \""),
+        ("supervisor/Cargo.toml", "version = \""),
         ("desktop/Cargo.toml", "version = \""),
         ("desktop/tauri.conf.json", "\"version\": \""),
         ("node/js/package.json", "\"version\": \""),
@@ -476,7 +478,7 @@ fn every_file_that_spells_the_version_agrees() {
         let end = rest.find('"').expect("a closing quote");
         said.insert(file, rest[..end].to_string());
     }
-    let first = said.values().next().expect("five files").clone();
+    let first = said.values().next().expect("six files").clone();
     assert!(
         said.values().all(|v| *v == first),
         "the version is spelled differently in different files: {said:?}. `just release-*` writes \
