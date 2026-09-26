@@ -130,3 +130,29 @@ describe('a drawing, as the shared vectors say', () => {
         }
     });
 });
+
+// The swatch row under the picker (Curtis, 2026-09-26): white and black, then the last ten colours
+// this drawing's strokes used.
+describe("a drawing's recent colours", () => {
+    const at = (t, color, tool = 'brush') => ({ id: t.toString(16).padStart(16, '0'), t, tool, color, size: 4, points: [1, 1] });
+
+    it('are its strokes\' colours, newest first, each once, never white or black', () => {
+        let body = d.blankDrawing();
+        for (const s of [at(1, '#aa0000'), at(2, '#00aa00'), at(3, '#ffffff'), at(4, '#aa0000'), at(5, '#000000'), at(6, '#0000aa')]) {
+            body = d.addStroke(body, s);
+        }
+        assert.deepEqual(d.recentColours(body), ['#0000aa', '#aa0000', '#00aa00']);
+        assert.deepEqual(d.FIXED_COLOURS, ['#ffffff', '#000000']);
+    });
+
+    it('stop at ten, skip the eraser, and forget an undone stroke\'s colour', () => {
+        let body = d.blankDrawing();
+        for (let i = 1; i <= 12; i++) body = d.addStroke(body, at(i, `#0000${(i * 16).toString(16).padStart(2, '0')}`));
+        body = d.addStroke(body, { ...at(13, undefined, 'eraser') });
+        const ten = d.recentColours(body);
+        assert.equal(ten.length, 10);
+        assert.equal(ten[0], '#0000c0', 'the eraser has no colour to offer');
+        assert.equal(d.recentColours(d.undo(d.undo(body)))[0], '#0000b0', 'an undone stroke takes its colour with it');
+        assert.deepEqual(d.recentColours(d.blankDrawing()), []);
+    });
+});

@@ -116,9 +116,12 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, a size for each (1-80 canvas units), the brush's colour
-  (the browser's own colour picker - locale-aware native widgets win - with a few swatches beside
-  it), undo, and the drawing's own actions: duplicate, copy into a notebook, publish.
+- **The tools column**: brush, eraser, a size for each (1-80 canvas units), the brush's colour,
+  undo, and the drawing's own actions: duplicate, copy into a notebook, publish. The colour is a hue
+  ring with an HSV triangle inside it and a hex field (`doc/colourpicker.js`, Curtis 2026-09-26 -
+  it replaced the browser's native colour input), with a row of swatches beneath: white and black,
+  then the last ten colours this drawing's strokes used, newest first (`recentColours`, read off the
+  strokes, so the row follows the drawing everywhere and an undo takes its colour with it).
 - **Wherever it is listed** - the Drawing app, or Lost & Found - a drawing opens on its canvas: the
   documents app's right-hand column hands the `drawing` format to the drawing surface
   (`doc/drawing.js`), which brings its tools column with it.

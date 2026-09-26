@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1010 phrases across 67 files.
+// 1011 phrases across 68 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -373,6 +373,10 @@ export default {
     'doc.chips.the-previous-document': 'the previous document',
     'doc.chips.the-next-document': 'the next document',
 
+    // --- node/js/doc/colourpicker.js ---
+    'doc.colourpicker.hue-and-shade': 'hue ring and shade triangle',
+    'doc.colourpicker.hex': 'colour as hex',
+
     // --- node/js/doc/diffpage.js ---
     'doc.diffpage.your-changes-are-public': 'your changes are public',
     'doc.diffpage.this-document-has-no-public': 'this document has no public version to compare against',
@@ -394,7 +398,6 @@ export default {
     'doc.drawing.eraser-size': 'eraser size',
     'doc.drawing.brush-size': 'brush size',
     'doc.drawing.colour': 'colour',
-    'doc.drawing.any-colour': 'any colour',
     'doc.drawing.undo': 'undo',
     'doc.drawing.strokes': '{count} strokes',
     'doc.drawing.duplicate': 'duplicate',

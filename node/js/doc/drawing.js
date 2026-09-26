@@ -23,19 +23,17 @@ import { Annotations } from './annotations.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
 import { api, xhrUpload } from '../net.js';
 import { CopyIntoModal } from '../copyinto.js';
+import { ColourPicker } from './colourpicker.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
-import { readBody, writeBody, addStroke, undo, strokeId, encodePoints, decodePoints, MAX_SIZE } from '../pure/drawing.js';
+import { readBody, writeBody, addStroke, undo, strokeId, encodePoints, decodePoints, MAX_SIZE, FIXED_COLOURS, recentColours } from '../pure/drawing.js';
 import { publishedState } from '../pure/feed.js';
 
 const html = htm.bind(h);
 
 /// The canvas's backing resolution, as a multiple of the drawing's own units.
 const BACKING = 2;
-
-/// The colours a click away; the picker beside them has all the rest.
-export const SWATCHES = ['#1f1a17', '#8a4b1f', '#c9a36b', '#fffefb', '#7a1f6e', '#1f9e90', '#db6a63', '#f3e08c'];
 
 // ---------------------------------------------------------------------------------------------
 // Painting
@@ -344,8 +342,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           setTools(tools.tool === 'eraser' ? { eraserSize: +e.currentTarget.value } : { brushSize: +e.currentTarget.value })}
                   />
               </label>
+              <${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: 'brush' })} />
               <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
-                  ${SWATCHES.map(
+                  ${/* A click away: white and black always, then the last ten colours this
+                      drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''}
+                  ${[...FIXED_COLOURS, ...recentColours(drawing, 10)].map(
                       (c) => html`<button
                           key=${c}
                           class=${tools.color === c ? 'drawing-swatch active' : 'drawing-swatch'}
@@ -354,13 +355,6 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           onClick=${() => setTools({ color: c, tool: 'brush' })}
                       ></button>`
                   )}
-                  <input
-                      class="drawing-picker"
-                      type="color"
-                      value=${tools.color}
-                      title=${t('doc.drawing.any-colour', 'any colour')}
-                      onInput=${(e) => setTools({ color: e.currentTarget.value.toLowerCase(), tool: 'brush' })}
-                  />
               </div>
               <button class="drawing-tool" disabled=${!drawing.strokes.length} onClick=${undoStroke}>
                   <${Icons.unpublish} /> ${t('doc.drawing.undo', 'undo')}

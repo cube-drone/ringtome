@@ -11037,3 +11037,22 @@ duplicate; a picture filed into a notebook before its ingest even finishes; publ
 onto the same post, take down; only a drawing through the drawing door. Red with the resolve branch
 planted out, and with drawings refused at publish. Not done: anyone drawing with it in a browser
 (NEXT_STEPS).
+
+## 2026-09-26 (cont.): a colour triangle
+
+Curtis drew a horse, and asked for a better colour picker than the browser's: "a nice RGB selecting
+triangle". Built rather than borrowed - the picker libraries on offer do squares and wheels, not
+triangles, and the maths is a page. `doc/colourpicker.js` is the GIMP / Krita picker: a hue ring,
+and inside it a triangle whose corners are the pure hue, white and black, turning so its hue corner
+points at the hue; drag either, or type a hex. It keeps its own HSV so a grey keeps the hue it came
+from. `pure/colour.js` holds hex / RGB / HSV and the geometry - a point's weights on the three corners
+(a, b, c) are exactly (s·v, v·(1-s), 1-v), invertible both ways - and `colour.cjs` pins that every
+colour maps to one point and back, that the corners are what they say, and that a drag leaving the
+triangle slides along its edge. The painters were run in Node against a stand-in canvas and the
+pixels looked at, at two hues: ring, triangle, corners and a test point all where they belong. Not
+yet dragged by a person.
+
+The swatch row under it is now white and black, then the last ten colours this drawing used, newest
+first (Curtis). `recentColours` reads them off the drawing's own strokes rather than keeping a list:
+nothing new to store or sync, the row is the same on every computer the drawing is on, and an undone
+stroke takes its colour with it. Tested in `pure/drawing.cjs`.

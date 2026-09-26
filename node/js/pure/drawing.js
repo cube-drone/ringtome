@@ -197,3 +197,23 @@ export function writeBody(body) {
         undone: [...b.undone].sort(),
     });
 }
+
+/// The swatches the tools column always offers, whatever the drawing: white and black.
+export const FIXED_COLOURS = ['#ffffff', '#000000'];
+
+/// The colours this drawing's brush strokes used, newest first, each once, at most `count` - and
+/// never white or black, which the swatch row always offers anyway. Read off the strokes
+/// themselves, so the list is the drawing's own: it follows the drawing to every computer and
+/// survives a reload with nothing else stored, and an undone stroke's colour leaves with it.
+export function recentColours(drawing, count = 10) {
+    const fixed = new Set(FIXED_COLOURS);
+    const seen = new Set();
+    const out = [];
+    for (let i = drawing.strokes.length - 1; i >= 0 && out.length < count; i--) {
+        const colour = drawing.strokes[i].color;
+        if (!colour || fixed.has(colour) || seen.has(colour)) continue;
+        seen.add(colour);
+        out.push(colour);
+    }
+    return out;
+}
