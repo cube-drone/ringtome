@@ -10855,3 +10855,10 @@ server node and a stale build. actionlint passes. The workflow itself first runs
 
 Found on the way: the version cop did not know `supervisor/Cargo.toml`, though the supervisor adopts
 the node beside it as its own version; it does now (red when planted).
+
+The release page now also carries what HISTORY.md gained since the previous release
+(`node/tools/release-history.mjs`): the diff's added lines, the newest 80,000 characters at most (GitHub
+caps a release's text at 125,000), cut at an entry heading, with a link to the file for the rest. On
+the page only - not in the tag, the commit or `latest.json`. Mechanical by choice (Curtis): nothing in
+the pipeline calls a model. Rehearsed against the real tags: 0.1.10 would have carried the three
+entries written between it and 0.1.9.
