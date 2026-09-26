@@ -88,7 +88,7 @@ pub async fn beat(
             tracing::info!(root = %r, fetched, behind = state.behind.is_behind(r), "TEST BEAT: pull-once");
             Ok(())
         }
-        ("room-pulse", _) => crate::chat::pulse_pass(state.clone()).await,
+        ("room-pulse", _) => crate::chat::pulse_now(state.clone()).await,
         ("room-sync", Some(r)) => {
             let n = crate::chat::sync_open_rooms(&state, r).await?;
             tracing::info!(root = %r, exchanged = n, "TEST BEAT: room-sync");

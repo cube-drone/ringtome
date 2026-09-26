@@ -2331,6 +2331,27 @@ async fn remote_latest(state: &AppState, viewer_hex: &str, author_hex: &str, doc
 /// a few per pass and each at most every ten minutes, so a busy room a reader only follows
 /// still cycles - slowly, by design.
 pub async fn pulse_pass(state: AppState) -> Result<()> {
+    pulse(state, Pacing::Paced).await
+}
+
+/// The test beat's form: one pass that asks every due-or-not room now. Without it, a beat
+/// raced the loop's own tick (field-found 2026-09-25, `chat_feed.cjs` red on CI): the rig's
+/// 60s pulse asked the creator's node BEFORE the word was said, got nothing newer, and its
+/// ten-minute memo turned the claim's beat - seconds later - into a silent skip. The pace
+/// per pass still holds; only the memo is set aside.
+pub async fn pulse_now(state: AppState) -> Result<()> {
+    pulse(state, Pacing::Unpaced).await
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pacing {
+    /// Each remote room at most every PULSE_ASK_TTL_MS.
+    Paced,
+    /// Every remote room asked this pass, whenever it was last asked.
+    Unpaced,
+}
+
+async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
     let rows = crate::fanout::rooms_in_feeds(&state.node_db).await?;
     if rows.is_empty() {
         return Ok(());
@@ -2354,7 +2375,8 @@ pub async fn pulse_pass(state: AppState) -> Result<()> {
                     continue;
                 }
                 let key = (author.clone(), doc_hex.clone());
-                let due = PULSED.lock().map(|m| m.get(&key).is_none_or(|t| now - *t > PULSE_ASK_TTL_MS)).unwrap_or(true);
+                let due = pacing == Pacing::Unpaced
+                    || PULSED.lock().map(|m| m.get(&key).is_none_or(|t| now - *t > PULSE_ASK_TTL_MS)).unwrap_or(true);
                 if !due {
                     continue;
                 }

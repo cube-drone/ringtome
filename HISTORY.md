@@ -10816,3 +10816,14 @@ binaries; SERVER.md has the supervisor section, a systemd unit, and its settings
 `supervisor/README.md` is the operator's and contributor's guide: what it is for, a deploy from
 download to systemd, its settings, how to update the supervisor itself (by hand, on purpose), and
 the crate's own rules.
+
+## 2026-09-25 (cont.): the pulse beat that lost to the pulse
+
+`chat_feed.cjs`'s "a busy room cycles" went red on CI with the room's feed time exactly its publish
+time: the claim's pulse beat had done nothing. The beat ran `pulse_pass`, whose ten-minute memo paces
+how often a room nobody here entered is asked of its creator's node - and the rig's own 60s pulse
+loop on bravo can tick in the seconds between the room landing in bea's feed and ada's word. That
+tick asked first, found no word yet, and stamped the memo; the claim's beat then skipped the room as
+not due. Reproduced on demand before fixing (a 500ms pulse and a planted 1.5s pause before the word):
+red on the old code with CI's exact signature, green on the new. The test beat now runs `pulse_now`,
+the same pass with the memo set aside (the per-pass cap still holds); the loop keeps its pacing.
