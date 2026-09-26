@@ -48,7 +48,7 @@ function Hex(app, key, onLaunch, personaName) {
 }
 
 export const Console = ({ onLaunch, personaName, admin }) => {
-    const rows = chunk(consoleCellsFor(admin), COLUMNS);
+    const rows = chunk(consoleCellsFor(admin, COLUMNS), COLUMNS);
     return html`
         <div class="console">
             <div class="hex-comb">

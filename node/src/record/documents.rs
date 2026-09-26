@@ -45,6 +45,10 @@ pub enum Format {
     Room,
     /// A notebook published whole (PROJECT_PLAN's Books): the published tree as JSON. Public only.
     Book,
+    /// A drawing (DRAWING.md): strokes as JSON, merged stroke-wise at read time (drawing.rs) - not
+    /// text, never line-merged, never searched by its body; not media, inlined in the doc JSON like
+    /// text. Private only.
+    Drawing,
 }
 
 impl Format {
@@ -59,6 +63,7 @@ impl Format {
             Some(doc_format::OGG_OPUS) => Format::OggOpus,
             Some(doc_format::BOOK) => Format::Book,
             Some(doc_format::ROOM) => Format::Room,
+            Some(doc_format::DRAWING) => Format::Drawing,
             _ => Format::Plaintext,
         }
     }
@@ -73,6 +78,7 @@ impl Format {
             Format::OggOpus => Some(doc_format::OGG_OPUS),
             Format::Book => Some(doc_format::BOOK),
             Format::Room => Some(doc_format::ROOM),
+            Format::Drawing => Some(doc_format::DRAWING),
         }
     }
 
@@ -86,6 +92,7 @@ impl Format {
             Format::OggOpus => "opus",
             Format::Book => "book",
             Format::Room => "room",
+            Format::Drawing => "drawing",
         }
     }
 
@@ -99,6 +106,7 @@ impl Format {
             "opus" => Some(Format::OggOpus),
             "book" => Some(Format::Book),
             "room" => Some(Format::Room),
+            "drawing" => Some(Format::Drawing),
             _ => None,
         }
     }
@@ -120,6 +128,7 @@ impl Format {
             Format::OggOpus => "audio/ogg",
             Format::Book => "application/json",
             Format::Room => "text/plain; charset=utf-8",
+            Format::Drawing => "application/json",
         }
     }
 }
@@ -2642,7 +2651,10 @@ pub async fn search_rows(
                 // Empty device-name map: conflict labels' device names are presentation,
                 // not content - close enough for an index either way.
                 let resolved = resolve(files, keys, &doc, &BTreeMap::new()).await?;
-                if let Some(body) = &resolved.body {
+                // Words only: a drawing's body is strokes (DRAWING.md) - ids and colours are not
+                // anything a person searches for - so a drawing is found by its title and tags.
+                let words = Format::from_wire(doc.display_head().and_then(|v| v.header.format)).is_mergeable_text();
+                if let Some(body) = resolved.body.as_ref().filter(|_| words) {
                     tokenize_into(body, &mut tokens);
                 }
             }
@@ -3039,8 +3051,8 @@ fn render_segments(
                     }
                     out.push_str("::: conflict\n");
                 }
-                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book => {
-                    unreachable!("media never reaches text merge")
+                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book | Format::Drawing => {
+                    unreachable!("media and drawings never reach text merge")
                 }
             },
         }
@@ -3058,8 +3070,8 @@ fn whole_version_conflict(
     names: &BTreeMap<[u8; 32], String>,
 ) -> String {
     match format {
-        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book => {
-            unreachable!("media conflicts are keep-both, never synthesized text")
+        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book | Format::Drawing => {
+            unreachable!("media conflicts are keep-both and drawings merge stroke-wise: never synthesized text")
         }
         // Git-style marker fences: every side in full.
         Format::Plaintext => {
@@ -3124,6 +3136,25 @@ pub async fn resolve(
     // The document's format governs presentation. Read from the display head; a document's
     // versions all carry the same format.
     let format = Format::from_wire(doc.display_head().and_then(|v| v.header.format));
+
+    // A drawing merges stroke-wise (drawing.rs, DRAWING.md): every head's strokes together, minus
+    // every head's undone, so there is never a conflict - one head reads back canonical, two or
+    // more read back merged, and the next save heals the fork.
+    if format == Format::Drawing {
+        let mut bodies = Vec::new();
+        for v in &heads {
+            let Some(body) = read_body(files, keys, v).await? else {
+                return Ok(ResolvedDoc { resolution: Resolution::Single, title: display_title, body: None });
+            };
+            bodies.push(body);
+        }
+        let resolution = if bodies.len() > 1 { Resolution::Merged } else { Resolution::Single };
+        return Ok(ResolvedDoc {
+            resolution,
+            title: display_title,
+            body: (!bodies.is_empty()).then(|| crate::drawing::merge(&bodies)),
+        });
+    }
 
     // Media bodies are opaque: no line-merge, no synthesized conflict text (you can't merge two
     // images, or inline a webp into JSON). One logical head or keep-both; the bytes are served
@@ -3296,8 +3327,8 @@ pub async fn resolve(
                     let segments = align_heads(&base, &[text_a.as_str(), text_b.as_str()]);
                     render_segments(format, &segments, &[a, b], names)
                 }
-                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book => {
-                    unreachable!("media never reaches text merge")
+                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book | Format::Drawing => {
+                    unreachable!("media and drawings never reach text merge")
                 }
             }),
         }),

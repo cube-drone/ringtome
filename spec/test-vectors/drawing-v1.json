@@ -1,0 +1,312 @@
+{
+  "about": "Horse Drawing Tycoon 2 drawing bodies (DRAWING.md). `canonical`: any input read and written in the one canonical form - node/js/pure/drawing.js `writeBody`, node/src/drawing.rs `canonical`. `merge`: bodies (canonical strings, or anything) merged in any order - node/src/drawing.rs `merge`. Both implementations must produce `written` / `merged` byte for byte.",
+  "version": 1,
+  "canonical": [
+    {
+      "name": "blank",
+      "input": {},
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "strokes sorted by time then id, unknown fields dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "extra": 1,
+        "strokes": [
+          {
+            "id": "b000000000000002",
+            "t": 5,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "note": "x"
+          },
+          {
+            "id": "a000000000000001",
+            "t": 5,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "c000000000000003",
+            "t": 1,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"a000000000000001\",\"t\":5,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":5,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "an eraser carries no colour",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "e000000000000004",
+            "t": 2,
+            "tool": "eraser",
+            "size": 30,
+            "color": "#ffffff",
+            "points": [
+              0,
+              0,
+              5,
+              5
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e000000000000004\",\"t\":2,\"tool\":\"eraser\",\"size\":30,\"points\":[0,0,5,5]}],\"undone\":[]}"
+    },
+    {
+      "name": "strokes that cannot be painted are dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "laser",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "c000000000000003",
+            "t": 3,
+            "tool": "brush",
+            "color": "#ABCDEF",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "e000000000000004",
+            "t": 4,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 12.5,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "f000000000000005",
+            "t": 5,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              1.5,
+              2
+            ]
+          },
+          {
+            "id": "xyz",
+            "t": 6,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "the first stroke of an id wins, and undone ids leave the strokes",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "a000000000000001",
+            "t": 9,
+            "tool": "brush",
+            "color": "#000000",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          }
+        ],
+        "undone": [
+          "b000000000000002",
+          "b000000000000002",
+          "not-an-id"
+        ]
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"b000000000000002\"]}"
+    },
+    {
+      "name": "bad canvas settings fall back",
+      "input": {
+        "v": 7,
+        "width": -3,
+        "height": 1.5,
+        "background": "blue",
+        "strokes": [],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[],\"undone\":[]}"
+    }
+  ],
+  "merge": [
+    {
+      "name": "one body merges to itself",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "two histories: both sets of strokes, in the order drawn",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"c000000000000003\",\"t\":5,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"e000000000000004\",\"t\":7,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"c000000000000003\",\"t\":5,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"e000000000000004\",\"t\":7,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "an undo on one side is never undone by the other",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"b000000000000002\"]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"b000000000000002\"]}"
+    },
+    {
+      "name": "three heads",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":4,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"a000000000000001\"]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":4,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[\"a000000000000001\"]}"
+    },
+    {
+      "name": "an unreadable head adds nothing",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "not json at all"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    }
+  ]
+}

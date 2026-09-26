@@ -21,6 +21,8 @@ import {
     Gear,
     Desktop,
     HardDrives,
+    PaintBrush,
+    Eraser,
     Laptop,
     HandWaving,
     Tag,
@@ -210,6 +212,9 @@ export const Icons = {
     // the desktop app - the app wears whichever the person is holding.
     server: HardDrives,
     device: Laptop,
+    // Drawing (DRAWING.md): the app tile and the brush tool share the brush; the eraser is its own.
+    drawing: PaintBrush,
+    eraser: Eraser,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than
@@ -230,4 +235,5 @@ export const formatIcon = (format) =>
         apng: Icons.fileImage,
         webm: Icons.fileVideo,
         opus: Icons.fileAudio,
+        drawing: Icons.drawing,
     })[format] || null;

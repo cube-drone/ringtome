@@ -10986,3 +10986,54 @@ The web gets `/favicon.ico` (16, 32, 48) and a 180 px `/apple-touch-icon.png` on
 since iOS paints transparency black - embedded in the binary, served from the root where browsers
 look unasked, and linked from the page. `health.cjs` checks both are served as what they claim and
 linked. `branding/README.md` has the commands to remake it all when the logo changes.
+
+## 2026-09-26 (cont.): the horse-drawing app
+
+Curtis's brief: a drawing app on the console, in Writer's columns - a canvas, a list of every horse
+drawing with a thumbnail, a tools column (brush with a size and a circle cursor that size, a colour,
+an eraser with its own size); a drawing is a document with a title and tags; it copies into a
+notebook as a picture, duplicates, and publishes one at a time as a plain image; strokes are its
+history, undoable back to blank, and two histories merge by smashing their strokes together.
+DRAWING.md is the plan; slices 1-4 are built.
+
+**The model.** A drawing is a versioned document of a new format, `drawing` (wire id 8), whose body
+is JSON: its standing strokes (random 64-bit ids, a time, a tool, a colour, a size, delta-coded
+integer points on a fixed 800x600 canvas - 800 being the most the node keeps of any picture) and the
+ids of every stroke undone. Undo is a recorded removal, so no merge can bring a stroke back; the
+merge is every head's strokes minus every head's undone, in `(t, id)` order - commutative,
+associative, idempotent. It runs on the NODE at read time, in `resolve`, where text's three-way merge
+runs, so the editor's ordinary save (every head as a parent) heals the fork with nothing new on the
+client. The browser writes bodies (`pure/drawing.js`) and the node merges them (`drawing.rs`); the
+canonical form is held byte for byte by `spec/test-vectors/drawing-v1.json`, generated from the
+browser's code and reproduced by the node's, in either head order. The valid shape is deliberately
+narrow - 16-hex ids, lowercase `#rrggbb`, safe integers - so the two languages cannot disagree about
+escaping or number formatting. A drawing is not text (never line-merged, never indexed by its body:
+the index holds the title - checked against the stream's own search rows) and not media (no media
+facts; its body rides inline in the document JSON).
+
+**The app** is a documents app, not a new surface from scratch: Writer's list, columns, search,
+Lost & Found, deletion and routing, with `newFormat: 'drawing'` for "+ new drawing" and the
+right-hand column handing the `drawing` format to `doc/drawing.js` - a tuckable, resizable tools
+column and the canvas. The canvas holds strokes over a CSS paper, so the eraser (`destination-out`)
+cuts to paper; a live stroke paints as it goes, then joins the body, which repaints everything. The
+document session (`doc/session.js`) loads, autosaves and reloads it unchanged: a drawing's body is a
+string like any other. List thumbnails are drawn in the browser from each drawing's strokes, cached
+per head - the node makes thumbnails only in its image ingest, which a JSON save never passes. The
+console's honeycomb now pads itself to whole rows, since its one fixed blank no longer fit.
+
+**Copies and publishing.** Duplicate is the node's private copy door, which now lets a drawing
+through (strokes, tags, provenance). Copy into a notebook flattens the canvas to webp (png where
+WebKit cannot write webp), uploads it through the ordinary image door and files it - the node keeps
+it as AVIF, a picture not a drawing. Publishing is a new door, `POST /docs/{id}/publish/drawing`: it
+launders the flattened picture (decode, re-encode, as the avatar door does), mints its public twin,
+and calls the ordinary `Documents::publish` with a Marquee body that is that picture - so the post is
+words-and-a-picture like any other, the drawing keeps `published_as` as a draft does, publishing
+again updates the post inside its day, and `DELETE /posts/{post}` takes it down. The words door
+still refuses a drawing, which never posts as strokes.
+
+`drawing.cjs` (seven claims): canonical round trip; two computers drawing apart read back merged,
+minus an undone stroke, and a save heals the fork; the index knows the title, not the strokes;
+duplicate; a picture filed into a notebook before its ingest even finishes; publish, view, republish
+onto the same post, take down; only a drawing through the drawing door. Red with the resolve branch
+planted out, and with drawings refused at publish. Not done: anyone drawing with it in a browser
+(NEXT_STEPS).

@@ -27,6 +27,8 @@ import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
+import { DrawingThumb } from '../doc/drawing.js';
+import { blankDrawing, writeBody } from '../pure/drawing.js';
 import { t } from '../i18n.js';
 import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
@@ -191,7 +193,9 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
             globe for public, clock for scheduled - each in its own colour. */ ''}
         <${StatusMark} doc=${doc} book=${book} />
         ${doc.pinned && html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `}
-        ${doc.media && doc.media.has_thumb
+        ${doc.format === 'drawing'
+            ? html`<${DrawingThumb} root=${root} doc=${doc} big=${everything} />`
+            : doc.media && doc.media.has_thumb
             ? html`<img
                   class=${everything ? 'note-row-thumb note-row-thumb-big' : 'note-row-thumb'}
                   src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
@@ -337,10 +341,12 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
         setBusy(true);
         try {
             // New items are Marquee by default - the interactive editor is the front door;
-            // the format chip converts to plaintext for anyone who wants a plain page.
+            // the format chip converts to plaintext for anyone who wants a plain page. An app
+            // with its own format says so (`newFormat`): the Drawing app makes a blank drawing.
+            const format = app.newFormat || 'marquee';
             const made = await api(`/api/identity/${root}/docs`, {
                 method: 'POST',
-                body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
+                body: JSON.stringify({ title: 'untitled', body: format === 'drawing' ? writeBody(blankDrawing()) : '', format }),
             });
             // File it into the CURRENT bucket - the notebook you're looking at is the notebook
             // a new page lands in.

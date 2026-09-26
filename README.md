@@ -60,6 +60,10 @@ federated, unapologetically Old Internet.
   own chain on the room's lane, live is gossip carrying the same entries, history is recent
   everywhere and whole at the creator's. Rulings settled 2026-09-18; the chain key's third
   element comes first as its own arc, then five slices.
+- [`DRAWING.md`](DRAWING.md) — the horse-drawing app: a drawing is a versioned document whose body is
+  its strokes, undo is a recorded removal, and two histories merge by putting both sets of strokes
+  together (on the node, held to the browser by shared test vectors); copies and publications are
+  pictures of it.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
   surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
   canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match

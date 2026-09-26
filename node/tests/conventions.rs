@@ -231,7 +231,7 @@ fn user_db_opens_are_deliberate() {
         ("record/documents.rs", 1),
         ("record/store.rs", 3), // + open_agented: the sweeps' session-free door, per agented persona once a minute - the journal-fill pass's own cadence
         ("identity/adoption.rs", 2),
-        ("identity/routes.rs", 9), // 9: the feed asks the one gate (2026-09-10 pm); 10: the mention gate on a sealed publish reads the seal holder's edges once (2026-09-10)
+        ("identity/routes.rs", 10), // 9: the feed asks the one gate (2026-09-10 pm); 10: the mention gate on a sealed publish reads the seal holder's edges once (2026-09-10); 10 again: a drawing's publish door opens its own persona once per request, as the avatar door does (DRAWING.md, 2026-09-26)
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 4),
         // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request

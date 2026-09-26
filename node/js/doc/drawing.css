@@ -1,0 +1,206 @@
+/* The drawing surface (doc/drawing.js, DRAWING.md): a tools column, then the canvas - inside
+   Writer's columns row, where the editor would be. */
+
+.notes-columns .drawing-tools {
+    width: var(--w-tools, 190px);
+}
+
+.drawing-tools {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    overflow-y: auto;
+}
+
+.drawing-toolset {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.drawing-tool {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    text-align: left;
+}
+
+.drawing-tool:hover:not(:disabled) {
+    border-color: var(--border-strong);
+}
+
+.drawing-tool.active {
+    border-color: var(--teal);
+    background: var(--paper);
+    box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.drawing-tool:disabled {
+    color: var(--faint);
+    cursor: default;
+}
+
+.drawing-size {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.drawing-size input {
+    width: 100%;
+    accent-color: var(--teal);
+}
+
+.drawing-colours {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+    gap: 0.35rem;
+}
+
+.drawing-swatch {
+    aspect-ratio: 1;
+    border: 1px solid var(--border-strong);
+    cursor: pointer;
+    padding: 0;
+}
+
+.drawing-swatch.active {
+    outline: 2px solid var(--teal);
+    outline-offset: 1px;
+}
+
+.drawing-picker {
+    width: 100%;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    cursor: pointer;
+}
+
+.drawing-count {
+    margin: 0;
+    color: var(--faint);
+    font-size: 0.8rem;
+}
+
+.drawing {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.drawing-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.drawing-head .editor-title {
+    flex: 1;
+    min-width: 8rem;
+}
+
+.drawing-head .editor-meta {
+    flex-basis: 100%;
+}
+
+/* The stage centres the paper and lets it grow to the space, keeping the drawing's shape. */
+.drawing-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.drawing-paper {
+    position: relative;
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    box-shadow: 0 1px 6px var(--shadow-drop);
+    cursor: none;
+    touch-action: none;
+}
+
+@supports (width: min(1px, 2px)) {
+    .drawing-paper {
+        /* As wide as the stage allows, but never so tall it spills: the height the width implies. */
+        width: min(100%, calc((100vh - 12rem) * 4 / 3));
+    }
+}
+
+.drawing-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+/* The size circle: as big on screen as the tool is on the drawing. */
+.drawing-cursor {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    border-radius: 50%;
+    border: 1px solid var(--ink);
+    box-shadow: 0 0 0 1px var(--paper);
+}
+
+.drawing-cursor.eraser {
+    border-style: dashed;
+}
+
+/* The list's thumbnails: the drawing's own proportions, bigger than a file's square icon. */
+.note-row-thumb.drawing-thumb {
+    width: 64px;
+    height: 48px;
+    object-fit: contain;
+    background: var(--paper);
+    vertical-align: middle;
+}
+
+.drawing-thumb-empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--faint);
+}
+
+.drawing-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.drawing-standing {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--teal);
+    font-size: 0.85rem;
+}
+
+.drawing-published .drawing-tool {
+    text-decoration: none;
+}

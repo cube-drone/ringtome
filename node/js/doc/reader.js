@@ -25,6 +25,7 @@ import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { CopyIntoModal } from '../copyinto.js';
+import { DrawingSurface } from './drawing.js';
 
 const html = htm.bind(h);
 
@@ -222,6 +223,11 @@ export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucke
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
+    // A drawing opens on its canvas (DRAWING.md), wherever it is listed - the Drawing app, or Lost &
+    // Found - and brings its own tools column.
+    if (format === 'drawing') {
+        return html`<${DrawingSurface} root=${root} docId=${docId} key=${docId} nav=${nav} onDeleted=${onDeleted} />`;
+    }
     if (format === 'plaintext' || format === 'marquee') {
         return html`<${Editor}
             root=${root}

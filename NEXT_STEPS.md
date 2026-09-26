@@ -20,7 +20,14 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * RSS for website users
 
 ### Actual Horse Drawing & Tycooning
-* Drawing app
+* ~~Drawing app~~ built 2026-09-26 (DRAWING.md, slices 1-4)
+* **Draw a horse** (DRAWING.md, slices 1-4 built 2026-09-26): nobody has used the Drawing app in a
+  browser yet - the model, the node and every door are tested, the canvas is not. Draw with a mouse
+  and a pen, undo back to blank, duplicate, copy a picture into a notebook, publish and take it
+  down; on the Mac app too, where the picture travels as png (WebKit writes no webp).
+* **Drawing, later** (DRAWING.md, slice 5): layers (a column), more tools, redo, resizing the
+  canvas, node-kept thumbnails once lists grow long (today every row fetches its drawing's strokes
+  to draw its own), and publishing several drawings together.
 * Multiplayer Drawing App (use chat as the heart)
 * HorseBucks and Other Currencies
 

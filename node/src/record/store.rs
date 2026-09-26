@@ -1079,6 +1079,7 @@ impl Documents<'_> {
         let resolved = self.resolved(doc).await?;
         let post_key = self.post_key_if(doc_id, trusted_only).await?;
 
+        let prepared = body_override.is_some();
         let body = match body_override {
             Some(prepared) => prepared,
             None => resolved.body.ok_or_else(|| {
@@ -1089,6 +1090,16 @@ impl Documents<'_> {
             .display_head()
             .map(|h| crate::record::documents::Format::from_wire(h.header.format))
             .unwrap_or(crate::record::documents::Format::Plaintext);
+        // A drawing (DRAWING.md) is its own draft, but never its own post: its door flattens it
+        // into a picture and hands this a Marquee body embedding that picture, so the post is
+        // words-and-a-picture like any other, and the drawing keeps `published_as` as a draft does.
+        let format = match format {
+            crate::record::documents::Format::Drawing if prepared => crate::record::documents::Format::Marquee,
+            crate::record::documents::Format::Drawing => {
+                return Err(AppError::BadRequest(crate::msg!("record.store.a-drawing-publishes-as-a-picture", "a drawing publishes as a picture, by its own door")));
+            }
+            other => other,
+        };
         if !matches!(
             format,
             crate::record::documents::Format::Plaintext | crate::record::documents::Format::Marquee

@@ -26,6 +26,7 @@ pub mod auth;
 pub mod clock;
 pub mod config;
 pub mod db;
+pub mod drawing;
 pub mod edgegraph;
 pub mod error;
 pub mod fanout;

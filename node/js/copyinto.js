@@ -20,7 +20,11 @@ const html = htm.bind(h);
 
 /// The modal: the bucket list, "+ new bucket", and the outcome. `source` is
 /// `{ author, doc_id, private }`; `onDone(doc_id, bucket)` after a copy lands.
-export const CopyIntoModal = ({ current, source, onClose, onDone }) => {
+///
+/// `copyWith(bucket, isNew)`, when given, IS the copy - it makes the new document and returns its
+/// id - in place of the node's copy door: how a drawing copies into a notebook as a picture of
+/// itself (doc/drawing.js) rather than as strokes. `heading` replaces the modal's title.
+export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, heading }) => {
     const root = current.root;
     const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
     const [fresh, setFresh] = useState('');
@@ -37,18 +41,22 @@ export const CopyIntoModal = ({ current, source, onClose, onDone }) => {
         setBusy(true);
         setError(null);
         try {
-            const r = await api(`/api/identity/${root}/docs/copy`, {
-                method: 'POST',
-                body: JSON.stringify({ author: source.author, doc_id: source.doc_id, bucket: name, new: !!isNew, private: !!source.private }),
-            });
-            setDone({ doc_id: r.doc_id, bucket: name });
-            if (onDone) onDone(r.doc_id, name);
+            const docId = copyWith
+                ? await copyWith(name, !!isNew)
+                : (
+                      await api(`/api/identity/${root}/docs/copy`, {
+                          method: 'POST',
+                          body: JSON.stringify({ author: source.author, doc_id: source.doc_id, bucket: name, new: !!isNew, private: !!source.private }),
+                      })
+                  ).doc_id;
+            setDone({ doc_id: docId, bucket: name });
+            if (onDone) onDone(docId, name);
         } catch (e) {
             setError(e.message || String(e));
         }
         setBusy(false);
     };
-    return html`<${Modal} title=${t('copyinto.copy-into-private-notes', 'copy into private notes')} onClose=${onClose}>
+    return html`<${Modal} title=${heading || t('copyinto.copy-into-private-notes', 'copy into private notes')} onClose=${onClose}>
         ${done
             ? html`<p class="copy-done">
                   ${t('copyinto.copied-into', 'copied into {bucket}', { bucket: done.bucket })}

@@ -44,6 +44,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/keys", get(keys_handler))
         .route("/api/identity/{root}/peers", get(peers_handler))
         .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/publish/drawing",
+            post(publish_drawing_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
+        )
         .route("/api/identity/{root}/books/{bucket}/rollout", post(book_rollout_handler))
         .route("/api/identity/{root}/books/{bucket}", delete(book_takedown_handler))
         .route("/api/identity/{root}/posts/{post_id}", delete(unpublish_handler))
@@ -3334,6 +3338,80 @@ async fn resolve_reply_link(
     Ok((parent_link, root_link))
 }
 
+/// POST `/api/identity/{root}/docs/{doc_id}/publish/drawing` - publish a drawing as a picture
+/// (DRAWING.md). The body is the page's flattened picture of the drawing (webp or png); the node
+/// launders it as it does every picture - decode, re-encode to AVIF - mints its public twin, and
+/// publishes the drawing through the ordinary door with a Marquee body that is that picture, titled
+/// as the drawing is. So the post is words-and-a-picture like any other, the drawing keeps
+/// `published_as` as a draft does, a republish inside the day updates the same post, and
+/// `DELETE /posts/{post}` takes it down.
+///
+/// One drawing at a time, with no taxonomy: a set of drawings published together is a later door.
+async fn publish_drawing_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+    picture: Bytes,
+) -> Result<Json<PublishResponse>, AppError> {
+    use crate::record::documents::Format;
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let docs = data.documents();
+    let view = docs.all().await?;
+    let doc = view
+        .docs
+        .get(&doc_id)
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing")))?;
+    if doc.display_head().map(|h| Format::from_wire(h.header.format)) != Some(Format::Drawing) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.only-a-drawing-publishes-here",
+            "only a drawing publishes by this door"
+        )));
+    }
+    let title = docs.resolved(doc).await?.title;
+
+    // The same laundering every picture gets - decode, re-encode, never trust the bytes.
+    let bytes = picture.to_vec();
+    let ingested = tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("drawing crush task: {e}")))?
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.that-picture-didnt-work", "that picture didn't work: {e}", e = e)))?;
+    if ingested.format != Format::Avif {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-drawing-is-a-still-picture",
+            "a drawing publishes as a still picture"
+        )));
+    }
+    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
+    let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    let twin = crate::record::documents::save_public_media(&db, &signer, &state.files, &title, ingested, None, None, false).await?;
+
+    // The alt text is the title, kept to what Marquee's `![...]` holds without a question.
+    let alt: String = title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')' | '\n' | '\r')).collect();
+    let target = crate::record::bake::public_media_target(&root, &twin, Format::Avif, false);
+    let body = format!("![{}]({target})\n", if alt.trim().is_empty() { "a drawing" } else { alt.trim() });
+    let flags = crate::record::documents::PublishFlags {
+        settled: false,
+        trusted_only: false,
+        dated_ms: None,
+        part_of: None,
+        seal_of: None,
+        onward: false,
+        room: false,
+        im: false,
+    };
+    let post_id = docs.publish(&doc_id, Some(body), vec![twin], None, flags).await?;
+    after_posted(&state, &data, &root, &doc_id, post_id, None, flags).await?;
+    crate::fold::fold_now(&state, &root).await;
+    Ok(Json(PublishResponse {
+        post_id: Some(hex::encode(post_id)),
+        scheduled_for: None,
+        published_ms: Some(crate::clock::now_ms()),
+        dated_ms: None,
+        baking: None,
+    }))
+}
+
 async fn publish_handler(
     session: Session,
     State(state): State<AppState>,
@@ -4879,7 +4957,14 @@ async fn docs_copy_handler(
             .display_head()
             .map(|h| crate::record::documents::Format::from_wire(h.header.format))
             .unwrap_or(crate::record::documents::Format::Plaintext);
-        if !matches!(format, crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext) {
+        // Words, or a drawing (DRAWING.md): duplicating a drawing is this same door - its strokes,
+        // tags and provenance carried to a new drawing, as a note's words are.
+        if !matches!(
+            format,
+            crate::record::documents::Format::Marquee
+                | crate::record::documents::Format::Plaintext
+                | crate::record::documents::Format::Drawing
+        ) {
             return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
         }
         let resolved = docs.resolved(doc).await?;
@@ -5559,7 +5644,8 @@ impl MediaInfo {
     /// has no dimensions, duration, thumbnail, or preview - it is served and rendered as text).
     fn of(head: &crate::record::documents::Version) -> Option<Self> {
         let format = crate::record::documents::Format::from_wire(head.header.format);
-        if format.is_mergeable_text() {
+        // Text has no media facts, and neither does a drawing: strokes, inlined like text (DRAWING.md).
+        if format.is_mergeable_text() || format == crate::record::documents::Format::Drawing {
             return None;
         }
         Some(MediaInfo {
@@ -5575,7 +5661,7 @@ impl MediaInfo {
     /// The same facts off a memoized `doc_heads` row (which carries the display head's fields).
     fn of_row(row: &crate::record::documents::DocHeadRow) -> Option<Self> {
         let format = crate::record::documents::Format::from_wire(row.format);
-        if format.is_mergeable_text() {
+        if format.is_mergeable_text() || format == crate::record::documents::Format::Drawing {
             return None;
         }
         Some(MediaInfo {

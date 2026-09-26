@@ -228,7 +228,13 @@ describe('app registry', () => {
         it('keeps the console honeycomb whole either way', () => {
             assert.ok(consoleCellsFor(true).some((a) => a.id === 'device'));
             assert.ok(!consoleCellsFor(false).some((a) => a.id === 'device'));
-            assert.ok(consoleCellsFor(false).some((a) => a.blank), 'the filler cells stay');
+            for (const admin of [true, false]) {
+                for (const columns of [3, 4, 5]) {
+                    const cells = consoleCellsFor(admin, columns);
+                    assert.equal(cells.length % columns, 0, `whole rows of ${columns}`);
+                    assert.ok(cells.filter((c) => c.blank).length < columns, 'never a whole row of blanks');
+                }
+            }
         });
     });
 

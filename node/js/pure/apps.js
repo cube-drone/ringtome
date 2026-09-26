@@ -148,6 +148,24 @@ export const APPS = [
         itemNoun: 'file',
     },
     {
+        id: 'drawing',
+        // The horse-drawing part of Horse Drawing Tycoon 2 (DRAWING.md): a documents app whose
+        // documents are drawings - a canvas, brush and eraser, strokes as the history. Writer's
+        // list and columns (apps/notes.js), with the drawing surface (doc/drawing.js) where the
+        // editor would be; the surface brings its own tools column.
+        name: 'Drawing',
+        icon: 'drawing',
+        style: 'drawing',
+        live: true,
+        // One bucket, its own: every drawing lives in `drawing`.
+        soleBucket: true,
+        bucketNoun: 'Drawings',
+        itemNoun: 'drawing',
+        // What "+ new drawing" makes (notes.js, createNew): a blank drawing, not a Marquee page.
+        newFormat: 'drawing',
+        features: { tree: false, tagColumn: false, bookColumn: false, publish: false },
+    },
+    {
         id: 'device',
         // The place's own settings, for its administrators only (apps/device.js): who may sign
         // up, and backups (Curtis, 2026-09-25). Named for what the person is holding - "Device"
@@ -217,9 +235,13 @@ export const liveApps = APPS.filter((a) => a.live);
 /// who administers the place. The dock's list.
 export const appsFor = (admin) => liveApps.filter((a) => !a.admin || admin);
 
-/// The console's honeycomb for this person: the registry, blanks included, minus the apps they
-/// may not open.
-export const consoleCellsFor = (admin) => APPS.filter((a) => a.blank || !a.admin || admin);
+/// The console's honeycomb for this person: the apps they may open, in registry order, padded with
+/// blank cells to whole rows of `columns` - so the comb stays whole however many apps there are.
+export const consoleCellsFor = (admin, columns = 4) => {
+    const apps = APPS.filter((a) => a.live && (!a.admin || admin));
+    const blanks = (columns - (apps.length % columns)) % columns;
+    return [...apps, ...Array.from({ length: blanks }, () => ({ blank: true }))];
+};
 
 /// The document apps: live apps that own a document surface (a `style`). System apps like Persona
 /// have none and carry their own routes instead. Internal - the styles set below is what callers

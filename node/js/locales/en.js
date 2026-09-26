@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 982 phrases across 66 files.
+// 1010 phrases across 67 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -385,6 +385,31 @@ export default {
     'doc.diffpage.the-public-version-says-exactly': 'the public version says exactly this - nothing to update',
     'doc.diffpage.public-only': 'public only',
     'doc.diffpage.private-only': 'private only',
+
+    // --- node/js/doc/drawing.js ---
+    'doc.drawing.unpublish-confirm': 'Take this drawing down? The post leaves your page, and the people who have it are told it is gone.',
+    'doc.drawing.tools': 'tools',
+    'doc.drawing.brush': 'brush',
+    'doc.drawing.eraser': 'eraser',
+    'doc.drawing.eraser-size': 'eraser size',
+    'doc.drawing.brush-size': 'brush size',
+    'doc.drawing.colour': 'colour',
+    'doc.drawing.any-colour': 'any colour',
+    'doc.drawing.undo': 'undo',
+    'doc.drawing.strokes': '{count} strokes',
+    'doc.drawing.duplicate': 'duplicate',
+    'doc.drawing.copy-into-a-notebook': 'copy into a notebook',
+    'doc.drawing.published': 'published',
+    'doc.drawing.view': 'view the post',
+    'doc.drawing.publish-again': 'publish it again, as it is now',
+    'doc.drawing.unpublish': 'unpublish',
+    'doc.drawing.publish': 'publish',
+    'doc.drawing.copy-a-picture-of-it': 'copy a picture of this drawing into a notebook',
+    'doc.drawing.untitled': 'untitled',
+    'doc.drawing.saving': 'saving…',
+    'doc.drawing.delete': 'delete',
+    'doc.drawing.tags': 'tags, date & description',
+    'doc.drawing.opening': 'opening…',
 
     // --- node/js/doc/editor.js ---
     'doc.editor.copy-into-private-notes': 'copy this note into another bucket',
@@ -945,6 +970,10 @@ export default {
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
     'identity.routes.a-room-takes-no-replies': 'say it in the room instead',
+    'identity.routes.no-such-drawing': 'no such drawing',
+    'identity.routes.only-a-drawing-publishes-here': 'only a drawing publishes by this door',
+    'identity.routes.that-picture-didnt-work': "that picture didn't work: {e}",
+    'identity.routes.a-drawing-is-a-still-picture': 'a drawing publishes as a still picture',
     'identity.routes.mention-someone-first': 'mention someone first - a post for the people mentioned needs a user card in the words',
     'identity.routes.a-room-is-not-a-reply': 'a room is a post of its own, not a reply',
     'identity.routes.an-im-is-a-room-for-two': 'a private chat is a room for two - sealed to one other person, and nobody else',
@@ -1087,6 +1116,7 @@ export default {
     'record.store.no-such-document': 'no such document',
     'record.store.this-note-is-diverged--': 'save this note once more before publishing',
     'record.store.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
+    'record.store.a-drawing-publishes-as-a-picture': 'a drawing publishes as a picture, by its own door',
     'record.store.media-publishes-by-its-own': 'media publishes by its own door, not this one',
     'record.store.this-post-has-settled': 'posts can only be edited for a day. Delete it and post again.',
     'record.store.an-embedded-media-document-is': 'an embedded media document is missing',

@@ -200,6 +200,10 @@ pub mod doc_format {
     /// in the room. Public only; never a private document's format - the draft is Marquee
     /// and the publish says "room".
     pub const ROOM: u64 = 7;
+    /// A DRAWING (DRAWING.md): the body is JSON - the drawing's standing strokes and the ids of
+    /// the strokes undone - and two versions merge by putting both sets of strokes together.
+    /// Private only: a drawing crosses the membrane as a picture of itself, never as strokes.
+    pub const DRAWING: u64 = 8;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key
