@@ -48,6 +48,7 @@ import {
     addLayer,
     setLayer,
     moveLayer,
+    offsetsOf,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 
@@ -101,11 +102,22 @@ export function paintLayer(canvas, drawing, layerId) {
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // A grab (a `move` entry) shifts everything drawn on the layer before it: each entry is painted
+    // offset by the moves after it, the base layer's fill by all of them - so a layer grabbed away
+    // and back loses nothing at the edge (pure/drawing.js, `offsetsOf`).
+    const ops = strokesOn(drawing, layerId);
+    const { each, total } = offsetsOf(ops);
     if (layerId === BASE_LAYER) {
         ctx.fillStyle = drawing.background;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(total[0] * scale, total[1] * scale, canvas.width, canvas.height);
     }
-    for (const stroke of strokesOn(drawing, layerId)) paintStroke(ctx, stroke, scale);
+    ops.forEach((op, i) => {
+        if (op.tool === 'move') return;
+        ctx.save();
+        ctx.translate(each[i][0] * scale, each[i][1] * scale);
+        paintStroke(ctx, op, scale);
+        ctx.restore();
+    });
     ctx.restore();
 }
 
@@ -130,8 +142,9 @@ export function paintLayers(drawing, width) {
 
 /// Stack the layers onto `target`, bottom first, each at its opacity, the hidden ones left out, over
 /// nothing - on the screen the floor shows through from the stage behind; in a picture, nothing
-/// stays transparent.
-export function composite(target, drawing, canvases) {
+/// stays transparent. `shift` - `{ layer, dx, dy }`, in the drawing's units - draws one layer moved,
+/// which is how a grab shows before it lets go.
+export function composite(target, drawing, canvases, shift = null) {
     const ctx = target.getContext('2d');
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -142,7 +155,10 @@ export function composite(target, drawing, canvases) {
         const canvas = canvases.get(layer.id);
         if (layer.hidden || !canvas) continue;
         ctx.globalAlpha = layer.opacity / 100;
-        ctx.drawImage(canvas, 0, 0, target.width, target.height);
+        const moved = shift && shift.layer === layer.id;
+        const x = moved ? (shift.dx * target.width) / drawing.width : 0;
+        const y = moved ? (shift.dy * target.height) / drawing.height : 0;
+        ctx.drawImage(canvas, x, y, target.width, target.height);
     }
     ctx.restore();
 }
@@ -341,10 +357,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // its own layer's canvas as it goes and restacks, so a layer above still covers it.
     const layerCanvases = useRef(new Map());
     const [painted, setPainted] = useState(0); // bumps when the layer canvases change: the thumbnails follow
-    const restack = () => {
+    const restack = (shift = null) => {
         const canvas = canvasRef.current;
-        if (canvas) composite(canvas, drawing, layerCanvases.current);
+        if (canvas) composite(canvas, drawing, layerCanvases.current, shift);
     };
+    const [grabbing, setGrabbing] = useState(false); // the grab tool's hand, open or closed
     useEffect(() => {
         if (!opened) return;
         layerCanvases.current = paintLayers(drawing, drawing.width * BACKING);
@@ -370,6 +387,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const cursor = cursorRef.current;
         const canvas = canvasRef.current;
         if (!cursor || !canvas) return;
+        if (tools.tool === 'grab') {
+            cursor.style.display = 'none'; // the grab tool's cursor is the hand, not a size
+            return;
+        }
         const rect = canvas.getBoundingClientRect();
         const diameter = Math.max(4, (size * rect.width) / drawing.width);
         cursor.style.width = cursor.style.height = `${diameter}px`;
@@ -395,6 +416,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (current.hidden) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
+        // The grab tool (DRAWING.md, "Grabbing"): the drag shows the layer moving, and letting go
+        // records one `move` entry - merged and undone like a stroke.
+        if (tools.tool === 'grab') {
+            live.current = { grab: true, layer: current.id, start: toDrawing(e), dx: 0, dy: 0 };
+            setGrabbing(true);
+            return;
+        }
         const pen = e.pointerType === 'pen';
         const first = sampleOf(e, pen);
         const stroke = { id: strokeId(), t: Date.now(), tool: tools.tool, size: Math.round(size) };
@@ -411,6 +439,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         moveCursor(e);
         const l = live.current;
         if (!l) return;
+        if (l.grab) {
+            const [x, y] = toDrawing(e);
+            l.dx = x - l.start[0];
+            l.dy = y - l.start[1];
+            restack({ layer: l.layer, dx: l.dx, dy: l.dy });
+            return;
+        }
         const ctx = layerContext(l.stroke.layer || BASE_LAYER);
         if (!ctx) return;
         // Every sample the browser gathered since the last frame, not just the last one: a pen
@@ -431,6 +466,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const l = live.current;
         live.current = null;
         if (!l) return;
+        if (l.grab) {
+            setGrabbing(false);
+            const dx = Math.round(l.dx);
+            const dy = Math.round(l.dy);
+            if (!dx && !dy) {
+                restack();
+                return;
+            }
+            const move = { id: strokeId(), t: Date.now(), tool: 'move', dx, dy };
+            if (l.layer !== BASE_LAYER) move.layer = l.layer;
+            session.setBody(writeBody(addStroke(drawing, move)));
+            session.touched();
+            return;
+        }
         const { points, pressure } = encodeSamples(l.samples);
         const stroke = { ...l.stroke, points, ...(pressure ? { pressure } : {}) };
         session.setBody(writeBody(addStroke(drawing, stroke)));
@@ -456,21 +505,38 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         return () => window.removeEventListener('keydown', onKey);
     });
 
+    // The tools, each an icon named in its tooltip - chosen out here, since inside the template a
+    // tool's id would read to the strings cop as copy.
+    const toolButtons = [
+        ['brush', Icons.drawing, t('doc.drawing.brush', 'brush')],
+        ['eraser', Icons.eraser, t('doc.drawing.eraser', 'eraser')],
+        ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
+    ];
+    const grabTool = tools.tool === 'grab';
+    const paperClass = grabTool
+        ? grabbing
+            ? 'drawing-paper drawing-floor grabbing'
+            : 'drawing-paper drawing-floor grab'
+        : 'drawing-paper drawing-floor';
+
     const toolsColumn = tucked.has('tools')
         ? html`<${Rail} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onClick=${() => toggleTuck('tools')} />`
         : html`<aside class="drawing-tools" style=${colStyle}>
               <${PaneHead} label=${t('doc.drawing.tools', 'tools')} onTuck=${() => toggleTuck('tools')} />
+              ${/* The tools are icons, each named in its tooltip (Curtis, 2026-09-26). */ ''}
               <div class="drawing-toolset">
-                  <button
-                      class=${tools.tool === 'brush' ? 'drawing-tool active' : 'drawing-tool'}
-                      onClick=${() => setTools({ tool: 'brush' })}
-                  ><${Icons.drawing} /> ${t('doc.drawing.brush', 'brush')}</button>
-                  <button
-                      class=${tools.tool === 'eraser' ? 'drawing-tool active' : 'drawing-tool'}
-                      onClick=${() => setTools({ tool: 'eraser' })}
-                  ><${Icons.eraser} /> ${t('doc.drawing.eraser', 'eraser')}</button>
+                  ${toolButtons.map(
+                      ([tool, icon, name]) => html`<button
+                          key=${tool}
+                          class=${tools.tool === tool ? 'drawing-tool-icon active' : 'drawing-tool-icon'}
+                          title=${name}
+                          aria-label=${name}
+                          onClick=${() => setTools({ tool })}
+                      ><${icon} /></button>`
+                  )}
               </div>
-              <label class="drawing-size">
+              ${!grabTool &&
+              html`<label class="drawing-size">
                   <span>${tools.tool === 'eraser' ? t('doc.drawing.eraser-size', 'eraser size') : t('doc.drawing.brush-size', 'brush size')} · ${size}</span>
                   <input
                       type="range"
@@ -480,7 +546,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       onInput=${(e) =>
                           setTools(tools.tool === 'eraser' ? { eraserSize: +e.currentTarget.value } : { brushSize: +e.currentTarget.value })}
                   />
-              </label>
+              </label>`}
               <${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: 'brush' })} />
               <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
                   ${/* A click away: white and black always, then the last ten colours this
@@ -642,7 +708,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 ${!opened
                     ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
                     : html`<div
-                          class="drawing-paper drawing-floor"
+                          class=${paperClass}
                           style=${`aspect-ratio: ${drawing.width} / ${drawing.height}`}
                           onPointerLeave=${() => cursorRef.current && (cursorRef.current.style.display = 'none')}
                       >

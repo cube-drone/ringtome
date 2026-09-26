@@ -523,6 +523,81 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":30,\"hidden\":false,\"t\":7}],\"strokes\":[{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
     },
     {
+      "name": "a move is an entry of its own: a shift, no size or points, and a stray field dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "move",
+            "dx": 12,
+            "dy": -30,
+            "size": 5,
+            "points": [
+              1,
+              1
+            ],
+            "color": "#123456"
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "layer": "aaaaaaaaaaaaaaa2",
+            "tool": "move",
+            "dx": 0,
+            "dy": 4
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"move\",\"dx\":12,\"dy\":-30},{\"id\":\"b000000000000002\",\"t\":2,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"move\",\"dx\":0,\"dy\":4}],\"undone\":[]}"
+    },
+    {
+      "name": "a move that cannot be read is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "move",
+            "dx": 1.5,
+            "dy": 0
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "move",
+            "dx": 3
+          },
+          {
+            "id": "c000000000000003",
+            "t": 3,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
@@ -616,6 +691,14 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "two computers grabbing one layer at once: both moves stand",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":5,\"tool\":\"move\",\"dx\":10,\"dy\":0}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"c000000000000003\",\"t\":6,\"tool\":\"move\",\"dx\":0,\"dy\":-20}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":5,\"tool\":\"move\",\"dx\":10,\"dy\":0},{\"id\":\"c000000000000003\",\"t\":6,\"tool\":\"move\",\"dx\":0,\"dy\":-20}],\"undone\":[]}"
     },
     {
       "name": "an unreadable head adds nothing",

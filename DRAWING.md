@@ -92,6 +92,24 @@ keep that, and so does the node's AVIF. A hidden layer takes no strokes.
 and among those the least by that order - not from whichever version is read first, which made a
 merge with an unreadable head order-dependent until a changed default exposed it (2026-09-26).
 
+### Grabbing
+
+The grab tool moves a whole layer (Curtis, 2026-09-26), and had to stay as trivially mergeable as a
+stroke. So a grab is neither a setting on the layer - two computers moving one layer at once would
+have one move win and the other vanish - nor a rewrite of the layer's strokes - one stroke id with two
+sets of points is a real conflict. It is an **entry in the history**, beside the strokes:
+
+```json
+{ "id": "…", "t": 1790380000000, "layer": "…", "tool": "move", "dx": 12, "dy": -30 }
+```
+
+Unioned by id like any stroke, so concurrent grabs both apply (moves are additions, and additions
+commute); undone like any stroke. A move shifts everything on its layer drawn **before** it in the one
+`(t, id)` order - each entry is painted offset by the sum of the moves after it (`offsetsOf`), and the
+base layer's white fill by all of them - so what is drawn after a grab lands where it was drawn, and a
+layer grabbed off the edge and back loses nothing. A stroke another computer drew at the same moment
+moves with the layer exactly when it was drawn before the grab: decided by time, the same everywhere.
+
 ### Undo is a recorded removal, so a merge cannot bring a stroke back
 
 Undo takes the newest stroke out of `strokes` and puts its id in `undone`. Undo again takes the next:
@@ -152,7 +170,8 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, a size for each (1-80 canvas units), the brush's colour,
+- **The tools column**: brush, eraser and grab - icons, each named in its tooltip - a size for the
+  brush and the eraser (1-80 canvas units), the brush's colour,
   undo, and the drawing's own actions: duplicate, copy into a notebook, publish. The colour is a hue
   ring with an HSV triangle inside it and a hex field (`doc/colourpicker.js`, Curtis 2026-09-26 -
   it replaced the browser's native colour input), with a row of swatches beneath: white and black,

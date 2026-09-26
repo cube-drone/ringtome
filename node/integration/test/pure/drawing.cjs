@@ -241,3 +241,34 @@ describe('layers', () => {
         assert.deepEqual(body.layers.map((l) => l.id), [L2]);
     });
 });
+
+// Grabbing (Curtis, 2026-09-26): a move is an entry in the history, so it merges and undoes like a
+// stroke, and shifts what was drawn on its layer before it.
+describe('grabbing a layer', () => {
+    const brush = (id, t) => ({ id, t, tool: 'brush', color: '#123456', size: 3, points: [1, 1] });
+    const move = (id, t, dx, dy) => ({ id, t, tool: 'move', dx, dy });
+
+    it('shifts what came before it, and not what came after', () => {
+        const ops = [brush('a000000000000001', 1), move('b000000000000002', 2, 10, 0), brush('c000000000000003', 3), move('d000000000000004', 4, 0, 5)];
+        const { each, total } = d.offsetsOf(ops);
+        assert.deepEqual(each[0], [10, 5], 'the first stroke moves with both grabs');
+        assert.deepEqual(each[2], [0, 5], 'the second only with the grab after it');
+        assert.deepEqual(total, [10, 5], "and the layer's own fill moves with all of them");
+    });
+
+    it('undoes like a stroke', () => {
+        let body = d.addStroke(d.addStroke(d.blankDrawing(), brush('a000000000000001', 1)), move('b000000000000002', 2, 10, 0));
+        body = d.undo(body);
+        assert.deepEqual(body.strokes.map((s) => s.tool), ['brush'], 'the grab came off');
+        assert.deepEqual(body.undone, ['b000000000000002']);
+    });
+
+    it('merges two computers grabbing at once into both grabs, whichever way round', () => {
+        const base = d.addStroke(d.blankDrawing(), brush('a000000000000001', 1));
+        const here = d.addStroke(base, move('b000000000000002', 5, 10, 0));
+        const there = d.addStroke(base, move('c000000000000003', 6, 0, -20));
+        const merged = d.mergeBodies(here, there);
+        assert.equal(d.writeBody(merged), d.writeBody(d.mergeBodies(there, here)));
+        assert.deepEqual(d.offsetsOf(d.strokesOn(merged, d.BASE_LAYER)).total, [10, -20], 'both moves stand');
+    });
+});

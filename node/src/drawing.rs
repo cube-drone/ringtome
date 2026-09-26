@@ -44,16 +44,25 @@ pub struct Stroke {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
     pub tool: &'static str,
-    /// A brush's colour; an eraser has none.
+    /// A brush's colour; an eraser and a move have none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
-    pub size: i64,
-    /// Delta-coded: the first point absolute, every later one the step from the one before.
-    pub points: Vec<i64>,
+    /// A brush's or eraser's width at full pressure; a move has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<i64>,
+    /// Delta-coded: the first point absolute, every later one the step from the one before. A move
+    /// has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub points: Option<Vec<i64>>,
     /// A pen stroke's pressure, one 0..=100 per point; absent for a mouse or a finger, whose stroke
     /// is one width throughout.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pressure: Option<Vec<i64>>,
+    /// A move's shift of its whole layer (DRAWING.md, "Grabbing"); only a move has these.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dx: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dy: Option<i64>,
 }
 
 /// A layer (DRAWING.md, "Layers"): its number, its place in the stack, its opacity, whether it is
@@ -132,9 +141,29 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
     let o = v.as_object()?;
     let id = o.get("id")?.as_str().filter(|s| is_hex16(s))?.to_string();
     let t = o.get("t").and_then(safe_int).filter(|t| *t >= 0)?;
+    let layer = o
+        .get("layer")
+        .and_then(Value::as_str)
+        .filter(|l| is_hex16(l) && *l != BASE_LAYER)
+        .map(str::to_string);
     let tool = match o.get("tool")?.as_str()? {
         "brush" => "brush",
         "eraser" => "eraser",
+        // A grab: the whole layer shifted - an entry in the history, merged and undone as a stroke is.
+        "move" => {
+            return Some(Stroke {
+                id,
+                t,
+                layer,
+                tool: "move",
+                color: None,
+                size: None,
+                points: None,
+                pressure: None,
+                dx: Some(o.get("dx").and_then(safe_int)?),
+                dy: Some(o.get("dy").and_then(safe_int)?),
+            })
+        }
         _ => return None,
     };
     let size = o.get("size").and_then(safe_int).filter(|s| (1..=MAX_SIZE).contains(s))?;
@@ -150,18 +179,13 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
     } else {
         Some(o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string())
     };
-    let layer = o
-        .get("layer")
-        .and_then(Value::as_str)
-        .filter(|l| is_hex16(l) && *l != BASE_LAYER)
-        .map(str::to_string);
     // A pressure list that does not fit its points is dropped, not the stroke (pure/drawing.js).
     let pressure = o
         .get("pressure")
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
         .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, layer, tool, color, size, points, pressure })
+    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, dx: None, dy: None })
 }
 
 fn as_layer(v: &Value) -> Option<Layer> {

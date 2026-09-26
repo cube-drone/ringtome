@@ -230,6 +230,14 @@ function asStroke(s) {
     if (!s || typeof s !== 'object') return null;
     if (typeof s.id !== 'string' || !HEX16.test(s.id)) return null;
     if (!Number.isSafeInteger(s.t) || s.t < 0) return null;
+    // Which layer it is on: absent means the base layer, and is how the base layer is written.
+    const onLayer = typeof s.layer === 'string' && HEX16.test(s.layer) && s.layer !== BASE_LAYER ? { layer: s.layer } : {};
+    // A grab (`move`): the whole layer shifted by (dx, dy) - everything on it drawn before this.
+    // An entry in the history like a stroke, so it merges by the same union and undoes the same way.
+    if (s.tool === 'move') {
+        if (!Number.isSafeInteger(s.dx) || !Number.isSafeInteger(s.dy)) return null;
+        return { id: s.id, t: s.t, ...onLayer, tool: 'move', dx: s.dx, dy: s.dy };
+    }
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
     if (!Array.isArray(s.points) || s.points.length < 2 || !s.points.every(Number.isSafeInteger)) return null;
@@ -241,11 +249,9 @@ function asStroke(s) {
         s.pressure.every((p) => Number.isSafeInteger(p) && p >= 0 && p <= MAX_PRESSURE)
             ? { pressure: s.pressure }
             : {};
-    // Which layer it is on: absent means the base layer, and is how the base layer is written.
-    const layer = typeof s.layer === 'string' && HEX16.test(s.layer) && s.layer !== BASE_LAYER ? { layer: s.layer } : {};
-    if (s.tool === 'eraser') return { id: s.id, t: s.t, ...layer, tool: 'eraser', size: s.size, points: s.points, ...pressure };
+    if (s.tool === 'eraser') return { id: s.id, t: s.t, ...onLayer, tool: 'eraser', size: s.size, points: s.points, ...pressure };
     if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
-    return { id: s.id, t: s.t, ...layer, tool: 'brush', color: s.color, size: s.size, points: s.points, ...pressure };
+    return { id: s.id, t: s.t, ...onLayer, tool: 'brush', color: s.color, size: s.size, points: s.points, ...pressure };
 }
 
 /// Did `raw` parse to a body at all (a JSON object), rather than falling back to a blank one?
@@ -408,4 +414,30 @@ export function moveLayer(drawing, id, index, now) {
         if (l.z !== z) out = upsertLayer(out, { ...l, z, t: now });
     });
     return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Grabbing (Curtis, 2026-09-26): the grab tool moves a whole layer, and must merge as trivially as a
+// stroke does. So a grab is not a setting on the layer (two computers moving one layer at once would
+// have one move win and one vanish) and not a rewrite of the layer's strokes (the same stroke id
+// with two sets of points is a real conflict). It is an entry in the history, `{ tool: 'move', dx,
+// dy }`: unioned by id like any stroke, so concurrent moves both apply - they are additions, and
+// additions commute - and undone like any stroke. A move shifts what was drawn on its layer before
+// it, in the one `(t, id)` order; what is drawn after lands where it was drawn.
+
+/// The shift each of a layer's entries is painted with - the sum of every move AFTER it on the
+/// layer - and the layer's whole shift (the base layer's fill moves by that: it was there first).
+/// `ops` are one layer's entries, in painting order.
+export function offsetsOf(ops) {
+    const each = new Array(ops.length);
+    let dx = 0;
+    let dy = 0;
+    for (let i = ops.length - 1; i >= 0; i--) {
+        each[i] = [dx, dy];
+        if (ops[i].tool === 'move') {
+            dx += ops[i].dx;
+            dy += ops[i].dy;
+        }
+    }
+    return { each, total: [dx, dy] };
 }

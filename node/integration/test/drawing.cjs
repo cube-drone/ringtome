@@ -273,4 +273,22 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         assert.deepEqual([l2.hidden, l2.opacity], [true, 100], "the later change to the layer won");
         assert.equal(model.strokesOn(model.readBody(merged.body), L2).length, 1, "and each stroke kept its layer");
     });
+
+    it("two computers grabbing one layer at once: both moves stand, and an undo takes one back", async () => {
+        const start = model.readBody(body([stroke("a200000000000001", 1)]));
+        const made = await (await j(ada, docs(), { title: "a moving horse", body: writeBody(start), format: "drawing" })).json();
+        const read = async () => (await ada(`${docs()}/${made.doc_id}`)).json();
+        const parents = (await read()).save_parents;
+        const here = model.addStroke(start, { id: "b200000000000002", t: 5, tool: "move", dx: 10, dy: 0 });
+        const there = model.addStroke(start, { id: "c200000000000003", t: 6, tool: "move", dx: 0, dy: -20 });
+        for (const side of [here, there]) {
+            await j(ada, `${docs()}/${made.doc_id}`, { title: "a moving horse", body: writeBody(side), parents, format: "drawing" }, "PUT");
+        }
+        const merged = await read();
+        assert.equal(merged.body, writeBody(model.mergeBodies(here, there)), "the node's merge is the page's");
+        const drawing = model.readBody(merged.body);
+        assert.deepEqual(model.offsetsOf(model.strokesOn(drawing, model.BASE_LAYER)).total, [10, -20], "both grabs stand");
+        const undone = model.undo(drawing);
+        assert.deepEqual(model.offsetsOf(model.strokesOn(undone, model.BASE_LAYER)).total, [10, 0], "and undo takes the newest back");
+    });
 });

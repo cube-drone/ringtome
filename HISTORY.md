@@ -11132,3 +11132,18 @@ different background depending on order - invisible while the default matched th
 Both models now take the settings only from versions that parsed, the least by (width, height,
 background) - `mergedCanvas` in `pure/drawing.js`, the same in `drawing.rs` - held by a new vector case
 where two readable versions disagree (red with first-wins planted back into the node).
+
+## 2026-09-26 (cont.): the grab tool, and tools as icons
+
+The drawing tools are icons now, each named in its tooltip, and a third joined brush and eraser: grab,
+which moves the whole current layer - an open hand hovering, a closed one holding. Curtis's worry was
+the right one: a move is the first operation that could have conflicted in a merge. Two designs that
+would have - a per-layer offset (last writer wins, so one of two concurrent moves vanishes) and
+rewriting the layer's strokes (one stroke id, two sets of points) - gave way to the one the model
+already had: a grab is an ENTRY in the history, `{ tool: "move", dx, dy }`, unioned and undone like a
+stroke. Concurrent grabs both stand; undo takes a grab back. A move shifts what was drawn on its layer
+before it (each entry painted offset by the moves after it, `offsetsOf`; the base layer's fill by all
+of them), so nothing is lost off the edge and what comes after lands where it was drawn. Vector cases
+for the move entry and for concurrent grabs (red with the node dropping moves); model tests for the
+offsets, undo and merge; `drawing.cjs` forks two grabs on the real node and checks both stand, byte for
+byte as the page merges them. No drawing has been grabbed by a person yet.
