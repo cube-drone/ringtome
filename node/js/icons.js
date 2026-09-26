@@ -22,6 +22,7 @@ import {
     Desktop,
     HardDrives,
     PaintBrush,
+    Stack,
     Eraser,
     Laptop,
     HandWaving,
@@ -215,6 +216,8 @@ export const Icons = {
     // Drawing (DRAWING.md): the app tile and the brush tool share the brush; the eraser is its own.
     drawing: PaintBrush,
     eraser: Eraser,
+    // ...and its layers column: a stack of sheets.
+    layers: Stack,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

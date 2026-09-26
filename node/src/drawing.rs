@@ -23,11 +23,16 @@ pub const BODY_VERSION: i64 = 1;
 /// 800 because that is the most the node keeps of any picture (media/image.rs, `MAIN_BOUND`).
 pub const CANVAS_WIDTH: i64 = 800;
 pub const CANVAS_HEIGHT: i64 = 600;
-pub const BACKGROUND: &str = "#fffefb";
+/// The base layer's fill: the white every drawing starts on (DRAWING.md, "Layers").
+pub const BACKGROUND: &str = "#ffffff";
 /// The largest brush or eraser, in canvas units.
 pub const MAX_SIZE: i64 = 200;
 /// A pen's pressure at a point: a whole number from 0 (the lightest touch) to 100 (full).
 pub const MAX_PRESSURE: i64 = 100;
+/// A layer's opacity: a whole percent.
+pub const MAX_OPACITY: i64 = 100;
+/// The layer every drawing starts with, and the one a stroke naming no layer is on.
+pub const BASE_LAYER: &str = "0000000000000000";
 /// JavaScript's `Number.MAX_SAFE_INTEGER`: the largest whole number the browser writes exactly.
 const MAX_SAFE: i64 = (1 << 53) - 1;
 
@@ -35,6 +40,9 @@ const MAX_SAFE: i64 = (1 << 53) - 1;
 pub struct Stroke {
     pub id: String,
     pub t: i64,
+    /// Which layer it is on; absent for the base layer, which is how the base layer is written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
     pub tool: &'static str,
     /// A brush's colour; an eraser has none.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,12 +56,36 @@ pub struct Stroke {
     pub pressure: Option<Vec<i64>>,
 }
 
+/// A layer (DRAWING.md, "Layers"): its number, its place in the stack, its opacity, whether it is
+/// hidden, and when it last changed - which is how a merge picks between two computers' versions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Layer {
+    pub id: String,
+    pub n: i64,
+    pub z: i64,
+    pub opacity: i64,
+    pub hidden: bool,
+    pub t: i64,
+}
+
+impl Layer {
+    /// Of two entries for one layer, does `self` win? The later change; on a tie, the larger of
+    /// (z, opacity, hidden, n) - the browser's `layerWins`, exactly.
+    fn wins_over(&self, other: &Layer) -> bool {
+        let key = |l: &Layer| (l.t, l.z, l.opacity, l.hidden as i64, l.n);
+        key(self) > key(other)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Body {
     pub v: i64,
     pub width: i64,
     pub height: i64,
     pub background: String,
+    /// Written only when there are any: a drawing with no layer entries is the bytes it always was.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<Layer>,
     pub strokes: Vec<Stroke>,
     pub undone: Vec<String>,
 }
@@ -67,6 +99,7 @@ fn blank() -> Body {
         width: CANVAS_WIDTH,
         height: CANVAS_HEIGHT,
         background: BACKGROUND.to_string(),
+        layers: Vec::new(),
         strokes: Vec::new(),
         undone: Vec::new(),
     }
@@ -117,13 +150,44 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
     } else {
         Some(o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string())
     };
+    let layer = o
+        .get("layer")
+        .and_then(Value::as_str)
+        .filter(|l| is_hex16(l) && *l != BASE_LAYER)
+        .map(str::to_string);
     // A pressure list that does not fit its points is dropped, not the stroke (pure/drawing.js).
     let pressure = o
         .get("pressure")
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
         .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, tool, color, size, points, pressure })
+    Some(Stroke { id, t, layer, tool, color, size, points, pressure })
+}
+
+fn as_layer(v: &Value) -> Option<Layer> {
+    let o = v.as_object()?;
+    Some(Layer {
+        id: o.get("id")?.as_str().filter(|s| is_hex16(s))?.to_string(),
+        n: o.get("n").and_then(safe_int).filter(|n| *n >= 1)?,
+        z: o.get("z").and_then(safe_int)?,
+        opacity: o.get("opacity").and_then(safe_int).filter(|p| (0..=MAX_OPACITY).contains(p))?,
+        hidden: o.get("hidden")?.as_bool()?,
+        t: o.get("t").and_then(safe_int).filter(|t| *t >= 0)?,
+    })
+}
+
+/// Fold layer entries into one per id, the winner of each, in id order.
+fn fold_layers<'a>(entries: impl Iterator<Item = &'a Layer>) -> Vec<Layer> {
+    let mut by_id: std::collections::BTreeMap<String, Layer> = std::collections::BTreeMap::new();
+    for layer in entries {
+        match by_id.get(&layer.id) {
+            Some(held) if !layer.wins_over(held) => {}
+            _ => {
+                by_id.insert(layer.id.clone(), layer.clone());
+            }
+        }
+    }
+    by_id.into_values().collect()
 }
 
 fn order(a: &Stroke, b: &Stroke) -> std::cmp::Ordering {
@@ -141,6 +205,14 @@ pub fn read(bytes: &[u8]) -> Body {
         Value::Array(_) => &empty,
         _ => return blank(),
     };
+    let entries: Vec<Layer> = o
+        .get("layers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(as_layer)
+        .collect();
+    let layers = fold_layers(entries.iter());
     let mut undone: Vec<String> = Vec::new();
     let mut gone: HashSet<String> = HashSet::new();
     for id in o.get("undone").and_then(Value::as_array).into_iter().flatten() {
@@ -172,6 +244,7 @@ pub fn read(bytes: &[u8]) -> Body {
             .filter(|c| is_colour(c))
             .unwrap_or(BACKGROUND)
             .to_string(),
+        layers,
         strokes,
         undone,
     }
@@ -189,13 +262,25 @@ pub fn canonical(body: &Body) -> String {
     serde_json::to_string(&body).expect("a drawing body is plain JSON")
 }
 
-/// Merge any number of versions of one drawing, given in a deterministic order (the caller's is
-/// `resolve`'s: oldest head first). Every stroke of any of them, minus every stroke any of them
-/// undid; the canvas settings are the first's. Commutative and idempotent, so the order only
-/// decides which copy of a duplicated id wins, and a stroke id is never reused.
+/// Merge any number of versions of one drawing. Every stroke of any of them, minus every stroke any
+/// of them undid; every layer, the later change to each winning; the canvas settings chosen by a
+/// fixed order among the readable versions. Commutative and idempotent - the order the heads come
+/// in decides only which copy of a duplicated stroke id wins, and a stroke id is never reused.
 pub fn merge(bodies: &[Vec<u8>]) -> String {
     let read: Vec<Body> = bodies.iter().map(|b| read(b)).collect();
-    let Some(first) = read.first() else { return canonical(&blank()) };
+    if read.is_empty() {
+        return canonical(&blank());
+    }
+    // The canvas settings: only versions that parsed have a say, and among them the least of
+    // (width, height, background), so the order the heads come in cannot matter - the browser's
+    // `mergedCanvas` exactly (found 2026-09-26: taking the first version's made a merge with an
+    // unreadable head order-dependent).
+    let canvas = bodies
+        .iter()
+        .filter(|b| matches!(serde_json::from_slice::<Value>(b), Ok(Value::Object(_))))
+        .map(|b| self::read(b))
+        .min_by(|a, b| (a.width, a.height, &a.background).cmp(&(b.width, b.height, &b.background)))
+        .unwrap_or_else(blank);
     let undone: HashSet<String> = read.iter().flat_map(|b| b.undone.iter().cloned()).collect();
     let mut strokes: Vec<Stroke> = Vec::new();
     let mut seen: HashSet<&str> = HashSet::new();
@@ -204,7 +289,16 @@ pub fn merge(bodies: &[Vec<u8>]) -> String {
             strokes.push(stroke.clone());
         }
     }
-    canonical(&Body { strokes, undone: undone.into_iter().collect(), ..first.clone() })
+    let layers = fold_layers(read.iter().flat_map(|b| b.layers.iter()));
+    canonical(&Body {
+        v: BODY_VERSION,
+        width: canvas.width,
+        height: canvas.height,
+        background: canvas.background,
+        layers,
+        strokes,
+        undone: undone.into_iter().collect(),
+    })
 }
 
 #[cfg(test)]

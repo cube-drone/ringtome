@@ -11,7 +11,8 @@ Curtis's brief (2026-09-26): a basic drawing application on the console, beside 
   drawing, right here), and **published** - one at a time, no taxonomies yet - as a plain image.
 - **Strokes are its history**: undo the last stroke, and keep undoing back to a blank canvas. Two
   histories merge by putting both sets of strokes together; they should never conflict.
-- **Layers** are a column still to come.
+- **Layers** (added 2026-09-26): a column of re-orderable, hideable transparent slices, each with a
+  thumbnail of just that layer, and the current layer's opacity on top of the stack.
 
 This document is the plan: the model first, because everything else hangs off it, then the slices.
 
@@ -36,7 +37,7 @@ skip-no-op saves, head checks, sync, retention.
 {
   "v": 1,
   "width": 800, "height": 600,
-  "background": "#fffefb",
+  "background": "#ffffff",
   "strokes": [
     { "id": "9f2c41d07a3b6e15", "t": 1790380000000, "tool": "brush",
       "color": "#8a4b1f", "size": 12, "points": [412, 300, 3, -1, 4, 0, 6, 2] }
@@ -63,6 +64,33 @@ skip-no-op saves, head checks, sync, retention.
   fast pen curve stays a curve.
 - **The eraser is a stroke** with `tool: "eraser"`: drawn as `destination-out`, it removes whatever
   is under it from the strokes before it. That is what makes merge safe to be simple (below).
+
+### Layers
+
+A layer is an entry in the body's `layers`: `{ "id", "n", "z", "opacity", "hidden", "t" }` - its
+number (for "layer 2"), its place in the stack, a whole-percent opacity, whether it is hidden, and
+when it last changed. A stroke names its layer (`"layer": "<id>"`, right after its `t`); a stroke that
+names none is on the **base layer** (id sixteen zeros), which every drawing has, fully opaque and
+shown until an entry says otherwise. `layers` is written only when there are entries, so a drawing
+with none is the bytes it was before layers existed (no body version, by Curtis's word).
+
+**Merging** keeps every layer from every version; where two versions changed one layer, the later
+change (`t`) wins, and a tie breaks on (z, opacity, hidden, n) - any fixed order, so long as the browser
+and the node share it (the vectors hold them to it). Strokes merge as ever, each keeping its layer.
+Moving a layer renumbers the stack's `z`s and touches only the layers whose place changed.
+
+**Painting**: each layer on a canvas of its own - so an eraser stroke erases within its own layer -
+then stacked bottom-first at their opacities, the hidden ones left out. The white a drawing starts on
+(`background`, `#ffffff` for a new one) is the **base layer's own fill**, not paper under everything
+(Curtis, 2026-09-26): hide the base layer, fade it, or erase on it, and what shows is the
+**transparency floor** - the grey checkerboard every image editor uses for "nothing is here". The
+floor is only ever the stage's background: a picture of the drawing (a thumbnail, a copy, a
+publication) is the visible layers alone, transparent wherever they leave nothing - webp and png
+keep that, and so does the node's AVIF. A hidden layer takes no strokes.
+
+**Canvas settings in a merge** (width, height, `background`) come only from versions that parsed,
+and among those the least by that order - not from whichever version is read first, which made a
+merge with an unreadable head order-dependent until a changed default exposed it (2026-09-26).
 
 ### Undo is a recorded removal, so a merge cannot bring a stroke back
 
@@ -180,5 +208,7 @@ Slices 1-4 built 2026-09-26; `drawing.cjs` is their acceptance, `pure/drawing.cj
    cursor, title, autosave, the thumbnail list, tags.
 3. **Duplicate and copy into a notebook.**
 4. **Publish, view, unpublish.**
-5. **Later, named so they are not forgotten**: layers (a column), more tools, redo, resizing the
-   canvas, node-kept thumbnails for long lists, publishing a set of drawings together.
+5. **Layers** (built 2026-09-26): the column, the model, the merge.
+6. **Later, named so they are not forgotten**: more tools, redo, resizing the canvas, node-kept
+   thumbnails for long lists, publishing a set of drawings together, deleting and renaming layers,
+   and reordering layers by touch (dragging rows is mouse and pen only today).

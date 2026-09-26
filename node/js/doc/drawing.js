@@ -4,11 +4,14 @@
 // another computer changes it are the ordinary document session's (doc/session.js), because a
 // drawing's body is a string like any other.
 //
-// Painting: the canvas holds the STROKES only, over a CSS background of the drawing's paper, so an
-// eraser stroke (`destination-out`) cuts back to the paper rather than to a transparent hole. A
-// picture of the drawing - a thumbnail, a copy, a publication - is `flatten`: the paper, then the
-// strokes on top. The canvas is backed at twice the drawing's size so lines stay crisp on dense
-// screens; points are always stored in the drawing's own units (800 x 600).
+// Painting: each layer on a canvas of its own, stacked (DRAWING.md, "Layers"). The white a drawing
+// starts on is the BASE LAYER's own fill (the body's `background`), not paper under everything - so
+// hiding the base layer, fading it, or erasing on it reveals the transparency floor: the grey
+// checkerboard every image editor uses to mean "nothing is here" (Curtis, 2026-09-26). The floor is
+// the stage's CSS, never pixels: a picture of the drawing - a thumbnail, a copy, a publication - is
+// `flatten`, the layers alone, and where they leave nothing the picture is transparent. The canvas
+// is backed at twice the drawing's size so lines stay crisp on dense screens; points are always
+// stored in the drawing's own units (800 x 600).
 //
 // A stroke is pointer-down to pointer-up, drawn live straight onto the canvas as it goes, then added
 // to the body - which repaints everything from the body, so what you see is exactly what is saved.
@@ -27,7 +30,25 @@ import { ColourPicker } from './colourpicker.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
-import { readBody, writeBody, addStroke, undo, strokeId, encodeSamples, decodePoints, pressureWidth, MAX_SIZE, FIXED_COLOURS, recentColours } from '../pure/drawing.js';
+import {
+    readBody,
+    writeBody,
+    addStroke,
+    undo,
+    strokeId,
+    encodeSamples,
+    decodePoints,
+    pressureWidth,
+    MAX_SIZE,
+    FIXED_COLOURS,
+    recentColours,
+    BASE_LAYER,
+    layersOf,
+    strokesOn,
+    addLayer,
+    setLayer,
+    moveLayer,
+} from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 
 const html = htm.bind(h);
@@ -70,32 +91,69 @@ function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), p
     }
 }
 
-/// Every standing stroke, in order, onto a canvas that holds only strokes.
-export function paintStrokes(canvas, drawing) {
+/// One layer's strokes, in order, onto a canvas of its own (DRAWING.md, "Layers"): transparent
+/// wherever the layer has nothing, so an eraser stroke erases only the layer it is on. The base
+/// layer starts filled with the drawing's `background` - the white a drawing begins on - so erasing
+/// on it cuts through to transparency like any other layer.
+export function paintLayer(canvas, drawing, layerId) {
     const ctx = canvas.getContext('2d');
     const scale = canvas.width / drawing.width;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const stroke of drawing.strokes) paintStroke(ctx, stroke, scale);
+    if (layerId === BASE_LAYER) {
+        ctx.fillStyle = drawing.background;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    for (const stroke of strokesOn(drawing, layerId)) paintStroke(ctx, stroke, scale);
     ctx.restore();
 }
 
-/// A picture of the drawing, `width` pixels wide: the paper, then the strokes. What a thumbnail, a
-/// copy into a notebook and a publication are all made from.
-export function flatten(drawing, width = drawing.width) {
+function blankCanvas(width, height) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+}
+
+/// Every layer painted onto a canvas of its own, `width` pixels wide: a Map of layer id to canvas.
+export function paintLayers(drawing, width) {
     const height = Math.round((width * drawing.height) / drawing.width);
-    const strokes = document.createElement('canvas');
-    strokes.width = width;
-    strokes.height = height;
-    paintStrokes(strokes, drawing);
-    const out = document.createElement('canvas');
-    out.width = width;
-    out.height = height;
-    const ctx = out.getContext('2d');
-    ctx.fillStyle = drawing.background;
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(strokes, 0, 0);
+    const canvases = new Map();
+    for (const layer of layersOf(drawing)) {
+        const canvas = blankCanvas(width, height);
+        paintLayer(canvas, drawing, layer.id);
+        canvases.set(layer.id, canvas);
+    }
+    return canvases;
+}
+
+/// Stack the layers onto `target`, bottom first, each at its opacity, the hidden ones left out, over
+/// nothing - on the screen the floor shows through from the stage behind; in a picture, nothing
+/// stays transparent.
+export function composite(target, drawing, canvases) {
+    const ctx = target.getContext('2d');
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, target.width, target.height);
+    for (const layer of layersOf(drawing)) {
+        const canvas = canvases.get(layer.id);
+        if (layer.hidden || !canvas) continue;
+        ctx.globalAlpha = layer.opacity / 100;
+        ctx.drawImage(canvas, 0, 0, target.width, target.height);
+    }
+    ctx.restore();
+}
+
+/// A picture of the drawing, `width` pixels wide: the visible layers, stacked. What a thumbnail, a
+/// copy into a notebook and a publication are all made from - so a hidden layer is left out of all
+/// three, as it is out of sight, and wherever the layers leave nothing the picture is transparent
+/// (webp and png keep it, and so does the node's AVIF).
+export function flatten(drawing, width = drawing.width) {
+    const out = blankCanvas(width, Math.round((width * drawing.height) / drawing.width));
+    composite(out, drawing, paintLayers(drawing, width));
     return out;
 }
 
@@ -194,8 +252,23 @@ export const DrawingThumb = ({ root, doc, big }) => {
         };
     }, [root, key]); // eslint-disable-line react-hooks/exhaustive-deps
     return src
-        ? html`<img class=${big ? 'note-row-thumb note-row-thumb-big drawing-thumb' : 'note-row-thumb drawing-thumb'} src=${src} alt="" />`
+        ? html`<img class=${big ? 'note-row-thumb note-row-thumb-big drawing-thumb drawing-floor' : 'note-row-thumb drawing-thumb drawing-floor'} src=${src} alt="" />`
         : html`<span class="note-row-thumb drawing-thumb drawing-thumb-empty"><${Icons.drawing} /></span>`;
+};
+
+// ---------------------------------------------------------------------------------------------
+// The layers column's thumbnails: each layer alone, drawn from its own canvas.
+
+const LayerThumb = ({ source, painted }) => {
+    const ref = useRef(null);
+    useEffect(() => {
+        const canvas = ref.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (source) ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    }, [source, painted]);
+    return html`<canvas ref=${ref} class="drawing-layer-thumb drawing-floor" width="64" height="48"></canvas>`;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -250,17 +323,39 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     }, [showMeta]);
     const canvasRef = useRef(null);
     const cursorRef = useRef(null);
-    const live = useRef(null); // the stroke being drawn: { stroke, points }
+    const live = useRef(null); // the stroke being drawn: { stroke, pen, samples }
     const opened = session.status !== 'opening' && session.status !== 'waiting';
 
     const { tucked, toggleTuck } = useColTucks(root, 'drawing', []);
-    const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools'], { tools: 170 });
+    const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], { tools: 170, layers: 170 });
 
-    // Whatever the body says is what the canvas shows: every save, undo and sync repaints from it.
-    useEffect(() => {
+    // The layers (DRAWING.md, "Layers"): bottom of the stack first. The CURRENT layer is the one a
+    // new stroke lands on and the opacity slider speaks for - the top one until another is picked,
+    // and the top one again if the picked one stops existing (a merge can do that).
+    const layers = useMemo(() => layersOf(drawing), [drawing]);
+    const [currentId, setCurrentId] = useState(null);
+    const current = layers.find((l) => l.id === currentId) || layers[layers.length - 1];
+
+    // Every layer on a canvas of its own, repainted from the body whenever it changes - every save,
+    // undo, layer change and sync - and stacked onto the screen. A stroke being drawn paints onto
+    // its own layer's canvas as it goes and restacks, so a layer above still covers it.
+    const layerCanvases = useRef(new Map());
+    const [painted, setPainted] = useState(0); // bumps when the layer canvases change: the thumbnails follow
+    const restack = () => {
         const canvas = canvasRef.current;
-        if (canvas && opened) paintStrokes(canvas, drawing);
-    }, [drawing, opened]);
+        if (canvas) composite(canvas, drawing, layerCanvases.current);
+    };
+    useEffect(() => {
+        if (!opened) return;
+        layerCanvases.current = paintLayers(drawing, drawing.width * BACKING);
+        restack();
+        setPainted((n) => n + 1);
+    }, [drawing, opened]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const changeLayers = (next) => {
+        session.setBody(writeBody(next));
+        session.touched();
+    };
 
     const size = tools.tool === 'eraser' ? tools.eraserSize : tools.brushSize;
 
@@ -288,24 +383,36 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const sampleOf = (e, pen) => (pen ? [...toDrawing(e), e.pressure] : toDrawing(e));
     const asPressure = (sample) => (sample.length > 2 ? Math.round(sample[2] * 100) : undefined);
 
+    // The canvas a stroke paints onto as it is drawn: its own layer's.
+    const layerContext = (layerId) => {
+        const canvas = layerCanvases.current.get(layerId);
+        return canvas ? canvas.getContext('2d') : null;
+    };
+
     const onPointerDown = (e) => {
-        if (!opened || e.button > 0) return;
+        if (!opened || e.button > 0 || !current) return;
+        // A hidden layer takes no strokes: they would land where nobody can see them.
+        if (current.hidden) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
         const pen = e.pointerType === 'pen';
         const first = sampleOf(e, pen);
         const stroke = { id: strokeId(), t: Date.now(), tool: tools.tool, size: Math.round(size) };
+        if (current.id !== BASE_LAYER) stroke.layer = current.id;
         if (tools.tool === 'brush') stroke.color = tools.color;
         live.current = { stroke, pen, samples: [first] };
-        const ctx = canvasRef.current.getContext('2d');
+        const ctx = layerContext(current.id);
+        if (!ctx) return;
         paintStroke(ctx, stroke, BACKING, [first], pen ? [asPressure(first)] : undefined);
+        restack();
     };
 
     const onPointerMove = (e) => {
         moveCursor(e);
         const l = live.current;
         if (!l) return;
-        const ctx = canvasRef.current.getContext('2d');
+        const ctx = layerContext(l.stroke.layer || BASE_LAYER);
+        if (!ctx) return;
         // Every sample the browser gathered since the last frame, not just the last one: a pen
         // reports far faster than the screen draws, and a fast curve drawn from frame-rate samples
         // comes out as straight lines.
@@ -317,6 +424,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             l.samples.push(next);
             paintStroke(ctx, l.stroke, BACKING, [last, next], l.pen ? [asPressure(last), asPressure(next)] : undefined);
         }
+        restack();
     };
 
     const finishStroke = () => {
@@ -395,6 +503,73 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               </p>
           </aside>${resizer('tools')}`;
 
+    // The layers column: the current layer's opacity on top of the stack, a new layer, and the stack
+    // itself top-first - each row the layer alone, its name, its eye; drag a row to move it, click it
+    // to draw on it.
+    const newLayer = () => {
+        const id = strokeId();
+        changeLayers(addLayer(drawing, id, Date.now()));
+        setCurrentId(id);
+    };
+    const dropOnto = (e, stackIndex) => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData('text/x-drawing-layer');
+        if (id) changeLayers(moveLayer(drawing, id, stackIndex, Date.now()));
+    };
+    const layersColumn = tucked.has('layers')
+        ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers', 'layers')} onClick=${() => toggleTuck('layers')} />`
+        : html`<aside class="drawing-layers" style=${colStyle}>
+              <${PaneHead} label=${t('doc.drawing.layers', 'layers')} onTuck=${() => toggleTuck('layers')} />
+              ${current &&
+              html`<label class="drawing-size">
+                  <span>${t('doc.drawing.opacity', 'opacity')} · ${current.opacity}%</span>
+                  <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value=${current.opacity}
+                      disabled=${!opened}
+                      onInput=${(e) => changeLayers(setLayer(drawing, current.id, { opacity: +e.currentTarget.value }, Date.now()))}
+                  />
+              </label>`}
+              <button class="drawing-tool" disabled=${!opened} onClick=${newLayer}>
+                  <${Icons.plus} /> ${t('doc.drawing.new-layer', 'new layer')}
+              </button>
+              <ol class="drawing-layer-list">
+                  ${[...layers].reverse().map((layer, row) => {
+                      const stackIndex = layers.length - 1 - row;
+                      const isCurrent = current && layer.id === current.id;
+                      return html`<li
+                          key=${layer.id}
+                          class=${isCurrent ? 'drawing-layer current' : 'drawing-layer'}
+                          draggable=${true}
+                          onDragStart=${(e) => {
+                              e.dataTransfer.setData('text/x-drawing-layer', layer.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver=${(e) => e.preventDefault()}
+                          onDrop=${(e) => dropOnto(e, stackIndex)}
+                          onClick=${() => setCurrentId(layer.id)}
+                      >
+                          <${LayerThumb} source=${layerCanvases.current.get(layer.id)} painted=${painted} />
+                          <span class=${layer.hidden ? 'drawing-layer-name hidden' : 'drawing-layer-name'}>
+                              ${t('doc.drawing.layer-n', 'layer {n}', { n: layer.n })}
+                          </span>
+                          <button
+                              class="drawing-layer-eye"
+                              title=${layer.hidden ? t('doc.drawing.show-layer', 'show this layer') : t('doc.drawing.hide-layer', 'hide this layer')}
+                              onClick=${(e) => {
+                                  e.stopPropagation();
+                                  changeLayers(setLayer(drawing, layer.id, { hidden: !layer.hidden }, Date.now()));
+                              }}
+                          ><${layer.hidden ? Icons.eyeClosed : Icons.eye} /></button>
+                      </li>`;
+                  })}
+              </ol>
+              ${current && current.hidden &&
+              html`<p class="null-sub">${t('doc.drawing.this-layer-is-hidden', 'this layer is hidden - show it to draw on it')}</p>`}
+          </aside>${resizer('layers')}`;
+
     const header = html`<header class="reader-head drawing-head">
         <input
             class="editor-title"
@@ -459,6 +634,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     </header>`;
 
     return html`${toolsColumn}
+        ${layersColumn}
         <div class="drawing">
             ${header}
             <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
@@ -466,8 +642,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 ${!opened
                     ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
                     : html`<div
-                          class="drawing-paper"
-                          style=${`background: ${drawing.background}; aspect-ratio: ${drawing.width} / ${drawing.height}`}
+                          class="drawing-paper drawing-floor"
+                          style=${`aspect-ratio: ${drawing.width} / ${drawing.height}`}
                           onPointerLeave=${() => cursorRef.current && (cursorRef.current.style.display = 'none')}
                       >
                           <canvas

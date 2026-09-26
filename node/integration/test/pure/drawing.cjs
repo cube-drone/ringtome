@@ -178,3 +178,66 @@ describe('a pen stroke', () => {
         assert.equal(d.pressureWidth(500), 1, 'clamped');
     });
 });
+
+// Layers (Curtis, 2026-09-26): a stack of transparent slices, each hideable, each with an opacity.
+describe('layers', () => {
+    const L2 = 'aaaaaaaaaaaaaaa2';
+    const L3 = 'aaaaaaaaaaaaaaa3';
+
+    it('are one base layer until there are more, and a drawing with none writes no layers at all', () => {
+        const blank = d.blankDrawing();
+        assert.deepEqual(d.layersOf(blank).map((l) => [l.id, l.n, l.z, l.opacity, l.hidden]), [[d.BASE_LAYER, 1, 0, 100, false]]);
+        assert.ok(!d.writeBody(blank).includes('layers'), 'the same bytes as before layers');
+        const onBase = d.addStroke(blank, { id: 'b000000000000001', t: 1, layer: d.BASE_LAYER, tool: 'brush', color: '#123456', size: 3, points: [1, 1] });
+        assert.ok(!d.writeBody(onBase).includes('"layer"'), 'a base-layer stroke names no layer');
+    });
+
+    it('add on top, change, and move - renumbering only what moved', () => {
+        let body = d.addLayer(d.blankDrawing(), L2, 10);
+        body = d.addLayer(body, L3, 11);
+        assert.deepEqual(d.layersOf(body).map((l) => [l.id, l.n, l.z]), [[d.BASE_LAYER, 1, 0], [L2, 2, 1], [L3, 3, 2]]);
+        body = d.setLayer(body, L2, { hidden: true, opacity: 40 }, 12);
+        const l2 = d.layersOf(body).find((l) => l.id === L2);
+        assert.deepEqual([l2.hidden, l2.opacity, l2.t], [true, 40, 12]);
+        body = d.moveLayer(body, L3, 1, 13);
+        assert.deepEqual(d.layersOf(body).map((l) => l.id), [d.BASE_LAYER, L3, L2], 'the top two swapped');
+        assert.ok(!body.layers.some((l) => l.id === d.BASE_LAYER), 'the base layer did not move, so nothing was written for it');
+        body = d.moveLayer(body, L2, 0, 14);
+        assert.deepEqual(d.layersOf(body).map((l) => l.id), [L2, d.BASE_LAYER, L3], 'the top layer to the bottom');
+        body = d.readBody(d.writeBody(body));
+        assert.deepEqual(d.layersOf(body).map((l) => l.id), [L2, d.BASE_LAYER, L3], 'and it all survives a save');
+    });
+
+    it('keep their own strokes', () => {
+        let body = d.addLayer(d.blankDrawing(), L2, 1);
+        body = d.addStroke(body, { id: 'b000000000000001', t: 2, tool: 'brush', color: '#123456', size: 3, points: [1, 1] });
+        body = d.addStroke(body, { id: 'b000000000000002', t: 3, layer: L2, tool: 'brush', color: '#123456', size: 3, points: [1, 1] });
+        assert.deepEqual(d.strokesOn(body, d.BASE_LAYER).map((s) => s.id), ['b000000000000001']);
+        assert.deepEqual(d.strokesOn(body, L2).map((s) => s.id), ['b000000000000002']);
+    });
+
+    it('merge: every layer kept, and the later change to a layer wins, whichever way round', () => {
+        const base = d.addLayer(d.blankDrawing(), L2, 10);
+        const here = d.setLayer(base, L2, { hidden: true }, 20);
+        const there = d.addLayer(d.setLayer(base, L2, { opacity: 30 }, 15), L3, 16);
+        const one = d.writeBody(d.mergeBodies(here, there));
+        assert.equal(one, d.writeBody(d.mergeBodies(there, here)), 'commutative');
+        const merged = d.readBody(one);
+        const l2 = d.layersOf(merged).find((l) => l.id === L2);
+        assert.deepEqual([l2.hidden, l2.opacity], [true, 100], 'the later change (hide, at 20) wins over the earlier (opacity, at 15)');
+        assert.ok(d.layersOf(merged).some((l) => l.id === L3), 'a layer only one side made is kept');
+    });
+
+    it('drop an entry that cannot be read, and keep the rest', () => {
+        const body = d.readBody({
+            layers: [
+                { id: L2, n: 2, z: 1, opacity: 50, hidden: false, t: 1 },
+                { id: L3, n: 3, z: 2, opacity: 150, hidden: false, t: 1 },
+                { id: 'nope', n: 2, z: 1, opacity: 50, hidden: false, t: 1 },
+                { id: L3, n: 3, z: 2, opacity: 50, hidden: 'no', t: 1 },
+            ],
+            strokes: [],
+        });
+        assert.deepEqual(body.layers.map((l) => l.id), [L2]);
+    });
+});

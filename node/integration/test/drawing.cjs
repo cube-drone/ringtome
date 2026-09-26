@@ -33,9 +33,10 @@ const { HOST, makeFetch } = require("./fetch.cjs");
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
 // The browser's own writer: what the page saves is exactly what it would save.
-let writeBody;
+let writeBody, model;
 before(async () => {
-    ({ writeBody } = await import("../../js/pure/drawing.js"));
+    model = await import("../../js/pure/drawing.js");
+    ({ writeBody } = model);
 });
 
 const stroke = (id, t, color = "#8a4b1f") => ({ id, t, tool: "brush", color, size: 8, points: [100, 100, 5, 5, 5, 0] });
@@ -251,5 +252,25 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         const merged = await read();
         assert.equal(merged.resolution, "merged", "a real fork, merged");
         assert.equal(merged.body, body([pen, other, third]), "every stroke's pressure intact through the merge");
+    });
+
+    it("merges layers across a fork exactly as the page's own model does", async () => {
+        const L2 = "aaaaaaaaaaaaaaa2";
+        let start = model.addLayer(model.readBody(body([])), L2, 10);
+        const made = await (await j(ada, docs(), { title: "a layered horse", body: writeBody(start), format: "drawing" })).json();
+        const read = async () => (await ada(`${docs()}/${made.doc_id}`)).json();
+        const parents = (await read()).save_parents;
+        // Here: hide the layer, and draw on it. There: fade it (earlier), and draw on the base.
+        const here = model.addStroke(model.setLayer(start, L2, { hidden: true }, 20), { ...stroke("a100000000000001", 30), layer: L2 });
+        const there = model.addStroke(model.setLayer(start, L2, { opacity: 25 }, 15), stroke("b100000000000002", 31));
+        for (const side of [here, there]) {
+            await j(ada, `${docs()}/${made.doc_id}`, { title: "a layered horse", body: writeBody(side), parents, format: "drawing" }, "PUT");
+        }
+        const merged = await read();
+        assert.equal(merged.resolution, "merged");
+        assert.equal(merged.body, writeBody(model.mergeBodies(here, there)), "the node's merge is the page's, byte for byte");
+        const l2 = model.layersOf(model.readBody(merged.body)).find((l) => l.id === L2);
+        assert.deepEqual([l2.hidden, l2.opacity], [true, 100], "the later change to the layer won");
+        assert.equal(model.strokesOn(model.readBody(merged.body), L2).length, 1, "and each stroke kept its layer");
     });
 });

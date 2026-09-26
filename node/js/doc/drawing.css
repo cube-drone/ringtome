@@ -105,6 +105,18 @@
     min-width: 8rem;
 }
 
+/* Transparency's floor (Curtis, 2026-09-26): the grey checkerboard under every drawing, layer
+   thumbnail and list thumbnail - what shows where the layers leave nothing. Only ever a background:
+   no picture of a drawing contains it. `--floor-square` is one square's side. */
+.drawing-floor {
+    background-color: var(--floor-light);
+    background-image:
+        linear-gradient(45deg, var(--floor-dark) 25%, transparent 25%, transparent 75%, var(--floor-dark) 75%),
+        linear-gradient(45deg, var(--floor-dark) 25%, transparent 25%, transparent 75%, var(--floor-dark) 75%);
+    background-size: calc(var(--floor-square, 10px) * 2) calc(var(--floor-square, 10px) * 2);
+    background-position: 0 0, var(--floor-square, 10px) var(--floor-square, 10px);
+}
+
 /* The stage centres the paper and lets it grow to the space, keeping the drawing's shape. */
 .drawing-stage {
     flex: 1;
@@ -160,8 +172,8 @@
     width: 64px;
     height: 48px;
     object-fit: contain;
-    background: var(--paper);
     vertical-align: middle;
+    --floor-square: 4px;
 }
 
 .drawing-thumb-empty {
@@ -212,4 +224,78 @@
     background: var(--paper);
     border: 1px solid var(--border);
     padding: 0.25rem 0.4rem;
+}
+
+/* The layers column (DRAWING.md, "Layers"): the current layer's opacity, a new layer, and the stack,
+   top layer first. Each row is the layer alone over a checkerboard - transparent is transparent -
+   with its name and its eye; the current layer wears the teal edge the active tool does. */
+.notes-columns .drawing-layers {
+    width: var(--w-layers, 190px);
+}
+
+.drawing-layers {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    overflow-y: auto;
+}
+
+.drawing-layer-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.drawing-layer {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    cursor: grab;
+}
+
+.drawing-layer.current {
+    border-color: var(--teal);
+    background: var(--paper);
+    box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.drawing-layer-thumb {
+    width: 48px;
+    height: 36px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    --floor-square: 4px;
+}
+
+.drawing-layer-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    color: var(--ink);
+}
+
+.drawing-layer-name.hidden {
+    color: var(--faint);
+    text-decoration: line-through;
+}
+
+.drawing-layer-eye {
+    flex-shrink: 0;
+    font: inherit;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0.2rem;
+    cursor: pointer;
+}
+
+.drawing-layer-eye:hover {
+    color: var(--teal);
 }

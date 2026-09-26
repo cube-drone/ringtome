@@ -104,6 +104,8 @@
     --scrim: rgba(43, 38, 34, 0.45);        /* behind a modal */
     --shadow-drop: rgba(43, 38, 34, 0.35);  /* panels floating over content (menus, tooltips) */
     --shadow-punch: rgba(51, 40, 20, 0.28); /* inset: a hole punched through the ink chrome */
+    --floor-light: #c9c9c9;   /* transparency's floor (Drawing): the checkerboard's lighter square */
+    --floor-dark: #a3a3a3;    /* ...and its darker one - the universal sign for "nothing is here" */
 }
 
 /* The jagged line's ring (see --ring above): every box that wears it. */

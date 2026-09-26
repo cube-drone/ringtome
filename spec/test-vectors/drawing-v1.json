@@ -5,7 +5,7 @@
     {
       "name": "blank",
       "input": {},
-      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[],\"undone\":[]}"
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#ffffff\",\"strokes\":[],\"undone\":[]}"
     },
     {
       "name": "strokes sorted by time then id, unknown fields dropped",
@@ -264,7 +264,7 @@
         "strokes": [],
         "undone": []
       },
-      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[],\"undone\":[]}"
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#ffffff\",\"strokes\":[],\"undone\":[]}"
     },
     {
       "name": "a pen stroke keeps its pressure, one per point, after its points",
@@ -388,6 +388,141 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"e000000000000004\",\"t\":4,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
     },
     {
+      "name": "layers are kept in id order, and a stroke names its layer after its time",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "layers": [
+          {
+            "id": "aaaaaaaaaaaaaaa3",
+            "n": 3,
+            "z": 2,
+            "opacity": 40,
+            "hidden": true,
+            "t": 9,
+            "extra": 1
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa2",
+            "n": 2,
+            "z": 1,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          }
+        ],
+        "strokes": [
+          {
+            "id": "a000000000000001",
+            "t": 1,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "layer": "aaaaaaaaaaaaaaa2"
+          },
+          {
+            "id": "b000000000000002",
+            "t": 2,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "layer": "0000000000000000"
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa3\",\"n\":3,\"z\":2,\"opacity\":40,\"hidden\":true,\"t\":9}],\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "a layer entry that cannot be read is dropped; of two for one id the later wins",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "layers": [
+          {
+            "id": "aaaaaaaaaaaaaaa2",
+            "n": 2,
+            "z": 1,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa2",
+            "n": 2,
+            "z": 1,
+            "opacity": 30,
+            "hidden": false,
+            "t": 7
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa3",
+            "n": 3,
+            "z": 2,
+            "opacity": 101,
+            "hidden": false,
+            "t": 1
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa4",
+            "n": 0,
+            "z": 2,
+            "opacity": 50,
+            "hidden": false,
+            "t": 1
+          },
+          {
+            "id": "aaaaaaaaaaaaaaa5",
+            "n": 5,
+            "z": 2,
+            "opacity": 50,
+            "hidden": "yes",
+            "t": 1
+          }
+        ],
+        "strokes": [
+          {
+            "id": "c000000000000003",
+            "t": 3,
+            "tool": "brush",
+            "color": "#8a4b1f",
+            "size": 8,
+            "points": [
+              10,
+              10,
+              2,
+              3,
+              -1,
+              0
+            ],
+            "layer": "NOTHEX"
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":30,\"hidden\":false,\"t\":7}],\"strokes\":[{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
@@ -457,6 +592,30 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[90,80,70]},{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[10,20,30]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0],\"pressure\":[90,80,70]},{\"id\":\"c000000000000003\",\"t\":3,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "layers merge: every layer kept, the later change to one winning",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":true,\"t\":20}],\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":30,\"hidden\":false,\"t\":15},{\"id\":\"aaaaaaaaaaaaaaa3\",\"n\":3,\"z\":2,\"opacity\":100,\"hidden\":false,\"t\":16}],\"strokes\":[{\"id\":\"b000000000000002\",\"t\":2,\"layer\":\"aaaaaaaaaaaaaaa3\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":true,\"t\":20},{\"id\":\"aaaaaaaaaaaaaaa3\",\"n\":3,\"z\":2,\"opacity\":100,\"hidden\":false,\"t\":16}],\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"layer\":\"aaaaaaaaaaaaaaa3\",\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "two changes to one layer at the same moment: the tie breaks the same way everywhere",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":60,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":40,\"hidden\":true,\"t\":20}],\"strokes\":[],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":60,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "two readable heads disagreeing on the canvas: the same one wins in either order",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#ffffff\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"a000000000000001\",\"t\":1,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]},{\"id\":\"b000000000000002\",\"t\":2,\"tool\":\"brush\",\"color\":\"#8a4b1f\",\"size\":8,\"points\":[10,10,2,3,-1,0]}],\"undone\":[]}"
     },
     {
       "name": "an unreadable head adds nothing",

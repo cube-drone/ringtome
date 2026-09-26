@@ -25,13 +25,16 @@ export const DRAWING_FORMAT = 'drawing';
 /// drawing flattened into an image loses nothing to a downscale.
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
-export const BACKGROUND = '#fffefb';
+/// The base layer's fill - the white every drawing starts on (Curtis, 2026-09-26: "every image starts
+/// as an all-white canvas"). It is the base LAYER's, not paper under everything: hide, fade or erase
+/// the base layer and the transparency floor shows (doc/drawing.js).
+export const BACKGROUND = '#ffffff';
 
 export const BODY_VERSION = 1;
 
 /// A drawing with nothing on it.
 export function blankDrawing() {
-    return { v: BODY_VERSION, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, background: BACKGROUND, strokes: [], undone: [] };
+    return { v: BODY_VERSION, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, background: BACKGROUND, layers: [], strokes: [], undone: [] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -145,6 +148,10 @@ export function undo(body) {
 // Reading and merging bodies
 
 const HEX16 = /^[0-9a-f]{16}$/;
+/// A layer's opacity: a whole percent.
+export const MAX_OPACITY = 100;
+/// The layer every drawing starts with, and the one a stroke with no `layer` is on.
+export const BASE_LAYER = '0000000000000000';
 const COLOUR = /^#[0-9a-f]{6}$/;
 /// The largest brush or eraser, in canvas units.
 export const MAX_SIZE = 200;
@@ -163,6 +170,15 @@ export function readBody(raw) {
         }
     }
     if (!parsed || typeof parsed !== 'object') return blankDrawing();
+    // Layers: one entry per id, the latest change winning (`layerWins`), kept in id order.
+    const byId = new Map();
+    for (const l of Array.isArray(parsed.layers) ? parsed.layers : []) {
+        const layer = asLayer(l);
+        if (!layer) continue;
+        const held = byId.get(layer.id);
+        if (!held || layerWins(layer, held)) byId.set(layer.id, layer);
+    }
+    const layers = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const undone = [...new Set(Array.isArray(parsed.undone) ? parsed.undone.filter((id) => typeof id === 'string' && HEX16.test(id)) : [])];
     const gone = new Set(undone);
     const seen = new Set();
@@ -180,9 +196,32 @@ export function readBody(raw) {
         width: dimension(parsed.width, CANVAS_WIDTH),
         height: dimension(parsed.height, CANVAS_HEIGHT),
         background: typeof parsed.background === 'string' && COLOUR.test(parsed.background) ? parsed.background : BACKGROUND,
+        layers,
         strokes,
         undone,
     };
+}
+
+/// A layer entry as the body keeps it, or null: exactly its fields, every one checked.
+function asLayer(l) {
+    if (!l || typeof l !== 'object') return null;
+    if (typeof l.id !== 'string' || !HEX16.test(l.id)) return null;
+    if (!Number.isSafeInteger(l.n) || l.n < 1) return null;
+    if (!Number.isSafeInteger(l.z)) return null;
+    if (!Number.isSafeInteger(l.opacity) || l.opacity < 0 || l.opacity > MAX_OPACITY) return null;
+    if (typeof l.hidden !== 'boolean') return null;
+    if (!Number.isSafeInteger(l.t) || l.t < 0) return null;
+    return { id: l.id, n: l.n, z: l.z, opacity: l.opacity, hidden: l.hidden, t: l.t };
+}
+
+/// Of two entries for one layer, does `a` win? The later change (`t`); on a tie, the larger of
+/// (z, opacity, hidden, n) - any total order would do, so long as every computer uses this one.
+function layerWins(a, b) {
+    const key = (l) => [l.t, l.z, l.opacity, l.hidden ? 1 : 0, l.n];
+    const ka = key(a);
+    const kb = key(b);
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] > kb[i];
+    return false;
 }
 
 /// A stroke as the body keeps it, or null when it cannot be painted: only the fields a stroke has,
@@ -202,19 +241,56 @@ function asStroke(s) {
         s.pressure.every((p) => Number.isSafeInteger(p) && p >= 0 && p <= MAX_PRESSURE)
             ? { pressure: s.pressure }
             : {};
-    if (s.tool === 'eraser') return { id: s.id, t: s.t, tool: 'eraser', size: s.size, points: s.points, ...pressure };
+    // Which layer it is on: absent means the base layer, and is how the base layer is written.
+    const layer = typeof s.layer === 'string' && HEX16.test(s.layer) && s.layer !== BASE_LAYER ? { layer: s.layer } : {};
+    if (s.tool === 'eraser') return { id: s.id, t: s.t, ...layer, tool: 'eraser', size: s.size, points: s.points, ...pressure };
     if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
-    return { id: s.id, t: s.t, tool: 'brush', color: s.color, size: s.size, points: s.points, ...pressure };
+    return { id: s.id, t: s.t, ...layer, tool: 'brush', color: s.color, size: s.size, points: s.points, ...pressure };
+}
+
+/// Did `raw` parse to a body at all (a JSON object), rather than falling back to a blank one?
+function readable(raw) {
+    let parsed = raw;
+    if (typeof raw === 'string') {
+        try {
+            parsed = JSON.parse(raw);
+        } catch {
+            return false;
+        }
+    }
+    return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+}
+
+/// The canvas settings a merge keeps, whatever order the versions came in: only readable versions
+/// have a say (an unreadable one is a blank drawing, and its defaults are not a choice anybody
+/// made), and among them the least of (width, height, background) - they agree in practice, since
+/// nothing changes them yet; this only has to be the same answer on every computer. Found
+/// 2026-09-26: taking the FIRST version's settings made merging a readable version with an
+/// unreadable one depend on which came first.
+function mergedCanvas(bodies) {
+    const candidates = bodies.filter(readable).map(readBody);
+    if (!candidates.length) return blankDrawing();
+    return candidates.reduce((best, b) =>
+        b.width < best.width ||
+        (b.width === best.width && (b.height < best.height || (b.height === best.height && b.background < best.background)))
+            ? b
+            : best
+    );
 }
 
 /// The merge of any number of versions of one drawing: every stroke of any of them, minus every
 /// stroke any of them undid, in the one order. Commutative and idempotent - merging A with B is
 /// merging B with A, and merging A with itself is A - so every device reaches the same drawing.
-/// The canvas settings are the first body's (they cannot differ yet: nothing changes them).
 export function mergeBodies(...bodies) {
     const read = bodies.map(readBody);
     if (!read.length) return blankDrawing();
+    const canvas = mergedCanvas(bodies);
     const undone = new Set(read.flatMap((b) => b.undone));
+    const layers = new Map();
+    for (const layer of read.flatMap((b) => b.layers)) {
+        const held = layers.get(layer.id);
+        if (!held || layerWins(layer, held)) layers.set(layer.id, layer);
+    }
     const strokes = new Map();
     for (const body of read) {
         for (const stroke of body.strokes) {
@@ -222,7 +298,11 @@ export function mergeBodies(...bodies) {
         }
     }
     return {
-        ...read[0],
+        v: BODY_VERSION,
+        width: canvas.width,
+        height: canvas.height,
+        background: canvas.background,
+        layers: [...layers.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
         strokes: [...strokes.values()].sort(strokeOrder),
         undone: [...undone].sort(),
     };
@@ -232,11 +312,14 @@ export function mergeBodies(...bodies) {
 /// bytes (the no-op save bounce compares bodies).
 export function writeBody(body) {
     const b = readBody(body);
+    // `layers` is written only when there are any, so a drawing with none is the same bytes it was
+    // before layers existed.
     return JSON.stringify({
         v: b.v,
         width: b.width,
         height: b.height,
         background: b.background,
+        ...(b.layers.length ? { layers: b.layers } : {}),
         strokes: b.strokes, // readBody already made each one exactly its fields, in order
         undone: [...b.undone].sort(),
     });
@@ -259,5 +342,70 @@ export function recentColours(drawing, count = 10) {
         seen.add(colour);
         out.push(colour);
     }
+    return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Layers (Curtis, 2026-09-26): transparent slices, stacked, each hideable and with its own opacity.
+//
+// A layer is an entry in `layers` - id, `n` (its number, for "layer 2"), `z` (its place in the
+// stack), opacity, hidden, and `t` (when it last changed, which is how a merge picks between two
+// computers' versions of it). A drawing with no entries has one layer, the base layer, fully
+// opaque and shown - so every drawing made before layers is a one-layer drawing, unchanged. An
+// entry is written only once a layer is made or changed.
+
+const DEFAULT_BASE = { id: BASE_LAYER, n: 1, z: 0, opacity: MAX_OPACITY, hidden: false, t: 0 };
+
+/// Every layer, bottom of the stack first: the entries, the base layer, and any layer a stroke is
+/// on that has no entry of its own (from a version not merged yet), at its defaults.
+export function layersOf(drawing) {
+    const layers = new Map([[BASE_LAYER, DEFAULT_BASE]]);
+    for (const s of drawing.strokes) {
+        const id = s.layer || BASE_LAYER;
+        if (!layers.has(id)) layers.set(id, { id, n: 1, z: 0, opacity: MAX_OPACITY, hidden: false, t: 0 });
+    }
+    for (const l of drawing.layers || []) layers.set(l.id, l);
+    return [...layers.values()].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/// The strokes on one layer, in painting order.
+export function strokesOn(drawing, layerId) {
+    return drawing.strokes.filter((s) => (s.layer || BASE_LAYER) === layerId);
+}
+
+function upsertLayer(drawing, entry) {
+    return { ...drawing, layers: [...(drawing.layers || []).filter((l) => l.id !== entry.id), entry] };
+}
+
+/// A new layer on top of the stack, numbered one past the highest.
+export function addLayer(drawing, id, now) {
+    const all = layersOf(drawing);
+    const z = Math.max(...all.map((l) => l.z)) + 1;
+    const n = Math.max(...all.map((l) => l.n)) + 1;
+    return upsertLayer(drawing, { id, n, z, opacity: MAX_OPACITY, hidden: false, t: now });
+}
+
+/// Change a layer's `hidden` or `opacity`.
+export function setLayer(drawing, id, change, now) {
+    const current = layersOf(drawing).find((l) => l.id === id);
+    if (!current) return drawing;
+    const next = { ...current, t: now };
+    if (typeof change.hidden === 'boolean') next.hidden = change.hidden;
+    if (Number.isFinite(change.opacity)) next.opacity = Math.max(0, Math.min(MAX_OPACITY, Math.round(change.opacity)));
+    return upsertLayer(drawing, next);
+}
+
+/// Move a layer to `index` in the stack (0 the bottom). Every layer is renumbered to its place, and
+/// only those whose place changed are touched.
+export function moveLayer(drawing, id, index, now) {
+    const order = layersOf(drawing);
+    const from = order.findIndex((l) => l.id === id);
+    if (from < 0) return drawing;
+    const [moved] = order.splice(from, 1);
+    order.splice(Math.max(0, Math.min(order.length, index)), 0, moved);
+    let out = drawing;
+    order.forEach((l, z) => {
+        if (l.z !== z) out = upsertLayer(out, { ...l, z, t: now });
+    });
     return out;
 }

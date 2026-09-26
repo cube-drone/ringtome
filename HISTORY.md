@@ -11097,3 +11097,38 @@ app's macOS and Linux webviews are worth a test.
 
 The list column's tucked rail said "items" in every documents app while its open header said the
 app's own plural (Curtis, on Drawing). The rail now wears the same plural - "drawings", "notes", "files".
+
+## 2026-09-26 (cont.): layers
+
+Curtis asked for a layers column in Drawing: re-orderable transparent slices, each with a thumbnail of
+just that layer and its own show/hide, and the current layer's opacity on top of the stack. The model
+grew `layers` - entries of id, number, stack place, opacity, hidden, and when last changed - and a
+stroke grew the `layer` it is on; a stroke naming none is on the base layer every drawing has. Both
+are written only when they say something, so every drawing made before layers is byte-for-byte what
+it was. Layers merge by keeping every one, the later change to a layer winning with a fixed tie-break
+- the same rule in `pure/drawing.js` and `drawing.rs`, held by new vector cases (red with the node's
+tie-break reversed), and `drawing.cjs` forks a layered drawing on the real node and checks its merge
+is the page's own, byte for byte. The surface paints each layer on its own canvas (so the eraser
+erases within its layer), stacks them at their opacities over the paper, and draws a stroke live onto
+its own layer and restacks - a layer above still covers it as you draw. Thumbnails, copies and
+publications are exactly what is shown: hidden layers left out. The column: opacity, new layer, and the
+stack top-first, rows dragged to reorder and clicked to draw on; a hidden layer takes no strokes.
+Nobody has drawn on layers yet; reordering by touch, and deleting or renaming a layer, are for later.
+
+## 2026-09-26 (cont.): the transparency floor
+
+Curtis: an image's "floor" is the grey checkerboard that means transparency, never rendered into the
+picture; a drawing starts white, but that white is the base layer's fill, and hiding, fading or
+erasing the base layer should show the floor. No body change: `background` stays, and is now painted
+as the base layer's own fill (so the eraser on the base layer cuts through it) rather than as paper
+under every layer. The stage, the layer thumbnails and the list thumbnails stand on a CSS checkerboard
+(`--floor-light`/`--floor-dark`); `flatten` - thumbnails, copies, publications - is the visible layers
+alone, transparent where they leave nothing (the ingest's AVIF keeps alpha). New drawings start pure
+white, `#ffffff`, rather than the app's cream; drawings that stored their colour keep it.
+
+The changed default exposed a real bug when the vectors were regenerated: a merge took its canvas
+settings from the FIRST version, so merging a readable version with an unreadable one gave a
+different background depending on order - invisible while the default matched the test body's colour.
+Both models now take the settings only from versions that parsed, the least by (width, height,
+background) - `mergedCanvas` in `pure/drawing.js`, the same in `drawing.rs` - held by a new vector case
+where two readable versions disagree (red with first-wins planted back into the node).
