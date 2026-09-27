@@ -516,6 +516,20 @@ export function setLayer(drawing, id, change, now) {
     return upsertLayer(drawing, next);
 }
 
+/// Where a dragged layer lands when dropped just above or just below another (Curtis, 2026-09-27:
+/// the stack shows a line there while dragging): the `index` for `moveLayer`, or null when the drop
+/// would leave it where it is - on itself, or next to itself on the side it already sits.
+export function dropIndex(drawing, movingId, targetId, above) {
+    const order = layersOf(drawing);
+    const from = order.findIndex((l) => l.id === movingId);
+    if (from < 0 || movingId === targetId) return null;
+    const rest = order.filter((l) => l.id !== movingId);
+    const at = rest.findIndex((l) => l.id === targetId);
+    if (at < 0) return null;
+    const index = above ? at + 1 : at;
+    return index === from ? null : index;
+}
+
 /// Move a layer to `index` in the stack (0 the bottom). Every layer is renumbered to its place, and
 /// only those whose place changed are touched.
 export function moveLayer(drawing, id, index, now) {

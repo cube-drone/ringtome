@@ -11313,3 +11313,13 @@ speed for the bucket, the crop button for crop, colours for whatever paints - ab
 an image and undo below it. Vector cases for the entry and six refused ones (red with the node not
 knowing it); three box-drag tests and three crop tests (red with the crop not shifting what came
 before it). A new `--crop-shade` token. Not yet cropped in a browser.
+
+The navigator's zoom controls moved under the minimap - where Photoshop keeps them, and so Curtis's
+muscle memory - and the layer opacity slider under the new-layer button, so the layers column reads
+map, zoom, rule, new layer, opacity, the stack.
+
+Dragging a layer row now shows where it will land: a teal line in the gap above the row under the
+pointer (its top half) or below it (its bottom half), and no line where the drop would change
+nothing - on itself, or beside itself on the side it already sits. `dropIndex` (pure/drawing.js)
+decides both the line and the move, so what the line promises is what the drop does; two tests
+(red with the no-change case planted away).

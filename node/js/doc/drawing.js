@@ -63,6 +63,7 @@ import {
     sizeOf,
     sizeAfter,
     cropEntry,
+    dropIndex,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
@@ -1140,7 +1141,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               </p>
           </aside>${resizer('tools')}`;
 
-    // The layers column: the current layer's opacity on top of the stack, a new layer, and the stack
+    // The layers column: the navigator, then a new layer, the current layer's opacity, and the stack
     // itself top-first - each row the layer alone beside its name, and under the name (Curtis,
     // 2026-09-26: "to give the name some room to breathe") what can be done to it: hide, rename,
     // duplicate, trash. Drag a row to move it, click it to draw on it, double-click its name to rename.
@@ -1165,11 +1166,49 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (typed.trim() !== (layer.name || '')) changeLayers(setLayer(drawing, layer.id, { name: typed }, Date.now()));
     };
     const layerName = (layer) => layer.name || t('doc.drawing.layer-n', 'layer {n}', { n: layer.n });
-    const dropOnto = (e, stackIndex) => {
-        e.preventDefault();
-        const id = e.dataTransfer.getData('text/x-drawing-layer');
-        if (id) changeLayers(moveLayer(drawing, id, stackIndex, Date.now()));
+    // Dragging a row (Curtis, 2026-09-27): a line across the stack shows where it will land - above
+    // the row under the pointer from its top half, below it from its bottom half - and no line where
+    // a drop would change nothing (pure/drawing.js, `dropIndex`). The dragged id is kept here, since
+    // a drag's data cannot be read until the drop.
+    const draggingLayer = useRef(null);
+    const [dropLine, setDropLine] = useState(null); // { id, above }
+    const dropTarget = (e, layer) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const above = e.clientY < rect.top + rect.height / 2;
+        const index = dropIndex(drawing, draggingLayer.current, layer.id, above);
+        return index === null ? null : { id: layer.id, above, index };
     };
+    const overRow = (e, layer) => {
+        if (!draggingLayer.current) return;
+        e.preventDefault();
+        const target = dropTarget(e, layer);
+        const same = target && dropLine && target.id === dropLine.id && target.above === dropLine.above;
+        if (!same && (target || dropLine)) setDropLine(target && { id: target.id, above: target.above });
+    };
+    const dropOnRow = (e, layer) => {
+        e.preventDefault();
+        const target = draggingLayer.current && dropTarget(e, layer);
+        if (target) changeLayers(moveLayer(drawing, draggingLayer.current, target.index, Date.now()));
+        draggingLayer.current = null;
+        setDropLine(null);
+    };
+    const endDrag = () => {
+        draggingLayer.current = null;
+        setDropLine(null);
+    };
+    // Spelled out, so the dead-CSS convention can see each class.
+    const rowClass = (isCurrent, line) =>
+        line
+            ? line.above
+                ? isCurrent
+                    ? 'drawing-layer current drop-above'
+                    : 'drawing-layer drop-above'
+                : isCurrent
+                  ? 'drawing-layer current drop-below'
+                  : 'drawing-layer drop-below'
+            : isCurrent
+              ? 'drawing-layer current'
+              : 'drawing-layer';
     const layersColumn = tucked.has('layers')
         ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
         : html`<aside class="drawing-layers" style=${colStyle}>
@@ -1185,6 +1224,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                   height=${H}
               />
               <hr class="drawing-nav-rule" />`}
+              <button class="drawing-tool" disabled=${!opened} onClick=${newLayer}>
+                  <${Icons.plus} /> ${t('doc.drawing.new-layer', 'new layer')}
+              </button>
               ${current &&
               html`<label class="drawing-size">
                   <span>${t('doc.drawing.opacity', 'opacity')} · ${current.opacity}%</span>
@@ -1197,23 +1239,28 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       onInput=${(e) => changeLayers(setLayer(drawing, current.id, { opacity: +e.currentTarget.value }, Date.now()))}
                   />
               </label>`}
-              <button class="drawing-tool" disabled=${!opened} onClick=${newLayer}>
-                  <${Icons.plus} /> ${t('doc.drawing.new-layer', 'new layer')}
-              </button>
-              <ol class="drawing-layer-list">
-                  ${[...layers].reverse().map((layer, row) => {
-                      const stackIndex = layers.length - 1 - row;
+              <ol
+                  class="drawing-layer-list"
+                  onDragLeave=${(e) => {
+                      // Out of the stack altogether (not just from one row to the next): no line.
+                      if (!e.currentTarget.contains(e.relatedTarget)) setDropLine(null);
+                  }}
+              >
+                  ${[...layers].reverse().map((layer) => {
                       const isCurrent = current && layer.id === current.id;
+                      const line = dropLine && dropLine.id === layer.id ? dropLine : null;
                       return html`<li
                           key=${layer.id}
-                          class=${isCurrent ? 'drawing-layer current' : 'drawing-layer'}
+                          class=${rowClass(isCurrent, line)}
                           draggable=${renaming !== layer.id}
                           onDragStart=${(e) => {
+                              draggingLayer.current = layer.id;
                               e.dataTransfer.setData('text/x-drawing-layer', layer.id);
                               e.dataTransfer.effectAllowed = 'move';
                           }}
-                          onDragOver=${(e) => e.preventDefault()}
-                          onDrop=${(e) => dropOnto(e, stackIndex)}
+                          onDragOver=${(e) => overRow(e, layer)}
+                          onDrop=${(e) => dropOnRow(e, layer)}
+                          onDragEnd=${endDrag}
                           onClick=${() => setCurrentId(layer.id)}
                       >
                           <${LayerThumb} source=${layerCanvases.current.get(layer.id)} painted=${painted} />

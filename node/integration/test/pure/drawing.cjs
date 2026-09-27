@@ -416,3 +416,29 @@ describe('shapes', () => {
         assert.equal(d.shapeEntry('rect', [5.2, 5], [4.9, 5.4], base), null);
     });
 });
+
+describe('dropping a dragged layer', () => {
+    // Bottom to top: base, a, b, c.
+    const stack = () => {
+        let body = d.blankDrawing();
+        for (const id of ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb', 'cccccccccccccccc']) body = d.addLayer(body, id, 1);
+        return body;
+    };
+    const ids = (body) => d.layersOf(body).map((l) => l.id[0]);
+    const drop = (body, moving, target, above) => {
+        const index = d.dropIndex(body, moving, target, above);
+        return index === null ? null : ids(d.moveLayer(body, moving, index, 2));
+    };
+
+    it('lands just above or just below the layer it is dropped on', () => {
+        assert.deepEqual(drop(stack(), 'aaaaaaaaaaaaaaaa', 'cccccccccccccccc', true), ['0', 'b', 'c', 'a'], 'above the top');
+        assert.deepEqual(drop(stack(), 'aaaaaaaaaaaaaaaa', 'cccccccccccccccc', false), ['0', 'b', 'a', 'c'], 'below the top');
+        assert.deepEqual(drop(stack(), 'cccccccccccccccc', d.BASE_LAYER, false), ['c', '0', 'a', 'b'], 'under even the base');
+    });
+
+    it('shows no line where the drop would change nothing', () => {
+        assert.equal(d.dropIndex(stack(), 'bbbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbbbb', true), null, 'on itself');
+        assert.equal(d.dropIndex(stack(), 'bbbbbbbbbbbbbbbb', 'aaaaaaaaaaaaaaaa', true), null, 'just above the one under it');
+        assert.equal(d.dropIndex(stack(), 'bbbbbbbbbbbbbbbb', 'cccccccccccccccc', false), null, 'just below the one over it');
+    });
+});

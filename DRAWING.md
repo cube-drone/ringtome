@@ -349,9 +349,11 @@ string like any other), `doc/annotations.js` for tags.
   Each finished stroke is added to the body and the save is scheduled - a stroke is the unit of
   undo and of saving.
 - **The title**: the header above the canvas, like Writer's.
-- **The navigator** (Curtis, 2026-09-27): atop the right-hand column, now **layers & map** - zoom
-  out, a zoom slider, zoom in, the zoom as a percent (click it to fit again), and a minimap of the
-  whole drawing with a red square over the part the stage shows. Drag the square, or press anywhere
+- **The navigator** (Curtis, 2026-09-27): atop the right-hand column, now **layers & map** - a
+  minimap of the whole drawing with a red square over the part the stage shows, and under it (where
+  Photoshop keeps it) zoom out, a zoom slider, zoom in and the zoom as a percent (click it to fit
+  again). Below the navigator, a rule, then **new layer**, the current layer's **opacity**, and the
+  stack. Drag the square, or press anywhere
   on the map, to look there. 100% is the size that just fits the stage; zoom runs from 75% (a
   margin round it - Curtis, 2026-09-27) to 800%, the slider evenly in ratio and snapping to 100% as
   it passes, the buttons half again or two-thirds per press and landing on 100% rather than

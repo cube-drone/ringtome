@@ -375,6 +375,16 @@
     cursor: grab;
 }
 
+/* Where a dragged row will land: a line in the gap above or below the row under the pointer
+   (the list's gap is 0.3rem; the line sits in the middle of it). */
+.drawing-layer.drop-above {
+    box-shadow: 0 calc(-0.15rem - 1px) 0 0 var(--teal);
+}
+
+.drawing-layer.drop-below {
+    box-shadow: 0 calc(0.15rem + 1px) 0 0 var(--teal);
+}
+
 .drawing-layer.current {
     border-color: var(--teal);
     background: var(--paper);

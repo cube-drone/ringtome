@@ -413,8 +413,8 @@ export default {
     'doc.drawing.undo': 'undo',
     'doc.drawing.strokes': '{count} strokes',
     'doc.drawing.layers-and-map': 'layers & map',
-    'doc.drawing.opacity': 'opacity',
     'doc.drawing.new-layer': 'new layer',
+    'doc.drawing.opacity': 'opacity',
     'doc.drawing.show-layer': 'show this layer',
     'doc.drawing.hide-layer': 'hide this layer',
     'doc.drawing.rename-layer': 'rename this layer',
@@ -461,12 +461,12 @@ export default {
     'doc.marqueebody.marquee-doesnt-parse': "marquee doesn't parse: {message}",
 
     // --- node/js/doc/navigator.js ---
+    'doc.navigator.map': 'drag the red square to look around',
     'doc.navigator.zoom-out': 'zoom out',
     'doc.navigator.zoom': 'zoom',
     'doc.navigator.zoom-in': 'zoom in',
     'doc.navigator.fit': 'fit the whole drawing on the stage',
     'doc.navigator.percent': '{percent}%',
-    'doc.navigator.map': 'drag the red square to look around',
 
     // --- node/js/doc/publish.js ---
     'postentry.preparing-media-for-the-network': 'preparing media for the network…',

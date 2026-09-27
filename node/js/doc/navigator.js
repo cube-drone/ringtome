@@ -1,6 +1,7 @@
-// The drawing's navigator (Curtis, 2026-09-27), atop the layers column: zoom out, a zoom slider,
-// zoom in, and a minimap of the whole drawing with a red square over the part the stage shows - drag
-// the square, or press anywhere on the map, to look there. The stage is an ordinary scrolling box
+// The drawing's navigator (Curtis, 2026-09-27), atop the layers column: a minimap of the whole
+// drawing with a red square over the part the stage shows - drag the square, or press anywhere on
+// the map, to look there - and under it (where Photoshop keeps it, and so Curtis's hands) zoom out,
+// a zoom slider, zoom in. The stage is an ordinary scrolling box
 // (doc/drawing.js), so a wheel or a trackpad pans it too, and the square follows.
 //
 // The arithmetic is pure/viewport.js; this measures, paints and listens.
@@ -115,6 +116,19 @@ export const Navigator = ({ zoom, onZoom, stageRef, paperRef, sourceRef, width, 
     };
 
     return html`<section class="drawing-nav">
+        <div
+            ref=${mapRef}
+            class="drawing-nav-map drawing-floor"
+            style=${`aspect-ratio: ${width} / ${height}`}
+            title=${t('doc.navigator.map', 'drag the red square to look around')}
+            onPointerDown=${down}
+            onPointerMove=${move}
+            onPointerUp=${up}
+            onPointerCancel=${up}
+        >
+            <canvas ref=${miniRef} class="drawing-nav-mini"></canvas>
+            <span ref=${squareRef} class="drawing-nav-view"></span>
+        </div>
         <div class="drawing-nav-zoom">
             <button
                 class="drawing-layer-eye"
@@ -145,18 +159,5 @@ export const Navigator = ({ zoom, onZoom, stageRef, paperRef, sourceRef, width, 
             disabled=${zoom === FIT}
             onClick=${() => onZoom(FIT)}
         >${t('doc.navigator.percent', '{percent}%', { percent: Math.round(zoom * 100) })}</button>
-        <div
-            ref=${mapRef}
-            class="drawing-nav-map drawing-floor"
-            style=${`aspect-ratio: ${width} / ${height}`}
-            title=${t('doc.navigator.map', 'drag the red square to look around')}
-            onPointerDown=${down}
-            onPointerMove=${move}
-            onPointerUp=${up}
-            onPointerCancel=${up}
-        >
-            <canvas ref=${miniRef} class="drawing-nav-mini"></canvas>
-            <span ref=${squareRef} class="drawing-nav-view"></span>
-        </div>
     </section>`;
 };
