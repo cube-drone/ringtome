@@ -14,6 +14,8 @@
 //
 // The numbers are a CALIBRATION, not arithmetic: 11 was measured against the real tile, and if the
 // hex, the face, or the font changes, it is measured again. Everything else follows from it.
+// (Measured uppercase; the names have been drawn as written since 2026-09-27, the hrseApp™ names
+// being camel-cased - and mixed case runs narrower, so the old calibration errs only toward room.)
 
 /// Characters that fit across the nameplate at full size. Measured, not derived.
 export const TILE_FULL_CHARS = 11;

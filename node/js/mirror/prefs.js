@@ -47,6 +47,10 @@ export const viewModeKey = (docId) => `mode:${docId}`;
 /// A singleton, like the browser it belongs to - never the persona's, never the node's.
 export const OPEN_ROOM_KEY = 'chat:room';
 
+/// The house tooltips (tooltip.js), turned off from the profile's application settings (Curtis,
+/// 2026-09-27). Domain: 'off', or absent for on. This browser's, like every pref here.
+export const TOOLTIPS_KEY = 'tooltips';
+
 
 // --- reading ---
 
@@ -81,6 +85,13 @@ export const flagsOf = (map) =>
  * re-fires reliably under liveQuery (field-found in the journal's font picker, 2026-07-28) and
  * this hook is the one place that has to know it.
  */
+/// One pref's stored value, live, where there may be no persona yet (the app's root, before one is
+/// open): `undefined` without a root, or until the first result, or when nothing is stored.
+export function usePrefValue(root, key) {
+    const rows = useLive(() => (root ? openMirror(root).prefs.where('key').equals(key).toArray() : []), [root, key]);
+    return rows && rows[0] ? rows[0].value : undefined;
+}
+
 export function usePref(root, key, fallback) {
     const rows = useLive(
         () => openMirror(root).prefs.where('key').equals(key).toArray(),

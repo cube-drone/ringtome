@@ -153,7 +153,7 @@
 }
 
 .chip-button:hover {
-    border-color: var(--sea);
+    --line: var(--sea);
 }
 
 /* An end-of-the-book nav arrow: still present (the pair keeps its shape), just quiet. */
@@ -163,7 +163,7 @@
 }
 
 .chip-button:disabled:hover {
-    border-color: var(--border);
+    --line: var(--border);
 }
 
 /* Delete is the one destructive chip: coral, and it only warms up on hover so it never shouts
@@ -173,7 +173,7 @@
 }
 
 .chip-delete:hover {
-    border-color: var(--coral);
+    --line: var(--coral);
     background: var(--coral);
     color: var(--dock-text);
 }
@@ -182,7 +182,7 @@
 .chip-pinned {
     color: var(--dock-text);
     background: var(--teal);
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 /* The little pin ahead of a pinned row's title. */

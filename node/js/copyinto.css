@@ -1,22 +1,5 @@
-/* Copy into private notes (copyinto.js): the card's button beside the share, the modal's
-   bucket list, and the copy chain under a post's replies. */
-.feed-copy {
-    display: inline-flex;
-    align-items: center;
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font-size: 1.1rem;
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-}
-.feed-copy:hover {
-    color: var(--ink);
-}
+/* Copy into private notes (copyinto.js): the modal's bucket list, and the copy chain under a
+   post's replies. (The card's copy button is a Writer chip.) */
 .copy-buckets {
     display: flex;
     flex-wrap: wrap;

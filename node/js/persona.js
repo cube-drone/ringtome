@@ -20,6 +20,7 @@ import { personaHue, shortcode } from './pure/person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { WarningLists } from './warnings.js';
+import { usePref, TOOLTIPS_KEY } from './mirror/prefs.js';
 
 const html = htm.bind(h);
 
@@ -746,6 +747,9 @@ export const Profile = ({ current }) => {
     // The avatar: a register holds the pointer, a born-public media document holds the
     // file (PROJECT_PLAN - everything file-shaped is a document). Upload crushes inline
     // and echoes back through the profile stream within a beat.
+    // Application settings (Curtis, 2026-09-27): how the app behaves for you here, as opposed to
+    // what you say about yourself above. Prefs - this browser's (mirror/prefs.js).
+    const [tooltips, setTooltips] = usePref(root, TOOLTIPS_KEY, 'on');
     const avatarLive = useLive(() => openMirror(root).profile.get('avatar'), [root]);
     const avatarDoc = avatarLive && avatarLive.value;
     const [avatarBusy, setAvatarBusy] = useState(false);
@@ -818,6 +822,18 @@ export const Profile = ({ current }) => {
                     ${flash === 'saved' ? t('persona.saved---on-all-your', 'saved - on all your computers in a moment') : flash}
                 </span>
             </div>
+            <section class="profile-settings">
+                <h2 class="computers-title">${t('persona.application-settings', 'application settings')}</h2>
+                <label class="profile-setting">
+                    <input
+                        type="checkbox"
+                        checked=${tooltips === 'off'}
+                        onChange=${(e) => setTooltips(e.currentTarget.checked ? 'off' : 'on')}
+                    />
+                    ${t('persona.disable-tooltips', 'disable tooltips')}
+                </label>
+                <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
+            </section>
         </div>
     `;
 };

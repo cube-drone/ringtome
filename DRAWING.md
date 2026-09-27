@@ -401,6 +401,12 @@ string like any other), `doc/annotations.js` for tags.
 
 ## Copy, duplicate, publish
 
+- **Download as a .png** (Curtis, 2026-09-27): a chip beside copy and duplicate saves the drawing as
+  a PNG - the visible layers stacked, transparent where they leave nothing, at the resolution the
+  canvas is drawn at (twice the drawing's units: 1600 x 1200 uncropped), named for the title less
+  what a file system refuses (`pictureFileName`). It waits for its pictures and fonts, as a
+  publication does, and saves as the spare key does: a link to the file, clicked. Nothing reaches
+  the node.
 - **Duplicate** is a copy of the drawing, strokes and all, as a new drawing in the Drawing app: the
   node's own private copy door (`docs/copy`, `private: true` - the one Writer's duplicate uses),
   which today copies only text and gains drawings. Tags and provenance come along as they do for

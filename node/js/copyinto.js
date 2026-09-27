@@ -94,7 +94,7 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
 export const CopyButton = ({ item, current }) => {
     const [open, setOpen] = useState(false);
     return html`<button
-            class="feed-copy"
+            class="chip chip-button"
             title=${t('copyinto.copy-this-into-your-private', 'copy this into your private notes')}
             onClick=${() => setOpen(true)}
         ><${Icons.copy} /></button>

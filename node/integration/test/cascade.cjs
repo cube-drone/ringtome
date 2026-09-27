@@ -1001,6 +1001,33 @@ async function setLane(mode) {
             await setWindowOn(HOST_C, 0);
         });
 
+        it("the shelf and the permalink both say when a post can no longer be edited", async () => {
+            // What the feed reads to stop offering the unlock past the window (editwindow.js,
+            // Curtis 2026-09-27): every post the node serves carries `edit_window_open`.
+            const made = await (
+                await alice(`api/identity/${aliceRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({ title: "window", body: "window: the words", format: "plaintext" }),
+                })
+            ).json();
+            const published = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, { method: "POST" });
+            const pubBody = await published.text();
+            assert.equal(published.status, 200, pubBody);
+            const post = JSON.parse(pubBody).post_id;
+            const read = async () => {
+                const head = await (await alice(`api/id/${aliceRoot}/posts/${post}?as=${aliceRoot}`)).json();
+                const shelf = ((await (await alice(`api/id/${aliceRoot}/posts?as=${aliceRoot}`)).json()).posts || []).find(
+                    (p) => p.doc_id === post
+                );
+                assert.ok(shelf, "the post is on its author's shelf");
+                return [head.edit_window_open, shelf.edit_window_open];
+            };
+            assert.deepEqual(await read(), [true, true], "young: editable, said in both places");
+            await setWindowOn(undefined, 2000);
+            await new Promise((r) => setTimeout(r, 2600));
+            assert.deepEqual(await read(), [false, false], "past the window: not, in both places");
+        });
+
         it("a settled post refuses the edit at the author's own door", async () => {
             const { post, draft, version } = await seedToCleo("settles");
             await setWindowOn(undefined, 2000);

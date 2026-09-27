@@ -26,6 +26,7 @@ export function shelfItem(p, { root, authorName, authorAvatar, mine }) {
         published_ms: p.published_ms,
         dated_ms: p.dated_ms,
         minted_ms: p.minted_ms,
+        edit_window_open: p.edit_window_open,
         replies: p.replies,
         reply_to: p.reply_to,
         thread_root: p.thread_root,

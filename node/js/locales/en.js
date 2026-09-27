@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1057 phrases across 71 files.
+// 1069 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -63,6 +63,7 @@ export default {
     'apps.chat.take-the-badge-back': 'take the badge back',
     'apps.chat.deputize-this-person': 'deputize them - their mutes count as yours',
     'apps.chat.unmute-this-person': 'let them speak here again',
+    'apps.chat.delete-the-room-title': 'delete this room',
     'apps.chat.hiding-n-lines-click-to-show': "hiding {n} lines from people you don't trust - click to show them",
     'apps.chat.hiding-untrusted-click-to-show': "hiding people you don't trust - click to show them",
     'apps.chat.hide-lines-from-people-you-dont-trust': "hide lines from people you don't trust, in every room",
@@ -75,7 +76,6 @@ export default {
     'apps.chat.leave': 'leave',
     'apps.chat.this-room-is-closed': 'this room is closed',
     'apps.chat.close-the-room-title': 'close this room for good',
-    'apps.chat.delete-the-room-title': 'delete this room',
     'apps.chat.block-them-title': 'block them',
     'apps.chat.block-them-question': 'Block {who}? You stop seeing anything of theirs, here and everywhere else. They are not told.',
     'apps.chat.block': 'block',
@@ -149,10 +149,8 @@ export default {
     'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
     'apps.feed.couldnt-discard-it': "couldn't discard it: {message}",
     'apps.feed.editing': 'editing',
-    'apps.feed.open-this-for-editing': 'open this for editing',
-    'apps.feed.edit': 'edit',
     'apps.feed.discard-this-draft-title': 'discard this draft',
-    'apps.feed.discard': 'discard',
+    'apps.feed.open-this-for-editing': 'open this for editing',
     'apps.feed.the-public-copy': 'the public copy',
     'apps.feed.1-update': '1 update',
     'apps.feed.refresh': '· refresh',
@@ -297,6 +295,18 @@ export default {
     'computers.paste-the-new-computers-code': "paste the new computer's code here",
     'computers.invite-this-computer-to-be': 'invite this computer to be you',
 
+    // --- node/js/console.js ---
+    'console.blurb-persona': 'you: your profile, your personas, your computers and your settings',
+    'console.blurb-drawing': 'draw and publish pictures of mostly horses',
+    'console.blurb-people': 'the people you know, follow and trust',
+    'console.blurb-notes': 'your notebooks: private pages, published when you choose',
+    'console.blurb-feed': "horse-based social networking: check what's happening on the information superhorseway",
+    'console.blurb-chat': 'rooms, and private conversations',
+    'console.blurb-notifications': 'notifications, pings, pokes, and other things that might be of interest',
+    'console.blurb-lost-found': 'every private file from every notebook, where nothing gets lost',
+    'console.blurb-device': "this computer's settings: who may sign up, and its backups",
+    'console.blurb-server': "this server's settings: who may sign up, and its backups",
+
     // --- node/js/copyinto.js ---
     'copyinto.copy-into-private-notes': 'copy into private notes',
     'copyinto.copied-into': 'copied into {bucket}',
@@ -434,11 +444,12 @@ export default {
     'doc.drawing.this-layer-is-hidden': 'this layer is hidden - show it to draw on it',
     'doc.drawing.no-layers': 'no layers - make a new one to draw on',
     'doc.drawing.untitled': 'untitled',
+    'doc.drawing.delete': 'delete',
     'doc.drawing.copy-a-picture-into-a-notebook': 'copy a picture of this drawing into a notebook',
     'doc.drawing.copy-a-picture-of-it': 'copy a picture of this drawing into a notebook',
+    'doc.drawing.download-png': 'download as a .png',
     'doc.drawing.duplicating': 'duplicating…',
     'doc.drawing.duplicate-this-drawing': 'duplicate - a new drawing, strokes and all',
-    'doc.drawing.delete': 'delete',
     'doc.drawing.saved': 'saved',
     'doc.drawing.not-saved': 'not saved - it will try again',
     'doc.drawing.saving': 'saving…',
@@ -603,7 +614,7 @@ export default {
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',
     'index.looking-that-up': 'looking that up…',
     'index.filter-their-posts': 'filter their posts…',
-    'index.back-to-people': 'back to People',
+    'index.back-to-people': 'back to hrsePeople™',
     'index.back-to-their-page': 'back to their page',
     'index.close': 'close',
     'index.search': 'search…',
@@ -739,6 +750,9 @@ export default {
     'persona.a-line-or-two-about': 'a line or two about you (optional)',
     'persona.save': 'Save',
     'persona.saved---on-all-your': 'saved - on all your computers in a moment',
+    'persona.application-settings': 'application settings',
+    'persona.disable-tooltips': 'disable tooltips',
+    'persona.settings-this-browser': 'these settings are for this browser',
     'persona.this-node-knows-you-as': 'this node knows you as @{slug}',
     'persona.name-given-up': 'name given up',
     'persona.that-name-did-not-take': 'that name did not take',
@@ -804,9 +818,9 @@ export default {
     'postentry.scheduled-for': 'scheduled for {when}',
     'postentry.dated-by-its-author': 'dated by the author, written {minted}',
     'postentry.internet-time': 'internet time',
-    'postentry.edit-this-note-in-writer': 'edit this note in Writer',
+    'postentry.edit-this-drawing-in-drawing': 'edit this drawing in hrseDrawing™',
+    'postentry.edit-this-note-in-writer': 'edit this note in hrseWriter™',
     'postentry.open-this-for-editing': 'open this for editing',
-    'postentry.edit': 'edit',
     'postentry.thread': 'thread',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',

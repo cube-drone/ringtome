@@ -898,3 +898,16 @@ export function setText(drawing, layerId, change, now) {
     const next = asText({ ...held, ...change, t: now });
     return next ? upsertText(drawing, next) : drawing;
 }
+
+/// The file name a picture of the drawing is saved under: its title, less what file systems refuse
+/// (slashes, colons, control characters and the like) - or "drawing" - and `.png`.
+export function pictureFileName(title) {
+    const base = (title || '')
+        .replace(/[\\/:*?"<>|\p{Cc}]+/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^\.+/, '')
+        .slice(0, 100)
+        .trim();
+    return `${base || 'drawing'}.png`;
+}

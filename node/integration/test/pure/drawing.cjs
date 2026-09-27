@@ -483,3 +483,14 @@ describe('text layers', () => {
         assert.equal(d.textOf(body, T), null);
     });
 });
+
+describe('the downloaded picture', () => {
+    it('is named for the drawing, less what a file system refuses', () => {
+        assert.equal(d.pictureFileName('a horse'), 'a horse.png');
+        assert.equal(d.pictureFileName('  grey/brown: "horse"?\t'), 'grey brown horse.png');
+        assert.equal(d.pictureFileName('...hidden'), 'hidden.png', 'never a dotfile');
+        assert.equal(d.pictureFileName(''), 'drawing.png');
+        assert.equal(d.pictureFileName('///'), 'drawing.png');
+        assert.equal(d.pictureFileName('x'.repeat(300)).length, 104);
+    });
+});

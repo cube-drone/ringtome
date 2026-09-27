@@ -99,6 +99,30 @@
     z-index: 1;
 }
 
+/* The persona's own tile wears them (Curtis, 2026-09-27): both rings in their colour, their
+   picture (or identicon) filling the face beneath the nameplate - and no diagonal fill, which
+   would hide half of a face. */
+.app-tile.app-tile-me {
+    background: var(--me-ring);
+}
+
+.app-tile.app-tile-me .hex-mid {
+    background: var(--me-rim);
+}
+
+.app-tile.app-tile-me .hex-face::before {
+    display: none;
+}
+
+.app-tile-face {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+}
+
 .app-tile.blank {
     cursor: default;
 }
@@ -139,7 +163,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    text-transform: uppercase;
+    /* As written, not uppercased (Curtis, 2026-09-27): the hrseApp™ names are camel-cased. */
     font-family: "Radio Canada", sans-serif;
     font-weight: 800;
     font-size: 1rem;

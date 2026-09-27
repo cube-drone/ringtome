@@ -1080,9 +1080,15 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 say there, and neither share, post link, leave, close nor delete is a thing
                 anyone may do to a conversation between two people (ruling 12). */ ''}
             <span class="chat-tools">
+                ${/* Writer's chips (Curtis, 2026-09-27), trash leftmost. */ ''}
+                ${!room.im &&
+                room.mine &&
+                html`<button class="chip chip-button chip-delete" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
+                    <${Icons.trash} />
+                </button>`}
                 ${!room.im &&
                 html`<button
-                    class=${hiding ? 'chat-tool chat-tool-on' : 'chat-tool'}
+                    class=${hiding ? 'chip chip-button chip-open' : 'chip chip-button'}
                     type="button"
                     title=${hiding
                         ? hidden > 0
@@ -1096,7 +1102,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 ${admin &&
                 !room.archivist &&
                 html`<button
-                    class=${room.archived ? 'chat-tool chat-tool-on' : 'chat-tool'}
+                    class=${room.archived ? 'chip chip-button chip-open' : 'chip chip-button'}
                     type="button"
                     disabled=${archiving}
                     title=${room.archived
@@ -1108,7 +1114,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 </button>`}
                 ${mayShare &&
                 html`<button
-                    class=${shared ? 'chat-tool chat-tool-on' : 'chat-tool'}
+                    class=${shared ? 'chip chip-button chip-open' : 'chip chip-button'}
                     type="button"
                     disabled=${sharing || shared === null}
                     title=${shared
@@ -1119,28 +1125,28 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     <${Icons.colRebroadcast} />
                 </button>`}
                 ${!room.im &&
-                html`<a class="chat-tool" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
+                html`<a class="chip chip-button" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
                     <${Icons.feed} />
                 </a>`}
                 ${room.im &&
                 html`<button
-                    class="chat-tool chat-tool-danger"
+                    class="chip chip-button chip-delete"
                     type="button"
                     title=${t('apps.chat.block-them', 'block them')}
                     onClick=${() => setBlocking(true)}
                 ><${Icons.block} /></button>`}
                 ${!room.im &&
                 room.joined &&
-                html`<button class="chat-tool" type="button" title=${t('apps.chat.leave', 'leave')} onClick=${leave}>
+                html`<button class="chip chip-button" type="button" title=${t('apps.chat.leave', 'leave')} onClick=${leave}>
                     <${Icons.leave} />
                 </button>`}
                 ${room.im
                     ? null
                     : room.closed
-                    ? html`<span class="chat-tool chat-tool-on chat-tool-static" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /></span>`
+                    ? html`<span class="chip chip-open" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /></span>`
                     : room.mine &&
                       html`<button
-                          class="chat-tool"
+                          class="chip chip-button"
                           type="button"
                           disabled=${closing || !roomDraft}
                           title=${t('apps.chat.close-the-room-title', 'close this room for good')}
@@ -1148,11 +1154,6 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                       >
                           <${Icons.settled} />
                       </button>`}
-                ${!room.im &&
-                room.mine &&
-                html`<button class="chat-tool chat-tool-danger" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
-                    <${Icons.trash} />
-                </button>`}
             </span>
             ${blocking &&
             html`<${Modal}

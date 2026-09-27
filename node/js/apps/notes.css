@@ -495,13 +495,6 @@
     container-type: inline-size;
 }
 
-/* An open toggle chip wears the "on" look, like a pinned chip. */
-.chip-open {
-    color: var(--dock-text);
-    background: var(--teal);
-    border-color: var(--teal);
-}
-
 /* Files scroll BELOW the header, like documents do: the file reader pins its head and scrolls
    the body region itself. (Documents get this for free - CodeMirror caps and scrolls
    internally - but a tall image used to overflow the whole card, dragging the title and nav
@@ -515,7 +508,12 @@
     align-items: center;
     justify-content: center;
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    /* The jagged line (tokens.css, --ring-1): a clip cuts a border's corners clean off, so the
+       border keeps its room but is transparent, and the line is the ::after ring in `--line`.
+       Every chip modifier recolours `--line`, never `border-color`. */
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
     --j: 4px;
     clip-path: var(--jag-1);
     color: var(--muted);
@@ -525,12 +523,20 @@
 }
 
 .chip-diverged {
-    border-color: var(--coral);
+    --line: var(--coral);
     color: var(--coral);
 }
 
 /* The other half of the divergence pair: changes woven together cleanly, not a conflict. */
 .chip-merged {
-    border-color: var(--sea);
+    --line: var(--sea);
     color: var(--sea);
+}
+
+/* An open toggle chip wears the "on" look, like a pinned chip. After `.chip`, which it must
+   override: above it, the equal-specificity `.chip` won and the "on" look never showed. */
+.chip-open {
+    color: var(--dock-text);
+    background: var(--teal);
+    --line: var(--teal);
 }

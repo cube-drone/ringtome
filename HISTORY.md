@@ -11350,3 +11350,111 @@ from the similarly-shaped transform.
 A text now lands holding the word "horse" (Curtis: "a clearer visual indication where the text has
 landed"), selected in the words field so typing replaces it; `addTextLayer` takes starting words and
 drops any the body could not keep (one test).
+
+## 2026-09-27 (cont.): download as a .png
+
+A download chip in the drawing's header, beside copy and duplicate, saves the drawing as a PNG: the
+visible layers flattened at the canvas's own drawn resolution (1600 x 1200 uncropped), transparent
+where empty, after its pictures and fonts have loaded, named for the title with the characters a
+file system refuses taken out (`pictureFileName`, one test). Saved the way the spare-key ceremony
+saves its file - a blob link, clicked - so it never touches the node. Not yet clicked in the desktop
+app, whose webview is the one place a download link could behave differently.
+
+## 2026-09-27 (cont.): trash is always the leftmost chip
+
+Curtis asked that the file chips come in one order wherever they appear, then named the rule that
+governs it: **trash is always the leftmost chip.** Writer's editor had copy before trash, and so did
+the drawing's header (copy, download, duplicate, trash); the feed card had its takedown after share,
+edit and pin. The read-only reader was the one already right - and a first pass "fixing" it to match
+Writer's copy-first order was undone. Now trash leads every row: Writer, the reader, the drawing, and
+the feed card (straight after the date, which is a label rather than a chip; the takedown is only on
+your own posts, so it never sits beside share, and copy keeps its seat last on every card). A note for anyone slicing the acceptance
+suite: `RINGTOME_TEST_GREP` can cut a single claim out of a file whose claims build on each other -
+"reader|read-only" caught "the trusted reader opens them" from `chat_lane.cjs`, which then failed
+alone (404 for 403) with or without this change and passes with its whole file.
+
+## 2026-09-27 (cont.): one chip, everywhere
+
+Curtis: the file chips "look different" in chat and the feed - make them one standard, Writer's.
+Writer's is `Chip` (doc/chips.js): `.chip` + `.chip-button`, `.chip-delete` for trash (coral,
+filling on hover), `.chip-pinned` / `.chip-open` for the lit "on" look. The feed card's buttons (the
+takedown, share, the edit-in-Writer pencil, the inline edit - once the word "edit", now the pencil
+icon, words on hover - pin, copy) and the fifteen-second unlock lock now wear those classes, the
+lock keeping only what its fill bar needs; the feed app's own draft rows' edit and discard became
+chips too, discard (their trash) first; the chat room's header tools became chips, trash moved to
+the left. Their bespoke rules - `feed-share`, `feed-pin`, `feed-edit`, `feed-edit-writer`,
+`feed-discard`, `feed-unpublish`, `feed-copy`, `chat-tool` and their jagged-ring entries - are gone.
+Left as they are: the hover menu on a chat line (react, edit, delete, mute), which is message
+actions rather than file chips.
+
+The chips had no corners (Curtis) - the jagged-edge bug again: `.chip` drew a real 1px border and
+clipped itself to `--jag-1`, and a clip cuts a border's corners clean off. It now takes the house
+fix (tokens.css `--ring-1`): a transparent border keeping the room, the line drawn as a `.chip::after`
+ring in `--line`, and every modifier (`chip-button:hover`, `chip-delete:hover`, `chip-pinned`,
+`chip-open`, `chip-diverged`, `chip-merged`, the disabled hover) recolouring `--line` rather than
+`border-color`. Rendering the chips against the real bundle (Quick Look's WebKit) to check it showed
+an older fault: `.chip-open` sat above `.chip` in notes.css, so the equal-specificity `.chip` won and
+the lit "on" look never showed - now after it, and seen lit.
+
+## 2026-09-27 (cont.): the house tooltip, and application settings
+
+Curtis wanted tooltips quicker; a `title`'s delay is the browser's and the system's, not the page's,
+so the app now draws its own (tooltip.js), for every `title` it already had - nothing new to mark,
+nothing to forget in new code. On hover (never touch) or keyboard focus the title is borrowed into
+`data-tip`, so the browser's does not also show, and given back on leave; an element with no
+accessible name holds one from the title meanwhile; a re-render that sets the title again is taken
+too. The bubble is ink with Phosphor's info glyph in teal, jag-cornered, after 300ms - or at once
+when the pointer comes straight from another tooltip, so a row of chips reads without waiting on
+each (pure/tooltip.js: the delay and the placement, below or flipped above and kept inside the
+window, two tests). The profile gained an **application settings** zone with **disable
+tooltips**: a pref (`tooltips`: 'off' or absent), this browser's like every pref, read at the app's
+root through the prefs table's owner (`usePrefValue`, for where no persona is open yet); off, titles
+are still borrowed and nothing is drawn, so no tooltip shows at all. Checked by eye: the bubble,
+rendered from the module's markup against the real bundle. Not yet hovered in the live app.
+
+The tooltip now prefers ABOVE what it is about (Curtis: the cursor "lands above the tooltip every
+time") - a pointer's arrow hangs down from its tip, so a tooltip below sat under it - and goes below
+only when there is no room above.
+
+## 2026-09-27 (cont.): no unlock past the edit window
+
+Curtis: a post of mine past its editable date should not offer the unlock. A post can be improved
+for a day after it is first said, after which a re-publication is refused - so the fifteen-second
+unlock (and the plain edit it leads to) now leaves your own feed cards and the feed app's list of
+posts once the window has shut. The node is the one who knows (its window is shortened for tests),
+and says so on every post it serves as `edit_window_open`; the shelf and pinned mappers now pass it
+through, and where an item came without it, `useEditWindowOpen` (editwindow.js) asks the post's
+permalink, once per post per five minutes. Unknown counts as open, as Writer's publish bar counts
+it. The edit-in-Writer pencil stays: Writer's own bar already says the post can no longer be
+updated. Nothing in the acceptance suite had checked `edit_window_open` anywhere, so a new claim in
+cascade.cjs's edit-window block holds the shelf and the permalink to it, young and past the window.
+
+A posted drawing's edit chip said "edit this note in Writer" (Curtis), though it opened the
+drawing. It now says "edit this drawing in Drawing", wears the brush, and goes to
+`/home/drawing/<id>` - the Drawing app itself - rather than through Writer's list.
+
+## 2026-09-27 (cont.): hrseApps™
+
+Curtis renamed every app, as the user sees them: hrseDrawing™, hrsePeople™, hrseWriter™, hrseFeed™,
+hrseChat™, hrseMsg™ (was Notifications), hrseFiles™ (was Lost & Found, its bucket noun too),
+hrseServer™ / hrseDevice™ in the desktop app, and hrsePersona™ where the persona app has no name to
+wear. hrseDrawing™ moved to the front of the dock, right before hrsePeople™ - "of paramount
+horseportance". Names only: app ids, routes (`/home/notes`, `/lost-found`, ...), bucket styles and
+storage keys are untouched, as the two-names rule asks. The registry names are shown raw
+(`appLabel`), so the registry was the whole of it but for three phrases naming an app ("back to
+People", and the two edit chips' "in Writer" / "in Drawing"); `apps.cjs` pinned the old labels and
+now pins these. The design documents still call the apps by their old working names.
+
+The launcher tiles draw app names as written - the nameplate no longer uppercases them, which
+fought the camel-cased hrseApp™ names (Curtis). The shrink-to-fit calibration was measured in
+capitals; mixed case runs narrower, so it now errs only toward room.
+
+The launcher tiles' tooltips said only the name already on the tile (Curtis); each now adds a line
+on what the app is for (`appBlurb`, console.js - translated copy, so kept out of the pure registry),
+and sits on the whole tile rather than the thin nameplate, so hovering the icon shows it too.
+
+The persona's own tile - in the dock and in the launcher - wears the persona rather than Phosphor's
+person glyph (Curtis): their picture, or the identicon their key draws, filling the heptagon, and
+the ring colour every Person widget gives them (`faceOf`, person.js, from `usePerson`). The launcher
+tile drops its diagonal fill (it would hide half a face) and keeps the nameplate over the picture;
+the dock's rim takes the colour. Checked by eye, rendered against the real bundle.

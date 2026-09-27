@@ -34,6 +34,8 @@ import {
     TextAlignLeft,
     TextAlignCenter,
     TextAlignRight,
+    DownloadSimple,
+    Info,
     Circle,
     Stack,
     Eraser,
@@ -252,6 +254,10 @@ export const Icons = {
     alignLeft: TextAlignLeft,
     alignCenter: TextAlignCenter,
     alignRight: TextAlignRight,
+    // ...and a drawing saved as a picture file.
+    download: DownloadSimple,
+    // The house tooltip's glyph (tooltip.js).
+    info: Info,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

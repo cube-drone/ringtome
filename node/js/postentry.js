@@ -18,6 +18,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api, apiText, apiTextTitled } from './net.js';
+import { useEditWindowOpen } from './editwindow.js';
 import { openMirror, useLive } from './mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
@@ -65,7 +66,7 @@ export const LockButton = ({ onUnlocked }) => {
     const [unlocking, setUnlocking] = useState(false);
     return html`
         <button
-            class=${unlocking ? 'seal-lock unlocking' : 'seal-lock'}
+            class=${unlocking ? 'chip chip-button seal-lock unlocking' : 'chip chip-button seal-lock'}
             title=${t('postentry.posted---click-then-wait', 'edit (unlocks in 15 seconds)')}
             onClick=${() => setUnlocking(true)}
             disabled=${unlocking}
@@ -213,7 +214,7 @@ const PinButton = ({ item, current, pinned, onPinned }) => {
     const [busy, setBusy] = useState(false);
     const base = `/api/identity/${current.root}/public-annotations/${item.author}/${item.doc_id}`;
     return html`<button
-        class=${pinned ? 'feed-pin feed-pin-on' : 'feed-pin'}
+        class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
         title=${pinned
             ? t('postentry.unpin-this-from-your-page', 'unpin this from your page')
             : t('postentry.pin-this-to-the-top', 'pin this to the top of your page')}
@@ -241,7 +242,7 @@ const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
     // reads as part of the card - the system stepping forward is exactly what the modal frame
     // is for, and a takedown is the system being asked to do something irreversible.
     return html`<button
-            class="feed-unpublish"
+            class="chip chip-button chip-delete"
             title=${t('postentry.take-this-post-back-off', 'take this post back off the network')}
             onClick=${() => setAsking(true)}
         ><${Icons.trash} /></button>
@@ -386,11 +387,10 @@ const ShareButton = ({ item, current }) => {
         }
     };
 
-    // Icon-only, the lock's pattern (2026-08-14: the actions row speaks one language - a
-    // glyph, a hover title with the words, no label). The shared state reads from the fill
-    // (feed-share-on), which the CSS already promised would carry it without a label change.
+    // Icon-only, a Writer chip (doc/chips.js) like every file chip (Curtis, 2026-09-27): a glyph,
+    // a hover title with the words, no label. Shared, it wears the chip's lit look.
     return html`<button
-        class=${shared ? 'feed-share feed-share-on' : 'feed-share'}
+        class=${shared ? 'chip chip-button chip-open' : 'chip chip-button'}
         disabled=${sending || known === null}
         title=${shared
             ? t('postentry.stop-sharing-this-with-your', 'stop sharing this with your network')
@@ -675,6 +675,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
               : 'feed-entry';
 
     const whenOpts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    // Past its edit window (Curtis, 2026-09-27), your own post offers no unlock and no edit: an
+    // edit could no longer be published. Asked only of your own posts; unknown counts as open.
+    const windowOpen = useEditWindowOpen(editing ? item.author : null, editing ? item.doc_id : null, item.edit_window_open);
+    const editable = windowOpen !== false;
     const when = new Date(item.published_ms).toLocaleString(undefined, whenOpts);
     // A backdated post wears its date a little differently (Curtis, 2026-09-02), and says
     // on hover when it was actually written down.
@@ -929,25 +933,36 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         : backdated
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by the author, written {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`
                           : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`}
+                    ${/* The takedown first, after the date: trash is always the leftmost chip, on every
+                        row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''}
+                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}
                     ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
                         never the key, and that is not what the button promises - unless the
                         author asked for the hop (Contact tags, ruling 7). */ ''}
                     ${!item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
                     ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
-                        that note in Writer, and the publish bar there says the changes again.
+                        that note in Writer - or, for a posted drawing, the brush to Drawing (Curtis,
+                        2026-09-27) - and the publish bar there says the changes again.
                         The slowly-unlocking lock stays for posts composed in the feed (Curtis,
                         2026-09-03). */ ''}
                     ${editing &&
                     !open &&
                     (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
-                        ? html`<a
-                              class="feed-edit-writer"
-                              href=${`/home/notes/${editing.row.doc_id}`}
-                              title=${t('postentry.edit-this-note-in-writer', 'edit this note in Writer')}
-                          ><${Icons.notes} /></a>`
+                        ? editing.row.format === 'drawing'
+                            ? html`<a
+                                  class="chip chip-button"
+                                  href=${`/home/drawing/${editing.row.doc_id}`}
+                                  title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
+                              ><${Icons.drawing} /></a>`
+                            : html`<a
+                                  class="chip chip-button"
+                                  href=${`/home/notes/${editing.row.doc_id}`}
+                                  title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
+                              ><${Icons.notes} /></a>`
                         : editing &&
                     !open &&
+                    editable &&
                     (editing.locked
                         ? html`<${LockButton}
                               onUnlocked=${() => {
@@ -956,13 +971,13 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                               }}
                           />`
                         : html`<button
-                              class="feed-edit"
+                              class="chip chip-button"
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
+                              aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
-                          >${t('postentry.edit', 'edit')}</button>`)}
+                          ><${Icons.rename} /></button>`)}
                     ${editing && !open && item.kind !== 'share' && !item.private_doc &&
                     html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
-                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}
                     ${/* Copy into private notes, last on every card (Curtis, 2026-09-08: the
                         same seat on your own posts and other people's). */ ''}
                     ${/* A room is a conversation, not a note (Curtis, 2026-09-18): it does

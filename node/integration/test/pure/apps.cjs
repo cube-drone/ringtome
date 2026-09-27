@@ -198,11 +198,11 @@ describe('app registry', () => {
         });
 
         it('falls the persona app back to its registry name when unnamed', () => {
-            assert.equal(appLabel(appById('persona'), ''), 'Persona');
+            assert.equal(appLabel(appById('persona'), ''), 'hrsePersona™');
         });
 
         it('leaves every other app on its registry name', () => {
-            assert.equal(appLabel(appById('notes'), 'Curtis'), 'Writer');
+            assert.equal(appLabel(appById('notes'), 'Curtis'), 'hrseWriter™');
         });
 
         it('is safe on no app', () => {
@@ -210,9 +210,9 @@ describe('app registry', () => {
         });
 
         it("names the settings app for what the person holds - never 'node'", () => {
-            assert.equal(appLabel(appById('device'), 'Curtis'), 'Server', 'a browser reaching a server');
-            assert.equal(appLabel(appById('device'), 'Curtis', true), 'Device', 'the desktop app');
-            assert.equal(appLabel(appById('notes'), 'Curtis', true), 'Writer', 'an app with one name keeps it');
+            assert.equal(appLabel(appById('device'), 'Curtis'), 'hrseServer™', 'a browser reaching a server');
+            assert.equal(appLabel(appById('device'), 'Curtis', true), 'hrseDevice™', 'the desktop app');
+            assert.equal(appLabel(appById('notes'), 'Curtis', true), 'hrseWriter™', 'an app with one name keeps it');
         });
     });
 

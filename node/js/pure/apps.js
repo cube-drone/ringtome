@@ -20,10 +20,29 @@ export const APPS = [
     // Persona is a SYSTEM app: a real app with its own tile and the unified header, but its own
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
     // is excluded from the document-app routes. Its dock tile wears the persona's own name.
-    { id: 'persona', name: 'Persona', icon: 'persona', live: true, system: true },
+    { id: 'persona', name: 'hrsePersona™', icon: 'persona', live: true, system: true },
+    {
+        id: 'drawing',
+        // The horse-drawing part of Horse Drawing Tycoon 2 (DRAWING.md) - first of the apps, right
+        // before People, being of paramount horseportance (Curtis, 2026-09-27): a documents app whose
+        // documents are drawings - a canvas, brush and eraser, strokes as the history. Writer's
+        // list and columns (apps/notes.js), with the drawing surface (doc/drawing.js) where the
+        // editor would be; the surface brings its own tools column.
+        name: 'hrseDrawing™',
+        icon: 'drawing',
+        style: 'drawing',
+        live: true,
+        // One bucket, its own: every drawing lives in `drawing`.
+        soleBucket: true,
+        bucketNoun: 'Drawings',
+        itemNoun: 'drawing',
+        // What "+ new drawing" makes (notes.js, createNew): a blank drawing, not a Marquee page.
+        newFormat: 'drawing',
+        features: { tree: false, tagColumn: false, bookColumn: false, publish: false },
+    },
     {
         id: 'people',
-        name: 'People',
+        name: 'hrsePeople™',
         icon: 'people',
         live: true,
         // The rolodex (PROJECT_PLAN, Addressing: the console's people surface): look up an
@@ -45,7 +64,7 @@ export const APPS = [
         // Writer (renamed from Writer, 2026-09-02, the day the Journal was retired): the
         // core notes-and-editing primitive of the whole application. The route id stays
         // `notes` - it is a persisted key, and the word is right.
-        name: 'Writer',
+        name: 'hrseWriter™',
         icon: 'notes',
         style: 'default',
         live: true,
@@ -65,7 +84,7 @@ export const APPS = [
     },
     {
         id: 'feed',
-        name: 'Feed',
+        name: 'hrseFeed™',
         icon: 'feed',
         live: true,
         // The app that writes in PUBLIC (apps/feed.js). Its drafts are ordinary private
@@ -98,7 +117,7 @@ export const APPS = [
     },
     {
         id: 'chat',
-        name: 'Chat',
+        name: 'hrseChat™',
         icon: 'chat',
         live: true,
         // Real-time rooms (CHAT.md): a room is a post, and this app lists the rooms a
@@ -114,7 +133,7 @@ export const APPS = [
     },
     {
         id: 'notifications',
-        name: 'Notifications',
+        name: 'hrseMsg™',
         icon: 'notifications',
         live: true,
         // The derived-events surface (PROJECT_PLAN, Arrival and Attention: the follow-edge
@@ -125,7 +144,7 @@ export const APPS = [
     },
     {
         id: 'lost-found',
-        name: 'Lost & Found',
+        name: 'hrseFiles™',
         icon: 'lostFound',
         live: true,
         // Every PRIVATE document, from every notebook, plus the unbucketed - the one surface
@@ -144,26 +163,8 @@ export const APPS = [
         // apps. Its URLs live under /lost-found and never re-dress into cozy bucket addresses -
         // one document shows in many places, but a /lost-found link means this surface.
         everything: true,
-        bucketNoun: 'Lost & Found',
+        bucketNoun: 'hrseFiles™',
         itemNoun: 'file',
-    },
-    {
-        id: 'drawing',
-        // The horse-drawing part of Horse Drawing Tycoon 2 (DRAWING.md): a documents app whose
-        // documents are drawings - a canvas, brush and eraser, strokes as the history. Writer's
-        // list and columns (apps/notes.js), with the drawing surface (doc/drawing.js) where the
-        // editor would be; the surface brings its own tools column.
-        name: 'Drawing',
-        icon: 'drawing',
-        style: 'drawing',
-        live: true,
-        // One bucket, its own: every drawing lives in `drawing`.
-        soleBucket: true,
-        bucketNoun: 'Drawings',
-        itemNoun: 'drawing',
-        // What "+ new drawing" makes (notes.js, createNew): a blank drawing, not a Marquee page.
-        newFormat: 'drawing',
-        features: { tree: false, tagColumn: false, bookColumn: false, publish: false },
     },
     {
         id: 'device',
@@ -171,8 +172,8 @@ export const APPS = [
         // up, and backups (Curtis, 2026-09-25). Named for what the person is holding - "Device"
         // in the desktop app, where it is their own computer, and "Server" in a browser reaching
         // one - and never "node", a word people using this should not need. Not a documents app.
-        name: 'Server',
-        deviceName: 'Device',
+        name: 'hrseServer™',
+        deviceName: 'hrseDevice™',
         icon: 'server',
         deviceIcon: 'device',
         live: true,

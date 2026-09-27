@@ -142,6 +142,14 @@ export function usePerson(root, { current, profile: given } = {}) {
     };
 }
 
+/// A persona's face as a picture and a colour - what the dock and the launcher wear on the
+/// persona's own tile (Curtis, 2026-09-27): their picture, or the identicon their key draws, and
+/// the ring colour every Person widget gives them. `person` is `usePerson`'s answer.
+export const faceOf = (person) =>
+    person && person.root
+        ? { src: person.avatarUrl || identiconUri(person.root), ring: `hsl(${person.hue}, 60%, 55%)`, rim: `hsl(${person.hue}, 55%, 38%)` }
+        : null;
+
 // The heptagon itself: their picture clipped to seven sides, ringed in their colour (a
 // clip-path can't take a border, so the ring is the parent's background showing through its
 // padding). A persona who hasn't chosen a picture wears their IDENTICON - derived from the

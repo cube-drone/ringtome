@@ -53,6 +53,9 @@ import { speakable } from './speakable.js';
 import { NodeFeed } from './nodefeed.js';
 import { NodePeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
+import { installTooltips, setTooltipsEnabled } from './tooltip.js';
+import { usePerson, faceOf } from './person.js';
+import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
 
 const html = htm.bind(h);
 
@@ -212,6 +215,13 @@ const Inside = ({ session }) => {
     // may be a BUCKET's slug - a cozy address at rest (pure/naming.js) - resolved off the live roster:
     // the app is the bucket's rail, and the URL itself names the bucket.
     const root = persona.current && persona.current.root;
+    // The house tooltips follow this persona's "disable tooltips" (the profile's application
+    // settings); signed out, or before a persona opens, they are on.
+    const tooltips = usePrefValue(root, TOOLTIPS_KEY);
+    useEffect(() => {
+        setTooltipsEnabled(tooltips !== 'off');
+        return () => setTooltipsEnabled(true);
+    }, [tooltips]);
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
     // Two floors (2026-09-08): `/home/<app>/...` is an app's, `/in/<bucket>/...` a bucket's -
     // disjoint by construction, so a new app never shadows a notebook somebody named.
@@ -229,6 +239,9 @@ const Inside = ({ session }) => {
     // console tile and the app header. '' until a persona is open or named, and then `appLabel`
     // falls the Persona tile back to "Persona".
     const personaName = usePersonaName(persona.current);
+    // The persona's own face (Curtis, 2026-09-27): its tile in the dock and the launcher wears
+    // their picture and colour rather than a generic person glyph.
+    const me = faceOf(usePerson(root, { current: persona.current }));
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
@@ -295,13 +308,17 @@ const Inside = ({ session }) => {
                             class=${[
                                 'quickbar-hex',
                                 app.id === PERSONA_APP_ID ? 'quickbar-hex-lead' : '',
+                                app.id === PERSONA_APP_ID && me ? 'quickbar-hex-me' : '',
                                 isActive ? 'active' : '',
                             ]
                                 .filter(Boolean)
                                 .join(' ')}
+                            style=${app.id === PERSONA_APP_ID && me ? `--me-ring: ${me.ring}` : undefined}
                             title=${appLabel(app, personaName, isDevice())}
                             onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
-                        ><span class="quickbar-hex-face"><${iconFor(app, isDevice())} /></span></button>
+                        ><span class="quickbar-hex-face">${app.id === PERSONA_APP_ID && me
+                            ? html`<img class="quickbar-hex-img" src=${me.src} alt="" />`
+                            : html`<${iconFor(app, isDevice())} />`}</span></button>
                         ${/* Outside the heptagon, not inside it: the hex is clip-pathed,
                             and a badge within it would be cut to the shape. */ ''}
                         ${badge > 0 &&
@@ -347,7 +364,7 @@ const Inside = ({ session }) => {
                 <button
                     class="app-header-btn"
                     title=${idBack === '/home/people'
-                        ? t('index.back-to-people', 'back to People')
+                        ? t('index.back-to-people', 'back to hrsePeople™')
                         : t('index.back-to-their-page', 'back to their page')}
                     onClick=${() => loc.route(idBack)}
                 ><${Icons.back} /></button>
@@ -448,6 +465,7 @@ const Inside = ({ session }) => {
                 path="/home"
                 onLaunch=${(id) => loc.route('/home/' + id)}
                 personaName=${personaName}
+                me=${me}
                 admin=${nodeAdmin}
             />
             <${PersonaHome} path="/home/persona" persona=${persona} />
@@ -588,6 +606,8 @@ function main() {
     // paint would leave the first screen in English. This also stamps `<html lang>`, which is where
     // a screen reader takes its pronunciation from.
     setLocale(detectLocale());
+    // Every `title` in the app becomes the house tooltip - quicker than the browser's (tooltip.js).
+    installTooltips();
     // One provider at the root sets the house icon style: Phosphor, DUOTONE, sized to the font
     // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
     // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the

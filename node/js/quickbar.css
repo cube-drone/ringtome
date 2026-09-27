@@ -136,6 +136,19 @@ a.quickbar-version:focus-visible {
     font-size: 1.25rem; /* the icon */
 }
 
+/* The persona's own tile wears them (Curtis, 2026-09-27): the rim in their colour, their picture
+   (or the identicon their key draws) filling the face. */
+.quickbar-hex-me {
+    background: var(--me-ring);
+}
+
+.quickbar-hex-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
 .quickbar-hex-lead .quickbar-hex-face {
     font-size: 1.6rem;
 }

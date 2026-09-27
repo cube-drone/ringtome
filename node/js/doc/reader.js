@@ -155,6 +155,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                     onBlur=${saveTitle}
                 />
                 <span class="reader-chips">
+                    ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
                     ${onDeleted &&
                     html`<${Chip}
                         icon=${Icons.trash}

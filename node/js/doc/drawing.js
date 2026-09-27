@@ -64,6 +64,7 @@ import {
     sizeAfter,
     cropEntry,
     dropIndex,
+    pictureFileName,
     textOf,
     addTextLayer,
     setText,
@@ -377,6 +378,24 @@ export async function flattenToBlob(root, drawing) {
     return new Promise((resolve, reject) =>
         canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('could not make a picture of the drawing'))), 'image/webp', 0.92)
     );
+}
+
+/// Download the drawing as a PNG (Curtis, 2026-09-27): the visible layers, stacked - transparent
+/// wherever they leave nothing, as every picture of it is - at the resolution the canvas is drawn
+/// at, `BACKING` pixels to a unit, and named for its title. It waits for its pictures and faces, as a
+/// publication does. Saved the way the spare key is (persona.js): a link to the file, clicked.
+export async function downloadPng(root, drawing, title) {
+    const canvas = flatten(drawing, sizeOf(drawing)[0] * BACKING, await loadPictures(root, drawing));
+    const blob = await new Promise((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = pictureFileName(title);
+    a.click();
+    // Not at once: some browsers start reading the file only after the click returns.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 /// Copy a drawing into a notebook as a PICTURE (DRAWING.md): flattened, uploaded through the ordinary
@@ -1506,6 +1525,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             onBlur=${() => session.save()}
         />
         <span class="reader-chips">
+            ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
+            ${onDeleted &&
+            row &&
+            !row.fields?.published_as &&
+            html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`}
             <${Chip}
                 icon=${Icons.copy}
                 title=${t('doc.drawing.copy-a-picture-into-a-notebook', 'copy a picture of this drawing into a notebook')}
@@ -1520,14 +1544,15 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 onClose=${() => setCopying(false)}
             />`}
             <${Chip}
+                icon=${Icons.download}
+                title=${t('doc.drawing.download-png', 'download as a .png')}
+                onClick=${() => opened && downloadPng(root, drawing, session.title).catch((e) => setActionError(e.message))}
+            />
+            <${Chip}
                 icon=${Icons.pageNew}
                 title=${busy ? t('doc.drawing.duplicating', 'duplicating…') : t('doc.drawing.duplicate-this-drawing', 'duplicate - a new drawing, strokes and all')}
                 onClick=${() => opened && !busy && duplicate()}
             />
-            ${onDeleted &&
-            row &&
-            !row.fields?.published_as &&
-            html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`}
             <${Chip}
                 modifier=${saveFailed ? 'chip-diverged' : null}
                 title=${saved ? t('doc.drawing.saved', 'saved') : saveFailed ? session.error || t('doc.drawing.not-saved', 'not saved - it will try again') : t('doc.drawing.saving', 'saving…')}

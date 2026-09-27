@@ -323,46 +323,12 @@
     white-space: nowrap;
 }
 
-/* The tools: one strip on the right, icons with their words on hover. */
+/* The tools: one strip on the right of Writer's chips (doc/chips.js), their words on hover. */
 .chat-tools {
     margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 0.1rem;
-}
-
-.chat-tool {
-    display: inline-flex;
-    align-items: center;
-    font-size: 1.05em;
-    color: var(--ink-soft);
-    background: none;
-    border: 1px solid transparent;
-    padding: 0.25rem 0.35rem;
-    cursor: pointer;
-    text-decoration: none;
-}
-
-.chat-tool:hover {
-    border-color: var(--border);
-    color: var(--ink);
-}
-
-.chat-tool-on {
-    color: var(--teal);
-}
-
-.chat-tool-static {
-    cursor: default;
-}
-
-.chat-tool-danger:hover {
-    color: var(--coral);
-}
-
-.chat-tool:disabled {
-    opacity: 0.5;
-    cursor: default;
+    gap: 0.35rem; /* the chip row's spacing (doc/surface.css .reader-chips) */
 }
 
 /* The floor: every line at full width, the newest at the bottom. */

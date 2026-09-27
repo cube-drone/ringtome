@@ -438,6 +438,15 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                           placeholder="untitled"
                       />`}
                 <span class="reader-chips">
+                    ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
+                    ${onDeleted &&
+                    standing !== 'public' &&
+                    html`<${Chip}
+                        icon=${Icons.trash}
+                        modifier="chip-delete"
+                        title="Delete — removes this document from every list (its history is kept)"
+                        onClick=${remove}
+                    />`}
                     <${Chip}
                         icon=${Icons.copy}
                         title=${t('doc.editor.copy-into-private-notes', 'copy this note into another bucket')}
@@ -448,14 +457,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                         current=${{ root }}
                         source=${{ author: root, doc_id: docId, private: true }}
                         onClose=${() => setCopying(false)}
-                    />`}
-                    ${onDeleted &&
-                    standing !== 'public' &&
-                    html`<${Chip}
-                        icon=${Icons.trash}
-                        modifier="chip-delete"
-                        title="Delete — removes this document from every list (its history is kept)"
-                        onClick=${remove}
                     />`}
                     ${loaded.diverged &&
                     (loaded.resolution === 'conflict'

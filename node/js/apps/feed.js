@@ -50,6 +50,7 @@ import {
     PUBLISHED_AS,
 } from '../pure/feed.js';
 import { api } from '../net.js';
+import { useEditWindowOpen } from '../editwindow.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
@@ -109,6 +110,10 @@ const PostBody = ({ doc }) => {
 const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
     const [open, setOpen] = useState(false);
     const state = publishedState(row, seal);
+    // A posted item past its edit window (Curtis, 2026-09-27) offers no unlock: an edit could no
+    // longer be published. Unknown counts as open.
+    const windowOpen = useEditWindowOpen(state.published ? root : null, state.postId || null);
+    const editable = !state.published || windowOpen !== false;
     // The body read, hoisted from PostBody so the stack can judge emptiness (Curtis,
     // 2026-08-28): an unposted draft with no title and no words is a blank page - most
     // often a reply box opened and walked away from - and listing it is noise. Hidden
@@ -148,6 +153,7 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                 <span class="feed-item-when">${when}</span>
                 <span class="feed-item-state">${open ? t('apps.feed.editing', 'editing') : state.label}</span>
                 ${!open &&
+                editable &&
                 (state.locked
                     ? html`<${LockButton}
                           onUnlocked=${() => {
@@ -155,17 +161,20 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                               setOpen(true);
                           }}
                       />`
-                    : html`<button
-                              class="feed-edit"
-                              title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
-                              onClick=${() => setOpen(true)}
-                          >${t('apps.feed.edit', 'edit')}</button>
+                    : html`${/* Writer's chips (Curtis, 2026-09-27), trash leftmost: discard, then edit. */ ''}
                           ${!state.published &&
                           html`<button
-                              class="feed-discard"
+                              class="chip chip-button chip-delete"
                               title=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
+                              aria-label=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
                               onClick=${discard}
-                          >${t('apps.feed.discard', 'discard')}</button>`}`)}
+                          ><${Icons.trash} /></button>`}
+                          <button
+                              class="chip chip-button"
+                              title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
+                              aria-label=${t('apps.feed.open-this-for-editing', 'open this for editing')}
+                              onClick=${() => setOpen(true)}
+                          ><${Icons.rename} /></button>`)}
             </header>
             ${/* No title, no heading. A post that was never given one is untitled in the
                 ordinary sense of the word - the app inventing the LABEL "untitled" and

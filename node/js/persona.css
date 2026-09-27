@@ -596,6 +596,18 @@
     font-weight: 600;
 }
 
+/* The profile's application settings (Curtis, 2026-09-27): how the app behaves for you on this
+   browser, set apart from what you say about yourself. */
+.profile-settings {
+    margin-top: 2rem;
+}
+
+.profile-setting {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .profile-save-row {
     display: flex;
     align-items: center;
@@ -1070,67 +1082,6 @@
     margin: 0.3rem 0 0;
 }
 
-/* The note-pencil that leaves for Writer: icon only, the takedown button's shape, so the
- * row's buttons match (Curtis, 2026-09-03). */
-.feed-edit-writer {
-    display: inline-flex;
-    align-items: center;
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font-size: 1.1rem;
-    padding: 0.25rem 0.5rem;
-    text-decoration: none;
-}
-.feed-edit-writer:hover {
-    color: var(--ink);
-    border-color: var(--border-strong);
-}
-.feed-edit {
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font: inherit;
-    font-size: 0.72rem;
-    padding: 0.15rem 0.6rem;
-    cursor: pointer;
-}
-
-.feed-edit:hover {
-    border-color: var(--teal);
-    color: var(--sea);
-}
-
-/* Discarding an unposted draft: the edit chip's shape, warming toward coral on hover -
-   a small destructive act, dressed as one. */
-.feed-discard {
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font: inherit;
-    font-size: 0.72rem;
-    padding: 0.15rem 0.6rem;
-    margin-left: 0.4rem;
-    cursor: pointer;
-}
-
-.feed-discard:hover {
-    border-color: var(--coral);
-    color: var(--coral);
-}
-
 /* The labels row (PROJECT_PLAN's Public annotations): the author's chips plain, others' dressed with a byline. */
 .feed-entry-labels {
     display: flex;
@@ -1578,38 +1529,8 @@ article:has(.label-emoji-strip) {
     color: var(--faint);
 }
 
-/* The share button wears the edit button's clothes: both are quiet actions in the banner's
- * actions slot, and a louder one would make passing something along feel like the point of
- * reading. Deliberately no count anywhere near it. */
-/* Taking a post down: quiet until asked, then explicit about what it costs. Styled apart from
- * edit and share because it is the one action here that cannot be undone. */
-/* The actions row's shared language (2026-08-14): a glyph in a bordered chip at the lock's
- * scale, the words in the hover title. Three buttons, one grammar. */
-.feed-unpublish {
-    display: inline-flex;
-    align-items: center;
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font-size: 1.1rem;
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-}
-
-.feed-unpublish svg {
-    width: 1em;
-    height: 1em;
-}
-
-.feed-unpublish:hover {
-    border-color: var(--warn, var(--border-strong));
-    color: var(--ink);
-}
-
+/* A feed card's buttons - takedown, share, edit, pin, copy, the lock - are Writer's chips
+ * (doc/chips.js; Curtis, 2026-09-27: one chip standard across the app), styled there, not here. */
 /* Inside the confirm modal, not on the card: the deliberation is the system stepping
  * forward, so it wears the modal's room rather than reflowing the post it is about. */
 .feed-unpublish-warn {
@@ -1648,44 +1569,8 @@ article:has(.label-emoji-strip) {
     color: var(--muted);
 }
 
-.feed-share {
-    display: inline-flex;
-    align-items: center;
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font-size: 1.1rem;
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-}
-
-.feed-share svg {
-    width: 1em;
-    height: 1em;
-}
-
-.feed-share:hover {
-    border-color: var(--teal);
-    color: var(--sea);
-}
-
-.feed-share:disabled {
-    opacity: 0.5;
-    cursor: default;
-}
-
 /* Already shared: filled rather than outlined, so the state reads without a label change being
  * the only signal. */
-.feed-share-on {
-    border-color: var(--teal);
-    color: var(--sea);
-    background: var(--teal-wash, transparent);
-}
-
 .feed-entry-when {
     color: var(--faint);
     font-size: 0.75em;
@@ -1974,20 +1859,11 @@ article:has(.label-emoji-strip) {
 
 /* The seal-and-unlock ceremony on a published post s card (moved from the retired Journal s
    stylesheet, 2026-09-02; the lock was always the card s, not the day book s). */
+/* It wears Writer's chip (Curtis, 2026-09-27: one chip standard); this is only what the fill
+   bar needs of it - a box to fill, and to clip the fill to. */
 .seal-lock {
     position: relative;
     overflow: hidden;
-    display: inline-flex;
-    align-items: center;
-    background: var(--surface-2);
-    border: 1px solid transparent;
-    --line: var(--border-strong);
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 1.1rem;
-    padding: 0.25rem 0.5rem;
 }
 
 .seal-lock-face {
@@ -2035,26 +1911,6 @@ article:has(.label-emoji-strip) {
     margin-top: 0.7rem;
 }
 
-/* The author's pin toggle (postentry.js PinButton, PROJECT_PLAN's Peeks, ruling 12): the takedown's
-   shape, lit when the post is pinned. */
-.feed-pin {
-    display: inline-flex;
-    align-items: center;
-    background: none;
-    border: 1px solid transparent;
-    --line: var(--border);
-    position: relative;
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--muted);
-    font-size: 1.1rem;
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-}
-.feed-pin-on {
-    color: var(--ink);
-    border-color: var(--teal);
-}
 /* The pinned strip above the shelf (posts.js): a little air before "recent posts". */
 .public-posts-pinned {
     margin-bottom: 1.2rem;
