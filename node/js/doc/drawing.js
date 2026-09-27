@@ -796,7 +796,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (textTool) {
             const [x, y] = toDrawing(e);
             const id = strokeId();
-            const style = { x, y, font: tools.font, size: tools.textSize, color: tools.color, align: tools.align };
+            // It lands holding a word (Curtis, 2026-09-27: "a clearer visual indication where the text
+            // has landed"), selected in the words field so the first keystroke replaces it.
+            const text = t('doc.drawing.new-text', 'horse');
+            const style = { x, y, font: tools.font, size: tools.textSize, color: tools.color, align: tools.align, text };
             changeLayers(addTextLayer(drawing, id, style, Date.now()));
             setCurrentId(id);
             focusWords.current = true;
@@ -962,6 +965,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (focusWords.current && wordsRef.current) {
             focusWords.current = false;
             wordsRef.current.focus();
+            wordsRef.current.select();
         }
     });
     const textStyle = currentText || { font: tools.font, size: tools.textSize, align: tools.align, color: tools.color };
@@ -1197,8 +1201,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           onClick=${() => setTools({ tool })}
                       ><${icon} /></button>`
                   )}
-                  ${/* Beside the tools, after a gap: what works whatever the tool (Curtis, 2026-09-27). */ ''}
-                  <span class="drawing-toolset-gap"></span>
+                  ${/* With the tools: what works whatever the tool (Curtis, 2026-09-27). */ ''}
                   <button
                       class="drawing-tool-icon"
                       title=${t('doc.drawing.add-an-image', 'add an image')}

@@ -882,10 +882,12 @@ export function textOf(drawing, layerId) {
     return record;
 }
 
-/// A new text layer at the top of the stack, its text anchored at (x, y) with no words yet.
-export function addTextLayer(drawing, layerId, { x, y, font, size, color, align }, now) {
+/// A new text layer at the top of the stack, its text anchored at (x, y), holding `text` (none, if
+/// not given - or if it is words the body could not keep).
+export function addTextLayer(drawing, layerId, { x, y, font, size, color, align, text = '' }, now) {
     const out = addLayer(drawing, layerId, now);
-    return upsertText(out, { layer: layerId, t: now, text: '', font, size, color, align, x: Math.round(x), y: Math.round(y) });
+    const words = isTextContent(text) ? text : '';
+    return upsertText(out, { layer: layerId, t: now, text: words, font, size, color, align, x: Math.round(x), y: Math.round(y) });
 }
 
 /// Change a text layer's words, font, size, colour or alignment. A change the body could not keep

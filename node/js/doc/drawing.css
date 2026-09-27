@@ -20,11 +20,6 @@
     gap: 0.35rem;
 }
 
-/* The toolset's break between the tools and the actions that work whatever the tool. */
-.drawing-toolset-gap {
-    width: 0.6rem;
-}
-
 .drawing-tool-icon {
     display: inline-flex;
     align-items: center;

@@ -11341,3 +11341,12 @@ of the drawing wait for them. Text is not a pour's wall (glyphs are each machine
 a kept text (with a line break, a backslash and quotes), eight refused ones, the later record
 winning, a same-moment tie by UTF-8 bytes, and a reorder beside a text edit both standing (red with
 the node refusing line breaks); three model tests. Not yet typed in a browser.
+
+Tidied the tools column (Curtis): the "a text layer takes only..." line is gone - the greyed-out
+buttons already say it; add an image and undo became icons in the toolset, straight after the
+tools (so the rule that separated them went too); and crop moved to the end of the tools, away
+from the similarly-shaped transform.
+
+A text now lands holding the word "horse" (Curtis: "a clearer visual indication where the text has
+landed"), selected in the words field so typing replaces it; `addTextLayer` takes starting words and
+drops any the body could not keep (one test).

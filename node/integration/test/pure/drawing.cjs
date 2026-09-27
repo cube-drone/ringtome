@@ -459,6 +459,11 @@ describe('text layers', () => {
         assert.equal(d.setText(body, d.BASE_LAYER, { text: 'x' }, 7), body, 'only a text layer takes words');
     });
 
+    it('can land holding words already, but never words the body could not keep', () => {
+        assert.equal(d.textOf(d.addTextLayer(d.blankDrawing(), T, { ...style, text: 'horse' }, 5), T).text, 'horse');
+        assert.equal(d.textOf(d.addTextLayer(d.blankDrawing(), T, { ...style, text: 'tab\there' }, 5), T).text, '');
+    });
+
     it('paints its words first, so every grab and transform after carries them', () => {
         let body = d.addTextLayer(d.blankDrawing(), T, style, 5);
         body = d.setText(body, T, { text: 'hi' }, 6);

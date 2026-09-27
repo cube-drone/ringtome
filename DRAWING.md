@@ -185,7 +185,8 @@ deals every crop into every layer), and the canvas becomes the box.
 
 Text layers (Curtis, 2026-09-27) - scoped down on purpose, since text is where a drawing could have
 grown text conflicts. **One text per layer**: the text tool's click places a new layer at the top
-holding a text anchored there, and its words are typed in the tools column, not on the canvas,
+holding a text anchored there - the word "horse", so it is plain where it landed, selected in the
+words field so the first keystroke replaces it - and its words are typed in the tools column, not on the canvas,
 beside its font, size, alignment (left, centre, right) and colour. While a text layer is current
 the tools it cannot take are greyed out: it takes **text, transform, grab and crop** - so it turns,
 stretches, slants and moves as any layer does, and stays editable throughout, because its words are
@@ -361,14 +362,14 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, text, crop, transform and grab - icons, each
+- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, text, transform, grab
+  and crop (last, away from the transform it resembles), then add an image and undo - icons, each
   named in its tooltip - a size for the brush and the eraser and a line width for the shapes (1-80
   canvas units), a pour speed for the bucket (1-10, 20 canvas
   units a second at the slowest and half again each step), the colour - each shown only with a tool
   that uses it (Curtis, 2026-09-27: "tool options are contextual and live with their associated
-  tool"), under the tools and above a rule, below which sit what works whatever the tool: add an
-  image,
-  undo, and the drawing's own actions: duplicate, copy into a notebook, publish. The colour is a hue
+  tool"), under the icons; a tool a text layer cannot take is greyed out rather than explained.
+  The drawing's own actions - duplicate, copy into a notebook, publish - are in its header. The colour is a hue
   ring with an HSV triangle inside it and a hex field (`doc/colourpicker.js`, Curtis 2026-09-26 -
   it replaced the browser's native colour input), with a row of swatches beneath: white and black,
   then the last ten colours this drawing's strokes used, newest first (`recentColours`, read off the
