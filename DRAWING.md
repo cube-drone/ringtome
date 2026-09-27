@@ -181,6 +181,39 @@ deals every crop into every layer), and the canvas becomes the box.
   order - surprising, perhaps, but the same on every computer, and an undo away from either.
 - The base layer's white covers the canvas the drawing began as, wherever the crops leave it.
 
+### Text
+
+Text layers (Curtis, 2026-09-27) - scoped down on purpose, since text is where a drawing could have
+grown text conflicts. **One text per layer**: the text tool's click places a new layer at the top
+holding a text anchored there, and its words are typed in the tools column, not on the canvas,
+beside its font, size, alignment (left, centre, right) and colour. While a text layer is current
+the tools it cannot take are greyed out: it takes **text, transform, grab and crop** - so it turns,
+stretches, slants and moves as any layer does, and stays editable throughout, because its words are
+the layer's first step (as the base layer's white is): every grab and transform after it carries
+them, and an edit after a transform is still transformed.
+
+- **The record**: `texts: [{ "layer", "t", "text", "font", "size", "color", "align", "x", "y" }]`,
+  one per layer, beside `layers` - written only when there is one, so a drawing without text is the
+  bytes it always was. It merges as layer entries do: the later change wins, whole, ties broken by a
+  fixed order (numbers, then strings by UTF-8 bytes). Not on the layer entry, because a layer entry
+  changes whenever the stack is reordered, and a reorder on one computer would then throw away words
+  typed on another (the vectors hold both standing).
+- **The one lossy merge**: two computers editing one text at the same moment - the later keeps its
+  words, the other's are gone. Chosen over merging text character by character.
+- **Words**: up to 4000 UTF-8 bytes; line breaks are how lines are made (no wrapping); no other
+  control characters and no lone surrogates, for the same reason as layer names.
+- **Fonts: the Marquee font list** (`FONTS`, from the Marquee renderer) - the four standard stacks and
+  the 31 faces the node serves from its own binary. The body keeps a font's token, checked only for
+  its shape, so it need not change when the list does; a token the page does not know paints in
+  `sans`, as Marquee degrades. The faces load lazily, and a canvas never waits for one, so the page
+  asks for a drawing's faces and repaints when they arrive; a picture of the drawing waits for them.
+- **Not a wall to a pour**: glyphs are drawn by each machine's font machinery, so, like a picture,
+  text is left out of a pour's walls - every computer's pour still agrees.
+- A copy of a text layer is a text layer with words of its own. A text layer with no name of its own
+  is listed by its first line.
+- Placing a text or editing it is not in the undo history (as layer changes are not); a text layer
+  goes by its trash button.
+
 ### Deleting and duplicating layers
 
 Per-layer trash and duplicate buttons (Curtis, 2026-09-26), built the way grabbing is - as entries in
@@ -328,7 +361,7 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, crop, transform and grab - icons, each
+- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, text, crop, transform and grab - icons, each
   named in its tooltip - a size for the brush and the eraser and a line width for the shapes (1-80
   canvas units), a pour speed for the bucket (1-10, 20 canvas
   units a second at the slowest and half again each step), the colour - each shown only with a tool

@@ -31,6 +31,9 @@ import {
     Rectangle,
     BoundingBox,
     Crop,
+    TextAlignLeft,
+    TextAlignCenter,
+    TextAlignRight,
     Circle,
     Stack,
     Eraser,
@@ -244,6 +247,11 @@ export const Icons = {
     transform: BoundingBox,
     // ...and the crop, which cuts the canvas down.
     crop: Crop,
+    // ...and text, with its alignments.
+    text: TextT,
+    alignLeft: TextAlignLeft,
+    alignCenter: TextAlignCenter,
+    alignRight: TextAlignRight,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

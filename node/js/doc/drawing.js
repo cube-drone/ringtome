@@ -64,8 +64,15 @@ import {
     sizeAfter,
     cropEntry,
     dropIndex,
+    textOf,
+    addTextLayer,
+    setText,
+    DEFAULT_FONT,
+    MIN_TEXT_SIZE,
+    MAX_TEXT_BYTES,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
+import { FONTS } from '@cube-drone/marquee-react-renderer';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
@@ -148,11 +155,47 @@ export function picturesNow(root, drawing) {
     return out;
 }
 
+/// Text (DRAWING.md, "Text"): the Marquee font list's faces. The four standard stacks need nothing;
+/// the rest are served by the node and load lazily - a canvas that draws before a face has loaded
+/// draws in the fallback, without a word - so a drawing asks for its faces (`fontsWanted`) and is
+/// repainted when they come.
+const GENERIC_FAMILIES = new Set(['sans-serif', 'serif', 'monospace']);
+const familyOf = (token) => FONTS[token] || FONTS[DEFAULT_FONT];
+const fontStack = (token) => {
+    const family = familyOf(token);
+    return GENERIC_FAMILIES.has(family) ? family : `"${family}", sans-serif`;
+};
+/// Lines of text sit this many sizes apart.
+const LINE_HEIGHT = 1.25;
+
+/// The faces a drawing's texts use that the page has not loaded yet.
+function fontsWanted(drawing) {
+    if (typeof document === 'undefined' || !document.fonts) return [];
+    const faces = new Set((drawing.texts || []).map((r) => familyOf(r.font)).filter((f) => !GENERIC_FAMILIES.has(f)));
+    return [...faces].filter((f) => !document.fonts.check(`16px "${f}"`));
+}
+
+function loadFonts(drawing) {
+    return Promise.all(fontsWanted(drawing).map((f) => document.fonts.load(`16px "${f}"`).catch(() => null)));
+}
+
+/// Paint a text layer's words: each line at its size, in its face and colour, aligned about its
+/// anchor, the first line's top at the anchor.
+function paintText(ctx, text, scale) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = text.color;
+    ctx.textAlign = text.align;
+    ctx.textBaseline = 'top';
+    ctx.font = `${text.size * scale}px ${fontStack(text.font)}`;
+    text.text.split('\n').forEach((line, i) => ctx.fillText(line, text.x * scale, (text.y + i * text.size * LINE_HEIGHT) * scale));
+}
+
 /// Fetch every picture the drawing refers to, and resolve when each has arrived or failed: what a
 /// picture OF the drawing (a thumbnail, a copy, a publication) waits for, so it is never made
 /// without them.
 export async function loadPictures(root, drawing) {
-    await Promise.all(imagesOf(drawing).map((doc) => fetchPicture(root, doc).promise));
+    // ...and every face its texts are set in: a picture made before they load would be in the wrong one.
+    await Promise.all([...imagesOf(drawing).map((doc) => fetchPicture(root, doc).promise), loadFonts(drawing)]);
     return picturesNow(root, drawing);
 }
 
@@ -258,6 +301,8 @@ export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
             }
         } else if (op.tool === 'rect' || op.tool === 'ellipse') {
             paintShape(ctx, op, scale);
+        } else if (op.tool === 'text') {
+            paintText(ctx, op, scale);
         } else if (op.tool === 'bucket') {
             const { runs, size } = pourRunsCached(ops, i, drawing);
             paintRuns(ctx, runs, op.color, size, scale);
@@ -373,14 +418,30 @@ export async function duplicateDrawing(root, docId) {
 // ---------------------------------------------------------------------------------------------
 // The tools, remembered across drawings (not across page loads): switching drawings keeps your brush.
 
-let rememberedTools = { tool: 'brush', brushSize: 12, eraserSize: 40, shapeSize: 6, pourSpeed: 5, color: '#1f1a17' };
+let rememberedTools = {
+    tool: 'brush',
+    brushSize: 12,
+    eraserSize: 40,
+    shapeSize: 6,
+    pourSpeed: 5,
+    color: '#1f1a17',
+    font: DEFAULT_FONT,
+    textSize: 48,
+    align: 'left',
+};
+
+/// What a text layer takes (Curtis, 2026-09-27): its words, and moving it about - the rest of the
+/// tools are greyed out while one is current. Crop cuts every layer, so it stays.
+const TEXT_LAYER_TOOLS = ['text', 'transform', 'grab', 'crop'];
+/// The largest a text can be set from the slider (the body allows more).
+const TEXT_SLIDER_MAX = 200;
 
 /// The tools dragged out corner to corner (Curtis, 2026-09-27), sharing one line width.
 const SHAPE_TOOLS = ['line', 'rect', 'ellipse'];
 /// The tools that take a size, and those that take a colour (Curtis, 2026-09-27: "tool options
 /// are contextual and live with their associated tool").
 const SIZED_TOOLS = ['brush', 'eraser', ...SHAPE_TOOLS];
-const COLOURED_TOOLS = ['brush', ...SHAPE_TOOLS, 'bucket'];
+const COLOURED_TOOLS = ['brush', ...SHAPE_TOOLS, 'bucket', 'text'];
 
 /// The paint bucket's pour speed (1..10) as canvas units a second: each step half again faster, from
 /// a slow creep to a rush across the canvas in about a second.
@@ -597,6 +658,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         setCurrentId(layerId);
     };
     const current = layers.find((l) => l.id === currentId) || layers[layers.length - 1];
+    // A text layer (DRAWING.md, "Text"): its one text, and the tools it takes.
+    const currentText = current ? textOf(drawing, current.id) : null;
+    const toolAllowed = (tool) => !currentText || TEXT_LAYER_TOOLS.includes(tool);
 
     // Every layer on a canvas of its own, repainted from the body whenever it changes - every save,
     // undo, layer change and sync - and stacked onto the screen. A stroke being drawn paints onto
@@ -620,7 +684,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // The pictures the drawing refers to (DRAWING.md, "Images"): fetched as the drawing asks for
     // them, and a repaint when any that was missing arrives.
     useEffect(() => {
-        const missing = imagesOf(drawing).length !== picturesNow(root, drawing).size;
+        const missing = imagesOf(drawing).length !== picturesNow(root, drawing).size || fontsWanted(drawing).length > 0;
         if (!missing) return undefined;
         let live = true;
         loadPictures(root, drawing).then(() => live && setPicturesArrived((n) => n + 1));
@@ -672,6 +736,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const pourTool = tools.tool === 'bucket';
     const transformTool = tools.tool === 'transform';
     const cropTool = tools.tool === 'crop';
+    const textTool = tools.tool === 'text';
     const shapeTool = SHAPE_TOOLS.includes(tools.tool);
     const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
 
@@ -720,12 +785,23 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const stage = stageRef.current;
         const sr = stage.getBoundingClientRect();
         if (e.clientX - sr.left >= stage.clientWidth || e.clientY - sr.top >= stage.clientHeight) return;
-        // A hidden layer takes no strokes: they would land where nobody can see them.
-        if (current.hidden) return;
+        // A hidden layer takes no strokes: they would land where nobody can see them. A text layer
+        // takes only its own tools.
+        if (current.hidden || !toolAllowed(tools.tool)) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
         // The crop box (DRAWING.md, "Cropping"): a corner or an edge resizes it, inside moves it,
         // outside draws a fresh one. Nothing is recorded until the crop button.
+        // Text: a click places a new text layer there, and its words are typed in the tools column.
+        if (textTool) {
+            const [x, y] = toDrawing(e);
+            const id = strokeId();
+            const style = { x, y, font: tools.font, size: tools.textSize, color: tools.color, align: tools.align };
+            changeLayers(addTextLayer(drawing, id, style, Date.now()));
+            setCurrentId(id);
+            focusWords.current = true;
+            return;
+        }
         if (cropTool) {
             if (!cropBox) return;
             const at = toDrawing(e);
@@ -877,6 +953,32 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         session.setBody(writeBody(addStroke(drawing, entry)));
         session.touched();
     };
+
+    // The text tool's options: the current text layer's own, or - with none current - what the next
+    // text will be. A change goes to both: the text, and the tool's memory for the next one.
+    const wordsRef = useRef(null);
+    const focusWords = useRef(false);
+    useEffect(() => {
+        if (focusWords.current && wordsRef.current) {
+            focusWords.current = false;
+            wordsRef.current.focus();
+        }
+    });
+    const textStyle = currentText || { font: tools.font, size: tools.textSize, align: tools.align, color: tools.color };
+    const changeText = (change) => {
+        const remembered = {};
+        if (change.font) remembered.font = change.font;
+        if (change.size) remembered.textSize = change.size;
+        if (change.align) remembered.align = change.align;
+        if (change.color) remembered.color = change.color;
+        if (Object.keys(remembered).length) setTools(remembered);
+        if (currentText) changeLayers(setText(drawing, current.id, change, Date.now()));
+    };
+    const alignButtons = [
+        ['left', Icons.alignLeft, t('doc.drawing.align-left', 'align left')],
+        ['center', Icons.alignCenter, t('doc.drawing.align-center', 'centre')],
+        ['right', Icons.alignRight, t('doc.drawing.align-right', 'align right')],
+    ];
 
     // The shapes (DRAWING.md, "Shapes"): the drag shows the shape from where it began to the
     // pointer, over the layer as it was; letting go records it - a line as a two-point brush
@@ -1047,13 +1149,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket - hold to pour')],
-        ['crop', Icons.crop, t('doc.drawing.crop-tool', 'crop - drag the box, then crop')],
+        ['text', Icons.text, t('doc.drawing.text-tool', 'text - click the drawing to place it')],
         ['transform', Icons.transform, t('doc.drawing.transform', 'transform the layer - corners slant, edges stretch, inside moves, outside turns; hold shift to keep it even')],
         ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
+        // Last, away from the transform it resembles (Curtis, 2026-09-27).
+        ['crop', Icons.crop, t('doc.drawing.crop-tool', 'crop - drag the box, then crop')],
     ];
     const grabTool = tools.tool === 'grab';
     // The colours show only with a tool that uses one, and picking one keeps that tool in hand.
     const colourTool = tools.tool;
+    // A colour picked with the text tool colours the current text too.
+    const pickColour = (color) => {
+        setTools({ color, tool: colourTool });
+        if (textTool && currentText) changeLayers(setText(drawing, current.id, { color }, Date.now()));
+    };
     // The size slider speaks for whichever tool is in hand: the shapes share a line width.
     const sizeKey = tools.tool === 'eraser' ? 'eraserSize' : shapeTool ? 'shapeSize' : 'brushSize';
     const sizeWords = () =>
@@ -1068,7 +1177,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             : 'drawing-paper drawing-floor grab'
         : pourTool || shapeTool
           ? 'drawing-paper drawing-floor aim'
-          : 'drawing-paper drawing-floor';
+          : textTool
+            ? 'drawing-paper drawing-floor type'
+            : 'drawing-paper drawing-floor';
 
     const toolsColumn = tucked.has('tools')
         ? html`<${Rail} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onClick=${() => toggleTuck('tools')} />`
@@ -1082,9 +1193,26 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           class=${tools.tool === tool ? 'drawing-tool-icon active' : 'drawing-tool-icon'}
                           title=${name}
                           aria-label=${name}
+                          disabled=${!toolAllowed(tool)}
                           onClick=${() => setTools({ tool })}
                       ><${icon} /></button>`
                   )}
+                  ${/* Beside the tools, after a gap: what works whatever the tool (Curtis, 2026-09-27). */ ''}
+                  <span class="drawing-toolset-gap"></span>
+                  <button
+                      class="drawing-tool-icon"
+                      title=${t('doc.drawing.add-an-image', 'add an image')}
+                      aria-label=${t('doc.drawing.add-an-image', 'add an image')}
+                      disabled=${!opened}
+                      onClick=${() => setPickingImage(true)}
+                  ><${Icons.addImage} /></button>
+                  <button
+                      class="drawing-tool-icon"
+                      title=${t('doc.drawing.undo', 'undo')}
+                      aria-label=${t('doc.drawing.undo', 'undo')}
+                      disabled=${!drawing.strokes.length}
+                      onClick=${undoStroke}
+                  ><${Icons.unpublish} /></button>
               </div>
               ${/* The tool in hand's own options, and only its own (Curtis, 2026-09-27: "tool options are
                   contextual and live with their associated tool"). */ ''}
@@ -1110,32 +1238,69 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       onInput=${(e) => setTools({ [sizeKey]: +e.currentTarget.value })}
                   />
               </label>`}
+              ${textTool &&
+              html`<div class="drawing-text-options">
+                  ${currentText
+                      ? html`<textarea
+                            ref=${wordsRef}
+                            class="drawing-text-words"
+                            rows="4"
+                            maxlength=${MAX_TEXT_BYTES}
+                            value=${currentText.text}
+                            placeholder=${t('doc.drawing.type-here', 'type here')}
+                            aria-label=${t('doc.drawing.words', 'words')}
+                            onInput=${(e) => changeText({ text: e.currentTarget.value })}
+                        ></textarea>`
+                      : html`<p class="null-sub">${t('doc.drawing.click-to-place-text', 'click the drawing to place text')}</p>`}
+                  <label class="drawing-size">
+                      <span>${t('doc.drawing.font', 'font')}</span>
+                      <select value=${textStyle.font} onChange=${(e) => changeText({ font: e.currentTarget.value })}>
+                          ${Object.entries(FONTS).map(
+                              ([token, family]) => html`<option key=${token} value=${token} style=${`font-family: ${fontStack(token)}`}>${family}</option>`
+                          )}
+                      </select>
+                  </label>
+                  <label class="drawing-size">
+                      <span>${t('doc.drawing.text-size', 'text size')} · ${textStyle.size}</span>
+                      <input
+                          type="range"
+                          min=${MIN_TEXT_SIZE}
+                          max=${TEXT_SLIDER_MAX}
+                          value=${textStyle.size}
+                          onInput=${(e) => changeText({ size: +e.currentTarget.value })}
+                      />
+                  </label>
+                  <div class="drawing-toolset" role="group" aria-label=${t('doc.drawing.alignment', 'alignment')}>
+                      ${alignButtons.map(
+                          ([align, icon, name]) => html`<button
+                              key=${align}
+                              class=${textStyle.align === align ? 'drawing-tool-icon active' : 'drawing-tool-icon'}
+                              title=${name}
+                              aria-label=${name}
+                              onClick=${() => changeText({ align })}
+                          ><${icon} /></button>`
+                      )}
+                  </div>
+              </div>`}
               ${cropTool &&
               html`<button class="drawing-tool drawing-crop-go" disabled=${!cropReady} onClick=${cropNow}>
                   <${Icons.crop} /> ${t('doc.drawing.crop', 'crop')}
               </button>`}
               ${COLOURED_TOOLS.includes(tools.tool) &&
-              html`<${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: colourTool })} />
+              html`<${ColourPicker} value=${textTool ? textStyle.color : tools.color} onChange=${pickColour} />
                   <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
                       ${/* A click away: white and black always, then the last ten colours this
                           drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''}
                       ${[...FIXED_COLOURS, ...recentColours(drawing, 10)].map(
                           (c) => html`<button
                               key=${c}
-                              class=${tools.color === c ? 'drawing-swatch active' : 'drawing-swatch'}
+                              class=${(textTool ? textStyle.color : tools.color) === c ? 'drawing-swatch active' : 'drawing-swatch'}
                               style=${`background: ${c}`}
                               title=${c}
-                              onClick=${() => setTools({ color: c, tool: colourTool })}
+                              onClick=${() => pickColour(c)}
                           ></button>`
                       )}
                   </div>`}
-              <hr class="drawing-tools-rule" />
-              <button class="drawing-tool" disabled=${!opened} onClick=${() => setPickingImage(true)}>
-                  <${Icons.addImage} /> ${t('doc.drawing.add-an-image', 'add an image')}
-              </button>
-              <button class="drawing-tool" disabled=${!drawing.strokes.length} onClick=${undoStroke}>
-                  <${Icons.unpublish} /> ${t('doc.drawing.undo', 'undo')}
-              </button>
               <p class="drawing-count">
                   ${t('doc.drawing.strokes', '{count} strokes', { count: drawing.strokes.length })}
               </p>
@@ -1165,7 +1330,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         setRenaming(null);
         if (typed.trim() !== (layer.name || '')) changeLayers(setLayer(drawing, layer.id, { name: typed }, Date.now()));
     };
-    const layerName = (layer) => layer.name || t('doc.drawing.layer-n', 'layer {n}', { n: layer.n });
+    // A text layer with no name of its own goes by its first line.
+    const layerName = (layer) => {
+        const words = (textOf(drawing, layer.id) || { text: '' }).text.split('\n')[0].trim();
+        return layer.name || words || t('doc.drawing.layer-n', 'layer {n}', { n: layer.n });
+    };
     // Dragging a row (Curtis, 2026-09-27): a line across the stack shows where it will land - above
     // the row under the pointer from its top half, below it from its bottom half - and no line where
     // a drop would change nothing (pure/drawing.js, `dropIndex`). The dragged id is kept here, since

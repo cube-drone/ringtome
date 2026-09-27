@@ -124,6 +124,80 @@ impl Layer {
     }
 }
 
+/// A text layer's text (DRAWING.md, "Text"): its words, font, size, colour, alignment and anchor.
+/// One per layer, the later change winning whole - the browser's `asText` and `textWins`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Text {
+    pub layer: String,
+    pub t: i64,
+    pub text: String,
+    pub font: String,
+    pub size: i64,
+    pub color: String,
+    pub align: &'static str,
+    pub x: i64,
+    pub y: i64,
+}
+
+impl Text {
+    fn wins_over(&self, other: &Text) -> bool {
+        // Numbers first, then the strings by UTF-8 bytes - what `String`'s order is.
+        let key = |r: &Text| (r.t, r.size, r.x, r.y, r.text.clone(), r.font.clone(), r.color.clone(), r.align);
+        key(self) > key(other)
+    }
+}
+
+/// The longest a text can be, in UTF-8 bytes; the sizes it can be set at.
+pub const MAX_TEXT_BYTES: usize = 4000;
+pub const MIN_TEXT_SIZE: i64 = 4;
+pub const MAX_TEXT_SIZE: i64 = 400;
+
+/// Words a text can hold: at most MAX_TEXT_BYTES, no control characters but the line break.
+fn is_text_content(text: &str) -> bool {
+    text.len() <= MAX_TEXT_BYTES && !text.chars().any(|c| ((c as u32) < 0x20 && c != '\n') || c as u32 == 0x7f)
+}
+
+/// A font token's shape - the Marquee font list's (`sans`, `press-start`, ...), which is all the
+/// page offers; the node checks only the shape, so the body need not change when the list does.
+fn is_font_name(name: &str) -> bool {
+    (1..=40).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn as_text(v: &Value) -> Option<Text> {
+    let o = v.as_object()?;
+    let layer = o.get("layer")?.as_str().filter(|l| is_hex16(l) && *l != BASE_LAYER)?.to_string();
+    let align = match o.get("align")?.as_str()? {
+        "left" => "left",
+        "center" => "center",
+        "right" => "right",
+        _ => return None,
+    };
+    Some(Text {
+        layer,
+        t: o.get("t").and_then(safe_int).filter(|t| *t >= 0)?,
+        text: o.get("text")?.as_str().filter(|t| is_text_content(t))?.to_string(),
+        font: o.get("font")?.as_str().filter(|f| is_font_name(f))?.to_string(),
+        size: o.get("size").and_then(safe_int).filter(|s| (MIN_TEXT_SIZE..=MAX_TEXT_SIZE).contains(s))?,
+        color: o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string(),
+        align,
+        x: o.get("x").and_then(safe_int)?,
+        y: o.get("y").and_then(safe_int)?,
+    })
+}
+
+fn fold_texts<'a>(records: impl Iterator<Item = &'a Text>) -> Vec<Text> {
+    let mut by_layer: std::collections::BTreeMap<String, Text> = std::collections::BTreeMap::new();
+    for r in records {
+        match by_layer.get(&r.layer) {
+            Some(held) if !r.wins_over(held) => {}
+            _ => {
+                by_layer.insert(r.layer.clone(), r.clone());
+            }
+        }
+    }
+    by_layer.into_values().collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Body {
     pub v: i64,
@@ -133,6 +207,9 @@ pub struct Body {
     /// Written only when there are any: a drawing with no layer entries is the bytes it always was.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<Layer>,
+    /// Text layers' texts, one per layer (DRAWING.md, "Text"); written only when there are any.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<Text>,
     pub strokes: Vec<Stroke>,
     pub undone: Vec<String>,
 }
@@ -147,6 +224,7 @@ fn blank() -> Body {
         height: CANVAS_HEIGHT,
         background: BACKGROUND.to_string(),
         layers: Vec::new(),
+        texts: Vec::new(),
         strokes: Vec::new(),
         undone: Vec::new(),
     }
@@ -448,6 +526,8 @@ pub fn read(bytes: &[u8]) -> Body {
         .filter_map(as_layer)
         .collect();
     let layers = fold_layers(entries.iter());
+    let records: Vec<Text> = o.get("texts").and_then(Value::as_array).into_iter().flatten().filter_map(as_text).collect();
+    let texts = fold_texts(records.iter());
     let mut undone: Vec<String> = Vec::new();
     let mut gone: HashSet<String> = HashSet::new();
     for id in o.get("undone").and_then(Value::as_array).into_iter().flatten() {
@@ -480,6 +560,7 @@ pub fn read(bytes: &[u8]) -> Body {
             .unwrap_or(BACKGROUND)
             .to_string(),
         layers,
+        texts,
         strokes,
         undone,
     }
@@ -525,12 +606,14 @@ pub fn merge(bodies: &[Vec<u8>]) -> String {
         }
     }
     let layers = fold_layers(read.iter().flat_map(|b| b.layers.iter()));
+    let texts = fold_texts(read.iter().flat_map(|b| b.texts.iter()));
     canonical(&Body {
         v: BODY_VERSION,
         width: canvas.width,
         height: canvas.height,
         background: canvas.background,
         layers,
+        texts,
         strokes,
         undone: undone.into_iter().collect(),
     })

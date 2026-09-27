@@ -20,6 +20,11 @@
     gap: 0.35rem;
 }
 
+/* The toolset's break between the tools and the actions that work whatever the tool. */
+.drawing-toolset-gap {
+    width: 0.6rem;
+}
+
 .drawing-tool-icon {
     display: inline-flex;
     align-items: center;
@@ -180,6 +185,12 @@
     cursor: crosshair;
 }
 
+/* The text tool places words where it is clicked. */
+.drawing-paper.type,
+.drawing-paper.type .drawing-canvas {
+    cursor: text;
+}
+
 /* The grab tool's hand: open while it hovers, closed while it holds the layer. */
 .drawing-paper.grab,
 .drawing-paper.grab .drawing-canvas {
@@ -253,14 +264,6 @@
     stroke: var(--ink);
     stroke-width: 1.5;
     vector-effect: non-scaling-stroke;
-}
-
-/* Between the tool in hand's options and what works whatever the tool: add an image, undo. */
-.drawing-tools-rule {
-    width: 100%;
-    margin: 0.2rem 0;
-    border: none;
-    border-top: 1px solid var(--border);
 }
 
 /* The size circle: as big on screen as the tool is on the drawing. */
@@ -624,4 +627,28 @@
 .imagepick-more {
     align-self: center;
     font: inherit;
+}
+
+/* The text tool's options (DRAWING.md, "Text"): the words, then font, size and alignment. */
+.drawing-text-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.drawing-text-words {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    resize: vertical;
+}
+
+.drawing-text-options select {
+    width: 100%;
+    font: inherit;
+}
+
+.drawing-tool-icon:disabled {
+    opacity: 0.35;
+    cursor: default;
 }

@@ -442,3 +442,39 @@ describe('dropping a dragged layer', () => {
         assert.equal(d.dropIndex(stack(), 'bbbbbbbbbbbbbbbb', 'cccccccccccccccc', false), null, 'just below the one over it');
     });
 });
+
+describe('text layers', () => {
+    const T = 'aaaaaaaaaaaaaaa7';
+    const style = { x: 400.4, y: 99.6, font: 'press-start', size: 40, color: '#1f9e90', align: 'center' };
+
+    it('is a new layer at the top holding one text, words and all editable', () => {
+        let body = d.addTextLayer(d.blankDrawing(), T, style, 5);
+        assert.equal(d.layersOf(body).at(-1).id, T);
+        assert.deepEqual(d.textOf(body, T), { layer: T, t: 5, text: '', font: 'press-start', size: 40, color: '#1f9e90', align: 'center', x: 400, y: 100 });
+        body = d.setText(body, T, { text: 'a horse\nof course', align: 'right' }, 6);
+        const back = d.readBody(d.writeBody(body));
+        assert.deepEqual([d.textOf(back, T).text, d.textOf(back, T).align, d.textOf(back, T).t], ['a horse\nof course', 'right', 6]);
+        assert.equal(d.setText(body, T, { text: 'tab\there' }, 7), body, 'words the body cannot keep change nothing');
+        assert.equal(d.setText(body, T, { size: 401 }, 7), body);
+        assert.equal(d.setText(body, d.BASE_LAYER, { text: 'x' }, 7), body, 'only a text layer takes words');
+    });
+
+    it('paints its words first, so every grab and transform after carries them', () => {
+        let body = d.addTextLayer(d.blankDrawing(), T, style, 5);
+        body = d.setText(body, T, { text: 'hi' }, 6);
+        body = d.addStroke(body, { id: 'd000000000000001', t: 7, layer: T, tool: 'move', dx: 10, dy: 0 });
+        const ops = d.effectiveOps(body, T);
+        assert.deepEqual([ops[0].tool, ops[0].text, d.offsetsOf(ops).each[0]], ['text', 'hi', [10, 0]]);
+        body = d.setText(body, T, { text: 'hello' }, 8);
+        assert.deepEqual(d.offsetsOf(d.effectiveOps(body, T)).each[0], [10, 0], 'edited after the grab, still grabbed');
+    });
+
+    it('is copied with its layer, and gone with it', () => {
+        let body = d.setText(d.addTextLayer(d.blankDrawing(), T, style, 5), T, { text: 'hi' }, 6);
+        body = d.duplicateLayer(body, T, 'aaaaaaaaaaaaaaa8', 'c000000000000001', 7);
+        assert.equal(d.textOf(body, 'aaaaaaaaaaaaaaa8').text, 'hi');
+        assert.equal(d.effectiveOps(body, 'aaaaaaaaaaaaaaa8').filter((o) => o.tool === 'text').length, 1, 'painted once - its own, not the copied one too');
+        body = d.deleteLayer(body, T, 'c000000000000002', 8);
+        assert.equal(d.textOf(body, T), null);
+    });
+});

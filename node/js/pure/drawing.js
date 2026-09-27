@@ -34,7 +34,7 @@ export const BODY_VERSION = 1;
 
 /// A drawing with nothing on it.
 export function blankDrawing() {
-    return { v: BODY_VERSION, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, background: BACKGROUND, layers: [], strokes: [], undone: [] };
+    return { v: BODY_VERSION, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, background: BACKGROUND, layers: [], texts: [], strokes: [], undone: [] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -191,6 +191,7 @@ export function readBody(raw) {
         if (!held || layerWins(layer, held)) byId.set(layer.id, layer);
     }
     const layers = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const texts = foldTexts(Array.isArray(parsed.texts) ? parsed.texts.map(asText).filter(Boolean) : []);
     const undone = [...new Set(Array.isArray(parsed.undone) ? parsed.undone.filter((id) => typeof id === 'string' && HEX16.test(id)) : [])];
     const gone = new Set(undone);
     const seen = new Set();
@@ -209,6 +210,7 @@ export function readBody(raw) {
         height: dimension(parsed.height, CANVAS_HEIGHT),
         background: typeof parsed.background === 'string' && COLOUR.test(parsed.background) ? parsed.background : BACKGROUND,
         layers,
+        texts,
         strokes,
         undone,
     };
@@ -408,6 +410,7 @@ export function mergeBodies(...bodies) {
         height: canvas.height,
         background: canvas.background,
         layers: [...layers.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+        texts: foldTexts(read.flatMap((b) => b.texts)),
         strokes: [...strokes.values()].sort(strokeOrder),
         undone: [...undone].sort(),
     };
@@ -425,6 +428,8 @@ export function writeBody(body) {
         height: b.height,
         background: b.background,
         ...(b.layers.length ? { layers: b.layers } : {}),
+        // `texts` likewise: a drawing with no text layer is the bytes it always was.
+        ...(b.texts.length ? { texts: b.texts } : {}),
         strokes: b.strokes, // readBody already made each one exactly its fields, in order
         undone: [...b.undone].sort(),
     });
@@ -636,6 +641,9 @@ export function duplicateLayer(drawing, sourceId, newLayerId, entryId, now) {
     let out = addLayer(drawing, newLayerId, now);
     const name = source.name ? { name: source.name } : {};
     out = setLayer(out, newLayerId, { opacity: source.opacity, hidden: source.hidden, ...name }, now);
+    // A text layer's copy is a text layer, its words its own from here on.
+    const text = textOf(drawing, sourceId);
+    if (text) out = upsertText(out, { ...text, layer: newLayerId, t: now });
     const order = layersOf(out).filter((l) => l.id !== newLayerId);
     out = moveLayer(out, newLayerId, order.findIndex((l) => l.id === sourceId) + 1, now);
     return addStroke(out, { id: entryId, t: now, layer: newLayerId, tool: 'copy', from: sourceId });
@@ -647,6 +655,11 @@ export function duplicateLayer(drawing, sourceId, newLayerId, entryId, now) {
 /// (`offsetsOf`) apply to them as to strokes.
 export function effectiveOps(drawing, layerId, before = null) {
     const out = layerId === BASE_LAYER ? [{ tool: 'fill' }] : [];
+    // A text layer's words are its first step, as the base layer's white is - so every grab and
+    // transform on the layer carries them, and editing them keeps every one. Not in a copy's
+    // expansion: a copy of a text layer has words of its own (`duplicateLayer`).
+    const text = before ? null : textOf(drawing, layerId);
+    if (text) out.push({ tool: 'text', ...text });
     // Every crop cuts every layer: they join each layer's own entries, in the one order.
     const own = drawing.strokes.filter((s) => s.tool === 'crop' || (s.layer || BASE_LAYER) === layerId);
     for (const op of own) {
@@ -778,4 +791,108 @@ export function cropEntry(drawing, box, { id, t }) {
     if (l >= r || top >= b) return null;
     if (l === 0 && top === 0 && r === w && b === h) return null;
     return { id, t, tool: 'crop', points: [l, top, r, b] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Text layers (Curtis, 2026-09-27): a layer holding ONE text - its words, font, size, colour,
+// alignment and where it is anchored - and nothing else; every other drawing tool stands aside
+// while one is current. Grabs, transforms and crops apply to it as to any layer.
+//
+// The text is not an entry but a record in the body's `texts`, one per layer, merged as layer
+// entries are: the later change wins, whole. Not on the layer entry itself, because a layer entry
+// changes whenever the stack is reordered, and a reorder on one computer would otherwise throw away
+// words typed on another. Two computers editing one text at the same moment: the later wins, and
+// the other's words are gone - the one lossy merge in a drawing, chosen over merging text
+// character by character, which would bring text conflicts into a picture.
+//
+// A text: { layer, t, text, font, size, color, align, x, y } - `(x, y)` is where its first line's
+// top meets its alignment (the left end, the middle or the right end), in canvas units.
+
+/// The longest a text can be, in UTF-8 bytes.
+export const MAX_TEXT_BYTES = 4000;
+export const MIN_TEXT_SIZE = 4;
+export const MAX_TEXT_SIZE = 400;
+export const TEXT_ALIGNS = ['left', 'center', 'right'];
+/// A font as a text stores it: a token from the Marquee font list (`FONTS`, from the Marquee
+/// renderer - `sans`, `press-start`, `orbitron`, ...), which is all the page offers. Checked here
+/// only for a token's shape, so the body never changes when the list does: a token the page does
+/// not know paints in the default, as Marquee itself degrades an unknown font.
+const FONT_NAME = /^[a-z0-9-]{1,40}$/;
+export const DEFAULT_FONT = 'sans';
+
+/// Can this be a text's words? At most MAX_TEXT_BYTES; no control characters but the line break
+/// (the same reason as a layer's name: JSON writers disagree about escaping the rest), and no lone
+/// surrogate. Empty is allowed - a text layer just made has no words yet.
+export function isTextContent(text) {
+    if (typeof text !== 'string') return false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        if ((c < 0x20 && c !== 0x0a) || c === 0x7f) return false;
+    }
+    try {
+        encodeURIComponent(text);
+    } catch {
+        return false;
+    }
+    return new TextEncoder().encode(text).length <= MAX_TEXT_BYTES;
+}
+
+/// A text record as the body keeps it, or null.
+function asText(x) {
+    if (!x || typeof x !== 'object') return null;
+    if (typeof x.layer !== 'string' || !HEX16.test(x.layer) || x.layer === BASE_LAYER) return null;
+    if (!Number.isSafeInteger(x.t) || x.t < 0) return null;
+    if (!isTextContent(x.text)) return null;
+    if (typeof x.font !== 'string' || !FONT_NAME.test(x.font)) return null;
+    if (!Number.isSafeInteger(x.size) || x.size < MIN_TEXT_SIZE || x.size > MAX_TEXT_SIZE) return null;
+    if (typeof x.color !== 'string' || !COLOUR.test(x.color)) return null;
+    if (!TEXT_ALIGNS.includes(x.align)) return null;
+    if (!Number.isSafeInteger(x.x) || !Number.isSafeInteger(x.y)) return null;
+    return { layer: x.layer, t: x.t, text: x.text, font: x.font, size: x.size, color: x.color, align: x.align, x: x.x, y: x.y };
+}
+
+/// Of two records for one layer's text, does `a` win? The later change; on a tie, any fixed order
+/// both languages share - the numbers, then the strings by their UTF-8 bytes.
+function textWins(a, b) {
+    for (const k of ['t', 'size', 'x', 'y']) if (a[k] !== b[k]) return a[k] > b[k];
+    for (const k of ['text', 'font', 'color', 'align']) {
+        const c = compareUtf8(a[k], b[k]);
+        if (c !== 0) return c > 0;
+    }
+    return false;
+}
+
+function foldTexts(records) {
+    const byLayer = new Map();
+    for (const r of records) {
+        const held = byLayer.get(r.layer);
+        if (!held || textWins(r, held)) byLayer.set(r.layer, r);
+    }
+    return [...byLayer.values()].sort((a, b) => (a.layer < b.layer ? -1 : a.layer > b.layer ? 1 : 0));
+}
+
+function upsertText(drawing, record) {
+    return { ...drawing, texts: [...(drawing.texts || []).filter((r) => r.layer !== record.layer), record] };
+}
+
+/// A layer's text, or null when it is not a text layer (or has been thrown away).
+export function textOf(drawing, layerId) {
+    const record = (drawing.texts || []).find((r) => r.layer === layerId);
+    if (!record || deletedLayers(drawing).has(layerId)) return null;
+    return record;
+}
+
+/// A new text layer at the top of the stack, its text anchored at (x, y) with no words yet.
+export function addTextLayer(drawing, layerId, { x, y, font, size, color, align }, now) {
+    const out = addLayer(drawing, layerId, now);
+    return upsertText(out, { layer: layerId, t: now, text: '', font, size, color, align, x: Math.round(x), y: Math.round(y) });
+}
+
+/// Change a text layer's words, font, size, colour or alignment. A change the body could not keep
+/// (words too long, a control character, a size out of range) changes nothing.
+export function setText(drawing, layerId, change, now) {
+    const held = textOf(drawing, layerId);
+    if (!held) return drawing;
+    const next = asText({ ...held, ...change, t: now });
+    return next ? upsertText(drawing, next) : drawing;
 }

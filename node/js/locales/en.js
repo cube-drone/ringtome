@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1046 phrases across 71 files.
+// 1056 phrases across 71 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -393,24 +393,34 @@ export default {
     // --- node/js/doc/drawing.js ---
     'doc.drawing.layer-n': 'layer {n}',
     'doc.drawing.layer-name': 'layer name',
+    'doc.drawing.align-left': 'align left',
+    'doc.drawing.align-center': 'centre',
+    'doc.drawing.align-right': 'align right',
     'doc.drawing.brush': 'brush',
     'doc.drawing.eraser': 'eraser',
     'doc.drawing.line': 'line',
     'doc.drawing.rectangle': 'rectangle',
     'doc.drawing.ellipse': 'ellipse',
     'doc.drawing.bucket': 'paint bucket - hold to pour',
-    'doc.drawing.crop-tool': 'crop - drag the box, then crop',
+    'doc.drawing.text-tool': 'text - click the drawing to place it',
     'doc.drawing.transform': 'transform the layer - corners slant, edges stretch, inside moves, outside turns; hold shift to keep it even',
     'doc.drawing.grab': 'grab - move the whole layer',
+    'doc.drawing.crop-tool': 'crop - drag the box, then crop',
     'doc.drawing.eraser-size': 'eraser size',
     'doc.drawing.line-width': 'line width',
     'doc.drawing.brush-size': 'brush size',
     'doc.drawing.tools': 'tools',
-    'doc.drawing.pour-speed': 'pour speed',
-    'doc.drawing.crop': 'crop',
-    'doc.drawing.colour': 'colour',
     'doc.drawing.add-an-image': 'add an image',
     'doc.drawing.undo': 'undo',
+    'doc.drawing.pour-speed': 'pour speed',
+    'doc.drawing.type-here': 'type here',
+    'doc.drawing.words': 'words',
+    'doc.drawing.click-to-place-text': 'click the drawing to place text',
+    'doc.drawing.font': 'font',
+    'doc.drawing.text-size': 'text size',
+    'doc.drawing.alignment': 'alignment',
+    'doc.drawing.crop': 'crop',
+    'doc.drawing.colour': 'colour',
     'doc.drawing.strokes': '{count} strokes',
     'doc.drawing.layers-and-map': 'layers & map',
     'doc.drawing.new-layer': 'new layer',

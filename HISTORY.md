@@ -11323,3 +11323,21 @@ pointer (its top half) or below it (its bottom half), and no line where the drop
 nothing - on itself, or beside itself on the side it already sits. `dropIndex` (pure/drawing.js)
 decides both the line and the move, so what the line promises is what the drop does; two tests
 (red with the no-change case planted away).
+
+## 2026-09-27 (cont.): text layers
+
+Curtis asked for text while saving "the worst for last", and for pushback if it was a rat's nest.
+The nest was two things declined: an editable box living inside the canvas, and text merged
+character by character. What was built: one text per layer, typed in the tools column beside the
+Marquee font list (`FONTS`, the four standard stacks and the node's 31 self-hosted faces), size,
+alignment and colour; a click with the text tool places a new text layer; the tools a text layer
+cannot take are greyed out (it takes text, transform, grab and crop). The words are the layer's
+first step, so grabs and transforms carry them and an edit keeps every one. The text is a record in
+a new `texts` array, one per layer, the later change winning whole - kept off the layer entry,
+because a reorder rewrites layer entries and would otherwise lose words typed elsewhere; the one
+lossy merge is two computers editing one text at once. Faces load lazily and a canvas does not
+wait, so the page asks `document.fonts` for a drawing's faces and repaints on arrival, and pictures
+of the drawing wait for them. Text is not a pour's wall (glyphs are each machine's). Vector cases for
+a kept text (with a line break, a backslash and quotes), eight refused ones, the later record
+winning, a same-moment tie by UTF-8 bytes, and a reorder beside a text edit both standing (red with
+the node refusing line breaks); three model tests. Not yet typed in a browser.

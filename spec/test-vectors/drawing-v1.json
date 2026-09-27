@@ -1377,6 +1377,191 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f500000000000007\",\"t\":1,\"tool\":\"crop\",\"points\":[-5,-5,1,1]}],\"undone\":[]}"
     },
     {
+      "name": "a text keeps its words, font, size, colour, alignment and anchor, after the layers",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "layers": [
+          {
+            "id": "aaaaaaaaaaaaaaa2",
+            "n": 2,
+            "z": 1,
+            "opacity": 100,
+            "hidden": false,
+            "t": 5
+          }
+        ],
+        "texts": [
+          {
+            "y": 9,
+            "x": -4,
+            "align": "right",
+            "color": "#000000",
+            "size": 4,
+            "font": "sans",
+            "text": "",
+            "t": 3,
+            "layer": "aaaaaaaaaaaaaaa3",
+            "extra": 1
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 5,
+            "text": "Ströke 🐴\n\\ \"neigh\"",
+            "font": "press-start",
+            "size": 32,
+            "color": "#1f9e90",
+            "align": "center",
+            "x": 400,
+            "y": 120
+          }
+        ],
+        "strokes": [],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":5}],\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":5,\"text\":\"Ströke 🐴\\n\\\\ \\\"neigh\\\"\",\"font\":\"press-start\",\"size\":32,\"color\":\"#1f9e90\",\"align\":\"center\",\"x\":400,\"y\":120},{\"layer\":\"aaaaaaaaaaaaaaa3\",\"t\":3,\"text\":\"\",\"font\":\"sans\",\"size\":4,\"color\":\"#000000\",\"align\":\"right\",\"x\":-4,\"y\":9}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "a text that cannot be kept is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "texts": [
+          {
+            "layer": "aaaaaaaaaaaaaaa4",
+            "t": 1,
+            "text": "tab\there",
+            "font": "sans",
+            "size": 20,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa5",
+            "t": 1,
+            "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "font": "sans",
+            "size": 20,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa6",
+            "t": 1,
+            "text": "hi",
+            "font": "Orbitron",
+            "size": 20,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa7",
+            "t": 1,
+            "text": "hi",
+            "font": "sans",
+            "size": 3,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa8",
+            "t": 1,
+            "text": "hi",
+            "font": "sans",
+            "size": 20,
+            "color": "#000000",
+            "align": "justify",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "0000000000000000",
+            "t": 1,
+            "text": "hi",
+            "font": "sans",
+            "size": 20,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa9",
+            "t": 1,
+            "text": "hi",
+            "font": "sans",
+            "size": 20,
+            "color": "#000000",
+            "align": "left",
+            "x": 0.5,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaab",
+            "t": 1,
+            "text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+            "font": "sans",
+            "size": 400,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          }
+        ],
+        "strokes": [],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaab\",\"t\":1,\"text\":\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"font\":\"sans\",\"size\":400,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "two records for one text in one body: the later wins, whole",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "texts": [
+          {
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 9,
+            "text": "later",
+            "font": "sans",
+            "size": 20,
+            "color": "#000000",
+            "align": "left",
+            "x": 0,
+            "y": 0
+          },
+          {
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 8,
+            "text": "earlier",
+            "font": "orbitron",
+            "size": 90,
+            "color": "#ffffff",
+            "align": "right",
+            "x": 5,
+            "y": 5
+          }
+        ],
+        "strokes": [],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":9,\"text\":\"later\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
@@ -1510,6 +1695,22 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f400000000000002\",\"t\":5,\"tool\":\"transform\",\"m\":[2000000,0,0,2000000,0,0]}],\"undone\":[]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f400000000000001\",\"t\":5,\"tool\":\"transform\",\"m\":[0,1000000,-1000000,0,0,0]},{\"id\":\"f400000000000002\",\"t\":5,\"tool\":\"transform\",\"m\":[2000000,0,0,2000000,0,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "two computers editing one text at the same moment: the tie breaks by UTF-8 bytes",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":20,\"text\":\"～\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":20,\"text\":\"🐴\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":20,\"text\":\"🐴\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "a reorder on one computer and a text edit on another both stand",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":5,\"opacity\":100,\"hidden\":false,\"t\":30}],\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":10,\"text\":\"old words\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":10}],\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":25,\"text\":\"new words\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":5,\"opacity\":100,\"hidden\":false,\"t\":30}],\"texts\":[{\"layer\":\"aaaaaaaaaaaaaaa2\",\"t\":25,\"text\":\"new words\",\"font\":\"sans\",\"size\":20,\"color\":\"#000000\",\"align\":\"left\",\"x\":0,\"y\":0}],\"strokes\":[],\"undone\":[]}"
     },
     {
       "name": "an unreadable head adds nothing",
