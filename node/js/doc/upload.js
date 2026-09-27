@@ -28,6 +28,8 @@ import { Icons } from '../icons.js';
 // our-encoder bytes - AV1-in-WebM (happy lane) or 320p APNG + Ogg Opus (universal fallback).
 import { ingestVideo } from '../../../video-ingest/src/index.js';
 import { bodyUrlFor, crushedReference } from '../pure/mediakind.js';
+import { caretThroughSwap } from '../pure/caret.js';
+import { FILES_BUCKET } from '../pure/apps.js';
 
 const html = htm.bind(h);
 
@@ -434,6 +436,10 @@ export function useUploadCapture({
     touched,
     cursorPos,
     onRefused,
+    // Where the host's caret should go, `(at, { focus })` (Curtis, 2026-09-27): right after what
+    // went in - the placeholder, then the image it becomes - and back into the text, focused,
+    // once the upload window closes. Optional.
+    placeCursor,
 }) {
     const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
     const filePickRef = useRef(null);
@@ -475,13 +481,20 @@ export function useUploadCapture({
         const pos = Math.min(at == null ? bodyNow.current.length : at, bodyNow.current.length);
         setBody(bodyNow.current.slice(0, pos) + tokens.join('\n') + bodyNow.current.slice(pos));
         touched();
+        // The caret after the placeholders: where the images will be, and where typing goes on.
+        if (placeCursor) placeCursor(pos + tokens.join('\n').length);
         setUploadFiles(files);
     };
     const swapToken = (i, replacement) => {
         const tok = uploadTokens.current[i];
         if (!tok || !bodyNow.current.includes(tok)) return; // deleted by hand: their call
+        const at = bodyNow.current.indexOf(tok);
         setBody(bodyNow.current.replace(tok, replacement));
         touched();
+        // The caret keeps its place through the swap: after the placeholder, it is after the
+        // image; further on, it moves by the difference; before it, it stays.
+        const caret = cursorPos ? cursorPos() : null;
+        if (placeCursor && caret != null && caret > at) placeCursor(caretThroughSwap(caret, at, tok.length, replacement.length));
     };
     const onUploaded = (i, file, uploadedId, name) => {
         const reference = mediaReference({
@@ -586,7 +599,12 @@ export function useUploadCapture({
             onUploaded=${onUploaded}
             onFailed=${onUploadFailed}
             onIngested=${onIngested}
-            onClose=${() => setUploadFiles(null)}
+            onClose=${() => {
+                setUploadFiles(null);
+                // Back to the text, where the caret was left - after the image.
+                const caret = cursorPos ? cursorPos() : null;
+                if (placeCursor && caret != null) placeCursor(caret, { focus: true });
+            }}
         />`}
     `;
     return {
@@ -598,9 +616,10 @@ export function useUploadCapture({
     };
 }
 
-/// The notebook a file dropped on hrseFiles lands in (Curtis, 2026-09-27). A bucket is only a
-/// name on the document, so it needs no setting up: it exists once something is in it.
-export const FILES_BUCKET = 'files';
+/// The notebook a file dropped on hrseFiles lands in (Curtis, 2026-09-27), kept beside the reserved
+/// names (pure/apps.js). A bucket is only a name on the document, so it needs no setting up: it
+/// exists once something is in it.
+export { FILES_BUCKET };
 
 /// hrseFiles's empty page (Curtis, 2026-09-27): a big file dropper - "drag a file here, or [upload
 /// a file]" in a chunky dotted frame - in place of "pick something on the left". The usual upload

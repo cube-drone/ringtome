@@ -35,7 +35,7 @@ import { useDocSession } from './session.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
-import { useUploadCapture } from './upload.js';
+import { useUploadCapture, FILES_BUCKET } from './upload.js';
 import { stripSelfOrigin } from '../pure/portable.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
@@ -77,7 +77,7 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, book }) => {
+export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, book, uploadBucket = FILES_BUCKET }) => {
     const feat = features || featuresOf();
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
@@ -176,6 +176,15 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         uploadNoteTimer.current = setTimeout(() => setUploadNote(null), 8000);
     };
 
+
+    // A caret asked for from outside the text - an upload's (doc/upload.js placeCursor): noted for
+    // this document, then set on whichever surface is showing, focused only when asked.
+    const [caret, setCaret] = useState(null); // { at, focus, seq }
+    const placeCursor = (at, { focus = false } = {}) => {
+        rememberCursor(root, docId, at, at);
+        setCaret((c) => ({ at, focus, seq: (c ? c.seq : 0) + 1 }));
+    };
+
     const {
         catchDrop,
         allowFileDrag,
@@ -183,8 +192,15 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         pickFiles,
         extras: uploadExtras,
     } = useUploadCapture({
+        placeCursor,
         root,
-        bucket,
+        // A file put into a note lives in "files" (Curtis, 2026-09-27), not in the note's notebook:
+        // it is found in hrseFiles and the image picker, and the notebook holds pages. Publishing
+        // never needed it there - a post, or a book page by page, carries the media its body
+        // EMBEDS, wherever that is filed (record/bake.rs media_refs; books.rs takes a notebook's
+        // pages by membership and leaves its media to ride with them). A host with a home of its
+        // own for uploads says so (the feed composer: `feed`).
+        bucket: uploadBucket,
         format,
         body,
         setBody,
@@ -272,6 +288,17 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         ta.focus();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, loaded && docId]);
+
+    // The textarea surfaces take an asked-for caret too (the interactive one takes it as `caret`).
+    useEffect(() => {
+        if (!caret || (mode !== 'plain' && mode !== 'side')) return;
+        const ta = sourceRef.current;
+        if (!ta) return;
+        const at = Math.min(caret.at, ta.value.length);
+        ta.setSelectionRange(at, at);
+        if (caret.focus) ta.focus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [caret && caret.seq]);
 
     if (status === 'opening' && !loaded) {
         return html`<div class="reader"><p class="null-sub">opening…</p></div>`;
@@ -405,6 +432,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     mentionSource,
                 ]}
                 initialSelection=${recallCursor(root, docId)}
+                caret=${caret}
                 onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
                 onInput=${(text) => {
                     setBody(text);

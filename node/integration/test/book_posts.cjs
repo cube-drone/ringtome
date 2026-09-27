@@ -20,7 +20,7 @@ const base58 = async (host) => {
 describe("books: a notebook rolls out as one book", function () {
     this.timeout(600000);
 
-    let ada, adaRoot, pages = {}, book, hiddenId, bea, beaRoot;
+    let ada, adaRoot, pages = {}, book, hiddenId, bea, beaRoot, filedPic;
     const bucket = "grimoire";
     const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
@@ -33,8 +33,16 @@ describe("books: a notebook rolls out as one book", function () {
             await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/${bucket}`, { method: "PUT" });
             return d.doc_id;
         };
+        // A picture uploaded into a note lives in "files", not the notebook (Curtis,
+        // 2026-09-27) - and must still publish with the page that embeds it.
+        filedPic = (await (await ada(`api/identity/${adaRoot}/docs/binary?title=frontispiece`, { method: "POST", body: makePng(24, 24), file: true })).json()).doc_id;
+        await ada(`api/identity/${adaRoot}/docs/${filedPic}/buckets/files`, { method: "PUT" });
+        for (let i = 0; i < 60; i++) {
+            if ((await ada(`api/identity/${adaRoot}/docs/${filedPic}/body`)).status === 200) break;
+            await new Promise((r) => setTimeout(r, 300));
+        }
         pages.one = await mk("chapter one", "the first words");
-        pages.two = await mk("chapter two", "the second words");
+        pages.two = await mk("chapter two", `the second words\n\n![frontispiece](/api/identity/${adaRoot}/docs/${filedPic}/body/frontispiece.png)\n`);
         pages.loose = await mk("a loose page", "unfiled words");
         // Tags on two pages: the book's labels are their union (ruling 11).
         await ada(`api/identity/${adaRoot}/docs/${pages.one}/annotations/tags/alpha`, { method: "PUT" });
@@ -134,6 +142,16 @@ describe("books: a notebook rolls out as one book", function () {
         assert.ok(one.fields.published_as, "and the page knows its post");
         const secret = docs.find((d) => d.doc_id === hiddenId);
         assert.ok(!secret.fields.published_as, "the hidden page never published");
+    });
+
+    it("a picture filed only in files rides with the page that embeds it", async () => {
+        const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
+        assert.deepEqual(docs.find((d) => d.doc_id === filedPic).buckets, ["files"], "the picture is not in the notebook");
+        const two = docs.find((d) => d.doc_id === pages.two);
+        const head = await (await ada(`api/id/${adaRoot}/posts/${two.fields.published_as}`)).json();
+        const twin = (head.refs || [])[0];
+        assert.ok(twin, `the page's header names its picture's public twin: ${JSON.stringify(head.refs)}`);
+        assert.equal((await ada(`id/${adaRoot}/docs/${twin}/body`)).status, 200, "and the twin serves");
     });
 
     it("a follower's feed shows one book post and no pages", async function () {

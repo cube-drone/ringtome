@@ -274,6 +274,8 @@ const KNOWN_STYLES = new Set(docApps.map((a) => a.style));
 /// offered as a notebook anywhere - no switcher, no copy-into - whatever the registry says, and
 /// their documents are found, and opened, in hrseFiles: chat opens rooms, not files.
 export const RESERVED_BUCKETS = new Set(['chat', 'files']);
+/// The notebook uploads live in: what hrseFiles's dropper files, and every file put into a note.
+export const FILES_BUCKET = 'files';
 /// The app-type a reserved bucket resolves to: no app's style, so no app's switcher lists it.
 export const RESERVED_STYLE = 'reserved';
 

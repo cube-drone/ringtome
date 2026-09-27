@@ -11552,3 +11552,31 @@ switchers show them. A new `notebook` icon role.
 In the picker's notebook row, "files" now always comes second, straight after "every notebook" -
 where uploads land, so the first place to look - even before anything is in it, and wears a disk
 (Phosphor's FloppyDisk, the `filesBucket` role) rather than a book (Curtis).
+
+## 2026-09-27 (cont.): a note's uploads live in files
+
+A file put into a note in hrseWriter™ - by the upload chip, a drop or a paste - now files into the
+**files** notebook rather than the note's own (Curtis), so the notebooks hold pages and the files are
+found in hrseFiles and the image picker. The editor takes an `uploadBucket` (files by default); the
+feed composer passes its own `feed`, unchanged. Curtis's condition - still published with the book
+when the book is - needed no server change, and now has a claim: publishing carries the media a
+page's body EMBEDS, wherever it is filed (record/bake.rs `media_refs` walks the embeds; a book is
+each page through the same bake, books.rs taking a notebook's pages by membership and deliberately
+not its media). book_posts.cjs's notebook now has a picture filed only in files, embedded by
+chapter two, and a claim that the rolled-out chapter's header names its twin and the twin serves.
+
+## 2026-09-27 (cont.): the caret lands after the image
+
+Inserting a file into a note left the caret wherever the whole-document swap put it (Curtis: it
+should land right after the image). Two changes. The live editor now takes an outside change to its
+body - the upload's placeholder, its swap for the reference, a reload - as the SMALLEST edit that
+makes it (`smallestChange`, the stretch between the shared start and end) rather than replacing
+everything, so CodeMirror carries the caret, scroll and undo through it. And the upload hook asks
+its host for the caret (`placeCursor`): after the placeholder when the upload starts, after the
+image when it lands (`caretThroughSwap`: before stays, inside or just after lands after, beyond
+moves by the difference), and back into the text, focused, when the upload window closes - never
+focused before then, so the window's rename field keeps its keys. Both the live editor and the
+source textarea take it. Two pure tests (pure/caret.js; red with the shared ends allowed to
+overlap). And since uploads now live in "files", the `!` media picker in a note offers files from
+there as well as from the note's own notebook - it would otherwise have stopped finding anything
+newly uploaded. Not yet tried in a browser.

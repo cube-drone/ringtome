@@ -99,6 +99,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
                 docId=${docId}
                 features=${featuresOf(feedApp)}
                 bucket=${FEED_STYLE}
+                uploadBucket=${FEED_STYLE}
                 onDeleted=${onDeleted}
                 foot=${({ save, status, body, title }) => {
                     const empty = !body.trim() && !title.trim();

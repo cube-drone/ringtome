@@ -15,6 +15,7 @@ import { mentionQuery, mentionShape, userCardSource, userSpanSource } from '../p
 import { slugPathFor } from './address.js';
 import { slugify, bucketHref, MEDIA_EXT } from '../pure/naming.js';
 import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
+import { FILES_BUCKET } from '../pure/apps.js';
 
 /// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
 /// both (the link and media pickers each carried their own and one drifted - the second copy
@@ -190,7 +191,9 @@ export function mediaCompletions(root, bucket) {
         const docs = await openMirror(root).docs.toArray();
         const options = docs
             .filter((d) => MEDIA_EXT[d.format])
-            .filter((d) => inBucket(d, bucket))
+            // The note's own notebook, and "files" - where every file put into a note now lives
+            // (Curtis, 2026-09-27).
+            .filter((d) => inBucket(d, bucket) || inBucket(d, FILES_BUCKET))
             .map((d) => {
                 const label = (d.title || 'untitled').replace(/[[\]()]/g, '') || 'untitled';
                 return {

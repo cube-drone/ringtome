@@ -18,6 +18,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin } from '../pure/portable.js';
 import { autocompletion } from '@codemirror/autocomplete';
 import { marquee } from '@cube-drone/marquee-codemirror';
+import { smallestChange } from '../pure/caret.js';
 
 const html = htm.bind(h);
 
@@ -42,6 +43,10 @@ export const LiveMarquee = ({
     // hidden (Curtis, 2026-09-18) - a drawn cursor sits where the measured text is, in every
     // browser.
     placeholder,
+    // A caret the host asks for: `{ at, focus, seq }` - put the caret at `at` (a new `seq` is a
+    // new ask), and focus the surface only when `focus` says so (Curtis, 2026-09-27: after an
+    // image goes in, the caret lands right after it). Optional.
+    caret,
 }) => {
     const host = useRef(null);
     const view = useRef(null);
@@ -127,14 +132,28 @@ export const LiveMarquee = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // A body changed from outside (an upload's placeholder, its swap for the reference, a
+    // reload) goes in as the smallest change - the stretch between what the two share at the
+    // start and at the end - so CodeMirror carries the caret, the scroll and the undo history
+    // through it, rather than replacing everything and losing where you were.
     useEffect(() => {
         const v = view.current;
-        if (v && body !== v.state.doc.toString()) {
-            syncing.current = true;
-            v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: body } });
-            syncing.current = false;
-        }
+        if (!v) return;
+        const was = v.state.doc.toString();
+        if (body === was) return;
+        syncing.current = true;
+        v.dispatch({ changes: smallestChange(was, body) });
+        syncing.current = false;
     }, [body]);
+
+    // After the body, so the caret lands in the text it names.
+    useEffect(() => {
+        const v = view.current;
+        if (!v || !caret) return;
+        const at = Math.min(caret.at, v.state.doc.length);
+        v.dispatch({ selection: { anchor: at }, scrollIntoView: true });
+        if (caret.focus) v.focus();
+    }, [caret && caret.seq]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // A new profile identity (freshly resolved turbolink cards) reconfigures the extension;
     // decorations rebuild against the same untouched source.
