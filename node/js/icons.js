@@ -37,6 +37,8 @@ import {
     DownloadSimple,
     Info,
     SlidersHorizontal,
+    Notebook,
+    FloppyDisk,
     Circle,
     Stack,
     Eraser,
@@ -261,6 +263,10 @@ export const Icons = {
     info: Info,
     // Application settings, in your settings (persona.js).
     appSettings: SlidersHorizontal,
+    // A notebook (a bucket, a sketchbook), where one is named as a filter (doc/imagepick.js).
+    notebook: Notebook,
+    // ...and the files notebook, hrseFiles's, which is a disk rather than a book.
+    filesBucket: FloppyDisk,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

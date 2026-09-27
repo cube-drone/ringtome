@@ -597,3 +597,60 @@ export function useUploadCapture({
         extras,
     };
 }
+
+/// The notebook a file dropped on hrseFiles lands in (Curtis, 2026-09-27). A bucket is only a
+/// name on the document, so it needs no setting up: it exists once something is in it.
+export const FILES_BUCKET = 'files';
+
+/// hrseFiles's empty page (Curtis, 2026-09-27): a big file dropper - "drag a file here, or [upload
+/// a file]" in a chunky dotted frame - in place of "pick something on the left". The usual upload
+/// path, the same modal every surface uses: each file uploads, is processed, can be renamed and
+/// tagged, and files into FILES_BUCKET. A file that lands is not opened, because opening one takes
+/// this page - and the modal following the uploads - away.
+export const FileDropper = ({ root }) => {
+    const [files, setFiles] = useState(null); // File[] | null
+    const [over, setOver] = useState(false);
+    const pick = useRef(null);
+    const take = (list) => {
+        const chosen = Array.from(list || []);
+        if (chosen.length) setFiles(chosen);
+    };
+    const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+    return html`<div class="reader reader-empty">
+        <div
+            class=${over ? 'file-dropper over' : 'file-dropper'}
+            onDragEnter=${(e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                setOver(true);
+            }}
+            onDragOver=${(e) => hasFiles(e) && e.preventDefault()}
+            onDragLeave=${(e) => {
+                // Only when leaving the frame itself, not moving between its children.
+                if (!e.currentTarget.contains(e.relatedTarget)) setOver(false);
+            }}
+            onDrop=${(e) => {
+                e.preventDefault();
+                setOver(false);
+                take(e.dataTransfer && e.dataTransfer.files);
+            }}
+        >
+            <span class="file-dropper-icon"><${Icons.upload} /></span>
+            <p class="file-dropper-words">${t('doc.upload.drag-a-file-here-or', 'drag a file here, or')}</p>
+            <button class="file-dropper-upload" onClick=${() => pick.current && pick.current.click()}>
+                ${t('doc.upload.upload-a-file', 'upload a file')}
+            </button>
+            <input
+                type="file"
+                multiple
+                hidden
+                ref=${pick}
+                onChange=${(e) => {
+                    take(e.currentTarget.files);
+                    e.currentTarget.value = ''; // so picking the same file again re-fires
+                }}
+            />
+        </div>
+        ${files && html`<${UploadFlow} root=${root} bucket=${FILES_BUCKET} files=${files} onClose=${() => setFiles(null)} />`}
+    </div>`;
+};

@@ -22,7 +22,7 @@ import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
-import { appTypeOf, bucketsForApp, DEFAULT_STYLE } from './pure/apps.js';
+import { appTypeOf, bucketsForApp, DEFAULT_STYLE, RESERVED_BUCKETS } from './pure/apps.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
@@ -123,6 +123,11 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
     const create = async () => {
         const name = (prompt(`A name for the new ${app.bucketNoun}:`) || '').trim();
         if (!name) return;
+        // A reserved name would vanish from every switcher the moment it was made.
+        if (RESERVED_BUCKETS.has(name)) {
+            alert(t('buckets.name-is-reserved', '"{name}" is kept for another app - choose another name', { name }));
+            return;
+        }
         try {
             await api(`/api/identity/${root}/buckets`, {
                 method: 'POST',

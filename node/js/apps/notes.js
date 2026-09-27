@@ -458,6 +458,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 <${RightColumn}
                     root=${root}
                     docId=${selected}
+                    dropper=${!!app.everything}
                     docs=${docs}
                     nav=${nav}
                     bucket=${bucket}

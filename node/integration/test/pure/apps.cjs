@@ -89,6 +89,20 @@ describe('app registry', () => {
             ];
             assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE, 'dream-diary']);
         });
+
+        // Curtis, 2026-09-27: "chat" and "files" are reserved for those apps, and drawing
+        // notebooks and writing notebooks each show only in their own app.
+        it('never offers the reserved buckets as notebooks, even unregistered', () => {
+            const roster = [{ name: 'chat' }, { name: 'files', app: DEFAULT_STYLE }, { name: 'dream-diary' }];
+            assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE, 'dream-diary']);
+        });
+
+        it('gives drawing notebooks to Drawing alone, and writing notebooks to Writer alone', () => {
+            const roster = [{ name: 'horses', app: 'drawing' }, { name: 'dream-diary', app: DEFAULT_STYLE }, { name: 'chat' }];
+            assert.deepEqual(bucketsForApp(appById('drawing'), roster), ['drawing', 'horses']);
+            assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE, 'dream-diary']);
+            assert.ok(!appById('drawing').soleBucket, 'Drawing has a switcher');
+        });
     });
 
     describe('featuresOf', () => {
@@ -169,6 +183,8 @@ describe('app registry', () => {
             assert.equal(homeAppFor({ buckets: [] }, []).id, 'lost-found',
                 'nothing else holds a stray anymore');
             assert.equal(homeAppFor({}, []).id, 'lost-found');
+            assert.equal(homeAppFor({ buckets: ['chat'] }, []).id, 'lost-found', "a chat attachment is found in hrseFiles - chat opens rooms, not files");
+            assert.equal(homeAppFor({ buckets: ['files'] }, []).id, 'lost-found', 'a dropped file too');
             assert.equal(homeAppFor({ buckets: ['mystery'] }, []).id, 'notes',
                 'an unregistered bucket still resolves to the default type');
         });

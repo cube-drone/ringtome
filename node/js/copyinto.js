@@ -11,6 +11,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
+import { appTypeOf, DEFAULT_STYLE, RESERVED_BUCKETS } from './pure/apps.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { openMirror, useLive } from './mirror.js';
@@ -31,13 +32,22 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null); // { doc_id, bucket }
-    const names = [...new Set((roster || []).map((b) => b.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    // Writing notebooks only (Curtis, 2026-09-27): a drawing notebook is Drawing's, and chat and
+    // files are reserved for their apps - a copy is a note, and lands where notes live.
+    const names = [...new Set((roster || []).map((b) => b.name).filter(Boolean))]
+        .filter((n) => appTypeOf(n, roster) === DEFAULT_STYLE)
+        .sort((a, b) => a.localeCompare(b));
     // A book copies whole into a FRESH notebook (Curtis, 2026-09-08): no existing bucket
     // is offered, only a name for the new one.
     const book = source.format === 'book';
     const copy = async (bucket, isNew) => {
         const name = (bucket || '').trim();
         if (!name || busy) return;
+        // A reserved name is no notebook: a copy filed there could not be found from Writer.
+        if (RESERVED_BUCKETS.has(name)) {
+            setError(t('copyinto.name-is-reserved', '"{name}" is kept for another app - choose another name', { name }));
+            return;
+        }
         setBusy(true);
         setError(null);
         try {

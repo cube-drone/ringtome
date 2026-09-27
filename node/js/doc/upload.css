@@ -107,3 +107,57 @@
 .modal-ok:hover {
     background: var(--teal);
 }
+
+/* hrseFiles's empty page (doc/upload.js FileDropper): a big dotted drop frame, the upload button in
+   the middle of it. Lit teal while a file is dragged over it. */
+.file-dropper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: min(32rem, 100%);
+    min-height: 18rem;
+    margin: auto;
+    padding: 2rem;
+    box-sizing: border-box;
+    border: 5px dotted var(--border-strong);
+    color: var(--muted);
+    text-align: center;
+}
+
+.file-dropper.over {
+    border-color: var(--teal);
+    background: var(--field);
+    color: var(--sea);
+}
+
+.file-dropper-icon {
+    font-size: 3rem;
+    line-height: 1;
+}
+
+.file-dropper-words {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.file-dropper-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-size: 1rem;
+    padding: 0.5rem 1.1rem;
+    color: var(--dock-text);
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    cursor: pointer;
+}
+
+.file-dropper-upload:hover {
+    background: var(--teal-deep);
+}
+

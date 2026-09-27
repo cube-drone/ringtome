@@ -16,7 +16,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { useDocDetail } from './detail.js';
 import { Chip, NavChips } from './chips.js';
 import { MarqueeBody } from './marqueebody.js';
-import { decoratedBodyUrl } from './upload.js';
+import { decoratedBodyUrl, FileDropper } from './upload.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -220,8 +220,9 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
 // Exported: the wiki mounts this too, so a media page there opens the Reader, not a text editor.
-export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket, book }) => {
-    if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
+export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket, book, dropper = false }) => {
+    // Nothing open: hrseFiles offers a place to drop files (`dropper`); the rest say to pick one.
+    if (!docId) return dropper ? html`<${FileDropper} root=${root} />` : html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
     // A drawing opens on its canvas (DRAWING.md), wherever it is listed - the Drawing app, or Lost &

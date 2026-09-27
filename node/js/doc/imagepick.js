@@ -13,6 +13,8 @@ import { openMirror, useLive } from '../mirror.js';
 import { pickPictures } from '../pure/imagepick.js';
 import { togglePick } from '../pure/facets.js';
 import { t } from '../i18n.js';
+import { Icons } from '../icons.js';
+import { FILES_BUCKET } from './upload.js';
 
 const html = htm.bind(h);
 
@@ -26,7 +28,10 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
     const [bucket, setBucket] = useState('');
     const [tags, setTags] = useState([]);
     const [shown, setShown] = useState(PAGE);
-    const { pictures, tags: cloud, buckets } = pickPictures(docs || [], { query, bucket: bucket || null, tags, drawings });
+    const { pictures, tags: cloud, buckets: holding } = pickPictures(docs || [], { query, bucket: bucket || null, tags, drawings });
+    // "files" always second, after "every notebook" (Curtis, 2026-09-27) - where uploads land, so the
+    // first place to look - wearing a disk rather than a book; then the notebooks holding anything.
+    const buckets = [FILES_BUCKET, ...holding.filter((b) => b !== FILES_BUCKET)];
     const narrow = (fn) => (value) => {
         fn(value);
         setShown(PAGE);
@@ -43,16 +48,23 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                     aria-label=${t('doc.imagepick.search-titles', 'search titles')}
                     onInput=${(e) => narrow(setQuery)(e.currentTarget.value)}
                 />
-                <select
-                    class="imagepick-bucket"
-                    value=${bucket}
-                    aria-label=${t('doc.imagepick.notebook', 'notebook')}
-                    onChange=${(e) => narrow(setBucket)(e.currentTarget.value)}
-                >
-                    <option value="">${t('doc.imagepick.every-notebook', 'every notebook')}</option>
-                    ${buckets.map((b) => html`<option key=${b} value=${b}>${b}</option>`)}
-                </select>
             </div>
+            ${/* The notebooks - sketchbooks too, now that drawings have them (Curtis, 2026-09-27) -
+                as a row of their own above the tags: one at a time, or every one. */ ''}
+            ${buckets.length > 0 &&
+            html`<div class="imagepick-buckets" role="group" aria-label=${t('doc.imagepick.notebook', 'notebook')}>
+                <button
+                    class=${bucket ? 'imagepick-bucket' : 'imagepick-bucket active'}
+                    onClick=${() => narrow(setBucket)('')}
+                ><${Icons.notebook} /> ${t('doc.imagepick.every-notebook', 'every notebook')}</button>
+                ${buckets.map(
+                    (b) => html`<button
+                        key=${b}
+                        class=${bucket === b ? 'imagepick-bucket active' : 'imagepick-bucket'}
+                        onClick=${() => narrow(setBucket)(bucket === b ? '' : b)}
+                    ><${b === FILES_BUCKET ? Icons.filesBucket : Icons.notebook} /> ${b}</button>`
+                )}
+            </div>`}
             ${cloud.length > 0 &&
             html`<div class="imagepick-tags">
                 ${cloud.map(

@@ -540,8 +540,30 @@
     font: inherit;
 }
 
+/* The notebook row (above the tags): a chip per notebook, one chosen at a time. */
+.imagepick-buckets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
 .imagepick-bucket {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     font: inherit;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    padding: 0.15rem 0.55rem;
+    cursor: pointer;
+}
+
+.imagepick-bucket.active {
+    color: var(--dock-text);
+    background: var(--sea);
+    border-color: var(--sea);
 }
 
 .imagepick-tags {

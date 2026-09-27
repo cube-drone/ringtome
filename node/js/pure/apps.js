@@ -32,9 +32,9 @@ export const APPS = [
         icon: 'drawing',
         style: 'drawing',
         live: true,
-        // One bucket, its own: every drawing lives in `drawing`.
-        soleBucket: true,
-        bucketNoun: 'Drawings',
+        // Notebooks of drawings (Curtis, 2026-09-27): a switcher like Writer's, over the drawing-
+        // typed buckets only - `drawing` first - as Writer's is over the writing ones.
+        bucketNoun: 'Sketchbook',
         itemNoun: 'drawing',
         // What "+ new drawing" makes (notes.js, createNew): a blank drawing, not a Marquee page.
         newFormat: 'drawing',
@@ -269,10 +269,19 @@ export const appLabel = (app, personaName, device = false) =>
 /// Document apps only - a system app (Persona) has no style and names no bucket type.
 const KNOWN_STYLES = new Set(docApps.map((a) => a.style));
 
-/// The app-type of a bucket by name: its name IS a style (implicit), else its explicit registry
-/// mapping, else the default. `roster` is the streamed bucket registry (`{name, app}`), only
-/// needed for user-named buckets.
+/// Buckets that belong to apps with no notebooks of their own (Curtis, 2026-09-27: "reserved for
+/// those other apps"): chat's attachments, and what hrseFiles's dropper files. They are never
+/// offered as a notebook anywhere - no switcher, no copy-into - whatever the registry says, and
+/// their documents are found, and opened, in hrseFiles: chat opens rooms, not files.
+export const RESERVED_BUCKETS = new Set(['chat', 'files']);
+/// The app-type a reserved bucket resolves to: no app's style, so no app's switcher lists it.
+export const RESERVED_STYLE = 'reserved';
+
+/// The app-type of a bucket by name: reserved, else its name IS a style (implicit), else its
+/// explicit registry mapping, else the default. `roster` is the streamed bucket registry
+/// (`{name, app}`), only needed for user-named buckets.
 export function appTypeOf(bucketName, roster) {
+    if (RESERVED_BUCKETS.has(bucketName)) return RESERVED_STYLE;
     if (KNOWN_STYLES.has(bucketName)) return bucketName;
     const reg = (roster || []).find((b) => b.name === bucketName);
     if (reg && reg.app) return reg.app;
@@ -312,6 +321,7 @@ export function bucketHolds(doc, app, bucket) {
 /// (they all come via `appTypeOf`, which always returns a style), which is exactly why the trap
 /// would have waited for the one that eventually did. Found by this module's vectors, 2026-07-29.
 export const appForStyle = (style) =>
+    (style === RESERVED_STYLE ? appById('lost-found') : null) ||
     liveApps.find((a) => a.style && a.style === style) ||
     liveApps.find((a) => a.style === DEFAULT_STYLE);
 

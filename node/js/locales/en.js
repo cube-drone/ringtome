@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1073 phrases across 72 files.
+// 1077 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -261,6 +261,7 @@ export default {
     'auth.lost-your-password': 'lost your password?',
 
     // --- node/js/buckets.js ---
+    'buckets.name-is-reserved': '"{name}" is kept for another app - choose another name',
     'buckets.couldnt-create-it': "couldn't create it: {message}",
     'buckets.couldnt-delete-it': "couldn't delete it: {message}",
     'buckets.delete-this': 'Delete this {bucketNoun}…',
@@ -308,6 +309,7 @@ export default {
     'console.blurb-server': "this server's settings: who may sign up, and its backups",
 
     // --- node/js/copyinto.js ---
+    'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',
     'copyinto.copy-into-private-notes': 'copy into private notes',
     'copyinto.copied-into': 'copied into {bucket}',
     'copyinto.open-the-copy': 'open the copy',
@@ -574,6 +576,8 @@ export default {
 
     // --- node/js/doc/upload.js ---
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
+    'doc.upload.drag-a-file-here-or': 'drag a file here, or',
+    'doc.upload.upload-a-file': 'upload a file',
 
     // --- node/js/doc/usercard.js ---
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',

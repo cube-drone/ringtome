@@ -11515,3 +11515,40 @@ In the image picker a drawing sat small in the top-left of a big checkered tile 
 thumbnail is `DrawingThumb`, made for a list row, and the row's `.note-row-thumb.drawing-thumb` size
 (64 x 48) outranked the picker's `.imagepick-thumb img`. A picker rule for `.drawing-thumb` now fills
 the tile, with the tile's own checkerboard and no border - rendered beside a picture tile to check.
+
+## 2026-09-27 (cont.): hrseFiles opens on a file dropper
+
+With nothing open, hrseFiles no longer says "pick something on the left, or make something new."
+(Curtis); it shows a big file dropper - a chunky dotted frame round "drag a file here, or" and an
+**upload a file** button in the middle, which opens the file chooser - lit teal while a file is
+dragged over it. Both doors hand the files to the upload modal every surface already uses
+(`UploadFlow`: upload, processing, rename, tags), filing them into the **files** notebook - a bucket
+being only a name on the document, it exists once the first file lands, and opens in hrseWriter™ as
+any unregistered name does. A landed file is not opened: opening one would take the dropper, and
+the modal following the uploads, away mid-flight. `FileDropper` (doc/upload.js), shown by
+`RightColumn` only for the everything-app (`dropper`); the other apps keep their words. Checked by
+eye; not yet dropped on in a browser.
+
+## 2026-09-27 (cont.): reserved buckets, and sketchbooks
+
+Writer's notebook switcher listed "chat" and "files" (Curtis: "kind of reserved for those other
+apps"). Neither name is an app's style and neither was registered, so both fell through to Writer.
+They are now RESERVED_BUCKETS (pure/apps.js): they resolve to a `reserved` type no switcher lists,
+whatever the registry says; their documents - chat's attachments, the dropper's files - are homed in
+hrseFiles, since chat opens rooms rather than files; and a new notebook may not take either name.
+And the Drawing app has a switcher now (Curtis: drawing and writing notebooks each only in their own
+app): `soleBucket` came off, so it pages through the drawing-typed buckets as Writer does the
+writing ones - which the bucket-type rule already kept apart - a new one is typed `drawing`, and one
+is a **Sketchbook** (`bucketNoun`, which had read "New Drawings" in a switcher). Copy-into-a-notebook
+now offers writing notebooks only. Three registry tests (red before the change); not yet switched in
+a browser.
+
+The image picker's notebook filter was a small "every notebook" dropdown beside its search; with
+sketchbooks it earned a row of its own above the tags (Curtis): a chip per notebook holding anything
+pickable - Phosphor's notebook glyph, sea green when chosen, so it reads apart from the teal tags -
+"every notebook" first, one at a time, a second click clearing it. Names shown raw, as the
+switchers show them. A new `notebook` icon role.
+
+In the picker's notebook row, "files" now always comes second, straight after "every notebook" -
+where uploads land, so the first place to look - even before anything is in it, and wears a disk
+(Phosphor's FloppyDisk, the `filesBucket` role) rather than a book (Curtis).
