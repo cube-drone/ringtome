@@ -79,6 +79,9 @@ import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
 import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox, dragBox } from '../pure/transform.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
+import { FILES_BUCKET } from '../pure/apps.js';
+import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
+import { openMirror } from '../mirror.js';
 
 const html = htm.bind(h);
 
@@ -152,23 +155,43 @@ function holdPicture(root, doc, img) {
     pictures.set(`${root}/${doc}`, { img, ready: true, promise: Promise.resolve() });
 }
 
+/// The flat copies this page has made, by `root/drawing/version` - found at once, before their
+/// annotations have come back through the mirror.
+const flatCopies = new Map();
+
 /// Copy a drawing into another as a picture (Curtis, 2026-09-27: "it would copy them in as a single
 /// flat layer"): the chosen drawing flattened, as it stands - its own pictures and fonts waited for -
 /// and saved as a new picture in the person's media, titled for it; the returned picture is placed
 /// like any other. A COPY, never a link: a drawing that painted other drawings live would repaint
 /// whatever they had since become, and a chain of them could loop - a snapshot is one more picture,
-/// merged like any. Returns `{ doc, width, height, title }` for `addImage`.
+/// merged like any. Returns `{ doc, width, height, title }` for `addImage` - and the copy is a
+/// still picture, filed in "files" (an embed, doc/pickref.js, spells it as one).
 export async function drawingAsPicture(root, sourceId) {
     const detail = await api(`/api/identity/${root}/docs/${sourceId}`);
     if (detail.body == null) throw new Error(t('doc.drawing.not-here-yet', 'that drawing has not reached this computer yet - try again in a moment'));
     const source = readBody(detail.body);
     const [width, height] = sizeOf(source);
+    // Cut once per version (pure/flatcopy.js): an unchanged drawing hands back the copy it already
+    // has - found through its annotations, or made moments ago on this page and not yet echoed back.
+    const version = flatVersion(detail);
+    const madeKey = `${root}/${sourceId}/${version}`;
+    const held = findFlatCopy(await openMirror(root).docs.toArray(), sourceId, version);
+    if (held) return { doc: held.doc_id, width, height, title: held.title || detail.title || '' };
+    if (flatCopies.has(madeKey)) return { ...flatCopies.get(madeKey), width, height };
     const canvas = flatten(source, width, await loadPictures(root, source));
     const blob = await new Promise((resolve, reject) =>
         canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
     );
     const title = detail.title || t('doc.drawing.untitled', 'untitled');
     const made = await xhrUpload(`/api/identity/${root}/docs/binary?title=${encodeURIComponent(title)}`, blob);
+    // Filed where every upload lives (pure/apps.js FILES_BUCKET), not left unfiled - and marked as
+    // this drawing's copy at this version, so the next pick of it finds this one.
+    await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${FILES_BUCKET}`, { method: 'PUT' });
+    const note = (field, value) =>
+        api(`/api/identity/${root}/docs/${made.doc_id}/annotations/fields/${field}`, { method: 'PUT', body: JSON.stringify({ value }) });
+    await note(FLAT_FROM, sourceId);
+    await note(FLAT_VERSION, version);
+    flatCopies.set(madeKey, { doc: made.doc_id, title });
     const img = new Image();
     img.src = URL.createObjectURL(blob);
     await img.decode();

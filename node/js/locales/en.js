@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1077 phrases across 72 files.
+// 1081 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -106,6 +106,8 @@ export default {
     'apps.chat.say-something': 'say something…',
     'apps.chat.bytes-of-this-message': 'message length',
     'apps.chat.attach-a-picture-sound-or-video': 'attach a picture, a sound or a video (drop or paste works too)',
+    'apps.chat.send-a-picture': 'send one of your pictures or drawings - it goes at once',
+    'apps.chat.send-a-picture-heading': 'send a picture',
     'apps.chat.send': 'send',
     'apps.chat.searching': 'searching…',
     'apps.chat.nothing-said-that': 'nothing said in your chats says that',
@@ -461,6 +463,8 @@ export default {
 
     // --- node/js/doc/editor.js ---
     'doc.editor.copy-into-private-notes': 'copy this note into another bucket',
+    'doc.editor.insert-an-image': 'insert an image from your pictures and drawings',
+    'doc.editor.insert-an-image-heading': 'insert an image',
     'doc.editor.part-of-the-book': 'part of the book {bucket}',
     'doc.editor.hidden-from-it': 'hidden from it',
     'doc.editor.new-since-the-last-rollout': 'new since the last rollout',

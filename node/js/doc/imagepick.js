@@ -93,6 +93,7 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                                           format: doc.format,
                                           width: doc.media ? doc.media.width : null,
                                           height: doc.media ? doc.media.height : null,
+                                          animation: !!(doc.media && doc.media.animation),
                                           title: doc.title || '',
                                       })}
                               >

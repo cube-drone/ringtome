@@ -381,5 +381,30 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         assert.equal(pixels.status, 200);
         assert.match(pixels.headers.get("content-type") || "", /^image\//);
     });
+
+    it("a drawing's flat copy carries what it is a copy of, where the next pick will look for it", async () => {
+        // drawingAsPicture (doc/drawing.js) cuts a drawing into a picture once per version, and
+        // finds it again by two private annotations on the picture's row (pure/flatcopy.js) - so
+        // those must ride the documents list the mirror is fed from.
+        const up = await ada(`${docs()}/binary?title=a%20flat%20horse`, { method: "POST", body: makePng(16, 12), file: true });
+        assert.equal(up.status, 202);
+        const { doc_id: copy, job_id } = await up.json();
+        const note = async (field, value) => {
+            const r = await ada(`${docs()}/${copy}/annotations/fields/${field}`, { method: "PUT", body: JSON.stringify({ value }) });
+            assert.equal(r.status, 200, await r.text());
+        };
+        await note("flattened_from", doc);
+        await note("flattened_version", "a1,b2");
+        // Noted before the picture is even processed, as the page does; its row lists once it is.
+        for (let i = 0; i < 200; i++) {
+            const job = (await (await ada(`api/identity/${root}/ingest`)).json()).find((x) => x.job_id === job_id);
+            if (job && job.status === "done") break;
+            if (job && job.status === "failed") assert.fail(job.error);
+            await new Promise((r) => setTimeout(r, 150));
+        }
+        const row = (await (await ada(docs())).json()).docs.find((d) => d.doc_id === copy);
+        assert.ok(row, "the copy is listed once processed");
+        assert.deepEqual([row.fields.flattened_from, row.fields.flattened_version], [doc, "a1,b2"]);
+    });
 });
 

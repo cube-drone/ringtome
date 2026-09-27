@@ -43,6 +43,9 @@ import { CopyIntoModal } from '../copyinto.js';
 import { slugPathFor } from './address.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
+import { ImagePickModal } from './imagepick.js';
+import { pickedReference } from './pickref.js';
+import { DrawingThumb } from './drawing.js';
 
 const html = htm.bind(h);
 
@@ -190,6 +193,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         allowFileDrag,
         catchPaste,
         pickFiles,
+        insertText,
         extras: uploadExtras,
     } = useUploadCapture({
         placeCursor,
@@ -211,6 +215,18 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             return c ? (typeof c.end === 'number' ? c.end : c.start) || 0 : null;
         },
     });
+
+    // The image picker (Curtis, 2026-09-27): a picture or a drawing of yours, dropped in at the caret
+    // as an upload's reference would be - a drawing copied in flat first (doc/pickref.js).
+    const [picking, setPicking] = useState(false);
+    const insertPicked = async (pick) => {
+        setPicking(false);
+        try {
+            insertText(await pickedReference(root, pick, format));
+        } catch (e) {
+            refuseUpload(e.message || String(e));
+        }
+    };
 
     // The remembered view mode: hydrate this doc's last pick from prefs, then let the local
     // buffer own it. READ once rather than watched, deliberately - the functional set means a
@@ -514,6 +530,20 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                         title="Upload — attach a file to this document (drop or paste works too)"
                         onClick=${pickFiles}
                     />
+                    <${Chip}
+                        icon=${Icons.addImage}
+                        title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
+                        onClick=${() => setPicking(true)}
+                    />
+                    ${picking &&
+                    html`<${ImagePickModal}
+                        root=${root}
+                        drawings=${true}
+                        DrawingThumb=${DrawingThumb}
+                        heading=${t('doc.editor.insert-an-image-heading', 'insert an image')}
+                        onPick=${insertPicked}
+                        onClose=${() => setPicking(false)}
+                    />`}
                     <${Chip}
                         icon=${Icons.link}
                         on=${linkCopied}

@@ -607,11 +607,21 @@ export function useUploadCapture({
             }}
         />`}
     `;
+    // Text dropped in at the caret, the caret left after it - an image chosen from the picker
+    // (Curtis, 2026-09-27), going in the way an upload's reference does.
+    const insertText = (text) => {
+        const at = cursorPos ? cursorPos() : null;
+        const pos = Math.min(at == null ? bodyNow.current.length : at, bodyNow.current.length);
+        setBody(bodyNow.current.slice(0, pos) + text + bodyNow.current.slice(pos));
+        touched();
+        if (placeCursor) placeCursor(pos + text.length, { focus: true });
+    };
     return {
         catchDrop,
         allowFileDrag,
         catchPaste,
         pickFiles: () => filePickRef.current && filePickRef.current.click(),
+        insertText,
         extras,
     };
 }

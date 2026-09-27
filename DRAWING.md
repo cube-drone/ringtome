@@ -295,7 +295,12 @@ its size in canvas units: one pixel to a unit, centred, shrunk (never grown) to 
   live link: a drawing that painted other drawings would repaint whatever they had since become, and
   a chain of them could loop; a snapshot is one more picture, merged like any. The page holds the
   flattened picture it just made, so the layer paints at once rather than when the node has taken it
-  in. The copy stays in the person's files, as copy-into-a-notebook's picture does.
+  in. The copy stays in the person's files, as copy-into-a-notebook's picture does. **One copy per
+  version** (Curtis, 2026-09-27: "wasteful to keep cutting the same image out of the same drawing"):
+  the copy carries two private annotations - `flattened_from` (the drawing) and `flattened_version`
+  (its heads, sorted) - and picking the same unchanged drawing again, into a drawing, a note or a
+  chat line, finds that copy rather than cutting another (`pure/flatcopy.js`). A drawing changed
+  since is a new version and gets a new copy; the old one stays wherever it was used.
 - **A reference, not the pixels.** The body names the picture's document; whoever paints the
   drawing fetches the picture's body, as the person's own media is fetched anywhere. A picture not
   here yet - still syncing, or deleted - paints as nothing until it arrives. A picture OF the

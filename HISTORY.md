@@ -11580,3 +11580,32 @@ source textarea take it. Two pure tests (pure/caret.js; red with the shared ends
 overlap). And since uploads now live in "files", the `!` media picker in a note offers files from
 there as well as from the note's own notebook - it would otherwise have stopped finding anything
 newly uploaded. Not yet tried in a browser.
+
+## 2026-09-27 (cont.): the image picker in notes and chat
+
+The image picker - your pictures and your drawings - now opens from hrseWriter™ and the feed
+composer (one editor, one new chip beside Upload) and from chat (a button beside attach). In a note
+the choice goes in at the caret as an upload's reference would, the caret after it (the upload
+hook's new `insertText`); in chat it is sent at once as a line of its own, the draft untouched
+(Curtis: "selecting an image immediately drops it into chat as a public message"). `pickedReference`
+(doc/pickref.js) makes the reference: a picture spelled from its real format and animation, as a
+processed upload's is; a drawing first copied in flat by `drawingAsPicture` - which now files its
+copy in "files" rather than leaving it unfiled - and referenced as the still picture it becomes.
+Nothing changed at the node: a post's publication and a chat line's say both bake a referenced
+private picture into its public twin (sealed under a sealed room's key), as they already did for
+uploads. Not yet picked from in a browser.
+
+## 2026-09-27 (cont.): one flat copy per drawing version
+
+Picking the same drawing five times - into drawings, notes or chat - cut five identical flat
+copies (Curtis: "wasteful to keep cutting the same image out of the same drawing ad infinitum").
+A copy now carries two private annotations, `flattened_from` (the drawing) and `flattened_version`
+(its heads when read, sorted - the same heads being the same merged drawing), and
+`drawingAsPicture` looks for an existing copy of the drawing at that version before flattening
+(`findFlatCopy`, pure/flatcopy.js; a page-local map covers the moments before the annotations echo
+back through the mirror). A changed drawing is a new version and gets a new copy; a deleted copy is
+not in the rows, so it is never handed back. Annotations, not edits - the copy only carries a note
+of its source, so nothing here can conflict. Two pure tests, and a drawing.cjs claim that the
+annotations, set before the upload is even processed, ride the documents list the mirror is fed
+from. A picture from media was never copied: every use references the one document, and
+publication reuses its public twin.

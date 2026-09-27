@@ -52,6 +52,9 @@ import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from '../doc/completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from '../doc/usercard.js';
 import { insertNewlineAndIndent } from '@codemirror/commands';
+import { ImagePickModal } from '../doc/imagepick.js';
+import { pickedReference } from '../doc/pickref.js';
+import { DrawingThumb } from '../doc/drawing.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
@@ -843,6 +846,28 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         }
     };
     sendRef.current = send;
+    // The image picker (Curtis, 2026-09-27): a picture or a drawing of yours goes into the room at
+    // once, as a line of its own - the draft left as it was. The say bakes it as it bakes an
+    // attachment: a public twin, sealed under the room's key in a sealed room (CHAT.md ruling 11).
+    const [picking, setPicking] = useState(false);
+    const sendPicked = async (pick) => {
+        setPicking(false);
+        setSending(true);
+        setSendError(null);
+        try {
+            const words = await pickedReference(root, pick, 'marquee');
+            await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ words }),
+            });
+            atEnd.current = true;
+            readHistory();
+        } catch (e) {
+            setSendError(e.message || String(e));
+        } finally {
+            setSending(false);
+        }
+    };
     const beginEdit = (m) => {
         setEditingLine({ hash: m.hash, words: m.words || '' });
         setDraft(m.words || '');
@@ -1334,6 +1359,24 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                       >
                           <${Icons.upload} />
                       </button>
+                      <button
+                          class="chat-composer-attach"
+                          type="button"
+                          disabled=${sending}
+                          title=${t('apps.chat.send-a-picture', 'send one of your pictures or drawings - it goes at once')}
+                          onClick=${() => setPicking(true)}
+                      >
+                          <${Icons.addImage} />
+                      </button>
+                      ${picking &&
+                      html`<${ImagePickModal}
+                          root=${root}
+                          drawings=${true}
+                          DrawingThumb=${DrawingThumb}
+                          heading=${t('apps.chat.send-a-picture-heading', 'send a picture')}
+                          onPick=${sendPicked}
+                          onClose=${() => setPicking(false)}
+                      />`}
                       <button
                           class="chat-composer-send"
                           type="submit"
