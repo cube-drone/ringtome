@@ -24,6 +24,8 @@ import {
     PaintBrush,
     Hand,
     PaintBucket,
+    MagnifyingGlassPlus,
+    MagnifyingGlassMinus,
     Stack,
     Eraser,
     Laptop,
@@ -223,6 +225,9 @@ export const Icons = {
     grab: Hand,
     // ...and the paint bucket, which pours.
     bucket: PaintBucket,
+    // ...and the navigator's zoom.
+    zoomIn: MagnifyingGlassPlus,
+    zoomOut: MagnifyingGlassMinus,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

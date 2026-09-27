@@ -245,6 +245,19 @@ string like any other), `doc/annotations.js` for tags.
   Each finished stroke is added to the body and the save is scheduled - a stroke is the unit of
   undo and of saving.
 - **The title**: the header above the canvas, like Writer's.
+- **The navigator** (Curtis, 2026-09-27): atop the right-hand column, now **layers & map** - zoom
+  out, a zoom slider, zoom in, the zoom as a percent (click it to fit again), and a minimap of the
+  whole drawing with a red square over the part the stage shows. Drag the square, or press anywhere
+  on the map, to look there. 100% is the size that just fits the stage; zoom runs from 75% (a
+  margin round it - Curtis, 2026-09-27) to 800%, the slider evenly in ratio and snapping to 100% as
+  it passes, the buttons half again or two-thirds per press and landing on 100% rather than
+  stepping over it, and a zoom keeps the point
+  at the stage's middle where it was. The stage is an ordinary scrolling box, so a wheel or a
+  trackpad pans a zoomed drawing too, and the square follows. Zoom is the view's, never the
+  body's: not saved, not synced, back to fit when the drawing is opened again. The arithmetic is
+  `pure/viewport.js`. The canvas stays backed at twice the drawing's units - past about 200% on a
+  1x screen it is enlarged smoothly - which loses nothing real, since a stroke's points are whole
+  canvas units.
 
 ## Copy, duplicate, publish
 

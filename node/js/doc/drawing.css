@@ -144,16 +144,21 @@
 
 /* The stage centres the paper and lets it grow to the space, keeping the drawing's shape. */
 .drawing-stage {
+    /* A scrolling box (the navigator, doc/navigator.js): zoomed past the stage, the drawing
+       scrolls - a wheel or a trackpad pans it. The paper's auto margins centre it while it fits
+       and give way once it overflows (flex centring would cut off its top-left). Positioned, so the
+       paper's offsets are measured from here. */
+    position: relative;
     flex: 1;
     min-height: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    overflow: auto;
 }
 
 .drawing-paper {
     position: relative;
+    margin: auto;
+    flex-shrink: 0;
     max-width: 100%;
     max-height: 100%;
     width: 100%;
@@ -369,4 +374,72 @@
 
 .drawing-layer-eye:hover:not(:disabled) {
     color: var(--teal);
+}
+
+/* The navigator, atop the layers column: zoom, and a minimap with the stage's view on it. */
+.drawing-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.drawing-nav-zoom {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.drawing-nav-zoom input {
+    flex: 1;
+    min-width: 0;
+}
+
+.drawing-nav-fit {
+    align-self: flex-end;
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0;
+    margin-top: -0.3rem;
+    cursor: pointer;
+}
+
+.drawing-nav-fit:disabled {
+    cursor: default;
+}
+
+.drawing-nav-fit:hover:not(:disabled) {
+    color: var(--teal);
+}
+
+.drawing-nav-map {
+    position: relative;
+    width: 100%;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    cursor: pointer;
+    touch-action: none;
+    --floor-square: 5px;
+}
+
+.drawing-nav-mini {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.drawing-nav-rule {
+    width: 100%;
+    margin: 0.2rem 0;
+    border: none;
+    border-top: 1px solid var(--border);
+}
+
+.drawing-nav-view {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--viewport);
+    pointer-events: none;
 }

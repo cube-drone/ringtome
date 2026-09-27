@@ -106,6 +106,7 @@
     --shadow-punch: rgba(51, 40, 20, 0.28); /* inset: a hole punched through the ink chrome */
     --floor-light: #c9c9c9;   /* transparency's floor (Drawing): the checkerboard's lighter square */
     --floor-dark: #a3a3a3;    /* ...and its darker one - the universal sign for "nothing is here" */
+    --viewport: #e0302a;      /* the navigator's red square (Drawing): where the stage is looking, on the minimap */
 }
 
 /* The jagged line's ring (see --ring above): every box that wears it. */

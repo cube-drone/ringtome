@@ -11200,3 +11200,15 @@ Nobody has poured in a browser yet. A finding on the way: the strings cop's scan
 string - these comments tipped its balance and flagged the save chip's status words, which were
 hoisted out of the template. Teaching it comments is right but surfaces 52 flags across six files it
 has been silently misreading, so that is left for its own pass.
+
+## 2026-09-27: the navigator
+
+The drawing's right-hand column is now **layers & map**, with a navigator above the layers: zoom
+out, a zoom slider, zoom in, the percent (a click fits again), and a minimap with a red square over
+what the stage shows - drag it, or press elsewhere on the map, to look there. The stage became a
+scrolling box: the drawing is the fitted size times the zoom (0.75x - a margin round it - to 8x, the buttons and slider landing on the fit as they pass it), centred by auto margins
+while it fits, so a wheel or trackpad pans it and the square follows; a zoom keeps the stage's
+middle still. Zoom is the view's alone - not in the body, not synced. The arithmetic
+(`pure/viewport.js`: steps, the slider's even-ratio scale, fit, the visible fraction, scroll to a
+centre) has five model tests; the column's tuck key is still `layers`, a storage key left alone. A
+new `--viewport` token is the square's red. Not yet looked at in a browser.

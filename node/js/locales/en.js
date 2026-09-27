@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1024 phrases across 69 files.
+// 1030 phrases across 70 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -404,7 +404,7 @@ export default {
     'doc.drawing.colour': 'colour',
     'doc.drawing.undo': 'undo',
     'doc.drawing.strokes': '{count} strokes',
-    'doc.drawing.layers': 'layers',
+    'doc.drawing.layers-and-map': 'layers & map',
     'doc.drawing.opacity': 'opacity',
     'doc.drawing.new-layer': 'new layer',
     'doc.drawing.show-layer': 'show this layer',
@@ -441,6 +441,14 @@ export default {
     // --- node/js/doc/marqueebody.js ---
     'doc.marqueebody.this-marquee-doesnt-parse-right': 'this page has a formatting problem. Showing the plain text.',
     'doc.marqueebody.marquee-doesnt-parse': "marquee doesn't parse: {message}",
+
+    // --- node/js/doc/navigator.js ---
+    'doc.navigator.zoom-out': 'zoom out',
+    'doc.navigator.zoom': 'zoom',
+    'doc.navigator.zoom-in': 'zoom in',
+    'doc.navigator.fit': 'fit the whole drawing on the stage',
+    'doc.navigator.percent': '{percent}%',
+    'doc.navigator.map': 'drag the red square to look around',
 
     // --- node/js/doc/publish.js ---
     'postentry.preparing-media-for-the-network': 'preparing media for the network…',

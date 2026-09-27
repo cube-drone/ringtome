@@ -16,7 +16,7 @@
 // A stroke is pointer-down to pointer-up, drawn live straight onto the canvas as it goes, then added
 // to the body - which repaints everything from the body, so what you see is exactly what is saved.
 import { h } from 'preact';
-import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -56,6 +56,8 @@ import {
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
+import { Navigator, viewOf } from './navigator.js';
+import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 
 const html = htm.bind(h);
 
@@ -280,6 +282,9 @@ const pourRate = (speed) => 20 * Math.pow(1.5, speed - 1);
 /// The puddle a pour starts as, the moment it is dropped, in canvas units.
 const DROP = 3;
 
+/// The room left around the drawing when it fits the stage, in CSS pixels: its shadow shows.
+const STAGE_GAP = 16;
+
 function useTools() {
     const [tools, setTools] = useState(rememberedTools);
     const update = (change) =>
@@ -457,6 +462,41 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         restack();
         setPainted((n) => n + 1);
     }, [drawing, opened]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // The view (DRAWING.md, "The navigator"): the stage scrolls, and the drawing on it is the size
+    // that just fits, times the zoom. The fit follows the stage's size; a zoom keeps the point at
+    // the stage's middle where it was. The view's alone - never saved, never synced.
+    const stageRef = useRef(null);
+    const paperRef = useRef(null);
+    const [zoom, setZoomNow] = useState(1);
+    const [fit, setFit] = useState(null);
+    const keepCentre = useRef(null);
+    useEffect(() => {
+        const stage = stageRef.current;
+        if (!stage) return undefined;
+        const measure = () => setFit(fitSize(stage.clientWidth - STAGE_GAP, stage.clientHeight - STAGE_GAP, drawing.width, drawing.height));
+        measure();
+        const watch = new ResizeObserver(measure);
+        watch.observe(stage);
+        return () => watch.disconnect();
+    }, [drawing.width, drawing.height]);
+    const setZoom = (z) => {
+        const view = viewOf(stageRef.current, paperRef.current);
+        if (view) keepCentre.current = centreOf(view);
+        setZoomNow(clampZoom(z));
+    };
+    useLayoutEffect(() => {
+        const stage = stageRef.current;
+        const view = viewOf(stage, paperRef.current);
+        if (!keepCentre.current || !view) return;
+        const to = scrollToCentre(view, keepCentre.current.fx, keepCentre.current.fy);
+        keepCentre.current = null;
+        stage.scrollLeft = to.left;
+        stage.scrollTop = to.top;
+    }, [zoom, fit]);
+    const paperSize = fit
+        ? `width: ${fit[0] * zoom}px; height: ${fit[1] * zoom}px; max-width: none; max-height: none`
+        : `aspect-ratio: ${drawing.width} / ${drawing.height}`;
 
     const changeLayers = (next) => {
         session.setBody(writeBody(next));
@@ -752,9 +792,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (id) changeLayers(moveLayer(drawing, id, stackIndex, Date.now()));
     };
     const layersColumn = tucked.has('layers')
-        ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers', 'layers')} onClick=${() => toggleTuck('layers')} />`
+        ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
         : html`<aside class="drawing-layers" style=${colStyle}>
-              <${PaneHead} label=${t('doc.drawing.layers', 'layers')} onTuck=${() => toggleTuck('layers')} />
+              <${PaneHead} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
+              ${opened &&
+              html`<${Navigator}
+                  zoom=${zoom}
+                  onZoom=${setZoom}
+                  stageRef=${stageRef}
+                  paperRef=${paperRef}
+                  sourceRef=${canvasRef}
+                  width=${drawing.width}
+                  height=${drawing.height}
+              />
+              <hr class="drawing-nav-rule" />`}
               ${current &&
               html`<label class="drawing-size">
                   <span>${t('doc.drawing.opacity', 'opacity')} · ${current.opacity}%</span>
@@ -905,12 +956,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         <div class="drawing">
             ${header}
             <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
-            <div class="drawing-stage">
+            <div class="drawing-stage" ref=${stageRef}>
                 ${!opened
                     ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
                     : html`<div
+                          ref=${paperRef}
                           class=${paperClass}
-                          style=${`aspect-ratio: ${drawing.width} / ${drawing.height}`}
+                          style=${paperSize}
                           onPointerLeave=${() => cursorRef.current && (cursorRef.current.style.display = 'none')}
                       >
                           <canvas
