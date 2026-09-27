@@ -29,6 +29,7 @@ import {
     ImageSquare,
     LineSegment,
     Rectangle,
+    BoundingBox,
     Circle,
     Stack,
     Eraser,
@@ -238,6 +239,8 @@ export const Icons = {
     line: LineSegment,
     rectangle: Rectangle,
     ellipse: Circle,
+    // ...and the transform, which turns, stretches and slants a whole layer.
+    transform: BoundingBox,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

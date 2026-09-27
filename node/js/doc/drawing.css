@@ -198,6 +198,33 @@
     touch-action: none;
 }
 
+/* The transform tool's frame: dashed round the layer, a handle at each corner, drawn in the
+   drawing's own units (the SVG's viewBox) - so it can run past the drawing's edge once turned. */
+.drawing-frame {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.drawing-frame polygon {
+    fill: none;
+    stroke: var(--teal);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    vector-effect: non-scaling-stroke;
+}
+
+.drawing-frame rect {
+    fill: var(--paper);
+    stroke: var(--teal);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+
 /* The size circle: as big on screen as the tool is on the drawing. */
 .drawing-cursor {
     display: none;

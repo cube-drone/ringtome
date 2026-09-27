@@ -1153,6 +1153,131 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f100000000000009\",\"t\":1,\"tool\":\"ellipse\",\"color\":\"#000000\",\"size\":200,\"points\":[1,2,3,4]}],\"undone\":[]}"
     },
     {
+      "name": "a transform keeps its matrix, fixed point, and nothing else",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "m": [
+              0,
+              1000000,
+              -1000000,
+              0,
+              250000000,
+              -3
+            ],
+            "tool": "transform",
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 6,
+            "id": "f300000000000001",
+            "dx": 4,
+            "color": "#000000"
+          },
+          {
+            "id": "f300000000000002",
+            "t": 7,
+            "tool": "transform",
+            "m": [
+              1000000000000,
+              -1000000000000,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f300000000000001\",\"t\":6,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"transform\",\"m\":[0,1000000,-1000000,0,250000000,-3]},{\"id\":\"f300000000000002\",\"t\":7,\"tool\":\"transform\",\"m\":[1000000000000,-1000000000000,0,0,0,0]}],\"undone\":[]}"
+    },
+    {
+      "name": "a transform that cannot be kept is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "f300000000000003",
+            "t": 1,
+            "tool": "transform",
+            "m": [
+              1,
+              0,
+              0,
+              1,
+              0
+            ]
+          },
+          {
+            "id": "f300000000000004",
+            "t": 1,
+            "tool": "transform",
+            "m": [
+              1,
+              0,
+              0,
+              1,
+              0,
+              0.5
+            ]
+          },
+          {
+            "id": "f300000000000005",
+            "t": 1,
+            "tool": "transform",
+            "m": [
+              1000000000001,
+              0,
+              0,
+              1,
+              0,
+              0
+            ]
+          },
+          {
+            "id": "f300000000000006",
+            "t": 1,
+            "tool": "transform"
+          },
+          {
+            "id": "f300000000000007",
+            "t": 1,
+            "tool": "transform",
+            "m": [
+              1,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "id": "f300000000000008",
+            "t": 1,
+            "tool": "transform",
+            "m": [
+              1000000,
+              0,
+              0,
+              1000000,
+              0,
+              0
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f300000000000008\",\"t\":1,\"tool\":\"transform\",\"m\":[1000000,0,0,1000000,0,0]}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
@@ -1278,6 +1403,14 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e100000000000002\",\"t\":6,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[400,300],\"reach\":900},{\"id\":\"e100000000000003\",\"t\":7,\"tool\":\"bucket\",\"color\":\"#000000\",\"points\":[1,1],\"reach\":1}],\"undone\":[]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e100000000000001\",\"t\":5,\"tool\":\"bucket\",\"color\":\"#1f9e90\",\"points\":[10,10],\"reach\":30},{\"id\":\"e100000000000002\",\"t\":6,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[400,300],\"reach\":900}],\"undone\":[\"e100000000000003\"]}"
+    },
+    {
+      "name": "transforms from two computers both stand, in the one order",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f400000000000001\",\"t\":5,\"tool\":\"transform\",\"m\":[0,1000000,-1000000,0,0,0]}],\"undone\":[]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f400000000000002\",\"t\":5,\"tool\":\"transform\",\"m\":[2000000,0,0,2000000,0,0]}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f400000000000001\",\"t\":5,\"tool\":\"transform\",\"m\":[0,1000000,-1000000,0,0,0]},{\"id\":\"f400000000000002\",\"t\":5,\"tool\":\"transform\",\"m\":[2000000,0,0,2000000,0,0]}],\"undone\":[]}"
     },
     {
       "name": "an unreadable head adds nothing",

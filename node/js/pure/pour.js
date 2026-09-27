@@ -12,7 +12,8 @@
 //
 //   walls   - every cell of the drawing's grid that a line covers: the brush strokes (a drawn line
 //             is one), rectangles and ellipses before the pour on its layer, where they stood then
-//             (the grabs between them and the pour applied), an eraser clearing what it crosses. Only lines are walls - an earlier pour, or the base
+//             (the grabs and transforms between them and the pour applied), an eraser clearing what
+//             it crosses. Only lines are walls - an earlier pour, or the base
 //             layer's white, is not something paint stops at.
 //   field   - how far the paint travels to reach each open cell from where it was dropped, spreading
 //             to the eight neighbours (a straight step 3, a diagonal 4 - a close, whole-number stand-in
@@ -21,7 +22,7 @@
 //
 // The pour covers every cell whose distance is within its reach.
 
-import { decodePoints, pressureWidth, offsetsOf, shapeBox, ellipseOutline } from './drawing.js';
+import { decodePoints, pressureWidth, matricesOf, apply, shapeBox, ellipseOutline } from './drawing.js';
 
 /// The field's units per canvas unit: a straight step, and a diagonal one.
 export const STEP = 3;
@@ -81,29 +82,38 @@ function stampRect(walls, width, height, [l, top, r, bottom], radius) {
 /// a pour about to be made.
 export function wallsOf(ops, upto, width, height) {
     const walls = new Uint8Array(width * height);
-    const { each } = offsetsOf(ops);
-    const [ox, oy] = upto < ops.length ? each[upto] : [0, 0];
+    // Where each line stood at the pour: through the grabs and transforms between the two - the
+    // matrices of the entries before the pour, among themselves.
+    const { each } = matricesOf(ops.slice(0, upto));
     for (let j = 0; j < upto; j++) {
         const op = ops[j];
         if (op.tool !== 'brush' && op.tool !== 'eraser' && op.tool !== 'rect' && op.tool !== 'ellipse') continue;
-        // Where the stroke stood at the pour: shifted by the grabs between the two.
-        const sx = each[j][0] - ox;
-        const sy = each[j][1] - oy;
+        const m = each[j];
+        // Only shifted (the common case, and the only one before transforms): exact. Turned,
+        // scaled or slanted: every point through the matrix, and the line's width by the matrix's
+        // average stretch, the square root of its area scale - a slanted line is not evenly wide
+        // on the screen, so this is the one place walls and paint can part by a hair; every
+        // computer still parts them the same way.
+        const shifted = m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1;
+        const stretch = shifted ? 1 : Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+        const at = (p) => apply(m, p);
+        const segments = (points, radius, value) => {
+            for (let i = 1; i < points.length; i++) stampSegment(walls, width, height, points[i - 1], points[i], radius, value);
+        };
         // The shapes (Curtis, 2026-09-27): a rectangle exactly, an ellipse as its outline's
         // segments - both lines, so both hold paint back.
         if (op.tool === 'rect' || op.tool === 'ellipse') {
             const [l, top, r, bottom] = shapeBox(op.points);
-            const box = [l + sx, top + sy, r + sx, bottom + sy];
-            if (op.tool === 'rect') {
-                stampRect(walls, width, height, box, op.size / 2);
+            if (op.tool === 'rect' && shifted) {
+                stampRect(walls, width, height, [l + m[4], top + m[5], r + m[4], bottom + m[5]], op.size / 2);
                 continue;
             }
-            const outline = ellipseOutline(box);
-            for (let i = 1; i < outline.length; i++) stampSegment(walls, width, height, outline[i - 1], outline[i], op.size / 2, 1);
+            const outline = op.tool === 'rect' ? [[l, top], [r, top], [r, bottom], [l, bottom], [l, top]] : ellipseOutline([l, top, r, bottom]);
+            segments(outline.map(at), (op.size / 2) * stretch, 1);
             continue;
         }
-        const points = decodePoints(op.points).map(([x, y]) => [x + sx, y + sy]);
-        const radius = (i) => (op.size * (op.pressure ? pressureWidth(op.pressure[i]) : 1)) / 2;
+        const points = decodePoints(op.points).map(at);
+        const radius = (i) => ((op.size * (op.pressure ? pressureWidth(op.pressure[i]) : 1)) / 2) * stretch;
         const value = op.tool === 'brush' ? 1 : 0;
         if (points.length === 1) {
             stampSegment(walls, width, height, points[0], points[0], radius(0), value);

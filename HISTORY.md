@@ -11271,3 +11271,27 @@ browsers and a pour must agree everywhere. Vector cases for both entries and sev
 (red with the node not knowing them); three model tests for the drag-to-entry rule; three pour
 tests - a rectangle filled into its corners, an ellipse to within 1% of its area, a drawn line
 holding paint back. Not yet drawn in a browser.
+
+## 2026-09-27 (cont.): transform
+
+The transform tool turns, stretches and slants the whole current layer: a dashed frame round what
+the layer has painted, a corner drag slanting (the opposite corner still), an edge drag stretching
+across, inside moving, outside - the stage round the drawing too, which now takes the presses -
+turning about the middle; shift makes each even (whole scaling from a corner or an edge, 15-degree
+steps turning). Asked first whether a corner should land exactly where dropped: that is a
+perspective warp, only ever an approximation of the picture, so Curtis chose the slant, which stays
+an affine matrix and sharp - and asked to be told whenever a feature heads somewhere merging gets
+hard. One entry per drag, `{ tool: "transform", m }`, the matrix in fixed point, that everything
+before it on the layer passes through; `matricesOf` generalises the grab's offsets (a move is the
+translation case, and `offsetsOf` is now its translation), paint goes through `ctx.transform`, and a
+pour's walls go through the same matrices, widths by the average stretch. Concurrent transforms
+compose in the one `(t, id)` order, so every computer agrees though matrices do not commute. Vector
+cases for the entry, six refused ones, and two computers' transforms merged (red with the node not
+knowing it); seven gesture tests - the grips, the slant keeping a parallelogram and its opposite
+corner (red with the slant's sign flipped), the stretches, shift's whole scaling and 15-degree
+steps, the entry painting what came before it and not after. Not yet dragged in a browser.
+
+The rotate zone's pointer was a crosshair; Curtis: it "doesn't feel too representative of the
+move". CSS has no rotate cursor, so it is now Phosphor's ArrowClockwise (bold, black with a white
+rim, 24 pixels, hot spot in the middle) as a `url()` cursor with the crosshair as its fallback - the
+path copied from the installed package, checked against it.

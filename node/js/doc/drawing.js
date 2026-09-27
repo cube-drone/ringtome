@@ -47,7 +47,10 @@ import {
     addLayer,
     setLayer,
     moveLayer,
-    offsetsOf,
+    matricesOf,
+    IDENTITY,
+    toFixed,
+    fromFixed,
     effectiveOps,
     deleteLayer,
     duplicateLayer,
@@ -62,6 +65,7 @@ import { PublishBar } from './publishbar.js';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
+import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox } from '../pure/transform.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 
 const html = htm.bind(h);
@@ -222,15 +226,17 @@ export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // What the layer paints (pure/drawing.js, `effectiveOps`): the base layer's fill first, a copy's
-    // source as it stood, then its own strokes. A grab (a `move`) shifts everything before it: each
-    // step is painted offset by the moves after it (`offsetsOf`), so a layer grabbed away and back
-    // loses nothing at the edge.
+    // source as it stood, then its own strokes. A grab (a `move`) shifts everything before it, and a
+    // transform turns, scales or slants it: each step is painted through the matrices after it
+    // (`matricesOf`) - redrawn, never warped as a picture, so it stays sharp - and a layer grabbed
+    // away and back loses nothing at the edge.
     const ops = effectiveOps(drawing, layerId);
-    const { each } = offsetsOf(ops);
+    const { each } = matricesOf(ops);
     ops.forEach((op, i) => {
-        if (op.tool === 'move') return;
+        if (op.tool === 'move' || op.tool === 'transform') return;
         ctx.save();
-        ctx.translate(each[i][0] * scale, each[i][1] * scale);
+        const m = each[i];
+        ctx.transform(m[0], m[1], m[2], m[3], m[4] * scale, m[5] * scale);
         if (op.tool === 'fill') {
             ctx.fillStyle = drawing.background;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -275,8 +281,8 @@ export function paintLayers(drawing, width, images = NO_PICTURES) {
 
 /// Stack the layers onto `target`, bottom first, each at its opacity, the hidden ones left out, over
 /// nothing - on the screen the floor shows through from the stage behind; in a picture, nothing
-/// stays transparent. `shift` - `{ layer, dx, dy }`, in the drawing's units - draws one layer moved,
-/// which is how a grab shows before it lets go.
+/// stays transparent. `shift` - `{ layer, m }`, a matrix in the drawing's units - draws one layer
+/// moved or transformed, which is how a grab or a transform shows before it lets go.
 export function composite(target, drawing, canvases, shift = null) {
     const ctx = target.getContext('2d');
     ctx.save();
@@ -289,9 +295,10 @@ export function composite(target, drawing, canvases, shift = null) {
         if (layer.hidden || !canvas) continue;
         ctx.globalAlpha = layer.opacity / 100;
         const moved = shift && shift.layer === layer.id;
-        const x = moved ? (shift.dx * target.width) / drawing.width : 0;
-        const y = moved ? (shift.dy * target.height) / drawing.height : 0;
-        ctx.drawImage(canvas, x, y, target.width, target.height);
+        const k = target.width / drawing.width;
+        const m = moved ? shift.m : IDENTITY;
+        ctx.setTransform(m[0], m[1], m[2], m[3], m[4] * k, m[5] * k);
+        ctx.drawImage(canvas, 0, 0, target.width, target.height);
     }
     ctx.restore();
 }
@@ -366,6 +373,29 @@ const POUR_SPEEDS = 10;
 const pourRate = (speed) => 20 * Math.pow(1.5, speed - 1);
 /// The puddle a pour starts as, the moment it is dropped, in canvas units.
 const DROP = 3;
+
+/// How near a corner or an edge of the transform frame a press must be to take hold of it, in
+/// screen pixels; and how big the corner handles are drawn.
+const GRIP_PX = 8;
+const HANDLE_PX = 9;
+
+/// The rotate cursor (Curtis, 2026-09-27: the crosshair "doesn't feel too representative"): CSS has
+/// no rotate cursor, so it is Phosphor's ArrowClockwise - the same icon set as everything else - bold
+/// weight, black with a white rim so it reads on any paint, as a 24-pixel image with its hot spot in
+/// the middle. A browser that cannot draw it falls back to the crosshair.
+const ARROW_CLOCKWISE =
+    'M244,56v48a12,12,0,0,1-12,12H184a12,12,0,1,1,0-24H201.1l-19-17.38c-.13-.12-.26-.24-.38-.37A76,76,0,1,0,127,204h1a75.53,75.53,0,0,0,52.15-20.72,12,12,0,0,1,16.49,17.45A99.45,99.45,0,0,1,128,228h-1.37A100,100,0,1,1,198.51,57.06L220,76.72V56a12,12,0,0,1,24,0Z';
+const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-20 -20 296 296"><path d="${ARROW_CLOCKWISE}" fill="black" stroke="white" stroke-width="28" stroke-linejoin="round" paint-order="stroke"/></svg>`
+)}") 12 12, crosshair`;
+
+/// The pointer over the transform frame, by what a press there would take hold of.
+const GRIP_CURSORS = {
+    corner: ['nwse-resize', 'nesw-resize', 'nwse-resize', 'nesw-resize'],
+    edge: ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize'],
+};
+const gripCursor = (grip) =>
+    grip.kind === 'corner' || grip.kind === 'edge' ? GRIP_CURSORS[grip.kind][grip.i] : grip.kind === 'inside' ? 'move' : ROTATE_CURSOR;
 
 /// The room left around the drawing when it fits the stage, in CSS pixels: its shadow shows.
 const STAGE_GAP = 16;
@@ -621,6 +651,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     };
 
     const pourTool = tools.tool === 'bucket';
+    const transformTool = tools.tool === 'transform';
     const shapeTool = SHAPE_TOOLS.includes(tools.tool);
     const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
 
@@ -635,7 +666,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const cursor = cursorRef.current;
         const canvas = canvasRef.current;
         if (!cursor || !canvas) return;
-        if (tools.tool === 'grab' || pourTool || shapeTool) {
+        const r = canvas.getBoundingClientRect();
+        const off = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        if (tools.tool === 'grab' || pourTool || shapeTool || transformTool || off) {
             cursor.style.display = 'none'; // the grab tool's cursor is the hand, the bucket's a crosshair - not a size
             return;
         }
@@ -658,12 +691,28 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         return canvas ? canvas.getContext('2d') : null;
     };
 
+    // The stage takes the presses (the transform's rotate begins outside the frame, which can be
+    // outside the drawing); every tool but the transform takes only those on the drawing itself.
     const onPointerDown = (e) => {
         if (!opened || e.button > 0 || !current) return;
+        if (!transformTool && e.target !== canvasRef.current) return;
+        // Not a press on the stage's own scrollbars.
+        const stage = stageRef.current;
+        const sr = stage.getBoundingClientRect();
+        if (e.clientX - sr.left >= stage.clientWidth || e.clientY - sr.top >= stage.clientHeight) return;
         // A hidden layer takes no strokes: they would land where nobody can see them.
         if (current.hidden) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
+        // The transform (DRAWING.md, "Transforming"): what the press took hold of decides the drag
+        // (pure/transform.js); letting go records one `transform` entry.
+        if (transformTool) {
+            if (!frame) return;
+            const at = toDrawing(e);
+            const reach = (GRIP_PX * drawing.width) / canvasRef.current.getBoundingClientRect().width;
+            live.current = { transform: true, grip: gripAt(frame, at, reach), from: at, to: at, perfect: e.shiftKey, layer: current.id };
+            return;
+        }
         // The grab tool (DRAWING.md, "Grabbing"): the drag shows the layer moving, and letting go
         // records one `move` entry - merged and undone like a stroke.
         if (tools.tool === 'grab') {
@@ -724,6 +773,48 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         show();
     };
 
+    // The transform's frame: round what the current layer has painted when the tool is taken up, the
+    // layer changes, or the drawing changes under it (an undo, a sync); after the tool's own drag,
+    // the old frame through that drag - so a slanted frame stays slanted for the next one.
+    const [frame, setFrame] = useState(null);
+    const keptFrame = useRef(null); // { body, layer } the tool's own last drag left
+    const frameRef = useRef(null);
+    useEffect(() => {
+        if (!transformTool || !current || !shown) {
+            setFrame(null);
+            return;
+        }
+        const kept = keptFrame.current;
+        if (kept && kept.body === session.body && kept.layer === current.id) return;
+        keptFrame.current = null;
+        const canvas = layerCanvases.current.get(current.id);
+        const box = canvas && paintedBox(canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, BACKING);
+        setFrame(frameOf(box || [0, 0, drawing.width, drawing.height]));
+    }, [transformTool, current && current.id, drawing, shown, picturesArrived]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The pointer over the frame says what a press would do; set straight on the stage and the
+    // drawing, since it changes with every move.
+    const setGripCursor = (cursor) => {
+        if (stageRef.current) stageRef.current.style.cursor = cursor;
+        if (paperRef.current) paperRef.current.style.cursor = cursor;
+    };
+    useEffect(() => {
+        if (!transformTool) setGripCursor('');
+    }, [transformTool]);
+    // The frame's size on screen: handles a fixed number of pixels, whatever the zoom.
+    const unitsPerPixel = fit ? drawing.width / (fit[0] * zoom) : 1;
+    const handle = HANDLE_PX * unitsPerPixel;
+    const framePoints = (f) => f.map((p) => p.join(',')).join(' ');
+    // Mid-drag the frame follows the pointer without re-rendering the surface.
+    const showFrame = (f) => {
+        const svg = frameRef.current;
+        if (!svg) return;
+        svg.querySelector('polygon').setAttribute('points', framePoints(f));
+        svg.querySelectorAll('rect').forEach((r, i) => {
+            r.setAttribute('x', f[i][0] - handle / 2);
+            r.setAttribute('y', f[i][1] - handle / 2);
+        });
+    };
+
     // The shapes (DRAWING.md, "Shapes"): the drag shows the shape from where it began to the
     // pointer, over the layer as it was; letting go records it - a line as a two-point brush
     // stroke, a rectangle or an ellipse as its box. A drag that went nowhere records nothing.
@@ -751,7 +842,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const onPointerMove = (e) => {
         moveCursor(e);
         const l = live.current;
+        if (!l && transformTool && frame) {
+            const reach = (GRIP_PX * drawing.width) / canvasRef.current.getBoundingClientRect().width;
+            setGripCursor(gripCursor(gripAt(frame, toDrawing(e), reach)));
+        }
         if (!l || l.pour) return; // a pour stays where it was dropped
+        if (l.transform) {
+            // Shift is read as the drag goes, so pressing it mid-drag makes the drag "perfect".
+            l.to = toDrawing(e);
+            l.perfect = e.shiftKey;
+            const m = gestureMatrix(frame, l.grip, l.from, l.to, l.perfect);
+            restack({ layer: l.layer, m });
+            showFrame(frameThrough(m, frame));
+            return;
+        }
         if (l.shape) {
             l.end = toDrawing(e);
             showShape(l);
@@ -761,7 +865,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             const [x, y] = toDrawing(e);
             l.dx = x - l.start[0];
             l.dy = y - l.start[1];
-            restack({ layer: l.layer, dx: l.dx, dy: l.dy });
+            restack({ layer: l.layer, m: [1, 0, 0, 1, l.dx, l.dy] });
             return;
         }
         const ctx = layerContext(l.stroke.layer || BASE_LAYER);
@@ -784,6 +888,23 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const l = live.current;
         live.current = null;
         if (!l) return;
+        if (l.transform) {
+            // Stored in fixed point; the frame follows what was stored, so it and the layer agree.
+            const m = fromFixed(toFixed(gestureMatrix(frame, l.grip, l.from, l.to, l.perfect)));
+            if (m.every((n, i) => Math.abs(n - IDENTITY[i]) < 1e-6)) {
+                restack();
+                showFrame(frame);
+                return;
+            }
+            const entry = { id: strokeId(), t: Date.now(), tool: 'transform', m: toFixed(m) };
+            if (l.layer !== BASE_LAYER) entry.layer = l.layer;
+            const body = writeBody(addStroke(drawing, entry));
+            keptFrame.current = { body, layer: l.layer };
+            setFrame(frameThrough(m, frame));
+            session.setBody(body);
+            session.touched();
+            return;
+        }
         if (l.shape) {
             const entry = shapeEntry(l.shape, l.start, l.end, l.base);
             if (!entry) {
@@ -849,6 +970,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket - hold to pour')],
+        ['transform', Icons.transform, t('doc.drawing.transform', 'transform the layer - corners slant, edges stretch, inside moves, outside turns; hold shift to keep it even')],
         ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
     ];
     const grabTool = tools.tool === 'grab';
@@ -1131,7 +1253,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             ${header}
             ${pickingImage && html`<${ImagePickModal} root=${root} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
             <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
-            <div class="drawing-stage" ref=${stageRef}>
+            <div
+                class="drawing-stage"
+                ref=${stageRef}
+                onPointerDown=${onPointerDown}
+                onPointerMove=${onPointerMove}
+                onPointerUp=${finishStroke}
+                onPointerCancel=${finishStroke}
+            >
                 ${!shown
                     ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
                     : html`<div
@@ -1145,12 +1274,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                               class="drawing-canvas"
                               width=${drawing.width * BACKING}
                               height=${drawing.height * BACKING}
-                              onPointerDown=${onPointerDown}
-                              onPointerMove=${onPointerMove}
-                              onPointerUp=${finishStroke}
-                              onPointerCancel=${finishStroke}
                           ></canvas>
                           <span ref=${cursorRef} class=${tools.tool === 'eraser' ? 'drawing-cursor eraser' : 'drawing-cursor'}></span>
+                          ${frame &&
+                          html`<svg
+                              ref=${frameRef}
+                              class="drawing-frame"
+                              viewBox=${`0 0 ${drawing.width} ${drawing.height}`}
+                              preserveAspectRatio="none"
+                          >
+                              <polygon points=${framePoints(frame)} />
+                              ${frame.map(
+                                  (p, i) => html`<rect key=${i} x=${p[0] - handle / 2} y=${p[1] - handle / 2} width=${handle} height=${handle} />`
+                              )}
+                          </svg>`}
                       </div>`}
             </div>
         </div>`;

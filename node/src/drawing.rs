@@ -29,6 +29,9 @@ pub const BACKGROUND: &str = "#ffffff";
 pub const MAX_SIZE: i64 = 200;
 /// The farthest a pour can spread, in canvas units along the paint's path (pure/pour.js).
 pub const MAX_REACH: i64 = 1_000_000;
+/// A transform's six numbers are fixed point - each times MATRIX_ONE - and at most MAX_MATRIX
+/// either way (pure/drawing.js).
+pub const MAX_MATRIX: i64 = 1_000_000_000_000;
 /// The largest a placed image can be, either way, in canvas units.
 pub const MAX_IMAGE_SIZE: i64 = 20_000;
 /// A pen's pressure at a point: a whole number from 0 (the lightest touch) to 100 (full).
@@ -90,6 +93,9 @@ pub struct Stroke {
     pub w: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub h: Option<i64>,
+    /// A transform's matrix (DRAWING.md, "Transforming"), fixed point; only a transform has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub m: Option<Vec<i64>>,
 }
 
 /// A layer (DRAWING.md, "Layers"): its number, its place in the stack, its opacity, whether it is
@@ -206,6 +212,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 doc: None,
                 w: None,
                 h: None,
+                m: None,
             };
             match kind {
                 "move" => {
@@ -246,6 +253,36 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 doc: None,
                 w: None,
                 h: None,
+                m: None,
+            });
+        }
+        // A transform: everything before it on its layer through the affine matrix `m`, six fixed-point
+        // whole numbers. The node keeps it; painting it is the page's.
+        "transform" => {
+            let m = o
+                .get("m")?
+                .as_array()?
+                .iter()
+                .map(safe_int)
+                .collect::<Option<Vec<i64>>>()
+                .filter(|m| m.len() == 6 && m.iter().all(|n| n.abs() <= MAX_MATRIX))?;
+            return Some(Stroke {
+                id,
+                t,
+                layer,
+                tool: "transform",
+                color: None,
+                size: None,
+                points: None,
+                pressure: None,
+                reach: None,
+                dx: None,
+                dy: None,
+                from: None,
+                doc: None,
+                w: None,
+                h: None,
+                m: Some(m),
             });
         }
         // A rectangle or an ellipse: the box it was dragged out in (two corners, absolute), outlined
@@ -275,6 +312,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 doc: None,
                 w: None,
                 h: None,
+                m: None,
             });
         }
         // An image: the picture's document id, its top-left, its size. The pixels stay in the
@@ -304,6 +342,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 doc: Some(o.get("doc")?.as_str().filter(|d| is_doc_id(d))?.to_string()),
                 w: Some(side("w")?),
                 h: Some(side("h")?),
+                m: None,
             });
         }
         _ => return None,
@@ -327,7 +366,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
         .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, reach: None, dx: None, dy: None, from: None, doc: None, w: None, h: None })
+    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, reach: None, dx: None, dy: None, from: None, doc: None, w: None, h: None, m: None })
 }
 
 fn as_layer(v: &Value) -> Option<Layer> {

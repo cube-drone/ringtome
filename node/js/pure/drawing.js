@@ -158,6 +158,11 @@ export const MAX_SIZE = 200;
 /// The farthest a pour can spread, in canvas units along the paint's path (pure/pour.js). Far more
 /// than any canvas needs - a pour into a winding space travels further than straight across.
 export const MAX_REACH = 1000000;
+/// A transform's matrix is stored in fixed point (Curtis, 2026-09-27): each of its six numbers
+/// times MATRIX_ONE, rounded - whole numbers, as everything in a body is - and no larger than
+/// MAX_MATRIX either way.
+export const MATRIX_ONE = 1000000;
+export const MAX_MATRIX = 1000000000000;
 /// The largest a placed image can be, either way, in canvas units.
 export const MAX_IMAGE_SIZE = 20000;
 /// A document id: 16 bytes, hex.
@@ -304,6 +309,15 @@ function asStroke(s) {
         const side = (n) => Number.isSafeInteger(n) && n >= 1 && n <= MAX_IMAGE_SIZE;
         if (!side(s.w) || !side(s.h)) return null;
         return { id: s.id, t: s.t, ...onLayer, tool: 'image', points: s.points, doc: s.doc, w: s.w, h: s.h };
+    }
+    // A transform (Curtis, 2026-09-27): everything before it on its layer passes through the affine
+    // matrix `m` = [a, b, c, d, e, f] (x' = a x + c y + e, y' = b x + d y + f, the canvas's own
+    // order), each number in fixed point (MATRIX_ONE). A grab is the translation-only case, kept
+    // as its own `move` entry.
+    if (s.tool === 'transform') {
+        if (!Array.isArray(s.m) || s.m.length !== 6) return null;
+        if (!s.m.every((n) => Number.isSafeInteger(n) && Math.abs(n) <= MAX_MATRIX)) return null;
+        return { id: s.id, t: s.t, ...onLayer, tool: 'transform', m: s.m };
     }
     // A rectangle or an ellipse (Curtis, 2026-09-27): the box it was dragged out in - `points` is
     // two corners, absolute - outlined `size` wide in `color`. A rectangle's corners are sharp. (A
@@ -516,21 +530,63 @@ export function moveLayer(drawing, id, index, now) {
 // additions commute - and undone like any stroke. A move shifts what was drawn on its layer before
 // it, in the one `(t, id)` order; what is drawn after lands where it was drawn.
 
-/// The shift each of a layer's entries is painted with - the sum of every move AFTER it on the
-/// layer - and the layer's whole shift (the base layer's fill moves by that: it was there first).
-/// `ops` are one layer's entries, in painting order.
-export function offsetsOf(ops) {
+// Transforms (Curtis, 2026-09-27) generalise the grab: a `transform` entry passes everything
+// before it on its layer through an affine matrix - rotate, scale, slant - as a `move` shifts it.
+// Entries still, so they merge by the union; two computers' transforms apply in the one `(t, id)`
+// order, so every computer composes them the same way round, though matrices do not commute.
+//
+// A matrix here is [a, b, c, d, e, f] as the canvas takes it: x' = a x + c y + e, y' = b x + d y + f.
+
+export const IDENTITY = [1, 0, 0, 1, 0, 0];
+
+/// A then B: the matrix that does `b` first, then `a`.
+export function compose(a, b) {
+    return [
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        a[0] * b[4] + a[2] * b[5] + a[4],
+        a[1] * b[4] + a[3] * b[5] + a[5],
+    ];
+}
+
+/// A point through a matrix.
+export function apply(m, [x, y]) {
+    return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+}
+
+/// A matrix as a transform entry stores it (fixed point, whole numbers), and back.
+export const toFixed = (m) => m.map((n) => Math.max(-MAX_MATRIX, Math.min(MAX_MATRIX, Math.round(n * MATRIX_ONE))));
+export const fromFixed = (m) => m.map((n) => n / MATRIX_ONE);
+
+/// The matrix an entry applies to what came before it: a move's shift, a transform's matrix, or
+/// null for an entry that moves nothing.
+function matrixOf(op) {
+    if (op.tool === 'move') return [1, 0, 0, 1, op.dx, op.dy];
+    if (op.tool === 'transform') return fromFixed(op.m);
+    return null;
+}
+
+/// The matrix each of a layer's entries is painted through - every move and transform AFTER it on
+/// the layer, the earliest applied first - and the layer's whole matrix (the base layer's fill
+/// goes through that: it was there first). `ops` are one layer's entries, in painting order.
+export function matricesOf(ops) {
     const each = new Array(ops.length);
-    let dx = 0;
-    let dy = 0;
+    let m = IDENTITY;
     for (let i = ops.length - 1; i >= 0; i--) {
-        each[i] = [dx, dy];
-        if (ops[i].tool === 'move') {
-            dx += ops[i].dx;
-            dy += ops[i].dy;
-        }
+        each[i] = m;
+        const own = matrixOf(ops[i]);
+        if (own) m = compose(m, own);
     }
-    return { each, total: [dx, dy] };
+    return { each, total: m };
+}
+
+/// The shift each entry is painted with - `matricesOf`'s translation, which is the whole story
+/// while a layer has only been grabbed (moves), and what the grab's tests speak in.
+export function offsetsOf(ops) {
+    const { each, total } = matricesOf(ops);
+    return { each: each.map((m) => [m[4], m[5]]), total: [total[4], total[5]] };
 }
 
 // ---------------------------------------------------------------------------------------------

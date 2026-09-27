@@ -122,6 +122,43 @@ base layer's white fill by all of them - so what is drawn after a grab lands whe
 layer grabbed off the edge and back loses nothing. A stroke another computer drew at the same moment
 moves with the layer exactly when it was drawn before the grab: decided by time, the same everywhere.
 
+### Transforming
+
+The transform tool (Curtis, 2026-09-27) turns, stretches and slants the whole current layer. A
+dashed frame sits round what the layer has painted, a handle at each corner, and where a drag begins
+decides what it does - with **shift** making it "perfect":
+
+| drag from | does | with shift |
+|---|---|---|
+| a corner | slants: sideways leans the top or bottom edge, up or down the side edge; the opposite corner stays, the frame stays a parallelogram | scales the whole, about the opposite corner |
+| an edge | stretches across it, the opposite edge staying | scales the whole, evenly |
+| inside | moves | - |
+| outside (the stage round the drawing too) | turns about the frame's middle | in 15-degree steps |
+
+The pointer says what a press would do: resize arrows on the corners and edges, the move cross
+inside, and outside Phosphor's clockwise arrow as a custom cursor (CSS has no rotate cursor; the
+crosshair is its fallback). After a drag the frame follows it (a slanted frame stays slanted for the
+next drag); an undo, a sync
+or another layer draws it afresh round what is painted.
+
+One entry per drag: `{ "tool": "transform", "m": [a, b, c, d, e, f] }` - an affine matrix (`x' = a x
++ c y + e`, `y' = b x + d y + f`) that **everything before it on the layer passes through**, as a
+grab's `move` shifts it (a move is the translation-only case). The six numbers are fixed point,
+times 1,000,000, whole - as every number in a body is.
+
+- **It merges** like every entry, by the union. Two computers' transforms apply in the one `(t, id)`
+  order - matrices do not commute, but every computer composes them the same way round, so every
+  computer paints the same picture. A stroke drawn elsewhere meanwhile is transformed exactly when it
+  came earlier in that order - the grab's rule.
+- **It stays sharp**: the layer is redrawn through the matrices (`matricesOf`), never warped as a
+  picture. (Hence no free-corner distort - Curtis, 2026-09-27: a corner that lands exactly where it is
+  dropped needs a perspective warp, which could only be an approximation of the picture, compounding
+  with every warp and drifting from the pour's walls.)
+- **Pours** meet the lines through the same matrices. A turned, stretched or slanted line's wall is
+  its points through the matrix, as wide as the line times the matrix's average stretch (the square
+  root of its area scale): a slanted line is not evenly wide, so this is the one place a pour and
+  what is painted can part by a hair - the same hair on every computer.
+
 ### Deleting and duplicating layers
 
 Per-layer trash and duplicate buttons (Curtis, 2026-09-26), built the way grabbing is - as entries in
@@ -269,7 +306,7 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket and grab - icons, each
+- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, transform and grab - icons, each
   named in its tooltip - a size for the brush and the eraser and a line width for the shapes (1-80
   canvas units), a pour speed for the bucket (1-10, 20 canvas
   units a second at the slowest and half again each step), the colour,
