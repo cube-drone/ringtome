@@ -305,6 +305,15 @@ function asStroke(s) {
         if (!side(s.w) || !side(s.h)) return null;
         return { id: s.id, t: s.t, ...onLayer, tool: 'image', points: s.points, doc: s.doc, w: s.w, h: s.h };
     }
+    // A rectangle or an ellipse (Curtis, 2026-09-27): the box it was dragged out in - `points` is
+    // two corners, absolute - outlined `size` wide in `color`. A rectangle's corners are sharp. (A
+    // line needs no entry of its own: it is a brush stroke of two points, round-ended.)
+    if (s.tool === 'rect' || s.tool === 'ellipse') {
+        if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
+        if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
+        if (!Array.isArray(s.points) || s.points.length !== 4 || !s.points.every(Number.isSafeInteger)) return null;
+        return { id: s.id, t: s.t, ...onLayer, tool: s.tool, color: s.color, size: s.size, points: s.points };
+    }
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
     if (!Array.isArray(s.points) || s.points.length < 2 || !s.points.every(Number.isSafeInteger)) return null;
@@ -604,4 +613,52 @@ function layerNameFrom(title) {
 /// The picture documents a drawing refers to, each once.
 export function imagesOf(drawing) {
     return [...new Set(drawing.strokes.filter((s) => s.tool === 'image').map((s) => s.doc))];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Shapes (Curtis, 2026-09-27): a line, a rectangle and an ellipse, each dragged out corner to corner.
+
+/// The box a shape's two corners make, in order: [left, top, right, bottom].
+export function shapeBox(points) {
+    const [x0, y0, x1, y1] = points;
+    return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+}
+
+/// The entry a drag from `from` to `to` (drawing units) makes with `tool` - 'line', 'rect' or
+/// 'ellipse' - or null when the drag went nowhere. A line is a brush stroke of two points.
+export function shapeEntry(tool, from, to, { id, t, layer, color, size }) {
+    const [x0, y0, x1, y1] = [from[0], from[1], to[0], to[1]].map(Math.round);
+    if (x0 === x1 && y0 === y1) return null;
+    const onLayer = layer && layer !== BASE_LAYER ? { layer } : {};
+    if (tool === 'line') {
+        return { id, t, ...onLayer, tool: 'brush', color, size, points: encodePoints([[x0, y0], [x1, y1]]) };
+    }
+    const [l, top, r, bottom] = shapeBox([x0, y0, x1, y1]);
+    return { id, t, ...onLayer, tool, color, size, points: [l, top, r, bottom] };
+}
+
+/// An ellipse's outline as points, for walls (pure/pour.js): QUARTER points a quarter-turn, from the
+/// circle's rational parametrisation - ((1 - u^2) / (1 + u^2), 2u / (1 + u^2)) - which needs only
+/// adding, multiplying and dividing, so every browser computes the same points (Math.cos and
+/// Math.sin are free to differ in their last digit). Closed: the last point is the first.
+const QUARTER = 64;
+export function ellipseOutline([l, top, r, bottom]) {
+    const cx = (l + r) / 2;
+    const cy = (top + bottom) / 2;
+    const rx = (r - l) / 2;
+    const ry = (bottom - top) / 2;
+    const quarter = [];
+    for (let i = 0; i < QUARTER; i++) {
+        const u = i / QUARTER;
+        const d = 1 + u * u;
+        quarter.push([(1 - u * u) / d, (2 * u) / d]);
+    }
+    const unit = [
+        ...quarter,
+        ...quarter.map(([c, s]) => [-s, c]),
+        ...quarter.map(([c, s]) => [-c, -s]),
+        ...quarter.map(([c, s]) => [s, -c]),
+    ];
+    unit.push(unit[0]);
+    return unit.map(([c, s]) => [cx + rx * c, cy + ry * s]);
 }

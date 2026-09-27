@@ -27,6 +27,9 @@ import {
     MagnifyingGlassPlus,
     MagnifyingGlassMinus,
     ImageSquare,
+    LineSegment,
+    Rectangle,
+    Circle,
     Stack,
     Eraser,
     Laptop,
@@ -231,6 +234,10 @@ export const Icons = {
     zoomOut: MagnifyingGlassMinus,
     // ...and a picture brought in from the person's media.
     addImage: ImageSquare,
+    // ...and the shapes, dragged out corner to corner.
+    line: LineSegment,
+    rectangle: Rectangle,
+    ellipse: Circle,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

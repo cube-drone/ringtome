@@ -55,6 +55,8 @@ import {
     MAX_REACH,
     addImage,
     imagesOf,
+    shapeEntry,
+    shapeBox,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
@@ -186,6 +188,29 @@ function paintRuns(ctx, runs, colour, drawing, canvas) {
     ctx.drawImage(cells, 0, 0, canvas.width, canvas.height);
 }
 
+/// Paint a rectangle or an ellipse (Curtis, 2026-09-27): its box's outline, `size` wide - the
+/// rectangle's corners mitred, sharp as it was asked for.
+function paintShape(ctx, shape, scale) {
+    const [l, top, r, bottom] = shapeBox(shape.points).map((n) => n * scale);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = shape.color;
+    ctx.lineWidth = shape.size * scale;
+    ctx.beginPath();
+    if (shape.tool === 'rect') {
+        ctx.lineJoin = 'miter';
+        ctx.rect(l, top, r - l, bottom - top);
+    } else {
+        ctx.ellipse((l + r) / 2, (top + bottom) / 2, (r - l) / 2, (bottom - top) / 2, 0, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+}
+
+/// Paint whichever entry this is that makes marks - a stroke or a shape.
+function paintMark(ctx, op, scale) {
+    if (op.tool === 'rect' || op.tool === 'ellipse') paintShape(ctx, op, scale);
+    else paintStroke(ctx, op, scale);
+}
+
 /// One layer onto a canvas of its own (DRAWING.md, "Layers"): transparent wherever the layer has
 /// nothing, so an eraser stroke erases only the layer it is on. The base layer starts filled with
 /// the drawing's `background` - the white a drawing begins on - so erasing on it cuts through to
@@ -217,6 +242,8 @@ export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
                 ctx.imageSmoothingEnabled = true;
                 ctx.drawImage(img, op.points[0] * scale, op.points[1] * scale, op.w * scale, op.h * scale);
             }
+        } else if (op.tool === 'rect' || op.tool === 'ellipse') {
+            paintShape(ctx, op, scale);
         } else if (op.tool === 'bucket') {
             paintRuns(ctx, pourRunsCached(ops, i, drawing), op.color, drawing, canvas);
         } else {
@@ -328,7 +355,10 @@ export async function duplicateDrawing(root, docId) {
 // ---------------------------------------------------------------------------------------------
 // The tools, remembered across drawings (not across page loads): switching drawings keeps your brush.
 
-let rememberedTools = { tool: 'brush', brushSize: 12, eraserSize: 40, pourSpeed: 5, color: '#1f1a17' };
+let rememberedTools = { tool: 'brush', brushSize: 12, eraserSize: 40, shapeSize: 6, pourSpeed: 5, color: '#1f1a17' };
+
+/// The tools dragged out corner to corner (Curtis, 2026-09-27), sharing one line width.
+const SHAPE_TOOLS = ['line', 'rect', 'ellipse'];
 
 /// The paint bucket's pour speed (1..10) as canvas units a second: each step half again faster, from
 /// a slow creep to a rush across the canvas in about a second.
@@ -590,8 +620,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         session.touched();
     };
 
-    const size = tools.tool === 'eraser' ? tools.eraserSize : tools.brushSize;
     const pourTool = tools.tool === 'bucket';
+    const shapeTool = SHAPE_TOOLS.includes(tools.tool);
+    const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
 
     /// A pointer position in the drawing's own units.
     const toDrawing = (e) => {
@@ -604,7 +635,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const cursor = cursorRef.current;
         const canvas = canvasRef.current;
         if (!cursor || !canvas) return;
-        if (tools.tool === 'grab' || pourTool) {
+        if (tools.tool === 'grab' || pourTool || shapeTool) {
             cursor.style.display = 'none'; // the grab tool's cursor is the hand, the bucket's a crosshair - not a size
             return;
         }
@@ -642,6 +673,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         }
         if (pourTool) {
             startPour(e);
+            return;
+        }
+        if (shapeTool) {
+            startShape(e);
             return;
         }
         const pen = e.pointerType === 'pen';
@@ -689,10 +724,39 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         show();
     };
 
+    // The shapes (DRAWING.md, "Shapes"): the drag shows the shape from where it began to the
+    // pointer, over the layer as it was; letting go records it - a line as a two-point brush
+    // stroke, a rectangle or an ellipse as its box. A drag that went nowhere records nothing.
+    const startShape = (e) => {
+        const canvas = layerCanvases.current.get(current.id);
+        if (!canvas) return;
+        const before = blankCanvas(canvas.width, canvas.height);
+        before.getContext('2d').drawImage(canvas, 0, 0);
+        const start = toDrawing(e);
+        const base = { id: strokeId(), t: Date.now(), layer: current.id, color: tools.color, size: Math.round(size) };
+        live.current = { shape: tools.tool, start, end: start, base, canvas, before };
+    };
+    const showShape = (l) => {
+        const ctx = l.canvas.getContext('2d');
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.clearRect(0, 0, l.canvas.width, l.canvas.height);
+        ctx.drawImage(l.before, 0, 0);
+        const entry = shapeEntry(l.shape, l.start, l.end, l.base);
+        if (entry) paintMark(ctx, entry, BACKING);
+        ctx.restore();
+        restack();
+    };
+
     const onPointerMove = (e) => {
         moveCursor(e);
         const l = live.current;
         if (!l || l.pour) return; // a pour stays where it was dropped
+        if (l.shape) {
+            l.end = toDrawing(e);
+            showShape(l);
+            return;
+        }
         if (l.grab) {
             const [x, y] = toDrawing(e);
             l.dx = x - l.start[0];
@@ -720,6 +784,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const l = live.current;
         live.current = null;
         if (!l) return;
+        if (l.shape) {
+            const entry = shapeEntry(l.shape, l.start, l.end, l.base);
+            if (!entry) {
+                showShape(l); // nothing dragged: the layer as it was
+                return;
+            }
+            session.setBody(writeBody(addStroke(drawing, entry)));
+            session.touched();
+            return;
+        }
         if (l.pour) {
             cancelAnimationFrame(l.frame);
             const pour = { ...l.entry, reach: Math.round(l.reach) };
@@ -771,19 +845,30 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const toolButtons = [
         ['brush', Icons.drawing, t('doc.drawing.brush', 'brush')],
         ['eraser', Icons.eraser, t('doc.drawing.eraser', 'eraser')],
+        ['line', Icons.line, t('doc.drawing.line', 'line')],
+        ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
+        ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket - hold to pour')],
         ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
     ];
     const grabTool = tools.tool === 'grab';
-    // Picking a colour takes up a tool that uses one: the bucket stays in hand, anything else
-    // becomes the brush.
-    const colourTool = pourTool ? 'bucket' : 'brush';
+    // Picking a colour takes up a tool that uses one: the bucket or a shape stays in hand, the
+    // eraser or the hand becomes the brush.
+    const colourTool = pourTool || shapeTool ? tools.tool : 'brush';
+    // The size slider speaks for whichever tool is in hand: the shapes share a line width.
+    const sizeKey = tools.tool === 'eraser' ? 'eraserSize' : shapeTool ? 'shapeSize' : 'brushSize';
+    const sizeWords = () =>
+        tools.tool === 'eraser'
+            ? t('doc.drawing.eraser-size', 'eraser size')
+            : shapeTool
+              ? t('doc.drawing.line-width', 'line width')
+              : t('doc.drawing.brush-size', 'brush size');
     const paperClass = grabTool
         ? grabbing
             ? 'drawing-paper drawing-floor grabbing'
             : 'drawing-paper drawing-floor grab'
-        : pourTool
-          ? 'drawing-paper drawing-floor pour'
+        : pourTool || shapeTool
+          ? 'drawing-paper drawing-floor aim'
           : 'drawing-paper drawing-floor';
 
     const toolsColumn = tucked.has('tools')
@@ -816,14 +901,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               ${!grabTool &&
               !pourTool &&
               html`<label class="drawing-size">
-                  <span>${tools.tool === 'eraser' ? t('doc.drawing.eraser-size', 'eraser size') : t('doc.drawing.brush-size', 'brush size')} · ${size}</span>
+                  <span>${sizeWords()} · ${size}</span>
                   <input
                       type="range"
                       min="1"
                       max=${Math.min(80, MAX_SIZE)}
                       value=${size}
-                      onInput=${(e) =>
-                          setTools(tools.tool === 'eraser' ? { eraserSize: +e.currentTarget.value } : { brushSize: +e.currentTarget.value })}
+                      onInput=${(e) => setTools({ [sizeKey]: +e.currentTarget.value })}
                   />
               </label>`}
               <${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: colourTool })} />

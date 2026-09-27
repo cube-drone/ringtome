@@ -248,6 +248,35 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 h: None,
             });
         }
+        // A rectangle or an ellipse: the box it was dragged out in (two corners, absolute), outlined
+        // `size` wide in `color`. A drawn line is a brush stroke; it needs no entry of its own.
+        "rect" | "ellipse" => {
+            let kind = if o.get("tool")?.as_str()? == "rect" { "rect" } else { "ellipse" };
+            let points = o
+                .get("points")?
+                .as_array()?
+                .iter()
+                .map(safe_int)
+                .collect::<Option<Vec<i64>>>()
+                .filter(|p| p.len() == 4)?;
+            return Some(Stroke {
+                id,
+                t,
+                layer,
+                tool: kind,
+                color: Some(o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string()),
+                size: Some(o.get("size").and_then(safe_int).filter(|s| (1..=MAX_SIZE).contains(s))?),
+                points: Some(points),
+                pressure: None,
+                reach: None,
+                dx: None,
+                dy: None,
+                from: None,
+                doc: None,
+                w: None,
+                h: None,
+            });
+        }
         // An image: the picture's document id, its top-left, its size. The pixels stay in the
         // picture's own document; the page fetches them to paint.
         "image" => {

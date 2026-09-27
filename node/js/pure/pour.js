@@ -10,9 +10,9 @@
 //
 // Two steps:
 //
-//   walls   - every cell of the drawing's grid that a line covers: the brush strokes before the pour
-//             on its layer, where they stood then (the grabs between them and the pour applied), an
-//             eraser clearing what it crosses. Only lines are walls - an earlier pour, or the base
+//   walls   - every cell of the drawing's grid that a line covers: the brush strokes (a drawn line
+//             is one), rectangles and ellipses before the pour on its layer, where they stood then
+//             (the grabs between them and the pour applied), an eraser clearing what it crosses. Only lines are walls - an earlier pour, or the base
 //             layer's white, is not something paint stops at.
 //   field   - how far the paint travels to reach each open cell from where it was dropped, spreading
 //             to the eight neighbours (a straight step 3, a diagonal 4 - a close, whole-number stand-in
@@ -21,7 +21,7 @@
 //
 // The pour covers every cell whose distance is within its reach.
 
-import { decodePoints, pressureWidth, offsetsOf } from './drawing.js';
+import { decodePoints, pressureWidth, offsetsOf, shapeBox, ellipseOutline } from './drawing.js';
 
 /// The field's units per canvas unit: a straight step, and a diagonal one.
 export const STEP = 3;
@@ -55,6 +55,27 @@ function stampSegment(walls, width, height, [ax, ay], [bx, by], radius, value) {
     }
 }
 
+/// A rectangle's outline, `radius` either side of it, as walls - square-cornered, as it is painted
+/// (mitred): every cell whose centre is inside the box grown by the core and not inside the box
+/// shrunk by it.
+function stampRect(walls, width, height, [l, top, r, bottom], radius) {
+    const c = Math.max(radius - 0.5, MIN_WALL_RADIUS);
+    const x0 = Math.max(0, Math.floor(l - c));
+    const x1 = Math.min(width - 1, Math.ceil(r + c));
+    const y0 = Math.max(0, Math.floor(top - c));
+    const y1 = Math.min(height - 1, Math.ceil(bottom + c));
+    for (let y = y0; y <= y1; y++) {
+        const py = y + 0.5;
+        if (py < top - c || py > bottom + c) continue;
+        for (let x = x0; x <= x1; x++) {
+            const px = x + 0.5;
+            if (px < l - c || px > r + c) continue;
+            const inside = px > l + c && px < r - c && py > top + c && py < bottom - c;
+            if (!inside) walls[y * width + x] = 1;
+        }
+    }
+}
+
 /// The walls a pour at `ops[upto]` meets: a cell per canvas unit, 1 where a line is. `ops` are one
 /// layer's steps in painting order (pure/drawing.js, `effectiveOps`); `upto` may be `ops.length`, for
 /// a pour about to be made.
@@ -64,10 +85,23 @@ export function wallsOf(ops, upto, width, height) {
     const [ox, oy] = upto < ops.length ? each[upto] : [0, 0];
     for (let j = 0; j < upto; j++) {
         const op = ops[j];
-        if (op.tool !== 'brush' && op.tool !== 'eraser') continue;
+        if (op.tool !== 'brush' && op.tool !== 'eraser' && op.tool !== 'rect' && op.tool !== 'ellipse') continue;
         // Where the stroke stood at the pour: shifted by the grabs between the two.
         const sx = each[j][0] - ox;
         const sy = each[j][1] - oy;
+        // The shapes (Curtis, 2026-09-27): a rectangle exactly, an ellipse as its outline's
+        // segments - both lines, so both hold paint back.
+        if (op.tool === 'rect' || op.tool === 'ellipse') {
+            const [l, top, r, bottom] = shapeBox(op.points);
+            const box = [l + sx, top + sy, r + sx, bottom + sy];
+            if (op.tool === 'rect') {
+                stampRect(walls, width, height, box, op.size / 2);
+                continue;
+            }
+            const outline = ellipseOutline(box);
+            for (let i = 1; i < outline.length; i++) stampSegment(walls, width, height, outline[i - 1], outline[i], op.size / 2, 1);
+            continue;
+        }
         const points = decodePoints(op.points).map(([x, y]) => [x + sx, y + sy]);
         const radius = (i) => (op.size * (op.pressure ? pressureWidth(op.pressure[i]) : 1)) / 2;
         const value = op.tool === 'brush' ? 1 : 0;

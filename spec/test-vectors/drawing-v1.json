@@ -1006,6 +1006,153 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f000000000000008\",\"t\":1,\"tool\":\"image\",\"points\":[0,0],\"doc\":\"0123456789abcdef0123456789abcdef\",\"w\":20000,\"h\":1}],\"undone\":[]}"
     },
     {
+      "name": "a rectangle and an ellipse keep their colour, width and box, in that order",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "points": [
+              10,
+              20,
+              300,
+              200
+            ],
+            "size": 6,
+            "color": "#1f9e90",
+            "tool": "rect",
+            "t": 4,
+            "id": "f100000000000001",
+            "pressure": [
+              1,
+              2
+            ],
+            "reach": 9
+          },
+          {
+            "id": "f100000000000002",
+            "t": 5,
+            "layer": "aaaaaaaaaaaaaaa2",
+            "tool": "ellipse",
+            "color": "#8a4b1f",
+            "size": 1,
+            "points": [
+              300,
+              200,
+              10,
+              -20
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f100000000000001\",\"t\":4,\"tool\":\"rect\",\"color\":\"#1f9e90\",\"size\":6,\"points\":[10,20,300,200]},{\"id\":\"f100000000000002\",\"t\":5,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"ellipse\",\"color\":\"#8a4b1f\",\"size\":1,\"points\":[300,200,10,-20]}],\"undone\":[]}"
+    },
+    {
+      "name": "a shape that cannot be kept is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "f100000000000003",
+            "t": 1,
+            "tool": "rect",
+            "color": "#000000",
+            "size": 4,
+            "points": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "id": "f100000000000004",
+            "t": 1,
+            "tool": "ellipse",
+            "color": "#000000",
+            "size": 0,
+            "points": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          {
+            "id": "f100000000000005",
+            "t": 1,
+            "tool": "rect",
+            "size": 4,
+            "points": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          {
+            "id": "f100000000000006",
+            "t": 1,
+            "tool": "ellipse",
+            "color": "#000000",
+            "size": 201,
+            "points": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          {
+            "id": "f100000000000007",
+            "t": 1,
+            "tool": "rect",
+            "color": "#000000",
+            "size": 4,
+            "points": [
+              1,
+              2,
+              3,
+              4.5
+            ]
+          },
+          {
+            "id": "f100000000000008",
+            "t": 1,
+            "tool": "square",
+            "color": "#000000",
+            "size": 4,
+            "points": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          {
+            "id": "f100000000000009",
+            "t": 1,
+            "tool": "ellipse",
+            "color": "#000000",
+            "size": 200,
+            "points": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f100000000000009\",\"t\":1,\"tool\":\"ellipse\",\"color\":\"#000000\",\"size\":200,\"points\":[1,2,3,4]}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,

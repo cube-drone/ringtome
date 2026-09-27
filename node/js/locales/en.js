@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1039 phrases across 71 files.
+// 1043 phrases across 71 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -395,12 +395,16 @@ export default {
     'doc.drawing.layer-name': 'layer name',
     'doc.drawing.brush': 'brush',
     'doc.drawing.eraser': 'eraser',
+    'doc.drawing.line': 'line',
+    'doc.drawing.rectangle': 'rectangle',
+    'doc.drawing.ellipse': 'ellipse',
     'doc.drawing.bucket': 'paint bucket - hold to pour',
     'doc.drawing.grab': 'grab - move the whole layer',
+    'doc.drawing.eraser-size': 'eraser size',
+    'doc.drawing.line-width': 'line width',
+    'doc.drawing.brush-size': 'brush size',
     'doc.drawing.tools': 'tools',
     'doc.drawing.pour-speed': 'pour speed',
-    'doc.drawing.eraser-size': 'eraser size',
-    'doc.drawing.brush-size': 'brush size',
     'doc.drawing.colour': 'colour',
     'doc.drawing.add-an-image': 'add an image',
     'doc.drawing.undo': 'undo',

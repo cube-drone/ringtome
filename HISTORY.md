@@ -11241,3 +11241,33 @@ placement, the new named layer, undo, a grab and a copy; three picker tests (pic
 newest-added, the stacked filters, a tag cloud counted before the picked tags, the notebook menu);
 `drawing.cjs` uploads a real picture, adds it as the page does, checks the node keeps the entry byte
 for byte and serves the pixels the page paints from. Not yet tried in a browser.
+
+## 2026-09-27 (cont.): the save no longer flashes the last strokes off and on
+
+Curtis: "a few seconds later, during the save, it'll flash those actions briefly off and then on
+again." The shared save session (doc/session.js), not the drawing: a save lands and its parents
+become the new version, and the lookout re-judges at once - while the mirror row still shows the
+version the save replaced, the stream not having caught up. `needsReload` took that unfamiliar
+head for news and reloaded; the doc cache, vouched for by the stale row, served the OLDER version
+(the strokes gone); the stream's catch-up then reloaded forward (the strokes back). The same reload
+was behind the morning's blank flash, and in Writer it would briefly roll the words back - and a
+keystroke in that window would have forked the document. The lookout's third scar: the session
+keeps the versions its own saves replaced since the last load, and a row whose head is one of them,
+in the shape that was loaded, is only behind. A fork, a second head or an unseen head still reloads.
+Three lookout tests from the field report (red before the change), beside the six from the earlier
+scars.
+
+## 2026-09-27 (cont.): line, rectangle, ellipse
+
+Three drawing tools dragged out corner to corner, sharing a line width on the size slider; the drag
+shows the shape live over its layer and letting go records it. A line is simply a brush stroke of
+two points - round-ended, and so already mergeable, undoable, erasable and a wall to a pour. A
+rectangle or an ellipse is a new entry, `{ tool: "rect" | "ellipse", color, size, points: [l, t, r,
+b] }`; the rectangle is painted mitred, sharp-cornered as asked. Both hold a pour back: the
+rectangle's walls are exact boxes, square at the corners (a planted capsule version, rounded,
+goes red), and the ellipse's are its outline in 256 segments from the circle's rational
+parametrisation - only arithmetic, because `Math.cos` may differ in the last digit between
+browsers and a pour must agree everywhere. Vector cases for both entries and seven refused ones
+(red with the node not knowing them); three model tests for the drag-to-entry rule; three pour
+tests - a rectangle filled into its corners, an ellipse to within 1% of its area, a drawn line
+holding paint back. Not yet drawn in a browser.

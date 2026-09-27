@@ -168,6 +168,25 @@ between two walls. It covers every cell within its reach.
 - The pour is **how far the paint went**, not where it ended - held long enough to fill the space, it
   records a reach past the space's far end, so an undone wall lets it spread further.
 
+### Shapes
+
+Line, rectangle and ellipse (Curtis, 2026-09-27): press, drag, let go - the drag shows the shape
+from where it began to the pointer, and letting go records it. They share a **line width** (the size
+slider, when a shape is in hand, 1-80). Nothing keeps a rectangle square or an ellipse round -
+which is why they are not called square and circle.
+
+- **A line is a brush stroke** of two points - round-ended, as every stroke is. It needs no entry of
+  its own, so everything a stroke does it already did: merge, undo, erase, grab, hold a pour back.
+- **A rectangle or an ellipse** is `{ "tool": "rect" | "ellipse", "color", "size", "points": [l, t,
+  r, b] }` - the box it was dragged out in, absolute, left-top then right-bottom. A rectangle's
+  corners are mitred: sharp.
+- **They hold a pour back** as lines do. A rectangle's walls are exact - the box grown and shrunk by
+  the line's core, square at the corners as it is painted. An ellipse's walls are its outline as 256
+  segments from the circle's rational parametrisation, which needs only adding, multiplying and
+  dividing: `Math.cos` and `Math.sin` may differ in their last digit from browser to browser, and a
+  pour must come out the same everywhere.
+- A drag that went nowhere records nothing.
+
 ### Images
 
 A picture from the person's own media (Curtis, 2026-09-27): **add an image** in the tools column
@@ -250,8 +269,9 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, paint bucket and grab - icons, each named in its tooltip - a
-  size for the brush and the eraser (1-80 canvas units), a pour speed for the bucket (1-10, 20 canvas
+- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket and grab - icons, each
+  named in its tooltip - a size for the brush and the eraser and a line width for the shapes (1-80
+  canvas units), a pour speed for the bucket (1-10, 20 canvas
   units a second at the slowest and half again each step), the colour,
   undo, and the drawing's own actions: duplicate, copy into a notebook, publish. The colour is a hue
   ring with an HSV triangle inside it and a hex field (`doc/colourpicker.js`, Curtis 2026-09-26 -

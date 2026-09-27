@@ -395,3 +395,24 @@ describe('adding an image', () => {
         assert.equal(d.effectiveOps(body, 'aaaaaaaaaaaaaaa8')[0].tool, 'image');
     });
 });
+
+describe('shapes', () => {
+    const base = { id: 'f200000000000001', t: 3, layer: 'aaaaaaaaaaaaaaa2', color: '#1f9e90', size: 6 };
+
+    it('a line is a round-ended brush stroke of two points', () => {
+        const line = d.shapeEntry('line', [10.4, 20], [110, 70.6], base);
+        assert.deepEqual(line, { ...base, tool: 'brush', points: [10, 20, 100, 51] });
+        assert.deepEqual(d.readBody(d.writeBody(d.addStroke(d.blankDrawing(), line))).strokes[0], line, 'kept as any stroke is');
+    });
+
+    it('a rectangle or an ellipse keeps its box, corners in order whichever way it was dragged', () => {
+        assert.deepEqual(d.shapeEntry('rect', [300, 50], [100, 250], base).points, [100, 50, 300, 250]);
+        const ellipse = d.shapeEntry('ellipse', [5, 5], [1, 9], { ...base, layer: d.BASE_LAYER });
+        assert.deepEqual(ellipse, { id: base.id, t: 3, tool: 'ellipse', color: '#1f9e90', size: 6, points: [1, 5, 5, 9] }, 'the base layer unwritten');
+        assert.deepEqual(d.recentColours(d.addStroke(d.blankDrawing(), ellipse)), ['#1f9e90'], "a shape's colour is one of the drawing's colours");
+    });
+
+    it('a drag that went nowhere makes nothing', () => {
+        assert.equal(d.shapeEntry('rect', [5.2, 5], [4.9, 5.4], base), null);
+    });
+});

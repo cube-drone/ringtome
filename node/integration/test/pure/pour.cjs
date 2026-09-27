@@ -85,3 +85,29 @@ describe('pouring', () => {
         assert.equal(d.undo(back).strokes.length, 1, 'undo takes the pour back first');
     });
 });
+
+describe('pouring into shapes', () => {
+    const shape = (tool, box, size = 4) => ({ id: 'b000000000000001', t: 1, tool, color: '#000000', size, points: box });
+
+    it('fills a rectangle exactly, square to its corners', () => {
+        const runs = p.pourRuns([shape('rect', [100, 100, 300, 200]), pour('e000000000000002', 2, 200, 150)], 1, W, H);
+        // The 4-wide outline's core is 1.5 either side: 98..101 and 198..201 are wall.
+        assert.equal(covered(runs), 196 * 96);
+        assert.ok(has(runs, 102, 102) && has(runs, 297, 197), 'right into the corners');
+        const outside = p.pourRuns([shape('rect', [100, 100, 300, 200]), pour('e000000000000002', 2, 50, 50)], 1, W, H);
+        assert.ok(has(outside, 97, 97) && !has(outside, 98, 98), 'and the outside meets the square corner - a rounded one would leave (98, 98) open');
+    });
+
+    it('fills an ellipse and nothing outside it', () => {
+        const runs = p.pourRuns([shape('ellipse', [200, 100, 600, 500]), pour('e000000000000002', 2, 400, 300)], 1, W, H);
+        const area = Math.PI * 198 * 198;
+        assert.ok(Math.abs(covered(runs) - area) / area < 0.01, `about the circle inside the line: ${covered(runs)} vs ${Math.round(area)}`);
+        assert.ok(!has(runs, 205, 105), 'the box corner is outside');
+    });
+
+    it('treats a dragged line as the brush stroke it is', () => {
+        const d2 = d.shapeEntry('line', [0, 300], [800, 300], { id: 'b000000000000001', t: 1, color: '#000000', size: 4 });
+        const runs = p.pourRuns([d2, pour('e000000000000002', 2, 400, 100)], 1, W, H);
+        assert.ok(has(runs, 400, 297) && !has(runs, 400, 303), 'held above the line');
+    });
+});

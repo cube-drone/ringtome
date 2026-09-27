@@ -174,9 +174,9 @@
     }
 }
 
-/* The paint bucket drops its paint at a point: a crosshair, not a size. */
-.drawing-paper.pour,
-.drawing-paper.pour .drawing-canvas {
+/* The paint bucket and the shapes aim at a point: a crosshair, not a size. */
+.drawing-paper.aim,
+.drawing-paper.aim .drawing-canvas {
     cursor: crosshair;
 }
 

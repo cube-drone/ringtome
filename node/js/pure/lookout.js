@@ -18,14 +18,26 @@
 // not yet presented that divergence - reload. After the reload, save_parents is every logical
 // head (length ≥ 2), so the clause cannot re-fire: no loop.
 
+// - the third scar ran the other way: reloading when nothing was new (field report, 2026-09-27,
+//   a drawing flashing its last strokes off and on "during the save"). A save lands, the parents
+//   become its version, and the lookout re-judges at once - while the mirror row still shows the
+//   version the save REPLACED, because the stream has not caught up. That head is not in the
+//   parents, so it reloaded; the doc cache served the older version (the stale row vouched for
+//   it), and the stream's catch-up reloaded forward again. A row whose head is a version this
+//   editor itself saved over, and whose shape is the one it loaded, is only behind - `replaced`.
+//   Anything more (a second head, a fork, a head never seen) is still news.
+
 /**
  * Should a clean editor reload from the node?
  *
- * @param row     this doc's live-mirror row: { head, heads, diverged }
- * @param parents the save-machine's parents - what the editor will assert on its next save
- * @param seen    the row-shape at last load: { diverged, heads }
+ * @param row      this doc's live-mirror row: { head, heads, diverged }
+ * @param parents  the save-machine's parents - what the editor will assert on its next save
+ * @param seen     the row-shape at last load: { diverged, heads }
+ * @param replaced every version this editor's own saves have replaced since that load
  */
-export function needsReload(row, parents, seen) {
+export function needsReload(row, parents, seen, replaced = []) {
+    const behind = replaced.includes(row.head) && row.heads === seen.heads && row.diverged === seen.diverged;
+    if (behind) return false;
     return (
         !parents.includes(row.head) ||
         row.diverged !== seen.diverged ||

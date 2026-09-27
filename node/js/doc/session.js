@@ -73,6 +73,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         machine.current.parents = doc.save_parents;
         machine.current.dirty = false;
         machine.current.seen = { diverged: doc.diverged, heads: doc.heads.length };
+        machine.current.replaced = [];
         setLoaded(doc);
         setTitle(doc.title);
         setBody(doc.body);
@@ -165,6 +166,10 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
                 body: payload,
                 keepalive,
             });
+            // What this save replaced: a mirror row still showing one of these is only behind
+            // (pure/lookout.js, the third scar) - kept to the last few, which is all a lagging
+            // stream can be behind by.
+            m.replaced = [...(m.replaced || []), ...snapshot.parents].slice(-32);
             m.parents = [res.version];
             const b = buffer.current;
             const unchanged =
@@ -258,7 +263,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         const m = machine.current;
         if (!row || !loaded || m.dirty || m.inflight) return;
         const seen = m.seen || { diverged: false, heads: 1 };
-        if (needsReload(row, m.parents, seen)) {
+        if (needsReload(row, m.parents, seen, m.replaced || [])) {
             load().catch(() => {});
         }
         // `status` is a dep so a row update skipped during an inflight save gets re-judged when
