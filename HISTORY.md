@@ -11177,3 +11177,26 @@ own string order (UTF-16 units) disagrees with Rust's about pairs like `～` and
 a kept name, five refused ones and the byte-order tie (red with the page comparing UTF-16); model
 tests for rename, clearing, refusal and the tie; `drawing.cjs` forks a same-instant rename on the
 real node, byte for byte as the page merges it, and sends a hand-built bad name the node drops.
+
+## 2026-09-26 (cont.): the paint bucket
+
+A fourth drawing tool: the paint bucket. Press and paint drops; hold and it pours outward at the pour
+speed (which the tools column shows in place of a size), stopping at the lines on its layer; let go
+and it stops. It is one more entry in the history - `{ tool: "bucket", color, points: [x, y], reach }`,
+where it was dropped and how far it spread - merged by the union and undone like a stroke. The pixels
+are never stored: `pure/pour.js` works them out again from the body, so it rasterises the layer's
+lines itself on the drawing's grid with plain arithmetic rather than reading a canvas, which would
+antialias differently from browser to browser. A cell is a wall inside a line's core (its width less half a
+cell, never under 0.75, so the fill runs under the antialiased rim with no seam); paint spreads by a
+whole-number 3/4 distance, never diagonally between two walls; only brush strokes before the pour,
+where they stood then, hold it back. The surface caches each pour's cells as row runs keyed by the
+entries before it, since a layer is repainted on every stroke. Vector cases for a kept pour, seven
+refused ones, and pours merged from two computers (red with the node not knowing the entry); seven
+model tests - a closed box holds the paint, reach is a rough circle, a thin diagonal line holds, grabs
+before the pour count and strokes after do not, an eraser's gap leaks - each planted red where it
+could be; `drawing.cjs` merges two computers' pours on the real node, byte for byte as the page does.
+Nobody has poured in a browser yet. A finding on the way: the strings cop's scanner
+(`tools/strings.mjs`) does not skip comments, so an apostrophe in a `//` comment opens a phantom
+string - these comments tipped its balance and flagged the save chip's status words, which were
+hoisted out of the template. Teaching it comments is right but surfaces 52 flags across six files it
+has been silently misreading, so that is left for its own pass.

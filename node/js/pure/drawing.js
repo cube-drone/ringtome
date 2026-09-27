@@ -155,6 +155,9 @@ export const BASE_LAYER = '0000000000000000';
 const COLOUR = /^#[0-9a-f]{6}$/;
 /// The largest brush or eraser, in canvas units.
 export const MAX_SIZE = 200;
+/// The farthest a pour can spread, in canvas units along the paint's path (pure/pour.js). Far more
+/// than any canvas needs - a pour into a winding space travels further than straight across.
+export const MAX_REACH = 1000000;
 
 /// A body as it arrived - from a save, a sync, another version - checked and tidied: unknown
 /// fields dropped, strokes that cannot be painted dropped, the order restored, anything undone
@@ -278,6 +281,16 @@ function asStroke(s) {
         if (typeof s.from !== 'string' || !HEX16.test(s.from)) return null;
         return { id: s.id, t: s.t, ...onLayer, tool: 'copy', from: s.from };
     }
+    // A pour (the paint bucket, Curtis, 2026-09-26): paint dropped at one point - `points` is that
+    // point, absolute - spreading `reach` canvas units outward and stopping at the layer's lines.
+    // What it covers is worked out from the layer as it stood (pure/pour.js), so it too is an entry
+    // merged by the union and undone like a stroke.
+    if (s.tool === 'bucket') {
+        if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
+        if (!Array.isArray(s.points) || s.points.length !== 2 || !s.points.every(Number.isSafeInteger)) return null;
+        if (!Number.isSafeInteger(s.reach) || s.reach < 0 || s.reach > MAX_REACH) return null;
+        return { id: s.id, t: s.t, ...onLayer, tool: 'bucket', color: s.color, points: s.points, reach: s.reach };
+    }
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
     if (!Array.isArray(s.points) || s.points.length < 2 || !s.points.every(Number.isSafeInteger)) return null;
@@ -374,7 +387,7 @@ export function writeBody(body) {
 /// The swatches the tools column always offers, whatever the drawing: white and black.
 export const FIXED_COLOURS = ['#ffffff', '#000000'];
 
-/// The colours this drawing's brush strokes used, newest first, each once, at most `count` - and
+/// The colours this drawing's brush strokes and pours used, newest first, each once, at most `count` - and
 /// never white or black, which the swatch row always offers anyway. Read off the strokes
 /// themselves, so the list is the drawing's own: it follows the drawing to every computer and
 /// survives a reload with nothing else stored, and an undone stroke's colour leaves with it.

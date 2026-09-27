@@ -141,6 +141,33 @@ the history, so they merge by the union and undo like a stroke:
   grab offsets apply to all of it. A copy only ever reaches strictly earlier entries, so even two
   layers copying each other cannot loop.
 
+### Pouring
+
+The paint bucket (Curtis, 2026-09-26): press and paint drops where you pressed; hold, and it pours
+outward - at the **pour speed** the tools column offers in place of a size - stopping at the lines on
+the same layer; let go and it stops. One entry records it:
+`{ "tool": "bucket", "color", "points": [x, y], "reach" }` - the point it was dropped at and how far,
+in canvas units, it had spread. Merged by the union, undone like a stroke; nothing new can conflict.
+
+The pixels are never stored. What a pour covers is worked out again from the body
+(`pure/pour.js`), so it must come out the same on every computer - which is why it never asks a
+canvas: the lines are rasterised by plain arithmetic on the drawing's own 800×600 grid (a cell is a
+**wall** when its centre lies within a line's core - its width less half a cell, never under 0.75 -
+so the antialiased rim is painted over and no pale seam shows), and the paint spreads through open
+cells by a whole-number distance (3 a straight step, 4 a diagonal: a rough circle), never diagonally
+between two walls. It covers every cell within its reach.
+
+- **Only lines hold paint back**: brush strokes, less what an eraser took out. An earlier pour, or the
+  base layer's white, does not - a second pour spreads straight over the first.
+- **The lines as they stood when it was poured**: only entries before it on its layer, where they
+  stood then (grabs between applied); a line drawn after a pour does not change it, and a grab after
+  it moves it like anything else. A copy of a layer carries its pours, as it carries its strokes.
+- **A merge can change what a pour covers**: a stroke from another computer, earlier in the one
+  order, is a wall the pour now meets; an undone one a wall it no longer does. Every computer still
+  agrees, because every computer works it out from the same entries.
+- The pour is **how far the paint went**, not where it ended - held long enough to fill the space, it
+  records a reach past the space's far end, so an undone wall lets it spread further.
+
 ### Undo is a recorded removal, so a merge cannot bring a stroke back
 
 Undo takes the newest stroke out of `strokes` and puts its id in `undone`. Undo again takes the next:
@@ -201,8 +228,9 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser and grab - icons, each named in its tooltip - a size for the
-  brush and the eraser (1-80 canvas units), the brush's colour,
+- **The tools column**: brush, eraser, paint bucket and grab - icons, each named in its tooltip - a
+  size for the brush and the eraser (1-80 canvas units), a pour speed for the bucket (1-10, 20 canvas
+  units a second at the slowest and half again each step), the colour,
   undo, and the drawing's own actions: duplicate, copy into a notebook, publish. The colour is a hue
   ring with an HSV triangle inside it and a hex field (`doc/colourpicker.js`, Curtis 2026-09-26 -
   it replaced the browser's native colour input), with a row of swatches beneath: white and black,
@@ -258,7 +286,8 @@ Slices 1-4 built 2026-09-26; `drawing.cjs` is their acceptance, `pure/drawing.cj
    cursor, title, autosave, the thumbnail list, tags.
 3. **Duplicate and copy into a notebook.**
 4. **Publish, view, unpublish.**
-5. **Layers** (built 2026-09-26): the column, the model, the merge.
-6. **Later, named so they are not forgotten**: more tools, redo, resizing the canvas, node-kept
-   thumbnails for long lists, publishing a set of drawings together, renaming layers, and
+5. **Layers** (built 2026-09-26): the column, the model, the merge; grab, trash, duplicate, names.
+6. **The paint bucket** (built 2026-09-26): pours, worked out from the body (`pure/pour.js`).
+7. **Later, named so they are not forgotten**: more tools, redo, resizing the canvas, node-kept
+   thumbnails for long lists, publishing a set of drawings together, and
    reordering layers by touch (dragging rows is mouse and pen only today).

@@ -23,6 +23,7 @@ import {
     HardDrives,
     PaintBrush,
     Hand,
+    PaintBucket,
     Stack,
     Eraser,
     Laptop,
@@ -220,6 +221,8 @@ export const Icons = {
     // ...and its layers column: a stack of sheets; and the grab tool, which moves a whole layer.
     layers: Stack,
     grab: Hand,
+    // ...and the paint bucket, which pours.
+    bucket: PaintBucket,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

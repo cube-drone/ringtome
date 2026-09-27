@@ -753,6 +753,136 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa3\",\"n\":3,\"z\":2,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa4\",\"n\":4,\"z\":3,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa5\",\"n\":5,\"z\":4,\"opacity\":100,\"hidden\":false,\"t\":5},{\"id\":\"aaaaaaaaaaaaaaa6\",\"n\":6,\"name\":\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"z\":5,\"opacity\":100,\"hidden\":false,\"t\":5}],\"strokes\":[],\"undone\":[]}"
     },
     {
+      "name": "a pour keeps its colour, its point and its reach, in that order",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "reach": 140,
+            "points": [
+              120,
+              80
+            ],
+            "color": "#1f9e90",
+            "tool": "bucket",
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 7,
+            "id": "e000000000000001",
+            "size": 9,
+            "pressure": [
+              50
+            ]
+          },
+          {
+            "id": "e000000000000002",
+            "t": 8,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              0,
+              0
+            ],
+            "reach": 0
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e000000000000001\",\"t\":7,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"bucket\",\"color\":\"#1f9e90\",\"points\":[120,80],\"reach\":140},{\"id\":\"e000000000000002\",\"t\":8,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[0,0],\"reach\":0}],\"undone\":[]}"
+    },
+    {
+      "name": "a pour that cannot be kept is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "e000000000000003",
+            "t": 1,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              1,
+              2
+            ],
+            "reach": -1
+          },
+          {
+            "id": "e000000000000004",
+            "t": 1,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              1,
+              2
+            ],
+            "reach": 1000001
+          },
+          {
+            "id": "e000000000000005",
+            "t": 1,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "reach": 5
+          },
+          {
+            "id": "e000000000000006",
+            "t": 1,
+            "tool": "bucket",
+            "points": [
+              1,
+              2
+            ],
+            "reach": 5
+          },
+          {
+            "id": "e000000000000007",
+            "t": 1,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              1,
+              2
+            ],
+            "reach": 2.5
+          },
+          {
+            "id": "e000000000000008",
+            "t": 1,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              1,
+              2
+            ]
+          },
+          {
+            "id": "e000000000000009",
+            "t": 1,
+            "tool": "bucket",
+            "color": "#8a4b1f",
+            "points": [
+              1,
+              2
+            ],
+            "reach": 1000000
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e000000000000009\",\"t\":1,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[1,2],\"reach\":1000000}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
@@ -870,6 +1000,14 @@
         "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"name\":\"🐴\",\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}"
       ],
       "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"layers\":[{\"id\":\"aaaaaaaaaaaaaaa2\",\"n\":2,\"name\":\"🐴\",\"z\":1,\"opacity\":100,\"hidden\":false,\"t\":20}],\"strokes\":[],\"undone\":[]}"
+    },
+    {
+      "name": "pours from two computers both stand, and an undone one stays gone",
+      "bodies": [
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e100000000000001\",\"t\":5,\"tool\":\"bucket\",\"color\":\"#1f9e90\",\"points\":[10,10],\"reach\":30}],\"undone\":[\"e100000000000003\"]}",
+        "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e100000000000002\",\"t\":6,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[400,300],\"reach\":900},{\"id\":\"e100000000000003\",\"t\":7,\"tool\":\"bucket\",\"color\":\"#000000\",\"points\":[1,1],\"reach\":1}],\"undone\":[]}"
+      ],
+      "merged": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e100000000000001\",\"t\":5,\"tool\":\"bucket\",\"color\":\"#1f9e90\",\"points\":[10,10],\"reach\":30},{\"id\":\"e100000000000002\",\"t\":6,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[400,300],\"reach\":900}],\"undone\":[\"e100000000000003\"]}"
     },
     {
       "name": "an unreadable head adds nothing",

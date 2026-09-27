@@ -52,8 +52,10 @@ import {
     deleteLayer,
     duplicateLayer,
     MAX_NAME_BYTES,
+    MAX_REACH,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
+import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 
 const html = htm.bind(h);
 
@@ -95,6 +97,46 @@ function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), p
     }
 }
 
+/// What each pour covers (pure/pour.js), kept by the pour and everything painted before it on its
+/// layer - entries never change under their ids, so the same ids are the same answer. A repaint
+/// happens on every stroke; working each pour out again every time would not keep up.
+const pourCache = new Map();
+const POUR_CACHE_SIZE = 256;
+function pourRunsCached(ops, index, drawing) {
+    const steps = ops.slice(0, index + 1).map((o) => o.id || o.tool);
+    const key = [drawing.width, drawing.height, ...steps].join(',');
+    let runs = pourCache.get(key);
+    if (!runs) {
+        runs = pourRuns(ops, index, drawing.width, drawing.height);
+        if (pourCache.size >= POUR_CACHE_SIZE) pourCache.delete(pourCache.keys().next().value);
+        pourCache.set(key, runs);
+    }
+    return runs;
+}
+
+/// Paint covered cells (row runs, one cell per canvas unit) in `colour` onto a canvas at any scale:
+/// drawn at the drawing's own size and stretched smoothly, so a fill's edge is soft, like a line's.
+function paintRuns(ctx, runs, colour, drawing, canvas) {
+    const cells = blankCanvas(drawing.width, drawing.height);
+    const cctx = cells.getContext('2d');
+    const image = cctx.createImageData(drawing.width, drawing.height);
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(colour.slice(i, i + 2), 16));
+    for (let k = 0; k < runs.length; k += 3) {
+        const row = runs[k] * drawing.width;
+        for (let x = runs[k + 1]; x <= runs[k + 2]; x++) {
+            const i = (row + x) * 4;
+            image.data[i] = r;
+            image.data[i + 1] = g;
+            image.data[i + 2] = b;
+            image.data[i + 3] = 255;
+        }
+    }
+    cctx.putImageData(image, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(cells, 0, 0, canvas.width, canvas.height);
+}
+
 /// One layer onto a canvas of its own (DRAWING.md, "Layers"): transparent wherever the layer has
 /// nothing, so an eraser stroke erases only the layer it is on. The base layer starts filled with
 /// the drawing's `background` - the white a drawing begins on - so erasing on it cuts through to
@@ -118,6 +160,8 @@ export function paintLayer(canvas, drawing, layerId) {
         if (op.tool === 'fill') {
             ctx.fillStyle = drawing.background;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (op.tool === 'bucket') {
+            paintRuns(ctx, pourRunsCached(ops, i, drawing), op.color, drawing, canvas);
         } else {
             paintStroke(ctx, op, scale);
         }
@@ -227,7 +271,14 @@ export async function duplicateDrawing(root, docId) {
 // ---------------------------------------------------------------------------------------------
 // The tools, remembered across drawings (not across page loads): switching drawings keeps your brush.
 
-let rememberedTools = { tool: 'brush', brushSize: 12, eraserSize: 40, color: '#1f1a17' };
+let rememberedTools = { tool: 'brush', brushSize: 12, eraserSize: 40, pourSpeed: 5, color: '#1f1a17' };
+
+/// The paint bucket's pour speed (1..10) as canvas units a second: each step half again faster, from
+/// a slow creep to a rush across the canvas in about a second.
+const POUR_SPEEDS = 10;
+const pourRate = (speed) => 20 * Math.pow(1.5, speed - 1);
+/// The puddle a pour starts as, the moment it is dropped, in canvas units.
+const DROP = 3;
 
 function useTools() {
     const [tools, setTools] = useState(rememberedTools);
@@ -413,6 +464,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     };
 
     const size = tools.tool === 'eraser' ? tools.eraserSize : tools.brushSize;
+    const pourTool = tools.tool === 'bucket';
 
     /// A pointer position in the drawing's own units.
     const toDrawing = (e) => {
@@ -425,8 +477,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const cursor = cursorRef.current;
         const canvas = canvasRef.current;
         if (!cursor || !canvas) return;
-        if (tools.tool === 'grab') {
-            cursor.style.display = 'none'; // the grab tool's cursor is the hand, not a size
+        if (tools.tool === 'grab' || pourTool) {
+            cursor.style.display = 'none'; // the grab tool's cursor is the hand, the bucket's a crosshair - not a size
             return;
         }
         const rect = canvas.getBoundingClientRect();
@@ -461,6 +513,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             setGrabbing(true);
             return;
         }
+        if (pourTool) {
+            startPour(e);
+            return;
+        }
         const pen = e.pointerType === 'pen';
         const first = sampleOf(e, pen);
         const stroke = { id: strokeId(), t: Date.now(), tool: tools.tool, size: Math.round(size) };
@@ -473,10 +529,43 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         restack();
     };
 
+    // The paint bucket (DRAWING.md, "Pouring"): the press drops paint, and while it is held the paint
+    // spreads - `pourRate` canvas units a second - stopping at the layer's lines. How far it could go
+    // is worked out once, at the press (pure/pour.js); each frame shows the cells within the reach so
+    // far, over the layer as it was. Letting go records one `bucket` entry: where, and how far.
+    const startPour = (e) => {
+        const [x, y] = toDrawing(e).map(Math.floor);
+        const layerId = current.id;
+        const ops = effectiveOps(drawing, layerId);
+        const field = pourField(wallsOf(ops, ops.length, drawing.width, drawing.height), drawing.width, drawing.height, x, y);
+        const canvas = layerCanvases.current.get(layerId);
+        if (!canvas || field[y * drawing.width + x] < 0) return; // dropped on a line, or off the canvas
+        const before = blankCanvas(canvas.width, canvas.height);
+        before.getContext('2d').drawImage(canvas, 0, 0);
+        const entry = { id: strokeId(), t: Date.now(), tool: 'bucket', color: tools.color, points: [x, y] };
+        if (layerId !== BASE_LAYER) entry.layer = layerId;
+        const pour = { pour: true, entry, field, canvas, before, rate: pourRate(tools.pourSpeed), began: performance.now(), reach: DROP, frame: 0 };
+        live.current = pour;
+        const show = () => {
+            if (live.current !== pour) return;
+            pour.reach = Math.min(MAX_REACH, DROP + (pour.rate * (performance.now() - pour.began)) / 1000);
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(before, 0, 0);
+            paintRuns(ctx, runsOf(field, drawing.width, drawing.height, pour.reach * STEP), entry.color, drawing, canvas);
+            ctx.restore();
+            restack();
+            pour.frame = requestAnimationFrame(show);
+        };
+        show();
+    };
+
     const onPointerMove = (e) => {
         moveCursor(e);
         const l = live.current;
-        if (!l) return;
+        if (!l || l.pour) return; // a pour stays where it was dropped
         if (l.grab) {
             const [x, y] = toDrawing(e);
             l.dx = x - l.start[0];
@@ -504,6 +593,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const l = live.current;
         live.current = null;
         if (!l) return;
+        if (l.pour) {
+            cancelAnimationFrame(l.frame);
+            const pour = { ...l.entry, reach: Math.round(l.reach) };
+            session.setBody(writeBody(addStroke(drawing, pour)));
+            session.touched();
+            return;
+        }
         if (l.grab) {
             setGrabbing(false);
             const dx = Math.round(l.dx);
@@ -548,14 +644,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const toolButtons = [
         ['brush', Icons.drawing, t('doc.drawing.brush', 'brush')],
         ['eraser', Icons.eraser, t('doc.drawing.eraser', 'eraser')],
+        ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket - hold to pour')],
         ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
     ];
     const grabTool = tools.tool === 'grab';
+    // Picking a colour takes up a tool that uses one: the bucket stays in hand, anything else
+    // becomes the brush.
+    const colourTool = pourTool ? 'bucket' : 'brush';
     const paperClass = grabTool
         ? grabbing
             ? 'drawing-paper drawing-floor grabbing'
             : 'drawing-paper drawing-floor grab'
-        : 'drawing-paper drawing-floor';
+        : pourTool
+          ? 'drawing-paper drawing-floor pour'
+          : 'drawing-paper drawing-floor';
 
     const toolsColumn = tucked.has('tools')
         ? html`<${Rail} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onClick=${() => toggleTuck('tools')} />`
@@ -573,7 +675,19 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       ><${icon} /></button>`
                   )}
               </div>
+              ${pourTool &&
+              html`<label class="drawing-size">
+                  <span>${t('doc.drawing.pour-speed', 'pour speed')} · ${tools.pourSpeed}</span>
+                  <input
+                      type="range"
+                      min="1"
+                      max=${POUR_SPEEDS}
+                      value=${tools.pourSpeed}
+                      onInput=${(e) => setTools({ pourSpeed: +e.currentTarget.value })}
+                  />
+              </label>`}
               ${!grabTool &&
+              !pourTool &&
               html`<label class="drawing-size">
                   <span>${tools.tool === 'eraser' ? t('doc.drawing.eraser-size', 'eraser size') : t('doc.drawing.brush-size', 'brush size')} · ${size}</span>
                   <input
@@ -585,7 +699,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           setTools(tools.tool === 'eraser' ? { eraserSize: +e.currentTarget.value } : { brushSize: +e.currentTarget.value })}
                   />
               </label>`}
-              <${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: 'brush' })} />
+              <${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: colourTool })} />
               <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
                   ${/* A click away: white and black always, then the last ten colours this
                       drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''}
@@ -595,7 +709,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           class=${tools.color === c ? 'drawing-swatch active' : 'drawing-swatch'}
                           style=${`background: ${c}`}
                           title=${c}
-                          onClick=${() => setTools({ color: c, tool: 'brush' })}
+                          onClick=${() => setTools({ color: c, tool: colourTool })}
                       ></button>`
                   )}
               </div>
@@ -727,6 +841,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               html`<p class="null-sub">${t('doc.drawing.no-layers', 'no layers - make a new one to draw on')}</p>`}
           </aside>${resizer('layers')}`;
 
+    // The save chip's state, read out here: inside the template a status word would read to the
+    // strings cop as copy.
+    const saved = session.status === 'clean';
+    const saveFailed = session.status === 'error';
     const header = html`<header class="reader-head drawing-head">
         <input
             class="editor-title"
@@ -762,18 +880,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             !row.fields?.published_as &&
             html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`}
             <${Chip}
-                modifier=${session.status === 'error' ? 'chip-diverged' : null}
-                title=${session.status === 'clean'
-                    ? t('doc.drawing.saved', 'saved')
-                    : session.status === 'error'
-                    ? session.error || t('doc.drawing.not-saved', 'not saved - it will try again')
-                    : t('doc.drawing.saving', 'saving…')}
+                modifier=${saveFailed ? 'chip-diverged' : null}
+                title=${saved ? t('doc.drawing.saved', 'saved') : saveFailed ? session.error || t('doc.drawing.not-saved', 'not saved - it will try again') : t('doc.drawing.saving', 'saving…')}
             >
-                ${session.status === 'clean'
-                    ? html`<${Icons.saved} />`
-                    : session.status === 'error'
-                    ? html`<${Icons.warn} />`
-                    : html`<span class="status-spin"><${Icons.spinner} /></span>`}
+                ${saved ? html`<${Icons.saved} />` : saveFailed ? html`<${Icons.warn} />` : html`<span class="status-spin"><${Icons.spinner} /></span>`}
             </${Chip}>
             <span class="editor-meta-anchor" ref=${metaChipRef}>
                 <${Chip}

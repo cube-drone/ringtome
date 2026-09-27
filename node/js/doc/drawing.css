@@ -169,6 +169,12 @@
     }
 }
 
+/* The paint bucket drops its paint at a point: a crosshair, not a size. */
+.drawing-paper.pour,
+.drawing-paper.pour .drawing-canvas {
+    cursor: crosshair;
+}
+
 /* The grab tool's hand: open while it hovers, closed while it holds the layer. */
 .drawing-paper.grab,
 .drawing-paper.grab .drawing-canvas {

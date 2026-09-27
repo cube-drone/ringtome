@@ -335,5 +335,20 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         const kept = model.layersOf(model.readBody((await read()).body));
         assert.deepEqual([kept[1].id, "name" in kept[1]], [L2, false]);
     });
-});
 
+    it("pours from two computers both stand after a merge, kept exactly as the page wrote them", async () => {
+        const start = model.readBody(body([stroke("a500000000000001", 1)]));
+        const made = await (await j(ada, docs(), { title: "a poured horse", body: writeBody(start), format: "drawing" })).json();
+        const read = async () => (await ada(`${docs()}/${made.doc_id}`)).json();
+        const parents = (await read()).save_parents;
+        const here = model.addStroke(start, { id: "b500000000000002", t: 5, tool: "bucket", color: "#1f9e90", points: [30, 40], reach: 250 });
+        const there = model.addStroke(start, { id: "c500000000000003", t: 6, tool: "bucket", color: "#8a4b1f", points: [700, 500], reach: 12 });
+        for (const side of [here, there]) {
+            await j(ada, `${docs()}/${made.doc_id}`, { title: "a poured horse", body: writeBody(side), parents, format: "drawing" }, "PUT");
+        }
+        const merged = await read();
+        assert.equal(merged.body, writeBody(model.mergeBodies(here, there)), "the node's merge is the page's, byte for byte");
+        const pours = model.readBody(merged.body).strokes.filter((s) => s.tool === "bucket");
+        assert.deepEqual(pours.map((s) => [s.points, s.reach]), [[[30, 40], 250], [[700, 500], 12]]);
+    });
+});

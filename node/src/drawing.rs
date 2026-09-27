@@ -27,6 +27,8 @@ pub const CANVAS_HEIGHT: i64 = 600;
 pub const BACKGROUND: &str = "#ffffff";
 /// The largest brush or eraser, in canvas units.
 pub const MAX_SIZE: i64 = 200;
+/// The farthest a pour can spread, in canvas units along the paint's path (pure/pour.js).
+pub const MAX_REACH: i64 = 1_000_000;
 /// A pen's pressure at a point: a whole number from 0 (the lightest touch) to 100 (full).
 pub const MAX_PRESSURE: i64 = 100;
 /// A layer's opacity: a whole percent.
@@ -67,6 +69,9 @@ pub struct Stroke {
     /// is one width throughout.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pressure: Option<Vec<i64>>,
+    /// How far a pour spread (DRAWING.md, "Pouring"); only a pour has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reach: Option<i64>,
     /// A move's shift of its whole layer (DRAWING.md, "Grabbing"); only a move has these.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dx: Option<i64>,
@@ -179,6 +184,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 size: None,
                 points: None,
                 pressure: None,
+                reach: None,
                 dx: None,
                 dy: None,
                 from: None,
@@ -195,6 +201,31 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 }
             }
             return Some(entry);
+        }
+        // A pour (the paint bucket): a colour, the one point it was dropped at, and how far it
+        // spread. What it covers is the page's to work out (pure/pour.js); the node keeps the entry.
+        "bucket" => {
+            let points = o
+                .get("points")?
+                .as_array()?
+                .iter()
+                .map(safe_int)
+                .collect::<Option<Vec<i64>>>()
+                .filter(|p| p.len() == 2)?;
+            return Some(Stroke {
+                id,
+                t,
+                layer,
+                tool: "bucket",
+                color: Some(o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string()),
+                size: None,
+                points: Some(points),
+                pressure: None,
+                reach: Some(o.get("reach").and_then(safe_int).filter(|r| (0..=MAX_REACH).contains(r))?),
+                dx: None,
+                dy: None,
+                from: None,
+            });
         }
         _ => return None,
     };
@@ -217,7 +248,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
         .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, dx: None, dy: None, from: None })
+    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, reach: None, dx: None, dy: None, from: None })
 }
 
 fn as_layer(v: &Value) -> Option<Layer> {
