@@ -29,6 +29,8 @@ pub const BACKGROUND: &str = "#ffffff";
 pub const MAX_SIZE: i64 = 200;
 /// The farthest a pour can spread, in canvas units along the paint's path (pure/pour.js).
 pub const MAX_REACH: i64 = 1_000_000;
+/// The largest a placed image can be, either way, in canvas units.
+pub const MAX_IMAGE_SIZE: i64 = 20_000;
 /// A pen's pressure at a point: a whole number from 0 (the lightest touch) to 100 (full).
 pub const MAX_PRESSURE: i64 = 100;
 /// A layer's opacity: a whole percent.
@@ -80,6 +82,14 @@ pub struct Stroke {
     /// A copy's source layer (DRAWING.md, "Deleting and duplicating layers"); only a copy has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// An image's picture document (DRAWING.md, "Images"), and its size on the canvas; only an
+    /// image has these. Its top-left is its one point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub w: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub h: Option<i64>,
 }
 
 /// A layer (DRAWING.md, "Layers"): its number, its place in the stack, its opacity, whether it is
@@ -154,6 +164,11 @@ fn is_hex16(s: &str) -> bool {
     s.len() == 16 && s.bytes().all(is_lower_hex)
 }
 
+/// A document id: 16 bytes, lowercase hex.
+fn is_doc_id(s: &str) -> bool {
+    s.len() == 32 && s.bytes().all(is_lower_hex)
+}
+
 fn is_colour(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 7 && b[0] == b'#' && b[1..].iter().copied().all(is_lower_hex)
@@ -188,6 +203,9 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 dx: None,
                 dy: None,
                 from: None,
+                doc: None,
+                w: None,
+                h: None,
             };
             match kind {
                 "move" => {
@@ -225,6 +243,38 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 dx: None,
                 dy: None,
                 from: None,
+                doc: None,
+                w: None,
+                h: None,
+            });
+        }
+        // An image: the picture's document id, its top-left, its size. The pixels stay in the
+        // picture's own document; the page fetches them to paint.
+        "image" => {
+            let points = o
+                .get("points")?
+                .as_array()?
+                .iter()
+                .map(safe_int)
+                .collect::<Option<Vec<i64>>>()
+                .filter(|p| p.len() == 2)?;
+            let side = |k: &str| o.get(k).and_then(safe_int).filter(|n| (1..=MAX_IMAGE_SIZE).contains(n));
+            return Some(Stroke {
+                id,
+                t,
+                layer,
+                tool: "image",
+                color: None,
+                size: None,
+                points: Some(points),
+                pressure: None,
+                reach: None,
+                dx: None,
+                dy: None,
+                from: None,
+                doc: Some(o.get("doc")?.as_str().filter(|d| is_doc_id(d))?.to_string()),
+                w: Some(side("w")?),
+                h: Some(side("h")?),
             });
         }
         _ => return None,
@@ -248,7 +298,7 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
         .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, reach: None, dx: None, dy: None, from: None })
+    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, reach: None, dx: None, dy: None, from: None, doc: None, w: None, h: None })
 }
 
 fn as_layer(v: &Value) -> Option<Layer> {

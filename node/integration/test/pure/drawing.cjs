@@ -357,3 +357,41 @@ describe('naming a layer', () => {
         assert.equal(d.layersOf(ab).find((l) => l.id === L2).name, '🐴', 'four UTF-8 bytes from F0 outrank EF - though UTF-16 says otherwise');
     });
 });
+
+describe('adding an image', () => {
+    const PIC = '0123456789abcdef0123456789abcdef';
+    const L = 'aaaaaaaaaaaaaaa7';
+
+    it('places a picture centred, shrunk to fit and never grown', () => {
+        assert.deepEqual(d.placeImage(1600, 900), { x: 0, y: 75, w: 800, h: 450 });
+        assert.deepEqual(d.placeImage(300, 1200), { x: 325, y: 0, w: 150, h: 600 });
+        assert.deepEqual(d.placeImage(40, 20), { x: 380, y: 290, w: 40, h: 20 }, 'a small picture keeps its size');
+    });
+
+    it('goes on a new layer at the top, named for the picture, and undo takes it back', () => {
+        let body = d.addLayer(d.blankDrawing(), 'aaaaaaaaaaaaaaa2', 1);
+        body = d.addImage(body, { doc: PIC, width: 640, height: 480, title: 'a grey horse' }, L, 'f000000000000001', 5);
+        const top = d.layersOf(body).at(-1);
+        assert.deepEqual([top.id, top.name], [L, 'a grey horse']);
+        assert.deepEqual(d.readBody(d.writeBody(body)).strokes.at(-1), { id: 'f000000000000001', t: 5, layer: L, tool: 'image', points: [80, 60], doc: PIC, w: 640, h: 480 });
+        assert.deepEqual(d.imagesOf(body), [PIC]);
+        assert.deepEqual(d.imagesOf(d.undo(body)), [], 'undo takes the picture back');
+    });
+
+    it('names the layer from a title only as far as a name can go', () => {
+        const long = d.addImage(d.blankDrawing(), { doc: PIC, width: 10, height: 10, title: 'tab\there ' + '🐴'.repeat(40) }, L, 'f000000000000001', 5);
+        const name = d.layersOf(long).at(-1).name;
+        assert.ok(name.startsWith('tab here ') && d.isLayerName(name), 'control characters out, cut to fit, whole characters');
+        const blank = d.addImage(d.blankDrawing(), { doc: PIC, width: 10, height: 10, title: '' }, L, 'f000000000000001', 5);
+        assert.ok(!('name' in d.layersOf(blank).at(-1)), 'no title, no name');
+    });
+
+    it('moves with a grab and copies with its layer, like a stroke', () => {
+        let body = d.addImage(d.blankDrawing(), { doc: PIC, width: 10, height: 10, title: 'x' }, L, 'f000000000000001', 5);
+        body = d.addStroke(body, { id: 'd000000000000002', t: 6, layer: L, tool: 'move', dx: 5, dy: 0 });
+        const ops = d.effectiveOps(body, L);
+        assert.deepEqual([ops[0].tool, d.offsetsOf(ops).each[0]], ['image', [5, 0]]);
+        body = d.duplicateLayer(body, L, 'aaaaaaaaaaaaaaa8', 'c000000000000003', 7);
+        assert.equal(d.effectiveOps(body, 'aaaaaaaaaaaaaaa8')[0].tool, 'image');
+    });
+});

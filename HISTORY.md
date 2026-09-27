@@ -11224,3 +11224,20 @@ does the same - once open, it stays on screen through a reload (drawing is still
 reload settles) - and its layers paint in a layout effect, so no canvas is ever shown before it is
 painted. Unconfirmed in a browser; the theory's test is whether the flash lined up with the save
 chip settling (a reload following the page's own save).
+
+## 2026-09-27 (cont.): images in drawings
+
+"Add an image" in the drawing's tools column opens a picker of every picture in the person's own
+media - newest added first, narrowed by title words, a notebook and a tag cloud - and the choice
+lands on a new layer at the top, named for the picture (cut to fit a layer name) and made current.
+The body holds a reference, `{ tool: "image", points, doc, w, h }`: the picture's document id and
+its place, centred at a pixel to a canvas unit and shrunk to fit. The pixels stay in the picture's
+document; the surface fetches and keeps them, repaints as each arrives, and anything that makes a
+picture of the drawing - list thumbnail, copy into a notebook, publication - waits for all of them
+first. It merges, undoes, grabs, erases and copies as a stroke does; a pour runs over it, since the
+pour rasterises only lines. The house modal gained a `wide` size for the picker's grid. Vector cases
+for a kept image and seven refused ones (red with the node not knowing the entry); model tests for
+placement, the new named layer, undo, a grab and a copy; three picker tests (pictures only,
+newest-added, the stacked filters, a tag cloud counted before the picked tags, the notebook menu);
+`drawing.cjs` uploads a real picture, adds it as the page does, checks the node keeps the entry byte
+for byte and serves the pixels the page paints from. Not yet tried in a browser.

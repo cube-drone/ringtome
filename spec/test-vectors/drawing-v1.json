@@ -883,6 +883,129 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"e000000000000009\",\"t\":1,\"tool\":\"bucket\",\"color\":\"#8a4b1f\",\"points\":[1,2],\"reach\":1000000}],\"undone\":[]}"
     },
     {
+      "name": "an image keeps its point, its picture and its size, in that order",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "h": 450,
+            "w": 800,
+            "doc": "0123456789abcdef0123456789abcdef",
+            "points": [
+              0,
+              -75
+            ],
+            "tool": "image",
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 3,
+            "id": "f000000000000001",
+            "color": "#000000",
+            "size": 4
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f000000000000001\",\"t\":3,\"layer\":\"aaaaaaaaaaaaaaa2\",\"tool\":\"image\",\"points\":[0,-75],\"doc\":\"0123456789abcdef0123456789abcdef\",\"w\":800,\"h\":450}],\"undone\":[]}"
+    },
+    {
+      "name": "an image that cannot be kept is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "f000000000000002",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0,
+              0
+            ],
+            "doc": "0123456789ABCDEF0123456789ABCDEF",
+            "w": 10,
+            "h": 10
+          },
+          {
+            "id": "f000000000000003",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0,
+              0
+            ],
+            "doc": "0123456789abcdef",
+            "w": 10,
+            "h": 10
+          },
+          {
+            "id": "f000000000000004",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0,
+              0
+            ],
+            "doc": "0123456789abcdef0123456789abcdef",
+            "w": 0,
+            "h": 10
+          },
+          {
+            "id": "f000000000000005",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0,
+              0
+            ],
+            "doc": "0123456789abcdef0123456789abcdef",
+            "w": 10,
+            "h": 20001
+          },
+          {
+            "id": "f000000000000006",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0
+            ],
+            "doc": "0123456789abcdef0123456789abcdef",
+            "w": 10,
+            "h": 10
+          },
+          {
+            "id": "f000000000000007",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0,
+              0
+            ],
+            "w": 10,
+            "h": 10
+          },
+          {
+            "id": "f000000000000008",
+            "t": 1,
+            "tool": "image",
+            "points": [
+              0,
+              0
+            ],
+            "doc": "0123456789abcdef0123456789abcdef",
+            "w": 20000,
+            "h": 1
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f000000000000008\",\"t\":1,\"tool\":\"image\",\"points\":[0,0],\"doc\":\"0123456789abcdef0123456789abcdef\",\"w\":20000,\"h\":1}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,

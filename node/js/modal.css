@@ -24,6 +24,12 @@
     color: var(--dock-text);
 }
 
+/* A modal that shows a grid (the drawing's image picker): wider, and as tall as the page lets it. */
+.modal.modal-wide {
+    width: min(920px, 100%);
+    height: 100%;
+}
+
 .modal-head {
     flex-shrink: 0;
     display: flex;

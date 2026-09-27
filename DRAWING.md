@@ -168,6 +168,28 @@ between two walls. It covers every cell within its reach.
 - The pour is **how far the paint went**, not where it ended - held long enough to fill the space, it
   records a reach past the space's far end, so an undone wall lets it spread further.
 
+### Images
+
+A picture from the person's own media (Curtis, 2026-09-27): **add an image** in the tools column
+opens a picker - every picture, newest added first (a claimed date wins, as everywhere), narrowed by
+a title search, a notebook and tags - and the chosen one lands on **a new layer at the top**, named
+for the picture and made current, so a grab moves it straight away. One entry records it:
+`{ "tool": "image", "points": [x, y], "doc": <picture's document id>, "w", "h" }` - its top-left and
+its size in canvas units: one pixel to a unit, centred, shrunk (never grown) to fit the canvas.
+
+- **A reference, not the pixels.** The body names the picture's document; whoever paints the
+  drawing fetches the picture's body, as the person's own media is fetched anywhere. A picture not
+  here yet - still syncing, or deleted - paints as nothing until it arrives. A picture OF the
+  drawing (the list thumbnail, a copy into a notebook, a publication) waits for every picture
+  first, so it is never made without them. **Publishing a drawing publishes its pictures' pixels**
+  inside the flattened picture - which is what adding them asked for.
+- It is an entry like a stroke: merged by the union, undone (the picture goes; its layer stays, as
+  a duplicate's does), moved by a grab, cut by the eraser, carried by a layer's copy.
+- **A picture is not a line**: a pour runs over it rather than stopping at its edges
+  (`pure/pour.js` rasterises only strokes, which keeps every computer's pour the same without
+  knowing the picture's pixels).
+- An animated picture draws as its first frame.
+
 ### Undo is a recorded removal, so a merge cannot bring a stroke back
 
 Undo takes the newest stroke out of `strokes` and puts its id in `undone`. Undo again takes the next:
@@ -301,6 +323,7 @@ Slices 1-4 built 2026-09-26; `drawing.cjs` is their acceptance, `pure/drawing.cj
 4. **Publish, view, unpublish.**
 5. **Layers** (built 2026-09-26): the column, the model, the merge; grab, trash, duplicate, names.
 6. **The paint bucket** (built 2026-09-26): pours, worked out from the body (`pure/pour.js`).
+   **The navigator** and **images** followed (2026-09-27).
 7. **Later, named so they are not forgotten**: more tools, redo, resizing the canvas, node-kept
    thumbnails for long lists, publishing a set of drawings together, and
    reordering layers by touch (dragging rows is mouse and pen only today).

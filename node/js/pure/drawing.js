@@ -158,6 +158,10 @@ export const MAX_SIZE = 200;
 /// The farthest a pour can spread, in canvas units along the paint's path (pure/pour.js). Far more
 /// than any canvas needs - a pour into a winding space travels further than straight across.
 export const MAX_REACH = 1000000;
+/// The largest a placed image can be, either way, in canvas units.
+export const MAX_IMAGE_SIZE = 20000;
+/// A document id: 16 bytes, hex.
+const DOC_ID = /^[0-9a-f]{32}$/;
 
 /// A body as it arrived - from a save, a sync, another version - checked and tidied: unknown
 /// fields dropped, strokes that cannot be painted dropped, the order restored, anything undone
@@ -290,6 +294,16 @@ function asStroke(s) {
         if (!Array.isArray(s.points) || s.points.length !== 2 || !s.points.every(Number.isSafeInteger)) return null;
         if (!Number.isSafeInteger(s.reach) || s.reach < 0 || s.reach > MAX_REACH) return null;
         return { id: s.id, t: s.t, ...onLayer, tool: 'bucket', color: s.color, points: s.points, reach: s.reach };
+    }
+    // An image (Curtis, 2026-09-27): one of the person's own pictures, by its document id, placed
+    // with its top-left at `points` and `w` x `h` canvas units big. The pixels stay in the picture's
+    // document; the drawing holds the reference, and whoever paints it fetches them (doc/drawing.js).
+    if (s.tool === 'image') {
+        if (typeof s.doc !== 'string' || !DOC_ID.test(s.doc)) return null;
+        if (!Array.isArray(s.points) || s.points.length !== 2 || !s.points.every(Number.isSafeInteger)) return null;
+        const side = (n) => Number.isSafeInteger(n) && n >= 1 && n <= MAX_IMAGE_SIZE;
+        if (!side(s.w) || !side(s.h)) return null;
+        return { id: s.id, t: s.t, ...onLayer, tool: 'image', points: s.points, doc: s.doc, w: s.w, h: s.h };
     }
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
@@ -549,4 +563,45 @@ export function effectiveOps(drawing, layerId, before = null) {
         else if (op.tool !== 'delete') out.push(op);
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Images (Curtis, 2026-09-27): a picture from the person's own media, added on a layer of its own
+// at the top of the stack - so grab moves it, the eraser cuts it, trash and duplicate take it.
+
+/// Where a picture `width` x `height` pixels lands on a canvas: centred, one pixel to a canvas unit,
+/// shrunk (never grown) to fit inside it. { x, y, w, h }, whole canvas units.
+export function placeImage(width, height, canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT) {
+    const scale = Math.min(1, canvasWidth / width, canvasHeight / height);
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
+    return { x: Math.round((canvasWidth - w) / 2), y: Math.round((canvasHeight - h) / 2), w, h };
+}
+
+/// Add a picture on a new layer at the top: `picture` is { doc, width, height, title }. The layer
+/// takes the picture's title as its name when that can be a name (cut to fit if long). One change
+/// to the body; undo takes the picture back, leaving the empty layer, as a duplicate's undo does.
+export function addImage(drawing, picture, layerId, entryId, now) {
+    let out = addLayer(drawing, layerId, now);
+    const name = layerNameFrom(picture.title);
+    if (name) out = setLayer(out, layerId, { name }, now);
+    const at = placeImage(picture.width, picture.height, drawing.width, drawing.height);
+    const entry = { id: entryId, t: now, layer: layerId, tool: 'image', points: [at.x, at.y], doc: picture.doc, w: at.w, h: at.h };
+    return addStroke(out, entry);
+}
+
+/// A title as a layer name, or null: control characters become spaces, and a long title is cut
+/// at a character boundary to fit MAX_NAME_BYTES.
+function layerNameFrom(title) {
+    if (typeof title !== 'string') return null;
+    let name = title.replace(/\p{Cc}/gu, ' ').trim();
+    const chars = [...name];
+    while (chars.length && new TextEncoder().encode(chars.join('')).length > MAX_NAME_BYTES) chars.pop();
+    name = chars.join('').trim();
+    return isLayerName(name) ? name : null;
+}
+
+/// The picture documents a drawing refers to, each once.
+export function imagesOf(drawing) {
+    return [...new Set(drawing.strokes.filter((s) => s.tool === 'image').map((s) => s.doc))];
 }

@@ -26,6 +26,7 @@ import {
     PaintBucket,
     MagnifyingGlassPlus,
     MagnifyingGlassMinus,
+    ImageSquare,
     Stack,
     Eraser,
     Laptop,
@@ -228,6 +229,8 @@ export const Icons = {
     // ...and the navigator's zoom.
     zoomIn: MagnifyingGlassPlus,
     zoomOut: MagnifyingGlassMinus,
+    // ...and a picture brought in from the person's media.
+    addImage: ImageSquare,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

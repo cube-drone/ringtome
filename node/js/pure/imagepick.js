@@ -1,0 +1,46 @@
+// The drawing's image picker (Curtis, 2026-09-27): every picture in the person's own media, newest
+// first, narrowed by a notebook, by tags and by words in the title. Value in, value out; the modal
+// (doc/imagepick.js) shows what these return.
+//
+// The filters stack as the documents list's do (pure/doclist.js): the notebook, then the title
+// words, then every picked tag - and the tag cloud is counted before the tags are applied, so it
+// narrows with the search and the notebook but still shows every tag that could be added.
+import { OWN_MEDIA_KINDS } from './mediakind.js';
+import { createdMs } from './docdate.js';
+import { tagCounts } from './doclist.js';
+
+/// A picture that can go into a drawing: an image document (still or animated - an animation is
+/// drawn as its first frame) whose size the node knows, since that is how it is placed.
+export const isPicture = (doc) =>
+    !!doc && OWN_MEDIA_KINDS[doc.format] === 'image' && !!doc.media && doc.media.width > 0 && doc.media.height > 0;
+
+/// The words a title search looks for: lowercase, split on whitespace. Every word must appear.
+const wordsOf = (query) => (query || '').toLocaleLowerCase().split(/\s+/).filter(Boolean);
+
+/// Newest first, as they were ADDED - a picture's claimed date where it has one, else when it
+/// began (`createdMs`): retitling or tagging an old picture does not bring it back to the top.
+export const newestFirst = (a, b) => createdMs(b) - createdMs(a) || (a.doc_id < b.doc_id ? 1 : -1);
+
+/// The pictures before the tags: pictures only, in `bucket` (null for every notebook), with
+/// every word of `query` in the title.
+function narrowed(docs, { query, bucket }) {
+    const words = wordsOf(query);
+    return (docs || [])
+        .filter(isPicture)
+        .filter((d) => !bucket || (d.buckets || []).includes(bucket))
+        .filter((d) => {
+            const title = (d.title || '').toLocaleLowerCase();
+            return words.every((w) => title.includes(w));
+        });
+}
+
+/// What the picker shows: `{ pictures, tags, buckets }` - the pictures passing every filter, newest
+/// first; the tag cloud ([tag, count], most-used first) over the pictures before the tag filter;
+/// and every notebook holding any picture at all, alphabetical, so the notebook menu never shrinks
+/// out from under a search.
+export function pickPictures(docs, { query = '', bucket = null, tags = [] } = {}) {
+    const before = narrowed(docs, { query, bucket });
+    const pictures = before.filter((d) => tags.every((t) => (d.tags || []).includes(t))).sort(newestFirst);
+    const buckets = [...new Set((docs || []).filter(isPicture).flatMap((d) => d.buckets || []))].sort((a, b) => a.localeCompare(b));
+    return { pictures, tags: tagCounts(before), buckets };
+}

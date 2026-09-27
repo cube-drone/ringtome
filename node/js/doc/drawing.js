@@ -53,10 +53,13 @@ import {
     duplicateLayer,
     MAX_NAME_BYTES,
     MAX_REACH,
+    addImage,
+    imagesOf,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
+import { ImagePickModal } from './imagepick.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 
 const html = htm.bind(h);
@@ -97,6 +100,50 @@ function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), p
         ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
         ctx.stroke();
     }
+}
+
+/// The pictures drawings refer to (DRAWING.md, "Images"), fetched once each and kept: `root/doc` ->
+/// { img, ready, promise }. The pixels live in the picture's own document, served like any of the
+/// person's media.
+const pictures = new Map();
+const NO_PICTURES = new Map();
+
+function fetchPicture(root, doc) {
+    const key = `${root}/${doc}`;
+    let held = pictures.get(key);
+    if (!held) {
+        const img = new Image();
+        held = { img, ready: false };
+        held.promise = (async () => {
+            img.src = `/api/identity/${root}/docs/${doc}/body`;
+            await img.decode();
+            held.ready = true;
+        })().catch(() => {
+            // Not here (deleted, or not yet synced to this computer): painted as nothing, and
+            // forgotten, so the next look tries again.
+            pictures.delete(key);
+        });
+        pictures.set(key, held);
+    }
+    return held;
+}
+
+/// The drawing's pictures that are ready now, by document id - what painting draws.
+export function picturesNow(root, drawing) {
+    const out = new Map();
+    for (const doc of imagesOf(drawing)) {
+        const held = pictures.get(`${root}/${doc}`);
+        if (held && held.ready) out.set(doc, held.img);
+    }
+    return out;
+}
+
+/// Fetch every picture the drawing refers to, and resolve when each has arrived or failed: what a
+/// picture OF the drawing (a thumbnail, a copy, a publication) waits for, so it is never made
+/// without them.
+export async function loadPictures(root, drawing) {
+    await Promise.all(imagesOf(drawing).map((doc) => fetchPicture(root, doc).promise));
+    return picturesNow(root, drawing);
 }
 
 /// What each pour covers (pure/pour.js), kept by the pour and everything painted before it on its
@@ -143,7 +190,7 @@ function paintRuns(ctx, runs, colour, drawing, canvas) {
 /// nothing, so an eraser stroke erases only the layer it is on. The base layer starts filled with
 /// the drawing's `background` - the white a drawing begins on - so erasing on it cuts through to
 /// transparency like any other layer.
-export function paintLayer(canvas, drawing, layerId) {
+export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
     const ctx = canvas.getContext('2d');
     const scale = canvas.width / drawing.width;
     ctx.save();
@@ -162,6 +209,14 @@ export function paintLayer(canvas, drawing, layerId) {
         if (op.tool === 'fill') {
             ctx.fillStyle = drawing.background;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (op.tool === 'image') {
+            // A picture not here yet paints as nothing; the surface repaints when it arrives.
+            const img = images.get(op.doc);
+            if (img) {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(img, op.points[0] * scale, op.points[1] * scale, op.w * scale, op.h * scale);
+            }
         } else if (op.tool === 'bucket') {
             paintRuns(ctx, pourRunsCached(ops, i, drawing), op.color, drawing, canvas);
         } else {
@@ -180,12 +235,12 @@ function blankCanvas(width, height) {
 }
 
 /// Every layer painted onto a canvas of its own, `width` pixels wide: a Map of layer id to canvas.
-export function paintLayers(drawing, width) {
+export function paintLayers(drawing, width, images = NO_PICTURES) {
     const height = Math.round((width * drawing.height) / drawing.width);
     const canvases = new Map();
     for (const layer of layersOf(drawing)) {
         const canvas = blankCanvas(width, height);
-        paintLayer(canvas, drawing, layer.id);
+        paintLayer(canvas, drawing, layer.id, images);
         canvases.set(layer.id, canvas);
     }
     return canvases;
@@ -218,17 +273,17 @@ export function composite(target, drawing, canvases, shift = null) {
 /// copy into a notebook and a publication are all made from - so a hidden layer is left out of all
 /// three, as it is out of sight, and wherever the layers leave nothing the picture is transparent
 /// (webp and png keep it, and so does the node's AVIF).
-export function flatten(drawing, width = drawing.width) {
+export function flatten(drawing, width = drawing.width, images = NO_PICTURES) {
     const out = blankCanvas(width, Math.round((width * drawing.height) / drawing.width));
-    composite(out, drawing, paintLayers(drawing, width));
+    composite(out, drawing, paintLayers(drawing, width, images));
     return out;
 }
 
 /// The drawing as an image file: webp where the browser can write one, png where it cannot (Safari,
 /// and so the macOS app's webview). Either is only how it travels - the node keeps every picture as
 /// AVIF (media/image.rs).
-export function flattenToBlob(drawing) {
-    const canvas = flatten(drawing);
+export async function flattenToBlob(root, drawing) {
+    const canvas = flatten(drawing, drawing.width, await loadPictures(root, drawing));
     return new Promise((resolve, reject) =>
         canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('could not make a picture of the drawing'))), 'image/webp', 0.92)
     );
@@ -241,7 +296,7 @@ export async function copyPictureInto(root, drawing, title, bucket, isNew) {
     if (isNew) {
         await api(`/api/identity/${root}/buckets`, { method: 'POST', body: JSON.stringify({ name: bucket, app: 'default' }) });
     }
-    const picture = await flattenToBlob(drawing);
+    const picture = await flattenToBlob(root, drawing);
     const made = await xhrUpload(`/api/identity/${root}/docs/binary?title=${encodeURIComponent(title || 'drawing')}`, picture);
     await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`, { method: 'PUT' });
     return made.doc_id;
@@ -253,7 +308,7 @@ export async function copyPictureInto(root, drawing, title, bucket, isNew) {
 /// publish bar's two wishes (turn off comments, trusted only); the timezone offset resolves a claimed
 /// date the way Writer's publish does (PUBLISH.md ruling 7).
 export async function publishDrawing(root, docId, drawing, extra = {}) {
-    const picture = await flattenToBlob(drawing);
+    const picture = await flattenToBlob(root, drawing);
     const query = new URLSearchParams({ tz_offset_min: String(-new Date().getTimezoneOffset()) });
     if (extra.settled) query.set('settled', 'true');
     if (extra.trusted_only) query.set('trusted_only', 'true');
@@ -320,7 +375,8 @@ export const DrawingThumb = ({ root, doc, big }) => {
                 rememberDoc(root, doc.doc_id, detail);
             }
             if (detail.body == null) return;
-            const url = flatten(readBody(detail.body), THUMB_WIDTH).toDataURL('image/png');
+            const body = readBody(detail.body);
+            const url = flatten(body, THUMB_WIDTH, await loadPictures(root, body)).toDataURL('image/png');
             thumbCache.set(key, url);
             if (live) setSrc(url);
         })().catch(() => {});
@@ -452,12 +508,22 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const layers = useMemo(() => layersOf(drawing), [drawing]);
     const [currentId, setCurrentId] = useState(null);
     const [renaming, setRenaming] = useState(null); // the id of the layer whose name is being typed
+    const [pickingImage, setPickingImage] = useState(false);
+    // A picture from the person's media (DRAWING.md, "Images"), on a new layer at the top - which
+    // becomes the current layer, so a grab moves the picture straight away.
+    const placePicture = (picture) => {
+        setPickingImage(false);
+        const layerId = strokeId();
+        changeLayers(addImage(drawing, picture, layerId, strokeId(), Date.now()));
+        setCurrentId(layerId);
+    };
     const current = layers.find((l) => l.id === currentId) || layers[layers.length - 1];
 
     // Every layer on a canvas of its own, repainted from the body whenever it changes - every save,
     // undo, layer change and sync - and stacked onto the screen. A stroke being drawn paints onto
     // its own layer's canvas as it goes and restacks, so a layer above still covers it.
     const layerCanvases = useRef(new Map());
+    const [picturesArrived, setPicturesArrived] = useState(0);
     const [painted, setPainted] = useState(0); // bumps when the layer canvases change: the thumbnails follow
     const restack = (shift = null) => {
         const canvas = canvasRef.current;
@@ -468,10 +534,21 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // has just appeared - on opening, or the column brought back - is never seen empty.
     useLayoutEffect(() => {
         if (!shown) return;
-        layerCanvases.current = paintLayers(drawing, drawing.width * BACKING);
+        layerCanvases.current = paintLayers(drawing, drawing.width * BACKING, picturesNow(root, drawing));
         restack();
         setPainted((n) => n + 1);
-    }, [drawing, shown]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [drawing, shown, picturesArrived]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The pictures the drawing refers to (DRAWING.md, "Images"): fetched as the drawing asks for
+    // them, and a repaint when any that was missing arrives.
+    useEffect(() => {
+        const missing = imagesOf(drawing).length !== picturesNow(root, drawing).size;
+        if (!missing) return undefined;
+        let live = true;
+        loadPictures(root, drawing).then(() => live && setPicturesArrived((n) => n + 1));
+        return () => {
+            live = false;
+        };
+    }, [drawing, root]);
 
     // The view (DRAWING.md, "The navigator"): the stage scrolls, and the drawing on it is the size
     // that just fits, times the zoom. The fit follows the stage's size; a zoom keeps the point at
@@ -763,6 +840,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       ></button>`
                   )}
               </div>
+              <button class="drawing-tool" disabled=${!opened} onClick=${() => setPickingImage(true)}>
+                  <${Icons.addImage} /> ${t('doc.drawing.add-an-image', 'add an image')}
+              </button>
               <button class="drawing-tool" disabled=${!drawing.strokes.length} onClick=${undoStroke}>
                   <${Icons.unpublish} /> ${t('doc.drawing.undo', 'undo')}
               </button>
@@ -965,6 +1045,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ${layersColumn}
         <div class="drawing">
             ${header}
+            ${pickingImage && html`<${ImagePickModal} root=${root} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
             <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
             <div class="drawing-stage" ref=${stageRef}>
                 ${!shown

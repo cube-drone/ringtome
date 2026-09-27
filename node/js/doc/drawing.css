@@ -443,3 +443,106 @@
     border: 2px solid var(--viewport);
     pointer-events: none;
 }
+
+/* The image picker (doc/imagepick.js): search, notebook and tags above a grid of pictures. */
+.imagepick {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.imagepick-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.imagepick-search {
+    flex: 1;
+    min-width: 12rem;
+    font: inherit;
+}
+
+.imagepick-bucket {
+    font: inherit;
+}
+
+.imagepick-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.imagepick-tag {
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: var(--paper);
+    border: 1px solid var(--border);
+    padding: 0.1rem 0.45rem;
+    cursor: pointer;
+}
+
+.imagepick-tag.active {
+    color: var(--paper);
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+.imagepick-tag-count {
+    opacity: 0.7;
+}
+
+.imagepick-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.6rem;
+}
+
+.imagepick-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font: inherit;
+    color: var(--ink);
+    background: none;
+    border: 1px solid transparent;
+    padding: 0.25rem;
+    cursor: pointer;
+    text-align: left;
+}
+
+.imagepick-item:hover,
+.imagepick-item:focus-visible {
+    border-color: var(--teal);
+}
+
+.imagepick-thumb {
+    display: block;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    --floor-square: 6px;
+}
+
+.imagepick-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.imagepick-title {
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.imagepick-more {
+    align-self: center;
+    font: inherit;
+}

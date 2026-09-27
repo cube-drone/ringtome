@@ -17,7 +17,7 @@ const html = htm.bind(h);
  * @param title    the band title (thick, chunky)
  * @param onClose  the [x] / Escape / scrim-click handler
  */
-export const Modal = ({ title, onClose, children }) => {
+export const Modal = ({ title, onClose, children, wide = false }) => {
     // Escape is the [x]'s keyboard twin.
     useEffect(() => {
         const onKey = (e) => {
@@ -37,7 +37,7 @@ export const Modal = ({ title, onClose, children }) => {
                 if (e.target === e.currentTarget) onClose();
             }}
         >
-            <div class="modal" role="dialog" aria-modal="true">
+            <div class=${wide ? 'modal modal-wide' : 'modal'} role="dialog" aria-modal="true">
                 <header class="modal-head">
                     <span class="modal-title">${title}</span>
                     <button class="modal-close" title=${t('modal.close', 'close')} onClick=${onClose}>

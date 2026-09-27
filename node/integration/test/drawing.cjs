@@ -351,4 +351,35 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         const pours = model.readBody(merged.body).strokes.filter((s) => s.tool === "bucket");
         assert.deepEqual(pours.map((s) => [s.points, s.reach]), [[[30, 40], 250], [[700, 500], 12]]);
     });
+
+    it("an image added from the person's media is kept by reference, and its pixels are there to paint", async () => {
+        // A picture, through the ordinary upload door, crushed as any picture is.
+        const up = await ada(`${docs()}/binary?title=a%20grey%20horse`, { method: "POST", body: makePng(64, 48), file: true });
+        assert.equal(up.status, 202);
+        const { doc_id: picture, job_id } = await up.json();
+        for (let i = 0; i < 200; i++) {
+            const job = (await (await ada(`api/identity/${root}/ingest`)).json()).find((x) => x.job_id === job_id);
+            if (job && job.status === "done") break;
+            if (job && job.status === "failed") assert.fail(job.error);
+            await new Promise((r) => setTimeout(r, 150));
+        }
+        const row = (await (await ada(docs())).json()).docs.find((d) => d.doc_id === picture);
+        assert.deepEqual([row.media.width, row.media.height], [64, 48], "the size the picker places it by");
+
+        // The page adds it exactly as the drawing surface does, and saves.
+        const L = "aaaaaaaaaaaaaaa9";
+        const drawn = model.addImage(model.readBody(body([stroke("a600000000000001", 1)])), { doc: picture, width: 64, height: 48, title: row.title }, L, "f600000000000002", 5);
+        const made = await (await j(ada, docs(), { title: "a horse from life", body: writeBody(drawn), format: "drawing" })).json();
+        const back = await (await ada(`${docs()}/${made.doc_id}`)).json();
+        assert.equal(back.body, writeBody(drawn), "the node keeps the image entry, byte for byte");
+        const entry = model.readBody(back.body).strokes.find((s) => s.tool === "image");
+        assert.deepEqual([entry.doc, entry.points, entry.w, entry.h], [picture, [368, 276], 64, 48]);
+        assert.equal(model.layersOf(model.readBody(back.body)).at(-1).name, "a grey horse", "on its own layer, named for it");
+
+        // What the page fetches to paint it: the picture's own body.
+        const pixels = await ada(`${docs()}/${picture}/body`);
+        assert.equal(pixels.status, 200);
+        assert.match(pixels.headers.get("content-type") || "", /^image\//);
+    });
 });
+

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1030 phrases across 70 files.
+// 1039 phrases across 71 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -402,6 +402,7 @@ export default {
     'doc.drawing.eraser-size': 'eraser size',
     'doc.drawing.brush-size': 'brush size',
     'doc.drawing.colour': 'colour',
+    'doc.drawing.add-an-image': 'add an image',
     'doc.drawing.undo': 'undo',
     'doc.drawing.strokes': '{count} strokes',
     'doc.drawing.layers-and-map': 'layers & map',
@@ -437,6 +438,16 @@ export default {
     'doc.editor.hide-from-the-book': 'hide from the book',
     'doc.editor.the-book-rolls-out-from': 'publish from the Publish column',
     'doc.editor.publish-the-changes': 'publish the changes',
+
+    // --- node/js/doc/imagepick.js ---
+    'doc.imagepick.add-an-image': 'add an image',
+    'doc.imagepick.search-titles': 'search titles',
+    'doc.imagepick.notebook': 'notebook',
+    'doc.imagepick.every-notebook': 'every notebook',
+    'doc.imagepick.no-pictures-match': 'no pictures match.',
+    'doc.imagepick.no-pictures-yet': 'no pictures yet - upload one in any notebook and it will be here.',
+    'doc.imagepick.untitled': 'untitled',
+    'doc.imagepick.show-more': 'show more ({left} left)',
 
     // --- node/js/doc/marqueebody.js ---
     'doc.marqueebody.this-marquee-doesnt-parse-right': 'this page has a formatting problem. Showing the plain text.',
