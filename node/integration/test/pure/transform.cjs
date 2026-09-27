@@ -81,3 +81,63 @@ describe('the transform tool', () => {
         assert.equal(x.paintedBox(new Uint8ClampedArray(16), 2, 2, 1), null);
     });
 });
+
+describe('the crop box', () => {
+    const box = [100, 100, 300, 200];
+    const canvas = [800, 600];
+
+    it('moves a corner or an edge by itself', () => {
+        assert.deepEqual(x.dragBox(box, { kind: 'corner', i: 2 }, [300, 200], [350, 260], canvas), [100, 100, 350, 260]);
+        assert.deepEqual(x.dragBox(box, { kind: 'corner', i: 0 }, [100, 100], [90, 120], canvas), [90, 120, 300, 200]);
+        assert.deepEqual(x.dragBox(box, { kind: 'edge', i: 3 }, [100, 150], [40, 170], canvas), [40, 100, 300, 200], 'the left edge, across only');
+    });
+
+    it('moves the whole box from inside, keeping its size and the canvas round it', () => {
+        assert.deepEqual(x.dragBox(box, { kind: 'inside' }, [200, 150], [230, 140], canvas), [130, 90, 330, 190]);
+        assert.deepEqual(x.dragBox(box, { kind: 'inside' }, [200, 150], [2000, -900], canvas), [600, 0, 800, 100], 'stops at the edge, same size');
+    });
+
+    it('draws a fresh box from outside, and turns an inside-out box the right way round', () => {
+        assert.deepEqual(x.dragBox(box, { kind: 'new' }, [500, 400], [450, 300], canvas), [450, 300, 500, 400]);
+        assert.deepEqual(x.dragBox(box, { kind: 'edge', i: 1 }, [300, 150], [20, 150], canvas), [20, 100, 100, 200], 'the right edge dragged past the left');
+        assert.deepEqual(x.dragBox(box, { kind: 'corner', i: 2 }, [300, 200], [900, 700], canvas), [100, 100, 800, 600], 'never past the canvas');
+    });
+});
+
+describe('cropping', () => {
+    const brush = (id, t, pts, extra = {}) => ({ id, t, tool: 'brush', color: '#000000', size: 4, points: d.encodePoints(pts), ...extra });
+
+    it('cuts the canvas down, and shifts every layer that came before it', () => {
+        let body = d.addLayer(d.blankDrawing(), 'aaaaaaaaaaaaaaa2', 1);
+        body = d.addStroke(body, brush('b000000000000001', 2, [[300, 200]]));
+        body = d.addStroke(body, brush('b000000000000002', 3, [[400, 250]], { layer: 'aaaaaaaaaaaaaaa2' }));
+        const crop = d.cropEntry(body, [500.4, 350, 250, 150], { id: 'c000000000000003', t: 4 });
+        assert.deepEqual(crop, { id: 'c000000000000003', t: 4, tool: 'crop', points: [250, 150, 500, 350] }, 'rounded, the right way round');
+        body = d.addStroke(body, crop);
+        assert.deepEqual(d.sizeOf(body), [250, 200]);
+        assert.deepEqual([body.width, body.height], [800, 600], "the body's own size is the canvas it began as");
+        for (const layer of [d.BASE_LAYER, 'aaaaaaaaaaaaaaa2']) {
+            const ops = d.effectiveOps(body, layer);
+            const at = d.matricesOf(ops).each[ops.findIndex((o) => o.tool === 'brush')];
+            assert.deepEqual(d.apply(at, [300, 200]), [50, 50], `on ${layer}`);
+        }
+        assert.ok(!d.layersOf(body).some((l) => l.id === d.BASE_LAYER && l.n !== 1), 'a crop is on no layer');
+        assert.deepEqual(d.sizeOf(d.undo(body)), [800, 600], 'undo gives the whole canvas back');
+    });
+
+    it('crops again inside the last crop, and refuses a crop that cuts nothing or everything', () => {
+        let body = d.addStroke(d.blankDrawing(), d.cropEntry(d.blankDrawing(), [100, 100, 500, 400], { id: 'c000000000000001', t: 1 }));
+        assert.equal(d.cropEntry(body, [0, 0, 400, 300], { id: 'c000000000000002', t: 2 }), null, 'the whole canvas as it stands');
+        assert.equal(d.cropEntry(body, [50, 50, 50, 90], { id: 'c000000000000002', t: 2 }), null, 'nothing');
+        body = d.addStroke(body, d.cropEntry(body, [-20, 10, 200, 999], { id: 'c000000000000002', t: 2 }));
+        assert.deepEqual(d.sizeOf(body), [200, 290], 'kept inside the canvas as it stood');
+    });
+
+    it('lays a pour before a crop over the canvas it found', () => {
+        const pour = { id: 'e000000000000001', t: 1, tool: 'bucket', color: '#1f9e90', points: [5, 5], reach: 5000 };
+        let body = d.addStroke(d.blankDrawing(), pour);
+        body = d.addStroke(body, d.cropEntry(body, [0, 0, 100, 100], { id: 'c000000000000002', t: 2 }));
+        const ops = d.effectiveOps(body, d.BASE_LAYER);
+        assert.deepEqual(d.sizeAfter(body, ops.slice(0, ops.findIndex((o) => o.tool === 'bucket'))), [800, 600]);
+    });
+});

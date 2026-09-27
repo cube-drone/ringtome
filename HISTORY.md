@@ -11295,3 +11295,21 @@ The rotate zone's pointer was a crosshair; Curtis: it "doesn't feel too represen
 move". CSS has no rotate cursor, so it is now Phosphor's ArrowClockwise (bold, black with a white
 rim, 24 pixels, hot spot in the middle) as a `url()` cursor with the crosshair as its fallback - the
 path copied from the installed package, checked against it.
+
+## 2026-09-27 (cont.): crop, and tool options that live with their tool
+
+The crop tool lays a box on the drawing with a light black shade over what is about to go; corners
+and edges resize it, the inside moves it, a drag outside draws a fresh one, and a **crop** button
+where the size would be cuts. Checked for merge-safety first: changing the body's `width`/`height`
+would have fought ("least wins"), so a crop is an entry, `{ tool: "crop", points }`, on no layer -
+dealt into every layer's entries by `effectiveOps`, shifting what came before it by its top-left
+(a translation in `matricesOf`), the canvas becoming its box. The body keeps the size it began at;
+`sizeOf` folds the crops, `sizeAfter` gives the canvas at any point (a pour before a crop spread
+over the canvas it found). Painting, the pour cache, pictures of the drawing, the navigator, the
+transform frame, image placement and the layer thumbnails (now the canvas's own shape) all follow
+the cropped size; the base layer's white covers the canvas the drawing began as. The tools column
+now shows each option only with a tool that uses it - sizes for brush, eraser and shapes, pour
+speed for the bucket, the crop button for crop, colours for whatever paints - above a rule, with add
+an image and undo below it. Vector cases for the entry and six refused ones (red with the node not
+knowing it); three box-drag tests and three crop tests (red with the crop not shifting what came
+before it). A new `--crop-shade` token. Not yet cropped in a browser.

@@ -159,6 +159,28 @@ times 1,000,000, whole - as every number in a body is.
   root of its area scale): a slanted line is not evenly wide, so this is the one place a pour and
   what is painted can part by a hair - the same hair on every computer.
 
+### Cropping
+
+The crop tool (Curtis, 2026-09-27) cuts the canvas down. Taking it up lays a box on the drawing, in
+from its edges, with everything outside it under a light black shade - "this gonna get cut out".
+Drag a corner or an edge to resize the box, the inside to move it, or outside it to draw a fresh
+one; the **crop** button (where a size would be) cuts. Nothing is recorded until then.
+
+A crop is an entry, `{ "tool": "crop", "points": [left, top, right, bottom] }`, on **no layer** -
+it cuts them all. The box is in the canvas as the crop found it; everything before the crop shifts
+by (-left, -top), as a grab would shift it (`matricesOf` treats it as that shift, and `effectiveOps`
+deals every crop into every layer), and the canvas becomes the box.
+
+- **The body's `width` and `height` stay the canvas the drawing began as.** Changing them would have
+  been the rat's nest: they merge "least wins", so two crops would have fought. The canvas now -
+  `sizeOf` - is that, cut by every crop in turn; `sizeAfter` gives the canvas at any point in the
+  history, which is what a pour before a crop spread over.
+- **Nothing cut away is lost**: it is still in the history, only outside the canvas. Undo the crop
+  and it is all back.
+- **Two computers cropping at once** both apply, the later on the earlier's result, in the one
+  order - surprising, perhaps, but the same on every computer, and an undo away from either.
+- The base layer's white covers the canvas the drawing began as, wherever the crops leave it.
+
 ### Deleting and duplicating layers
 
 Per-layer trash and duplicate buttons (Curtis, 2026-09-26), built the way grabbing is - as entries in
@@ -306,10 +328,13 @@ string like any other), `doc/annotations.js` for tags.
   come only from its image ingest, which a JSON save never passes through. Fine for dozens of
   drawings; a list in the hundreds would want the node to keep a thumbnail, and that is a later
   change.
-- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, transform and grab - icons, each
+- **The tools column**: brush, eraser, line, rectangle, ellipse, paint bucket, crop, transform and grab - icons, each
   named in its tooltip - a size for the brush and the eraser and a line width for the shapes (1-80
   canvas units), a pour speed for the bucket (1-10, 20 canvas
-  units a second at the slowest and half again each step), the colour,
+  units a second at the slowest and half again each step), the colour - each shown only with a tool
+  that uses it (Curtis, 2026-09-27: "tool options are contextual and live with their associated
+  tool"), under the tools and above a rule, below which sit what works whatever the tool: add an
+  image,
   undo, and the drawing's own actions: duplicate, copy into a notebook, publish. The colour is a hue
   ring with an HSV triangle inside it and a hex field (`doc/colourpicker.js`, Curtis 2026-09-26 -
   it replaced the browser's native colour input), with a row of swatches beneath: white and black,

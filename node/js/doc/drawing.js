@@ -60,12 +60,15 @@ import {
     imagesOf,
     shapeEntry,
     shapeBox,
+    sizeOf,
+    sizeAfter,
+    cropEntry,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
-import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox } from '../pure/transform.js';
+import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox, dragBox } from '../pure/transform.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 
 const html = htm.bind(h);
@@ -159,25 +162,28 @@ const pourCache = new Map();
 const POUR_CACHE_SIZE = 256;
 function pourRunsCached(ops, index, drawing) {
     const steps = ops.slice(0, index + 1).map((o) => o.id || o.tool);
+    // The canvas as the pour found it: a pour before a crop spread over the canvas before it.
+    const [w, h] = sizeAfter(drawing, ops.slice(0, index));
     const key = [drawing.width, drawing.height, ...steps].join(',');
     let runs = pourCache.get(key);
     if (!runs) {
-        runs = pourRuns(ops, index, drawing.width, drawing.height);
+        runs = pourRuns(ops, index, w, h);
         if (pourCache.size >= POUR_CACHE_SIZE) pourCache.delete(pourCache.keys().next().value);
         pourCache.set(key, runs);
     }
-    return runs;
+    return { runs, size: [w, h] };
 }
 
-/// Paint covered cells (row runs, one cell per canvas unit) in `colour` onto a canvas at any scale:
-/// drawn at the drawing's own size and stretched smoothly, so a fill's edge is soft, like a line's.
-function paintRuns(ctx, runs, colour, drawing, canvas) {
-    const cells = blankCanvas(drawing.width, drawing.height);
+/// Paint covered cells (row runs, one cell per canvas unit, on a grid `size` = [width, height]) in
+/// `colour`, `scale` pixels to a unit: drawn at the grid's own size and stretched smoothly, so a
+/// fill's edge is soft, like a line's.
+function paintRuns(ctx, runs, colour, [w, h], scale) {
+    const cells = blankCanvas(w, h);
     const cctx = cells.getContext('2d');
-    const image = cctx.createImageData(drawing.width, drawing.height);
+    const image = cctx.createImageData(w, h);
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(colour.slice(i, i + 2), 16));
     for (let k = 0; k < runs.length; k += 3) {
-        const row = runs[k] * drawing.width;
+        const row = runs[k] * w;
         for (let x = runs[k + 1]; x <= runs[k + 2]; x++) {
             const i = (row + x) * 4;
             image.data[i] = r;
@@ -189,7 +195,7 @@ function paintRuns(ctx, runs, colour, drawing, canvas) {
     cctx.putImageData(image, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(cells, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(cells, 0, 0, w * scale, h * scale);
 }
 
 /// Paint a rectangle or an ellipse (Curtis, 2026-09-27): its box's outline, `size` wide - the
@@ -221,7 +227,7 @@ function paintMark(ctx, op, scale) {
 /// transparency like any other layer.
 export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
     const ctx = canvas.getContext('2d');
-    const scale = canvas.width / drawing.width;
+    const scale = canvas.width / sizeOf(drawing)[0];
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -233,13 +239,14 @@ export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
     const ops = effectiveOps(drawing, layerId);
     const { each } = matricesOf(ops);
     ops.forEach((op, i) => {
-        if (op.tool === 'move' || op.tool === 'transform') return;
+        if (op.tool === 'move' || op.tool === 'transform' || op.tool === 'crop') return;
         ctx.save();
         const m = each[i];
         ctx.transform(m[0], m[1], m[2], m[3], m[4] * scale, m[5] * scale);
         if (op.tool === 'fill') {
+            // The canvas the drawing began as, wherever the crops since have left it.
             ctx.fillStyle = drawing.background;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, drawing.width * scale, drawing.height * scale);
         } else if (op.tool === 'image') {
             // A picture not here yet paints as nothing; the surface repaints when it arrives.
             const img = images.get(op.doc);
@@ -251,7 +258,8 @@ export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
         } else if (op.tool === 'rect' || op.tool === 'ellipse') {
             paintShape(ctx, op, scale);
         } else if (op.tool === 'bucket') {
-            paintRuns(ctx, pourRunsCached(ops, i, drawing), op.color, drawing, canvas);
+            const { runs, size } = pourRunsCached(ops, i, drawing);
+            paintRuns(ctx, runs, op.color, size, scale);
         } else {
             paintStroke(ctx, op, scale);
         }
@@ -269,7 +277,8 @@ function blankCanvas(width, height) {
 
 /// Every layer painted onto a canvas of its own, `width` pixels wide: a Map of layer id to canvas.
 export function paintLayers(drawing, width, images = NO_PICTURES) {
-    const height = Math.round((width * drawing.height) / drawing.width);
+    const [w, h] = sizeOf(drawing);
+    const height = Math.round((width * h) / w);
     const canvases = new Map();
     for (const layer of layersOf(drawing)) {
         const canvas = blankCanvas(width, height);
@@ -295,7 +304,7 @@ export function composite(target, drawing, canvases, shift = null) {
         if (layer.hidden || !canvas) continue;
         ctx.globalAlpha = layer.opacity / 100;
         const moved = shift && shift.layer === layer.id;
-        const k = target.width / drawing.width;
+        const k = target.width / sizeOf(drawing)[0];
         const m = moved ? shift.m : IDENTITY;
         ctx.setTransform(m[0], m[1], m[2], m[3], m[4] * k, m[5] * k);
         ctx.drawImage(canvas, 0, 0, target.width, target.height);
@@ -307,8 +316,9 @@ export function composite(target, drawing, canvases, shift = null) {
 /// copy into a notebook and a publication are all made from - so a hidden layer is left out of all
 /// three, as it is out of sight, and wherever the layers leave nothing the picture is transparent
 /// (webp and png keep it, and so does the node's AVIF).
-export function flatten(drawing, width = drawing.width, images = NO_PICTURES) {
-    const out = blankCanvas(width, Math.round((width * drawing.height) / drawing.width));
+export function flatten(drawing, width = sizeOf(drawing)[0], images = NO_PICTURES) {
+    const [w, h] = sizeOf(drawing);
+    const out = blankCanvas(width, Math.round((width * h) / w));
     composite(out, drawing, paintLayers(drawing, width, images));
     return out;
 }
@@ -317,7 +327,7 @@ export function flatten(drawing, width = drawing.width, images = NO_PICTURES) {
 /// and so the macOS app's webview). Either is only how it travels - the node keeps every picture as
 /// AVIF (media/image.rs).
 export async function flattenToBlob(root, drawing) {
-    const canvas = flatten(drawing, drawing.width, await loadPictures(root, drawing));
+    const canvas = flatten(drawing, sizeOf(drawing)[0], await loadPictures(root, drawing));
     return new Promise((resolve, reject) =>
         canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('could not make a picture of the drawing'))), 'image/webp', 0.92)
     );
@@ -366,6 +376,10 @@ let rememberedTools = { tool: 'brush', brushSize: 12, eraserSize: 40, shapeSize:
 
 /// The tools dragged out corner to corner (Curtis, 2026-09-27), sharing one line width.
 const SHAPE_TOOLS = ['line', 'rect', 'ellipse'];
+/// The tools that take a size, and those that take a colour (Curtis, 2026-09-27: "tool options
+/// are contextual and live with their associated tool").
+const SIZED_TOOLS = ['brush', 'eraser', ...SHAPE_TOOLS];
+const COLOURED_TOOLS = ['brush', ...SHAPE_TOOLS, 'bucket'];
 
 /// The paint bucket's pour speed (1..10) as canvas units a second: each step half again faster, from
 /// a slow creep to a rush across the canvas in about a second.
@@ -493,7 +507,9 @@ const LayerThumb = ({ source, painted }) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (source) ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     }, [source, painted]);
-    return html`<canvas ref=${ref} class="drawing-layer-thumb drawing-floor" width="64" height="48"></canvas>`;
+    // The canvas's own shape - a cropped drawing need not be 4:3 - held inside a small square.
+    const height = source ? Math.max(1, Math.round((64 * source.height) / source.width)) : 48;
+    return html`<canvas ref=${ref} class="drawing-layer-thumb drawing-floor" width="64" height=${height}></canvas>`;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -530,6 +546,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         }
     };
     const drawing = useMemo(() => readBody(session.body), [session.body]);
+    // The canvas as it stands (DRAWING.md, "Cropping"): the body's own size, cut by its crops.
+    const [W, H] = useMemo(() => sizeOf(drawing), [drawing]);
     const [tools, setTools] = useTools();
     const [showMeta, setShowMeta] = useState(false);
     // The tags panel is Writer's dropdown, anchored to the title row (`.reader-head` is its
@@ -594,7 +612,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // has just appeared - on opening, or the column brought back - is never seen empty.
     useLayoutEffect(() => {
         if (!shown) return;
-        layerCanvases.current = paintLayers(drawing, drawing.width * BACKING, picturesNow(root, drawing));
+        layerCanvases.current = paintLayers(drawing, W * BACKING, picturesNow(root, drawing));
         restack();
         setPainted((n) => n + 1);
     }, [drawing, shown, picturesArrived]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -621,12 +639,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     useEffect(() => {
         const stage = stageRef.current;
         if (!stage) return undefined;
-        const measure = () => setFit(fitSize(stage.clientWidth - STAGE_GAP, stage.clientHeight - STAGE_GAP, drawing.width, drawing.height));
+        const measure = () => setFit(fitSize(stage.clientWidth - STAGE_GAP, stage.clientHeight - STAGE_GAP, W, H));
         measure();
         const watch = new ResizeObserver(measure);
         watch.observe(stage);
         return () => watch.disconnect();
-    }, [drawing.width, drawing.height]);
+    }, [W, H]);
     const setZoom = (z) => {
         const view = viewOf(stageRef.current, paperRef.current);
         if (view) keepCentre.current = centreOf(view);
@@ -643,7 +661,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     }, [zoom, fit]);
     const paperSize = fit
         ? `width: ${fit[0] * zoom}px; height: ${fit[1] * zoom}px; max-width: none; max-height: none`
-        : `aspect-ratio: ${drawing.width} / ${drawing.height}`;
+        : `aspect-ratio: ${W} / ${H}`;
 
     const changeLayers = (next) => {
         session.setBody(writeBody(next));
@@ -652,13 +670,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
 
     const pourTool = tools.tool === 'bucket';
     const transformTool = tools.tool === 'transform';
+    const cropTool = tools.tool === 'crop';
     const shapeTool = SHAPE_TOOLS.includes(tools.tool);
     const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
 
     /// A pointer position in the drawing's own units.
     const toDrawing = (e) => {
         const rect = canvasRef.current.getBoundingClientRect();
-        return [((e.clientX - rect.left) * drawing.width) / rect.width, ((e.clientY - rect.top) * drawing.height) / rect.height];
+        return [((e.clientX - rect.left) * W) / rect.width, ((e.clientY - rect.top) * H) / rect.height];
     };
 
     // The size circle: follows the pointer, as big on screen as the tool is on the drawing.
@@ -668,12 +687,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (!cursor || !canvas) return;
         const r = canvas.getBoundingClientRect();
         const off = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-        if (tools.tool === 'grab' || pourTool || shapeTool || transformTool || off) {
+        if (!SIZED_TOOLS.includes(tools.tool) || off) {
             cursor.style.display = 'none'; // the grab tool's cursor is the hand, the bucket's a crosshair - not a size
             return;
         }
         const rect = canvas.getBoundingClientRect();
-        const diameter = Math.max(4, (size * rect.width) / drawing.width);
+        const diameter = Math.max(4, (size * rect.width) / W);
         cursor.style.width = cursor.style.height = `${diameter}px`;
         cursor.style.transform = `translate(${e.clientX - rect.left - diameter / 2}px, ${e.clientY - rect.top - diameter / 2}px)`;
         cursor.style.display = 'block';
@@ -695,7 +714,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // outside the drawing); every tool but the transform takes only those on the drawing itself.
     const onPointerDown = (e) => {
         if (!opened || e.button > 0 || !current) return;
-        if (!transformTool && e.target !== canvasRef.current) return;
+        if (!transformTool && !cropTool && e.target !== canvasRef.current) return;
         // Not a press on the stage's own scrollbars.
         const stage = stageRef.current;
         const sr = stage.getBoundingClientRect();
@@ -704,12 +723,22 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (current.hidden) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
+        // The crop box (DRAWING.md, "Cropping"): a corner or an edge resizes it, inside moves it,
+        // outside draws a fresh one. Nothing is recorded until the crop button.
+        if (cropTool) {
+            if (!cropBox) return;
+            const at = toDrawing(e);
+            const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
+            const grip = gripAt(frameOf(cropBox), at, reach);
+            live.current = { crop: true, grip: grip.kind === 'outside' ? { kind: 'new' } : grip, from: at, box: cropBox };
+            return;
+        }
         // The transform (DRAWING.md, "Transforming"): what the press took hold of decides the drag
         // (pure/transform.js); letting go records one `transform` entry.
         if (transformTool) {
             if (!frame) return;
             const at = toDrawing(e);
-            const reach = (GRIP_PX * drawing.width) / canvasRef.current.getBoundingClientRect().width;
+            const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             live.current = { transform: true, grip: gripAt(frame, at, reach), from: at, to: at, perfect: e.shiftKey, layer: current.id };
             return;
         }
@@ -748,9 +777,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const [x, y] = toDrawing(e).map(Math.floor);
         const layerId = current.id;
         const ops = effectiveOps(drawing, layerId);
-        const field = pourField(wallsOf(ops, ops.length, drawing.width, drawing.height), drawing.width, drawing.height, x, y);
+        const field = pourField(wallsOf(ops, ops.length, W, H), W, H, x, y);
         const canvas = layerCanvases.current.get(layerId);
-        if (!canvas || field[y * drawing.width + x] < 0) return; // dropped on a line, or off the canvas
+        if (!canvas || field[y * W + x] < 0) return; // dropped on a line, or off the canvas
         const before = blankCanvas(canvas.width, canvas.height);
         before.getContext('2d').drawImage(canvas, 0, 0);
         const entry = { id: strokeId(), t: Date.now(), tool: 'bucket', color: tools.color, points: [x, y] };
@@ -765,7 +794,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             ctx.globalCompositeOperation = 'source-over';
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(before, 0, 0);
-            paintRuns(ctx, runsOf(field, drawing.width, drawing.height, pour.reach * STEP), entry.color, drawing, canvas);
+            paintRuns(ctx, runsOf(field, W, H, pour.reach * STEP), entry.color, [W, H], canvas.width / W);
             ctx.restore();
             restack();
             pour.frame = requestAnimationFrame(show);
@@ -789,7 +818,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         keptFrame.current = null;
         const canvas = layerCanvases.current.get(current.id);
         const box = canvas && paintedBox(canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, BACKING);
-        setFrame(frameOf(box || [0, 0, drawing.width, drawing.height]));
+        setFrame(frameOf(box || [0, 0, W, H]));
     }, [transformTool, current && current.id, drawing, shown, picturesArrived]); // eslint-disable-line react-hooks/exhaustive-deps
     // The pointer over the frame says what a press would do; set straight on the stage and the
     // drawing, since it changes with every move.
@@ -798,10 +827,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (paperRef.current) paperRef.current.style.cursor = cursor;
     };
     useEffect(() => {
-        if (!transformTool) setGripCursor('');
-    }, [transformTool]);
+        if (!transformTool && !cropTool) setGripCursor('');
+    }, [transformTool, cropTool]);
     // The frame's size on screen: handles a fixed number of pixels, whatever the zoom.
-    const unitsPerPixel = fit ? drawing.width / (fit[0] * zoom) : 1;
+    const unitsPerPixel = fit ? W / (fit[0] * zoom) : 1;
     const handle = HANDLE_PX * unitsPerPixel;
     const framePoints = (f) => f.map((p) => p.join(',')).join(' ');
     // Mid-drag the frame follows the pointer without re-rendering the surface.
@@ -813,6 +842,39 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             r.setAttribute('x', f[i][0] - handle / 2);
             r.setAttribute('y', f[i][1] - handle / 2);
         });
+    };
+
+    // The crop box (DRAWING.md, "Cropping"): in from the canvas's edges when the tool is taken up and
+    // after every crop, so what is about to go is shaded from the start. The box is the tool's own -
+    // nothing is recorded until the crop button, which records one `crop` entry.
+    const [cropBox, setCropBox] = useState(null);
+    const cropRef = useRef(null);
+    useEffect(() => {
+        setCropBox(cropTool && shown ? [Math.round(W * 0.1), Math.round(H * 0.1), Math.round(W * 0.9), Math.round(H * 0.9)] : null);
+    }, [cropTool, shown, W, H]);
+    const cropPath = ([l, top, r, b]) => `M0 0H${W}V${H}H0Z M${l} ${top}V${b}H${r}V${top}Z`;
+    const showCrop = (box) => {
+        const svg = cropRef.current;
+        if (!svg) return;
+        const [l, top, r, b] = box;
+        svg.querySelector('path').setAttribute('d', cropPath(box));
+        const edge = svg.querySelector('.drawing-crop-edge');
+        edge.setAttribute('x', l);
+        edge.setAttribute('y', top);
+        edge.setAttribute('width', r - l);
+        edge.setAttribute('height', b - top);
+        svg.querySelectorAll('.drawing-crop-handle').forEach((h, i) => {
+            const [x, y] = frameOf(box)[i];
+            h.setAttribute('x', x - handle / 2);
+            h.setAttribute('y', y - handle / 2);
+        });
+    };
+    const cropReady = cropBox && cropEntry(drawing, cropBox, { id: '', t: 0 });
+    const cropNow = () => {
+        const entry = cropBox && cropEntry(drawing, cropBox, { id: strokeId(), t: Date.now() });
+        if (!entry) return;
+        session.setBody(writeBody(addStroke(drawing, entry)));
+        session.touched();
     };
 
     // The shapes (DRAWING.md, "Shapes"): the drag shows the shape from where it began to the
@@ -843,10 +905,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         moveCursor(e);
         const l = live.current;
         if (!l && transformTool && frame) {
-            const reach = (GRIP_PX * drawing.width) / canvasRef.current.getBoundingClientRect().width;
+            const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             setGripCursor(gripCursor(gripAt(frame, toDrawing(e), reach)));
         }
+        if (!l && cropTool && cropBox) {
+            const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
+            const grip = gripAt(frameOf(cropBox), toDrawing(e), reach);
+            setGripCursor(grip.kind === 'outside' ? 'crosshair' : gripCursor(grip));
+        }
         if (!l || l.pour) return; // a pour stays where it was dropped
+        if (l.crop) {
+            l.to = toDrawing(e);
+            showCrop(dragBox(l.box, l.grip, l.from, l.to, [W, H]));
+            return;
+        }
         if (l.transform) {
             // Shift is read as the drag goes, so pressing it mid-drag makes the drag "perfect".
             l.to = toDrawing(e);
@@ -888,6 +960,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const l = live.current;
         live.current = null;
         if (!l) return;
+        if (l.crop) {
+            if (l.to) setCropBox(dragBox(l.box, l.grip, l.from, l.to, [W, H]));
+            return;
+        }
         if (l.transform) {
             // Stored in fixed point; the frame follows what was stored, so it and the layer agree.
             const m = fromFixed(toFixed(gestureMatrix(frame, l.grip, l.from, l.to, l.perfect)));
@@ -970,13 +1046,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket - hold to pour')],
+        ['crop', Icons.crop, t('doc.drawing.crop-tool', 'crop - drag the box, then crop')],
         ['transform', Icons.transform, t('doc.drawing.transform', 'transform the layer - corners slant, edges stretch, inside moves, outside turns; hold shift to keep it even')],
         ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
     ];
     const grabTool = tools.tool === 'grab';
-    // Picking a colour takes up a tool that uses one: the bucket or a shape stays in hand, the
-    // eraser or the hand becomes the brush.
-    const colourTool = pourTool || shapeTool ? tools.tool : 'brush';
+    // The colours show only with a tool that uses one, and picking one keeps that tool in hand.
+    const colourTool = tools.tool;
     // The size slider speaks for whichever tool is in hand: the shapes share a line width.
     const sizeKey = tools.tool === 'eraser' ? 'eraserSize' : shapeTool ? 'shapeSize' : 'brushSize';
     const sizeWords = () =>
@@ -1009,6 +1085,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       ><${icon} /></button>`
                   )}
               </div>
+              ${/* The tool in hand's own options, and only its own (Curtis, 2026-09-27: "tool options are
+                  contextual and live with their associated tool"). */ ''}
               ${pourTool &&
               html`<label class="drawing-size">
                   <span>${t('doc.drawing.pour-speed', 'pour speed')} · ${tools.pourSpeed}</span>
@@ -1020,8 +1098,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       onInput=${(e) => setTools({ pourSpeed: +e.currentTarget.value })}
                   />
               </label>`}
-              ${!grabTool &&
-              !pourTool &&
+              ${SIZED_TOOLS.includes(tools.tool) &&
               html`<label class="drawing-size">
                   <span>${sizeWords()} · ${size}</span>
                   <input
@@ -1032,20 +1109,26 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       onInput=${(e) => setTools({ [sizeKey]: +e.currentTarget.value })}
                   />
               </label>`}
-              <${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: colourTool })} />
-              <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
-                  ${/* A click away: white and black always, then the last ten colours this
-                      drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''}
-                  ${[...FIXED_COLOURS, ...recentColours(drawing, 10)].map(
-                      (c) => html`<button
-                          key=${c}
-                          class=${tools.color === c ? 'drawing-swatch active' : 'drawing-swatch'}
-                          style=${`background: ${c}`}
-                          title=${c}
-                          onClick=${() => setTools({ color: c, tool: colourTool })}
-                      ></button>`
-                  )}
-              </div>
+              ${cropTool &&
+              html`<button class="drawing-tool drawing-crop-go" disabled=${!cropReady} onClick=${cropNow}>
+                  <${Icons.crop} /> ${t('doc.drawing.crop', 'crop')}
+              </button>`}
+              ${COLOURED_TOOLS.includes(tools.tool) &&
+              html`<${ColourPicker} value=${tools.color} onChange=${(color) => setTools({ color, tool: colourTool })} />
+                  <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
+                      ${/* A click away: white and black always, then the last ten colours this
+                          drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''}
+                      ${[...FIXED_COLOURS, ...recentColours(drawing, 10)].map(
+                          (c) => html`<button
+                              key=${c}
+                              class=${tools.color === c ? 'drawing-swatch active' : 'drawing-swatch'}
+                              style=${`background: ${c}`}
+                              title=${c}
+                              onClick=${() => setTools({ color: c, tool: colourTool })}
+                          ></button>`
+                      )}
+                  </div>`}
+              <hr class="drawing-tools-rule" />
               <button class="drawing-tool" disabled=${!opened} onClick=${() => setPickingImage(true)}>
                   <${Icons.addImage} /> ${t('doc.drawing.add-an-image', 'add an image')}
               </button>
@@ -1098,8 +1181,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                   stageRef=${stageRef}
                   paperRef=${paperRef}
                   sourceRef=${canvasRef}
-                  width=${drawing.width}
-                  height=${drawing.height}
+                  width=${W}
+                  height=${H}
               />
               <hr class="drawing-nav-rule" />`}
               ${current &&
@@ -1272,15 +1355,30 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           <canvas
                               ref=${canvasRef}
                               class="drawing-canvas"
-                              width=${drawing.width * BACKING}
-                              height=${drawing.height * BACKING}
+                              width=${W * BACKING}
+                              height=${H * BACKING}
                           ></canvas>
                           <span ref=${cursorRef} class=${tools.tool === 'eraser' ? 'drawing-cursor eraser' : 'drawing-cursor'}></span>
+                          ${cropBox &&
+                          html`<svg ref=${cropRef} class="drawing-crop" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none">
+                              <path class="drawing-crop-shade" fill-rule="evenodd" d=${cropPath(cropBox)} />
+                              <rect
+                                  class="drawing-crop-edge"
+                                  x=${cropBox[0]}
+                                  y=${cropBox[1]}
+                                  width=${cropBox[2] - cropBox[0]}
+                                  height=${cropBox[3] - cropBox[1]}
+                              />
+                              ${frameOf(cropBox).map(
+                                  (p, i) =>
+                                      html`<rect key=${i} class="drawing-crop-handle" x=${p[0] - handle / 2} y=${p[1] - handle / 2} width=${handle} height=${handle} />`
+                              )}
+                          </svg>`}
                           ${frame &&
                           html`<svg
                               ref=${frameRef}
                               class="drawing-frame"
-                              viewBox=${`0 0 ${drawing.width} ${drawing.height}`}
+                              viewBox=${`0 0 ${W} ${H}`}
                               preserveAspectRatio="none"
                           >
                               <polygon points=${framePoints(frame)} />

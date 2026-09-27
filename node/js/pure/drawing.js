@@ -310,6 +310,15 @@ function asStroke(s) {
         if (!side(s.w) || !side(s.h)) return null;
         return { id: s.id, t: s.t, ...onLayer, tool: 'image', points: s.points, doc: s.doc, w: s.w, h: s.h };
     }
+    // A crop (Curtis, 2026-09-27): the canvas cut down to the box `points` = [left, top, right,
+    // bottom], in the canvas as it stood then - on no layer, since it cuts every layer. Everything
+    // before it shifts by (-left, -top), as a grab would shift it, and the canvas becomes the box.
+    if (s.tool === 'crop') {
+        if (!Array.isArray(s.points) || s.points.length !== 4 || !s.points.every(Number.isSafeInteger)) return null;
+        const [l, t, r, b] = s.points;
+        if (l >= r || t >= b) return null;
+        return { id: s.id, t: s.t, tool: 'crop', points: s.points };
+    }
     // A transform (Curtis, 2026-09-27): everything before it on its layer passes through the affine
     // matrix `m` = [a, b, c, d, e, f] (x' = a x + c y + e, y' = b x + d y + f, the canvas's own
     // order), each number in fixed point (MATRIX_ONE). A grab is the translation-only case, kept
@@ -457,6 +466,7 @@ const DEFAULT_BASE = { id: BASE_LAYER, n: 1, z: 0, opacity: MAX_OPACITY, hidden:
 export function layersOf(drawing) {
     const layers = new Map([[BASE_LAYER, DEFAULT_BASE]]);
     for (const s of drawing.strokes) {
+        if (s.tool === 'crop') continue;
         const id = s.layer || BASE_LAYER;
         if (!layers.has(id)) layers.set(id, { id, n: 1, z: 0, opacity: MAX_OPACITY, hidden: false, t: 0 });
     }
@@ -474,7 +484,7 @@ export function deletedLayers(drawing) {
 
 /// The strokes on one layer, in painting order.
 export function strokesOn(drawing, layerId) {
-    return drawing.strokes.filter((s) => (s.layer || BASE_LAYER) === layerId);
+    return drawing.strokes.filter((s) => s.tool !== 'crop' && (s.layer || BASE_LAYER) === layerId);
 }
 
 function upsertLayer(drawing, entry) {
@@ -564,6 +574,7 @@ export const fromFixed = (m) => m.map((n) => n / MATRIX_ONE);
 /// null for an entry that moves nothing.
 function matrixOf(op) {
     if (op.tool === 'move') return [1, 0, 0, 1, op.dx, op.dy];
+    if (op.tool === 'crop') return [1, 0, 0, 1, -op.points[0], -op.points[1]];
     if (op.tool === 'transform') return fromFixed(op.m);
     return null;
 }
@@ -622,7 +633,9 @@ export function duplicateLayer(drawing, sourceId, newLayerId, entryId, now) {
 /// (`offsetsOf`) apply to them as to strokes.
 export function effectiveOps(drawing, layerId, before = null) {
     const out = layerId === BASE_LAYER ? [{ tool: 'fill' }] : [];
-    for (const op of strokesOn(drawing, layerId)) {
+    // Every crop cuts every layer: they join each layer's own entries, in the one order.
+    const own = drawing.strokes.filter((s) => s.tool === 'crop' || (s.layer || BASE_LAYER) === layerId);
+    for (const op of own) {
         if (before && strokeOrder(op, before) >= 0) break;
         if (op.tool === 'copy') out.push(...effectiveOps(drawing, op.from, op));
         else if (op.tool !== 'delete') out.push(op);
@@ -650,7 +663,8 @@ export function addImage(drawing, picture, layerId, entryId, now) {
     let out = addLayer(drawing, layerId, now);
     const name = layerNameFrom(picture.title);
     if (name) out = setLayer(out, layerId, { name }, now);
-    const at = placeImage(picture.width, picture.height, drawing.width, drawing.height);
+    const [cw, ch] = sizeOf(drawing);
+    const at = placeImage(picture.width, picture.height, cw, ch);
     const entry = { id: entryId, t: now, layer: layerId, tool: 'image', points: [at.x, at.y], doc: picture.doc, w: at.w, h: at.h };
     return addStroke(out, entry);
 }
@@ -717,4 +731,37 @@ export function ellipseOutline([l, top, r, bottom]) {
     ];
     unit.push(unit[0]);
     return unit.map(([c, s]) => [cx + rx * c, cy + ry * s]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cropping (Curtis, 2026-09-27): the canvas cut down to a box. A `crop` entry, like every other -
+// merged by the union, undone like a stroke (and what it cut away comes back, since nothing is
+// ever removed from the history, only left outside the canvas). The body's own `width` and
+// `height` stay the canvas the drawing began as; the canvas NOW is that, cut by every crop in turn,
+// each box in the canvas as its crop found it. Two computers cropping at once both apply, the
+// later on the earlier's result, in the one order - the same on every computer.
+
+/// The canvas after the crops among `ops` (any entries, in painting order), starting from the
+/// drawing's own: [width, height].
+export function sizeAfter(drawing, ops) {
+    let size = [drawing.width, drawing.height];
+    for (const op of ops) if (op.tool === 'crop') size = [op.points[2] - op.points[0], op.points[3] - op.points[1]];
+    return size;
+}
+
+/// The canvas as it stands: [width, height].
+export const sizeOf = (drawing) => sizeAfter(drawing, drawing.strokes);
+
+/// The crop entry for cutting the canvas to `box` ([left, top, right, bottom], any numbers):
+/// rounded, kept inside the canvas as it stands, or null when that leaves nothing - or leaves
+/// the canvas as it was.
+export function cropEntry(drawing, box, { id, t }) {
+    const [w, h] = sizeOf(drawing);
+    const l = Math.max(0, Math.min(w, Math.round(Math.min(box[0], box[2]))));
+    const r = Math.max(0, Math.min(w, Math.round(Math.max(box[0], box[2]))));
+    const top = Math.max(0, Math.min(h, Math.round(Math.min(box[1], box[3]))));
+    const b = Math.max(0, Math.min(h, Math.round(Math.max(box[1], box[3]))));
+    if (l >= r || top >= b) return null;
+    if (l === 0 && top === 0 && r === w && b === h) return null;
+    return { id, t, tool: 'crop', points: [l, top, r, b] };
 }

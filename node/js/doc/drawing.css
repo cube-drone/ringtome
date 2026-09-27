@@ -225,6 +225,44 @@
     vector-effect: non-scaling-stroke;
 }
 
+/* The crop tool: a light black shade over everything about to be cut away, the box's edge, a
+   handle at each corner - in the drawing's units, like the transform frame. */
+.drawing-crop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.drawing-crop-shade {
+    fill: var(--crop-shade);
+}
+
+.drawing-crop-edge {
+    fill: none;
+    stroke: var(--paper);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    vector-effect: non-scaling-stroke;
+}
+
+.drawing-crop-handle {
+    fill: var(--paper);
+    stroke: var(--ink);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+
+/* Between the tool in hand's options and what works whatever the tool: add an image, undo. */
+.drawing-tools-rule {
+    width: 100%;
+    margin: 0.2rem 0;
+    border: none;
+    border-top: 1px solid var(--border);
+}
+
 /* The size circle: as big on screen as the tool is on the drawing. */
 .drawing-cursor {
     display: none;
@@ -345,8 +383,12 @@
 
 .drawing-layer-thumb {
     grid-row: 1 / 3;
-    width: 48px;
-    height: 36px;
+    /* The canvas's own shape (a crop can make it any), inside a 48-pixel square. */
+    width: auto;
+    height: auto;
+    max-width: 48px;
+    max-height: 48px;
+    justify-self: center;
     flex-shrink: 0;
     border: 1px solid var(--border);
     --floor-square: 4px;

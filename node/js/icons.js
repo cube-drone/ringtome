@@ -30,6 +30,7 @@ import {
     LineSegment,
     Rectangle,
     BoundingBox,
+    Crop,
     Circle,
     Stack,
     Eraser,
@@ -241,6 +242,8 @@ export const Icons = {
     ellipse: Circle,
     // ...and the transform, which turns, stretches and slants a whole layer.
     transform: BoundingBox,
+    // ...and the crop, which cuts the canvas down.
+    crop: Crop,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

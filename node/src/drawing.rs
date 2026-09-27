@@ -256,6 +256,35 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 m: None,
             });
         }
+        // A crop: the canvas cut to the box `points` = [left, top, right, bottom] - on no layer, since
+        // it cuts every one (a `layer` it arrives with is dropped). Its box must enclose something.
+        "crop" => {
+            let points = o
+                .get("points")?
+                .as_array()?
+                .iter()
+                .map(safe_int)
+                .collect::<Option<Vec<i64>>>()
+                .filter(|p| p.len() == 4 && p[0] < p[2] && p[1] < p[3])?;
+            return Some(Stroke {
+                id,
+                t,
+                layer: None,
+                tool: "crop",
+                color: None,
+                size: None,
+                points: Some(points),
+                pressure: None,
+                reach: None,
+                dx: None,
+                dy: None,
+                from: None,
+                doc: None,
+                w: None,
+                h: None,
+                m: None,
+            });
+        }
         // A transform: everything before it on its layer through the affine matrix `m`, six fixed-point
         // whole numbers. The node keeps it; painting it is the page's.
         "transform" => {

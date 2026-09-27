@@ -133,3 +133,36 @@ export function paintedBox(data, width, height, backing) {
     }
     return r < 0 ? null : [l / backing, t / backing, (r + 1) / backing, (b + 1) / backing];
 }
+
+/// The crop tool's box (Curtis, 2026-09-27) as a drag leaves it: `box` [left, top, right, bottom]
+/// in canvas units, `grip` from `gripAt` on its frame (or `{ kind: 'new' }` for a drag begun
+/// outside it, which draws a fresh box), the pointer `from` -> `to`, and the canvas `[width,
+/// height]` it must stay inside. A corner moves itself, an edge itself, the inside moves the whole
+/// box without changing its size; a box dragged inside out is put right way round.
+export function dragBox(box, grip, from, to, [width, height]) {
+    const dx = to[0] - from[0];
+    const dy = to[1] - from[1];
+    const clampX = (x) => Math.max(0, Math.min(width, x));
+    const clampY = (y) => Math.max(0, Math.min(height, y));
+    let [l, t, r, b] = box;
+    if (grip.kind === 'new') {
+        [l, t, r, b] = [from[0], from[1], to[0], to[1]];
+    } else if (grip.kind === 'inside') {
+        const mx = Math.max(-l, Math.min(width - r, dx));
+        const my = Math.max(-t, Math.min(height - b, dy));
+        return [l + mx, t + my, r + mx, b + my];
+    } else if (grip.kind === 'corner') {
+        // Corners clockwise from the top-left: 0 and 3 are on the left, 0 and 1 on the top.
+        if (grip.i === 0 || grip.i === 3) l += dx;
+        else r += dx;
+        if (grip.i === 0 || grip.i === 1) t += dy;
+        else b += dy;
+    } else if (grip.kind === 'edge') {
+        // Edges from the top, clockwise: 0 top, 1 right, 2 bottom, 3 left.
+        if (grip.i === 0) t += dy;
+        else if (grip.i === 1) r += dx;
+        else if (grip.i === 2) b += dy;
+        else l += dx;
+    }
+    return [clampX(Math.min(l, r)), clampY(Math.min(t, b)), clampX(Math.max(l, r)), clampY(Math.max(t, b))];
+}

@@ -1278,6 +1278,105 @@
       "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f300000000000008\",\"t\":1,\"tool\":\"transform\",\"m\":[1000000,0,0,1000000,0,0]}],\"undone\":[]}"
     },
     {
+      "name": "a crop keeps its box, and is on no layer",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "points": [
+              10,
+              20,
+              400,
+              300
+            ],
+            "tool": "crop",
+            "layer": "aaaaaaaaaaaaaaa2",
+            "t": 8,
+            "id": "f500000000000001",
+            "color": "#000000",
+            "size": 3
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f500000000000001\",\"t\":8,\"tool\":\"crop\",\"points\":[10,20,400,300]}],\"undone\":[]}"
+    },
+    {
+      "name": "a crop that cannot be kept is dropped",
+      "input": {
+        "v": 1,
+        "width": 800,
+        "height": 600,
+        "background": "#fffefb",
+        "strokes": [
+          {
+            "id": "f500000000000002",
+            "t": 1,
+            "tool": "crop",
+            "points": [
+              10,
+              20,
+              10,
+              300
+            ]
+          },
+          {
+            "id": "f500000000000003",
+            "t": 1,
+            "tool": "crop",
+            "points": [
+              10,
+              300,
+              400,
+              20
+            ]
+          },
+          {
+            "id": "f500000000000004",
+            "t": 1,
+            "tool": "crop",
+            "points": [
+              10,
+              20,
+              400
+            ]
+          },
+          {
+            "id": "f500000000000005",
+            "t": 1,
+            "tool": "crop",
+            "points": [
+              10,
+              20,
+              400,
+              300.5
+            ]
+          },
+          {
+            "id": "f500000000000006",
+            "t": 1,
+            "tool": "crop"
+          },
+          {
+            "id": "f500000000000007",
+            "t": 1,
+            "tool": "crop",
+            "points": [
+              -5,
+              -5,
+              1,
+              1
+            ]
+          }
+        ],
+        "undone": []
+      },
+      "written": "{\"v\":1,\"width\":800,\"height\":600,\"background\":\"#fffefb\",\"strokes\":[{\"id\":\"f500000000000007\",\"t\":1,\"tool\":\"crop\",\"points\":[-5,-5,1,1]}],\"undone\":[]}"
+    },
+    {
       "name": "an eraser keeps its pressure too",
       "input": {
         "v": 1,
