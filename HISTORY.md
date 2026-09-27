@@ -11212,3 +11212,15 @@ middle still. Zoom is the view's alone - not in the body, not synced. The arithm
 (`pure/viewport.js`: steps, the slider's even-ratio scale, fit, the visible fraction, scroll to a
 centre) has five model tests; the column's tuck key is still `layers`, a storage key left alone. A
 new `--viewport` token is the square's red. Not yet looked at in a browser.
+
+## 2026-09-27 (cont.): the drawing no longer flashes on a reload
+
+Curtis: "every few seconds the whole drawing will flash." The session's reload (the lookout
+fetching a version the node has and this page has not - doc/session.js) passes back through
+`opening`, and the drawing surface took that as "not open": it unmounted the canvas for the
+"opening…" line and remounted a fresh, blank one, painted in an effect a frame after the browser
+had shown it empty. Writer's editor only shows "opening…" before its first load; the drawing now
+does the same - once open, it stays on screen through a reload (drawing is still refused until the
+reload settles) - and its layers paint in a layout effect, so no canvas is ever shown before it is
+painted. Unconfirmed in a browser; the theory's test is whether the flash lined up with the save
+chip settling (a reload following the page's own save).

@@ -434,6 +434,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const cursorRef = useRef(null);
     const live = useRef(null); // the stroke being drawn: { stroke, pen, samples }
     const opened = session.status !== 'opening' && session.status !== 'waiting';
+    // Once this drawing has opened it stays on screen through a reload (the lookout fetching the
+    // node's newer version, doc/session.js), as Writer's editor does: a reload passes back through
+    // 'opening', and taking the canvas away for it made the whole drawing flash blank (Curtis,
+    // 2026-09-27: "every few seconds the whole drawing will flash"). `opened` still gates drawing -
+    // a stroke begun mid-reload would land on a body about to be replaced.
+    const shownFor = useRef(null);
+    if (opened) shownFor.current = docId;
+    const shown = opened || shownFor.current === docId;
 
     const { tucked, toggleTuck } = useColTucks(root, 'drawing', []);
     const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], { tools: 170, layers: 170 });
@@ -456,12 +464,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (canvas) composite(canvas, drawing, layerCanvases.current, shift);
     };
     const [grabbing, setGrabbing] = useState(false); // the grab tool's hand, open or closed
-    useEffect(() => {
-        if (!opened) return;
+    // Painted before the browser shows the frame (a layout effect, not an effect): a canvas that
+    // has just appeared - on opening, or the column brought back - is never seen empty.
+    useLayoutEffect(() => {
+        if (!shown) return;
         layerCanvases.current = paintLayers(drawing, drawing.width * BACKING);
         restack();
         setPainted((n) => n + 1);
-    }, [drawing, opened]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [drawing, shown]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // The view (DRAWING.md, "The navigator"): the stage scrolls, and the drawing on it is the size
     // that just fits, times the zoom. The fit follows the stage's size; a zoom keeps the point at
@@ -795,7 +805,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
         : html`<aside class="drawing-layers" style=${colStyle}>
               <${PaneHead} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
-              ${opened &&
+              ${shown &&
               html`<${Navigator}
                   zoom=${zoom}
                   onZoom=${setZoom}
@@ -957,7 +967,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             ${header}
             <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
             <div class="drawing-stage" ref=${stageRef}>
-                ${!opened
+                ${!shown
                     ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
                     : html`<div
                           ref=${paperRef}
