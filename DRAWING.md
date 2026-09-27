@@ -289,6 +289,13 @@ for the picture and made current, so a grab moves it straight away. One entry re
 `{ "tool": "image", "points": [x, y], "doc": <picture's document id>, "w", "h" }` - its top-left and
 its size in canvas units: one pixel to a unit, centred, shrunk (never grown) to fit the canvas.
 
+- **A drawing can be chosen too** (Curtis, 2026-09-27): it comes in as a single flat layer - a COPY.
+  The chosen drawing is flattened as it stands (its own pictures and fonts waited for), saved as a new
+  picture in the person's media titled for it, and that picture is placed like any other. Never a
+  live link: a drawing that painted other drawings would repaint whatever they had since become, and
+  a chain of them could loop; a snapshot is one more picture, merged like any. The page holds the
+  flattened picture it just made, so the layer paints at once rather than when the node has taken it
+  in. The copy stays in the person's files, as copy-into-a-notebook's picture does.
 - **A reference, not the pixels.** The body names the picture's document; whoever paints the
   drawing fetches the picture's body, as the person's own media is fetched anywhere. A picture not
   here yet - still syncing, or deleted - paints as nothing until it arrives. A picture OF the

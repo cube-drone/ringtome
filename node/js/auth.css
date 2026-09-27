@@ -60,7 +60,7 @@
 }
 
 .welcome-form input {
-    background: var(--surface);
+    background: var(--field);
     border: 1px solid transparent;
     --line: var(--border-strong);
     position: relative;

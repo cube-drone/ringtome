@@ -12,6 +12,9 @@ import htm from 'htm';
 
 import { useLocation } from 'preact-iso';
 import { api } from './net.js';
+import { ImagePickModal } from './doc/imagepick.js';
+import { DrawingThumb, flattenToBlob } from './doc/drawing.js';
+import { readBody } from './pure/drawing.js';
 import { speakable } from './speakable.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
@@ -20,7 +23,7 @@ import { personaHue, shortcode } from './pure/person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { WarningLists } from './warnings.js';
-import { usePref, TOOLTIPS_KEY } from './mirror/prefs.js';
+import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
 
 const html = htm.bind(h);
 
@@ -594,6 +597,8 @@ export const PersonaHome = ({ persona }) => {
 const NODE_ADMIN_TAG = 'node_admin';
 
 export const PersonaMenu = ({ persona, session }) => {
+    // Left open or closed, it stays that way (Curtis, 2026-09-27) - a pref, kept by this browser.
+    const [menu, setMenu] = usePref(persona.current.root, SETTINGS_MENU_KEY, 'closed');
     const logout = async () => {
         // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
         // easy to hit by mistake, and coming back means signing in again.
@@ -602,7 +607,14 @@ export const PersonaMenu = ({ persona, session }) => {
         session.logout();
     };
     return html`
-        <details class="you-menu">
+        <details
+            class="you-menu"
+            open=${menu === 'open'}
+            onToggle=${(e) => {
+                const now = e.currentTarget.open ? 'open' : 'closed';
+                if (now !== menu) setMenu(now);
+            }}
+        >
             <summary class="ledger-head">
                 <span class="persona-menu-icon"><${Icons.settings} /></span>
                 ${t('persona.your-settings', 'your settings')}
@@ -617,6 +629,13 @@ export const PersonaMenu = ({ persona, session }) => {
                     <span class="persona-menu-label">
                         <strong>${t('persona.profile', 'profile')}</strong>
                         <small>${t('persona.your-name-and-how-you', 'your name and how you appear')}</small>
+                    </span>
+                </a>
+                <a class="persona-menu-item" href="/home/persona/settings">
+                    <span class="persona-menu-icon"><${Icons.appSettings} /></span>
+                    <span class="persona-menu-label">
+                        <strong>${t('persona.application-settings-menu', 'application settings')}</strong>
+                        <small>${t('persona.how-the-app-behaves', 'how the app behaves for you, on this browser')}</small>
                     </span>
                 </a>
                 <a class="persona-menu-item" href="/home/persona/personas">
@@ -671,6 +690,61 @@ export const ContentControl = ({ current }) => {
     `;
 };
 
+/// Application settings (Curtis, 2026-09-27): how the app behaves for you, a zone of your settings
+/// of its own, after the profile - as opposed to what you say about yourself there. Prefs, so kept
+/// by this browser alone (mirror/prefs.js).
+export const AppSettings = ({ current }) => (current && current.root ? html`<${AppSettingsFor} root=${current.root} />` : null);
+
+// The page itself, once there is a persona whose prefs to read.
+const AppSettingsFor = ({ root }) => {
+    const [tooltips, setTooltips] = usePref(root, TOOLTIPS_KEY, 'on');
+    return html`
+        <div class="persona-page">
+            <div class="persona-page-head">
+                <h1 class="persona-page-title">${t('persona.application-settings', 'application settings')}</h1>
+            </div>
+            <label class="profile-setting">
+                <input
+                    type="checkbox"
+                    checked=${tooltips === 'off'}
+                    onChange=${(e) => setTooltips(e.currentTarget.checked ? 'off' : 'on')}
+                />
+                ${t('persona.disable-tooltips', 'disable tooltips')}
+            </label>
+            <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
+        </div>
+    `;
+};
+
+/// The longest side a profile picture is sent at: the node keeps an avatar small, and a phone
+/// photo at full size would only be a slower upload to the same result.
+const AVATAR_MAX_SIDE = 1024;
+
+/// A picture chosen for the profile (Curtis, 2026-09-27: make your own rather than upload one) as
+/// image bytes for the avatar door, made here in the browser: a drawing flattened - its pictures
+/// and fonts waited for, as a publication does - or a picture from your media drawn onto a canvas,
+/// no larger than AVATAR_MAX_SIDE. Either way a PNG, which the node's image ingest takes like any
+/// upload; the avatar is public, so the node makes it a born-public picture of its own, and the
+/// original stays as private as it was.
+async function avatarBytes(root, pick) {
+    if (pick.format === 'drawing') {
+        const detail = await api(`/api/identity/${root}/docs/${pick.doc}`);
+        if (detail.body == null) throw new Error(t('persona.drawing-not-here-yet', 'that drawing has not reached this computer yet - try again in a moment'));
+        return flattenToBlob(root, readBody(detail.body));
+    }
+    const img = new Image();
+    img.src = `/api/identity/${root}/docs/${pick.doc}/body`;
+    await img.decode();
+    const scale = Math.min(1, AVATAR_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return new Promise((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error(t('persona.could-not-read-that-picture', 'could not read that picture')))), 'image/png')
+    );
+}
+
 function useProfileDraft(root, field) {
     const live = useLive(() => openMirror(root).profile.get(field), [root, field]);
     const mirror = (live && live.value) || '';
@@ -723,10 +797,12 @@ const FieldLabel = ({ label, field }) => html`
 // happens when you've committed to the words, not when you pause typing.
 export const Profile = ({ current }) => {
     const root = current.root;
+    const loc = useLocation();
     const name = useProfileDraft(root, 'name');
     const bio = useProfileDraft(root, 'bio');
     const [busy, setBusy] = useState(false);
-    const [flash, setFlash] = useState(null); // 'saved' | an error message
+    // An error message, or null: only an error ever shows, since a save that lands leaves for your page.
+    const [flash, setFlash] = useState(null);
     const dirty = name.dirty || bio.dirty;
     const over = name.over || bio.over;
 
@@ -736,8 +812,10 @@ export const Profile = ({ current }) => {
         try {
             if (name.dirty) await name.commit();
             if (bio.dirty) await bio.commit();
-            setFlash(t('persona.saved', 'saved'));
-            setTimeout(() => setFlash((f) => (f === 'saved' ? null : f)), 1800);
+            // Saved: back to your own page, where the words now show (Curtis, 2026-09-27). A
+            // failed save stays here, with its error.
+            loc.route(`/id/${speakable(root)}`);
+            return;
         } catch (e) {
             setFlash(e.message || 'that save did not take - try again');
         }
@@ -747,22 +825,21 @@ export const Profile = ({ current }) => {
     // The avatar: a register holds the pointer, a born-public media document holds the
     // file (PROJECT_PLAN - everything file-shaped is a document). Upload crushes inline
     // and echoes back through the profile stream within a beat.
-    // Application settings (Curtis, 2026-09-27): how the app behaves for you here, as opposed to
-    // what you say about yourself above. Prefs - this browser's (mirror/prefs.js).
-    const [tooltips, setTooltips] = usePref(root, TOOLTIPS_KEY, 'on');
     const avatarLive = useLive(() => openMirror(root).profile.get('avatar'), [root]);
     const avatarDoc = avatarLive && avatarLive.value;
     const [avatarBusy, setAvatarBusy] = useState(false);
     const [avatarErr, setAvatarErr] = useState(null);
-    const pickAvatar = async (e) => {
-        const file = e.currentTarget.files[0];
-        e.currentTarget.value = '';
-        if (!file) return;
+    // The picture is chosen, not uploaded (Curtis, 2026-09-27): the image picker the drawing uses,
+    // offering your drawings as well as your media - make your own. (An outside picture comes in
+    // through hrseFiles, like any file, and can be chosen from there.)
+    const [choosing, setChoosing] = useState(false);
+    const pickAvatar = async (pick) => {
+        setChoosing(false);
         setAvatarBusy(true);
         setAvatarErr(null);
         try {
             const form = new FormData();
-            form.append('image', file);
+            form.append('image', await avatarBytes(root, pick), 'avatar.png');
             await api(`/api/identity/${root}/avatar`, { method: 'POST', body: form });
         } catch (err) {
             setAvatarErr(err.message);
@@ -786,10 +863,18 @@ export const Profile = ({ current }) => {
                           class="profile-avatar profile-avatar-empty"
                           style="background: hsl(${personaHue(root)}, 60%, 55%)"
                       ></span>`}
-                <label class="profile-avatar-pick">
+                <button class="profile-avatar-pick" disabled=${avatarBusy} onClick=${() => setChoosing(true)}>
                     ${avatarBusy ? t('persona.working-on-it', 'working on it…') : avatarDoc ? t('persona.change-your-picture', 'change your picture') : t('persona.add-a-picture', 'add a picture')}
-                    <input type="file" accept="image/*" onChange=${pickAvatar} disabled=${avatarBusy} />
-                </label>
+                </button>
+                ${choosing &&
+                html`<${ImagePickModal}
+                    root=${root}
+                    drawings=${true}
+                    DrawingThumb=${DrawingThumb}
+                    heading=${t('persona.choose-your-picture', 'choose your picture')}
+                    onPick=${pickAvatar}
+                    onClose=${() => setChoosing(false)}
+                />`}
             </div>
             ${avatarErr && html`<p class="form-error">${avatarErr}</p>`}
             <label class="profile-field">
@@ -818,22 +903,8 @@ export const Profile = ({ current }) => {
                     disabled=${!dirty || over || busy}
                     onClick=${save}
                 >${t('persona.save', 'Save')}</button>
-                <span class=${flash === 'saved' ? 'profile-flash' : 'profile-flash profile-flash-err'}>
-                    ${flash === 'saved' ? t('persona.saved---on-all-your', 'saved - on all your computers in a moment') : flash}
-                </span>
+                <span class="profile-flash profile-flash-err">${flash}</span>
             </div>
-            <section class="profile-settings">
-                <h2 class="computers-title">${t('persona.application-settings', 'application settings')}</h2>
-                <label class="profile-setting">
-                    <input
-                        type="checkbox"
-                        checked=${tooltips === 'off'}
-                        onChange=${(e) => setTooltips(e.currentTarget.checked ? 'off' : 'on')}
-                    />
-                    ${t('persona.disable-tooltips', 'disable tooltips')}
-                </label>
-                <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
-            </section>
         </div>
     `;
 };

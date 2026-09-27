@@ -11406,7 +11406,9 @@ accessible name holds one from the title meanwhile; a re-render that sets the ti
 too. The bubble is ink with Phosphor's info glyph in teal, jag-cornered, after 300ms - or at once
 when the pointer comes straight from another tooltip, so a row of chips reads without waiting on
 each (pure/tooltip.js: the delay and the placement, below or flipped above and kept inside the
-window, two tests). The profile gained an **application settings** zone with **disable
+window, two tests). Your settings gained an **application settings** zone - its own entry in the persona menu, right
+after profile, and its own page (`/home/persona/settings`; at first it was a section at the foot of
+the profile page, until Curtis said "under profile" meant next in the list) - with **disable
 tooltips**: a pref (`tooltips`: 'off' or absent), this browser's like every pref, read at the app's
 root through the prefs table's owner (`usePrefValue`, for where no persona is open yet); off, titles
 are still borrowed and nothing is drawn, so no tooltip shows at all. Checked by eye: the bubble,
@@ -11458,3 +11460,58 @@ person glyph (Curtis): their picture, or the identicon their key draws, filling 
 the ring colour every Person widget gives them (`faceOf`, person.js, from `usePerson`). The launcher
 tile drops its diagonal fill (it would hide half a face) and keeps the nameplate over the picture;
 the dock's rim takes the colour. Checked by eye, rendered against the real bundle.
+
+## 2026-09-27 (cont.): a colour for text fields
+
+Curtis: "just about every text entry box" was the colour of what it sat on. Most fields that chose a
+background chose `--surface` - the cream of the very panels they sit in - and chat's chose the page's
+sand on its paper; the rest took the browser's white. One new token, `--field` (#fcf8f0), sits
+between them: a hair lighter than the sand and the cream, a hair darker than paper - so, as asked,
+lighter than the background unless the background is already the lightest, and then a touch darker,
+with no second colour needed. Fourteen field rules now use it (header search, sign-in, name, slug,
+bio, ledger select, label add, copy-into, chat's search, new-room and composer, the colour hex, the
+layer name, the device fields), and a `:where(...)` default gives it - at no weight - to every text
+field that says nothing, leaving checkboxes, sliders and pickers alone and any field that chose its
+own (a borderless title) as it chose. Checked by eye on sand, cream and paper.
+
+## 2026-09-27 (cont.): the profile's save goes home; "your settings" remembers
+
+Saving the profile now returns you to your own page (`/id/<you>`, where the persona app's home
+already redirects) once the save lands; a failed save stays, with its error, and the "saved - on all
+your computers" note, which a departing page could no longer show, went. The "your settings"
+disclosure on your page keeps its open or closed state (`persona:settings-menu`, a pref).
+
+A near-miss worth recording: two runs of `just strings` silently DELETED five live phrases (the
+profile's name, bio and Save labels) from en.js, with strings-check reporting all well. The tool
+blanks `/* ... */` comments with a regex before collecting `t()` calls, and the regex does not know
+strings - so the `/*` in the avatar input's `accept="image/*"` opened a "comment" that ran to the
+next `*/`, a note of mine inside the template, blanking everything between. Removing the note brought
+the phrases back (the source's own wording), and an app-wide check found every live `t()` key in the
+catalog. That is the second way the tool misreads source (the first: an apostrophe in a `//`
+comment, above) - both are the same missing piece, a scanner that knows JavaScript's strings and
+comments, and both can quietly drop copy. Not fixed yet.
+
+## 2026-09-27 (cont.): a profile picture you made
+
+"Change your picture" no longer opens a file upload (Curtis: "rather than uploading a profile pic,
+you'll create your own - if you do want to upload the pic, do that in files"). It opens the image
+picker the drawing uses, now able to offer drawings as well as pictures (`drawings`, off for the
+drawing's own picker; `DrawingThumb` handed in, since the picker is the drawing module's and cannot
+import it back; a test). The choice becomes image bytes in the browser - a drawing flattened, waiting
+for its pictures and fonts as a publication does; a picture drawn onto a canvas no larger than
+1024 on its longest side - and goes through the same avatar door as before, whose crush sniffs the
+bytes, so the node is unchanged. The avatar is public: the node makes it a born-public picture of its
+own, and the chosen original stays as private as it was. Not yet chosen in a browser.
+
+The drawing's "add an image" offers drawings as well as pictures now, a drawing coming in as one
+flat layer (Curtis). A copy, not a link - a live link would repaint whatever the other drawing had
+since become, and could loop - so `drawingAsPicture` flattens the chosen drawing, saves it as a new
+picture in your media (as copy-into-a-notebook does), holds the flattened image so the layer paints
+at once rather than once the node has ingested it, and places it as any picture; it lands on the
+drawing as it stands when the copy finishes, not as it stood at the click. Not yet tried in a
+browser.
+
+In the image picker a drawing sat small in the top-left of a big checkered tile (Curtis): its
+thumbnail is `DrawingThumb`, made for a list row, and the row's `.note-row-thumb.drawing-thumb` size
+(64 x 48) outranked the picker's `.imagepick-thumb img`. A picker rule for `.drawing-thumb` now fills
+the tile, with the tile's own checkerboard and no border - rendered beside a picture tile to check.

@@ -41,4 +41,13 @@ describe('the image picker', () => {
         assert.deepEqual(r.tags, [['horse', 2], ['ref', 1]], 'what could still be added, over the search');
         assert.deepEqual(r.buckets, ['barn', 'refs'], 'notebooks with pictures, not with notes');
     });
+
+    it('offers drawings too, only when asked', () => {
+        const withDrawing = [...docs(), { doc_id: 'd1', title: 'my horse', format: 'drawing', created_ms: 5000, tags: ['horse'], buckets: ['drawing'] }];
+        assert.ok(!ids(p.pickPictures(withDrawing)).includes('d1'), 'the drawing app picks pictures only');
+        const r = p.pickPictures(withDrawing, { drawings: true, query: 'horse' });
+        assert.deepEqual(ids(r), ['d1', 'a2', 'a1'], 'the profile can pick a drawing, newest first with the rest');
+        assert.ok(p.pickPictures(withDrawing, { drawings: true }).buckets.includes('drawing'));
+    });
 });
+

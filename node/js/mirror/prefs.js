@@ -51,6 +51,10 @@ export const OPEN_ROOM_KEY = 'chat:room';
 /// 2026-09-27). Domain: 'off', or absent for on. This browser's, like every pref here.
 export const TOOLTIPS_KEY = 'tooltips';
 
+/// Whether "your settings", the disclosure on your own page (persona.js PersonaMenu), was left open
+/// (Curtis, 2026-09-27). Domain: 'open' | 'closed'; absent is closed.
+export const SETTINGS_MENU_KEY = 'persona:settings-menu';
+
 
 // --- reading ---
 

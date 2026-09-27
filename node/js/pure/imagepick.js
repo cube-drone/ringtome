@@ -21,12 +21,16 @@ const wordsOf = (query) => (query || '').toLocaleLowerCase().split(/\s+/).filter
 /// began (`createdMs`): retitling or tagging an old picture does not bring it back to the top.
 export const newestFirst = (a, b) => createdMs(b) - createdMs(a) || (a.doc_id < b.doc_id ? 1 : -1);
 
-/// The pictures before the tags: pictures only, in `bucket` (null for every notebook), with
+/// What can be picked: pictures, and - when asked (the profile's picture, Curtis 2026-09-27: make
+/// your own rather than upload one) - drawings too.
+const pickable = (drawings) => (d) => isPicture(d) || (drawings && !!d && d.format === 'drawing');
+
+/// The pictures before the tags: pickable only, in `bucket` (null for every notebook), with
 /// every word of `query` in the title.
-function narrowed(docs, { query, bucket }) {
+function narrowed(docs, { query, bucket, drawings }) {
     const words = wordsOf(query);
     return (docs || [])
-        .filter(isPicture)
+        .filter(pickable(drawings))
         .filter((d) => !bucket || (d.buckets || []).includes(bucket))
         .filter((d) => {
             const title = (d.title || '').toLocaleLowerCase();
@@ -38,9 +42,11 @@ function narrowed(docs, { query, bucket }) {
 /// first; the tag cloud ([tag, count], most-used first) over the pictures before the tag filter;
 /// and every notebook holding any picture at all, alphabetical, so the notebook menu never shrinks
 /// out from under a search.
-export function pickPictures(docs, { query = '', bucket = null, tags = [] } = {}) {
-    const before = narrowed(docs, { query, bucket });
+export function pickPictures(docs, { query = '', bucket = null, tags = [], drawings = false } = {}) {
+    const before = narrowed(docs, { query, bucket, drawings });
     const pictures = before.filter((d) => tags.every((t) => (d.tags || []).includes(t))).sort(newestFirst);
-    const buckets = [...new Set((docs || []).filter(isPicture).flatMap((d) => d.buckets || []))].sort((a, b) => a.localeCompare(b));
+    const buckets = [...new Set((docs || []).filter(pickable(drawings)).flatMap((d) => d.buckets || []))].sort((a, b) =>
+        a.localeCompare(b)
+    );
     return { pictures, tags: tagCounts(before), buckets };
 }

@@ -75,7 +75,7 @@
 }
 
 .name-input {
-    background: var(--surface);
+    background: var(--field);
     border: 1px solid transparent;
     --line: var(--border-strong);
     position: relative;
@@ -362,7 +362,7 @@
     border: 1px solid transparent;
     --line: var(--border-strong);
     position: relative;
-    background: var(--surface);
+    background: var(--field);
     color: var(--ink);
 }
 .profile-slug-last {
@@ -370,7 +370,7 @@
 }
 
 .profile-bio {
-    background: var(--surface);
+    background: var(--field);
     border: 1px solid transparent;
     --line: var(--border-strong);
     position: relative;
@@ -596,12 +596,7 @@
     font-weight: 600;
 }
 
-/* The profile's application settings (Curtis, 2026-09-27): how the app behaves for you on this
-   browser, set apart from what you say about yourself. */
-.profile-settings {
-    margin-top: 2rem;
-}
-
+/* A setting on the application settings page (persona.js AppSettings): a checkbox and its words. */
 .profile-setting {
     display: flex;
     align-items: center;
@@ -793,7 +788,7 @@
 }
 
 .ledger-select {
-    background: var(--surface);
+    background: var(--field);
     border: 1px solid transparent;
     --line: var(--border);
     position: relative;
@@ -944,14 +939,19 @@
 }
 
 .profile-avatar-pick {
+    font: inherit;
     color: var(--teal);
     font-size: 0.85rem;
+    background: none;
+    border: none;
+    padding: 0;
     cursor: pointer;
     text-decoration: underline;
 }
 
-.profile-avatar-pick input {
-    display: none;
+.profile-avatar-pick:disabled {
+    color: var(--muted);
+    cursor: default;
 }
 
 
@@ -1303,7 +1303,7 @@ article:has(.label-emoji-strip) {
     position: relative;
     --j: 0.25em;
     clip-path: var(--jag-1);
-    background: var(--surface);
+    background: var(--field);
     color: var(--ink);
 }
 

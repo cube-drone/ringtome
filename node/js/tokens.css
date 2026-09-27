@@ -76,6 +76,8 @@
     --surface: #f6efe0;      /* cards, inputs, tiles: cream (a touch lighter than the sand) */
     --surface-2: #efe3cd;    /* chips, secondary fills */
     --paper: #fffefb;        /* the note itself: near-white, clearly lighter than the backdrop */
+    --field: #fcf8f0;        /* a text field (Curtis, 2026-09-27): a hair lighter than the cream panels and the
+                                sand, a hair darker than paper - so it reads as a box to type in on any of them */
     --ink: #40382c;          /* primary text: warm dark brown */
     --ink-soft: #574d3d;     /* softer body text */
     --muted: #8a7a5f;        /* secondary text, labels */
@@ -167,4 +169,13 @@
     pointer-events: none;
     background: var(--line);
     clip-path: var(--ring);
+}
+
+/* Every text field that says nothing of its own background wears the field colour (Curtis,
+   2026-09-27: "just about every text entry box" was the colour of what it sat on). `:where` gives
+   this no weight at all, so any field that does choose - a borderless title, a search in the ink
+   header - still chooses. Not the checkbox, radio, slider, colour or file pickers: those draw
+   themselves. */
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset'], [type='image']), textarea, select) {
+    background-color: var(--field);
 }

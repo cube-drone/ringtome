@@ -428,7 +428,7 @@
     font-size: 0.85em;
     padding: 0.2rem 0.4rem;
     border: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--field);
     color: var(--ink);
     margin-bottom: 0.25rem;
 }
@@ -773,7 +773,7 @@
 }
 
 .chat-composer-words .editor-live .cm-editor {
-    background: var(--bg);
+    background: var(--field);
     border: 1px solid var(--border);
     clip-path: none;
     min-height: 2.6rem;
@@ -879,7 +879,7 @@
 .chat-new-words {
     font: inherit;
     color: var(--ink);
-    background: var(--bg);
+    background: var(--field);
     border: 1px solid var(--border);
     padding: 0.4rem 0.5rem;
 }

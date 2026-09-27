@@ -331,7 +331,7 @@
     font-family: "JetBrains Mono", monospace;
     font-size: 0.85rem;
     color: var(--ink);
-    background: var(--paper);
+    background: var(--field);
     border: 1px solid var(--border);
     padding: 0.25rem 0.4rem;
 }
@@ -416,7 +416,7 @@
     font: inherit;
     font-size: 0.85rem;
     color: var(--ink);
-    background: var(--paper);
+    background: var(--field);
     border: 1px solid var(--teal);
     padding: 0.05rem 0.25rem;
     cursor: text;
@@ -610,6 +610,16 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+/* A drawing's thumbnail in the picker (DrawingThumb, made for a list row at 64 x 48): the whole
+   tile, as a picture's is - the row's size rule would otherwise leave it small in the corner. */
+.imagepick-thumb .drawing-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border: none;
+    --floor-square: 6px; /* the tile's own checkerboard, not the list row's finer one */
 }
 
 .imagepick-title {

@@ -261,7 +261,7 @@ body {
     min-width: 0;
     height: var(--search-h);
     box-sizing: border-box;
-    background: var(--surface);
+    background: var(--field);
     border: 0;
     --j: 3px;
     clip-path: var(--jag-1);

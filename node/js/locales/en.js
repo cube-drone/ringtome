@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1069 phrases across 72 files.
+// 1073 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -401,6 +401,8 @@ export default {
     'doc.diffpage.private-only': 'private only',
 
     // --- node/js/doc/drawing.js ---
+    'doc.drawing.not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
+    'doc.drawing.untitled': 'untitled',
     'doc.drawing.layer-n': 'layer {n}',
     'doc.drawing.layer-name': 'layer name',
     'doc.drawing.new-text': 'horse',
@@ -443,7 +445,6 @@ export default {
     'doc.drawing.trash-layer': 'throw this layer away (undo brings it back)',
     'doc.drawing.this-layer-is-hidden': 'this layer is hidden - show it to draw on it',
     'doc.drawing.no-layers': 'no layers - make a new one to draw on',
-    'doc.drawing.untitled': 'untitled',
     'doc.drawing.delete': 'delete',
     'doc.drawing.copy-a-picture-into-a-notebook': 'copy a picture of this drawing into a notebook',
     'doc.drawing.copy-a-picture-of-it': 'copy a picture of this drawing into a notebook',
@@ -729,6 +730,8 @@ export default {
     'persona.you-administer-this-node': 'you administer this node',
     'persona.profile': 'profile',
     'persona.your-name-and-how-you': 'your name and how you appear',
+    'persona.application-settings-menu': 'application settings',
+    'persona.how-the-app-behaves': 'how the app behaves for you, on this browser',
     'persona.your-personas': 'your personas',
     'persona.manage-who-you-appear-to-be': 'manage who you appear to be',
     'persona.your-computers-2': 'your computers',
@@ -738,21 +741,22 @@ export default {
     'persona.log-out': 'log out',
     'persona.forget-this-browser-and-head': 'forget this browser and head out',
     'persona.content-control-2': 'content control',
-    'persona.saved': 'saved',
+    'persona.application-settings': 'application settings',
+    'persona.disable-tooltips': 'disable tooltips',
+    'persona.settings-this-browser': 'these settings are for this browser',
+    'persona.drawing-not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
+    'persona.could-not-read-that-picture': 'could not read that picture',
     'persona.profile-2': 'profile',
     'persona.your-avatar': 'your avatar',
     'persona.working-on-it': 'working on it…',
     'persona.change-your-picture': 'change your picture',
     'persona.add-a-picture': 'add a picture',
+    'persona.choose-your-picture': 'choose your picture',
     'persona.name': 'name',
     'persona.what-people-call-you-here': 'what people call you here',
     'persona.bio': 'bio',
     'persona.a-line-or-two-about': 'a line or two about you (optional)',
     'persona.save': 'Save',
-    'persona.saved---on-all-your': 'saved - on all your computers in a moment',
-    'persona.application-settings': 'application settings',
-    'persona.disable-tooltips': 'disable tooltips',
-    'persona.settings-this-browser': 'these settings are for this browser',
     'persona.this-node-knows-you-as': 'this node knows you as @{slug}',
     'persona.name-given-up': 'name given up',
     'persona.that-name-did-not-take': 'that name did not take',

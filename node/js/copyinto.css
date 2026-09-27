@@ -27,7 +27,7 @@
     align-items: center;
 }
 .copy-new-input {
-    background: var(--surface);
+    background: var(--field);
     border: 1px dashed var(--border);
     --j: 0.25em;
     clip-path: var(--jag-1);

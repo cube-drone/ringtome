@@ -1,7 +1,9 @@
-// The drawing's image picker (Curtis, 2026-09-27): a modal of every picture in the person's own
-// media, newest first, with a title search, a notebook menu and a tag cloud to narrow it. Choosing a
-// picture hands it to `onPick({ doc, width, height, title })`; the drawing puts it on a layer of
-// its own (pure/drawing.js, `addImage`). The filtering is pure/imagepick.js.
+// The image picker (Curtis, 2026-09-27): a modal of every picture in the person's own media,
+// newest first, with a title search, a notebook menu and a tag cloud to narrow it. Choosing one
+// hands it to `onPick({ doc, format, width, height, title })`. The drawing puts a picture on a
+// layer of its own (pure/drawing.js, `addImage`); the profile makes one its picture, and offers
+// drawings too (`drawings`, with `DrawingThumb` passed in to show them - this module is the
+// drawing's, and cannot import it back). The filtering is pure/imagepick.js.
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 import htm from 'htm';
@@ -18,19 +20,19 @@ const html = htm.bind(h);
 /// for every thumbnail at once.
 const PAGE = 120;
 
-export const ImagePickModal = ({ root, onPick, onClose }) => {
+export const ImagePickModal = ({ root, onPick, onClose, drawings = false, DrawingThumb = null, heading = null }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const [query, setQuery] = useState('');
     const [bucket, setBucket] = useState('');
     const [tags, setTags] = useState([]);
     const [shown, setShown] = useState(PAGE);
-    const { pictures, tags: cloud, buckets } = pickPictures(docs || [], { query, bucket: bucket || null, tags });
+    const { pictures, tags: cloud, buckets } = pickPictures(docs || [], { query, bucket: bucket || null, tags, drawings });
     const narrow = (fn) => (value) => {
         fn(value);
         setShown(PAGE);
     };
 
-    return html`<${Modal} wide=${true} title=${t('doc.imagepick.add-an-image', 'add an image')} onClose=${onClose}>
+    return html`<${Modal} wide=${true} title=${heading || t('doc.imagepick.add-an-image', 'add an image')} onClose=${onClose}>
         <div class="imagepick">
             <div class="imagepick-filters">
                 <input
@@ -73,11 +75,20 @@ export const ImagePickModal = ({ root, onPick, onClose }) => {
                               <button
                                   class="imagepick-item"
                                   title=${doc.title || ''}
-                                  onClick=${() => onPick({ doc: doc.doc_id, width: doc.media.width, height: doc.media.height, title: doc.title || '' })}
+                                  onClick=${() =>
+                                      onPick({
+                                          doc: doc.doc_id,
+                                          format: doc.format,
+                                          width: doc.media ? doc.media.width : null,
+                                          height: doc.media ? doc.media.height : null,
+                                          title: doc.title || '',
+                                      })}
                               >
                                   <span class="imagepick-thumb drawing-floor">
-                                      ${doc.media.has_thumb &&
-                                      html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`}
+                                      ${doc.format === 'drawing'
+                                          ? DrawingThumb && html`<${DrawingThumb} root=${root} doc=${doc} big=${true} />`
+                                          : doc.media.has_thumb &&
+                                            html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`}
                                   </span>
                                   <span class="imagepick-title">${doc.title || t('doc.imagepick.untitled', 'untitled')}</span>
                               </button>

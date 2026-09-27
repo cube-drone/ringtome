@@ -36,6 +36,7 @@ import {
     TextAlignRight,
     DownloadSimple,
     Info,
+    SlidersHorizontal,
     Circle,
     Stack,
     Eraser,
@@ -258,6 +259,8 @@ export const Icons = {
     download: DownloadSimple,
     // The house tooltip's glyph (tooltip.js).
     info: Info,
+    // Application settings, in your settings (persona.js).
+    appSettings: SlidersHorizontal,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

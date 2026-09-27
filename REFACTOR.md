@@ -9,6 +9,26 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
+### The strings tool misreads JavaScript, and can silently drop copy (2026-09-27)
+
+`node/tools/strings.mjs` reads the UI's source with two hand-rolled scanners, and neither knows
+JavaScript's strings and comments together:
+
+- `htmlTemplates` does not skip comments, so an apostrophe in a `//` comment ("this browser's")
+  opens a phantom string that swallows code up to the next quote - and the templates in between.
+- `stripComments` blanks `/* ... */` with a regex that does not know strings, so `accept="image/*"`
+  opened a "comment" that ran to the next `*/` and hid every `t()` call between.
+
+The first mis-flags copy (or hides it from the cop); the second made `just strings` DELETE five live
+phrases from en.js (the profile's name, bio and Save labels) while `strings-check` reported all
+well. Both were worked around in place (HISTORY, 2026-09-27). The fix is one scanner that tokenizes
+strings, template literals and both comment forms before anything else looks - teaching the
+template scanner comments alone surfaced 52 flags across six files it had been misreading (Writer,
+the reader, the notes list, buckets, upload, postentry), which come with the fix. Until then: after
+`just strings`, check that no live `t()` key went missing from en.js (the app-wide check is a
+dozen lines of Python in the 2026-09-27 session), and keep apostrophes and `/*` out of comments in
+templated files.
+
 ### A suppressed inbox notice still holds its ring slot (2026-08-10)
 
 `undelivered_twice` hides a delivered notice once the fold derives the same fact, but the chain

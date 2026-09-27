@@ -146,6 +146,36 @@ function fetchPicture(root, doc) {
     return held;
 }
 
+/// Hold a picture already in hand - one this page just made - so it paints at once, before the
+/// node has finished taking it in and could serve it.
+function holdPicture(root, doc, img) {
+    pictures.set(`${root}/${doc}`, { img, ready: true, promise: Promise.resolve() });
+}
+
+/// Copy a drawing into another as a picture (Curtis, 2026-09-27: "it would copy them in as a single
+/// flat layer"): the chosen drawing flattened, as it stands - its own pictures and fonts waited for -
+/// and saved as a new picture in the person's media, titled for it; the returned picture is placed
+/// like any other. A COPY, never a link: a drawing that painted other drawings live would repaint
+/// whatever they had since become, and a chain of them could loop - a snapshot is one more picture,
+/// merged like any. Returns `{ doc, width, height, title }` for `addImage`.
+export async function drawingAsPicture(root, sourceId) {
+    const detail = await api(`/api/identity/${root}/docs/${sourceId}`);
+    if (detail.body == null) throw new Error(t('doc.drawing.not-here-yet', 'that drawing has not reached this computer yet - try again in a moment'));
+    const source = readBody(detail.body);
+    const [width, height] = sizeOf(source);
+    const canvas = flatten(source, width, await loadPictures(root, source));
+    const blob = await new Promise((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
+    );
+    const title = detail.title || t('doc.drawing.untitled', 'untitled');
+    const made = await xhrUpload(`/api/identity/${root}/docs/binary?title=${encodeURIComponent(title)}`, blob);
+    const img = new Image();
+    img.src = URL.createObjectURL(blob);
+    await img.decode();
+    holdPicture(root, made.doc_id, img);
+    return { doc: made.doc_id, width, height, title };
+}
+
 /// The drawing's pictures that are ready now, by document id - what painting draws.
 export function picturesNow(root, drawing) {
     const out = new Map();
@@ -670,10 +700,27 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const [pickingImage, setPickingImage] = useState(false);
     // A picture from the person's media (DRAWING.md, "Images"), on a new layer at the top - which
     // becomes the current layer, so a grab moves the picture straight away.
-    const placePicture = (picture) => {
+    // A drawing chosen is copied in flat first (`drawingAsPicture`); by the time that lands the
+    // drawing may have moved on, so the picture goes onto the body as it is THEN.
+    const latest = useRef(drawing);
+    latest.current = drawing;
+    const placePicture = async (picture) => {
         setPickingImage(false);
+        let placed = picture;
+        if (picture.format === 'drawing') {
+            setBusy(true);
+            setActionError(null);
+            try {
+                placed = await drawingAsPicture(root, picture.doc);
+            } catch (e) {
+                setActionError(e.message);
+                return;
+            } finally {
+                setBusy(false);
+            }
+        }
         const layerId = strokeId();
-        changeLayers(addImage(drawing, picture, layerId, strokeId(), Date.now()));
+        changeLayers(addImage(latest.current, placed, layerId, strokeId(), Date.now()));
         setCurrentId(layerId);
     };
     const current = layers.find((l) => l.id === currentId) || layers[layers.length - 1];
@@ -1578,7 +1625,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ${layersColumn}
         <div class="drawing">
             ${header}
-            ${pickingImage && html`<${ImagePickModal} root=${root} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
+            ${pickingImage && html`<${ImagePickModal} root=${root} drawings=${true} DrawingThumb=${DrawingThumb} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
             <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
             <div
                 class="drawing-stage"

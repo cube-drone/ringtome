@@ -32,7 +32,7 @@
     font: inherit;
     font-size: 1rem;
     color: var(--ink);
-    background: var(--paper);
+    background: var(--field);
     border: 1px solid var(--border);
     padding: 0.45rem 0.6rem;
 }
