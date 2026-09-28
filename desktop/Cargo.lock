@@ -7036,7 +7036,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.1.13"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "notify-rust",
@@ -7055,7 +7055,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.1.13"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -7091,6 +7091,7 @@ dependencies = [
  "rav1d",
  "rav1e",
  "ravif",
+ "regex",
  "reqwest",
  "rgb",
  "ringtome-proto",
@@ -7115,7 +7116,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.1.13"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "ed25519-dalek 2.2.0",
