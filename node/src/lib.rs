@@ -761,6 +761,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/admin/backups", axum::routing::get(backup::list_handler))
         .route("/api/admin/backups/{name}", axum::routing::get(backup::download_handler))
         .route("/api/admin/backups/{name}/reveal", axum::routing::post(backup::reveal_handler))
+        // A file the page made, saved through the desktop app (shell.rs): the upload's own cap.
+        .route(
+            "/api/shell/save",
+            axum::routing::post(shell::save_handler).layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
+        )
         .merge(identity::router(body_limits));
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so

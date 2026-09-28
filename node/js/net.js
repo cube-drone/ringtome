@@ -42,6 +42,28 @@ export function wsProtocols() {
     return token ? [`ringtome.token.${token}`] : [];
 }
 
+/// Save a file this page made - `blob`, suggesting `name` - to the person's own disk. In a browser,
+/// the ordinary way: a link to it, clicked. In the desktop app that does nothing (a webview
+/// downloads nothing from a `blob:` link - Curtis, 2026-09-28, the spare key going nowhere), so the
+/// file goes to the node, which asks the app to save it, and the app asks where (shell.rs).
+export async function saveFile(name, blob) {
+    if (isDevice()) {
+        await api(`/api/shell/save?name=${encodeURIComponent(name)}`, {
+            method: 'POST',
+            body: blob,
+            headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+        });
+        return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    // Not at once: some browsers start reading the file only after the click returns.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 export async function api(path, options = {}) {
     // The caller's own headers are merged rather than replaced, and they win: ours are
     // defaults, and one of them - the launch token - must survive a caller that sets any.

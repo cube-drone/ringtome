@@ -24,7 +24,7 @@ import { useDocSession } from './session.js';
 import { Chip, NavChips } from './chips.js';
 import { Annotations } from './annotations.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
-import { api, xhrUpload } from '../net.js';
+import { api, xhrUpload, saveFile } from '../net.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { ColourPicker } from './colourpicker.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
@@ -437,19 +437,13 @@ export async function flattenToBlob(root, drawing) {
 /// Download the drawing as a PNG (Curtis, 2026-09-27): the visible layers, stacked - transparent
 /// wherever they leave nothing, as every picture of it is - at the resolution the canvas is drawn
 /// at, `BACKING` pixels to a unit, and named for its title. It waits for its pictures and faces, as a
-/// publication does. Saved the way the spare key is (persona.js): a link to the file, clicked.
+/// publication does. Saved the way the spare key is (net.js `saveFile`).
 export async function downloadPng(root, drawing, title) {
     const canvas = flatten(drawing, sizeOf(drawing)[0] * BACKING, await loadPictures(root, drawing));
     const blob = await new Promise((resolve, reject) =>
         canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
     );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = pictureFileName(title);
-    a.click();
-    // Not at once: some browsers start reading the file only after the click returns.
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    await saveFile(pictureFileName(title), blob);
 }
 
 /// Copy a drawing into a notebook as a PICTURE (DRAWING.md): flattened, uploaded through the ordinary

@@ -194,4 +194,19 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
         assert.equal((await owner(`api/admin/backups/${name}/reveal`, { method: "POST" })).status, 204);
         assert.deepEqual(await shellAsked(), [{ kind: "reveal", path: done.path }]);
     });
+
+    it("a file the page made is saved through the app, named but never echoed", async () => {
+        const before = (await shellAsked()).length;
+        const key = "spare key: not for any log";
+        const r = await fetch(`http://${host}/api/shell/save?name=${encodeURIComponent("../../spare-key.txt")}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "text/plain" },
+            body: key,
+        });
+        assert.equal(r.status, 204);
+        const asked = (await shellAsked()).slice(before);
+        assert.deepEqual(asked, [{ kind: "save", name: "spare-key.txt", size: key.length }], "the last path component, and the size - not the bytes");
+        const stranger = await fetch(`http://${host}/api/shell/save?name=x.txt`, { method: "POST", body: "x" });
+        assert.ok(stranger.status >= 400, `a page without the app's token cannot ask: ${stranger.status}`);
+    });
 });

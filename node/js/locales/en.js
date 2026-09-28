@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1144 phrases across 72 files.
+// 1145 phrases across 73 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -1280,6 +1280,9 @@ export default {
 
     // --- node/src/registration/routes.rs ---
     'registration.routes.unknown-mode': 'sign-ups are open, password, or closed',
+
+    // --- node/src/shell.rs ---
+    'shell.only-the-desktop-app-saves-files': 'only the desktop app saves files this way',
 
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',

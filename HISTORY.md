@@ -12149,3 +12149,21 @@ in the drawing (DRAWING.md, "Set as profile, set as banner").
   tools stay usable on a text layer, since they touch no layer.
 
 Every drawing tool's tooltip is now just its name - "paint bucket", "transform", "crop", "set as profile" - with no instructions after it (Curtis).
+
+## 2026-09-28 (cont.): the desktop app saves files
+
+Curtis tried the desktop build on Linux and the spare key's "download it" did nothing. A webview
+downloads nothing from a `blob:` link - on any platform, not only WebKitGTK - so the spare key and a
+drawing's "download PNG" went nowhere in the desktop app. Both now go through `saveFile`
+(net.js): in a browser, the link as before; in the desktop app, the bytes go to the node's new
+`POST /api/shell/save?name=` (shell.rs, a signed-in session, the upload cap), which asks the shell
+(`ShellRequest::Save`), and the shell (desktop/src/requests.rs) opens the system's save dialog and
+writes the file - saying so if the write fails. Anywhere but a device node the door answers 404.
+The suggested name is cut to its last path component. The test recorder shows a save's name and
+size, never its bytes, so a spare key cannot reach a log; device.cjs holds that, and that a request
+without the app's token is refused.
+
+The same run found Linux's WebKitGTK showing no pictures (AVIF, which depends on how the distro
+built it) and feeling far slower than a real browser; DESKTOP.md's "Linux was the best engine" is
+corrected, and the choice - keep the webview, or open the person's own browser on Linux - is in
+NEXT_STEPS.

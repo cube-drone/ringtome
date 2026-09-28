@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { useLocation } from 'preact-iso';
-import { api } from './net.js';
+import { api, saveFile } from './net.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb, flattenToBlob } from './doc/drawing.js';
 import { readBody } from './pure/drawing.js';
@@ -456,6 +456,7 @@ export const JoinFlow = ({ persona }) => {
 export const SpareKeyCeremony = ({ persona }) => {
     const { secret, root } = persona.ceremony;
     const [saved, setSaved] = useState(false);
+    const [error, setError] = useState(null);
 
     const download = () => {
         const contents = [
@@ -465,12 +466,10 @@ export const SpareKeyCeremony = ({ persona }) => {
             `persona: ${root}`,
             `spare key: ${secret}`,
         ].join('\n');
-        const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain' }));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `horse-drawing-tycoon-2-spare-key-${shortcode(root)}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
+        setError(null);
+        saveFile(`horse-drawing-tycoon-2-spare-key-${shortcode(root)}.txt`, new Blob([contents], { type: 'text/plain' })).catch((e) =>
+            setError(e.message),
+        );
     };
 
     return html`
@@ -489,6 +488,7 @@ export const SpareKeyCeremony = ({ persona }) => {
             </p>
             <code class="spare-key">${secret}</code>
             <button class="ceremony-download" onClick=${download}>${t('persona.download-it', 'download it')}</button>
+            ${error && html`<p class="form-error">${error}</p>`}
             <label class="ceremony-confirm">
                 <input
                     type="checkbox"

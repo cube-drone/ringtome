@@ -111,6 +111,14 @@ Two predictions in this document were wrong and are corrected rather than droppe
 expected to be the dangerous engine and was the best one**, and **the mirror was expected to be the
 risk and never was**.
 
+**...and the first half of that was itself wrong** (2026-09-28). The spike measured capabilities, not
+how the engine feels, and never tried a still picture. Curtis ran the desktop build on Linux: no
+pictures showed - the node keeps every picture as AVIF, and WebKitGTK's AVIF decoding is, like its
+AV1, a property of how a distro built it - and the whole app felt far slower than the same UI in
+Chrome or Firefox. Linux is the dangerous engine after all. What to do about it is open (NEXT_STEPS,
+*Desktop*). The same run found a bug on every platform: a `blob:` download goes nowhere in a
+webview, so the page now saves its own files through the shell (`/api/shell/save`, shell.rs).
+
 ### What choosing Tauri costs us
 
 Stated plainly, because it is the argument that lost and it deserves to stay legible:

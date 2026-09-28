@@ -21,6 +21,17 @@ pub enum ShellRequest {
     /// Show this file in the system's file manager (backup.rs: a desktop app's backups are
     /// already on the person's own disk, so "download" means "show me where").
     Reveal { path: PathBuf },
+    /// Save these bytes where the person says, suggesting `name` (2026-09-28: a webview downloads
+    /// nothing from a `blob:` link - the spare key and a drawing's PNG went nowhere in the desktop
+    /// app). The page hands the file to the node ([`save_handler`]) and the shell asks where it
+    /// goes. The bytes are never serialized: the test recorder shows the name and the size, and
+    /// never a spare key.
+    Save {
+        name: String,
+        #[serde(skip)]
+        bytes: bytes::Bytes,
+        size: usize,
+    },
 }
 
 #[derive(Clone)]
@@ -57,5 +68,54 @@ impl Shell {
     /// Everything asked so far (local-test mode; empty otherwise).
     pub fn recorded(&self) -> Vec<ShellRequest> {
         self.recorded.as_ref().and_then(|log| log.lock().ok().map(|l| l.clone())).unwrap_or_default()
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct SaveQuery {
+    pub name: String,
+}
+
+/// POST `/api/shell/save?name=` with the file as the body - the desktop app's way to download
+/// something the page made itself. Only a device node has a shell to ask; anywhere else the
+/// page downloads the ordinary way, so this answers 404 there. The name is only a suggestion to
+/// a save dialog, but it is cut to its last path component all the same.
+pub async fn save_handler(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    _session: crate::auth::Session,
+    axum::extract::Query(q): axum::extract::Query<SaveQuery>,
+    body: bytes::Bytes,
+) -> Result<axum::http::StatusCode, crate::error::AppError> {
+    let name = file_name(&q.name);
+    let size = body.len();
+    if !crate::registration::is_device(&state) || !state.shell.ask(ShellRequest::Save { name, bytes: body, size }) {
+        return Err(crate::error::AppError::NotFound(crate::msg!(
+            "shell.only-the-desktop-app-saves-files",
+            "only the desktop app saves files this way"
+        )));
+    }
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// A suggested file name, safe to hand a save dialog: the last path component, no control
+/// characters, never empty.
+fn file_name(said: &str) -> String {
+    let last = said.rsplit(['/', '\\']).next().unwrap_or("");
+    let clean: String = last.chars().filter(|c| !c.is_control()).collect::<String>().trim().trim_start_matches('.').to_string();
+    if clean.is_empty() { "download".to_string() } else { clean }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_suggested_name_is_one_plain_file_name() {
+        assert_eq!(file_name("horse-drawing-tycoon-2-spare-key-abc.txt"), "horse-drawing-tycoon-2-spare-key-abc.txt");
+        assert_eq!(file_name("../../etc/passwd"), "passwd");
+        assert_eq!(file_name("C:\\Windows\\evil.png"), "evil.png");
+        assert_eq!(file_name("..hidden\nname"), "hiddenname");
+        assert_eq!(file_name(""), "download");
+        assert_eq!(file_name("a/"), "download");
     }
 }
