@@ -507,7 +507,17 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
             ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
                 dip into, not an inbox to empty. The fresh-updates bar above is the one "what
                 arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
-            <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} meChip=${meChip} />
+            <${LabelFacets}
+                labels=${labels}
+                picks=${picks}
+                onPicks=${setPicks}
+                meChip=${meChip}
+                note=${meChip
+                    ? best
+                        ? t('apps.feed.counts-this-window', 'counts cover this window')
+                        : t('apps.feed.counts-this-year', 'counts cover the last year')
+                    : null}
+            />
             ${/* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
                 the dial's corner it was hard to see): centred, and always the same height, so the
                 button appearing never moves your read position - the reason updates wait to be

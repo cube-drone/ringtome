@@ -109,11 +109,12 @@ describe("scores: the best orders, and the reckoning behind them", function () {
         assert.deepEqual(ids(await feed(`sort=best&window=week&after=${encodeURIComponent(fromZero)}`)), [quiet, disliked], "a cursor inside the unscored run");
     });
 
-    it("the facet counts keep to the window", async () => {
+    it("the facet counts keep to the window - a year at the longest", async () => {
         const labels = async (qs) => (await (await ada(`api/identity/${adaRoot}/feed/labels?${qs}`)).json());
         const count = (f) => (f.kinds || []).reduce((n, k) => n + k.count, 0);
-        assert.equal(count(await labels("")), 6, "every post");
-        assert.equal(count(await labels("window=year")), 5, "the window leaves the old one out");
+        assert.equal(count(await labels("")), 5, "no window is a year: the two-year-old post is not counted (2026-09-28)");
+        assert.equal(count(await labels("window=year")), 5);
+        assert.equal(count(await labels("window=week")), 5, "every other post is this week's");
     });
 
     it("the popularity door itemises the reckoning for its reader, and answers nobody else", async () => {

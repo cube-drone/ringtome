@@ -70,7 +70,7 @@ const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null
 
 /// The strip: `labels` from `useLabels`, `picks` as `{ buckets: [], tags: [] }`, and
 /// `onPicks` with the next picks.
-export const LabelFacets = ({ labels, picks, onPicks, meChip = false }) => {
+export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = null }) => {
     if (!meChip && (!labels || ((labels.kinds || []).length === 0 && (labels.buckets || []).length === 0 && (labels.tags || []).length === 0))) return null;
     const toggle = (kind) => (value) => onPicks({ ...picks, [kind]: togglePick(picks[kind], value) });
     // "me" (Curtis, 2026-09-27), the reader's own feed only: picked until you unpick it, and
@@ -90,6 +90,7 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false }) => {
         <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
         <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} onToggle=${toggle('buckets')} />
         <${FacetRow} label=${t('facets.tags', 'tagged')} items=${labels && labels.tags} picked=${picks.tags} onToggle=${toggle('tags')} />
+        ${note && html`<p class="facets-note">${note}</p>`}
     </div>`;
 };
 

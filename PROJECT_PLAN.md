@@ -3695,22 +3695,27 @@ is a million-row journal:
 - **One journal filter**, in SQL, for every reader of the journal - reader, own, window, format,
   the dial's stop, the picks - so rooms are a `format = 'room'` on an index of (reader, format,
   time), and nothing takes the newest N and hopes.
-- **The tag cloud is stored counts** per reader - (reader, bucket/tag/kind, value) -> count -
-  kept as journal rows and labels come and go, the tag rules applied as they are kept. The
-  unpicked cloud is one small read. A pick narrows through an index on the label's value, and
-  the other rows keep only what shares a post with it (a GROUP BY over the narrowed set) - **unless
-  the pick is larger than 1000 posts** (Curtis: a glad emoji picked could be a bastard of an
-  expensive time): then the lists stay as if nothing were picked, with whole-feed counts, while
-  the posts themselves still narrow. The pick's size is known before any work - a tag's stored
-  count, the smallest count among tags picked together, the sum among buckets.
+- **The tag cloud counts a year, cached** (Curtis, 2026-09-28, over stored counts: a count that
+  can be one number per tag must follow every journal write, every label, every dial and other
+  people's trust opening sealed labels - exactly, forever, or be wrong for good). It counts the
+  posts the feed shows from the last year (or a shorter best window) - the dial, "me" and the
+  window in SQL off the time index, their labels in one join probing the memo by key - and keeps
+  the answer an hour unless something moves: a generation every journal and label write bumps, and
+  the reader's own store's mtime (a dial). A missed signal is a cloud up to an hour stale, never a
+  count wrong for good. The year is said under the cloud. A pick narrows the other rows to what
+  shares a post with it - **unless the pick is larger than 1000 posts** (Curtis: a glad emoji
+  picked could be a bastard of an expensive time): then the lists stay as if nothing were picked,
+  while the posts themselves still narrow. The pick's size is read off the unpicked counts - a
+  tag's count, the smallest among tags picked together, the sum among buckets. Measured (debug
+  build, 131,072 posts, a year of them): the window 159 ms, its labels 427 ms - a cache miss.
 - **Search is an inverted index**: a row per (term, post) on an index of the term, so a prefix is
   a range scan - replacing one token string per post read whole in Rust. Its backlog walk goes by
   cursor, to the end of the journal.
 
 **Slices:** (1) the score, its breakdown in the dossier, and best (window) - built first at read
 time, now being rebuilt: label columns and indexes; the one journal filter (chats fixed, the cap
-gone); the score tables and best on them; the tag cloud's stored counts; the inverted search
-index. (2) hot, and a high score's emphasis; (3) reply trees.
+gone); the score tables and best on them; the tag cloud over a cached year; the picks' narrowing
+and the inverted search index. (2) hot, and a high score's emphasis; (3) reply trees.
 
 ### Contact tags: private labels on the people you know (settled 2026-09-10)
 

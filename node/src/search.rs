@@ -246,17 +246,31 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
 /// most `RESULTS_CAP`. Labels first (one memo read for the whole set), then the words -
 /// indexing bodies on the way within `INDEX_PER_QUERY`, spent only on label survivors.
 pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>) -> Result<Vec<usize>> {
-    admitted(state, candidates, narrow, viewer, RESULTS_CAP).await
+    admitted(state, candidates, narrow, viewer, RESULTS_CAP, None).await
 }
+
+/// Labels already read for a set of posts, as a reader may see them: `(author, doc) -> labels`.
+pub type Labels = std::collections::HashMap<(String, String), Vec<crate::annotations::KnownAnnotation>>;
 
 /// `matching`'s judgment, stopping at `cap` matches (a listing's page) - or not at all, for the
 /// facet counts, which must not depend on where a page happened to end.
-async fn admitted(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>, cap: usize) -> Result<Vec<usize>> {
-    let labelled = if narrow.buckets.is_empty() && narrow.tags.is_empty() {
+async fn admitted(
+    state: &AppState,
+    candidates: &[Candidate],
+    narrow: &Narrow,
+    viewer: Option<&str>,
+    cap: usize,
+    known: Option<&Labels>,
+) -> Result<Vec<usize>> {
+    let fetched;
+    let labelled: Option<&Labels> = if narrow.buckets.is_empty() && narrow.tags.is_empty() {
         None
+    } else if known.is_some() {
+        known
     } else {
         let pairs: Vec<(String, String)> = candidates.iter().map(|c| (c.author_root.clone(), c.doc_hex.clone())).collect();
-        Some(crate::annotations::for_posts(state, &pairs, viewer).await?)
+        fetched = crate::annotations::for_posts(state, &pairs, viewer).await?;
+        Some(&fetched)
     };
     let mut budget = INDEX_PER_QUERY;
     let mut out = Vec::new();
@@ -307,13 +321,13 @@ pub struct FacetSets {
     pub tags: Vec<usize>,
 }
 
-pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>) -> Result<FacetSets> {
+pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>, known: Option<&Labels>) -> Result<FacetSets> {
     let all: Vec<usize> = (0..candidates.len()).collect();
     let judge = |n: Narrow| async move {
         if n.is_empty() {
             Ok::<_, anyhow::Error>((0..candidates.len()).collect())
         } else {
-            admitted(state, candidates, &n, viewer, usize::MAX).await
+            admitted(state, candidates, &n, viewer, usize::MAX, known).await
         }
     };
     if narrow.is_empty() {
@@ -338,7 +352,20 @@ pub async fn facets_json(
     viewer: Option<&str>,
     shares: usize,
 ) -> Result<serde_json::Value> {
-    let sets = facet_sets(state, candidates, narrow, viewer).await?;
+    facets_json_with(state, candidates, narrow, viewer, shares, None).await
+}
+
+/// `facets_json`, the candidates' labels already read (`known` - the feed's journal window,
+/// joined in one read) and counted here rather than asked for again by IN list.
+pub async fn facets_json_with(
+    state: &AppState,
+    candidates: &[Candidate],
+    narrow: &Narrow,
+    viewer: Option<&str>,
+    shares: usize,
+    known: Option<&Labels>,
+) -> Result<serde_json::Value> {
+    let sets = facet_sets(state, candidates, narrow, viewer, known).await?;
     let pairs = |set: &[usize]| -> Vec<(String, String)> {
         set.iter().map(|&i| (candidates[i].author_root.clone(), candidates[i].doc_hex.clone())).collect()
     };
@@ -346,12 +373,103 @@ pub async fn facets_json(
     let kinds = kind_counts(
         sets.kinds.iter().map(|&i| candidates[i].kind).chain(std::iter::repeat_n("rebroadcast", shares_here)),
     );
-    let (buckets, _) = crate::annotations::label_counts(state, &pairs(&sets.buckets), viewer).await?;
-    let (_, tags) = crate::annotations::label_counts(state, &pairs(&sets.tags), viewer).await?;
+    let ((buckets, _), (_, tags)) = match known {
+        Some(k) => (count_labels(&pairs(&sets.buckets), k), count_labels(&pairs(&sets.tags), k)),
+        None => (
+            crate::annotations::label_counts(state, &pairs(&sets.buckets), viewer).await?,
+            crate::annotations::label_counts(state, &pairs(&sets.tags), viewer).await?,
+        ),
+    };
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
         v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
     };
     Ok(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) }))
+}
+
+/// One facet row's counts: `(value, how many posts)`, most frequent first.
+type Counts = Vec<(String, i64)>;
+
+/// `annotations::label_counts`'s rule over labels already read: how often each bucket and each
+/// tag appears across `posts`, counted per post however many people said it - buckets the
+/// author's own and never the automatic "feed", tags anyone's - most frequent first, then by name.
+fn count_labels(posts: &[(String, String)], known: &Labels) -> (Counts, Counts) {
+    let mut buckets: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut tags: std::collections::BTreeMap<String, i64> = Default::default();
+    for (author, doc) in posts {
+        let mut seen: std::collections::HashSet<(&str, &str)> = Default::default();
+        for a in known.get(&(author.clone(), doc.clone())).map(Vec::as_slice).unwrap_or_default() {
+            if a.key == "bucket" && (a.annotator != *author || a.value == "feed") {
+                continue;
+            }
+            if !seen.insert((a.key.as_str(), a.value.as_str())) {
+                continue; // said by two people: one post, one count
+            }
+            let into = match a.key.as_str() {
+                "bucket" => &mut buckets,
+                "tag" => &mut tags,
+                _ => continue,
+            };
+            *into.entry(a.value.clone()).or_insert(0) += 1;
+        }
+    }
+    let sorted = |m: std::collections::BTreeMap<String, i64>| {
+        let mut v: Vec<(String, i64)> = m.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        v
+    };
+    (sorted(buckets), sorted(tags))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The feed's tag cloud, cached (2026-09-28, PROJECT_PLAN's Scores and sort orders, *Shape*):
+// counted over a year of the reader's feed in one read, kept an hour (Curtis) - unless something
+// moved first. "Something moved" is a coarse generation bumped by every journal and label write,
+// plus the reader's own store's mtime (a dial moved on any device): a missed signal only means a
+// cloud up to an hour stale, never a count that is wrong for good.
+
+static MOVED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A journal row or a label moved, anywhere on this node: every cached cloud is suspect.
+pub fn journal_or_labels_moved() {
+    MOVED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// How long a cloud is kept when nothing moves.
+const CLOUD_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+/// How many clouds are kept at most - past it, the cache starts over.
+const CLOUDS_KEPT: usize = 512;
+
+struct Cloud {
+    stamp: (u64, Option<i64>),
+    at: std::time::Instant,
+    value: serde_json::Value,
+}
+
+fn clouds() -> &'static std::sync::Mutex<std::collections::HashMap<String, Cloud>> {
+    static CLOUDS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Cloud>>> = std::sync::OnceLock::new();
+    CLOUDS.get_or_init(Default::default)
+}
+
+/// The stamp a cloud for `reader` is kept under: the node's generation, and the reader's store's mtime.
+pub fn cloud_stamp(state: &AppState, reader: &str) -> (u64, Option<i64>) {
+    (MOVED.load(std::sync::atomic::Ordering::Relaxed), state.user_dbs.db_mtime_ms(reader))
+}
+
+/// A kept cloud for this request, if nothing has moved since and it is under an hour old.
+pub fn cached_cloud(key: &str, stamp: (u64, Option<i64>)) -> Option<serde_json::Value> {
+    let clouds = clouds().lock().expect("cloud cache poisoned");
+    clouds
+        .get(key)
+        .filter(|c| c.stamp == stamp && c.at.elapsed() < CLOUD_TTL)
+        .map(|c| c.value.clone())
+}
+
+pub fn keep_cloud(key: String, stamp: (u64, Option<i64>), value: serde_json::Value) {
+    let mut clouds = clouds().lock().expect("cloud cache poisoned");
+    if clouds.len() >= CLOUDS_KEPT {
+        clouds.clear();
+    }
+    clouds.insert(key, Cloud { stamp, at: std::time::Instant::now(), value });
 }
 
 /// The slow beat: index the backlog behind every reader's journal, a bounded slice per pass.

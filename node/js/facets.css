@@ -6,6 +6,12 @@
     gap: 0.3rem;
     margin: 0 0 0.8rem;
 }
+/* What the counts cover, said quietly under the rows (the feed's cloud counts a year, 2026-09-28). */
+.facets-note {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--faint);
+}
 .facet-row {
     display: flex;
     flex-wrap: wrap;

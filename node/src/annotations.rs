@@ -229,6 +229,7 @@ pub async fn open_sealed(
             )
             .await
             .context("opening a sealed label")?;
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         node_db
             .execute(
                 "DELETE FROM doc_annotations
@@ -237,6 +238,7 @@ pub async fn open_sealed(
             )
             .await
             .context("retiring a raw sealed label")?;
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         if k == TAG_KEY && !opened.contains(&annotator) {
             opened.push(annotator);
         }
@@ -274,6 +276,7 @@ async fn note_sealed(
                 )
                 .await
                 .context("noting an opened sealed label")?;
+                crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         }
         None => {
             node_db
@@ -287,6 +290,7 @@ async fn note_sealed(
                 )
                 .await
                 .context("noting a raw sealed label")?;
+                crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         }
     }
     Ok(())
@@ -373,6 +377,7 @@ pub async fn note(
         )
         .await
         .context("noting an annotation")?;
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
@@ -394,6 +399,7 @@ pub async fn forget(
         )
         .await
         .context("forgetting an annotation")?;
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     if key == SEALED_KEY {
         // The lane retracts the ciphertext; the memo may hold it opened.
         node_db
@@ -404,6 +410,7 @@ pub async fn forget(
             )
             .await
             .context("forgetting an opened sealed annotation")?;
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     }
     Ok(())
 }
@@ -477,6 +484,37 @@ pub async fn for_posts(
     viewer: Option<&str>,
 ) -> Result<std::collections::HashMap<(String, String), Vec<KnownAnnotation>>> {
     for_posts_inner(state, posts, Some(viewer)).await
+}
+
+/// The journal window's labels: the window a range scan of the time index, each post's labels
+/// probed by the memo's key - pinned, table and order both, since this engine's planner picks
+/// neither on its own (the tests ask it).
+const JOURNAL_LABELS: &str = "SELECT a.target_author, a.target_doc, a.annotator, a.key, a.value, a.sealed, a.holder_root, a.holder_doc
+     FROM feed_journal j INDEXED BY feed_journal_by_time
+     CROSS JOIN doc_annotations a INDEXED BY sqlite_autoindex_doc_annotations_1
+       ON a.target_author = j.author_root AND a.target_doc = j.doc_id
+     WHERE j.reader_root = ?1 AND j.published_ms >= ?2 AND a.key IN ('bucket', 'tag')";
+
+/// Every bucket and tag on the posts of one reader's journal published since `since_ms`, as that
+/// reader may see them (admitted, then bounded) - the tag cloud's one read (2026-09-28): the memo
+/// joined to the journal's window, each post's labels probed by key, where the cloud used to ask
+/// `for_posts` with an IN list of every post in the newest 5000.
+pub async fn for_journal_since(
+    state: &AppState,
+    reader: &str,
+    since_ms: i64,
+) -> Result<std::collections::HashMap<(String, String), Vec<KnownAnnotation>>> {
+    let rows: Vec<MemoTuple> = state
+        .node_db
+        .fetch_all(JOURNAL_LABELS, (reader, since_ms))
+        .await
+        .context("reading a journal window's labels")?;
+    let rows = bounded(admitted(state, rows.into_iter().map(memo_row).collect(), Some(reader)).await);
+    let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> = Default::default();
+    for MemoRow { target_author, target_doc, annotator, key, value, .. } in rows {
+        out.entry((target_author, target_doc)).or_default().push(KnownAnnotation { annotator, key, value });
+    }
+    Ok(out)
 }
 
 /// `for_posts` for a caller the BODY DOOR has already admitted to one sealed post (the copy
@@ -879,6 +917,78 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((value.as_str(), emoji), ("bread", 0));
+    }
+
+    /// The tag cloud's label read walks the journal's window and probes the memo by key - never
+    /// the whole journal, never every label (2026-09-28).
+    #[tokio::test]
+    async fn the_journal_window_labels_read_walks_its_indexes() {
+        let db = crate::db::test_node_db().await;
+        let plan: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(&format!("EXPLAIN QUERY PLAN {JOURNAL_LABELS}"), ())
+            .await
+            .unwrap();
+        let p = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "the window alone: {p}");
+        assert!(p.contains("doc_annotations_1 (target_author=? AND target_doc=?"), "labels probed by key: {p}");
+        assert!(!p.contains("SORTER"), "no sort: {p}");
+    }
+
+    /// The tag cloud's two reads timed at scale (2026-09-28): 131,072 posts over two years, two
+    /// tags each, and a year of them read - the journal window and its labels. Ignored in the
+    /// suite: it measures, it does not judge.
+    #[tokio::test]
+    #[ignore]
+    async fn the_clouds_reads_at_scale() {
+        let db = crate::db::test_node_db().await;
+        let reader = "ee".repeat(32);
+        let now = crate::clock::now_ms();
+        let span = 2 * 365 * 24 * 3600 * 1000_i64;
+        let n: i64 = 1 << 17;
+        let step = span / n;
+        db.execute(
+            "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+             VALUES (?1, ?1, 'd', 't', 'marquee', ?2, ?2, ?2)",
+            (reader.as_str(), now),
+        )
+        .await
+        .unwrap();
+        for k in 0..17 {
+            db.execute(
+                &format!(
+                    "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+                     SELECT reader_root, author_root, doc_id || '-{k}', title, format, published_ms - {}, updated_ms, arrived_ms
+                     FROM feed_journal WHERE reader_root = ?1",
+                    (1_i64 << k) * step
+                ),
+                (reader.as_str(),),
+            )
+            .await
+            .unwrap();
+        }
+        for (i, tag) in ["bread", "bikes"].iter().enumerate() {
+            db.execute(
+                &format!(
+                    "INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
+                     SELECT author_root, doc_id, author_root, 'tag', '{tag}', 1 FROM feed_journal
+                     WHERE reader_root = ?1 AND ((?2 - published_ms) / {step}) % 3 <> {i}"
+                ),
+                (reader.as_str(), now),
+            )
+            .await
+            .unwrap();
+        }
+        let since = now - 365 * 24 * 3600 * 1000;
+        let t = std::time::Instant::now();
+        let filter = crate::fanout::JournalFilter { since_ms: Some(since), ..crate::fanout::JournalFilter::feed(&reader) };
+        let rows = crate::fanout::journal_all(&db, &filter).await.unwrap();
+        eprintln!("a year of the journal: {} rows in {:?}", rows.len(), t.elapsed());
+        let t = std::time::Instant::now();
+        let labels: Vec<MemoTuple> = db.fetch_all(JOURNAL_LABELS, (reader.as_str(), since)).await.unwrap();
+        eprintln!("its labels: {} rows in {:?}", labels.len(), t.elapsed());
+        let t = std::time::Instant::now();
+        let kept = bounded(labels.into_iter().map(memo_row).collect());
+        eprintln!("bounded: {} rows in {:?}", kept.len(), t.elapsed());
     }
 
     /// A reaction is flagged as it is noted (node rung 0056), so SQL can tell one without the

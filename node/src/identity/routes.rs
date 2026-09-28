@@ -2089,21 +2089,32 @@ async fn feed_labels_handler(
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let owned = store::open(&state, &session.account.id, &root).await?;
-    let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
-        .await
-        .map_err(AppError::Internal)?;
-    let mut rows = readable_feed_rows(&state, &root, rows).await;
-    // The reader's own posts count only when the feed shows them ("me").
-    if !wants_own(&q.me) {
-        rows.retain(|r| r.author_root != root);
+    // Kept an hour, unless something moved first (search.rs's cloud cache): the whole request is
+    // the key, so every dial stop, window and pick is its own cloud.
+    let key = format!("{root}?{}", raw.as_deref().unwrap_or(""));
+    let stamp = crate::search::cloud_stamp(&state, &root);
+    if let Some(cloud) = crate::search::cached_cloud(&key, stamp) {
+        return Ok(Json(cloud));
     }
-    // A "best" window (2026-09-27): the lists count only what the window shows.
-    if q.window.is_some() {
-        let since = crate::clock::now_ms() - crate::score::window_ms(q.window.as_deref());
-        rows.retain(|r| r.published_ms >= since);
-    }
-    // The dial (2026-09-08): the lists count only what the feed at this stop shows.
-    let rows = rows_at_stop(&state, &owned, &root, rows, q.stop.as_deref()).await?;
+    // A year of the feed, or a shorter best window (2026-09-28, PROJECT_PLAN's Scores and sort
+    // orders, *Shape*): counted over that - honestly bounded, where the newest 5000 rows were a
+    // bound nobody could see. The reader's own posts only when the feed shows them ("me"), and
+    // only what the dial's stop shows - in SQL, off the time index.
+    let since = crate::clock::now_ms() - crate::score::window_ms(q.window.as_deref());
+    let facts: crate::selectivity::Facts = owned.contacts().await?.into_iter().collect();
+    let stop = q.stop.as_deref().filter(|s| !s.is_empty() && *s != "explorer");
+    let levels = match stop {
+        Some(_) => crate::speculative::levels_for(&state.node_db, &root).await.map_err(AppError::Internal)?,
+        None => Default::default(),
+    };
+    let filter = crate::fanout::JournalFilter {
+        include_own: wants_own(&q.me),
+        since_ms: Some(since),
+        stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
+        ..crate::fanout::JournalFilter::feed(&root)
+    };
+    let rows = crate::fanout::journal_all(&state.node_db, &filter).await.map_err(AppError::Internal)?;
+    let rows = readable_feed_rows(&state, &root, rows).await;
     let kinds = feed_kinds(&state, &rows).await?;
     let candidates: Vec<crate::search::Candidate> = rows
         .iter()
@@ -2116,11 +2127,56 @@ async fn feed_labels_handler(
             kind,
         })
         .collect();
-    let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
-    let facets = crate::search::facets_json(&state, &candidates, &narrow, Some(&root), 0)
+    // Every label on the window's posts, as this reader may see them, in one read.
+    let known = crate::annotations::for_journal_since(&state, &root, since)
         .await
         .map_err(AppError::Internal)?;
+    let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
+    let unpicked = crate::search::Narrow { terms: narrow.terms.clone(), ..Default::default() };
+    let whole = crate::search::facets_json_with(&state, &candidates, &unpicked, Some(&root), 0, Some(&known))
+        .await
+        .map_err(AppError::Internal)?;
+    // A pick past THINNING_CAP posts leaves the lists unthinned (Curtis: a glad emoji picked
+    // could be a bastard of an expensive time) - the pick's size read off the whole counts
+    // before any work: a tag's count, the smallest among tags picked together, the sum among
+    // either-of buckets or kinds. The posts themselves still narrow.
+    let picked_size = picked_size(&whole, &narrow);
+    let facets = if picked_size.is_some_and(|n| n > THINNING_CAP) || (narrow.buckets.is_empty() && narrow.tags.is_empty() && narrow.kinds.is_empty()) {
+        whole
+    } else {
+        crate::search::facets_json_with(&state, &candidates, &narrow, Some(&root), 0, Some(&known))
+            .await
+            .map_err(AppError::Internal)?
+    };
+    crate::search::keep_cloud(key, stamp, facets.clone());
     Ok(Json(facets))
+}
+
+/// Past this many posts, a pick leaves the tag cloud's lists unthinned (Curtis, 2026-09-27).
+const THINNING_CAP: i64 = 1000;
+
+/// How many posts the picks narrow to at most, read off the unpicked counts: among tags (all of
+/// them must hold) the smallest count; among buckets, or kinds (any of them), the sum; across the
+/// rows, the smallest of those. `None` when nothing is picked.
+fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Option<i64> {
+    let count = |row: &str, value: &str| -> i64 {
+        whole[row]
+            .as_array()
+            .and_then(|items| items.iter().find(|i| i["value"] == value))
+            .and_then(|i| i["count"].as_i64())
+            .unwrap_or(0)
+    };
+    let mut sizes: Vec<i64> = Vec::new();
+    if !narrow.tags.is_empty() {
+        sizes.push(narrow.tags.iter().map(|t| count("tags", t)).min().unwrap_or(0));
+    }
+    if !narrow.buckets.is_empty() {
+        sizes.push(narrow.buckets.iter().map(|b| count("buckets", b)).sum());
+    }
+    if !narrow.kinds.is_empty() {
+        sizes.push(narrow.kinds.iter().map(|k| count("kinds", k)).sum());
+    }
+    sizes.into_iter().min()
 }
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly

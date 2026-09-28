@@ -550,6 +550,7 @@ async fn journal_rows(
             .execute(&sql, turso::params_from_iter(params))
             .await
             .context("journaling arrivals")?;
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     }
     if let Some(via) = via_root {
         remember_sharer(node_db, author_root, readers, rows, via, now).await?;
@@ -580,6 +581,7 @@ pub async fn excise_suggested(node_db: &crate::db::Db, author_root: &str) -> Res
         )
         .await
         .context("excising an evicted author's speculative rows")?;
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
@@ -641,6 +643,7 @@ async fn journal_rows_suggested(
             .execute(&sql, turso::params_from_iter(params))
             .await
             .context("journaling speculative rows")?;
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     }
     Ok(())
 }
@@ -1351,6 +1354,7 @@ async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> R
         )
         .await
         .context("retracting vanished documents from the feed journal")?;
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(stale.len() as u64)
 }
 
@@ -1376,6 +1380,7 @@ pub(crate) async fn excise_shared(
         )
         .await
         .context("retracting a forgotten fragment from feeds")?;
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     // The crowd goes with the row. Nobody's share survives a document that no longer exists here,
     // and a `feed_shares` row outliving its `feed_journal` row would count toward a byline that
     // has nothing left to byline.
@@ -1404,6 +1409,7 @@ pub(crate) async fn retitle_shared(
         )
         .await
         .context("refreshing a shared document's title")?;
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
@@ -1435,6 +1441,7 @@ pub async fn excise_unfollowed(
             )
             .await
             .context("excising an unfollowed author from the feed journal")?;
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         // The dig's memo goes with the rows it described: a re-follow must start a fresh
         // dig, or it would inherit a cursor pointing below rows this excise just deleted
         // and leave the refollowed history permanently hollow above it.
@@ -1719,6 +1726,7 @@ pub async fn bump_room_time(node_db: &crate::db::Db, author_root: &str, doc_hex:
         )
         .await
         .context("moving a room up its readers' feeds")
+        .inspect(|_| crate::search::journal_or_labels_moved())
 }
 
 pub async fn feed_page(
@@ -1988,12 +1996,18 @@ fn page_sql(filter: &JournalFilter<'_>, cursor: bool) -> String {
     }
 }
 
-/// Every row of a reader's journal through `filter`, newest first, unbounded - only for a filter
-/// that picks a small kind (`room`), which no volume of posts grows.
+/// Every row of a reader's journal through `filter`, newest first, unbounded - for a filter that
+/// picks a small kind (`room`, off the rooms index), or a window (the tag cloud's year, off the
+/// time index) - never the whole of a journal. Pinned either way: this engine's planner picks
+/// badly on its own.
 pub async fn journal_all(node_db: &crate::db::Db, filter: &JournalFilter<'_>) -> Result<Vec<FeedRow>> {
+    let index = if filter.formats == ["room"] { "feed_journal_by_format" } else { "feed_journal_by_time" };
     let rows: Vec<JournalTuple> = node_db
         .fetch_all(
-            &format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {} ORDER BY published_ms DESC, doc_id DESC", filter.clause("")),
+            &format!(
+                "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY {index} WHERE {} ORDER BY published_ms DESC, doc_id DESC",
+                filter.clause("")
+            ),
             (filter.reader,),
         )
         .await
@@ -2373,6 +2387,9 @@ mod tests {
         }
         let p = plan(unscored_sql(&filter, false)).await;
         assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a score probed by key: {p}");
+        // The tag cloud's year, and the chats column's rooms.
+        let p = plan(format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY feed_journal_by_time WHERE {}", filter.clause(""))).await;
+        assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "a window reads only the window: {p}");
         // The scored runs: which table drives, and the other probed by key. Left to itself the
         // planner drove the year's run from the journal and rescanned every score per row - a
         // page that never finished at 131,072 posts.

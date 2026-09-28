@@ -10,7 +10,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { pullAndFold } = require("./beat.cjs");
-const { HOST_B } = require("./fetch.cjs");
+const { HOST, HOST_B, sql } = require("./fetch.cjs");
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -153,5 +153,57 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const f = await (await bea(`api/identity/${beaRoot}/feed/labels`)).json();
         assert.ok(f.tags.some((x) => x.value === "beef" && x.count === 1), `bea's own tag on ada's post counts: ${JSON.stringify(f.tags)}`);
         assert.deepEqual(ids(await (await bea(`api/identity/${beaRoot}/feed?tag=beef`)).json()), [a2], "and narrows to it");
+    });
+
+    it("the cloud counts a year of the feed however much is newer, moves the moment a label does, and leaves the lists unthinned for a pick past 1000 posts", async () => {
+        // 2026-09-28 (PROJECT_PLAN's Scores and sort orders, *Shape*): the cloud used to count the
+        // newest 5000 journal rows; it counts a year, kept an hour unless something moves.
+        const labels = async (qs = "") => (await (await ada(`api/identity/${adaRoot}/feed/labels${qs ? `?${qs}` : ""}`)).json());
+        const tagCount = (f, v) => ((f.tags || []).find((x) => x.value === v) || {}).count || 0;
+        const dee = await makeUserFetch({ prefix: "facetdee" });
+        const deeRoot = (await (await dee("api/identity", { method: "POST" })).json()).root_pubkey;
+        assert.equal(tagCount(await labels(), "bread"), 2, "the cloud before: bread on two posts");
+        // 8192 newer posts in ada's feed, each tagged "planted", laid in by doubling one row.
+        const plant = (q) => sql(q, HOST);
+        await plant(
+            `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+             VALUES ('${adaRoot}', '${adaRoot}', 'plant', 'filler', 'marquee', 9000000000000, 9000000000000, 9000000000000)`
+        );
+        for (let i = 0; i < 13; i++) {
+            await plant(
+                `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+                 SELECT reader_root, author_root, doc_id || '-${i}', title, format, published_ms + 1, updated_ms, arrived_ms
+                 FROM feed_journal WHERE reader_root = '${adaRoot}' AND doc_id LIKE 'plant%'`
+            );
+        }
+        await plant(
+            `INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
+             SELECT author_root, doc_id, author_root, 'tag', 'planted', 1 FROM feed_journal
+             WHERE reader_root = '${adaRoot}' AND doc_id LIKE 'plant%'`
+        );
+        try {
+            // Planted behind the node's back, so the cached cloud has not heard. A label somebody
+            // else says - on this node, so it lands in the memo without touching ada's own store,
+            // whose change would move the cache by another road - is what moves it: at once, not
+            // an hour later.
+            const said = await dee(`api/identity/${deeRoot}/public-annotations/${adaRoot}/${a2}`, {
+                method: "PUT",
+                body: JSON.stringify({ key: "tag", value: "fresh" }),
+            });
+            assert.equal(said.status, 200, await said.text());
+            const f = await labels();
+            assert.equal(tagCount(f, "fresh"), 1, "the label just said is counted at once");
+            assert.equal(tagCount(f, "planted"), 8192, "the planted tag, on every planted post");
+            assert.equal(tagCount(f, "bread"), 2, "and bread still counts, from under 8192 newer posts");
+            // A pick past 1000 posts leaves the lists as they are; a small pick still thins them.
+            const big = await labels("tag=planted");
+            assert.ok((big.tags || []).some((x) => x.value === "bikes"), `picking a tag on 8192 posts leaves bikes listed: ${JSON.stringify(big.tags)}`);
+            const small = await labels("tag=bread");
+            assert.ok(!(small.tags || []).some((x) => x.value === "bikes"), "picking bread still thins bikes away");
+        } finally {
+            await plant(`DELETE FROM doc_annotations WHERE target_author = '${adaRoot}' AND target_doc LIKE 'plant%'`);
+            await plant(`DELETE FROM feed_journal WHERE reader_root = '${adaRoot}' AND doc_id LIKE 'plant%'`);
+            await dee(`api/identity/${deeRoot}/public-annotations/${adaRoot}/${a2}/tag/fresh`, { method: "DELETE" });
+        }
     });
 });

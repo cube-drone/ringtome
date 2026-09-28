@@ -11906,3 +11906,35 @@ release builds among it). `just desktop` and `just desktop-check` now build into
 - locally only; CI and the release job still build in desktop/target, which release.yml collects
 the installers from - and `just tidy [days]` prunes both workspaces with cargo-sweep, or says how
 to get it and changes nothing.
+
+## 2026-09-28 (cont.): the tag cloud counts a year, cached (step 4)
+
+Step 4 of rebuilding slice 1 for a million-row journal. The plan said stored counts; asked first
+this time, Curtis chose to count a year and cache it: a count kept as one number per tag has to
+follow every journal write, every label, every dial and other people's trust opening sealed labels,
+exactly and forever, where a cache only needs "something may have moved" - a missed signal is a
+cloud stale for a while, not one wrong for good.
+
+- **What it counts**: the posts the feed shows from the last year, or a shorter best window - the
+  dial's stop, "me" and the window as SQL off the time index (`fanout::journal_all`, now pinned by
+  purpose: the time index for a window, the rooms index for rooms), their buckets and tags in one
+  join (`annotations::for_journal_since`: the window a range scan, each post's labels probed by the
+  memo's key), admitted and bounded as every read is, counted in Rust by the old rules
+  (`search::facets_json_with`, `count_labels`). Measured, debug build, 131,072 posts: a year's
+  window 159 ms, its labels 427 ms - what a cache miss costs.
+- **The cache** (`search`'s clouds): an hour (Curtis), per request, keyed on a generation that every
+  journal write in fanout.rs and every label write in annotations.rs bumps after it lands, and the
+  reader's own store's mtime. facets.cjs moves it with a label somebody else says - first written
+  with ada tagging her own post, which a planted "never bump" still passed, since her own store's
+  write moved the cache by the other road.
+- **A pick past 1000 posts** leaves the lists unthinned; the posts still narrow. The size comes off
+  the unpicked counts before any work.
+- **Said on screen**: "counts cover the last year" (or "this window") under the feed's cloud.
+- **Found on the way**: `replies::links_for` - every page's kinds and the sealed gate - wrote every
+  post id into one IN list and then filtered with a linear search per reply: quadratic at a year
+  of posts. It asks in chunks of 500 and filters by a set.
+
+facets.cjs holds the cloud counting from under 8192 planted newer posts, moving the moment another
+persona's label lands, and not thinning for a pick on 8192 posts while a two-post pick still thins;
+three plants (the capped read, no bump on noting, no size cap) each turned it red. The plan guards
+now cover the window read and the label join too.

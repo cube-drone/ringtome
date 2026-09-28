@@ -48,7 +48,9 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("media_bakes", vec!["record/bake.rs"]),
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
-        ("feed_journal", vec!["fanout.rs"]),
+        // The tag cloud (2026-09-28) reads a journal window's labels in one join, in the memo's
+        // module - joined, rather than an IN list of every post.
+        ("feed_journal", vec!["fanout.rs", "annotations.rs"]),
         ("post_search", vec!["search.rs"]),
         ("room_messages", vec!["chat.rs"]),
         ("rooms_open", vec!["chat.rs"]),

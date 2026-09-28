@@ -195,6 +195,10 @@ pub async fn links_for(
     node_db: &Db,
     posts: &[(String, String)],
 ) -> Result<std::collections::HashMap<(String, String), ReplyLinks>> {
+    // In chunks, and asked of a set (2026-09-28): the tag cloud asks this of a year of a feed,
+    // and one IN list of every post was a statement megabytes long, filtered afterwards by a
+    // linear search per row - quadratic, at 73,000 posts.
+    let wanted: std::collections::HashSet<&(String, String)> = posts.iter().collect();
     let docs: Vec<String> = posts
         .iter()
         .map(|(_, d)| d)
@@ -203,33 +207,26 @@ pub async fn links_for(
         .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_hexdigit()))
         .map(|d| format!("'{d}'"))
         .collect();
-    if docs.is_empty() {
-        return Ok(Default::default());
-    }
-    let rows: Vec<(String, String, String, String, String, String)> = node_db
-        .fetch_all(
-            &format!(
-                "SELECT reply_author, reply_doc, parent_author, parent_doc, root_author, root_doc
-                 FROM post_replies WHERE reply_doc IN ({})",
-                docs.join(",")
-            ),
-            (),
-        )
-        .await
-        .context("reading which posts are replies")?;
-    Ok(rows
-        .into_iter()
-        .filter(|(a, d, ..)| posts.contains(&(a.clone(), d.clone())))
-        .map(|(a, d, pa, pd, ra, rd)| {
-            (
-                (a, d),
-                ReplyLinks {
-                    parent: (pa, pd),
-                    root: (ra, rd),
-                },
+    let mut out = std::collections::HashMap::new();
+    for chunk in docs.chunks(500) {
+        let rows: Vec<(String, String, String, String, String, String)> = node_db
+            .fetch_all(
+                &format!(
+                    "SELECT reply_author, reply_doc, parent_author, parent_doc, root_author, root_doc
+                     FROM post_replies WHERE reply_doc IN ({})",
+                    chunk.join(",")
+                ),
+                (),
             )
-        })
-        .collect())
+            .await
+            .context("reading which posts are replies")?;
+        for (a, d, pa, pd, ra, rd) in rows {
+            if wanted.contains(&(a.clone(), d.clone())) {
+                out.insert((a, d), ReplyLinks { parent: (pa, pd), root: (ra, rd) });
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// A reply's two links as the memo holds them: the parent it answers, and the thread's
