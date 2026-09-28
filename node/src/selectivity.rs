@@ -57,9 +57,9 @@ pub fn visible_at(stop: &str, row: &RowView<'_>, facts: &Facts) -> bool {
     }
 }
 
-/// The same rule, as a SQL predicate over one `feed_journal` row (2026-09-27, PROJECT_PLAN's
-/// Scores and sort orders, *Shape*): the journal's readers filter in SQL on an index rather than
-/// take the newest rows and ask [`visible_at`] of each. `None` when the stop shows everything.
+/// The same rule, as SQL over one `feed_journal` row (2026-09-27, PROJECT_PLAN's Scores and sort
+/// orders, *Shape*): the journal's readers filter in SQL on an index rather than take the newest
+/// rows and ask [`visible_at`] of each. `None` when the stop shows everything.
 ///
 /// Membership, not a join: the reader's dials live in their encrypted private store, so the node
 /// hands them to the query as literal lists - `author_root IN (...)`, which the engine answers
@@ -69,44 +69,77 @@ pub fn visible_at(stop: &str, row: &RowView<'_>, facts: &Facts) -> bool {
 /// without either, a suggestion's path level (`levels`: author -> band word, the reader's
 /// `speculative::levels_for`). The reader's own rows are the caller's to let through.
 /// fanout.rs's tests hold it to [`visible_at`], case by case.
-pub fn stop_predicate(stop: &str, facts: &Facts, levels: &std::collections::HashMap<String, String>) -> Option<String> {
-    let dialled = |key: &str, min: usize| -> Vec<&str> {
+pub fn stop_rule(stop: &str, facts: &Facts, levels: &std::collections::HashMap<String, String>) -> Option<StopRule> {
+    let dialled = |key: &str, min: usize| -> Vec<String> {
         facts
             .iter()
             .filter(|(root, f)| is_root_hex(root) && band_ordinal(f.get(key).map(String::as_str)).is_some_and(|o| o >= min))
-            .map(|(root, _)| root.as_str())
+            .map(|(root, _)| root.clone())
             .collect()
     };
-    let levelled = |min: usize| -> Vec<&str> {
+    let levelled = |min: usize| -> Vec<String> {
         levels
             .iter()
             .filter(|(root, band)| is_root_hex(root) && band_ordinal(Some(band.as_str())).is_some_and(|o| o >= min))
-            .map(|(root, _)| root.as_str())
+            .map(|(root, _)| root.clone())
             .collect()
     };
-    // Any author dial at all is an opinion - "none" included - and the sharer's is then never asked.
-    let no_author_dial = not_in("author_root", &dialled("interest", 0));
-    let explicit_at = |min: usize| {
-        format!(
-            "({} OR ({no_author_dial} AND {}))",
-            is_in("author_root", &dialled("interest", min)),
-            is_in("via_root", &dialled("interest_rebroadcasts", min))
-        )
+    let (kind, min) = match stop {
+        "high" => (StopKind::Explicit, 3),
+        "medium" => (StopKind::Explicit, 2),
+        "interest" => (StopKind::NoSuggestions, 0),
+        "speculative" => (StopKind::Path, 3),
+        "highly-speculative" => (StopKind::Path, 2),
+        _ => return None,
     };
-    let path_at = |min: usize| {
-        format!(
-            "(suggested_via IS NULL OR {} OR ({no_author_dial} AND {}))",
-            is_in("author_root", &dialled("interest", min)),
-            is_in("author_root", &levelled(min))
-        )
-    };
-    match stop {
-        "high" => Some(explicit_at(3)),
-        "medium" => Some(explicit_at(2)),
-        "interest" => Some("suggested_via IS NULL".to_string()),
-        "speculative" => Some(path_at(3)),
-        "highly-speculative" => Some(path_at(2)),
-        _ => None,
+    Some(StopRule {
+        kind,
+        // Any author dial at all is an opinion - "none" included - and the sharer's is then
+        // never asked.
+        author_dialled: dialled("interest", 0),
+        author_at: dialled("interest", min),
+        sharer_at: dialled("interest_rebroadcasts", min),
+        path_at: levelled(min),
+    })
+}
+
+enum StopKind {
+    /// An explicit dial at height: the author's, else the sharer's.
+    Explicit,
+    /// No suggested rows.
+    NoSuggestions,
+    /// Real rows, and suggestions whose effective level is at height.
+    Path,
+}
+
+/// The dial's rule with the reader's dials in it, ready to render against a journal row.
+pub struct StopRule {
+    kind: StopKind,
+    author_dialled: Vec<String>,
+    author_at: Vec<String>,
+    sharer_at: Vec<String>,
+    path_at: Vec<String>,
+}
+
+impl StopRule {
+    /// The predicate, over a journal row whose columns are spelled `{t}author_root` - `t` empty,
+    /// or a table's alias and a dot.
+    pub fn sql(&self, t: &str) -> String {
+        let author = format!("{t}author_root");
+        let no_author_dial = not_in(&author, &self.author_dialled);
+        match self.kind {
+            StopKind::Explicit => format!(
+                "({} OR ({no_author_dial} AND {}))",
+                is_in(&author, &self.author_at),
+                is_in(&format!("{t}via_root"), &self.sharer_at)
+            ),
+            StopKind::NoSuggestions => format!("{t}suggested_via IS NULL"),
+            StopKind::Path => format!(
+                "({t}suggested_via IS NULL OR {} OR ({no_author_dial} AND {}))",
+                is_in(&author, &self.author_at),
+                is_in(&author, &self.path_at)
+            ),
+        }
     }
 }
 
@@ -115,14 +148,14 @@ fn is_root_hex(root: &str) -> bool {
     root.len() == 64 && root.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn is_in(column: &str, roots: &[&str]) -> String {
+fn is_in(column: &str, roots: &[String]) -> String {
     if roots.is_empty() {
         return "0".to_string();
     }
     format!("{column} IN ({})", roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(","))
 }
 
-fn not_in(column: &str, roots: &[&str]) -> String {
+fn not_in(column: &str, roots: &[String]) -> String {
     if roots.is_empty() {
         return "1".to_string();
     }

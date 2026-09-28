@@ -648,8 +648,8 @@ struct FeedQuery {
     /// they always were for any other caller.
     me: Option<String>,
     /// `sort=best` (PROJECT_PLAN's Scores and sort orders, slice 1): the reader's score, highest
-    /// first, over the posts published inside `window` (day, week, month, year; ever when
-    /// absent). Absent, the feed is chronological, as it always was.
+    /// first, over the posts published inside `window` (day, week, month, year - a year when
+    /// absent; there is no "ever"). Absent, the feed is chronological, as it always was.
     sort: Option<String>,
     window: Option<String>,
     /// A "best" page's cursor: the `after` the previous page answered (score.rs `Rank`).
@@ -2098,8 +2098,8 @@ async fn feed_labels_handler(
         rows.retain(|r| r.author_root != root);
     }
     // A "best" window (2026-09-27): the lists count only what the window shows.
-    if let Some(w) = crate::score::window_ms(q.window.as_deref()) {
-        let since = crate::clock::now_ms() - w;
+    if q.window.is_some() {
+        let since = crate::clock::now_ms() - crate::score::window_ms(q.window.as_deref());
         rows.retain(|r| r.published_ms >= since);
     }
     // The dial (2026-09-08): the lists count only what the feed at this stop shows.
@@ -2153,55 +2153,73 @@ async fn feed_handler(
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
     let mut after: Option<String> = None;
     let (mut rows, more) = if q.sort.as_deref() == Some("best") {
-        // Best (PROJECT_PLAN's Scores and sort orders): the whole journal inside the window,
-        // at the dial's stop and through any narrowing, ordered by the reader's score. The
-        // order is global, so it is taken whole and paged here - the search's shape - with a
-        // cursor naming one exact place in it.
-        let mut all = crate::fanout::feed_all(&state.node_db, &root, 5000)
-            .await
-            .map_err(AppError::Internal)?;
-        let since = crate::score::window_ms(q.window.as_deref()).map(|w| crate::clock::now_ms() - w);
-        let own = wants_own(&q.me);
-        all.retain(|r| {
-            (own || r.author_root != root)
-                && since.is_none_or(|t| r.published_ms >= t)
-                && matches!(r.format.as_deref(), Some("marquee" | "plaintext" | "book" | "room"))
-        });
-        let all = if narrow.is_empty() {
-            rows_at_stop(&state, &_owned, &root, all, q.stop.as_deref()).await?
-        } else {
-            narrowed(&state, &_owned, &root, all, &narrow, q.stop.as_deref()).await?
-        };
+        // Best (PROJECT_PLAN's Scores and sort orders, *Shape*): the stored scores brought up to
+        // the reader's dials as they are now - a dial moved on any device, a block included, is
+        // in this page - then read in score order, off the indexes.
         let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
-        let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-        let scores = crate::score::scores(&state, &root, &facts, &pairs)
+        crate::score::refresh_dials(&state, &root, &facts)
             .await
             .map_err(AppError::Internal)?;
-        let mut ranked: Vec<(crate::score::Rank, crate::fanout::FeedRow)> = all
-            .into_iter()
-            .map(|r| {
-                let milli = scores.get(&(r.author_root.clone(), r.doc_id.clone())).map_or(0, |s| s.milli());
-                (crate::score::Rank { milli, published_ms: r.published_ms, doc_id: r.doc_id.clone() }, r)
-            })
-            .collect();
-        ranked.sort_by(|(a, _), (b, _)| {
-            if a.before(b) {
-                std::cmp::Ordering::Less
-            } else if b.before(a) {
-                std::cmp::Ordering::Greater
-            } else {
-                std::cmp::Ordering::Equal
+        let since = crate::clock::now_ms() - crate::score::window_ms(q.window.as_deref());
+        let own = wants_own(&q.me);
+        if narrow.is_empty() {
+            let stop = q.stop.as_deref().filter(|s| !s.is_empty() && *s != "explorer");
+            let levels = match stop {
+                Some(_) => crate::speculative::levels_for(&state.node_db, &root)
+                    .await
+                    .map_err(AppError::Internal)?,
+                None => Default::default(),
+            };
+            let filter = crate::fanout::JournalFilter {
+                include_own: own,
+                since_ms: Some(since),
+                stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
+                ..crate::fanout::JournalFilter::feed(&root)
+            };
+            let cursor = q.after.as_deref().and_then(crate::score::Rank::parse);
+            let mut ranked = crate::fanout::best_page(&state.node_db, &filter, cursor, page + 1)
+                .await
+                .map_err(AppError::Internal)?;
+            let more = ranked.len() as i64 > page;
+            ranked.truncate(page as usize);
+            if more {
+                after = ranked.last().map(|(r, _)| r.token());
             }
-        });
-        if let Some(cursor) = q.after.as_deref().and_then(crate::score::Rank::parse) {
-            ranked.retain(|(r, _)| cursor.before(r));
+            (ranked.into_iter().map(|(_, r)| r).collect(), more)
+        } else {
+            // A search or the picks inside best: narrowed as the search narrows (step 5 of the
+            // plan's Shape moves this off the capped read), then ordered by the stored scores.
+            let mut all = crate::fanout::feed_all(&state.node_db, &root, 5000)
+                .await
+                .map_err(AppError::Internal)?;
+            all.retain(|r| {
+                (own || r.author_root != root)
+                    && r.published_ms >= since
+                    && matches!(r.format.as_deref(), Some("marquee" | "plaintext" | "book" | "room"))
+            });
+            let all = narrowed(&state, &_owned, &root, all, &narrow, q.stop.as_deref()).await?;
+            let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+            let scores = crate::score::stored_for(&state.node_db, &root, &pairs)
+                .await
+                .map_err(AppError::Internal)?;
+            let mut ranked: Vec<(crate::score::Rank, crate::fanout::FeedRow)> = all
+                .into_iter()
+                .map(|r| {
+                    let milli = scores.get(&(r.author_root.clone(), r.doc_id.clone())).copied().unwrap_or(0);
+                    (crate::score::Rank { milli, published_ms: r.published_ms, doc_id: r.doc_id.clone() }, r)
+                })
+                .collect();
+            ranked.sort_by(|(a, _), (b, _)| {
+                if a.before(b) {
+                    std::cmp::Ordering::Less
+                } else if b.before(a) {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            });
+            (ranked.into_iter().map(|(_, r)| r).collect(), false)
         }
-        let more = ranked.len() as i64 > page;
-        ranked.truncate(page as usize);
-        if more {
-            after = ranked.last().map(|(r, _)| r.token());
-        }
-        (ranked.into_iter().map(|(_, r)| r).collect(), more)
     } else if narrow.is_empty() {
         let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1, wants_own(&q.me))
             .await

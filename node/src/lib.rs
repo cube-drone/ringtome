@@ -812,6 +812,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
                 "/test/backup-verify",
                 axum::routing::post(test_endpoints::backup_verify),
             )
+            .route("/test/score-check", axum::routing::post(test_endpoints::score_check))
             .route("/test/shell", axum::routing::get(test_endpoints::shell_requests));
     }
 

@@ -1511,8 +1511,14 @@ pub(crate) async fn public_doc_bytes(
         }
         // And the labels (ruling 7): a reader proven entitled to the words is entitled to
         // what is said about them - open the raw sealed statements this node holds, once.
-        if let Err(e) = crate::annotations::open_sealed(&state.node_db, &hex::encode(root), &hex::encode(doc_id), &holder_hex, &hex::encode(key_doc), &key).await {
-            tracing::debug!(error = ?e, "opening sealed labels failed");
+        match crate::annotations::open_sealed(&state.node_db, &hex::encode(root), &hex::encode(doc_id), &holder_hex, &hex::encode(key_doc), &key).await {
+            Ok(opened) if !opened.is_empty() => {
+                let touched: Vec<(String, String, String)> =
+                    opened.into_iter().map(|x| (hex::encode(root), hex::encode(doc_id), x)).collect();
+                crate::score::labels_moved(state, &touched).await;
+            }
+            Ok(_) => {}
+            Err(e) => tracing::debug!(error = ?e, "opening sealed labels failed"),
         }
         plain
     } else {

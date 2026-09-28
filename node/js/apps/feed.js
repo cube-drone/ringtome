@@ -93,7 +93,6 @@ const SORT_WORDS = {
     week: () => t('apps.feed.sort-week', 'best this week'),
     month: () => t('apps.feed.sort-month', 'best this month'),
     year: () => t('apps.feed.sort-year', 'best this year'),
-    ever: () => t('apps.feed.sort-ever', 'best ever'),
 };
 
 const EMPTY = new Map();
@@ -467,7 +466,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         stopKey && stopKey !== 'explorer' ? `stop=${encodeURIComponent(stopKey)}` : '',
         ownOut ? 'me=0' : '',
         // A best window counts only what it shows.
-        best && sort !== 'ever' ? `window=${sort}` : '',
+        best ? `window=${sort}` : '',
     ]
         .filter(Boolean)
         .join('&');

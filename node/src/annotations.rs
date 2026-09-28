@@ -206,7 +206,8 @@ pub async fn open_sealed(
     holder: &str,
     holder_doc: &str,
     post_key: &[u8; 32],
-) -> Result<()> {
+) -> Result<Vec<String>> {
+    let mut opened: Vec<String> = Vec::new();
     let raw: Vec<(String, String, i64, String)> = node_db
         .fetch_all(
             "SELECT annotator, value, noted_ms, learned_via FROM doc_annotations
@@ -236,8 +237,12 @@ pub async fn open_sealed(
             )
             .await
             .context("retiring a raw sealed label")?;
+        if k == TAG_KEY && !opened.contains(&annotator) {
+            opened.push(annotator);
+        }
     }
-    Ok(())
+    // Who said a tag in there: the scores that weigh them are the caller's to move (score.rs).
+    Ok(opened)
 }
 
 /// Note a sealed statement as the fold meets it: opened when this node already holds the
@@ -287,6 +292,19 @@ async fn note_sealed(
     Ok(())
 }
 
+/// Every post one person has a tag on, or a sealed statement that may open to one - what a
+/// reader's scores must look at again when their dial on that person moves (score.rs).
+pub async fn targets_of(node_db: &Db, annotator: &str) -> Result<Vec<(String, String)>> {
+    node_db
+        .fetch_all(
+            "SELECT DISTINCT target_author, target_doc FROM doc_annotations
+             WHERE annotator = ?1 AND key IN ('tag', 'sealed')",
+            (annotator,),
+        )
+        .await
+        .context("reading a labeller's posts")
+}
+
 /// The fold-lane hook: fold one annotator's statements past the mark.
 pub async fn refresh_from(state: &AppState, annotator: &str, force: bool) {
     if let Err(e) = refresh_inner(state, annotator, force).await {
@@ -306,6 +324,7 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
     if let Some(newest) = rows.iter().map(|r| r.received_at_ms).max() {
         state.sweep_marks.record("annotations", annotator, newest);
     }
+    let mut touched: Vec<(String, String, String)> = Vec::new();
     for r in rows {
         if let Some(m) = mark {
             if r.received_at_ms < m {
@@ -313,6 +332,9 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
             }
         }
         let doc_hex = hex::encode(r.target_doc);
+        if r.key == TAG_KEY || r.key == SEALED_KEY {
+            touched.push((r.target_author.clone(), doc_hex.clone(), annotator.to_string()));
+        }
         if r.present && r.key == SEALED_KEY {
             note_sealed(&state.node_db, &r.target_author, &doc_hex, annotator, &r.value, "chain").await?;
         } else if r.present {
@@ -322,6 +344,10 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
             forget(&state.node_db, &r.target_author, &doc_hex, annotator, &r.key, &r.value).await?;
         }
     }
+    // The readers who weigh this person see it in their scores (score.rs).
+    touched.sort();
+    touched.dedup();
+    crate::score::labels_moved(state, &touched).await;
     Ok(())
 }
 
@@ -709,6 +735,7 @@ pub async fn learn_proofs(
     let road = format!("relay:{taught_by}");
     let author_hex = hex::encode(target_author);
     let doc_hex = hex::encode(target_doc);
+    let mut touched: Vec<(String, String, String)> = Vec::new();
     for p in proofs {
         let a = match ringtome_proto::fragment::verify_annotation(
             p.annotator,
@@ -725,6 +752,9 @@ pub async fn learn_proofs(
             }
         };
         let annotator_hex = hex::encode(p.annotator);
+        if a.key == TAG_KEY || a.key == SEALED_KEY {
+            touched.push((author_hex.clone(), doc_hex.clone(), annotator_hex.clone()));
+        }
         let outcome = if a.present {
             let noted = note(
                 &state.node_db,
@@ -766,6 +796,9 @@ pub async fn learn_proofs(
             tracing::debug!(error = ?e, "folding a ridden annotation failed");
         }
     }
+    touched.sort();
+    touched.dedup();
+    crate::score::labels_moved(state, &touched).await;
 }
 
 #[cfg(test)]

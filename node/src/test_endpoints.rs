@@ -556,6 +556,23 @@ pub async fn attention(
     Json(state.attention.recorded(&q.root))
 }
 
+/// POST `/test/score-check?root=` - one reader's stored scores as kept incrementally, then as
+/// rebuilt from the label memo and their dials (score.rs `rebuild`): the two must be equal, and a
+/// test that stirs reactions, retractions and dial changes through the real doors says so. The
+/// dials are brought up to date first, as a "best" read would.
+pub async fn score_check(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<AttentionQuery>,
+) -> Result<Json<Value>, AppError> {
+    let data = crate::record::store::open_agented(&state, &q.root).await?;
+    let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+    crate::score::refresh_dials(&state, &q.root, &facts).await.map_err(AppError::Internal)?;
+    let kept = crate::score::all_stored(&state.node_db, &q.root).await.map_err(AppError::Internal)?;
+    crate::score::rebuild(&state, &q.root, &facts).await.map_err(AppError::Internal)?;
+    let rebuilt = crate::score::all_stored(&state.node_db, &q.root).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "kept": kept, "rebuilt": rebuilt })))
+}
+
 /// GET `/test/shell` - everything the node has asked of a desktop shell (shell.rs), oldest first:
 /// what a device node in the rig would have had its app do.
 pub async fn shell_requests(State(state): State<AppState>) -> Json<Vec<crate::shell::ShellRequest>> {

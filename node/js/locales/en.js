@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1115 phrases across 72 files.
+// 1114 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -159,7 +159,6 @@ export default {
     'apps.feed.sort-week': 'best this week',
     'apps.feed.sort-month': 'best this month',
     'apps.feed.sort-year': 'best this year',
-    'apps.feed.sort-ever': 'best ever',
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
     'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
     'apps.feed.couldnt-discard-it': "couldn't discard it: {message}",

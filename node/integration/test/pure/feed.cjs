@@ -432,11 +432,11 @@ describe('docStatus: the three icons (PUBLISH.md ruling 6)', () => {
 // The feed's orders (PROJECT_PLAN's Scores and sort orders, slice 1): newest, or best over a
 // window, spelled for the node's feed door.
 describe('the feed orders', () => {
-    it('words each order for the door: nothing for newest, best and its window, no window for ever', () => {
-        assert.deepEqual(FEED_SORTS, ['new', 'day', 'week', 'month', 'year', 'ever']);
+    it('words each order for the door: nothing for newest, best and its window - a year at the longest', () => {
+        assert.deepEqual(FEED_SORTS, ['new', 'day', 'week', 'month', 'year']);
         assert.equal(sortParams('new'), '');
         assert.equal(sortParams('week'), 'sort=best&window=week');
-        assert.equal(sortParams('ever'), 'sort=best');
+        assert.equal(sortParams('ever'), '', 'no best ever: an old remembered choice reads as newest');
         assert.equal(sortParams('nonsense'), '', 'an unknown order is newest');
         assert.ok(isBestSort('day') && !isBestSort('new') && !isBestSort(undefined));
     });

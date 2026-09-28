@@ -761,6 +761,12 @@ ports:
 
 # --- the desktop shell (DESKTOP.md) ----------------------------------------
 
+# Both desktop recipes build into the ROOT target/ (2026-09-28, Curtis, after a 300 GB target/
+# and 44 GB more in desktop/target): the shell links the node, so a target of its own built every
+# dependency a second time and kept both. Here only - CI and the release job still build in
+# desktop/target, which release.yml collects the installers from. The cost: a node build and a
+# desktop build share one lock, so running both at once queues one behind the other.
+
 # Run the desktop app: one window, one process, the node linked in (DESKTOP.md, Stage 2).
 # Builds the UI first, because the node embeds it. Its own workspace, so `just ci` never
 # builds Tauri - it joins the gates at Stage 4, with the packaging matrix.
@@ -774,11 +780,32 @@ ports:
 # exists to prevent), so the app finds `just start*` nodes and they find it. RINGTOME_DISCOVERY
 # still wins.
 desktop: ui-build
-    cd "{{workspace}}/desktop" && RINGTOME_DISCOVERY="${RINGTOME_DISCOVERY:-local:{{workspace}}/data-dht}" cargo run
+    cd "{{workspace}}/desktop" && CARGO_TARGET_DIR="{{workspace}}/target" RINGTOME_DISCOVERY="${RINGTOME_DISCOVERY:-local:{{workspace}}/data-dht}" cargo run
 
-# Compile the shell without running it - what CI will do at Stage 4.
+# Compile the shell without running it - what CI will do at Stage 4. Into the root target/, as above.
 desktop-check: ui-build
-    cd "{{workspace}}/desktop" && cargo check
+    cd "{{workspace}}/desktop" && CARGO_TARGET_DIR="{{workspace}}/target" cargo check
+
+# 2026-09-28: target/ had reached 300 GB. Cargo never collects it - every toolchain update rebuilds
+# every dependency and keeps the old copies, and incremental caches pile up beside them. With
+# cargo-sweep (`cargo install cargo-sweep`) this drops what toolchains no longer installed built,
+# then anything untouched for `days`, in both workspaces' targets; without it, it says so and
+# changes nothing (`cargo clean` is the blunt alternative).
+# Prune old Rust build output in both workspaces (needs cargo-sweep).
+tidy days="14":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{workspace}}"
+    if ! cargo sweep --version >/dev/null 2>&1; then
+        echo "tidy: cargo-sweep isn't installed - 'cargo install cargo-sweep', then run this again." >&2
+        echo "  (or 'cargo clean', here and in desktop/, clears everything)" >&2
+        exit 1
+    fi
+    echo "before: $(du -sh target 2>/dev/null | cut -f1) in target/, $(du -sh desktop/target 2>/dev/null | cut -f1) in desktop/target/"
+    for dir in . desktop; do
+        (cd "$dir" && cargo sweep --installed && cargo sweep --time {{days}})
+    done
+    echo "after: $(du -sh target 2>/dev/null | cut -f1) in target/, $(du -sh desktop/target 2>/dev/null | cut -f1) in desktop/target/"
 
 # Seed the DESKTOP app's node with the same fake network `test-data` makes.
 #

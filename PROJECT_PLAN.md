@@ -3664,11 +3664,19 @@ outlier with 10,000 busy trusted friends). The cost lands at write time, where i
   large as their reacting, not everyone's. Blocking is a dial change, so it takes effect at once.
   An interest change rescores that author's posts.
 - **A year, then pruned:** a score older than the longest window can never be shown, so it goes.
-- **Two read paths:** a short window (day, week) walks the journal's time index and looks scores
-  up - cost in the window's posts; a year walks the score index and skips what is outside it.
-  The zero tier - posts nobody the reader drew an edge to reacted to - is the plain time index.
-  A page boundary is an exact place in a total order (score in thousandths, then newest, then
-  document id - score.rs `Rank`).
+- **Three runs, two read paths** (measured 2026-09-27 at 131,072 posts, 26,215 scored): a page is
+  the posts scored above zero, then the zero run - nobody the reader weighs reacted - then those
+  below zero. The zero run streams off the journal's time index, each score probed by key (~0.3 ms
+  a page, any window). The scored runs sort by score: read by the window for a month or less (a
+  day 16 ms, a month 29 ms) and off the score index for a year (123 ms - the one sort left, ties
+  by time living in the journal; if it bites, a cached ranking per reader and window is the
+  lever). Every key descends (score, time, document id - score.rs `Rank`), so the time index
+  walks one direction with no sort.
+- **The engine's planner is pinned.** Turso's, left alone, reached for the rooms index and sorted
+  a reader's whole journal for every page - the plain newest-first feed included, which had never
+  been able to stream (its ties ran the other way, so no index matched) - and probed scores with
+  the reader alone. The journal's reads name their indexes (`INDEXED BY`), node rung 0058 adds the
+  one-direction time index, and fanout.rs's tests ask the planner and fail on a sort.
 - **No safety net at run time** (Curtis: a post gently misfiled is a post a little more or less
   popular than it should be, in a window that ages out on its own). A `rebuild(reader)` exists for
   the tests, and one asserts that a tangle of reactions, retractions and dial changes kept

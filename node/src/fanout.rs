@@ -1671,7 +1671,7 @@ pub async fn feed_all(node_db: &crate::db::Db, reader: &str, cap: i64) -> Result
         .fetch_all(
             "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
              FROM feed_journal WHERE reader_root = ?1
-             ORDER BY published_ms DESC, doc_id LIMIT ?2",
+             ORDER BY published_ms DESC, doc_id DESC LIMIT ?2",
             (reader, cap),
         )
         .await
@@ -1753,9 +1753,9 @@ pub struct JournalFilter<'a> {
     pub formats: &'a [&'a str],
     /// Only rows published at or after this - a best order's window.
     pub since_ms: Option<i64>,
-    /// The curiosity dial's stop, as SQL (`selectivity::stop_predicate`); the reader's own rows
-    /// always pass it.
-    pub stop: Option<String>,
+    /// The curiosity dial's stop, with the reader's dials in it (`selectivity::stop_rule`); the
+    /// reader's own rows always pass it.
+    pub stop: Option<crate::selectivity::StopRule>,
 }
 
 impl<'a> JournalFilter<'a> {
@@ -1764,10 +1764,11 @@ impl<'a> JournalFilter<'a> {
         JournalFilter { reader, include_own: true, formats: FEED_FORMATS, since_ms: None, stop: None }
     }
 
-    /// The WHERE clause, the reader bound as `?1`. The formats are this file's own words and the
-    /// stop's roots are checked hex, so nothing a caller typed reaches the SQL.
-    fn clause(&self) -> String {
-        let mut parts = vec!["reader_root = ?1".to_string()];
+    /// The WHERE clause over journal columns spelled `{t}column` (`t` empty, or an alias and a
+    /// dot), the reader bound as `?1`. The formats are this file's own words and the stop's roots
+    /// are checked hex, so nothing a caller typed reaches the SQL.
+    fn clause(&self, t: &str) -> String {
+        let mut parts = vec![format!("{t}reader_root = ?1")];
         if !self.formats.is_empty() {
             let known: Vec<String> = self
                 .formats
@@ -1775,16 +1776,16 @@ impl<'a> JournalFilter<'a> {
                 .filter(|f| f.bytes().all(|b| b.is_ascii_lowercase()))
                 .map(|f| format!("'{f}'"))
                 .collect();
-            parts.push(format!("format IN ({})", known.join(",")));
+            parts.push(format!("{t}format IN ({})", known.join(",")));
         }
         if !self.include_own {
-            parts.push("author_root <> reader_root".to_string());
+            parts.push(format!("{t}author_root <> {t}reader_root"));
         }
         if let Some(since) = self.since_ms {
-            parts.push(format!("published_ms >= {since}"));
+            parts.push(format!("{t}published_ms >= {since}"));
         }
         if let Some(stop) = &self.stop {
-            parts.push(format!("(author_root = reader_root OR {stop})"));
+            parts.push(format!("({t}author_root = {t}reader_root OR {})", stop.sql(t)));
         }
         parts.join(" AND ")
     }
@@ -1792,38 +1793,199 @@ impl<'a> JournalFilter<'a> {
 
 const JOURNAL_COLUMNS: &str = "author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms";
 
-/// One page of a reader's journal through `filter`, newest first, after `before` (the last row
-/// shown's `(published_ms, doc_id)`).
+/// One page of a reader's journal through `filter`, newest first (ties by document id, highest
+/// first), after `before` (the last row shown's `(published_ms, doc_id)`).
 pub async fn journal_page(
     node_db: &crate::db::Db,
     filter: &JournalFilter<'_>,
     before: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<FeedRow>> {
-    let clause = filter.clause();
-    // Numbered placeholders: a value used twice binds ONCE - the first cursor branch passed `ms`
-    // twice and bound five values into four slots, which turso refused ("bind index 5 out of
-    // bounds")... only on the cursor branch, which no test paged.
+    // Pinned to the time index (node rung 0058): this engine's planner reaches for another index
+    // on its own and sorts the whole journal for every page. Newest first, ties by id newest
+    // first - one direction, walked backwards, no sort.
+    let sql = page_sql(filter, before.is_some());
     let rows: Vec<JournalTuple> = match before {
-        None => node_db
-            .fetch_all(
-                &format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {clause} ORDER BY published_ms DESC, doc_id LIMIT ?2"),
-                (filter.reader, limit),
-            )
-            .await,
-        Some((ms, doc)) => node_db
-            .fetch_all(
-                &format!(
-                    "SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {clause}
-                       AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
-                     ORDER BY published_ms DESC, doc_id LIMIT ?4"
-                ),
-                (filter.reader, ms, doc.as_str(), limit),
-            )
-            .await,
+        None => node_db.fetch_all(&sql, (filter.reader, limit)).await,
+        Some((ms, doc)) => node_db.fetch_all(&sql, (filter.reader, ms, doc.as_str(), limit)).await,
     }
     .context("reading a journal page")?;
     Ok(rows.into_iter().map(journal_row).collect())
+}
+
+/// One page of a reader's journal through `filter` in their "best" order (PROJECT_PLAN's Scores and
+/// sort orders, *Shape*): score high first, then newest, then document id (score.rs `Rank`),
+/// after `after`. The stored scores (score.rs) keep only posts somebody the reader weighs reacted
+/// to, so the order is three runs, each read the way it is cheap: the posts scored above zero; the
+/// zero run - the great bulk - off the journal's time index, the scores probed by key, streaming
+/// whatever its size; then the posts scored below zero. A cursor's score says which run it
+/// stopped in. The scored runs are read by the window for a month or less, and off the score
+/// index for a year (the timing check at 131,072 posts, 26,215 scored: a day 16 ms, a month
+/// 29 ms, a year 123 ms - the year's sort by score, ties by time, is the one sort left).
+pub async fn best_page(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+    after: Option<crate::score::Rank>,
+    limit: i64,
+) -> Result<Vec<(crate::score::Rank, FeedRow)>> {
+    let run_of = |milli: i64| match milli.signum() {
+        1 => 0,
+        0 => 1,
+        _ => 2,
+    };
+    let from = after.as_ref().map_or(0, |r| run_of(r.milli));
+    let mut out: Vec<(crate::score::Rank, FeedRow)> = Vec::new();
+    for run in from..3 {
+        let want = limit - out.len() as i64;
+        if want <= 0 {
+            break;
+        }
+        let cursor = after.as_ref().filter(|r| run_of(r.milli) == run);
+        let rows = if run == 1 {
+            unscored_run(node_db, filter, cursor, want).await?
+        } else {
+            scored_run(node_db, filter, run == 0, cursor, want).await?
+        };
+        out.extend(rows);
+    }
+    Ok(out)
+}
+
+/// The scored run's SQL: `?1` the reader, then (with a cursor) `?2..?4` the cursor's score, time
+/// and id, and the limit last. Read by the journal's window when `by_window`, else off the score
+/// index; either way pinned, since this engine's planner picks neither of its own accord.
+fn scored_sql(filter: &JournalFilter<'_>, above: bool, cursor: bool, by_window: bool) -> String {
+    let columns = aliased_columns("j.");
+    let sign = if above { "p.milli > 0" } else { "p.milli < 0" };
+    // Pinned twice over - each table's index, and (CROSS JOIN) which one drives: left to itself
+    // the planner drove from the journal and rescanned the scores for every row, 131,072 times.
+    let (tables, clause) = if by_window {
+        // The window first, as its own range scan: joined directly, the planner dropped the
+        // window's range and walked the reader's whole journal.
+        (
+            format!(
+                "(SELECT {JOURNAL_COLUMNS}, reader_root FROM feed_journal INDEXED BY feed_journal_by_time WHERE {}) j
+                 CROSS JOIN post_scores p INDEXED BY sqlite_autoindex_post_scores_1
+                   ON p.reader_root = j.reader_root AND p.author_root = j.author_root AND p.doc_id = j.doc_id",
+                filter.clause("")
+            ),
+            "1".to_string(),
+        )
+    } else {
+        (
+            "post_scores p INDEXED BY post_scores_by_score
+             CROSS JOIN feed_journal j INDEXED BY sqlite_autoindex_feed_journal_1
+               ON j.reader_root = p.reader_root AND j.author_root = p.author_root AND j.doc_id = p.doc_id"
+                .to_string(),
+            filter.clause("j."),
+        )
+    };
+    let head = format!("SELECT {columns}, p.milli FROM {tables} WHERE p.reader_root = ?1 AND {sign} AND {clause}");
+    if cursor {
+        format!(
+            "{head} AND (p.milli < ?2 OR (p.milli = ?2 AND (j.published_ms < ?3 OR (j.published_ms = ?3 AND j.doc_id < ?4))))
+             ORDER BY p.milli DESC, j.published_ms DESC, j.doc_id DESC LIMIT ?5"
+        )
+    } else {
+        format!("{head} ORDER BY p.milli DESC, j.published_ms DESC, j.doc_id DESC LIMIT ?2")
+    }
+}
+
+/// The unscored run's SQL: `?1` the reader, then (with a cursor) `?2..?3` its time and id, and
+/// the limit last. The journal's time index walked backwards, each row's score probed by key -
+/// both pinned, since this engine's planner scans every score of the reader per row otherwise.
+fn unscored_sql(filter: &JournalFilter<'_>, cursor: bool) -> String {
+    let columns = aliased_columns("j.");
+    let clause = filter.clause("j.");
+    let head = format!(
+        "SELECT {columns} FROM feed_journal j INDEXED BY feed_journal_by_time
+         WHERE {clause} AND NOT EXISTS (
+             SELECT 1 FROM post_scores p INDEXED BY sqlite_autoindex_post_scores_1
+             WHERE p.reader_root = j.reader_root AND p.author_root = j.author_root AND p.doc_id = j.doc_id
+         )"
+    );
+    if cursor {
+        format!(
+            "{head} AND (j.published_ms < ?2 OR (j.published_ms = ?2 AND j.doc_id < ?3))
+             ORDER BY j.published_ms DESC, j.doc_id DESC LIMIT ?4"
+        )
+    } else {
+        format!("{head} ORDER BY j.published_ms DESC, j.doc_id DESC LIMIT ?2")
+    }
+}
+
+fn aliased_columns(t: &str) -> String {
+    JOURNAL_COLUMNS.split(", ").map(|c| format!("{t}{c}")).collect::<Vec<_>>().join(", ")
+}
+
+/// Best's first or last run: the posts scored above (or below) zero, score order.
+async fn scored_run(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+    above: bool,
+    after: Option<&crate::score::Rank>,
+    limit: i64,
+) -> Result<Vec<(crate::score::Rank, FeedRow)>> {
+    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, i64, Option<i64>, i64, i64);
+    // A month or less: read by the window; a year: off the score index.
+    let by_window = filter.since_ms.is_some_and(|since| crate::clock::now_ms() - since <= 31 * 24 * 3600 * 1000);
+    let sql = scored_sql(filter, above, after.is_some(), by_window);
+    let rows: Vec<Row> = match after {
+        None => node_db.fetch_all(&sql, (filter.reader, limit)).await,
+        Some(r) => {
+            node_db
+                .fetch_all(&sql, (filter.reader, r.milli, r.published_ms, r.doc_id.as_str(), limit))
+                .await
+        }
+    }
+    .context("reading a best page's scored run")?;
+    Ok(rows
+        .into_iter()
+        .map(|(a, b, c, d, e, f, g, h, i, j, k, l, m, n, milli)| {
+            let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n));
+            (crate::score::Rank { milli, published_ms: row.published_ms, doc_id: row.doc_id.clone() }, row)
+        })
+        .collect())
+}
+
+/// Best's middle run: every post nobody the reader weighs reacted to, newest first - the journal's
+/// own page, less the scored.
+async fn unscored_run(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+    after: Option<&crate::score::Rank>,
+    limit: i64,
+) -> Result<Vec<(crate::score::Rank, FeedRow)>> {
+    let sql = unscored_sql(filter, after.is_some());
+    let rows: Vec<JournalTuple> = match after {
+        None => node_db.fetch_all(&sql, (filter.reader, limit)).await,
+        Some(r) => node_db.fetch_all(&sql, (filter.reader, r.published_ms, r.doc_id.as_str(), limit)).await,
+    }
+    .context("reading a best page's unscored run")?;
+    Ok(rows
+        .into_iter()
+        .map(|t| {
+            let row = journal_row(t);
+            (crate::score::Rank { milli: 0, published_ms: row.published_ms, doc_id: row.doc_id.clone() }, row)
+        })
+        .collect())
+}
+
+/// A journal page's SQL: `?1` the reader, then (with a cursor) `?2..?3` its time and id, and the
+/// limit last. Numbered placeholders: a value used twice binds ONCE (the first cursor branch bound
+/// five values into four slots, which turso refused only on the branch no test paged).
+fn page_sql(filter: &JournalFilter<'_>, cursor: bool) -> String {
+    let clause = filter.clause("");
+    let from = "FROM feed_journal INDEXED BY feed_journal_by_time";
+    if cursor {
+        format!(
+            "SELECT {JOURNAL_COLUMNS} {from} WHERE {clause}
+               AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id < ?3))
+             ORDER BY published_ms DESC, doc_id DESC LIMIT ?4"
+        )
+    } else {
+        format!("SELECT {JOURNAL_COLUMNS} {from} WHERE {clause} ORDER BY published_ms DESC, doc_id DESC LIMIT ?2")
+    }
 }
 
 /// Every row of a reader's journal through `filter`, newest first, unbounded - only for a filter
@@ -1831,7 +1993,7 @@ pub async fn journal_page(
 pub async fn journal_all(node_db: &crate::db::Db, filter: &JournalFilter<'_>) -> Result<Vec<FeedRow>> {
     let rows: Vec<JournalTuple> = node_db
         .fetch_all(
-            &format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {} ORDER BY published_ms DESC, doc_id", filter.clause()),
+            &format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {} ORDER BY published_ms DESC, doc_id DESC", filter.clause("")),
             (filter.reader,),
         )
         .await
@@ -2066,7 +2228,7 @@ mod tests {
     /// suggested - and the reader's own post through every stop.
     #[tokio::test]
     async fn the_dial_in_sql_keeps_exactly_what_the_rule_keeps() {
-        use crate::selectivity::{stop_predicate, visible_at, Facts, RowView};
+        use crate::selectivity::{stop_rule, visible_at, Facts, RowView};
         let db = crate::db::test_node_db().await;
         let reader = "ee".repeat(32);
         let bands = [None, Some("none"), Some("low"), Some("medium"), Some("high"), Some("max")];
@@ -2131,7 +2293,7 @@ mod tests {
                 })
                 .map(|r| r.doc.as_str())
                 .collect();
-            let filter = JournalFilter { stop: stop_predicate(stop, &facts, &levels), ..JournalFilter::feed(&reader) };
+            let filter = JournalFilter { stop: stop_rule(stop, &facts, &levels), ..JournalFilter::feed(&reader) };
             let got = journal_all(&db, &filter).await.unwrap();
             let got: std::collections::BTreeSet<&str> = got.iter().map(|r| r.doc_id.as_str()).collect();
             assert_eq!(got, want, "the {stop} stop");
@@ -2181,6 +2343,119 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(window.len(), 2, "published at or after the window's start");
+    }
+
+    /// The journal's reads walk their indexes and never sort the journal (node rung 0058): this
+    /// engine's planner, left alone, reached for the rooms index and sorted a reader's whole journal
+    /// for every feed page - 3 s a page at 131,072 posts. The pins hold only while the planner obeys
+    /// them, so this asks it. (The scored runs sort by score: their one sort, over scored posts.)
+    #[tokio::test]
+    async fn the_journal_reads_walk_their_indexes() {
+        let db = crate::db::test_node_db().await;
+        let reader = "ee".repeat(32);
+        let filter = JournalFilter { since_ms: Some(0), ..JournalFilter::feed(&reader) };
+        let plan = |sql: String| {
+            let db = db.clone();
+            async move {
+                let rows: Vec<(i64, i64, i64, String)> = db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), ()).await.unwrap();
+                rows.into_iter().map(|(_, _, _, d)| d).collect::<Vec<_>>().join(" | ")
+            }
+        };
+        for (name, sql) in [
+            ("a feed page", page_sql(&filter, false)),
+            ("a later feed page", page_sql(&filter, true)),
+            ("best's unscored run", unscored_sql(&filter, false)),
+            ("best's unscored run, later", unscored_sql(&filter, true)),
+        ] {
+            let p = plan(sql).await;
+            assert!(p.contains("feed_journal_by_time"), "{name} walks the time index: {p}");
+            assert!(!p.contains("SORTER"), "{name} streams, never sorts: {p}");
+        }
+        let p = plan(unscored_sql(&filter, false)).await;
+        assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a score probed by key: {p}");
+        // The scored runs: which table drives, and the other probed by key. Left to itself the
+        // planner drove the year's run from the journal and rescanned every score per row - a
+        // page that never finished at 131,072 posts.
+        for above in [true, false] {
+            let p = plan(scored_sql(&filter, above, true, true)).await;
+            assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "a month or less reads only its window: {p}");
+            assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "and probes each score by key: {p}");
+            let p = plan(scored_sql(&filter, above, true, false)).await;
+            assert!(p.starts_with("SEARCH p USING INDEX post_scores_by_score"), "a year is driven from the score index: {p}");
+            assert!(p.contains("feed_journal_1 (reader_root=? AND author_root=? AND doc_id=?)"), "and probes the journal by key: {p}");
+        }
+    }
+
+    /// The timing check behind the plan's million-row aim (2026-09-27): a 100,000-post journal
+    /// over two years, 20,000 of them scored, and every best window's first page and a deep page
+    /// timed. Ignored in the suite - it measures, it does not judge; run it by name.
+    #[tokio::test]
+    #[ignore]
+    async fn best_pages_at_scale() {
+        let db = crate::db::test_node_db().await;
+        let reader = "ee".repeat(32);
+        let author = "aa".repeat(32);
+        let now = crate::clock::now_ms();
+        let span = 2 * 365 * 24 * 3600 * 1000_i64;
+        // One row doubled seventeen times: 131,072 posts evenly over two years (a statement per
+        // row takes minutes on this engine - itself worth knowing).
+        let n: i64 = 1 << 17;
+        let step = span / n;
+        let started = std::time::Instant::now();
+        db.execute(
+            "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+             VALUES (?1, ?2, 'd', 't', 'marquee', ?3, ?3, ?3)",
+            (reader.as_str(), author.as_str(), now),
+        )
+        .await
+        .unwrap();
+        for k in 0..17 {
+            db.execute(
+                &format!(
+                    "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+                     SELECT reader_root, author_root, doc_id || '-{k}', title, format, published_ms - {}, updated_ms, arrived_ms
+                     FROM feed_journal WHERE reader_root = ?1",
+                    (1_i64 << k) * step
+                ),
+                (reader.as_str(),),
+            )
+            .await
+            .unwrap();
+        }
+        // Every fifth post scored, from -1000 to +3999, none zero.
+        db.execute(
+            &format!(
+                "INSERT INTO post_scores (reader_root, author_root, doc_id, milli)
+                 SELECT reader_root, author_root, doc_id, ((((?2 - published_ms) / {step}) * 7919) % 5000) - 999
+                 FROM feed_journal WHERE reader_root = ?1 AND ((?2 - published_ms) / {step}) % 5 = 0"
+            ),
+            (reader.as_str(), now),
+        )
+        .await
+        .unwrap();
+        let (posts,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM feed_journal", ()).await.unwrap();
+        let (scored,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM post_scores", ()).await.unwrap();
+        assert_eq!(posts, n);
+        eprintln!("scored: {scored}");
+        eprintln!("fixture: {n} posts in {:?}", started.elapsed());
+        for (name, window) in [("day", Some("day")), ("week", Some("week")), ("month", Some("month")), ("year", Some("year"))] {
+            let filter = JournalFilter { since_ms: Some(now - crate::score::window_ms(window)), ..JournalFilter::feed(&reader) };
+            let t = std::time::Instant::now();
+            let first = best_page(&db, &filter, None, 21).await.unwrap();
+            let first_ms = t.elapsed();
+            let mut cursor = first.last().map(|(r, _)| r.clone());
+            let t = std::time::Instant::now();
+            let mut pages = 0;
+            while let Some(c) = cursor.take() {
+                let page = best_page(&db, &filter, Some(c), 21).await.unwrap();
+                pages += 1;
+                if pages >= 50 || page.len() < 21 {
+                    break;
+                }
+                cursor = page.last().map(|(r, _)| r.clone());
+            }
+            eprintln!("{name}: first page {:?} ({} rows); next {pages} pages {:?}", first_ms, first.len(), t.elapsed());
+        }
     }
 
     /// The `via_root IS NOT NULL` guard, from the other side. A document we hold BOTH ways -

@@ -11857,3 +11857,52 @@ posts arrived - and your own rooms came from your newest 500 posts.
 
 `fanout::feed_all` keeps four capped callers - the best orders, the tag cloud, and the search's
 and the picks' narrowing - each retired by a step still to come, and says so on its face.
+
+## 2026-09-28: stored scores, the best orders on them, and a feed that streams (step 3)
+
+Step 3 of rebuilding slice 1 for a million-row journal (PROJECT_PLAN's *Scores and sort orders*,
+*Shape*): scores stored per reader and kept as reactions and dials move, and the best orders read
+off them. "Best ever" is gone (Curtis): no window is a year.
+
+- **Node rung 0057**: `score_dials` (the dials a reader's scores were reckoned with, in
+  thousandths), `score_parts` (one person's contribution to one post) and `post_scores` (a post's
+  total; zero is not kept). **Reactions**: the three places labels move - the memo's fold of a
+  chain, proofs riding a fragment, sealed labels opening - hand the moved `(post, annotator)` pairs
+  to `score::labels_moved`, which rescores them only for the readers who weigh that annotator; a
+  stranger's reaction touches nothing. **Dials**: before a best page is read, `score::refresh_dials`
+  diffs the reader's dials against the stored ones and rescores only what moved - everything a
+  re-weighed person reacted to, an author's posts when interest in them moved - so a block, or a
+  dial set on another device, is in that page.
+- **No run-time safety net** (Curtis), but `/test/score-check` compares what was kept with a
+  rebuild from the memo and the dials, and scores.cjs stirs reactions, a withdrawal, a
+  double-dislike, a follow dropped, a stranger trusted, an interest turned down and a block through
+  the real doors and asserts the two equal. Planted "a dial change never rescores" went red at
+  once; planted "a withdrawal never subtracts" at first did not - a later dial change in the same
+  claim rescored the person and mended it - so the claim now compares before any dial moves too,
+  and goes red.
+- **The timing check** (131,072 posts over two years, 26,215 scored) found more than the scores:
+  - the plain newest-first feed had never streamed - ties ran by document id the other way from
+    time, no index matched, and every page read the reader's whole journal and sorted it. **Node
+    rung 0058** adds `(reader_root, published_ms, doc_id)` (the old `(reader_root, published_ms)`
+    goes, a prefix of it) and every key now descends - time, then id; score, time, id - so pages
+    walk the index backwards with no sort;
+  - Turso's planner, left alone, picks the rooms index and sorts, probes scores with the reader
+    alone (3 s a page), and drove the year's scored run from the journal, rescanning every score
+    per row - a page that never finished, and a disk that filled while it tried. The journal's
+    reads now name their indexes (`INDEXED BY`) and, where two tables meet, which drives (`CROSS
+    JOIN`); a short window is its own range scan. fanout.rs's `the_journal_reads_walk_their_indexes`
+    asks the planner in the suite and fails on a sort, a lost range or a turned join - it went red
+    when a pin was removed;
+  - after (debug build): a feed page under a millisecond anywhere in the journal; best today
+    ~0.5 ms a page, a week ~1.5 ms, a month ~20 ms, a year ~175 ms - the year's scored run still
+    sorts per page, ties by time living in the journal; a cached ranking per reader and window is
+    the lever if it bites.
+- Best narrowed by a search or the picks still narrows off the capped read (step 5 replaces it),
+  now ordered by the stored scores. The popularity readout stays a live reckoning; a unit test
+  holds the stored integers to it, on a half-thousandth rounding boundary.
+
+Also the same day: `target/` had reached 300 GB and filled the disk mid-run (the timing check's
+release builds among it). `just desktop` and `just desktop-check` now build into the root target/
+- locally only; CI and the release job still build in desktop/target, which release.yml collects
+the installers from - and `just tidy [days]` prunes both workspaces with cargo-sweep, or says how
+to get it and changes nothing.

@@ -36,6 +36,11 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("comment_curation", vec!["replies.rs"]),
         ("reply_cursors", vec!["replies.rs"]),
         ("doc_annotations", vec!["annotations.rs"]),
+        // Scores (2026-09-27): kept by score.rs; the best orders' read joins them to the journal
+        // it pages, in fanout.rs.
+        ("score_dials", vec!["score.rs"]),
+        ("score_parts", vec!["score.rs"]),
+        ("post_scores", vec!["score.rs", "fanout.rs"]),
         ("post_keys", vec!["postkeys.rs"]),
         ("annotation_proofs", vec!["annotations.rs"]),
         ("persona_frontiers", vec!["net/frontier.rs"]),

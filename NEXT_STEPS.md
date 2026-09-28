@@ -25,11 +25,12 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * report flow
 
 ### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
-* Slice 1, rebuilt for a million-row journal (the plan's *Shape*) - still to go: stored
-  per-reader scores kept incrementally, and best (day-year) on them, "ever" dropped; the tag cloud
-  as stored counts (a pick over 1000 posts leaves the lists unthinned); the inverted search index.
-  Each retires one of `fanout::feed_all`'s last capped callers (the best orders, the tag cloud,
-  the search's and the picks' narrowing)
+* Slice 1, rebuilt for a million-row journal (the plan's *Shape*) - still to go: the tag cloud as
+  stored counts (a pick over 1000 posts leaves the lists unthinned); the inverted search index.
+  Each retires one of `fanout::feed_all`'s last capped callers (the tag cloud; the search's and
+  the picks' narrowing, best's included)
+* Pruning scores older than a year (the plan says they go; nothing prunes them yet)
+* If best-this-year's ~175 ms a page bites: a cached ranking per reader and window
 * Slice 2: hot, and a high score's emphasis
 * Slice 3: reply trees
 

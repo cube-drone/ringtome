@@ -11,7 +11,8 @@
 const assert = require("node:assert");
 
 const { makeUserFetch } = require("./helpers.cjs");
-const { sql } = require("./fetch.cjs");
+const { beat } = require("./beat.cjs");
+const { HOST, sql, makeFetch } = require("./fetch.cjs");
 
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
@@ -91,17 +92,21 @@ describe("scores: the best orders, and the reckoning behind them", function () {
         );
     });
 
-    it("the window bounds the order, ever reaches back, and a cursor picks up exactly where it left off", async () => {
+    it("the window bounds the order - a year at the longest - and a cursor picks up across the runs", async () => {
         assert.ok(!ids(await feed("sort=best&window=year")).includes(old), "two years old is outside the year");
-        const ever = await feed("sort=best");
-        assert.deepEqual(ids(ever).slice(0, 2), [liked, old], "ever: the old favourite's +2 ties the newest, which leads");
-        const second = (ever.items || [])[1];
-        const token = `2000:${second.published_ms}:${second.doc_id}`;
+        assert.ok(!ids(await feed("sort=best")).includes(old), "and there is no best ever: no window is a year");
+        const week = await feed("sort=best&window=week");
+        const first = (week.items || [])[0];
+        assert.equal(first.doc_id, liked);
+        const token = `2000:${first.published_ms}:${first.doc_id}`;
         assert.deepEqual(
-            ids(await feed(`sort=best&after=${encodeURIComponent(token)}`)),
+            ids(await feed(`sort=best&window=week&after=${encodeURIComponent(token)}`)),
             [followedLike, strangerLike, quiet, disliked],
-            "after the old favourite, the rest in order"
+            "after the top post: the rest of the scored run, the unscored run, the run below zero"
         );
+        const zero = (week.items || []).find((i) => i.doc_id === strangerLike);
+        const fromZero = `0:${zero.published_ms}:${zero.doc_id}`;
+        assert.deepEqual(ids(await feed(`sort=best&window=week&after=${encodeURIComponent(fromZero)}`)), [quiet, disliked], "a cursor inside the unscored run");
     });
 
     it("the facet counts keep to the window", async () => {
@@ -129,5 +134,50 @@ describe("scores: the best orders, and the reckoning behind them", function () {
         // Somebody else asking for ada's reckoning: it is a readout of her dials.
         const nosy = await cal(`api/identity/${adaRoot}/popularity/${adaRoot}/${liked}`);
         assert.ok(nosy.status >= 400, `another account may not read ada's reckoning: ${nosy.status}`);
+    });
+    it("scores kept as reactions and dials move are exactly what a rebuild reckons", async () => {
+        const check = async () => (await (await makeFetch(HOST)(`test/score-check?root=${adaRoot}`, { method: "POST" })).json());
+        // A second author ada follows, so an interest factor has something to move.
+        const [fay, fayRoot] = await persona("scorefay");
+        await j(fay, `api/identity/${fayRoot}/serve`, {});
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${fayRoot}/interest`, { value: "max" }, "PUT");
+        const d = await (await j(fay, `api/identity/${fayRoot}/docs`, { title: "fay's loaf", body: "a loaf", format: "marquee" })).json();
+        const pub = await j(fay, `api/identity/${fayRoot}/docs/${d.doc_id}/publish`, {});
+        const loaf = JSON.parse(await pub.text()).post_id;
+        let arrived = false;
+        for (let i = 0; i < 30 && !arrived; i++) {
+            await beat(HOST, "journal-fill");
+            arrived = ids(await feed("")).includes(loaf);
+            if (!arrived) await new Promise((r) => setTimeout(r, 300));
+        }
+        assert.ok(arrived, "fay's post reached ada's feed");
+
+        await feed("sort=best&window=week"); // the snapshot of ada's dials the keeping starts from
+        // Reactions arriving and leaving, each through the real doors.
+        await react(cal, calRoot, quiet, "\u{1F44D}");
+        await react(cal, calRoot, loaf, "\u{1F4AF}");
+        await react(dee, deeRoot, loaf, "\u{1F44E}");
+        const gone = await dee(`api/identity/${deeRoot}/public-annotations/${adaRoot}/${followedLike}/tag/${encodeURIComponent("\u{1F44D}")}`, { method: "DELETE" });
+        assert.equal(gone.status, 200, await gone.text());
+        await react(eve, eveRoot, disliked, "\u{1F4A9}");
+        // Compared before any dial moves: a dial change rescores its person, and would mend a
+        // withdrawal the keeping had missed.
+        let r = await check();
+        assert.deepEqual(r.kept, r.rebuilt, "reactions said and withdrawn: kept equals rebuilt");
+        // Dials moving: a follow dropped, a stranger trusted, an author's interest turned down.
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${deeRoot}/interest`, { value: "none" }, "PUT");
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${eveRoot}/trust`, { value: "low" }, "PUT");
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${fayRoot}/interest`, { value: "low" }, "PUT");
+        r = await check();
+        assert.ok(r.rebuilt.length > 0, "something is scored");
+        assert.deepEqual(r.kept, r.rebuilt, "kept incrementally, rebuilt from scratch: the same");
+        // A block, and more said after it.
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${calRoot}/blocked`, { value: "yes" }, "PUT");
+        await react(cal, calRoot, strangerLike, "\u{1F44E}");
+        await react(eve, eveRoot, quiet, "\u{1F923}");
+        const week = ids(await feed("sort=best&window=week"));
+        assert.notEqual(week[0], liked, "blocked, cal's double-like no longer lifts the post");
+        r = await check();
+        assert.deepEqual(r.kept, r.rebuilt, "and still the same after the block");
     });
 });

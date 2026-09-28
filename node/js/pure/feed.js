@@ -340,18 +340,17 @@ export function isBackdated(item) {
 
 /// Where to ask for the next page down: the last item shown.
 /// The feed's orders (PROJECT_PLAN's Scores and sort orders, slice 1): newest first, or best -
-/// the reader's score, highest first - over a window. Keys only; the page words them.
-export const FEED_SORTS = ['new', 'day', 'week', 'month', 'year', 'ever'];
+/// the reader's score, highest first - over a window, a year at the longest (Curtis: no "best
+/// ever"). Keys only; the page words them.
+export const FEED_SORTS = ['new', 'day', 'week', 'month', 'year'];
 export const DEFAULT_SORT = 'new';
 
 /// Is this sort one of the best orders?
 export const isBestSort = (sort) => FEED_SORTS.includes(sort) && sort !== 'new';
 
-/// The feed door's words for a sort: nothing for newest, `sort=best` and its window for best
-/// (no window is ever).
+/// The feed door's words for a sort: nothing for newest, `sort=best` and its window for best.
 export function sortParams(sort) {
-    if (!isBestSort(sort)) return '';
-    return sort === 'ever' ? 'sort=best' : `sort=best&window=${sort}`;
+    return isBestSort(sort) ? `sort=best&window=${sort}` : '';
 }
 
 /// A ranked page onto what is shown, in the node's order: `mergeFeed` sorts by date, which
