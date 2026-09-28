@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1145 phrases across 73 files.
+// 1149 phrases across 73 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -136,6 +136,7 @@ export default {
     'device.leave-empty-to-keep-the-one-you-set': 'leave empty to keep the one you set',
     'device.looking': 'looking…',
     'device.who-may-make-an-account-here': 'Who may make an account here:',
+    'device.only-this-computer': 'This app only answers this computer, so "anyone" means anyone who uses it.',
     'device.saved': 'saved',
     'device.save': 'save',
     'device.a-backup-holds-everything': 'A backup is a copy of everything here - every account, and the keys that unlock them. Whoever has one has all of it, so keep it as safe as this place itself.',
@@ -265,6 +266,9 @@ export default {
     'apps.people.cleared': 'cleared',
 
     // --- node/js/auth.js ---
+    'auth.warning': 'Warning:',
+    'auth.linux-works-best-in': 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.',
+    'auth.open-in-your-browser': 'Click here to open in your system browser.',
     'auth.app-name': 'horse drawing tycoon 2',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
@@ -1025,7 +1029,6 @@ export default {
     'auth.invalid-credentials-2': 'wrong name or password',
 
     // --- node/src/auth/extractor.rs ---
-    'auth.extractor.that-is-not-this-computers-key': "that isn't this computer's key",
     'auth.extractor.that-came-from-another-site': 'that request came from another site',
     'auth.extractor.no-cookies': 'no cookies',
     'auth.extractor.not-logged-in': 'please sign in again',
@@ -1283,6 +1286,7 @@ export default {
 
     // --- node/src/shell.rs ---
     'shell.only-the-desktop-app-saves-files': 'only the desktop app saves files this way',
+    'shell.only-the-desktop-app-opens-a-browser': "only the desktop app's own window can ask for that",
 
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',

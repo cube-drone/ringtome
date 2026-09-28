@@ -7,10 +7,14 @@
     and every backup door are for node administrators only; and a backup can be listed and
     downloaded whole, by its exact name and nothing else.
 
-    On a DEVICE - a single-tenant node like the desktop app's, which this file starts itself, since
-    the rig's nodes are all servers: nobody else signs up (a desktop app is its owner's alone), and a
-    backup is shown in the file manager rather than downloaded - read back from the node's
-    local-test record of what it asked the app around it (desktop/src/requests.rs does the showing).
+    On a DEVICE - a node like the desktop app's, which this file starts itself, since the rig's
+    nodes are all servers. Since 2026-09-28 (Curtis) a device is a localhost multi-user server:
+    the ordinary sign-in, sign-up open until its owner says otherwise, and the launch token signs
+    nobody in - it only names the app's own window, which says whose alerts the operating system
+    shows and may ask the app to open the system browser. A backup is shown in the file manager
+    rather than downloaded, and a file the page made is saved through the app - both read back
+    from the node's local-test record of what it asked the app around it
+    (desktop/src/requests.rs does the asking).
 */
 const assert = require("node:assert");
 const crypto = require("node:crypto");
@@ -134,13 +138,9 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
 
     const token = crypto.randomBytes(32).toString("hex");
     const host = `127.0.0.1:${DEVICE_PORT}`;
-    let tmp, child;
-    /// The desktop window: the launch token is the session.
-    const owner = (p, opts = {}) =>
-        fetch(`http://${host}/${p}`, {
-            ...opts,
-            headers: { Authorization: `Bearer ${token}`, ...(opts.body ? { "Content-Type": "application/json" } : {}) },
-        });
+    /// The owner, signed in the ordinary way; `window` is the same person in the app's own window.
+    let owner, windowed;
+    const WINDOW = { "X-Ringtome-Window": token };
     const shellAsked = async () => (await fetch(`http://${host}/test/shell`)).json();
 
     before(async () => {
@@ -165,10 +165,11 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
             } catch {}
             await wait(100);
         }
-        // The first launch-token request mints this computer's account; local-test mode skips the
-        // first-account-is-administrator rule (auth.rs), so the test grants what the app would have.
-        const me = await (await owner("api/auth/whoami")).json();
-        await sql(`INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES ('${me.id}', 'node_admin')`, host);
+        // The first account here; local-test mode skips the first-account-is-administrator rule
+        // (auth.rs), so the test grants what a real device's first sign-up gets.
+        owner = await makeUserFetch({ prefix: "devown", host });
+        await sql(`INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES ('${owner.account.id}', 'node_admin')`, host);
+        windowed = (p, opts = {}) => owner(p, { ...opts, headers: { ...(opts.headers || {}), ...WINDOW } });
     });
 
     after(() => {
@@ -176,9 +177,43 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
         if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     });
 
-    it("nobody else signs up: the app is its owner's alone", async () => {
-        assert.equal((await (await fetch(`http://${host}/api/registration`)).json()).mode, "closed");
-        assert.equal((await signUp("stranger", "password123", undefined, host)).status, 403);
+    it("anyone at this computer may sign up until the owner says otherwise", async () => {
+        const r = await (await fetch(`http://${host}/api/registration`)).json();
+        assert.equal(r.mode, "open", "a device's default is open: its first person must get in");
+        const other = await makeUserFetch({ prefix: "devoth", host });
+        assert.ok(other.account.id, "a second person on the same computer");
+        assert.equal((await j(owner, "api/admin/registration", { mode: "closed" }, "PUT")).status, 200, "the owner closes it, as a server's would");
+        assert.equal((await signUp("devlate", "password123", undefined, host)).status, 403);
+        await j(owner, "api/admin/registration", { mode: "open" }, "PUT");
+    });
+
+    it("the launch token signs nobody in: it only names the window", async () => {
+        for (const headers of [{ Authorization: `Bearer ${token}` }, WINDOW]) {
+            const r = await fetch(`http://${host}/api/auth/whoami`, { headers });
+            assert.equal(r.status, 401, `no cookie, nobody: ${JSON.stringify(Object.keys(headers))}`);
+        }
+        assert.equal((await owner("api/auth/whoami")).status, 200, "a signed-in browser needs no token");
+    });
+
+    it("whoever is signed in to the window is whose alerts the computer shows", async () => {
+        const windowOf = async () => (await (await fetch(`http://${host}/test/window`)).json()).account;
+        await owner("api/auth/whoami");
+        assert.equal(await windowOf(), null, "the same person in a browser is not the window");
+        await windowed("api/auth/whoami");
+        assert.equal(await windowOf(), owner.account.id);
+        const other = await makeUserFetch({ prefix: "devwin", host });
+        await other("api/auth/whoami", { headers: WINDOW });
+        assert.equal(await windowOf(), other.account.id, "someone else signed in to the window");
+        await other("api/auth/logout", { method: "POST", headers: WINDOW });
+        assert.equal(await windowOf(), null, "signed out of the window: nobody's alerts");
+    });
+
+    it("the window, and only the window, may ask for the system browser", async () => {
+        const before = (await shellAsked()).length;
+        assert.equal((await fetch(`http://${host}/api/shell/open-in-browser`, { method: "POST" })).status, 404, "a page elsewhere cannot");
+        const r = await fetch(`http://${host}/api/shell/open-in-browser`, { method: "POST", headers: WINDOW });
+        assert.equal(r.status, 204, "before anyone signs in");
+        assert.deepEqual((await shellAsked()).slice(before), [{ kind: "open_in_browser" }]);
     });
 
     it("a backup shows in the file manager rather than downloading", async () => {
@@ -191,22 +226,24 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
         }
         assert.ok(done, "the backup finished");
         const name = path.basename(done.path);
+        const before = (await shellAsked()).length;
         assert.equal((await owner(`api/admin/backups/${name}/reveal`, { method: "POST" })).status, 204);
-        assert.deepEqual(await shellAsked(), [{ kind: "reveal", path: done.path }]);
+        assert.deepEqual((await shellAsked()).slice(before), [{ kind: "reveal", path: done.path }]);
     });
 
     it("a file the page made is saved through the app, named but never echoed", async () => {
         const before = (await shellAsked()).length;
         const key = "spare key: not for any log";
-        const r = await fetch(`http://${host}/api/shell/save?name=${encodeURIComponent("../../spare-key.txt")}`, {
+        const r = await owner(`api/shell/save?name=${encodeURIComponent("../../spare-key.txt")}`, {
             method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "text/plain" },
+            headers: { "Content-Type": "text/plain" },
             body: key,
+            file: true,
         });
         assert.equal(r.status, 204);
         const asked = (await shellAsked()).slice(before);
         assert.deepEqual(asked, [{ kind: "save", name: "spare-key.txt", size: key.length }], "the last path component, and the size - not the bytes");
         const stranger = await fetch(`http://${host}/api/shell/save?name=x.txt`, { method: "POST", body: "x" });
-        assert.ok(stranger.status >= 400, `a page without the app's token cannot ask: ${stranger.status}`);
+        assert.ok(stranger.status >= 400, `nobody signed in cannot ask: ${stranger.status}`);
     });
 });

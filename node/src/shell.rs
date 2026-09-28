@@ -32,6 +32,10 @@ pub enum ShellRequest {
         bytes: bytes::Bytes,
         size: usize,
     },
+    /// Open this node in the system's own browser (2026-09-28: on Linux the app's webview is a
+    /// poor place to be, and its sign-in says so). Always the node's own address, which the shell
+    /// knows - nothing in the request can point it anywhere else.
+    OpenInBrowser,
 }
 
 #[derive(Clone)]
@@ -92,6 +96,24 @@ pub async fn save_handler(
         return Err(crate::error::AppError::NotFound(crate::msg!(
             "shell.only-the-desktop-app-saves-files",
             "only the desktop app saves files this way"
+        )));
+    }
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// POST `/api/shell/open-in-browser` - the desktop app's window asks to be opened in the system
+/// browser instead. Before anyone has signed in, so it asks no session; it asks the window's own
+/// header instead (auth/extractor.rs, `window_offered`), so no other page - not even one in a
+/// browser on this computer - can make the app open windows.
+pub async fn open_in_browser_handler(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::http::StatusCode, crate::error::AppError> {
+    let from_window = crate::auth::window_offered(&headers, &state);
+    if !from_window || !crate::registration::is_device(&state) || !state.shell.ask(ShellRequest::OpenInBrowser) {
+        return Err(crate::error::AppError::NotFound(crate::msg!(
+            "shell.only-the-desktop-app-opens-a-browser",
+            "only the desktop app's own window can ask for that"
         )));
     }
     Ok(axum::http::StatusCode::NO_CONTENT)

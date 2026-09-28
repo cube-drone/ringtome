@@ -1,17 +1,18 @@
 //! The `Session` extractor: a handler that takes a `Session` parameter only runs for an
 //! authenticated caller; otherwise the request is rejected with 401.
 //!
-//! Mode-aware by design (see the Tenancy seam): in multi-tenant node mode a session requires a
-//! valid cookie; in single-tenant desktop mode there is one implicit account and login is a
-//! formality, so that path will synthesize a session. Handlers just ask for `Session` and do not
-//! care which mode produced it.
+//! One way in, on every kind of node: a valid session cookie. The desktop app used to have a
+//! second - its launch token was the session, and there was no login screen - and that is gone
+//! (Curtis, 2026-09-28): a desktop node is a localhost multi-user server with the ordinary sign-in,
+//! so its own window signs in like any browser. The launch token survives only as the window's
+//! name for itself ([`window_offered`]): it says which account is signed in THERE, which is whose
+//! alerts the operating system shows (attention.rs), and it proves nothing else.
 
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
 
-use super::{account_for_token, has_tag, local_account, secret_eq, Account, TAG_ADMIN, TAG_NODE_ADMIN};
-use crate::config::Tenancy;
+use super::{account_for_token, has_tag, secret_eq, Account, TAG_ADMIN, TAG_NODE_ADMIN};
 use crate::error::AppError;
 use crate::AppState;
 
@@ -41,26 +42,9 @@ impl FromRequestParts<AppState> for Session {
             .await
             .map_err(|_| AppError::Internal(anyhow::anyhow!("missing app state")))?;
 
-        // Single-tenant desktop mode: the OS user is the only tenant, and the shell's launch
-        // token is how they prove it (DESKTOP.md, Stage 3). Possession IS the session, so
-        // there is no login screen - and the reason a token rather than an auto-minted cookie
-        // is that a cookie is carried by any caller who reaches loopback, while a header is
-        // carried only by something that can set one.
-        if state.config.tenancy == Tenancy::Single {
-            if let Some(expected) = state.config.launch_token.as_deref() {
-                if let Some(given) = launch_token_offered(parts) {
-                    if secret_eq(&given, expected) {
-                        let account = local_account(&state.node_db, state.config.local_test).await?;
-                        state.activity.stamp(&account.id.to_string());
-                        return Ok(Session { account });
-                    }
-                    return Err(AppError::Unauthorized(crate::msg!(
-                        "auth.extractor.that-is-not-this-computers-key",
-                        "that isn't this computer's key"
-                    )));
-                }
-            }
-        }
+        // The desktop app's own window, if this request is from it: whoever proves to be signed in
+        // below is who the window is signed in as; a window that proves nobody is signed out.
+        let window = window_offered(&parts.headers, &state);
 
         // A cross-site caller is nobody here, whatever cookie the browser attached.
         //
@@ -84,18 +68,27 @@ impl FromRequestParts<AppState> for Session {
             )));
         }
 
-        let jar = CookieJar::from_request_parts(parts, &state)
-            .await
-            .map_err(|_| AppError::Unauthorized(crate::msg!("auth.extractor.no-cookies", "no cookies")))?;
-
-        let token = jar
-            .get(&session_cookie_name(state.config.port))
-            .map(|c| c.value().to_string())
-            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "please sign in again")))?;
-
-        let account = account_for_token(&state.node_db, &token)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "please sign in again")))?;
+        let signed_in = async {
+            let jar = CookieJar::from_request_parts(parts, &state)
+                .await
+                .map_err(|_| AppError::Unauthorized(crate::msg!("auth.extractor.no-cookies", "no cookies")))?;
+            let token = jar
+                .get(&session_cookie_name(state.config.port))
+                .map(|c| c.value().to_string())
+                .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "please sign in again")))?;
+            account_for_token(&state.node_db, &token)
+                .await?
+                .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "please sign in again")))
+        }
+        .await;
+        if window {
+            match &signed_in {
+                Ok(account) => state.attention.set_window_account(Some(account.id.to_string())),
+                Err(AppError::Unauthorized(_)) => state.attention.set_window_account(None),
+                Err(_) => {}
+            }
+        }
+        let account = signed_in?;
 
         // The presence signal: an authenticated request is a human at the keyboard, and the
         // follow-refresh sweep spends its budget on present humans first.
@@ -105,39 +98,20 @@ impl FromRequestParts<AppState> for Session {
     }
 }
 
-/// The launch token as this request carries it, if it does.
-///
-/// Two spellings, because a browser cannot set a header on every kind of request it makes:
-/// ordinary calls carry `Authorization: Bearer <token>`, and the live-cache WebSocket - whose
-/// constructor has no header argument at all - carries it as a subprotocol, which is the one
-/// string the `WebSocket` constructor does let a page choose. Both are set by code running in
-/// the shell's own window; neither can be attached by a navigation, which is the whole point.
-fn launch_token_offered(parts: &Parts) -> Option<String> {
-    if let Some(bearer) = parts
-        .headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-    {
-        return Some(bearer.trim().to_string());
-    }
-    parts
-        .headers
-        .get("sec-websocket-protocol")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|offered| {
-            offered
-                .split(',')
-                .map(str::trim)
-                .find_map(|p| p.strip_prefix(WS_TOKEN_PROTOCOL_PREFIX))
-                .map(str::to_string)
-        })
-}
+/// The header the desktop app's window names itself by, on every request it makes: the launch
+/// token, which the shell hands its window alone and nothing else knows.
+pub const WINDOW_HEADER: &str = "x-ringtome-window";
 
-/// The subprotocol a token rides on, when the request is a WebSocket handshake. The server
-/// must echo the protocol it accepts or the browser fails the connection, so the stream door
-/// spells this prefix too.
-pub const WS_TOKEN_PROTOCOL_PREFIX: &str = "ringtome.token.";
+/// Is this request from the desktop app's own window? Only a request carrying this launch's
+/// token says so - a browser on the same computer cannot, since the token is never written down.
+/// It grants nothing: a request is who its cookie says, wherever it comes from.
+pub fn window_offered(headers: &axum::http::HeaderMap, state: &AppState) -> bool {
+    let Some(expected) = state.config.launch_token.as_deref() else { return false };
+    headers
+        .get(WINDOW_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|given| secret_eq(given.trim(), expected))
+}
 
 /// `Option<Session>` for the surfaces with two audiences (the `/id/` face): an anonymous
 /// caller is a real caller there, not a rejection. Missing or invalid credentials become

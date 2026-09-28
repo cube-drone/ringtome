@@ -298,7 +298,7 @@ impl Bound {
     /// Listen for the moments a badge lights (attention.rs) - the desktop app's notifications.
     /// Subscribe before [`serve`] consumes the `Bound`; the receiver outlives it.
     pub fn attention(&self) -> tokio::sync::broadcast::Receiver<attention::Alert> {
-        self.attention.watch_everyone();
+        self.attention.watch_window();
         self.attention.subscribe()
     }
 
@@ -762,6 +762,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/admin/backups/{name}", axum::routing::get(backup::download_handler))
         .route("/api/admin/backups/{name}/reveal", axum::routing::post(backup::reveal_handler))
         // A file the page made, saved through the desktop app (shell.rs): the upload's own cap.
+        .route("/api/shell/open-in-browser", axum::routing::post(shell::open_in_browser_handler))
         .route(
             "/api/shell/save",
             axum::routing::post(shell::save_handler).layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
@@ -818,7 +819,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
                 axum::routing::post(test_endpoints::backup_verify),
             )
             .route("/test/score-check", axum::routing::post(test_endpoints::score_check))
-            .route("/test/shell", axum::routing::get(test_endpoints::shell_requests));
+            .route("/test/shell", axum::routing::get(test_endpoints::shell_requests))
+            .route("/test/window", axum::routing::get(test_endpoints::window_account));
     }
 
     let attention = state.attention.clone();

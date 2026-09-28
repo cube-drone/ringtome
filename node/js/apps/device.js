@@ -21,7 +21,9 @@ import { backupTime, sizeLabel } from '../pure/backups.js';
 const html = htm.bind(h);
 
 /// The pages this app offers here: a desktop app has no Registration page (see above).
-const pages = () => (isDevice() ? ['backups'] : ['registration', 'backups']);
+// A desktop app's owner has the same sign-up choices a server's has (Curtis, 2026-09-28: every
+// desktop app is a localhost multi-user server now).
+const pages = () => ['registration', 'backups'];
 
 export const DeviceApp = ({ page, admin }) => {
     if (!admin) {
@@ -29,7 +31,7 @@ export const DeviceApp = ({ page, admin }) => {
             <p class="null-sub">${t('device.only-for-the-people-who-look-after-this', 'These settings are only for the people who look after this place.')}</p>
         </div>`;
     }
-    if (page === 'registration' && !isDevice()) return html`<${Registration} />`;
+    if (page === 'registration') return html`<${Registration} />`;
     if (page === 'backups') return html`<${Backups} />`;
     return html`<${Landing} />`;
 };
@@ -136,6 +138,8 @@ const Policy = ({ status, onSaved }) => {
     };
     return html`
         <p class="null-sub">${t('device.who-may-make-an-account-here', 'Who may make an account here:')}</p>
+        ${isDevice() &&
+        html`<p class="null-sub">${t('device.only-this-computer', 'This app only answers this computer, so "anyone" means anyone who uses it.')}</p>`}
         <${ModePicker}
             modes=${['open', 'password', 'closed']}
             mode=${mode}

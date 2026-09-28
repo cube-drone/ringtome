@@ -215,8 +215,14 @@ async fn login_handler(
 
 async fn logout_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
+    // The desktop app's window signing out: its account's alerts stop now, not at the window's
+    // next request (auth/extractor.rs).
+    if crate::auth::window_offered(&headers, &state) {
+        state.attention.set_window_account(None);
+    }
     let name = session_cookie_name(state.config.port);
     if let Some(cookie) = jar.get(&name) {
         delete_session(&state.node_db, cookie.value())

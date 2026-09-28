@@ -6,6 +6,21 @@
     text-align: center;
 }
 
+/* The desktop app on Linux, pointing at a real browser (2026-09-28). */
+.welcome-notice {
+    background: var(--surface-2);
+    border: 1px solid var(--peach);
+    color: var(--ink);
+    padding: 0.6rem 0.8rem;
+    margin: 0 0 1.5rem;
+    font-size: 0.9rem;
+    text-align: left;
+}
+
+.welcome-notice a {
+    color: var(--teal-deep);
+}
+
 .welcome-title {
     font-family: "Press Start 2P", monospace;
     font-size: 1.6rem;

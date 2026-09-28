@@ -372,6 +372,21 @@ the token as the `ringtome.token.<secret>` subprotocol, which the stream door ec
 does not echo makes the browser fail the connection. Both are set by code in the shell's own window,
 and neither can be attached by a navigation, which is the point.
 
+**Retired, 2026-09-28 (Curtis): the no-login mode is dead - temporarily, maybe permanently.** It came
+apart on Linux, where the webview is bad enough that the person may well use their own browser - which
+the token cannot reach - and an app that signs in one way in its window and another in a browser is
+two front doors to keep. So every desktop app is now a localhost **multi-user** server with the
+ordinary sign-in, and its owner has the sign-up choices a server's administrator has (*The Device
+app*, below). The token stays, demoted: it signs nobody in, and only **names the window**, as an
+`X-Ringtome-Window` header on the window's requests. That says whose alerts the operating system
+shows (the account signed in to the window, nobody's while it is signed out - attention.rs), and it is
+what lets the window alone ask the app to open the system browser. `auth::local_account`, the
+subprotocol spelling and the stream door's echo are gone; the WebSocket rides the cookie, as in any
+browser. **Old installs start over** (Curtis): their one account, `me`, was minted with a password
+nobody was told, so nobody can sign in to it - delete the app's data directory and sign up afresh,
+bringing personas back with their spare keys. The paragraph above about why the token was the
+precondition for removing the login screen stays as the record of why it was built.
+
 *And the belt, which protects the browser-based dev path the token cannot:* a request whose
 `Sec-Fetch-Site` says `cross-site` is **anonymous**, whatever cookie rode along. That is the exact
 shape `SameSite=Lax` still permits — a page navigating itself at a GET door with a side effect, of
@@ -503,15 +518,20 @@ Both are load-bearing and neither substitutes for the other. Two consequences to
 
 ## The Device app (2026-09-25)
 
-The app's owner is its `node_admin`, so they see a **Device** app - the same app a server's
-administrator sees as **Server** (`node/js/apps/device.js`) - with one page here: Backups, where an
-archive is shown in the file manager rather than downloaded, since it is already on this disk (the
-node asks through `node/src/shell.rs`; `desktop/src/requests.rs` does the showing). The server's
-Registration page is not offered: a desktop app is its owner's alone, and its sign-ups are `closed`
-by default - which also shuts a door that stood open before, to anything else on the same computer
-that found the port. Letting other people use one device (a shared family computer, say), and
-signing in locally with a password instead of the launch token's auto-login, are both unshaped
-(NEXT_STEPS).
+The app's owner is its `node_admin` - the first account to sign up, as on any server - so they see a
+**Device** app, the same app a server's administrator sees as **Server** (`node/js/apps/device.js`).
+Since 2026-09-28 it has both of the Server app's pages. **Registration**: open, a shared sign-up
+password, or closed, exactly as a server's - defaulting to open, because the first person must be able
+to sign up, and since the node binds loopback, open means open to whoever uses this computer.
+**Backups**: an archive is shown in the file manager rather than downloaded, since it is already on
+this disk (the node asks through `node/src/shell.rs`; `desktop/src/requests.rs` does the showing).
+Files the page makes itself - the spare key, a drawing's PNG - are saved through the app the same
+way, with the system's save dialog.
+
+**On Linux**, the sign-in carries a notice above it: the app works best from Chrome or Firefox, with a
+link that asks the app to open this node in the system browser (`/api/shell/open-in-browser`, which
+only the window may call). The page learns its platform from `window.__ringtome_platform`, set by the shell's
+initialization script beside the token.
 
 ## Residuals
 

@@ -1,12 +1,15 @@
 //! What the node asks of this app (the node's `shell.rs`), done here, where the app is.
 //!
-//! Two things:
+//! Three things:
 //!
 //! - **show a file** - a backup, on the Device app's Backups page. It is already on this disk, so
 //!   the file manager opens with it selected rather than the webview trying to download it.
 //! - **save a file** the page made - the spare key, a drawing's PNG (2026-09-28). A webview
 //!   downloads nothing from a `blob:` link, so the page hands the bytes to the node and this asks
 //!   where they go, with the system's own save dialog.
+//! - **open this node in the system browser** - the Linux sign-in's way out of a webview that is
+//!   slower than a real browser and cannot show every picture (2026-09-28). Always the node's own
+//!   address: the request carries none.
 
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
@@ -15,7 +18,7 @@ use tauri_plugin_opener::OpenerExt;
 use ringtome_node::shell::ShellRequest;
 
 /// Act on the node's requests for the life of the app.
-pub fn start(app: AppHandle, mut requests: tokio::sync::broadcast::Receiver<ShellRequest>) {
+pub fn start(app: AppHandle, mut requests: tokio::sync::broadcast::Receiver<ShellRequest>, node_url: String) {
     tauri::async_runtime::spawn(async move {
         loop {
             let request = match requests.recv().await {
@@ -30,6 +33,11 @@ pub fn start(app: AppHandle, mut requests: tokio::sync::broadcast::Receiver<Shel
                     }
                 }
                 ShellRequest::Save { name, bytes, .. } => save(&app, name, bytes),
+                ShellRequest::OpenInBrowser => {
+                    if let Err(e) = app.opener().open_url(&node_url, None::<&str>) {
+                        tracing::warn!(error = %e, url = %node_url, "could not open the system browser");
+                    }
+                }
             }
         }
     });

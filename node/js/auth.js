@@ -8,7 +8,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from './net.js';
+import { api, isLinuxApp } from './net.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
@@ -105,6 +105,25 @@ function extractSecret(pasted) {
 }
 
 // The front door: sign in, make an account, or come back in with your spare key.
+/// Above the sign-in, in the desktop app on Linux only (Curtis, 2026-09-28): its webview is slower
+/// than a real browser and cannot show every picture, so it points the way out. The link asks
+/// the app to open this node in the system's own browser (shell.rs).
+const LinuxNotice = () => {
+    const [error, setError] = useState(null);
+    if (!isLinuxApp()) return null;
+    const open = (e) => {
+        e.preventDefault();
+        setError(null);
+        api('/api/shell/open-in-browser', { method: 'POST' }).catch((err) => setError(err.message));
+    };
+    return html`<div class="welcome-notice">
+        <strong>${t('auth.warning', 'Warning:')}</strong>
+        ${' '}${t('auth.linux-works-best-in', 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.')}
+        ${' '}<a href="#" onClick=${open}>${t('auth.open-in-your-browser', 'Click here to open in your system browser.')}</a>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
+};
+
 export const Welcome = ({ session }) => {
     const [mode, setMode] = useState('login'); // 'login' | 'register' | 'recover'
     const [username, setUsername] = useState('');
@@ -169,6 +188,7 @@ export const Welcome = ({ session }) => {
     if (mode === 'recover') {
         return html`
             <div class="welcome">
+                <${LinuxNotice} />
                 <h1 class="welcome-title">${t('auth.app-name', 'horse drawing tycoon 2')}</h1>
                 <p class="welcome-sub">${t('auth.locked-out-your-spare-key', 'locked out? your spare key gets you back in.')}</p>
                 <form class="welcome-form" onSubmit=${submit}>
@@ -235,6 +255,7 @@ export const Welcome = ({ session }) => {
 
     return html`
         <div class="welcome">
+            <${LinuxNotice} />
             <h1 class="welcome-title">${t('auth.app-name-2', 'horse drawing tycoon 2')}</h1>
             <p class="welcome-sub">${t('auth.a-cozy-corner-of-the', 'a cozy corner of the internet')}</p>
 

@@ -573,6 +573,12 @@ pub async fn score_check(
     Ok(Json(serde_json::json!({ "kept": kept, "rebuilt": rebuilt })))
 }
 
+/// GET `/test/window` - the account signed in to the desktop app's window, as the window's own
+/// requests have said (attention.rs): whose alerts the operating system would show.
+pub async fn window_account(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "account": state.attention.window_account() }))
+}
+
 /// GET `/test/shell` - everything the node has asked of a desktop shell (shell.rs), oldest first:
 /// what a device node in the rig would have had its app do.
 pub async fn shell_requests(State(state): State<AppState>) -> Json<Vec<crate::shell::ShellRequest>> {

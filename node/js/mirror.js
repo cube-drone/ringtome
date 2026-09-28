@@ -13,7 +13,6 @@
 // Still disposable - they share the mirror's lifetime, so "forget this browser" forgets them too,
 // which is the right privacy posture for tables that record which documents you touch.
 import Dexie, { liveQuery } from 'dexie';
-import { wsProtocols } from './net.js';
 import { useState, useEffect } from 'preact/hooks';
 
 // One Dexie handle per persona per page - the mirror is per-identity ("nothing is ever cached
@@ -149,11 +148,8 @@ export function startLiveCache(root) {
         const url = `${proto}://${location.host}/api/identity/${root}/stream${
             cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
         }`;
-        // The desktop app's proof, in the one place a `WebSocket` lets a page put a string:
-        // the constructor has no header argument, so the launch token rides as a subprotocol
-        // (DESKTOP.md, Stage 3; the node echoes it, or the browser fails the connection).
-        // In a browser there is no token and the cookie does the work, as it always has.
-        const ws = wsProtocols().length > 0 ? new WebSocket(url, wsProtocols()) : new WebSocket(url);
+        // The cookie does the work, in a browser and in the desktop app alike.
+        const ws = new WebSocket(url);
         state.ws = ws;
 
         ws.onmessage = async (event) => {

@@ -20,26 +20,23 @@ import { t } from './i18n.js';
 
 /// The shell's key for this launch, or nothing at all in a browser. Read per call rather than
 /// cached: it is set before the first script runs, and a value read once at module load would
-/// be a second place for it to go stale.
+/// be a second place for it to go stale. Since 2026-09-28 it signs nobody in - the desktop app's
+/// window signs in like any browser - and only names the window (`X-Ringtome-Window`), so the
+/// node knows whose alerts the operating system should show.
 const launchToken = () => (typeof window === 'undefined' ? null : window.__ringtome_launch_token || null);
 
 /// Is this the desktop app, rather than a browser? The shell's key is on the window only there.
 /// What decides "Device" over "Server", and "show in folder" over "download".
 export const isDevice = () => !!launchToken();
 
-/// The proof this client can offer, as headers. Empty in a browser, where the cookie is the
-/// proof and nothing here should touch a token.
-export function authHeaders() {
-    const token = launchToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-}
+/// ...and the desktop app on Linux, whose webview is a poorer place to be than the person's own
+/// browser (Curtis, 2026-09-28); its sign-in says so.
+export const isLinuxApp = () => isDevice() && window.__ringtome_platform === 'linux';
 
-/// ...and the same proof for a WebSocket, which has no headers to set: the one string its
-/// constructor takes is the subprotocol list, so the token rides there (the node echoes it).
-/// Empty in a browser, which is what makes `new WebSocket(url)` the ordinary case.
-export function wsProtocols() {
+/// The window's name for itself, as headers: empty in a browser, where the cookie is all there is.
+function authHeaders() {
     const token = launchToken();
-    return token ? [`ringtome.token.${token}`] : [];
+    return token ? { 'X-Ringtome-Window': token } : {};
 }
 
 /// Save a file this page made - `blob`, suggesting `name` - to the person's own disk. In a browser,

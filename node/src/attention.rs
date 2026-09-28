@@ -64,7 +64,7 @@ pub struct Alert {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture: Option<String>,
     /// That picture as a small PNG, for an embedder to hand its operating system - rendered
-    /// only while an embedder listens (`watch_everyone`), since not every platform's
+    /// only while an embedder listens (`watch_window`), since not every platform's
     /// notification reads AVIF. Its size is what the test recorder shows.
     #[serde(rename = "picture_png_bytes", serialize_with = "png_size", skip_serializing_if = "Option::is_none")]
     pub picture_png: Option<Arc<Vec<u8>>>,
@@ -83,8 +83,16 @@ const PICTURE_BOUND: u32 = 720;
 pub struct Attention {
     tx: tokio::sync::broadcast::Sender<Alert>,
     recorded: Option<Arc<Mutex<VecDeque<Alert>>>>,
-    /// Somebody listens for every persona (the desktop app, the recorder).
+    /// Somebody listens for every persona (the test recorder).
     everyone: Arc<std::sync::atomic::AtomicBool>,
+    /// The desktop app listens - for the personas of whichever account is signed in to its own
+    /// window, and nobody else's (Curtis, 2026-09-28: a desktop node is multi-user now, and one
+    /// person's messages must not pop up on the screen of whoever sits at it).
+    embedder: Arc<std::sync::atomic::AtomicBool>,
+    /// That account, as the window's own requests say (auth/extractor.rs), and its personas,
+    /// refreshed by the watcher.
+    window_account: Arc<Mutex<Option<String>>>,
+    window_roots: Arc<Mutex<HashSet<String>>>,
     /// The personas Web Push listens for: those with at least one subscription.
     push_roots: Arc<Mutex<HashSet<String>>>,
 }
@@ -96,21 +104,46 @@ impl Attention {
             tx,
             recorded: record.then(Default::default),
             everyone: Arc::new(std::sync::atomic::AtomicBool::new(record)),
+            embedder: Default::default(),
+            window_account: Default::default(),
+            window_roots: Default::default(),
             push_roots: Default::default(),
         }
     }
 
     /// Listen for alerts. A receiver that falls behind skips ahead (broadcast's lag), which
     /// for notifications is the right failure: the oldest news is the least worth showing.
-    /// Subscribing alone watches nobody new: say whom with [`Self::watch_everyone`] or
+    /// Subscribing alone watches nobody new: say whom with [`Self::watch_window`] or
     /// [`Self::watch_for_push`].
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<Alert> {
         self.tx.subscribe()
     }
 
-    /// Watch every persona this node hosts - the embedder's choice (`Bound::attention`).
-    pub fn watch_everyone(&self) {
-        self.everyone.store(true, std::sync::atomic::Ordering::SeqCst);
+    /// Watch the personas of the account signed in to the embedder's window (`Bound::attention`).
+    pub fn watch_window(&self) {
+        self.embedder.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Who is signed in to the embedder's window: an account id, or nobody. Its personas are
+    /// picked up by the watcher's next tick; nobody's are dropped at once.
+    pub fn set_window_account(&self, account: Option<String>) {
+        let mut held = self.window_account.lock().expect("window account poisoned");
+        if *held == account {
+            return;
+        }
+        // Whoever it was, their personas stop now; the new account's start at the next tick.
+        self.window_roots.lock().expect("window roots poisoned").clear();
+        *held = account;
+    }
+
+    /// The account the window is signed in as. Only ever set on a node with a launch token - the
+    /// desktop app's, or the rig's device node - since only the window can say (auth/extractor.rs).
+    pub fn window_account(&self) -> Option<String> {
+        self.window_account.lock().expect("window account poisoned").clone()
+    }
+
+    fn set_window_roots(&self, roots: HashSet<String>) {
+        *self.window_roots.lock().expect("window roots poisoned") = roots;
     }
 
     /// Watch one persona for Web Push (a subscription exists).
@@ -134,17 +167,19 @@ impl Attention {
     /// Is anybody listening for this persona?
     fn wanted(&self, root: &str) -> bool {
         self.everyone.load(std::sync::atomic::Ordering::SeqCst)
+            || self.window_roots.lock().expect("window roots poisoned").contains(root)
             || self.push_roots.lock().expect("push roots poisoned").contains(root)
     }
 
     /// Does an embedder listen - someone who will want an alert's picture as a file?
     fn embedded(&self) -> bool {
-        self.everyone.load(std::sync::atomic::Ordering::SeqCst)
+        self.everyone.load(std::sync::atomic::Ordering::SeqCst) || self.embedder.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Is anybody listening for anyone? (What lets an idle tick skip even the hosted-roots read.)
     fn any_wanted(&self) -> bool {
         self.everyone.load(std::sync::atomic::Ordering::SeqCst)
+            || !self.window_roots.lock().expect("window roots poisoned").is_empty()
             || !self.push_roots.lock().expect("push roots poisoned").is_empty()
     }
 
@@ -181,6 +216,13 @@ pub async fn watch(state: AppState) {
         let mut everyone = false;
         tokio::select! {
             _ = tick.tick() => {
+                // The window's personas, read afresh: a persona made a moment ago is watched
+                // from the next tick, and a signed-out window watches none.
+                if let Some(account) = state.attention.window_account() {
+                    if let Ok(roots) = roots_of(&state, &account).await {
+                        state.attention.set_window_roots(roots);
+                    }
+                }
                 if !state.attention.any_wanted() { continue; }
                 let Ok(roots) = crate::identity::hosted_roots(&state.node_db).await else { continue };
                 for root in roots.into_iter().filter(|r| state.attention.wanted(r)) {
@@ -242,6 +284,15 @@ pub async fn watch(state: AppState) {
             }
         }
     }
+}
+
+/// The personas an account holds on this node.
+async fn roots_of(state: &AppState, account: &str) -> anyhow::Result<HashSet<String>> {
+    let account = uuid::Uuid::parse_str(account)?;
+    let held = crate::identity::list_for_account(&state.node_db, &account)
+        .await
+        .map_err(|e| anyhow::anyhow!("listing the window account's personas: {e:?}"))?;
+    Ok(held.into_iter().map(|i| i.root_pubkey).collect())
 }
 
 /// One persona, once: everything unseen now, the set replaced, the new items returned.
@@ -530,6 +581,24 @@ fn short_name(root_hex: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The desktop app hears the window's account and nobody else (2026-09-28): another account
+    /// on the same computer stays quiet, and a change of who is signed in drops the last one's
+    /// personas at once rather than at the next tick.
+    #[test]
+    fn the_app_hears_only_the_window_account() {
+        let a = Attention::new(false);
+        a.watch_window();
+        assert!(!a.any_wanted(), "nobody signed in: nobody heard");
+        a.set_window_account(Some("acct-1".into()));
+        a.set_window_roots(HashSet::from(["mine".to_string()]));
+        assert!(a.wanted("mine"));
+        assert!(!a.wanted("theirs"), "another account's persona on this node");
+        a.set_window_account(Some("acct-2".into()));
+        assert!(!a.wanted("mine"), "signed in as someone else");
+        a.set_window_account(None);
+        assert!(!a.any_wanted());
+    }
 
     fn alert(route: &str, body: &str) -> Alert {
         Alert { root: "r".into(), title: "t".into(), body: body.into(), route: route.into(), picture: None, picture_png: None }

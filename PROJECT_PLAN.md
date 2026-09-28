@@ -4537,7 +4537,7 @@ Rust binary with different switches flipped:
 | | Node mode (hosted / always-on) | Desktop mode (personal) |
 |---|---|---|
 | Bind | public port | `localhost`, stable default port |
-| Tenancy | multi-tenant (Argon2 login) | single-tenant, auto-login (the OS user *is* the tenant) |
+| Tenancy | multi-tenant (Argon2 login) | multi-tenant (Argon2 login) on loopback - auto-login retired 2026-09-28 (DESKTOP.md, *Stage 3*) |
 | Envelope key | env var / file, upgradeable to keychain | OS keychain |
 | Lifecycle | always-on service | tray shell + autostart |
 

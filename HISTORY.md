@@ -12167,3 +12167,32 @@ The same run found Linux's WebKitGTK showing no pictures (AVIF, which depends on
 built it) and feeling far slower than a real browser; DESKTOP.md's "Linux was the best engine" is
 corrected, and the choice - keep the webview, or open the person's own browser on Linux - is in
 NEXT_STEPS.
+
+## 2026-09-28 (cont.): the desktop app signs in like a server
+
+Curtis declared the desktop app's no-login mode dead, temporarily and maybe permanently, as part of
+the Linux pivot: every desktop app now has the full sign-in and runs a localhost multi-user server.
+
+- **The token names the window, and signs nobody in.** The auth extractor has one way in, a
+  session cookie, on every kind of node; `auth::local_account`, the WebSocket subprotocol spelling
+  and the stream door's echo are gone. The window still gets its launch token, and sends it as
+  `X-Ringtome-Window` (net.js); the extractor notes whoever that request proves to be signed in,
+  or nobody.
+- **Alerts are the window's account's** (attention.rs): the app's OS notifications cover the
+  personas of whichever account is signed in to its window, and nobody's while it is signed out,
+  so one person's messages don't pop up for whoever sits at a shared computer. A sign-out through
+  the window stops them at once. Browsers keep Web Push.
+- **Sign-up defaults to open on a device**, as on a server - the first person must get in, and a
+  device binds loopback - and the Device app has the Server app's Registration page, with a line
+  saying "anyone" means anyone using this computer. The first account is `node_admin`, as anywhere.
+- **On Linux**, the sign-in has a notice above it pointing to Chrome or Firefox, with a link that
+  asks the app to open the node in the system browser (`POST /api/shell/open-in-browser`, only for
+  the window's own header; `ShellRequest::OpenInBrowser`, always the node's own address). The shell
+  tells the page its platform (`window.__ringtome_platform`).
+- **Old installs start over** (Curtis): their token-minted account `me` has a password nobody knows.
+
+device.cjs now signs its owner in the ordinary way and holds: sign-up open by default and closable
+by the owner; the token alone (as a bearer or as the window header) signs nobody in; the window's
+account follows whoever signs in there and clears on sign-out; and only the window may ask for the
+browser. attention.rs holds that the app hears only the window's account. DESKTOP.md's Stage 3 and
+Device app sections, PROJECT_PLAN's delivery table and NEXT_STEPS are brought along.

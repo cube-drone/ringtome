@@ -123,20 +123,13 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 *  a mp3 browser
 
 ### Desktop
-* **Local accounts, shaped later** (Curtis, 2026-09-25): signing in to the desktop app with a
-  password instead of the launch token's auto-login, and whether one computer should host several
-  people's accounts at all. A first cut (the app listening on the LAN) guessed the second one wrong
-  and came out again; nothing is needed yet.
 * **Linux: the webview may have to go** (Curtis, 2026-09-28, trying the desktop build on Linux):
   WebKitGTK showed no pictures - the node keeps every picture as AVIF, and whether WebKitGTK
   decodes AVIF depends on how the distro built it (SVGs, the identicons, drew fine) - and felt
-  far slower than Chrome or Firefox. The proposal: on Linux, keep the app - node, tray,
-  start-at-login, single instance, the self-updating AppImage - and open the person's own browser
-  at the loopback address instead of a window. Two things to settle first: **how the browser proves
-  it is the owner** (the launch token lives only in the app's own window; the leaning is the
-  hosted node's ordinary sign-in, or a one-time link from the shell that sets a cookie), and **the
-  way back with no tray** (stock GNOME shows none without an extension: open the browser on every
-  launch, and a second launch opens it again).
+  far slower than Chrome or Firefox. First step taken: every desktop app has the ordinary sign-in
+  now, and on Linux the sign-in points to the system browser. Still open: whether Linux keeps a
+  window at all, or opens the browser at launch instead, and **the way back with no tray** (stock
+  GNOME shows none without an extension).
 
 ### Server nodes
 Two tasks, split on purpose (Curtis, 2026-09-25): packaging for the widest range of deployments,

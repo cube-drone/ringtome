@@ -57,10 +57,12 @@ fn main() {
         .setup(|app| {
             let data_dir = data_directory(app.handle())?;
             // The key for this launch (DESKTOP.md, Stage 3), minted here and never written
-            // down: the node takes it as proof of being this window, and the window is handed
-            // it by an initialization script - which runs before any page script, so the
-            // client finds it already there. NOT the query string: a URL lands in history, in
-            // a log, in a screenshot, and this is the whole house.
+            // down, and handed to the window by an initialization script - which runs before any
+            // page script, so the client finds it already there. Since 2026-09-28 it signs
+            // nobody in (the window has the ordinary sign-in, like any browser): it only names
+            // the window, so the node knows whose alerts to show and that a request to open the
+            // system browser came from here. NOT the query string all the same: a URL lands in
+            // history, in a log, in a screenshot.
             let token = ringtome_node::auth::mint_launch_token();
             let (url, attention, requests) = start_node(&data_dir, token.clone())?;
             let hidden = tray::launched_hidden();
@@ -79,14 +81,15 @@ fn main() {
                 .inner_size(1280.0, 860.0)
                 .visible(!hidden)
                 .initialization_script(format!(
-                    "window.__ringtome_launch_token = {};",
-                    serde_json::to_string(&token).expect("a hex string is JSON")
+                    "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};",
+                    serde_json::to_string(&token).expect("a hex string is JSON"),
+                    serde_json::to_string(std::env::consts::OS).expect("an OS name is JSON")
                 ))
                 .build()?;
             update::start(app.handle().clone());
             tray::build(app.handle(), &data_dir, &url);
             alerts::start(app.handle().clone(), attention);
-            requests::start(app.handle().clone(), requests);
+            requests::start(app.handle().clone(), requests, url.clone());
             // A hidden launch with nothing to come back through would be a node nobody can
             // reach; without a tray, the window shows regardless.
             if hidden && tray::present(app.handle()) {
@@ -163,9 +166,11 @@ fn start_node(
     if std::env::var("RINGTOME_DISCOVERY").is_err() && !cfg!(debug_assertions) {
         config.discovery = ringtome_node::net::discovery::DiscoveryMode::Mainline;
     }
-    // One human, one account, and the token is how they say so - which is what removes the
-    // login screen. Set here rather than read from the environment, because these two are
-    // facts about being an app rather than an operator's choice.
+    // An app, not an operator's server: what makes this node a Device (its backups shown in the
+    // file manager, its files saved through the app). Since 2026-09-28 it is multi-user all the
+    // same - the ordinary sign-in, and the sign-up choices a server has - and the token below
+    // only names the window. Set here rather than read from the environment, because these two
+    // are facts about being an app rather than an operator's choice.
     config.tenancy = ringtome_node::config::Tenancy::Single;
     config.launch_token = Some(token);
     // Loopback, always: the desktop node is this machine's, and the one place the password floor

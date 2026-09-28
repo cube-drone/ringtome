@@ -7,14 +7,13 @@
 //! - `password` - sign-up asks for a password the administrator chose and shares by hand;
 //! - `closed` - nobody new.
 //!
-//! No choice made means the default for the kind of node: `open` for a server, which is what every
-//! server did before this existed, and `closed` for a device - a desktop app is its owner's alone,
-//! and its sign-up door otherwise stands open to anything else on the same computer that finds the
-//! port. This is the simple, shippable form of PROJECT_PLAN's *Registration Modes*: `password`
-//! stands in for invite tokens until those exist, and `trusted` waits for the trust layer.
-//!
-//! A desktop app's owner has no page for this: a device hosting other people - on one shared
-//! computer, say - is a shape not settled yet (NEXT_STEPS), so the Device app shows only Backups.
+//! No choice made means `open`, on every kind of node. A desktop app was `closed` until 2026-09-28,
+//! when it was its owner's alone and signed them in by its launch token; now it is a localhost
+//! multi-user server with the ordinary sign-in (Curtis), so its first person must be able to sign
+//! up - and since it binds loopback, `open` there means open to whoever uses this computer. Its
+//! owner has the same three choices in the Device app that a server's has in the Server app. This
+//! is the simple, shippable form of PROJECT_PLAN's *Registration Modes*: `password` stands in for
+//! invite tokens until those exist, and `trusted` waits for the trust layer.
 //!
 //! Enforcement is in the one door that makes accounts from outside: `/api/auth/register` asks
 //! [`admit`] first.
@@ -78,12 +77,8 @@ pub fn is_device(state: &AppState) -> bool {
     state.config.tenancy == Tenancy::Single
 }
 
-fn default_mode(state: &AppState) -> Mode {
-    if is_device(state) {
-        Mode::Closed
-    } else {
-        Mode::Open
-    }
+fn default_mode(_state: &AppState) -> Mode {
+    Mode::Open
 }
 
 // ---------------------------------------------------------------------------------------------
