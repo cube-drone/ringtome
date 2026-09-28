@@ -306,6 +306,8 @@ pub async fn push_test(state: &AppState, root: &str) -> Result<Vec<Delivery>> {
         title: crate::msg!("webpush.test-title", "Horse Drawing Tycoon 2").english,
         body: crate::msg!("webpush.test-body", "notifications are working in this browser").english,
         route: "/home/notifications".to_string(),
+        picture: None,
+        picture_png: None,
     };
     Ok(push_to_all(state, &alert, true).await)
 }
@@ -318,7 +320,7 @@ async fn push_to_all(state: &AppState, alert: &crate::attention::Alert, always: 
     };
     let mut report = Vec::new();
     let body: String = alert.body.chars().take(MAX_BODY_CHARS).collect();
-    let payload = serde_json::json!({ "title": alert.title, "body": body, "route": alert.route, "always": always }).to_string();
+    let payload = serde_json::json!({ "title": alert.title, "body": body, "route": alert.route, "image": alert.picture, "always": always }).to_string();
     for (endpoint, p256dh, auth) in subs {
         let service = reqwest::Url::parse(&endpoint)
             .ok()

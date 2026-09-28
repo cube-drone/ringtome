@@ -277,6 +277,17 @@ fn fit_within(img: DynamicImage, bound: u32) -> DynamicImage {
     }
 }
 
+/// One of our own AVIF stills as a PNG no larger than `bound` on a side - for the places an
+/// AVIF is not understood (2026-09-27: a desktop notification's picture, which Windows
+/// toasts and older macOS read as PNG only). CPU-bound, like [`crush`].
+pub fn avif_to_png(input: &[u8], bound: u32) -> Result<Vec<u8>, CrushError> {
+    let img = fit_within(decode_avif(input)?, bound);
+    let mut buf = Cursor::new(Vec::new());
+    img.write_to(&mut buf, ImageFormat::Png)
+        .map_err(|e| CrushError::Decode(format!("png encode failed: {e}")))?;
+    Ok(buf.into_inner())
+}
+
 /// Encode an RGBA view of `img` to AVIF at the configured quality/speed.
 fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, CrushError> {
     let rgba = img.to_rgba8();
@@ -1115,6 +1126,18 @@ mod tests {
 
         let decoded = decode_avif(&marked).expect("marked AVIF still decodes");
         assert_eq!((decoded.width(), decoded.height()), (64, 48));
+    }
+
+    /// A notification's picture: our AVIF back out as a PNG, fit to the bound asked for.
+    #[test]
+    fn our_avif_comes_back_as_a_bounded_png() {
+        let out = crush(&png_bytes(&gradient(300, 200))).expect("transcode");
+        let png = avif_to_png(&out.avif, 150).expect("to png");
+        let back = image::load_from_memory_with_format(&png, ImageFormat::Png).expect("a png");
+        assert_eq!((back.width(), back.height()), (150, 100));
+        let whole = avif_to_png(&out.avif, 720).expect("to png");
+        let back = image::load_from_memory_with_format(&whole, ImageFormat::Png).expect("a png");
+        assert_eq!((back.width(), back.height()), (300, 200), "never upscaled");
     }
 
     /// Our transcoded body carries the marker; the thumbnail never does.

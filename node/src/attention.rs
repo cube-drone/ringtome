@@ -57,7 +57,25 @@ pub struct Alert {
     pub body: String,
     /// Where in the app it lives, as a UI path - the bell, or the room.
     pub route: String,
+    /// The picture the words carry, if any (2026-09-27, Curtis: "can we actually include the
+    /// image in the notification"): a room line's first still, as the public twin path it
+    /// was baked to - `/id/<speaker>/docs/<twin>/body/media.avif`. A browser fetches it itself
+    /// (sw.js), under the reader's own session, which is what a sealed room's twin asks for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+    /// That picture as a small PNG, for an embedder to hand its operating system - rendered
+    /// only while an embedder listens (`watch_everyone`), since not every platform's
+    /// notification reads AVIF. Its size is what the test recorder shows.
+    #[serde(rename = "picture_png_bytes", serialize_with = "png_size", skip_serializing_if = "Option::is_none")]
+    pub picture_png: Option<Arc<Vec<u8>>>,
 }
+
+fn png_size<S: serde::Serializer>(png: &Option<Arc<Vec<u8>>>, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_u64(png.as_ref().map_or(0, |p| p.len() as u64))
+}
+
+/// The side a notification's picture is bounded to: bigger than any banner shows it.
+const PICTURE_BOUND: u32 = 720;
 
 /// The node's announcer: a broadcast any embedder may subscribe to, plus a small recorder a
 /// test rig can read back (`/test/attention`), armed only in local-test mode.
@@ -117,6 +135,11 @@ impl Attention {
     fn wanted(&self, root: &str) -> bool {
         self.everyone.load(std::sync::atomic::Ordering::SeqCst)
             || self.push_roots.lock().expect("push roots poisoned").contains(root)
+    }
+
+    /// Does an embedder listen - someone who will want an alert's picture as a file?
+    fn embedded(&self) -> bool {
+        self.everyone.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Is anybody listening for anyone? (What lets an idle tick skip even the hosted-roots read.)
@@ -195,6 +218,17 @@ pub async fn watch(state: AppState) {
                         if let Some(name) = &to {
                             alert.title = format!("{} · {name}", alert.title);
                         }
+                        if alert.picture.is_some() {
+                            // The line can fold here a moment before its picture's bytes
+                            // (fragments' eager heal is detached): the picture waits for them
+                            // on its own, not on this loop.
+                            let (state, root) = (state.clone(), root.clone());
+                            tokio::spawn(async move {
+                                with_picture(&state, &root, &mut alert).await;
+                                state.attention.publish(alert);
+                            });
+                            continue;
+                        }
                         state.attention.publish(alert);
                     }
                 }
@@ -245,14 +279,17 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
             // Newest first, as read: one alert per line, collapsed below if there are many.
             for line in fresh.into_iter().rev() {
                 let who = line.speaker_name.clone().unwrap_or_else(|| short_name(&line.speaker));
+                let (body, picture) = match &line.words {
+                    Some(words) => line_words(words, &line.speaker),
+                    None => (crate::msg!("attention.a-new-message", "a new message").english, None),
+                };
                 alerts.push(Alert {
                     root: root.to_string(),
                     title: crate::msg!("attention.speaker-in-room", "{who} in {room}", who = who, room = room).english,
-                    body: line
-                        .words
-                        .clone()
-                        .unwrap_or_else(|| crate::msg!("attention.a-new-message", "a new message").english),
+                    body,
                     route: route.clone(),
+                    picture,
+                    picture_png: None,
                 });
             }
         }
@@ -289,6 +326,8 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
                 title: crate::msg!("attention.notifications", "Notifications").english,
                 body: crate::msg!("attention.n-new-notifications", "{n} new notifications", n = n).english,
                 route,
+                picture: None,
+                picture_png: None,
             });
         } else {
             out.push(Alert {
@@ -296,6 +335,8 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
                 title: last.title,
                 body: crate::msg!("attention.n-new-messages", "{n} new messages - latest: {words}", n = n, words = last.body).english,
                 route,
+                picture: last.picture,
+                picture_png: None,
             });
         }
     }
@@ -374,8 +415,91 @@ async fn bell_alert(
     } else {
         BELL_ROUTE.to_string()
     };
-    Alert { root: root.to_string(), title: who, body, route }
+    Alert { root: root.to_string(), title: who, body, route, picture: None, picture_png: None }
 }
+
+/// A room line as a notification says it: its words plain, each embed named for what it is -
+/// a line that is only a picture reads "sent a picture" - and its first still picture, as
+/// the twin path it was baked to (chat.rs `bake_words`: always on the speaker's own root).
+fn line_words(words: &str, speaker: &str) -> (String, Option<String>) {
+    let picture = crate::record::bake::public_media_refs(words, speaker)
+        .into_iter()
+        .map(|(target, _)| target)
+        .find(|t| t.ends_with(".avif"));
+    let embed_word = |target: &str| {
+        if target.ends_with(".avif") || target.ends_with(".apng") {
+            crate::msg!("attention.a-picture", "(picture)").english
+        } else if target.ends_with(".webm") {
+            crate::msg!("attention.a-video", "(video)").english
+        } else if target.ends_with(".opus") {
+            crate::msg!("attention.a-sound", "(sound)").english
+        } else {
+            crate::msg!("attention.an-attachment", "(attachment)").english
+        }
+    };
+    let body = match crate::record::bake::plain_words(words, &embed_word) {
+        Some(plain) if plain == crate::msg!("attention.a-picture", "(picture)").english => {
+            crate::msg!("attention.sent-a-picture", "sent a picture").english
+        }
+        Some(plain) if !plain.is_empty() => plain,
+        Some(_) => crate::msg!("attention.a-new-message", "a new message").english,
+        None => words.to_string(),
+    };
+    (body, picture)
+}
+
+/// Ready an alert's picture before it is told: wait (briefly) for its bytes to be here - so a
+/// browser fetching it (sw.js) finds it - and, for an embedder, render it as the PNG it hands
+/// its operating system. A picture that never comes leaves the alert without one, a little late.
+async fn with_picture(state: &AppState, root: &str, alert: &mut Alert) {
+    let Some(picture) = alert.picture.clone() else { return };
+    for attempt in 0..PICTURE_TRIES {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        let Some(avif) = picture_bytes(state, root, &picture).await else { continue };
+        if state.attention.embedded() {
+            let png = tokio::task::spawn_blocking(move || crate::media::image::avif_to_png(&avif, PICTURE_BOUND)).await;
+            match png {
+                Ok(Ok(png)) => alert.picture_png = Some(Arc::new(png)),
+                Ok(Err(e)) => tracing::debug!(error = %e, "a notification's picture would not decode"),
+                Err(e) => tracing::debug!(error = %e, "a notification's picture render stopped"),
+            }
+        }
+        return;
+    }
+    alert.picture = None;
+}
+
+/// How many times a picture is looked for, half a second apart.
+const PICTURE_TRIES: usize = 10;
+
+/// An alert's picture bytes, read the way the persona's own browser reads them - through the
+/// public door, as the account that hosts `root` - so a sealed room's picture opens for its
+/// member exactly as it does on screen, and for nobody else. `None` while it will not serve.
+async fn picture_bytes(state: &AppState, root: &str, picture: &str) -> Option<axum::body::Bytes> {
+    let mut parts = picture.strip_prefix("/id/")?.split('/');
+    let (seg, docs, doc_hex) = (parts.next()?, parts.next()?, parts.next()?);
+    if docs != "docs" {
+        return None;
+    }
+    let (_, account) = crate::identity::hosted_roots_with_accounts(&state.node_db)
+        .await
+        .ok()?
+        .into_iter()
+        .find(|(r, _)| r == root)?;
+    let session = Some(crate::auth::Session {
+        account: crate::auth::Account { id: account, username: String::new() },
+    });
+    let response = crate::idface::public_doc_bytes(state, &session, seg, doc_hex, false, None, None).await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    axum::body::to_bytes(response.into_body(), MAX_PICTURE_BYTES).await.ok()
+}
+
+/// The most of a picture's bytes a notification reads - past every crushed still.
+const MAX_PICTURE_BYTES: usize = 16 * 1024 * 1024;
 
 /// A room's name as its post titles it, or "a room" for a sealed or unheld one.
 async fn room_name(state: &AppState, author: &str, doc: &str) -> String {
@@ -408,7 +532,7 @@ mod tests {
     use super::*;
 
     fn alert(route: &str, body: &str) -> Alert {
-        Alert { root: "r".into(), title: "t".into(), body: body.into(), route: route.into() }
+        Alert { root: "r".into(), title: "t".into(), body: body.into(), route: route.into(), picture: None, picture_png: None }
     }
 
     #[test]

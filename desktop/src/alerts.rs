@@ -20,6 +20,11 @@
 //! wait is a blocking receive. So each notification is waited on from the blocking pool, and past
 //! [`MAX_WAITING`] outstanding ones a new notification is shown without a click to follow, rather
 //! than let a flood of them hold the pool.
+//!
+//! **A room line's picture rides along** (2026-09-27): the node renders it as a small PNG
+//! (`Alert::picture_png`), and every backend wants a file, so it is written to a folder of our
+//! own under the OS temp directory for the life of the notification - and the folder is swept at
+//! launch for whatever a crash left behind.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -28,6 +33,13 @@ use tauri::{AppHandle, Manager};
 /// How many notifications may be waiting for a click at once.
 const MAX_WAITING: usize = 32;
 static WAITING: AtomicUsize = AtomicUsize::new(0);
+/// Names each picture file apart from the others still showing.
+static PICTURES: AtomicUsize = AtomicUsize::new(0);
+
+/// Where notification pictures are written while they show.
+fn pictures_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("horse-drawing-tycoon-2-notifications")
+}
 
 /// Listen for the node's alerts for the life of the app.
 pub fn start(app: AppHandle, mut alerts: tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>) {
@@ -38,6 +50,7 @@ pub fn start(app: AppHandle, mut alerts: tokio::sync::broadcast::Receiver<ringto
         let identifier = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
         let _ = notify_rust::set_application(&identifier);
     }
+    let _ = std::fs::remove_dir_all(pictures_dir());
     tauri::async_runtime::spawn(async move {
         loop {
             let alert = match alerts.recv().await {
@@ -71,6 +84,11 @@ fn show(app: &AppHandle, alert: ringtome_node::attention::Alert) {
     if !follow {
         WAITING.fetch_sub(1, Ordering::SeqCst);
     }
+    // Only a notification we wait on can have its picture file cleared away afterwards.
+    let picture = alert.picture_png.as_deref().filter(|_| follow).and_then(|png| write_picture(png));
+    if let Some(path) = &picture {
+        notification.image_path(&path.to_string_lossy());
+    }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         match notification.show() {
@@ -90,7 +108,24 @@ fn show(app: &AppHandle, alert: ringtome_node::attention::Alert) {
                 tracing::warn!(error = %e, "could not show a notification");
             }
         }
+        if let Some(path) = picture {
+            let _ = std::fs::remove_file(path);
+        }
     });
+}
+
+/// A notification's picture as a file the platform can read.
+fn write_picture(png: &[u8]) -> Option<std::path::PathBuf> {
+    let dir = pictures_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join(format!("{}-{}.png", std::process::id(), PICTURES.fetch_add(1, Ordering::SeqCst)));
+    match std::fs::write(&path, png) {
+        Ok(()) => Some(path),
+        Err(e) => {
+            tracing::warn!(error = %e, "could not write a notification's picture");
+            None
+        }
+    }
 }
 
 /// The click: the window forward, and the UI at the alert's route - the room, or the bell. The

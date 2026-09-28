@@ -11711,3 +11711,30 @@ too; and a post you publish while "me" is unpicked is not dropped into the strea
 own page, and in the feed once "me" is picked again). A facets.cjs claim holds the plain page, a narrowed
 page, a later (cursor) page - the branch `feed_page` notes no test used to page - and the counts,
 with and without it.
+
+## 2026-09-27 (cont.): pictures in chat notifications
+
+A picture sent to a room used to announce itself as its markup, `![](...)` (Curtis: "can we
+actually include the image in the notification that gets sent to the OS?"). A room line's alert
+is now said in plain words - formatting dropped, each embed named for what it is ("(picture)",
+"(video)", "(sound)"), a line that is only a picture "sent a picture" (bake.rs `plain_words`,
+attention.rs `line_words`) - and carries its first still picture:
+
+- **`Alert.picture`** is the twin path the line was baked to (`/id/<speaker>/docs/<twin>/body/
+  media.avif`). Web Push sends it as `image`, and sw.js fetches it itself under the reader's
+  session - which a sealed room's twin asks for - and hands it over as a data URL; a picture that
+  will not come in 5 s means a notification without one. Chrome shows `image` on Windows, Linux
+  and Android; macOS's native banners, Safari and Firefox leave it out.
+- **`Alert.picture_png`** is rendered by the node, only while an embedder listens: the AVIF
+  decoded (media/image.rs `avif_to_png`, bounded to 720 px). It is read through the same public
+  door the browser uses, as the account that hosts the persona, so a sealed room's picture opens
+  for its member and nobody else. The desktop app writes it to a temp folder of its own, hands it
+  to `notify-rust`'s `image_path` (the XDG image hint, macOS's content image, the Windows toast
+  image), and deletes it when the notification is done; the folder is swept at launch.
+- The line can fold a moment before its picture's bytes (the eager heal is detached), so a
+  picture alert waits for them - up to 5 s, off the watcher's loop - and is told without a picture
+  if they never come.
+
+attention.cjs gained a claim for a picture line in an open room and one in a sealed room: plain
+words, the twin's path, and a rendered PNG, read back from the recorder. The one-HTTP-client
+convention now names sw.js as its one exception: it is its own script, outside the bundle.

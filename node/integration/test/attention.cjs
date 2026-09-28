@@ -8,6 +8,9 @@
         my own line never does;
       * a line I have SEEN never alerts, however it arrives - and the next unseen one still does;
       * a row that lights my bell alerts me, in the bell's words, pointing at the bell;
+      * a picture said in a room is said as plain words, not markup, and rides along: its twin's
+        path for a browser to fetch, and a PNG rendered for the desktop - in a sealed room too,
+        opened as the member it is for (2026-09-27);
       * and a browser that asked for Web Push hears the same alert with no tab open: this file
         plays the browser AND its vendor's push service - an http server on loopback that
         receives each push, decrypts it with its own key per RFC 8291 using Node's crypto (an
@@ -20,7 +23,7 @@ const http = require("node:http");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, makePng } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
 const { HOST, HOST_B, makeFetch, sql } = require("./fetch.cjs");
 
@@ -122,6 +125,60 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             "the seen line was announced once, when it was news, and never again"
         );
         assert.equal(after.length, before + 1, "exactly one new alert for exactly one new line");
+    });
+
+    it("a picture said in a room arrives as words and a picture - the twin's path, and a PNG for the desktop", async () => {
+        const upload = async (title) => {
+            const pic = await (await bea(`api/identity/${beaRoot}/docs/binary?title=${title}`, { method: "POST", body: makePng(24, 24), file: true })).json();
+            assert.ok(pic.doc_id, `the upload minted a document: ${JSON.stringify(pic)}`);
+            let landed = false;
+            for (let i = 0; i < 60 && !landed; i++) {
+                landed = (await bea(`api/identity/${beaRoot}/docs/${pic.doc_id}/body`)).status === 200;
+                if (!landed) await wait(300);
+            }
+            assert.ok(landed, "the picture finished ingesting");
+            return pic.doc_id;
+        };
+        const twinPath = new RegExp(`^/id/${beaRoot}/docs/[0-9a-f]{32}/body/media\\.avif$`);
+
+        const horse = await upload("horse");
+        const said = await say(bea, beaRoot, `look at **this** horse\n\n![horse](/api/identity/${beaRoot}/docs/${horse}/body/horse.avif)`);
+        assert.equal(said.status, 200, await said.text());
+        const alert = await alertWith((a) => a.body === "look at this horse\n(picture)");
+        assert.ok(alert, `the words came plain, the picture named: ${JSON.stringify(await alertsFor(adaRoot))}`);
+        assert.match(alert.picture || "", twinPath, "the alert carries the twin's path");
+        assert.ok(alert.picture_png_bytes > 0, `and the desktop's PNG, rendered from it: ${JSON.stringify(alert)}`);
+
+        // A sealed room: the twin is sealed under the room's key, and the picture is read as
+        // the member it is for.
+        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "the pantry", body: "sealed", format: "marquee" })).json();
+        await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
+        const pub = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, { room: true, trusted_only: true });
+        assert.equal(pub.status, 200, await pub.clone().text());
+        const pantry = (await pub.json()).post_id;
+        await pullAndFold(HOST_B, adaRoot);
+        let entered = false;
+        for (let i = 0; i < 30 && !entered; i++) {
+            entered = (await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${pantry}`)).status === 200;
+            if (!entered) await wait(400);
+        }
+        assert.ok(entered, "bea is in the pantry");
+        const jar = await upload("jar");
+        const sealedSay = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${pantry}/messages`, {
+            words: `![jar](/api/identity/${beaRoot}/docs/${jar}/body/jar.avif)`,
+        });
+        assert.equal(sealedSay.status, 200, await sealedSay.text());
+        let sealed = null;
+        for (let i = 0; i < 30 && !sealed; i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${pantry}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            sealed = (await alertsFor(adaRoot)).find((a) => a.route === `/home/chat/${adaRoot}/${pantry}`);
+            if (!sealed) await wait(400);
+        }
+        assert.ok(sealed, `the sealed line alerted ada: ${JSON.stringify(await alertsFor(adaRoot))}`);
+        assert.equal(sealed.body, "sent a picture", "a line that is only a picture says so");
+        assert.match(sealed.picture || "", twinPath);
+        assert.ok(sealed.picture_png_bytes > 0, `the sealed twin opened for its member and rendered: ${JSON.stringify(sealed)}`);
     });
 
     it("a row that lights my bell alerts me in the bell's words", async () => {

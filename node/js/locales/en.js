@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1097 phrases across 72 files.
+// 1102 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -945,8 +945,8 @@ export default {
     'warnings.hidden-hint': 'posts tagged with these will not be displayed on your feed at all',
 
     // --- node/src/attention.rs ---
-    'attention.speaker-in-room': '{who} in {room}',
     'attention.a-new-message': 'a new message',
+    'attention.speaker-in-room': '{who} in {room}',
     'attention.notifications': 'Notifications',
     'attention.n-new-notifications': '{n} new notifications',
     'attention.n-new-messages': '{n} new messages - latest: {words}',
@@ -967,6 +967,11 @@ export default {
     'attention.follows-you': 'follows you, publicly',
     'attention.vouches-for-you': 'vouches for you, publicly',
     'attention.trusts-you': 'publishes their trust in you',
+    'attention.a-picture': '(picture)',
+    'attention.a-video': '(video)',
+    'attention.a-sound': '(sound)',
+    'attention.an-attachment': '(attachment)',
+    'attention.sent-a-picture': 'sent a picture',
     'attention.a-room': 'a room',
     'attention.someone': 'someone',
 

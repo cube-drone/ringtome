@@ -138,12 +138,14 @@ describe('the import graph', () => {
 
     it('has exactly one HTTP client and one mirror owner', () => {
         // net.js owns fetch; mirror.js owns the Dexie handle. Anyone else reaching for either is
-        // how twelve copies of `api()` and five owners of the prefs table happened.
+        // how twelve copies of `api()` and five owners of the prefs table happened. The one other
+        // fetch is the service worker's (2026-09-27, a notification's picture): sw.js is its own
+        // script outside the bundle, and cannot import net.js.
         const offenders = { fetch: [], Dexie: [] };
         for (const f of jsFiles) {
             const base = rel(f);
             const src = code(f);
-            if (base !== 'net.js' && /\bfetch\s*\(/.test(src)) offenders.fetch.push(base);
+            if (base !== 'net.js' && base !== 'sw.js' && /\bfetch\s*\(/.test(src)) offenders.fetch.push(base);
             if (base !== 'mirror.js' && /\bDexie\b/.test(src)) offenders.Dexie.push(base);
         }
         assert.deepEqual(offenders, { fetch: [], Dexie: [] });

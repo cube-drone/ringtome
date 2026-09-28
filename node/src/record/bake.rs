@@ -155,6 +155,68 @@ fn walk(node: &marquee_parser::Node, on_embed: &mut impl FnMut(&str)) {
     }
 }
 
+/// A Marquee body as the plain words a notification can show (2026-09-27, Curtis: a picture
+/// sent to a room announced itself as `![](./image.jpg)`): the text of every block, blocks a
+/// line apart, formatting dropped, an emoji as itself, and each embed as `embed_word` says
+/// its target. `None` when the body does not parse - the caller shows it as it came.
+pub fn plain_words(body: &str, embed_word: &dyn Fn(&str) -> String) -> Option<String> {
+    let doc = marquee_parser::parse(body).ok()?;
+    let mut out = String::new();
+    plain_into(&doc, embed_word, &mut out);
+    let lines = out.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "));
+    Some(lines.filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n"))
+}
+
+fn plain_into(node: &marquee_parser::Node, embed_word: &dyn Fn(&str) -> String, out: &mut String) {
+    use marquee_parser::Node;
+    match node {
+        Node::Text { value } => out.push_str(value),
+        Node::CodeSpan { text } => out.push_str(text),
+        Node::CodeBlock { text, .. } => {
+            out.push_str(text);
+            out.push('\n');
+        }
+        Node::Embed { target, .. } => {
+            out.push(' ');
+            out.push_str(&embed_word(target));
+            out.push(' ');
+        }
+        Node::Turbolink { target } => out.push_str(target),
+        Node::Emoji { slug } => match marquee_markup::standard_emoji(slug) {
+            Some(e) => out.push_str(e),
+            None => {
+                out.push(':');
+                out.push_str(slug);
+                out.push(':');
+            }
+        },
+        Node::HardBreak | Node::ThematicBreak => out.push('\n'),
+        Node::Comment { .. } => {}
+        Node::Emphasis { children }
+        | Node::Strong { children }
+        | Node::Strikethrough { children }
+        | Node::Link { children, .. }
+        | Node::Span { children, .. } => {
+            for child in children {
+                plain_into(child, embed_word, out);
+            }
+        }
+        Node::Document { children, .. }
+        | Node::Paragraph { children }
+        | Node::Heading { children, .. }
+        | Node::Blockquote { children }
+        | Node::List { children, .. }
+        | Node::ListItem { children }
+        | Node::Directive { children, .. }
+        | Node::InvalidDirective { children, .. } => {
+            for child in children {
+                plain_into(child, embed_word, out);
+            }
+            out.push('\n');
+        }
+    }
+}
+
 fn classify(target: &str, root_hex: &str, out: &mut Vec<MediaRef>) {
     if target.starts_with("http://") || target.starts_with("https://") {
         out.push(MediaRef::External {
@@ -688,6 +750,24 @@ mod tests {
 
     const ROOT: &str = "aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22";
     const DOC: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn plain_words_show_the_words_and_name_the_pictures() {
+        let twin = format!("/id/{ROOT}/docs/{DOC}/body/media.avif");
+        let word = |target: &str| if target.ends_with(".avif") { "(picture)".to_string() } else { "(media)".to_string() };
+        assert_eq!(plain_words(&format!("![]({twin})"), &word).as_deref(), Some("(picture)"));
+        assert_eq!(
+            plain_words(&format!("look at **this** horse ![a horse]({twin}) *wow*"), &word).as_deref(),
+            Some("look at this horse (picture) wow"),
+            "formatting drops, the alt text too - it is the file's name, not a caption"
+        );
+        assert_eq!(
+            plain_words("first\n\nsecond `code` [a link](https://example.com)", &word).as_deref(),
+            Some("first\nsecond code a link")
+        );
+        assert_eq!(plain_words("plain words", &word).as_deref(), Some("plain words"));
+        assert_eq!(plain_words("![](/x/media.opus) ![](/x/media.avif)", &word).as_deref(), Some("(media) (picture)"));
+    }
 
     #[test]
     fn finds_and_classifies_both_kinds() {
