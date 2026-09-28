@@ -104,6 +104,40 @@ describe('the crop box', () => {
     });
 });
 
+describe('a box whose shape is fixed (set as profile, set as banner)', () => {
+    const canvas = [800, 600];
+    const shape = (b) => (b[2] - b[0]) / (b[3] - b[1]);
+
+    it('is laid down as large as fits the middle of the canvas, centred', () => {
+        assert.deepEqual(x.fitBox(1, canvas), [160, 60, 640, 540]);
+        assert.deepEqual(x.fitBox(3.2, canvas), [80, 200, 720, 400]);
+    });
+
+    it('grows from a corner by whichever way the pointer went further, holding the opposite corner', () => {
+        const box = [100, 100, 300, 200]; // 2 to 1
+        assert.deepEqual(x.dragBoxAt(box, { kind: 'corner', i: 2 }, [300, 200], [340, 260], canvas, 2), [100, 100, 420, 260]);
+        assert.deepEqual(x.dragBoxAt(box, { kind: 'corner', i: 0 }, [100, 100], [80, 100], canvas, 2), [80, 90, 300, 200]);
+    });
+
+    it('grows from an edge about its middle, holding the opposite edge', () => {
+        const box = [100, 100, 300, 200];
+        assert.deepEqual(x.dragBoxAt(box, { kind: 'edge', i: 1 }, [300, 150], [340, 150], canvas, 2), [100, 90, 340, 210]);
+        assert.deepEqual(x.dragBoxAt(box, { kind: 'edge', i: 0 }, [200, 100], [200, 80], canvas, 2), [80, 80, 320, 200]);
+    });
+
+    it('stays inside the canvas and the right way round, shrinking rather than changing shape', () => {
+        const box = [100, 100, 300, 200];
+        const out = x.dragBoxAt(box, { kind: 'corner', i: 2 }, [300, 200], [2000, 2000], canvas, 2);
+        assert.deepEqual(out, [100, 100, 800, 450]);
+        const crushed = x.dragBoxAt(box, { kind: 'corner', i: 2 }, [300, 200], [-500, -500], canvas, 2);
+        assert.deepEqual(crushed, [100, 100, 108, 104], 'a sliver, never inside out');
+        const drawn = x.dragBoxAt(box, { kind: 'new' }, [700, 500], [600, 480], canvas, 3.2);
+        assert.deepEqual(drawn, [600, 468.75, 700, 500], 'up and left from where it began');
+        assert.equal(shape(x.dragBoxAt(box, { kind: 'edge', i: 2 }, [200, 200], [200, 590], canvas, 2)), 2);
+        assert.deepEqual(x.dragBoxAt(box, { kind: 'inside' }, [200, 150], [230, 140], canvas, 2), [130, 90, 330, 190], 'the inside moves it, as a crop');
+    });
+});
+
 describe('cropping', () => {
     const brush = (id, t, pts, extra = {}) => ({ id, t, tool: 'brush', color: '#000000', size: 4, points: d.encodePoints(pts), ...extra });
 

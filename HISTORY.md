@@ -12131,3 +12131,21 @@ gets a 5px ring instead of 2px, to hold its edge against the banner; and your re
 banner's top right corner instead of beside the picture.
 
 The profile editor's bio field is half as tall, 6 rows instead of 12 (Curtis); it still drags taller.
+
+## 2026-09-28 (cont.): set as profile, set as banner
+
+Two drawing tools (Curtis): **set as profile** (user-circle) and **set as banner** (identification
+card), after the crop. Each is the crop's box held to a shape - square, and the banner's 800x250 -
+and its button, where the crop's is, sets what the box holds as your profile picture or your banner
+instead of cutting: open a picture, take the tool, frame it, press. The drawing is flattened as for
+any picture of it, the box cut out at 2x, and sent to the avatar or banner door; nothing is recorded
+in the drawing (DRAWING.md, "Set as profile, set as banner").
+
+- `fitBox` lays the box down, the largest of its shape in the middle 80% of the canvas; `dragBoxAt`
+  is `dragBox` held to a ratio - corners grow by the further of the two ways from the opposite
+  corner, edges about their middle, and the box shrinks rather than leave the canvas or turn inside
+  out (pure/transform.js, with its claims in pure/transform.cjs).
+- The editor shares the crop's box, overlay and grips between the three (`boxTool`); the framing
+  tools stay usable on a text layer, since they touch no layer.
+
+Every drawing tool's tooltip is now just its name - "paint bucket", "transform", "crop", "set as profile" - with no instructions after it (Curtis).

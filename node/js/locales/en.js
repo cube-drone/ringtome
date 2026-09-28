@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1137 phrases across 72 files.
+// 1144 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -444,11 +444,13 @@ export default {
     'doc.drawing.line': 'line',
     'doc.drawing.rectangle': 'rectangle',
     'doc.drawing.ellipse': 'ellipse',
-    'doc.drawing.bucket': 'paint bucket - hold to pour',
-    'doc.drawing.text-tool': 'text - click the drawing to place it',
-    'doc.drawing.transform': 'transform the layer - corners slant, edges stretch, inside moves, outside turns; hold shift to keep it even',
-    'doc.drawing.grab': 'grab - move the whole layer',
-    'doc.drawing.crop-tool': 'crop - drag the box, then crop',
+    'doc.drawing.bucket': 'paint bucket',
+    'doc.drawing.text-tool': 'text',
+    'doc.drawing.transform': 'transform',
+    'doc.drawing.grab': 'grab',
+    'doc.drawing.crop-tool': 'crop',
+    'doc.drawing.profile-tool': 'set as profile',
+    'doc.drawing.banner-tool': 'set as banner',
     'doc.drawing.eraser-size': 'eraser size',
     'doc.drawing.line-width': 'line width',
     'doc.drawing.brush-size': 'brush size',
@@ -463,6 +465,11 @@ export default {
     'doc.drawing.text-size': 'text size',
     'doc.drawing.alignment': 'alignment',
     'doc.drawing.crop': 'crop',
+    'doc.drawing.set-as-profile': 'Set as Profile',
+    'doc.drawing.set-as-banner': 'Set as Banner',
+    'doc.drawing.working-on-it': 'working on it…',
+    'doc.drawing.profile-is-set': 'your profile picture is set',
+    'doc.drawing.banner-is-set': 'your banner is set',
     'doc.drawing.colour': 'colour',
     'doc.drawing.strokes': '{count} strokes',
     'doc.drawing.layers-and-map': 'layers & map',

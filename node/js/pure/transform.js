@@ -166,3 +166,61 @@ export function dragBox(box, grip, from, to, [width, height]) {
     }
     return [clampX(Math.min(l, r)), clampY(Math.min(t, b)), clampX(Math.max(l, r)), clampY(Math.max(t, b))];
 }
+
+/// The box of a tool whose shape is fixed (Curtis, 2026-09-28: "Set as Profile" and "Set as
+/// Banner" - a crop whose aspect can't change): the largest box `ratio` wide to 1 tall that fits
+/// in the middle 80% of a `[width, height]` canvas, centred - what the tool lays down when taken up.
+export function fitBox(ratio, [width, height]) {
+    const w = Math.min(width * 0.8, height * 0.8 * ratio);
+    const h = w / ratio;
+    const l = (width - w) / 2;
+    const t = (height - h) / 2;
+    return [l, t, l + w, t + h];
+}
+
+/// `dragBox`, keeping the box `ratio` wide to 1 tall. The inside moves it as ever. A corner holds
+/// the opposite corner still and the box grows toward the pointer by whichever way it moved
+/// further; an edge holds the opposite edge still and the box grows about its middle the other way;
+/// a drag begun outside draws a fresh box from where it began. The box never leaves the canvas
+/// and never turns inside out: it shrinks to fit instead, and to no less than a sliver.
+export function dragBoxAt(box, grip, from, to, [width, height], ratio) {
+    if (grip.kind === 'inside') return dragBox(box, grip, from, to, [width, height]);
+    const dx = to[0] - from[0];
+    const dy = to[1] - from[1];
+    const [l, t, r, b] = box;
+    // The still point [ax, ay] and which way the box runs from it along each axis: 1 or -1, or 0
+    // where the still point is the middle of an edge.
+    let ax, ay, sx, sy, w, h;
+    if (grip.kind === 'new') {
+        [ax, ay] = from;
+        sx = dx < 0 ? -1 : 1;
+        sy = dy < 0 ? -1 : 1;
+        w = Math.max(Math.abs(dx), Math.abs(dy) * ratio);
+    } else if (grip.kind === 'corner') {
+        // Corners clockwise from the top-left: 0 and 3 are on the left, 0 and 1 on the top.
+        const left = grip.i === 0 || grip.i === 3;
+        const top = grip.i === 0 || grip.i === 1;
+        [ax, sx] = left ? [r, -1] : [l, 1];
+        [ay, sy] = top ? [b, -1] : [t, 1];
+        w = Math.max((left ? r - l - dx : r - l + dx), (top ? b - t - dy : b - t + dy) * ratio);
+    } else {
+        // Edges from the top, clockwise: 0 top, 1 right, 2 bottom, 3 left.
+        const across = grip.i === 1 || grip.i === 3;
+        if (across) {
+            [ax, sx] = grip.i === 3 ? [r, -1] : [l, 1];
+            [ay, sy] = [(t + b) / 2, 0];
+            w = grip.i === 3 ? r - l - dx : r - l + dx;
+        } else {
+            [ay, sy] = grip.i === 0 ? [b, -1] : [t, 1];
+            [ax, sx] = [(l + r) / 2, 0];
+            w = (grip.i === 0 ? b - t - dy : b - t + dy) * ratio;
+        }
+    }
+    const room = (a, s, extent) => (s > 0 ? extent - a : s < 0 ? a : 2 * Math.min(a, extent - a));
+    w = Math.min(Math.max(w, 8), room(ax, sx, width), room(ay, sy, height) * ratio);
+    h = w / ratio;
+    const start = (a, s, size) => (s > 0 ? a : s < 0 ? a - size : a - size / 2);
+    const x = start(ax, sx, w);
+    const y = start(ay, sy, h);
+    return [x, y, x + w, y + h];
+}

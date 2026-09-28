@@ -255,6 +255,9 @@ export const Icons = {
     transform: BoundingBox,
     // ...and the crop, which cuts the canvas down.
     crop: Crop,
+    // ...and its cousins, which frame a picture as your profile picture or your banner.
+    asProfile: UserCircle,
+    asBanner: IdentificationCard,
     // ...and text, with its alignments.
     text: TextT,
     alignLeft: TextAlignLeft,

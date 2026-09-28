@@ -181,6 +181,22 @@ deals every crop into every layer), and the canvas becomes the box.
   order - surprising, perhaps, but the same on every computer, and an undo away from either.
 - The base layer's white covers the canvas the drawing began as, wherever the crops leave it.
 
+### Set as profile, set as banner
+
+Two cousins of the crop (Curtis, 2026-09-28), after it in the tools: **set as profile** (the
+user-circle) and **set as banner** (the identification card). Each lays the crop's box down, but held
+to a shape - a square for the picture (the heptagon covers it), 800 by 250 for the banner, the shape
+of a person's page head - as large as fits the middle of the canvas. A corner grows the box toward
+the pointer by whichever way it went further, the opposite corner still; an edge grows it about its
+middle, the opposite edge still; the inside moves it; outside draws a fresh one. It never leaves the
+canvas: it shrinks to fit instead (`dragBoxAt`, pure/transform.js).
+
+The button where the crop's would be - **Set as Profile** or **Set as Banner** - flattens the drawing
+as every picture of it is flattened (its visible layers, pictures and faces waited for), cuts out the
+box at the canvas's backing resolution, and sends it to the persona's avatar or banner door, which
+launders it as it does a picture picked on the profile page. **Nothing is recorded in the drawing**:
+it is not an entry, so it neither merges nor undoes; the drawing is exactly as it was.
+
 ### Text
 
 Text layers (Curtis, 2026-09-27) - scoped down on purpose, since text is where a drawing could have

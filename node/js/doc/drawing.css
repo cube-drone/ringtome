@@ -57,6 +57,16 @@
     text-align: left;
 }
 
+/* What a framing tool's send came to (set as profile / banner, 2026-09-28). */
+.drawing-framed {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.drawing-framed.error {
+    color: var(--coral);
+}
+
 .drawing-tool:hover:not(:disabled) {
     border-color: var(--border-strong);
 }

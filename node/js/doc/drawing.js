@@ -77,7 +77,7 @@ import { FONTS } from '@cube-drone/marquee-react-renderer';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
-import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox, dragBox } from '../pure/transform.js';
+import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox, dragBox, dragBoxAt, fitBox } from '../pure/transform.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
@@ -504,8 +504,20 @@ let rememberedTools = {
 };
 
 /// What a text layer takes (Curtis, 2026-09-27): its words, and moving it about - the rest of the
-/// tools are greyed out while one is current. Crop cuts every layer, so it stays.
-const TEXT_LAYER_TOOLS = ['text', 'transform', 'grab', 'crop'];
+/// tools are greyed out while one is current. Crop cuts every layer, so it stays, and the framing
+/// tools touch no layer at all.
+const TEXT_LAYER_TOOLS = ['text', 'transform', 'grab', 'crop', 'profile', 'banner'];
+
+/// The framing tools (Curtis, 2026-09-28): a crop whose shape is fixed, and whose button sets what
+/// the box holds as your profile picture or your banner rather than cutting the canvas. Nothing is
+/// recorded in the drawing - the box is flattened and sent to the persona's own door, as a picture
+/// picked on the profile page is. `ratio` is width to height: a square for the picture (the
+/// heptagon covers it), and the banner's own shape, the page's 800px by its 250px (person.css,
+/// `.person-card-hero`).
+const FRAMING_TOOLS = { profile: { ratio: 1, door: 'avatar' }, banner: { ratio: 800 / 250, door: 'banner' } };
+/// The longest side sent: the box at the canvas's backing, never more (the node crushes it to its
+/// own bound either way).
+const FRAMED_MAX_SIDE = 1600;
 /// The largest a text can be set from the slider (the body allows more).
 const TEXT_SLIDER_MAX = 200;
 
@@ -881,6 +893,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const pourTool = tools.tool === 'bucket';
     const transformTool = tools.tool === 'transform';
     const cropTool = tools.tool === 'crop';
+    // The framing tools share the crop's box, held to their shape; `boxTool` is any of the three.
+    const framing = FRAMING_TOOLS[tools.tool] || null;
+    const boxTool = cropTool || !!framing;
     const textTool = tools.tool === 'text';
     const shapeTool = SHAPE_TOOLS.includes(tools.tool);
     const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
@@ -925,7 +940,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // outside the drawing); every tool but the transform takes only those on the drawing itself.
     const onPointerDown = (e) => {
         if (!opened || e.button > 0 || !current) return;
-        if (!transformTool && !cropTool && e.target !== canvasRef.current) return;
+        if (!transformTool && !boxTool && e.target !== canvasRef.current) return;
         // Not a press on the stage's own scrollbars.
         const stage = stageRef.current;
         const sr = stage.getBoundingClientRect();
@@ -950,7 +965,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             focusWords.current = true;
             return;
         }
-        if (cropTool) {
+        if (boxTool) {
             if (!cropBox) return;
             const at = toDrawing(e);
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
@@ -1052,8 +1067,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (paperRef.current) paperRef.current.style.cursor = cursor;
     };
     useEffect(() => {
-        if (!transformTool && !cropTool) setGripCursor('');
-    }, [transformTool, cropTool]);
+        if (!transformTool && !boxTool) setGripCursor('');
+    }, [transformTool, boxTool]);
     // The frame's size on screen: handles a fixed number of pixels, whatever the zoom.
     const unitsPerPixel = fit ? W / (fit[0] * zoom) : 1;
     const handle = HANDLE_PX * unitsPerPixel;
@@ -1073,10 +1088,21 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // after every crop, so what is about to go is shaded from the start. The box is the tool's own -
     // nothing is recorded until the crop button, which records one `crop` entry.
     const [cropBox, setCropBox] = useState(null);
+    // A framing tool's send: 'working', 'done', or an error's words - cleared when the tool or the
+    // box changes.
+    const [framed, setFramed] = useState(null);
     const cropRef = useRef(null);
     useEffect(() => {
-        setCropBox(cropTool && shown ? [Math.round(W * 0.1), Math.round(H * 0.1), Math.round(W * 0.9), Math.round(H * 0.9)] : null);
-    }, [cropTool, shown, W, H]);
+        setCropBox(
+            !shown ? null
+            : framing ? fitBox(framing.ratio, [W, H])
+            : cropTool ? [Math.round(W * 0.1), Math.round(H * 0.1), Math.round(W * 0.9), Math.round(H * 0.9)]
+            : null
+        );
+        setFramed(null);
+    }, [cropTool, framing, shown, W, H]);
+    // A drag of the box, free for the crop, held to its shape for a framing tool.
+    const boxAfter = (l) => (framing ? dragBoxAt(l.box, l.grip, l.from, l.to, [W, H], framing.ratio) : dragBox(l.box, l.grip, l.from, l.to, [W, H]));
     const cropPath = ([l, top, r, b]) => `M0 0H${W}V${H}H0Z M${l} ${top}V${b}H${r}V${top}Z`;
     const showCrop = (box) => {
         const svg = cropRef.current;
@@ -1095,6 +1121,30 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         });
     };
     const cropReady = cropBox && cropEntry(drawing, cropBox, { id: '', t: 0 });
+
+    // Set as profile / banner: what the box holds, flattened as every picture of the drawing is (its
+    // visible layers, its pictures and faces waited for), cut out, and sent to the door.
+    const frameNow = async () => {
+        if (!framing || !cropBox) return;
+        const door = framing.door;
+        setFramed('working');
+        try {
+            const flat = flatten(drawing, W * BACKING, await loadPictures(root, drawing));
+            const [l, top, r, b] = cropBox.map((n) => n * BACKING);
+            const scale = Math.min(1, FRAMED_MAX_SIDE / Math.max(r - l, b - top));
+            const out = blankCanvas(Math.max(1, Math.round((r - l) * scale)), Math.max(1, Math.round((b - top) * scale)));
+            out.getContext('2d').drawImage(flat, l, top, r - l, b - top, 0, 0, out.width, out.height);
+            const blob = await new Promise((resolve, reject) =>
+                out.toBlob((x) => (x ? resolve(x) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
+            );
+            const form = new FormData();
+            form.append('image', blob, `${door}.png`);
+            await api(`/api/identity/${root}/${door}`, { method: 'POST', body: form });
+            setFramed('done');
+        } catch (err) {
+            setFramed(err.message);
+        }
+    };
     const cropNow = () => {
         const entry = cropBox && cropEntry(drawing, cropBox, { id: strokeId(), t: Date.now() });
         if (!entry) return;
@@ -1160,7 +1210,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             setGripCursor(gripCursor(gripAt(frame, toDrawing(e), reach)));
         }
-        if (!l && cropTool && cropBox) {
+        if (!l && boxTool && cropBox) {
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             const grip = gripAt(frameOf(cropBox), toDrawing(e), reach);
             setGripCursor(grip.kind === 'outside' ? 'crosshair' : gripCursor(grip));
@@ -1168,7 +1218,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (!l || l.pour) return; // a pour stays where it was dropped
         if (l.crop) {
             l.to = toDrawing(e);
-            showCrop(dragBox(l.box, l.grip, l.from, l.to, [W, H]));
+            showCrop(boxAfter(l));
             return;
         }
         if (l.transform) {
@@ -1213,7 +1263,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         live.current = null;
         if (!l) return;
         if (l.crop) {
-            if (l.to) setCropBox(dragBox(l.box, l.grip, l.from, l.to, [W, H]));
+            if (l.to) {
+                setCropBox(boxAfter(l));
+                setFramed(null);
+            }
             return;
         }
         if (l.transform) {
@@ -1297,12 +1350,15 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['line', Icons.line, t('doc.drawing.line', 'line')],
         ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
-        ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket - hold to pour')],
-        ['text', Icons.text, t('doc.drawing.text-tool', 'text - click the drawing to place it')],
-        ['transform', Icons.transform, t('doc.drawing.transform', 'transform the layer - corners slant, edges stretch, inside moves, outside turns; hold shift to keep it even')],
-        ['grab', Icons.grab, t('doc.drawing.grab', 'grab - move the whole layer')],
+        ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket')],
+        ['text', Icons.text, t('doc.drawing.text-tool', 'text')],
+        ['transform', Icons.transform, t('doc.drawing.transform', 'transform')],
+        ['grab', Icons.grab, t('doc.drawing.grab', 'grab')],
         // Last, away from the transform it resembles (Curtis, 2026-09-27).
-        ['crop', Icons.crop, t('doc.drawing.crop-tool', 'crop - drag the box, then crop')],
+        ['crop', Icons.crop, t('doc.drawing.crop-tool', 'crop')],
+        // ...and the crop's two cousins, held to a shape (Curtis, 2026-09-28).
+        ['profile', Icons.asProfile, t('doc.drawing.profile-tool', 'set as profile')],
+        ['banner', Icons.asBanner, t('doc.drawing.banner-tool', 'set as banner')],
     ];
     const grabTool = tools.tool === 'grab';
     // The colours show only with a tool that uses one, and picking one keeps that tool in hand.
@@ -1434,6 +1490,22 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               html`<button class="drawing-tool drawing-crop-go" disabled=${!cropReady} onClick=${cropNow}>
                   <${Icons.crop} /> ${t('doc.drawing.crop', 'crop')}
               </button>`}
+              ${framing &&
+              html`<button class="drawing-tool drawing-crop-go" disabled=${!cropBox || framed === 'working'} onClick=${frameNow}>
+                      ${tools.tool === 'profile'
+                          ? html`<${Icons.asProfile} /> ${t('doc.drawing.set-as-profile', 'Set as Profile')}`
+                          : html`<${Icons.asBanner} /> ${t('doc.drawing.set-as-banner', 'Set as Banner')}`}
+                  </button>
+                  ${framed &&
+                  html`<p class=${framed === 'working' || framed === 'done' ? 'drawing-framed' : 'drawing-framed error'}>
+                      ${framed === 'working'
+                          ? t('doc.drawing.working-on-it', 'working on it…')
+                          : framed === 'done'
+                            ? tools.tool === 'profile'
+                                ? t('doc.drawing.profile-is-set', 'your profile picture is set')
+                                : t('doc.drawing.banner-is-set', 'your banner is set')
+                            : framed}
+                  </p>`}`}
               ${COLOURED_TOOLS.includes(tools.tool) &&
               html`<${ColourPicker} value=${textTool ? textStyle.color : tools.color} onChange=${pickColour} />
                   <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
