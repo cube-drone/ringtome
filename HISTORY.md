@@ -11970,3 +11970,13 @@ plans of all three new index reads.
 
 Still to do (NEXT_STEPS): a person's page searches and counts their newest 5000 posts - the feed's
 old shape on another surface.
+
+## 2026-09-28 (cont.): test data reacts
+
+`just test-data` seeds reactions (Curtis): `react-gladly` (weight 8) and `react-sourly` (weight 4)
+tag somebody else's post from the picker's glad or sour row - literal lists in the harness, pointing
+at js/emoji.js's `POLE_ROWS` and score.rs's `GLAD`/`SOUR`, so it stays out of the UI's module graph
+- a quarter of first reactions a double-like, since the score counts them. Both, and the word-tag
+action beside them, keep to two tags to a person on anybody else's post by the persona's own tally,
+rather than meeting the door's refusal. A scratch run (6 personas, 40 actions each): no reaction
+failed, and the six feeds counted 29 glad reactions and 15 sour.

@@ -54,6 +54,38 @@ const BUCKET_STYLES = ['default'];
 /// catches - one draw in nine, from anyone who tags.
 const LABELS = ['goopy', 'mighty', 'saucy', 'gentle', 'loud', 'nice', 'odd', 'sharp', 'nsfw'];
 
+/// The reaction picker's glad and sour rows (js/emoji.js `POLE_ROWS`; node/src/score.rs `GLAD`,
+/// `SOUR`) - what the "best" orders score by (2026-09-28). Literals, like BUCKET_STYLES, so this
+/// harness stays out of the UI's module graph; a glyph that drifted from the rows would only be a
+/// reaction that scores nothing.
+const GLAD = ['\u2764\uFE0F', '\u{1F44D}', '\u{1F923}', '\u{1FAC2}', '\u{1F4AF}', '\u{1F434}', '\u{1F60D}', '\u{1F975}', '\u{1F60E}', '\u{1F446}'];
+const SOUR = ['\u{1F44E}', '\u{1F4A9}', '\u{1F644}', '\u{1F92E}', '\u{1F922}', '\u{1F92C}', '\u{1FAE0}', '\u{1F976}', '\u{1F910}', '\u{1F9CC}'];
+
+/// React to somebody else's post from one of the picker's rows - sometimes twice, since a
+/// double-like is a thing people do and the score counts it. Two tags to a person on anybody
+/// else's post (the door refuses a third), so the persona's own tally of what it said decides.
+async function react(ctx, p, rng, row) {
+    p.labels = p.labels || [];
+    const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
+    const said = (item) => p.labels.filter((l) => l.author === item.author && l.doc_id === item.doc_id).length;
+    const theirs = (feed.items || []).filter((i) => i.author !== p.root && said(i) < 2);
+    const item = ctx.pick(rng, theirs);
+    if (!item) return;
+    const times = said(item) === 0 && rng() < 0.25 ? 2 : 1;
+    const values = [];
+    while (values.length < times) {
+        const v = ctx.pick(rng, row);
+        if (!values.includes(v)) values.push(v);
+    }
+    for (const value of values) {
+        await api(p, 'PUT', `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`, {
+            key: 'tag',
+            value,
+        });
+        p.labels.push({ author: item.author, doc_id: item.doc_id, value });
+    }
+}
+
 const ACTIONS = [
     {
         name: 'post-in-public',
@@ -492,7 +524,9 @@ const ACTIONS = [
                 return;
             }
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-            const theirs = (feed.items || []).filter((i) => i.author !== p.root);
+            // Two tags to a person on anybody else's post - words and reactions alike.
+            const said = (i) => p.labels.filter((l) => l.author === i.author && l.doc_id === i.doc_id).length;
+            const theirs = (feed.items || []).filter((i) => i.author !== p.root && said(i) < 2);
             const item = ctx.pick(rng, theirs);
             if (!item) return;
             const value = ctx.pick(rng, LABELS);
@@ -502,6 +536,19 @@ const ACTIONS = [
             });
             p.labels.push({ author: item.author, doc_id: item.doc_id, value });
         },
+    },
+    {
+        // A glad reaction (2026-09-28): what gives the "best" orders something to rank, and the
+        // chips their green. Commoner than a sour one - people like more than they dislike.
+        name: 'react-gladly',
+        weight: 8,
+        run: (ctx, p, rng) => react(ctx, p, rng, GLAD),
+    },
+    {
+        // ...and a sour one: the red chips, and posts that sink.
+        name: 'react-sourly',
+        weight: 4,
+        run: (ctx, p, rng) => react(ctx, p, rng, SOUR),
     },
     {
         // Standing behind a post is a claim in the present tense, so somebody has to stop
