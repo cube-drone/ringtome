@@ -1,8 +1,8 @@
 /* --- the front door (login / registration) --- */
 
 .welcome {
-    max-width: 340px;
-    margin: 14vh auto 0;
+    max-width: var(--post-measure); /* the app's own width (Curtis, 2026-09-28) */
+    margin: 8vh auto 0;
     text-align: center;
 }
 
@@ -115,6 +115,8 @@
    tabs sit on their pane and keep the half-jag. */
 .welcome-tabs .tab {
     position: relative;
+    gap: 0.4rem;
+    font-size: 0.95rem; /* the words ride beside the icon here */
     border-color: transparent;
     --line: var(--border-strong);
     clip-path: var(--jag-1);
@@ -186,4 +188,59 @@
 .welcome-go:disabled {
     opacity: 0.6;
     cursor: default;
+}
+
+/* --- under the sign-in: who posted lately, and what (2026-09-28) --- */
+
+.front-door {
+    max-width: var(--post-measure);
+    margin: 0 auto 3rem;
+}
+
+.front-shelf {
+    margin-top: 2rem;
+}
+
+.front-shelf-title {
+    font-size: 1rem;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 0 0 0.8rem;
+}
+
+.front-people {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+    gap: 0.9rem 0.6rem;
+}
+
+.front-person {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--ink);
+    text-decoration: none;
+    min-width: 0;
+}
+
+.front-person-name {
+    max-width: 100%;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.front-more {
+    display: inline-block;
+    margin-top: 0.8rem;
+    color: var(--teal-deep);
+    font-size: 0.9rem;
+}
+
+.front-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0 0;
 }

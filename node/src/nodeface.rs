@@ -21,15 +21,43 @@ pub struct NodeFeedQuery {
     before_ms: Option<i64>,
     before_doc: Option<String>,
     q: Option<String>,
+    /// A shorter first page (the front door's ten, 2026-09-28): at most the ordinary page.
+    limit: Option<i64>,
 }
+
+#[derive(Deserialize, Default)]
+pub struct NodePersonasQuery {
+    /// The front door's "posted lately" (2026-09-28): the listed personas who posted most
+    /// recently, newest first, at most this many - instead of everyone, by name.
+    recent: Option<usize>,
+}
+
+/// How far down the shelf "posted lately" looks for its people.
+const RECENT_SCAN: i64 = 2000;
+/// ...and the most it names.
+const RECENT_MAX: usize = 50;
 
 fn decode_root(hex_root: &str) -> Option<[u8; 32]> {
     hex::decode(hex_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())
 }
 
 /// `GET /api/node/personas`: the personas this node lists, with the byline it holds.
-pub async fn node_personas(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
-    let roots = crate::nodeshelf::listed_roots(&state.node_db).await.map_err(AppError::Internal)?;
+pub async fn node_personas(
+    State(state): State<AppState>,
+    Query(q): Query<NodePersonasQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let listed = crate::nodeshelf::listed_roots(&state.node_db).await.map_err(AppError::Internal)?;
+    let recent = q.recent.map(|n| n.clamp(1, RECENT_MAX));
+    let roots = match recent {
+        // Only the hosted and listed: a shared post's sharer is, but the belt holds anyway.
+        Some(n) => crate::nodeshelf::recent_posters(&state.node_db, n, RECENT_SCAN)
+            .await
+            .map_err(AppError::Internal)?
+            .into_iter()
+            .filter(|r| listed.contains(r))
+            .collect(),
+        None => listed,
+    };
     let bylines = crate::profiles::bylines(&state.node_db, &roots).await.unwrap_or_default();
     let mut people: Vec<serde_json::Value> = Vec::with_capacity(roots.len());
     for r in &roots {
@@ -43,10 +71,13 @@ pub async fn node_personas(State(state): State<AppState>) -> Result<Json<serde_j
             "slug": slug,
         }));
     }
-    people.sort_by(|a, b| {
-        let name = |v: &serde_json::Value| v["name"].as_str().unwrap_or("").to_lowercase();
-        name(a).cmp(&name(b)).then_with(|| a["root"].as_str().cmp(&b["root"].as_str()))
-    });
+    // Everyone by name; "posted lately" keeps its own order, newest first.
+    if recent.is_none() {
+        people.sort_by(|a, b| {
+            let name = |v: &serde_json::Value| v["name"].as_str().unwrap_or("").to_lowercase();
+            name(a).cmp(&name(b)).then_with(|| a["root"].as_str().cmp(&b["root"].as_str()))
+        });
+    }
     Ok(Json(serde_json::json!({ "people": people })))
 }
 
@@ -57,7 +88,7 @@ pub async fn node_feed(
     Query(q): Query<NodeFeedQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let page = crate::idface::POSTS_PAGE;
+    let page = q.limit.map_or(crate::idface::POSTS_PAGE, |n| n.clamp(1, crate::idface::POSTS_PAGE));
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
     let (rows, more) = if narrow.is_empty() {
         let before = match (q.before_ms, q.before_doc) {

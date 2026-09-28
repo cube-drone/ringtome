@@ -87,6 +87,9 @@ import {
     FileVideo,
     UsersThree,
     SignIn,
+    House,
+    Question,
+    Package,
     CellSignalNone,
     CellSignalLow,
     CellSignalMedium,
@@ -135,6 +138,12 @@ export const Icons = {
     lock: Lock,
     key: Key,
     signIn: SignIn,
+    // The front door itself, from anywhere a stranger has wandered (2026-09-28: the desktop app
+    // has no back button, so a link followed from the front page was a one-way trip).
+    home: House,
+    // The front door's other two tabs (2026-09-28): new here, and bringing a user from elsewhere.
+    newHere: Question,
+    importUser: Package,
     profile: IdentificationCard,
     settings: Gear,
     computers: Desktop,

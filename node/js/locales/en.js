@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1153 phrases across 73 files.
+// 1158 phrases across 73 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -685,6 +685,7 @@ export default {
     'index.people': 'people',
     'index.this-node': 'this node',
     'index.search-this-node': 'search this node…',
+    'index.home': 'home',
     'index.feed': 'feed',
     'index.sign-in': 'sign in',
     'index.loading-2': 'Loading…',
@@ -696,11 +697,15 @@ export default {
     'nodefeed.nobody-has-said-anything': 'nobody has said anything on this node yet.',
     'nodefeed.sign-in-or-make-a-persona': 'sign in, or make a persona here',
     'apps.nodefeed.on-this-node': 'on this node',
+    'nodefeed.lately-on-this-node': 'lately on this node',
+    'nodefeed.see-more': 'see more...',
 
     // --- node/js/nodepeople.js ---
     'apps.nodepeople.hosted-here': 'hosted here',
     'apps.nodepeople.loading': 'looking…',
     'apps.nodepeople.nobody-listed': 'nobody is listed on this node.',
+    'nodepeople.posted-lately': 'posted lately',
+    'nodepeople.see-more': 'see more...',
 
     // --- node/js/panes.js ---
     'panes.drag-to-resize': 'drag to resize',

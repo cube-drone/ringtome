@@ -250,6 +250,35 @@ pub async fn page(node_db: &Db, before: Option<(i64, String)>, limit: i64) -> Re
     Ok(rows.into_iter().map(row_of).collect())
 }
 
+/// Who posted most recently (Curtis, 2026-09-28: the front door shows the last twenty): the
+/// posters of the newest `scan` open rows a stranger may see - a share counts as the sharer's,
+/// as the listing does - distinct, newest first, at most `want`. A bounded walk down the
+/// newest-first order rather than a GROUP BY over the whole shelf, since strangers ask this on
+/// every visit to the front page; a node quieter than `scan` rows gives everyone it has.
+pub async fn recent_posters(node_db: &Db, want: usize, scan: i64) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT CASE WHEN via_root = '' THEN author_root ELSE via_root END
+                 FROM node_shelf s WHERE trusted_only = 0 AND {LISTED}
+                 ORDER BY published_ms DESC, doc_id DESC LIMIT ?1"
+            ),
+            (scan,),
+        )
+        .await
+        .context("reading the node shelf's recent posters")?;
+    let mut out: Vec<String> = Vec::with_capacity(want);
+    for (who,) in rows {
+        if out.len() >= want {
+            break;
+        }
+        if !out.contains(&who) {
+            out.push(who);
+        }
+    }
+    Ok(out)
+}
+
 /// The hosted personas a stranger may see: hosted here and listed.
 pub async fn listed_roots(node_db: &Db) -> Result<Vec<String>> {
     let hosted = crate::identity::hosted_roots(node_db).await.map_err(|e| anyhow::anyhow!("{e}"))?;

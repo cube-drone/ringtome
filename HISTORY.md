@@ -12213,3 +12213,23 @@ a signed-in reader at either goes on to `/home` (PROJECT_PLAN's *The node's publ
   address a link that asks the app to open the system browser (the same door as the Linux notice).
 
 Then dressed (Curtis): the Local Server Mode line is a hero box - the laptop icon, the words, and the address large in the pixel face, on paper with a teal jagged ring - and the rest of the sign-in (tabs, note, form; the spare-key form too) sits in a box of its own. The sign-in's three tabs stand free of any panel, so they take the whole jag and draw their line as its ring (tokens.css), like every other bordered box; Writer's tabs, which share the `.tab` class and sit on their pane, keep the half-jag.
+
+Then the front door grew (Curtis): it is the app's own width (`--post-measure`, 800px) rather than
+340px; its tabs carry Phosphor icons beside their words (sign-in, question, package); and under the
+sign-in come **posted lately** - the twenty listed people who posted most recently, as faces and
+names, then "see more..." to the people page - a rule, and **lately on this node**, the node feed's
+ten newest posts as the feed shows them, then "see more..." to `/feed`. Either shelf is simply absent
+on a node where nobody has posted. The front page is composed in index.js (`FrontDoor`), since
+auth.js is imported by persona.js and the feed modules lead back there.
+
+- `GET /api/node/personas?recent=N` (at most 50): the listed personas newest-poster-first -
+  `nodeshelf::recent_posters`, a bounded walk down the stranger's shelf (the newest 2000 open rows,
+  a share counting as the sharer's) rather than a GROUP BY over it, since strangers ask on every
+  visit. Without `recent`, everyone by name as before.
+- `GET /api/node/feed?limit=N`: a shorter first page, never longer than the ordinary 20.
+
+nodeface.cjs holds the order (cal, bea, ada - ada's newer post is sealed, so it cannot lift her),
+each person once, the `recent` cap, the short page with `more`, the clamp, and `/feed` serving the
+app.
+
+The stranger's header gained a **home** button (the house), first of its links, back to the front door at `/` (Curtis: in the desktop app, with no back button, a link followed from the front page had no way back).

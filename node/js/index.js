@@ -50,8 +50,8 @@ import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
 import { speakable } from './speakable.js';
-import { NodeFeed } from './nodefeed.js';
-import { NodePeople } from './nodepeople.js';
+import { NodeFeed, RecentPosts } from './nodefeed.js';
+import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { usePerson, faceOf } from './person.js';
@@ -514,6 +514,15 @@ const HomeBounce = () => {
     return null;
 };
 
+/// The front door (Curtis, 2026-09-28): the sign-in, then who posted lately and what they
+/// posted, each with the way on to the rest.
+const FrontDoor = ({ session }) => html`<div class="front-door">
+    <${Welcome} session=${session} />
+    <${RecentPeople} limit=${20} />
+    <hr class="front-rule" />
+    <${RecentPosts} limit=${10} />
+</div>`;
+
 /// The stranger's shell: the app's header with the search box and a sign-in button, and
 /// the public routes. Everything session-bound stays out; the persona pages take a null
 /// viewer and answer as they do for anyone.
@@ -542,6 +551,11 @@ const Outside = ({ session }) => {
         <span class="app-header-actions">
             <button
                 class="app-header-btn"
+                title=${t('index.home', 'home')}
+                onClick=${() => loc.route('/')}
+            ><${Icons.home} /></button>
+            <button
+                class="app-header-btn"
                 title=${t('index.feed', 'feed')}
                 onClick=${() => loc.route('/feed')}
             ><${Icons.feed} /></button>
@@ -561,7 +575,7 @@ const Outside = ({ session }) => {
         ${header}
         <div class="app-frame-inner">
             <${Router}>
-                <${Welcome} path="/" session=${session} />
+                <${FrontDoor} path="/" session=${session} />
                 <${NodeFeed} path="/feed" current=${null} searchQuery=${query} />
                 <${NodePeople} path="/people" current=${null} searchQuery=${query} />
                 <${PostPage} path="/id/:seg/post/:doc/:page" current=${null} onTitle=${setIdTitle} />
@@ -569,7 +583,7 @@ const Outside = ({ session }) => {
                 <${IdPage} path="/id/:seg" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
                 <${IdPage} path="/id/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
                 <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
-                <${Welcome} default session=${session} />
+                <${FrontDoor} default session=${session} />
             </${Router}>
         </div>
     </div>`;

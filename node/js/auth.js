@@ -305,16 +305,16 @@ export const Welcome = ({ session }) => {
                 <button
                     class=${mode === 'login' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('login')}
-                >${t('auth.sign-in', 'sign in')}</button>
+                ><${Icons.signIn} /> ${t('auth.sign-in', 'sign in')}</button>
                 ${!signupsClosed &&
                 html`<button
                     class=${mode === 'register' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('register')}
-                >${t('auth.new-here', 'new here?')}</button>
+                ><${Icons.newHere} /> ${t('auth.new-here', 'new here?')}</button>
                     <button
                         class=${importing ? 'tab active' : 'tab'}
                         onClick=${() => switchMode('import')}
-                    >${t('auth.import-user', 'import user')}</button>`}
+                    ><${Icons.importUser} /> ${t('auth.import-user', 'import user')}</button>`}
             </div>
             ${importing &&
             html`<p class="welcome-note">

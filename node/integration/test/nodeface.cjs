@@ -115,9 +115,24 @@ describe("the node's public face: a stranger's doors", function () {
         assert.ok(items.includes(open2), "and so is cal's post");
     });
 
+    it("the front door's shelves: who posted lately, newest first, and a shorter first page (2026-09-28)", async () => {
+        // Posted in order ada, bea, ada (sealed - a stranger never sees it, so it cannot count),
+        // cal: the newest open posts are cal's, then bea's, then ada's.
+        const recent = (await (await stranger("api/node/personas?recent=50")).json()).people.map((p) => p.root);
+        const at = (r) => recent.indexOf(r);
+        assert.ok(at(calRoot) >= 0 && at(beaRoot) >= 0 && at(adaRoot) >= 0, `all three posted: ${recent.length}`);
+        assert.ok(at(calRoot) < at(beaRoot) && at(beaRoot) < at(adaRoot), "newest first, and ada's sealed post does not lift her");
+        assert.equal(new Set(recent).size, recent.length, "each person once");
+        assert.equal((await (await stranger("api/node/personas?recent=1")).json()).people.length, 1);
+        const two = await (await stranger("api/node/feed?limit=2")).json();
+        assert.equal(two.items.length, 2);
+        assert.equal(two.more, true);
+        assert.ok((await (await stranger("api/node/feed?limit=999")).json()).items.length <= 20, "never more than the ordinary page");
+    });
+
     it("the pages are the app: the front page, the people page and a persona's page serve the app with a meta head (slice 2)", async () => {
         const { speakable } = await import("../../js/speakable.js");
-        for (const path of ["", "people", "home"]) {
+        for (const path of ["", "feed", "people", "home"]) {
             const r = await stranger(path);
             assert.equal(r.status, 200, path);
             const body = await r.text();
