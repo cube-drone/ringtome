@@ -12,6 +12,7 @@ import htm from 'htm';
 
 import { useLocation } from 'preact-iso';
 import { api, saveFile } from './net.js';
+import { takeImportIntent } from './auth.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb, flattenToBlob } from './doc/drawing.js';
 import { readBody } from './pure/drawing.js';
@@ -121,6 +122,15 @@ export function usePersona(account) {
                         standing: personas[0].standing,
                     });
                     setState('farewell');
+                    return;
+                }
+                // An account made by "import user" (auth.js): straight to bringing the persona
+                // from its other computer.
+                if (takeImportIntent()) {
+                    startJoin().catch((e) => {
+                        setError(e.message);
+                        setState('none');
+                    });
                     return;
                 }
                 setState('none');

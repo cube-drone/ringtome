@@ -21,6 +21,57 @@
     color: var(--teal-deep);
 }
 
+/* The desktop app's address, as a hero above the sign-in (2026-09-28). */
+.welcome-local {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    margin: -0.8rem 0 1.2rem;
+    padding: 0.9rem 1rem 1rem;
+    background: var(--paper);
+    border: 1px solid transparent;
+    --line: var(--teal);
+    --j: 4px;
+    clip-path: var(--jag-1);
+}
+
+.welcome-local-icon {
+    font-size: 1.8rem;
+    color: var(--teal);
+    line-height: 1;
+}
+
+.welcome-local-mode {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.welcome-local-address {
+    font-family: "Press Start 2P", monospace;
+    font-size: 0.85rem;
+    color: var(--teal-deep);
+}
+
+/* The rest of the front door - the tabs, the note, the form - in a box of its own. */
+.welcome-box {
+    position: relative;
+    padding: 1.1rem 1.1rem 1.2rem;
+    background: var(--surface);
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    --j: 4px;
+    clip-path: var(--jag-1);
+}
+
+.welcome-note {
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    margin: 0 0 1rem;
+}
+
 .welcome-title {
     font-family: "Press Start 2P", monospace;
     font-size: 1.6rem;
@@ -57,6 +108,21 @@
 .tab.active {
     color: var(--teal);
     border-color: var(--teal);
+}
+
+/* The front door's own tabs stand free of any panel, so they take the whole jag and draw their
+   line as its ring (tokens.css) - a real border's corners are cut away by the clip. Writer's
+   tabs sit on their pane and keep the half-jag. */
+.welcome-tabs .tab {
+    position: relative;
+    border-color: transparent;
+    --line: var(--border-strong);
+    clip-path: var(--jag-1);
+}
+
+.welcome-tabs .tab.active {
+    border-color: transparent;
+    --line: var(--teal);
 }
 
 .welcome-form {

@@ -3887,10 +3887,12 @@ node.
    persona keeps its slug: listing is about the front page, claiming a name is its own choice.
    The address block shows the declared public URL in front of the name, `@name` in bold:
    this server, only.
-8. **The shell.** Without a session the app serves the front page at `/`, the people page at
-   `/people`, every `/id/` and `/@` page and every post page, under a header with the node's
-   search box and three icon buttons: feed, people, sign in - the sign-in lives at `/home`,
-   where every app URL lands a stranger; a signed-in reader at `/` goes on to `/home`. The
+8. **The shell.** Without a session the app serves the sign-in at `/` (Curtis, 2026-09-28: "make
+   the homepage the login page again"), the node's front page - its feed - at `/feed`, the people
+   page at `/people`, every `/id/` and `/@` page and every post page, under a header with the
+   node's search box and three icon buttons: feed, people, sign in - the sign-in is also at
+   `/home`, where every app URL lands a stranger; a signed-in reader at `/` or `/feed` goes on to
+   `/home`. The
    server's `/id/` and `/@` pages are the app with a head - the title and the OpenGraph meta,
    the URL carrying the via hints - for hosted, peeked and unknown personas alike (the
    malformed-address pages stay raw, having no persona); the raw card page and its identicon

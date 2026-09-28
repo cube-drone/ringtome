@@ -468,6 +468,7 @@ const Inside = ({ session }) => {
     const routed = html`
         <${Router}>
             <${HomeBounce} path="/" />
+            <${HomeBounce} path="/feed" />
             <${Console}
                 path="/home"
                 onLaunch=${(id) => loc.route('/home/' + id)}
@@ -520,12 +521,13 @@ const Outside = ({ session }) => {
     const loc = useLocation();
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
-    const signingIn = loc.path === '/home' || loc.path.startsWith('/home/') || loc.path.startsWith('/in/');
+    // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed.
+    const signingIn = loc.path === '/' || loc.path === '/home' || loc.path.startsWith('/home/') || loc.path.startsWith('/in/');
     const onPeople = loc.path === '/people';
     const title = loc.path.startsWith('/id/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
     const header = html`<header class="app-header">
         <span class="app-header-lead">
-            <a class="app-header-title app-header-link" href="/">${title}</a>
+            <a class="app-header-title app-header-link" href="/feed">${title}</a>
         </span>
         ${!signingIn &&
         html`<span class="app-header-search-box">
@@ -541,7 +543,7 @@ const Outside = ({ session }) => {
             <button
                 class="app-header-btn"
                 title=${t('index.feed', 'feed')}
-                onClick=${() => loc.route('/')}
+                onClick=${() => loc.route('/feed')}
             ><${Icons.feed} /></button>
             <button
                 class="app-header-btn"
@@ -559,7 +561,8 @@ const Outside = ({ session }) => {
         ${header}
         <div class="app-frame-inner">
             <${Router}>
-                <${NodeFeed} path="/" current=${null} searchQuery=${query} />
+                <${Welcome} path="/" session=${session} />
+                <${NodeFeed} path="/feed" current=${null} searchQuery=${query} />
                 <${NodePeople} path="/people" current=${null} searchQuery=${query} />
                 <${PostPage} path="/id/:seg/post/:doc/:page" current=${null} onTitle=${setIdTitle} />
                 <${PostPage} path="/id/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />

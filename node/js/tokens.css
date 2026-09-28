@@ -149,7 +149,10 @@
 .bucket-name::after,
 .bucket-menu::after,
 .search-opts-menu::after,
-.search-opts-kind::after {
+.search-opts-kind::after,
+.welcome-tabs .tab::after,
+.welcome-local::after,
+.welcome-box::after {
     content: '';
     position: absolute;
     inset: 0;

@@ -704,6 +704,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // stranger the node's front page and sends a signed-in reader on to /home.
         .route("/", get(ui::homepage))
         .route("/people", get(ui::homepage))
+        // The node's public feed, since the front page became the sign-in (2026-09-28).
+        .route("/feed", get(ui::homepage))
         .route("/home", get(ui::homepage))
         // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
         // deeper resource paths; the segment parser only reads the first segment for now.

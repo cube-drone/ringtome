@@ -12196,3 +12196,20 @@ by the owner; the token alone (as a bearer or as the window header) signs nobody
 account follows whoever signs in there and clears on sign-out; and only the window may ask for the
 browser. attention.rs holds that the app hears only the window's account. DESKTOP.md's Stage 3 and
 Device app sections, PROJECT_PLAN's delivery table and NEXT_STEPS are brought along.
+
+## 2026-09-28 (cont.): the front page is the sign-in again
+
+Curtis: the homepage is the login page again. A stranger at `/` gets the sign-in; the node's public
+feed moved to `/feed` (a new server route, and the header's feed button and title link follow it), and
+a signed-in reader at either goes on to `/home` (PROJECT_PLAN's *The node's public face*, ruling 8).
+
+- **Three tabs**: sign in, new here?, and **import user** - the same sign-up with a note that "even if
+  you have a user already on a different node, you need an account on this node to host your
+  user". An account made that way skips "nobody lives here yet" and opens straight into bringing a
+  persona from another computer (the join flow): auth.js holds the intent for the one page load
+  between signing up and the persona layer asking (`takeImportIntent`, never stored). A failed
+  sign-up drops it.
+- **In the desktop app**, above the tabs: "Running in Local Server Mode: localhost:<port>", the
+  address a link that asks the app to open the system browser (the same door as the Linux notice).
+
+Then dressed (Curtis): the Local Server Mode line is a hero box - the laptop icon, the words, and the address large in the pixel face, on paper with a teal jagged ring - and the rest of the sign-in (tabs, note, form; the spare-key form too) sits in a box of its own. The sign-in's three tabs stand free of any panel, so they take the whole jag and draw their line as its ring (tokens.css), like every other bordered box; Writer's tabs, which share the `.tab` class and sit on their pane, keep the half-jag.

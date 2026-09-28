@@ -8,10 +8,22 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api, isLinuxApp } from './net.js';
+import { api, isDevice, isLinuxApp } from './net.js';
 import { t } from './i18n.js';
+import { Icons } from './icons.js';
 
 const html = htm.bind(h);
+
+// "Import user" (Curtis, 2026-09-28): an account made to host a persona that already lives on
+// another node goes straight into bringing it here, rather than landing on "nobody lives here
+// yet". Held for the one page load between signing up and the persona layer asking
+// (persona.js, `takeImportIntent`); never stored.
+let importIntent = false;
+export const takeImportIntent = () => {
+    const was = importIntent;
+    importIntent = false;
+    return was;
+};
 
 // The session, as a hook: `account` is null until whoami answers (or 401s).
 // `checking` covers the first paint so we don't flash the login screen at
@@ -108,6 +120,24 @@ function extractSecret(pasted) {
 /// Above the sign-in, in the desktop app on Linux only (Curtis, 2026-09-28): its webview is slower
 /// than a real browser and cannot show every picture, so it points the way out. The link asks
 /// the app to open this node in the system's own browser (shell.rs).
+/// Above the sign-in tabs, in the desktop app (Curtis, 2026-09-28): this is a server on this
+/// computer, at an address any browser here can open - and the link opens the system's own.
+const LocalServerNotice = () => {
+    const [error, setError] = useState(null);
+    if (!isDevice()) return null;
+    const open = (e) => {
+        e.preventDefault();
+        setError(null);
+        api('/api/shell/open-in-browser', { method: 'POST' }).catch((err) => setError(err.message));
+    };
+    return html`<div class="welcome-local">
+        <span class="welcome-local-icon"><${Icons.device} /></span>
+        <p class="welcome-local-mode">${t('auth.running-in-local-server-mode', 'Running in Local Server Mode:')}</p>
+        <a class="welcome-local-address" href="#" onClick=${open}>${t('auth.local-address', 'localhost:{port}', { port: window.location.port })}</a>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
+};
+
 const LinuxNotice = () => {
     const [error, setError] = useState(null);
     if (!isLinuxApp()) return null;
@@ -125,7 +155,7 @@ const LinuxNotice = () => {
 };
 
 export const Welcome = ({ session }) => {
-    const [mode, setMode] = useState('login'); // 'login' | 'register' | 'recover'
+    const [mode, setMode] = useState('login'); // 'login' | 'register' | 'import' | 'recover'
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [spareKey, setSpareKey] = useState('');
@@ -139,7 +169,9 @@ export const Welcome = ({ session }) => {
     const askSignupPassword = registration === 'password';
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
-    const registering = mode === 'register';
+    // Importing is making an account too, with a word about why, and a different landing.
+    const importing = mode === 'import';
+    const registering = mode === 'register' || importing;
     const availability = useAvailability(username, registering);
     const newNameAvailability = useAvailability(newUsername, needsNewName);
 
@@ -164,7 +196,13 @@ export const Welcome = ({ session }) => {
                 // Re-homed personas live under the new name; in-place resets keep the old.
                 await session.login(res.rehomed ? newUsername : username, password);
             } else if (registering) {
-                await session.register(username, password, signupPassword);
+                importIntent = importing;
+                try {
+                    await session.register(username, password, signupPassword);
+                } catch (err) {
+                    importIntent = false;
+                    throw err;
+                }
             } else {
                 await session.login(username, password);
             }
@@ -191,6 +229,7 @@ export const Welcome = ({ session }) => {
                 <${LinuxNotice} />
                 <h1 class="welcome-title">${t('auth.app-name', 'horse drawing tycoon 2')}</h1>
                 <p class="welcome-sub">${t('auth.locked-out-your-spare-key', 'locked out? your spare key gets you back in.')}</p>
+                <div class="welcome-box">
                 <form class="welcome-form" onSubmit=${submit}>
                     <label>
                         ${t('auth.name', 'name')}
@@ -249,6 +288,7 @@ export const Welcome = ({ session }) => {
                         onClick=${() => switchMode('login')}
                     >${t('auth.back-to-signing-in', 'back to signing in')}</button>
                 </form>
+                </div>
             </div>
         `;
     }
@@ -259,6 +299,8 @@ export const Welcome = ({ session }) => {
             <h1 class="welcome-title">${t('auth.app-name-2', 'horse drawing tycoon 2')}</h1>
             <p class="welcome-sub">${t('auth.a-cozy-corner-of-the', 'a cozy corner of the internet')}</p>
 
+            <${LocalServerNotice} />
+            <div class="welcome-box">
             <div class="welcome-tabs">
                 <button
                     class=${mode === 'login' ? 'tab active' : 'tab'}
@@ -266,10 +308,21 @@ export const Welcome = ({ session }) => {
                 >${t('auth.sign-in', 'sign in')}</button>
                 ${!signupsClosed &&
                 html`<button
-                    class=${registering ? 'tab active' : 'tab'}
+                    class=${mode === 'register' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('register')}
-                >${t('auth.new-here', 'new here?')}</button>`}
+                >${t('auth.new-here', 'new here?')}</button>
+                    <button
+                        class=${importing ? 'tab active' : 'tab'}
+                        onClick=${() => switchMode('import')}
+                    >${t('auth.import-user', 'import user')}</button>`}
             </div>
+            ${importing &&
+            html`<p class="welcome-note">
+                ${t(
+                    'auth.an-account-here-to-host',
+                    'Even if you have a user already on a different node, you need an account on this node to host your user.',
+                )}
+            </p>`}
 
             <form class="welcome-form" onSubmit=${submit}>
                 <label>
@@ -323,6 +376,7 @@ export const Welcome = ({ session }) => {
                     onClick=${() => switchMode('recover')}
                 >${t('auth.lost-your-password', 'lost your password?')}</button>`}
             </form>
+            </div>
         </div>
     `;
 };

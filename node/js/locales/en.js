@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1149 phrases across 73 files.
+// 1153 phrases across 73 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -266,6 +266,8 @@ export default {
     'apps.people.cleared': 'cleared',
 
     // --- node/js/auth.js ---
+    'auth.running-in-local-server-mode': 'Running in Local Server Mode:',
+    'auth.local-address': 'localhost:{port}',
     'auth.warning': 'Warning:',
     'auth.linux-works-best-in': 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.',
     'auth.open-in-your-browser': 'Click here to open in your system browser.',
@@ -283,6 +285,8 @@ export default {
     'auth.a-cozy-corner-of-the': 'a cozy corner of the internet',
     'auth.sign-in': 'sign in',
     'auth.new-here': 'new here?',
+    'auth.import-user': 'import user',
+    'auth.an-account-here-to-host': 'Even if you have a user already on a different node, you need an account on this node to host your user.',
     'auth.name-2': 'name',
     'auth.password': 'password',
     'auth.sign-up-password': 'sign-up password',
