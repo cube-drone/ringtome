@@ -18,7 +18,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
-import { FEED_STYLE } from './pure/feed.js';
+import { FEED_STYLE, REPLY_SORTS, replySortParams } from './pure/feed.js';
 import { useRef } from 'preact/hooks';
 import { parseSpeakable } from './speakable.js';
 import { PostEntry, MiniPost, Composer, publishWithBaking, BakeModal } from './postentry.js';
@@ -44,6 +44,13 @@ import { BookReader } from './doc/bookreader.js';
 
 const html = htm.bind(h);
 
+/// A thread's orders (pure/feed.js keeps the keys), in words.
+const REPLY_WORDS = {
+    old: () => t('postpage.reply-order-old', 'oldest first'),
+    hot: () => t('postpage.reply-order-hot', 'hot'),
+    best: () => t('postpage.reply-order-best', 'best'),
+};
+
 export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
@@ -60,6 +67,31 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     // The refresh affordance's counter: bumping it re-mounts the thread's read with
     // refresh=1, the deliberate re-ask past the door's cooldown.
     const [refreshKey, setRefreshKey] = useState(0);
+    // The thread's order (slice 3): oldest first until the reader picks another, kept beside the
+    // feed's order in the same private register so it follows them to their other devices.
+    const [replyOrder, setReplyOrder] = useState('old');
+    const reader = current ? current.root : null;
+    useEffect(() => {
+        if (!reader) return undefined;
+        let live = true;
+        api(`/api/identity/${reader}/private/kv/feed_selectivity`)
+            .then((r) => {
+                const saved = ((r && r.values) || []).find((v) => v.key === 'reply_sort');
+                if (live && saved && REPLY_SORTS.includes(saved.value)) setReplyOrder(saved.value);
+            })
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [reader]);
+    const moveReplyOrder = (key) => {
+        setReplyOrder(key);
+        if (!reader) return;
+        api(`/api/identity/${reader}/private/kv/feed_selectivity/reply_sort`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: key }),
+        }).catch(() => {});
+    };
 
     // `?as=`: the viewing persona, so the labels a sealed post shows are the ones its
     // holder admits THIS reader to (ruling 7; Curtis, 2026-09-14: the post page read
@@ -164,6 +196,16 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
             html`<section class="thread">
                 <h2 class="thread-head">
                     ${t('postpage.replies-known-here', 'replies known here')}
+                    ${current &&
+                    current.root &&
+                    html`<select
+                        class="thread-order"
+                        title=${t('postpage.reply-order-title', 'how each level of replies is ordered - hot and best by what the people you trust and follow liked')}
+                        value=${replyOrder}
+                        onChange=${(e) => moveReplyOrder(e.currentTarget.value)}
+                    >
+                        ${REPLY_SORTS.map((key) => html`<option value=${key} key=${key}>${REPLY_WORDS[key]()}</option>`)}
+                    </select>`}
                     ${!item.mine &&
                     html`<button
                         class="thread-refresh"
@@ -184,6 +226,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     depth=${0}
                     extra=${said}
                     refreshKey=${refreshKey}
+                    order=${replyOrder}
                 />
                 ${/* The reply box comes AFTER the conversation (Curtis, 2026-08-28): you
                     read what was said, then say something - the transcript's own order,
@@ -494,13 +537,16 @@ const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
 /// never assembles a tree - this page is the only place one forms.
 const THREAD_DEPTH_CAP = 6;
 
-const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
+const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' }) => {
     const [page, setPage] = useState(null);
+    const viewer = current ? current.root : null;
     useEffect(() => {
         let live = true;
         // refreshKey > 0 is the human's deliberate re-ask: it rides `refresh=1` past the
-        // node's cooldown so the door actually gets dialed again.
-        const force = depth === 0 && refreshKey > 0 ? '?refresh=1' : '';
+        // node's cooldown so the door actually gets dialed again. The level's order rides along
+        // (slice 3), asked as the viewer whose scores order it.
+        const params = [depth === 0 && refreshKey > 0 ? 'refresh=1' : '', replySortParams(order, viewer)].filter(Boolean).join('&');
+        const force = params ? `?${params}` : '';
         const look = () =>
             api(`/api/id/${author}/posts/${doc}/replies${force}`)
                 .then((p) => {
@@ -512,7 +558,7 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
                     if (depth === 0 && p.seeking) {
                         setTimeout(() => {
                             if (!live) return;
-                            api(`/api/id/${author}/posts/${doc}/replies`)
+                            api(`/api/id/${author}/posts/${doc}/replies${replySortParams(order, viewer) ? `?${replySortParams(order, viewer)}` : ''}`)
                                 .then((p2) => live && setPage({ ...p2, seeking: false }))
                                 .catch(() => {});
                         }, 2500);
@@ -523,7 +569,7 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
         return () => {
             live = false;
         };
-    }, [author, doc, depth, refreshKey]);
+    }, [author, doc, depth, refreshKey, order, viewer]);
     const fetched = (page && page.replies) || [];
     const have = new Set(fetched.map((r) => `${r.author}:${r.doc_id}`));
     const replies = [
@@ -556,12 +602,13 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
                 byline=${((page && page.bylines) || {})[r.author]}
                 current=${current}
                 depth=${depth}
+                order=${order}
             />`
         )}
     </div>`;
 };
 
-const ThreadReply = ({ author, doc, byline, current, depth }) => {
+const ThreadReply = ({ author, doc, byline, current, depth, order }) => {
     // undefined = loading, null = not readable here (the memo knew it, the shelf moved -
     // a takedown between fold and render), object = the reply's header.
     const [post, setPost] = useState(undefined);
@@ -604,7 +651,7 @@ const ThreadReply = ({ author, doc, byline, current, depth }) => {
     return html`<div class="thread-reply">
         <${PostEntry} key=${post.doc_id} item=${item} current=${current} editing=${null} quote=${false} />
         ${depth + 1 < THREAD_DEPTH_CAP &&
-        html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} />`}
+        html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} order=${order} />`}
         ${depth + 1 >= THREAD_DEPTH_CAP &&
         html`<p class="thread-deeper">
             <a href=${`/id/${speakable(author)}/post/${doc}`}>

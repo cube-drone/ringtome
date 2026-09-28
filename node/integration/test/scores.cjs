@@ -148,6 +148,58 @@ describe("scores: the best orders, and the reckoning behind them", function () {
         assert.deepEqual(ids(await feed("sort=hot&q=liked")), [liked, followedLike, strangerLike], "a search inside hot, ordered the same way");
     });
 
+    it("a thread orders each level oldest first, hot or best - by the viewer's own scores, and only for them", async () => {
+        // Slice 3. Three replies to ada's hot take, a few seconds apart - by the people she trusts
+        // and follows, so her door serves them - and reactions weighed by her dials.
+        const reply = async (who, root, words) => {
+            const d = await (await j(who, `api/identity/${root}/docs`, { title: "", body: words, format: "marquee" })).json();
+            const pub = await j(who, `api/identity/${root}/docs/${d.doc_id}/publish`, { reply_to: { author: adaRoot, doc_id: disliked } });
+            const said = await pub.text();
+            assert.equal(pub.status, 200, said);
+            return JSON.parse(said).post_id;
+        };
+        const r1 = await reply(dee, deeRoot, "first, and liked once by cal");
+        const r2 = await reply(cal, calRoot, "second, liked by dee - a tenth");
+        const r3 = await reply(dee, deeRoot, "third, and liked twice by cal");
+        const reactTo = async (who, root, author, doc, value) => {
+            const r = await j(who, `api/identity/${root}/public-annotations/${author}/${doc}`, { key: "tag", value }, "PUT");
+            assert.equal(r.status, 200, await r.text());
+        };
+        await reactTo(cal, calRoot, deeRoot, r1, "\u{1F44D}");
+        await reactTo(dee, deeRoot, calRoot, r2, "\u{1F44D}");
+        await reactTo(cal, calRoot, deeRoot, r3, "\u{1F44D}");
+        await reactTo(cal, calRoot, deeRoot, r3, "\u{1F4AF}");
+        const level = async (who, qs = "") =>
+            ((await (await who(`api/id/${adaRoot}/posts/${disliked}/replies${qs ? `?${qs}` : ""}`)).json()).replies || []).map((r) => r.doc_id);
+        let old = [];
+        for (let i = 0; i < 20 && old.length < 3; i++) {
+            old = await level(ada);
+            if (old.length < 3) await new Promise((r) => setTimeout(r, 300));
+        }
+        assert.deepEqual(old, [r1, r2, r3], "oldest first: the conversation's own order");
+        assert.deepEqual(await level(ada, `sort=best&as=${adaRoot}`), [r3, r1, r2], "best: two likes, one, a tenth");
+        assert.deepEqual(await level(ada, `sort=hot&as=${adaRoot}`), [r3, r1, r2], "hot: two hours up, one, six minutes");
+        assert.deepEqual(await level(ada, "sort=best"), [r1, r2, r3], "no viewer named, nobody's scores: oldest first");
+        assert.deepEqual(await level(cal, `sort=best&as=${adaRoot}`), [r1, r2, r3], "and nobody may order by ada's scores but ada");
+    });
+
+    it("a thread shows every reply at a level, not the first twenty", async () => {
+        // Found with slice 3: the door answered twenty and the thread never asked for the rest.
+        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "a busy post", body: "reply to me", format: "marquee" })).json();
+        const busy = JSON.parse(await (await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {})).text()).post_id;
+        for (let i = 0; i < 21; i++) {
+            const r = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "", body: `reply ${i}`, format: "marquee" })).json();
+            const pub = await j(ada, `api/identity/${adaRoot}/docs/${r.doc_id}/publish`, { reply_to: { author: adaRoot, doc_id: busy } });
+            assert.equal(pub.status, 200, await pub.text());
+        }
+        let got = [];
+        for (let i = 0; i < 20 && got.length < 21; i++) {
+            got = (await (await ada(`api/id/${adaRoot}/posts/${busy}/replies`)).json()).replies || [];
+            if (got.length < 21) await new Promise((r) => setTimeout(r, 300));
+        }
+        assert.equal(got.length, 21, "the twenty-first reply is shown");
+    });
+
     it("scores kept as reactions and dials move are exactly what a rebuild reckons", async () => {
         const check = async () => (await (await makeFetch(HOST)(`test/score-check?root=${adaRoot}`, { method: "POST" })).json());
         // A second author ada follows, so an interest factor has something to move.

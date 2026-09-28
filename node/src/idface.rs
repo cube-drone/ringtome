@@ -2585,9 +2585,12 @@ pub async fn id_post_replies(
             .into_response());
         }
     }
-    let (mut replies, more) = crate::replies::replies_of(&state.node_db, &root_hex, &doc, after)
-        .await
-        .map_err(AppError::Internal)?;
+    // A level whole (2026-09-28), unless a caller pages it by cursor as the API always allowed.
+    let (mut replies, more) = match after {
+        None => crate::replies::replies_level(&state.node_db, &root_hex, &doc).await,
+        Some(after) => crate::replies::replies_of(&state.node_db, &root_hex, &doc, Some(after)).await,
+    }
+    .map_err(AppError::Internal)?;
 
     // Curation is the same bit as display (PROJECT_PLAN's Replies slice 6): when the post's author
     // lives HERE, this public read speaks with the author's own voice, so it holds back
@@ -2630,6 +2633,24 @@ pub async fn id_post_replies(
                             .await;
                 }
             });
+        }
+    }
+    // Hot or best (slice 3): the siblings ordered by the viewer's own scores - only for a signed-in
+    // viewer asking as a persona of theirs, since the scores are that persona's dials read aloud.
+    if let (Some(order @ ("hot" | "best")), Some(sess), Some(viewer)) = (query.sort.as_deref(), &session, query.as_root.as_deref()) {
+        if let Ok(data) = crate::record::store::open(&state, &sess.account.id, viewer).await {
+            let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+            crate::score::refresh_dials(&state, viewer, &facts).await.map_err(AppError::Internal)?;
+            let pairs: Vec<(String, String)> = replies.iter().map(|r| (r.author.clone(), r.doc_id.clone())).collect();
+            let scores = crate::score::stored_for(&state.node_db, viewer, &pairs).await.map_err(AppError::Internal)?;
+            let milli = |r: &crate::replies::KnownReply| scores.get(&(r.author.clone(), r.doc_id.clone())).copied().unwrap_or(0);
+            if order == "hot" {
+                // Each at its time plus an hour a like, the hottest first.
+                replies.sort_by_key(|r| std::cmp::Reverse((crate::score::hot_of(r.claimed_ms, milli(r)), r.doc_id.clone())));
+            } else {
+                // The best first; among equals, the conversation's own order.
+                replies.sort_by_key(|r| (std::cmp::Reverse(milli(r)), r.claimed_ms, r.doc_id.clone()));
+            }
         }
     }
     // The repliers' bylines ride the answer (Curtis, 2026-09-05: a trusted-but-unread
@@ -2757,6 +2778,12 @@ pub struct RepliesQuery {
     pub after_doc: Option<String>,
     /// The refresh affordance: a human asking the author's door again on purpose.
     pub refresh: Option<u8>,
+    /// The level's order (PROJECT_PLAN's Scores and sort orders, slice 3): `hot` or `best` for a
+    /// signed-in viewer asking `as` a persona of theirs - the scores are that persona's; oldest
+    /// first otherwise, and by default.
+    pub sort: Option<String>,
+    #[serde(rename = "as")]
+    pub as_root: Option<String>,
 }
 
 pub async fn id_profile(

@@ -224,6 +224,17 @@
     padding: 0.15rem 0.6rem;
 }
 
+/* The thread's order (2026-09-28): oldest first, hot or best - a native select beside the head. */
+.thread-order {
+    margin-left: 0.75rem;
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.1rem 0.3rem;
+}
+
 /* The author's curation surface: strangers' replies held for the nod. */
 .held-replies {
     border: 1px dashed var(--border-strong);

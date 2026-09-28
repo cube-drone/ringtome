@@ -308,6 +308,31 @@ pub async fn replies_moved(
     Ok(seen_n != Some(n) || seen_ms != Some(ms))
 }
 
+/// How many direct replies one level of a thread shows at most (2026-09-28): the level is read
+/// whole - an order other than oldest-first (hot, best) must see every sibling to place them -
+/// and past this it says there is more.
+pub const THREAD_LEVEL_CAP: i64 = 500;
+
+/// One level of a thread whole: a post's direct replies, oldest first, at most `THREAD_LEVEL_CAP`,
+/// and whether there were more. The thread used to read `REPLIES_PAGE` of them and never ask for
+/// the next page, so a post's twenty-first reply was never shown (found 2026-09-28).
+pub async fn replies_level(node_db: &Db, parent_author: &str, parent_doc: &str) -> Result<(Vec<KnownReply>, bool)> {
+    let rows: Vec<(String, String, i64)> = node_db
+        .fetch_all(
+            "SELECT reply_author, reply_doc, claimed_ms FROM post_replies
+             WHERE parent_author = ?1 AND parent_doc = ?2
+             ORDER BY claimed_ms, reply_doc LIMIT ?3",
+            (parent_author, parent_doc, THREAD_LEVEL_CAP + 1),
+        )
+        .await
+        .context("reading a thread level")?;
+    let more = rows.len() as i64 > THREAD_LEVEL_CAP;
+    let mut out: Vec<KnownReply> =
+        rows.into_iter().map(|(author, doc_id, claimed_ms)| KnownReply { author, doc_id, claimed_ms }).collect();
+    out.truncate(THREAD_LEVEL_CAP as usize);
+    Ok((out, more))
+}
+
 /// The thread read: one page of a post's DIRECT replies, oldest first, keyset by
 /// (claimed_ms, reply_doc). The UI recurses per level, depth-capped - a thousand-reply
 /// tree is a read whose cost grows with history, so it pages or it does not ship.

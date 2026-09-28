@@ -3595,7 +3595,7 @@ that name or takes an awkward name to avoid them. Disjoint floors cost one short
 end the conversation. One constant names the word; the pure address builder writes the
 floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
 
-### Scores and sort orders: hot and best (settled 2026-09-27; slice 1 built 2026-09-28)
+### Scores and sort orders: hot and best (settled 2026-09-27; built 2026-09-28)
 
 "Each item in your feed carries a score ... a unit of content with many positive tags gets a
 very high score ... if someone you trust a lot is responsible for a tag, that tag counts more."
@@ -3733,7 +3733,11 @@ dial's top emphasis - a flag, never the number. Measured (debug build, 131,072 p
 time, then rebuilt: label columns and indexes; the one journal filter (chats fixed); the score
 tables and best on them; the tag cloud over a cached year; the picks' narrowing and the inverted
 search index (the newest-5000 read gone). (2) hot, and a high score's emphasis - built 2026-09-28.
-(3) reply trees.
+(3) reply trees - built 2026-09-28: each level of a thread ordered among itself, oldest first
+(the default, the conversation's own order), hot (reply time plus an hour a like) or best (score
+high first, ties oldest first), by the viewer's own scores - only for a signed-in viewer asking as a
+persona of theirs; anyone else reads oldest first. A level is read whole (up to 500 replies) so
+every sibling can be placed.
 
 ### Contact tags: private labels on the people you know (settled 2026-09-10)
 

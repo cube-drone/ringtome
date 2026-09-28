@@ -3,11 +3,11 @@ const assert = require('node:assert');
 
 let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated, docStatus,
     emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked;
+    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked, REPLY_SORTS, replySortParams;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated, docStatus,
         postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked } = await import(
+        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked, REPLY_SORTS, replySortParams } = await import(
         '../../../js/pure/feed.js'
     ));
 });
@@ -450,5 +450,17 @@ describe('the feed orders', () => {
         const more = mergeRanked(first, [item('new', 9), item('mid', 5)]);
         assert.deepEqual(more.map((i) => i.doc_id), ['old', 'new', 'mid']);
         assert.deepEqual(mergeFeed([], [item('old', 1), item('new', 9)]).map((i) => i.doc_id), ['new', 'old'], 'where mergeFeed would have');
+    });
+});
+
+// A thread's orders (slice 3): each level's replies sorted among themselves, asked as the viewer.
+describe('the thread orders', () => {
+    it('words each order for the replies door, as the viewer, and asks nothing of oldest first', () => {
+        assert.deepEqual(REPLY_SORTS, ['old', 'hot', 'best']);
+        assert.equal(replySortParams('old', 'me'), '');
+        assert.equal(replySortParams('best', 'me'), 'sort=best&as=me');
+        assert.equal(replySortParams('hot', 'me'), 'sort=hot&as=me');
+        assert.equal(replySortParams('best', null), '', 'nobody signed in: nobody to score for');
+        assert.equal(replySortParams('nonsense', 'me'), '');
     });
 });

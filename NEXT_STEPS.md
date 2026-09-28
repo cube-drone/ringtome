@@ -30,7 +30,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   feed's when someone has more
 * Pruning scores older than a year (the plan says they go; nothing prunes them yet)
 * If best-this-year's ~175 ms a page bites: a cached ranking per reader and window
-* Slice 3: reply trees
+* A thread level past 500 replies says `more` and nothing asks for the rest - a "more replies"
+  control when a post gets that busy; and hot's lift (a card's emphasis) is the feed's only, not
+  a thread's
 
 ### Actual Horse Drawing & Tycooning
 * Drawing app

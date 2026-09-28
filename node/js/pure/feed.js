@@ -358,6 +358,18 @@ export function sortParams(sort) {
     return isBestSort(sort) ? `sort=best&window=${sort}` : '';
 }
 
+/// A thread's orders (PROJECT_PLAN's Scores and sort orders, slice 3), each level's replies
+/// sorted among themselves: oldest first - the conversation's own order, and the default - hot, or
+/// best. Keys only; the page words them.
+export const REPLY_SORTS = ['old', 'hot', 'best'];
+
+/// The replies door's words for a thread order, asked as the viewing persona (the scores are
+/// theirs): nothing for oldest first, or with no one signed in to be scored for.
+export function replySortParams(order, viewer) {
+    if (!viewer || (order !== 'hot' && order !== 'best')) return '';
+    return `sort=${order}&as=${viewer}`;
+}
+
 /// A ranked page onto what is shown, in the node's order: `mergeFeed` sorts by date, which
 /// would undo the ranking, so a best page is appended as it came, deduplicated - a score may
 /// move between pages and bring a post round twice.

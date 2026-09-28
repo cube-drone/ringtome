@@ -12007,3 +12007,28 @@ dislike an hour back - over all of time.
 scores.cjs holds the order (the trusted double-like two hours up, a follow's like six minutes, the
 dislike an hour down, a two-year-old favourite's two hours nothing against its age), the lift on
 exactly the two posts at two likes, none in newest, and a search inside hot.
+
+## 2026-09-28 (cont.): threads ordered oldest first, hot or best (slice 3)
+
+The last slice of PROJECT_PLAN's *Scores and sort orders* (Curtis: "organizing replies by
+chronological, hot, or best"). The post page's "replies known here" has an order select - oldest
+first, hot, best - kept beside the feed's order in the same private register, and each level of
+the thread orders its own replies by it:
+
+- **The door** (`/api/id/{root}/posts/{doc}/replies`) takes `sort=hot|best&as=<viewer>`: the
+  viewer's dials brought up to date (as a feed page's are), the level's stored scores read, and the
+  siblings ordered - hot by reply time plus an hour a like, best by score with ties oldest first.
+  Only for a signed-in viewer asking as a persona of theirs - the scores are their dials read aloud;
+  anyone else, or another account naming them, reads oldest first.
+- **A level is read whole** (`replies::replies_level`, up to `THREAD_LEVEL_CAP` = 500): found on the
+  way, the door answered 20 replies a page and the thread never asked for the next, so a post's
+  twenty-first reply was never shown. Paging by cursor stays for any caller that uses it.
+- **The client**: the order rides every level's request, down the nested threads.
+
+scores.cjs holds three replies ordered oldest first, best (two likes, one, a tenth) and hot (two
+hours, one, six minutes); no viewer named, or another account naming ada, reads oldest first; and
+twenty-one replies on one post are all shown. Planted "no ordering" and "twenty a page" turned
+exactly those two claims red.
+
+Left (NEXT_STEPS): a level past 500 says `more` with nothing to ask for it, and hot's lift is the
+feed's only.

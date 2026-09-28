@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1117 phrases across 72 files.
+// 1121 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -896,12 +896,16 @@ export default {
 
     // --- node/js/postpage.js ---
     'postpage.other-authors-in-the-copy-chain': 'Other Authors in the Copy Chain',
+    'postpage.reply-order-old': 'oldest first',
+    'postpage.reply-order-hot': 'hot',
+    'postpage.reply-order-best': 'best',
     'postpage.a-post': 'a post',
     'postpage.that-isnt-an-address': "that isn't an address this app knows how to read",
     'postpage.looking-for-the-post': 'looking for the post…',
     'postpage.no-such-post-is-held': 'no such post is held here - it may be private, taken down, or its author unreachable',
     'postpage.the-author-settled-this': 'the author turned off comments for this post',
     'postpage.replies-known-here': 'replies known here',
+    'postpage.reply-order-title': 'how each level of replies is ordered - hot and best by what the people you trust and follow liked',
     'postpage.ask-the-author-again': 'check for new replies',
     'postpage.refresh': 'refresh',
     'postpage.history-and-popularity': 'history & popularity',
