@@ -12,19 +12,19 @@
 
 import { bandOrdinal } from './contact.js';
 
-/// The six stops, widest first - the titles are Curtis's design, verbatim, worn by the
-/// slider as it moves. The three speculative stops are a PATH-STRENGTH gradient over the
+/// The six stops, widest first - keys only: the words the slider wears are Curtis's design,
+/// kept (translatable) where they are shown, apps/feed.js STOP_WORDS. The three speculative stops are a PATH-STRENGTH gradient over the
 /// one pool that exists (2026-08-25, after the depth-2 boundary parked the deeper pools
 /// these seats were reserved for): each stop asks "how strong a vouch do I require?" -
-/// 'speculative' wants a high path band, 'highly speculative' at least medium, Explorer
+/// 'speculative' wants a high path band, 'highly speculative' at least medium, 'explorer'
 /// admits everything the node can honestly surface, weakest and bandless paths included.
 export const SELECTIVITY_STOPS = [
-    { key: 'explorer', label: 'Explorer' },
-    { key: 'highly-speculative', label: 'highly speculative' },
-    { key: 'speculative', label: 'speculative' },
-    { key: 'interest', label: 'interest only' },
-    { key: 'medium', label: 'medium interest only' },
-    { key: 'high', label: 'high interest only' },
+    { key: 'explorer' },
+    { key: 'highly-speculative' },
+    { key: 'speculative' },
+    { key: 'interest' },
+    { key: 'medium' },
+    { key: 'high' },
 ];
 
 /// New users default to the widest floor: a new user's explicit-interest feed is empty by

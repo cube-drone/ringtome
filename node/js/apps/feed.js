@@ -70,6 +70,17 @@ import { tagCounts } from '../pure/contacttags.js';
 
 const html = htm.bind(h);
 
+/// The curiosity dial's stops (pure/selectivity.js keeps the keys), in words a translation can
+/// carry - Curtis's design, verbatim, in English.
+const STOP_WORDS = {
+    explorer: () => t('apps.feed.stop-explorer', 'explorer'),
+    'highly-speculative': () => t('apps.feed.stop-highly-speculative', 'highly speculative'),
+    speculative: () => t('apps.feed.stop-speculative', 'speculative'),
+    interest: () => t('apps.feed.stop-interest', 'interest only'),
+    medium: () => t('apps.feed.stop-medium', 'medium interest only'),
+    high: () => t('apps.feed.stop-high', 'high interest only'),
+};
+
 const EMPTY = new Map();
 
 // A stack item's words, rendered. Journal's reader exactly (doc/detail.js, cache-first and
@@ -230,6 +241,14 @@ export function scheduledPlan(doc) {
 export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery, feedUrl, labelsUrl, dial = true, picksKey, nullState }) => {
     const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
+    // The facet picks, kept per road for the tab (facets.js). Up here: the pages below read them.
+    const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null));
+    // "me" (Curtis, 2026-09-27): on the reader's own feed only, your own posts show while it is
+    // picked - which it is until you unpick it - and unpicked, the feed is other people's, every ask
+    // saying so to the node (`me=0`). Only the unpick is remembered (`me: false`).
+    const meChip = !!root && !feedUrl;
+    const ownOut = meChip && picks.me === false;
+    const withOwn = (qs) => (ownOut ? (qs ? `${qs}&me=0` : '?me=0') : qs);
     const edit = editingFor || (() => null);
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
@@ -245,9 +264,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         setLoading(true);
         setPageError(false);
         try {
-            const qs = cursor
-                ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}`
-                : '';
+            const qs = withOwn(cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '');
             const page = await api(`${feedDoor}${qs}`);
             setItems((have) => mergeFeed(cursor ? have : [], page.items));
             setMore(!!page.more);
@@ -261,7 +278,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     useEffect(() => {
         if (feedDoor) loadPage(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [feedDoor]);
+    }, [feedDoor, ownOut]);
 
     // Notice new arrivals without showing them: poll the head page on a slow beat (and on
     // window focus - coming back to the tab is when "anything new?" is the live question),
@@ -271,7 +288,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         let live = true;
         const look = async () => {
             try {
-                const page = await api(feedDoor);
+                const page = await api(`${feedDoor}${ownOut ? '?me=0' : ''}`);
                 if (!live) return;
                 setPending((cur) => {
                     const shown = new Set(items.map(feedKey));
@@ -289,18 +306,19 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
             clearInterval(timer);
             window.removeEventListener('focus', look);
         };
-    }, [root, items, feedDoor]);
+    }, [root, items, feedDoor, ownOut]);
 
     // A fresh post of your own joins the stream immediately - your attention is already at
     // the top, so the popping-in objection doesn't apply to the thing you just did. The
     // synthesized item merges by the same key the real journal row will carry, so when the
     // poll later brings the real one, the dedupe swallows it instead of doubling it.
     useEffect(() => {
-        if (!fresh) return;
+        // ...unless the reader has left their own posts out ("me" unpicked).
+        if (!fresh || ownOut) return;
         setItems((have) => mergeFeed([fresh], have));
         setPending((p) => p.filter((i) => feedKey(i) !== feedKey(fresh)));
         if (streamRef.current) streamRef.current.scrollTop = 0;
-    }, [fresh]);
+    }, [fresh, ownOut]);
 
     const takePending = () => {
         setItems((have) => mergeFeed(have, pending));
@@ -382,7 +400,6 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     // the interest dials still shape them, and your own posts still bypass.
     // The facet strip (facets.js): the whole journal's buckets and tags, picks narrowing
     // the stream through the same door as the words.
-    const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null));
     // The dial narrows the lists and the search too (Curtis, 2026-09-08): the node counts
     // and matches only what the feed at this stop shows.
     // And the picks thin the lists themselves (Curtis, 2026-09-27): the node counts each row over
@@ -391,31 +408,24 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const labelQuery = [
         narrowParams('', picks),
         stopKey && stopKey !== 'explorer' ? `stop=${encodeURIComponent(stopKey)}` : '',
+        ownOut ? 'me=0' : '',
     ]
         .filter(Boolean)
         .join('&');
     const labels = useLabels(labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null, items.length);
-    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey });
+    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, ownOut });
     const shown = search.active
         ? mergeFeed([], search.results || []).filter((item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot))
         : [...(scheduled || []), ...visible];
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
-            <div class="feed-fresh-bar">
-                ${pending.length > 0 &&
-                html`<button class="feed-fresh-btn" onClick=${takePending}>
-                    ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : `${pending.length} updates`} ${t('apps.feed.refresh', '· refresh')}
-                </button>`}
-            </div>
-            ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
-                dip into, not an inbox to empty. The fresh-updates bar above is the one "what
-                arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
-            <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} />
-            <div class="feed-stream-head">
-                <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
+            ${/* The dial first, above even the tag cloud (Curtis, 2026-09-27): how far the feed may
+                reach decides everything under it, the lists included. */ ''}
+            <div class="feed-top">
                 ${stop !== null &&
                 html`<label class="feed-selectivity" title=${t('apps.feed.how-far-past-the-people', 'how far past the people you chose this feed may reach')}>
+                    <span class="feed-selectivity-name">${t('apps.feed.feed-curiosity', 'feed curiosity:')}</span>
                     <input
                         type="range"
                         min="0"
@@ -423,8 +433,26 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                         value=${SELECTIVITY_STOPS.findIndex((s) => s.key === stopKey)}
                         onInput=${(e) => moveStop(SELECTIVITY_STOPS[Number(e.currentTarget.value)].key)}
                     />
-                    <span class="feed-selectivity-label">${(SELECTIVITY_STOPS.find((s) => s.key === stopKey) || {}).label}</span>
+                    <span class="feed-selectivity-label">${STOP_WORDS[stopKey] ? STOP_WORDS[stopKey]() : ''}</span>
                 </label>`}
+            </div>
+            ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
+                dip into, not an inbox to empty. The fresh-updates bar above is the one "what
+                arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
+            <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} meChip=${meChip} />
+            ${/* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
+                the dial's corner it was hard to see): centred, and always the same height, so the
+                button appearing never moves your read position - the reason updates wait to be
+                asked for. */ ''}
+            <div class="feed-fresh-bar">
+                ${pending.length > 0 &&
+                html`<button class="feed-fresh-btn" onClick=${takePending}>
+                    ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : t('apps.feed.n-updates', '{n} updates', { n: pending.length })}
+                    ${t('apps.feed.refresh', '· refresh')}
+                </button>`}
+            </div>
+            <div class="feed-stream-head">
+                <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
             </div>
             ${shown.map(
                 (item) => html`<${PostEntry}

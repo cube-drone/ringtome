@@ -22,6 +22,9 @@ export function narrowParams(query, picks, extra = {}) {
     // dial shows; it never makes a search on its own.
     const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;
     if (stop && parts.length) parts.push(`stop=${encodeURIComponent(stop)}`);
+    // The feed's "me" left unpicked (apps/feed.js) rides along the same way: it narrows a search,
+    // and never makes one.
+    if (extra.ownOut && parts.length) parts.push('me=0');
     return parts.join('&');
 }
 

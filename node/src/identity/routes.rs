@@ -642,6 +642,15 @@ struct FeedQuery {
     /// the dial shows. The plain page ignores it - the browser applies the dial to the
     /// page it holds, as it always has.
     stop: Option<String>,
+    /// `me=0`: leave the reader's own posts out (Curtis, 2026-09-27: the feed page's "me" chip,
+    /// which the page leaves unpicked - and so sends this - by default). Absent, they are in, as
+    /// they always were for any other caller.
+    me: Option<String>,
+}
+
+/// Whether a feed or facets request wants the reader's own posts: yes, unless it says `me=0`.
+fn wants_own(me: &Option<String>) -> bool {
+    !matches!(me.as_deref(), Some("0") | Some("false") | Some("no"))
 }
 
 #[derive(Deserialize, Default)]
@@ -649,6 +658,8 @@ struct LabelsQuery {
     stop: Option<String>,
     /// The listing's words, when it is being searched: the facets count what it shows.
     q: Option<String>,
+    /// `me=0`: count without the reader's own posts, as the feed then shows them.
+    me: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2078,7 +2089,11 @@ async fn feed_labels_handler(
     let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
         .await
         .map_err(AppError::Internal)?;
-    let rows = readable_feed_rows(&state, &root, rows).await;
+    let mut rows = readable_feed_rows(&state, &root, rows).await;
+    // The reader's own posts count only when the feed shows them ("me").
+    if !wants_own(&q.me) {
+        rows.retain(|r| r.author_root != root);
+    }
     // The dial (2026-09-08): the lists count only what the feed at this stop shows.
     let rows = rows_at_stop(&state, &owned, &root, rows, q.stop.as_deref()).await?;
     let kinds = feed_kinds(&state, &rows).await?;
@@ -2129,16 +2144,19 @@ async fn feed_handler(
     let page = crate::idface::POSTS_PAGE;
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
     let (mut rows, more) = if narrow.is_empty() {
-        let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1)
+        let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1, wants_own(&q.me))
             .await
             .map_err(AppError::Internal)?;
         let more = rows.len() as i64 > page;
         rows.truncate(page as usize);
         (rows, more)
     } else {
-        let all = crate::fanout::feed_all(&state.node_db, &root, 5000)
+        let mut all = crate::fanout::feed_all(&state.node_db, &root, 5000)
             .await
             .map_err(AppError::Internal)?;
+        if !wants_own(&q.me) {
+            all.retain(|r| r.author_root != root);
+        }
         let all = rows_at_stop(&state, &_owned, &root, all, q.stop.as_deref()).await?;
         let kinds = feed_kinds(&state, &all).await?;
         let candidates: Vec<crate::search::Candidate> = all

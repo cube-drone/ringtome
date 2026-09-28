@@ -38,7 +38,7 @@ import { NotificationsApp } from './apps/notifications.js';
 import { DeviceApp } from './apps/device.js';
 import { ChatApp } from './apps/chat.js';
 import { appsFor, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
-import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
+import { nextSearchKind } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { Version } from './version.js';
@@ -94,6 +94,13 @@ const NotFound = () => html`
 // exactly one - the kind dial, a button that rotates "all files / only documents / only
 // media" - but the dropdown is the socket later options plug into. The funnel tints while any
 // dial is off its default, so a filtered list never looks mysteriously short.
+/// The search kind dial's words (pure/doclist.js keeps the keys), translatable.
+const SEARCH_KIND_WORDS = {
+    all: () => t('index.search-kind-all', 'all files'),
+    docs: () => t('index.search-kind-docs', 'only documents'),
+    media: () => t('index.search-kind-media', 'only media'),
+};
+
 const SearchOptions = ({ kind, onKind }) => {
     const [open, setOpen] = useState(false);
     const boxRef = useRef(null);
@@ -119,7 +126,7 @@ const SearchOptions = ({ kind, onKind }) => {
                 class="search-opts-kind"
                 title=${t('index.rotates-all-files-only-documents', 'rotates: all files / only documents / only media')}
                 onClick=${() => onKind(nextSearchKind(kind))}
-            >${SEARCH_KIND_LABELS[kind]}</button>
+            >${SEARCH_KIND_WORDS[kind] ? SEARCH_KIND_WORDS[kind]() : ''}</button>
         </div>`}
     </span>`;
 };

@@ -1724,7 +1724,11 @@ pub async fn feed_page(
     reader_root: &str,
     before: Option<(i64, String)>,
     limit: i64,
+    // The reader's own posts, or not (Curtis, 2026-09-27: the feed page's "me" chip).
+    // Filtered here, in the query, so a page is still a full page when the reader has been busy.
+    include_own: bool,
 ) -> Result<Vec<FeedRow>> {
+    let own = i64::from(include_own);
     type Row = JournalTuple;
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
@@ -1736,8 +1740,9 @@ pub async fn feed_page(
                 "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext', 'book', 'room')
+                   AND (?3 = 1 OR author_root <> reader_root)
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
-                (reader_root, limit),
+                (reader_root, limit, own),
             )
             .await,
         // Numbered placeholders: ?2 appears twice and binds ONE value - the first version
@@ -1749,8 +1754,9 @@ pub async fn feed_page(
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext', 'book', 'room')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
+                   AND (?5 = 1 OR author_root <> reader_root)
                  ORDER BY published_ms DESC, doc_id LIMIT ?4",
-                (reader_root, ms, doc.as_str(), limit),
+                (reader_root, ms, doc.as_str(), limit, own),
             )
             .await,
     }

@@ -9,10 +9,7 @@ import { bandOrdinal } from './contact.js';
 
 /// The two orderings the shelf offers. Both descend (most first); the tie-break is the root,
 /// so two same-scored contacts never shuffle between renders or devices.
-export const PEOPLE_SORTS = [
-    { key: 'trust', label: 'by trust' },
-    { key: 'interest', label: 'by interest' },
-];
+export const PEOPLE_SORTS = [{ key: 'trust' }, { key: 'interest' }]; // words: apps/people.js SORT_WORDS
 
 /// Order contact rows by one fact, descending, blocked personas sinking to the bottom
 /// regardless (a blocked contact is still YOURS to see and unblock - hidden would mean

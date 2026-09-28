@@ -19,6 +19,12 @@ JavaScript's strings and comments together:
 - `stripComments` blanks `/* ... */` with a regex that does not know strings, so `accept="image/*"`
   opened a "comment" that ran to the next `*/` and hid every `t()` call between.
 
+A third blind spot, of scope rather than scanning: the tool reads templates and message sinks, so
+user-facing words kept as data in a PURE module (which may not import `t`) are invisible to it - the
+feed's curiosity stops, the search kind dial and People's sorts all shipped untranslated that way
+until 2026-09-27. The pattern that holds: a pure module keeps KEYS, and the rendering module maps
+them to words through `t` (facets.js `KIND_NAMES`, feed.js `STOP_WORDS`).
+
 The first mis-flags copy (or hides it from the cop); the second made `just strings` DELETE five live
 phrases from en.js (the profile's name, bio and Save labels) while `strings-check` reported all
 well. Both were worked around in place (HISTORY, 2026-09-27). The fix is one scanner that tokenizes

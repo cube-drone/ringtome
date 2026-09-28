@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1082 phrases across 72 files.
+// 1097 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -147,6 +147,12 @@ export default {
     'device.restoring-is-not-here-yet': "Restoring from a backup isn't here yet.",
 
     // --- node/js/apps/feed.js ---
+    'apps.feed.stop-explorer': 'explorer',
+    'apps.feed.stop-highly-speculative': 'highly speculative',
+    'apps.feed.stop-speculative': 'speculative',
+    'apps.feed.stop-interest': 'interest only',
+    'apps.feed.stop-medium': 'medium interest only',
+    'apps.feed.stop-high': 'high interest only',
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
     'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
     'apps.feed.couldnt-discard-it': "couldn't discard it: {message}",
@@ -154,10 +160,12 @@ export default {
     'apps.feed.discard-this-draft-title': 'discard this draft',
     'apps.feed.open-this-for-editing': 'open this for editing',
     'apps.feed.the-public-copy': 'the public copy',
+    'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
+    'apps.feed.feed-curiosity': 'feed curiosity:',
     'apps.feed.1-update': '1 update',
+    'apps.feed.n-updates': '{n} updates',
     'apps.feed.refresh': '· refresh',
     'apps.feed.the-feed': 'the feed',
-    'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
     'apps.feed.searching': 'searching…',
     'apps.feed.nothing-in-your-feed-says-that': 'nothing in your feed says that.',
@@ -221,6 +229,8 @@ export default {
     'apps.notifications.you-havent-seen-this-yet': "you haven't seen this yet",
 
     // --- node/js/apps/people.js ---
+    'apps.people.sort-by-trust': 'by trust',
+    'apps.people.sort-by-interest': 'by interest',
     'apps.people.filter-or-paste-an-address': 'filter, or paste an address…',
     'apps.people.type-to-narrow-the-shelf': 'search or paste an address',
     'apps.people.people-who-are-also-me': 'people who are also me',
@@ -594,6 +604,8 @@ export default {
     'facets.kind-rooms': 'rooms',
     'facets.and-n-more': 'and {n} more…',
     'facets.fewer': 'fewer',
+    'facets.me-title': 'your own posts: unpick to leave them out of the feed',
+    'facets.me': 'me',
     'facets.kinds': 'show',
     'facets.buckets': 'in',
     'facets.tags': 'tagged',
@@ -618,6 +630,9 @@ export default {
     // --- node/js/index.js ---
     'index.theres-nothing-at-this-address': "there's nothing at this address. {home}.",
     'index.back-to-your-applications': 'back to your applications',
+    'index.search-kind-all': 'all files',
+    'index.search-kind-docs': 'only documents',
+    'index.search-kind-media': 'only media',
     'index.more-search-options': 'more search options',
     'index.show': 'show',
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',

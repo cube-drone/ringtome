@@ -19,6 +19,12 @@ import { tagCounts, rowsTagged } from '../pure/contacttags.js';
 
 const html = htm.bind(h);
 
+/// The shelf's two orderings (pure/people.js keeps the keys), translatable.
+const SORT_WORDS = {
+    trust: () => t('apps.people.sort-by-trust', 'by trust'),
+    interest: () => t('apps.people.sort-by-interest', 'by interest'),
+};
+
 /// People's answer to the search bar, riding the same header slot as every other app's -
 /// one field, two jobs, told apart by the INPUT rather than a button (Curtis, 2026-08-24,
 /// retiring the "look up" button as redundant): typing filters the shelf live (the query
@@ -212,7 +218,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
                             key=${s.key}
                             class=${sortBy === s.key ? 'people-sort people-sort-on' : 'people-sort'}
                             onClick=${() => setSortBy(s.key)}
-                        >${s.label}</button>`
+                        >${SORT_WORDS[s.key]()}</button>`
                     )}
                 </span>
             </div>

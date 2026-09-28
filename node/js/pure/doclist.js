@@ -9,11 +9,6 @@ import { claimedMs } from './docdate.js';
 // summary with `media` facts: image, video, audio). One extra search option today; the
 // dropdown it lives in is where later ones land.
 export const SEARCH_KINDS = ['all', 'docs', 'media'];
-export const SEARCH_KIND_LABELS = {
-    all: 'all files',
-    docs: 'only documents',
-    media: 'only media',
-};
 export const nextSearchKind = (kind) =>
     SEARCH_KINDS[(SEARCH_KINDS.indexOf(kind) + 1) % SEARCH_KINDS.length];
 

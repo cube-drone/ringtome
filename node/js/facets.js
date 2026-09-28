@@ -40,16 +40,17 @@ const KIND_NAMES = {
     room: () => t('facets.kind-rooms', 'rooms'),
 };
 
-const FacetRow = ({ label, items: counted, picked, onToggle, names }) => {
+const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null }) => {
     const [expanded, setExpanded] = useState(false);
     // A picked value always shows, even once nothing is left under it - so it can be unpicked.
     const have = new Set((counted || []).map((f) => f.value));
     const items = [...(counted || []), ...(picked || []).filter((v) => !have.has(v)).map((value) => ({ value, count: 0 }))];
-    if (items.length === 0) return null;
+    if (items.length === 0 && !extra) return null;
     const { shown, hidden } = facetSlice(items, picked, expanded);
     const word = (v) => (names && names[v] ? names[v]() : v);
     return html`<div class="facet-row">
         <span class="facet-row-label">${label}</span>
+        ${extra}
         ${shown.map(
             (f) => html`<button
                 key=${f.value}
@@ -69,16 +70,26 @@ const FacetRow = ({ label, items: counted, picked, onToggle, names }) => {
 
 /// The strip: `labels` from `useLabels`, `picks` as `{ buckets: [], tags: [] }`, and
 /// `onPicks` with the next picks.
-export const LabelFacets = ({ labels, picks, onPicks }) => {
-    if (!labels || ((labels.kinds || []).length === 0 && (labels.buckets || []).length === 0 && (labels.tags || []).length === 0)) return null;
+export const LabelFacets = ({ labels, picks, onPicks, meChip = false }) => {
+    if (!meChip && (!labels || ((labels.kinds || []).length === 0 && (labels.buckets || []).length === 0 && (labels.tags || []).length === 0))) return null;
     const toggle = (kind) => (value) => onPicks({ ...picks, [kind]: togglePick(picks[kind], value) });
+    // "me" (Curtis, 2026-09-27), the reader's own feed only: picked until you unpick it, and
+    // unpicked it LEAVES something out - your own posts. Only the unpick is kept (`me: false`).
+    const meOn = picks.me !== false;
+    const me = meChip
+        ? html`<button
+              class=${meOn ? 'facet-chip facet-chip-on' : 'facet-chip'}
+              title=${t('facets.me-title', 'your own posts: unpick to leave them out of the feed')}
+              onClick=${() => onPicks({ ...picks, me: meOn ? false : undefined })}
+          >${t('facets.me', 'me')}</button>`
+        : null;
     return html`<div class="facets">
         ${/* The kind row (Curtis, 2026-09-08): posts, replies, rebroadcasts, books - the
             same semantics as the rows below it: nothing picked shows everything, a pick
             narrows to just those. "posts" is what is none of the other kinds. */ ''}
-        <${FacetRow} label=${t('facets.kinds', 'show')} items=${labels.kinds} picked=${picks.kinds} onToggle=${toggle('kinds')} names=${KIND_NAMES} />
-        <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels.buckets} picked=${picks.buckets} onToggle=${toggle('buckets')} />
-        <${FacetRow} label=${t('facets.tags', 'tagged')} items=${labels.tags} picked=${picks.tags} onToggle=${toggle('tags')} />
+        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
+        <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} onToggle=${toggle('buckets')} />
+        <${FacetRow} label=${t('facets.tags', 'tagged')} items=${labels && labels.tags} picked=${picks.tags} onToggle=${toggle('tags')} />
     </div>`;
 };
 
@@ -119,4 +130,4 @@ export function usePicks(key) {
     return [picks, setPicks];
 }
 export const anyPicks = (picks) =>
-    !!(picks && ((picks.kinds || []).length || (picks.buckets || []).length || (picks.tags || []).length));
+    !!(picks && (picks.me === false || (picks.kinds || []).length || (picks.buckets || []).length || (picks.tags || []).length));

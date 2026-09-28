@@ -11676,3 +11676,38 @@ used first out. A reload repaints nothing unchanged; an edit or a sync is a new 
 paint. Painting waits for the table's answer, so a kept thumbnail is never painted twice. A
 node-kept cache stays possible later, for a new device's first look. The table is Dexie-backed, so
 no pure test holds it; not yet watched in a browser.
+
+The feed's selectivity dial moved to the very top, above the tag cloud, and is named: "feed
+curiosity:" (Curtis) - how far the feed may reach decides everything under it, the lists included.
+Its widest stop reads "explorer", lower case like the rest (was "Explorer").
+
+The curiosity dial's stops were never translatable (Curtis): their words lived as data in
+pure/selectivity.js, which may not import `t`, so the strings cop never saw them. Two more lists
+had the same gap - the search kind dial ("all files / only documents / only media", pure/doclist.js)
+and People's sorts ("by trust / by interest", pure/people.js). All three pure lists now keep keys
+only, and the pages that show them map keys to words through `t` (feed.js `STOP_WORDS`, index.js
+`SEARCH_KIND_WORDS`, people.js `SORT_WORDS`) - facets.js's `KIND_NAMES` pattern; eleven new phrases.
+The blind spot is noted beside the strings tool's others in REFACTOR.md.
+
+The blank band between "feed curiosity" and the tag cloud (Curtis) was the reserved updates slot -
+a fixed 2rem strip, empty until updates arrive, kept so the button appearing never moves your read
+position - plus the gaps and margins round it. The slot now shares the dial's row, at its far end
+(`.feed-top`, fixed height, so the guarantee holds), and the facet strip's top margin went. "N
+updates" now goes through `t`: it was a bare template string the strings cop could not see.
+In the dial's corner the updates button was hard to see (Curtis), so it has its own centred slot
+again - between the lists and the feed now, still of fixed height, the read position still never
+moved. The dial's row holds the dial alone.
+
+## 2026-09-27 (cont.): "me" in the feed's show row
+
+The feed's "show" row gained **me** (Curtis): unlike the kinds beside it, unpicked it leaves
+something OUT - your own posts. It starts picked (Curtis, after a first cut had it off: "me should
+default on"), and only an unpick is remembered, so a fresh tab shows your posts. The node does the
+leaving-out, so a page is still a full page when you have been busy: `me=0` on the feed, its search
+and its labels (fanout.rs `feed_page` filters in the query; the whole-journal reads filter after),
+and without it nothing changes for any other caller - the page is what sends it. The pick is kept
+with the others for the tab; it rides a search without making one; the counts leave your posts out
+too; and a post you publish while "me" is unpicked is not dropped into the stream (it is in your
+own page, and in the feed once "me" is picked again). A facets.cjs claim holds the plain page, a narrowed
+page, a later (cursor) page - the branch `feed_page` notes no test used to page - and the counts,
+with and without it.

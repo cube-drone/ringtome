@@ -1754,10 +1754,16 @@ article:has(.label-emoji-strip) {
     margin: 0 0 0.4rem;
 }
 
-/* The reserved update slot: always the same height, so the bar appearing never moves your
-   read position - which is the whole reason updates wait to be asked for. */
-/* The reserved update slot: always the same height, so the bar appearing never moves your
-   read position - which is the whole reason updates wait to be asked for. */
+/* The feed's top row (apps/feed.js): the curiosity dial. */
+.feed-top {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+/* The reserved update slot, between the lists and the feed: always the same height, so the button
+   appearing never moves your read position - which is the whole reason updates wait to be asked
+   for. */
 .feed-fresh-bar {
     height: 2rem;
     flex-shrink: 0;
@@ -1857,11 +1863,17 @@ article:has(.label-emoji-strip) {
 
 /* The selectivity slider (DISCOVERY slice 3): one control at the top of the feed, its title
    changing as it moves. Quiet by design - it curates, it doesn't decorate. */
+/* The curiosity dial (Curtis, 2026-09-27): its own row at the very top of the feed, above the tag
+   cloud - it decides everything beneath. */
 .feed-selectivity {
-    margin-left: auto;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.feed-selectivity-name {
+    color: var(--muted);
+    font-size: 0.85rem;
 }
 .feed-selectivity input[type='range'] {
     width: 7rem;

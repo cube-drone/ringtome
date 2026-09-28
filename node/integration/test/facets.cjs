@@ -96,6 +96,23 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual([byName(shelf.tags), byName(shelf.buckets)], [{ bikes: 1 }, { outings: 1 }], "a person's page thins alike");
     });
 
+    it("me=0 leaves the reader's own posts out of the feed, a narrowed feed and the counts - and without it nothing changes", async () => {
+        // The feed page's "me" chip, unpicked (Curtis, 2026-09-27). Ada's own feed is only her own posts.
+        const get = (path) => ada(path).then((r) => r.json());
+        assert.ok((await get(`api/identity/${adaRoot}/feed`)).items.length > 0, "her own posts, as ever, when not asked otherwise");
+        assert.deepEqual((await get(`api/identity/${adaRoot}/feed?me=0`)).items, [], "the plain page");
+        // The cursor branch has its own query and its own binds (fanout.rs feed_page) - page it.
+        const cursor = `before_ms=${Date.now() + 60000}&before_doc=${"0".repeat(32)}`;
+        const paged = await ada(`api/identity/${adaRoot}/feed?${cursor}&me=0`);
+        assert.equal(paged.status, 200, await paged.clone().text());
+        assert.deepEqual((await paged.json()).items, [], "a later page too");
+        assert.ok((await get(`api/identity/${adaRoot}/feed?${cursor}`)).items.length > 0, "and a later page without it, hers");
+        assert.deepEqual((await get(`api/identity/${adaRoot}/feed?tag=bread&me=0`)).items, [], "a narrowed page");
+        assert.deepEqual(ids(await get(`api/identity/${adaRoot}/feed?tag=bread`)), [a1, a3].sort(), "and narrowed without it, hers");
+        const counts = await get(`api/identity/${adaRoot}/feed/labels?me=0`);
+        assert.deepEqual([counts.kinds, counts.buckets, counts.tags], [[], [], []], "nothing to count");
+    });
+
     it("a person's page counts and narrows the whole held shelf, and a viewer they do not trust never sees the sealed post's labels", async () => {
         let f = null;
         for (let i = 0; i < 20; i++) {
