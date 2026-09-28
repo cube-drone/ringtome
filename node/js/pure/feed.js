@@ -339,17 +339,22 @@ export function isBackdated(item) {
 }
 
 /// Where to ask for the next page down: the last item shown.
-/// The feed's orders (PROJECT_PLAN's Scores and sort orders, slice 1): newest first, or best -
-/// the reader's score, highest first - over a window, a year at the longest (Curtis: no "best
-/// ever"). Keys only; the page words them.
-export const FEED_SORTS = ['new', 'day', 'week', 'month', 'year'];
+/// The feed's orders (PROJECT_PLAN's Scores and sort orders): newest first; hot - each post at its
+/// time plus an hour for every like (slice 2); or best - the reader's score, highest first - over a
+/// window, a year at the longest (Curtis: no "best ever"). Keys only; the page words them.
+export const FEED_SORTS = ['new', 'hot', 'day', 'week', 'month', 'year'];
 export const DEFAULT_SORT = 'new';
 
-/// Is this sort one of the best orders?
-export const isBestSort = (sort) => FEED_SORTS.includes(sort) && sort !== 'new';
+/// Is this sort one of the best orders (a window)?
+export const isBestSort = (sort) => FEED_SORTS.includes(sort) && sort !== 'new' && sort !== 'hot';
 
-/// The feed door's words for a sort: nothing for newest, `sort=best` and its window for best.
+/// Is this sort ranked by the node - hot (slice 2: time plus an hour a like) or a best window -
+/// rather than newest first? A ranked page merges in the node's order and has no "newer".
+export const isRankedSort = (sort) => sort === 'hot' || isBestSort(sort);
+
+/// The feed door's words for a sort: nothing for newest, `sort=hot`, or `sort=best` and its window.
 export function sortParams(sort) {
+    if (sort === 'hot') return 'sort=hot';
     return isBestSort(sort) ? `sort=best&window=${sort}` : '';
 }
 

@@ -3,11 +3,11 @@ const assert = require('node:assert');
 
 let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated, docStatus,
     emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, sortParams, mergeRanked;
+    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated, docStatus,
         postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, sortParams, mergeRanked } = await import(
+        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked } = await import(
         '../../../js/pure/feed.js'
     ));
 });
@@ -433,8 +433,11 @@ describe('docStatus: the three icons (PUBLISH.md ruling 6)', () => {
 // window, spelled for the node's feed door.
 describe('the feed orders', () => {
     it('words each order for the door: nothing for newest, best and its window - a year at the longest', () => {
-        assert.deepEqual(FEED_SORTS, ['new', 'day', 'week', 'month', 'year']);
+        assert.deepEqual(FEED_SORTS, ['new', 'hot', 'day', 'week', 'month', 'year']);
         assert.equal(sortParams('new'), '');
+        assert.equal(sortParams('hot'), 'sort=hot', 'hot has no window');
+        assert.ok(isRankedSort('hot') && isRankedSort('week') && !isRankedSort('new'), 'hot and best are ranked by the node');
+        assert.ok(!isBestSort('hot'), 'hot is not a best window');
         assert.equal(sortParams('week'), 'sort=best&window=week');
         assert.equal(sortParams('ever'), '', 'no best ever: an old remembered choice reads as newest');
         assert.equal(sortParams('nonsense'), '', 'an unknown order is newest');

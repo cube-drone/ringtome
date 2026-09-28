@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1116 phrases across 72 files.
+// 1117 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -155,6 +155,7 @@ export default {
     'apps.feed.stop-medium': 'medium interest only',
     'apps.feed.stop-high': 'high interest only',
     'apps.feed.sort-new': 'newest',
+    'apps.feed.sort-hot': 'hot',
     'apps.feed.sort-day': 'best today',
     'apps.feed.sort-week': 'best this week',
     'apps.feed.sort-month': 'best this month',
@@ -168,7 +169,7 @@ export default {
     'apps.feed.the-public-copy': 'the public copy',
     'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
     'apps.feed.feed-curiosity': 'feed curiosity:',
-    'apps.feed.sort-title': 'newest first, or the posts the people you trust and follow reacted to best',
+    'apps.feed.sort-title': 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked',
     'apps.feed.sort-by': 'order:',
     'apps.feed.counts-this-window': 'counts cover this window',
     'apps.feed.counts-this-year': 'counts cover the last year',

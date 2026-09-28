@@ -3626,7 +3626,7 @@ of one post hold two scores. Per post:
   author, about x0.9 (none) to x1.1 (max) - enough to break near-ties, never enough to lift a
   post nobody reacted to.
 
-**Hot** is time plus score, linear: one max-trust like is worth **one hour** of recency (Curtis),
+**Hot** (built 2026-09-28) is time plus score, linear: one max-trust like is worth **one hour** of recency (Curtis),
 a dislike the same hour backwards - `published + score x 1h`. Linear, not logarithmic, at this
 scale: "each like from someone you fully trust is worth an hour" is a sentence a person can
 hold. Hot may also give a high score more of the card (the interest dial's emphasis, extended)
@@ -3720,10 +3720,20 @@ is a million-row journal:
   (whose bucket, the two-tag rule, sealed admission, kinds) is the same either way. Built
   2026-09-28; with it the newest-5000 read had no caller left and is gone.
 
+**Hot, as built:** a post's hot key is `published + score x 1h` - it moves with the score, never the
+clock, so a page boundary holds. A page merges two streams and sorts neither the feed nor the
+scores: the unscored, whose key is their time, off the time index; and the scored, which a score
+can only have moved as far as the reader's highest and lowest scores reach, so only those
+published within that reach of the page are read (a bounded range of the time index, each score
+by key). A post at two whole likes or more comes back `lifted`, and the card takes the interest
+dial's top emphasis - a flag, never the number. Measured (debug build, 131,072 posts): a page
+~8 ms, any depth.
+
 **Slices:** (1) the score, its breakdown in the dossier, and best (window) - built first at read
 time, then rebuilt: label columns and indexes; the one journal filter (chats fixed); the score
 tables and best on them; the tag cloud over a cached year; the picks' narrowing and the inverted
-search index (the newest-5000 read gone). (2) hot, and a high score's emphasis; (3) reply trees.
+search index (the newest-5000 read gone). (2) hot, and a high score's emphasis - built 2026-09-28.
+(3) reply trees.
 
 ### Contact tags: private labels on the people you know (settled 2026-09-10)
 

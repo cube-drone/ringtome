@@ -649,10 +649,12 @@ struct FeedQuery {
     me: Option<String>,
     /// `sort=best` (PROJECT_PLAN's Scores and sort orders, slice 1): the reader's score, highest
     /// first, over the posts published inside `window` (day, week, month, year - a year when
-    /// absent; there is no "ever"). Absent, the feed is chronological, as it always was.
+    /// absent; there is no "ever"). `sort=hot` (slice 2): each post at its time plus an hour a
+    /// like. Absent, the feed is chronological, as it always was.
     sort: Option<String>,
     window: Option<String>,
-    /// A "best" page's cursor: the `after` the previous page answered (score.rs `Rank`).
+    /// A best or hot page's cursor: the `after` the previous page answered (score.rs `Rank`,
+    /// `HotRank`).
     after: Option<String>,
 }
 
@@ -674,6 +676,10 @@ struct LabelsQuery {
 
 #[derive(Serialize)]
 struct FeedItem {
+    /// Hot's lift (PROJECT_PLAN's Scores and sort orders, slice 2): this reader's score for the
+    /// post reached two whole likes, and the card takes its top emphasis. A flag, never the score.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    lifted: bool,
     author: String,
     doc_id: String,
     title: String,
@@ -2183,7 +2189,52 @@ async fn feed_handler(
     let page = crate::idface::POSTS_PAGE;
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
     let mut after: Option<String> = None;
-    let (mut rows, more) = if q.sort.as_deref() == Some("best") {
+    // Hot's lifted posts (slice 2): scored two whole likes or more - the card's top emphasis.
+    let mut lifted: std::collections::HashSet<(String, String)> = Default::default();
+    let (mut rows, more) = if q.sort.as_deref() == Some("hot") {
+        // Hot (PROJECT_PLAN's Scores and sort orders, slice 2): each post at its time plus an hour a
+        // like, all of time, the dials brought up to date first as best's are.
+        let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
+        crate::score::refresh_dials(&state, &root, &facts)
+            .await
+            .map_err(AppError::Internal)?;
+        let filter = feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
+        let mut ranked: Vec<(crate::score::HotRank, crate::fanout::FeedRow, i64)> = if narrow.is_empty() {
+            let cursor = q.after.as_deref().and_then(crate::score::HotRank::parse);
+            crate::fanout::hot_page(&state.node_db, &filter, cursor, page + 1)
+                .await
+                .map_err(AppError::Internal)?
+        } else {
+            // A search or the picks inside hot: narrowed off the indexes, ordered by hot key.
+            let all = narrowed(&state, &root, &filter, &narrow).await?;
+            let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+            let scores = crate::score::stored_for(&state.node_db, &root, &pairs)
+                .await
+                .map_err(AppError::Internal)?;
+            let mut ranked: Vec<_> = all
+                .into_iter()
+                .map(|r| {
+                    let milli = scores.get(&(r.author_root.clone(), r.doc_id.clone())).copied().unwrap_or(0);
+                    (crate::score::HotRank { hot_ms: crate::score::hot_of(r.published_ms, milli), doc_id: r.doc_id.clone() }, r, milli)
+                })
+                .collect();
+            ranked.sort_by(|(a, _, _), (b, _, _)| (b.hot_ms, &b.doc_id).cmp(&(a.hot_ms, &a.doc_id)));
+            ranked
+        };
+        let more = narrow.is_empty() && ranked.len() as i64 > page;
+        if narrow.is_empty() {
+            ranked.truncate(page as usize);
+            if more {
+                after = ranked.last().map(|(r, _, _)| r.token());
+            }
+        }
+        lifted = ranked
+            .iter()
+            .filter(|(_, _, milli)| *milli >= crate::score::LIFT_MILLI)
+            .map(|(_, r, _)| (r.author_root.clone(), r.doc_id.clone()))
+            .collect();
+        (ranked.into_iter().map(|(_, r, _)| r).collect(), more)
+    } else if q.sort.as_deref() == Some("best") {
         // Best (PROJECT_PLAN's Scores and sort orders, *Shape*): the stored scores brought up to
         // the reader's dials as they are now - a dial moved on any device, a block included, is
         // in this page - then read in score order, off the indexes.
@@ -2431,7 +2482,9 @@ async fn feed_handler(
                 .filter(|l| l.root != l.parent)
                 .map(|l| dress(&l.root));
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
+            let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
+                lifted: is_lifted,
                 mine,
                 author_name: byline.name,
                 author_avatar: byline.avatar,

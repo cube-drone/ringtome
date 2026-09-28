@@ -30,7 +30,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   feed's when someone has more
 * Pruning scores older than a year (the plan says they go; nothing prunes them yet)
 * If best-this-year's ~175 ms a page bites: a cached ranking per reader and window
-* Slice 2: hot, and a high score's emphasis
 * Slice 3: reply trees
 
 ### Actual Horse Drawing & Tycooning

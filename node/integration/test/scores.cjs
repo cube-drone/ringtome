@@ -136,6 +136,18 @@ describe("scores: the best orders, and the reckoning behind them", function () {
         const nosy = await cal(`api/identity/${adaRoot}/popularity/${adaRoot}/${liked}`);
         assert.ok(nosy.status >= 400, `another account may not read ada's reckoning: ${nosy.status}`);
     });
+    it("hot is time plus an hour a like, over all of time, and lifts what was liked twice over", async () => {
+        // Slice 2: the posts were written seconds apart, so an hour a like decides it - the
+        // trusted double-like two hours up, the follow's like six minutes, the dislike an hour
+        // down; the old favourite's two hours are nothing against two years.
+        const hot = await feed("sort=hot");
+        assert.deepEqual(ids(hot), [liked, followedLike, strangerLike, quiet, disliked, old]);
+        const lifted = (hot.items || []).filter((i) => i.lifted).map((i) => i.doc_id).sort();
+        assert.deepEqual(lifted, [liked, old].sort(), "two whole likes lift a card; a tenth of one does not");
+        assert.ok(!(await feed("")).items.some((i) => i.lifted), "and newest never lifts");
+        assert.deepEqual(ids(await feed("sort=hot&q=liked")), [liked, followedLike, strangerLike], "a search inside hot, ordered the same way");
+    });
+
     it("scores kept as reactions and dials move are exactly what a rebuild reckons", async () => {
         const check = async () => (await (await makeFetch(HOST)(`test/score-check?root=${adaRoot}`, { method: "POST" })).json());
         // A second author ada follows, so an interest factor has something to move.

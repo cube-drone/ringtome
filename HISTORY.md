@@ -11980,3 +11980,30 @@ at js/emoji.js's `POLE_ROWS` and score.rs's `GLAD`/`SOUR`, so it stays out of th
 action beside them, keep to two tags to a person on anybody else's post by the persona's own tally,
 rather than meeting the door's refusal. A scratch run (6 personas, 40 actions each): no reaction
 failed, and the six feeds counted 29 glad reactions and 15 sour.
+
+## 2026-09-28 (cont.): hot (slice 2)
+
+The feed's order select gained **hot** (PROJECT_PLAN's *Scores and sort orders*, slice 2, Curtis's
+design): each post at its time plus an hour for every whole like the reader's scores give it - a
+dislike an hour back - over all of time.
+
+- **The key**: `published + score x 1h` (score.rs `hot_of`, `HOT_MS_PER_MILLI`) - moved by the
+  score, never the clock, so a page boundary (`HotRank`: hot key, then document id) holds.
+- **The page** (`fanout::hot_page`) merges two streams and sorts neither the feed nor the scores:
+  the unscored off the time index (best's middle run, whose key is their time), and the scored
+  published within the reach of the reader's highest and lowest scores of the page - one
+  `MIN`/`MAX` off the score index says how far, a bounded range of the time index finds them,
+  each score probed by key. A property test pages 300 posts - many sharing a timestamp, 40% scored
+  between three dislikes and six likes - seven at a time and holds the concatenation to a brute-
+  force sort; a planted "no reach" turned it red. Measured, debug build, 131,072 posts: ~8 ms a
+  page at any depth. The plan guard holds the scored read to a bounded range and a keyed probe.
+- **Lifted**: a post at two whole likes or more (`LIFT_MILLI`) comes back `lifted` in hot, and the
+  card takes the interest dial's top emphasis - a flag, never the score, which stays off the card.
+- **The client**: "hot" between newest and the best windows; hot pages like best's - the node's
+  cursor, merged in its order, no "N updates", no fresh post pinned on top - through
+  `isRankedSort`; search and picks inside hot come back in hot order. The order's tooltip says
+  what hot is.
+
+scores.cjs holds the order (the trusted double-like two hours up, a follow's like six minutes, the
+dislike an hour down, a two-year-old favourite's two hours nothing against its age), the lift on
+exactly the two posts at two likes, none in newest, and a search inside hot.

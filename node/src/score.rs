@@ -506,6 +506,48 @@ pub async fn all_stored(db: &crate::db::Db, reader: &str) -> anyhow::Result<Vec<
     .map_err(|e| anyhow::anyhow!("reading stored scores: {e}"))
 }
 
+// ---------------------------------------------------------------------------------------------
+// Hot (PROJECT_PLAN's Scores and sort orders, slice 2): time plus score, linear - one max-trust
+// like is worth an hour of recency (Curtis), a dislike the same hour backwards. A post's hot key is
+// `published + score x 1h`: it moves with the score, never with the clock, so a page boundary holds.
+
+/// The recency one thousandth of a score buys: an hour a whole like, so 3.6 s a thousandth.
+pub const HOT_MS_PER_MILLI: i64 = 3_600;
+
+/// A post whose score reaches this (two full likes) is "lifted" in hot: given the card's top
+/// emphasis - a flag on the row, never the number.
+pub const LIFT_MILLI: i64 = 2_000;
+
+/// A post's hot key.
+pub fn hot_of(published_ms: i64, milli: i64) -> i64 {
+    published_ms.saturating_add(milli.saturating_mul(HOT_MS_PER_MILLI))
+}
+
+/// A place in the hot order: the hot key high first, then the document id, highest first - a
+/// total order, so a cursor names one boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotRank {
+    pub hot_ms: i64,
+    pub doc_id: String,
+}
+
+impl HotRank {
+    /// Does `self` come before `other`?
+    pub fn before(&self, other: &HotRank) -> bool {
+        (self.hot_ms, &self.doc_id) > (other.hot_ms, &other.doc_id)
+    }
+
+    /// The cursor's spelling: `hot_ms:doc_id`.
+    pub fn token(&self) -> String {
+        format!("{}:{}", self.hot_ms, self.doc_id)
+    }
+
+    pub fn parse(token: &str) -> Option<HotRank> {
+        let (ms, doc) = token.split_once(':')?;
+        (!doc.is_empty()).then(|| Some(HotRank { hot_ms: ms.parse().ok()?, doc_id: doc.to_string() }))?
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -603,6 +645,19 @@ mod tests {
         let stored = total_of(parts, dials[&author].factor_milli);
         assert_eq!(stored, reckon(&me, &author, &labels, &f).milli());
         assert_eq!(stored, 2993, "(2 - 0.25 + 0.1 + 1) x 1.05 = 2.9925, a half-thousandth rounded away from zero");
+    }
+
+    #[test]
+    fn hot_is_time_plus_an_hour_a_like_and_its_cursor_round_trips() {
+        assert_eq!(hot_of(10_000_000, 1000), 10_000_000 + 3_600_000, "a whole like is an hour");
+        assert_eq!(hot_of(10_000_000, -500), 10_000_000 - 1_800_000, "half a dislike, half an hour back");
+        let a = HotRank { hot_ms: 9, doc_id: "a".into() };
+        let b = HotRank { hot_ms: 5, doc_id: "b".into() };
+        let c = HotRank { hot_ms: 5, doc_id: "a".into() };
+        assert!(a.before(&b) && b.before(&c) && !c.before(&b));
+        assert_eq!(HotRank::parse(&c.token()), Some(c));
+        assert_eq!(HotRank::parse("-40:ab").map(|r| r.hot_ms), Some(-40));
+        assert_eq!(HotRank::parse("nonsense"), None);
     }
 
     #[test]

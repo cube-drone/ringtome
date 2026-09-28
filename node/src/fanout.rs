@@ -1905,6 +1905,71 @@ fn unscored_sql(filter: &JournalFilter<'_>, cursor: bool) -> String {
     }
 }
 
+/// One page of a reader's journal through `filter` in the hot order (PROJECT_PLAN's Scores and sort
+/// orders, slice 2): each post at `published + score x 1h` (score.rs `hot_of`), after `after`,
+/// with each row's score beside it. Two streams merged, neither sorting the feed: the unscored -
+/// whose hot key is their time - off the time index as best's middle run reads them; and the
+/// scored, which a score can only have moved by as far as the reader's highest and lowest scores
+/// reach, so only the scored posts published within that reach of this page are read, each score
+/// probed by key.
+pub async fn hot_page(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+    after: Option<crate::score::HotRank>,
+    limit: i64,
+) -> Result<Vec<(crate::score::HotRank, FeedRow, i64)>> {
+    use crate::score::{hot_of, HotRank, HOT_MS_PER_MILLI};
+    let (lowest, highest): (Option<i64>, Option<i64>) = node_db
+        .fetch_one("SELECT MIN(milli), MAX(milli) FROM post_scores WHERE reader_root = ?1", (filter.reader,))
+        .await
+        .context("reading the reach of a reader's scores")?;
+    let reach_up = highest.unwrap_or(0).max(0).saturating_mul(HOT_MS_PER_MILLI);
+    let reach_down = lowest.unwrap_or(0).min(0).saturating_mul(HOT_MS_PER_MILLI);
+    // The unscored: a page of them, their hot key their time.
+    let cursor = after.as_ref().map(|r| crate::score::Rank { milli: 0, published_ms: r.hot_ms, doc_id: r.doc_id.clone() });
+    let unscored = unscored_run(node_db, filter, cursor.as_ref(), limit).await?;
+    // Below this page's last unscored post, the next page takes over.
+    let floor = if unscored.len() as i64 == limit { unscored.last().map_or(i64::MIN, |(r, _)| r.published_ms) } else { i64::MIN };
+    let ceiling = after.as_ref().map_or(i64::MAX, |r| r.hot_ms);
+    // The scored whose hot key can fall in [floor, ceiling]: published within the reach of it.
+    let (from, to) = (floor.saturating_sub(reach_up), ceiling.saturating_sub(reach_down));
+    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, i64, Option<i64>, i64, i64);
+    let rows: Vec<Row> = node_db
+        .fetch_all(&hot_scored_sql(filter), (filter.reader, from, to))
+        .await
+        .context("reading a hot page's scored posts")?;
+    let mut all: Vec<(HotRank, FeedRow, i64)> = unscored
+        .into_iter()
+        .map(|(r, row)| (HotRank { hot_ms: r.published_ms, doc_id: r.doc_id }, row, 0))
+        .collect();
+    for (a, b, c, d, e, f, g, h, i, j, k, l, m, n, milli) in rows {
+        let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n));
+        let rank = HotRank { hot_ms: hot_of(row.published_ms, milli), doc_id: row.doc_id.clone() };
+        let in_page = rank.hot_ms >= floor && after.as_ref().is_none_or(|c| c.before(&rank));
+        if in_page {
+            all.push((rank, row, milli));
+        }
+    }
+    all.sort_by(|(a, _, _), (b, _, _)| (b.hot_ms, &b.doc_id).cmp(&(a.hot_ms, &a.doc_id)));
+    all.truncate(limit as usize);
+    Ok(all)
+}
+
+/// The hot page's scored posts: those published in `[?2, ?3]`, the window a range of the time
+/// index and each score probed by key - pinned, table and order both.
+fn hot_scored_sql(filter: &JournalFilter<'_>) -> String {
+    let columns = aliased_columns("j.");
+    format!(
+        "SELECT {columns}, p.milli FROM
+           (SELECT {JOURNAL_COLUMNS}, reader_root FROM feed_journal INDEXED BY feed_journal_by_time
+            WHERE {} AND published_ms >= ?2 AND published_ms <= ?3) j
+         CROSS JOIN post_scores p INDEXED BY sqlite_autoindex_post_scores_1
+           ON p.reader_root = j.reader_root AND p.author_root = j.author_root AND p.doc_id = j.doc_id
+         WHERE p.reader_root = ?1",
+        filter.clause("")
+    )
+}
+
 fn aliased_columns(t: &str) -> String {
     JOURNAL_COLUMNS.split(", ").map(|c| format!("{t}{c}")).collect::<Vec<_>>().join(", ")
 }
@@ -2362,6 +2427,62 @@ mod tests {
         assert_eq!(window.len(), 2, "published at or after the window's start");
     }
 
+    /// Hot's paging against brute force (PROJECT_PLAN's Scores and sort orders, slice 2): 300 posts
+    /// over a month - many sharing a timestamp - 40% scored between three dislikes and six likes;
+    /// paged seven at a time, the pages concatenated must be every post in hot order, once.
+    #[tokio::test]
+    async fn hot_pages_are_the_hot_order_in_full() {
+        use crate::score::{hot_of, HotRank};
+        let db = crate::db::test_node_db().await;
+        let reader = "ee".repeat(32);
+        let author = "aa".repeat(32);
+        // A small deterministic generator - the case is fixed, the spread is not hand-picked.
+        let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let hour = 3_600_000_i64;
+        let mut want: Vec<(i64, String)> = Vec::new();
+        for i in 0..300 {
+            let doc = format!("{i:032x}");
+            let published = 1_000_000_000_000 + ((next() % 720) as i64) * hour; // on the hour: ties
+            db.execute(
+                "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+                 VALUES (?1, ?2, ?3, 't', 'marquee', ?4, ?4, ?4)",
+                (reader.as_str(), author.as_str(), doc.as_str(), published),
+            )
+            .await
+            .unwrap();
+            let milli = if next() % 10 < 4 { (next() % 9000) as i64 - 3000 } else { 0 };
+            if milli != 0 {
+                db.execute(
+                    "INSERT INTO post_scores (reader_root, author_root, doc_id, milli) VALUES (?1, ?2, ?3, ?4)",
+                    (reader.as_str(), author.as_str(), doc.as_str(), milli),
+                )
+                .await
+                .unwrap();
+            }
+            want.push((hot_of(published, milli), doc));
+        }
+        want.sort_by(|a, b| b.cmp(a));
+        let filter = JournalFilter::feed(&reader);
+        let mut got: Vec<(i64, String)> = Vec::new();
+        let mut after: Option<HotRank> = None;
+        for _ in 0..100 {
+            let page = hot_page(&db, &filter, after.clone(), 7).await.unwrap();
+            if page.is_empty() {
+                break;
+            }
+            after = page.last().map(|(r, _, _)| r.clone());
+            got.extend(page.into_iter().map(|(r, _, _)| (r.hot_ms, r.doc_id)));
+        }
+        assert_eq!(got.len(), want.len(), "every post, once");
+        assert_eq!(got, want, "in hot order");
+    }
+
     /// The journal's reads walk their indexes and never sort the journal (node rung 0058): this
     /// engine's planner, left alone, reached for the rooms index and sorted a reader's whole journal
     /// for every feed page - 3 s a page at 131,072 posts. The pins hold only while the planner obeys
@@ -2390,6 +2511,10 @@ mod tests {
         }
         let p = plan(unscored_sql(&filter, false)).await;
         assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a score probed by key: {p}");
+        // Hot's scored posts: a bounded range of the time index, each score by key.
+        let p = plan(hot_scored_sql(&filter)).await;
+        assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=? AND published_ms<=?)"), "hot reads a bounded range: {p}");
+        assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "hot probes each score by key: {p}");
         // A search's or a pick's small set, met with the journal by key.
         let p = plan(format!(
             "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY sqlite_autoindex_feed_journal_1 WHERE {} AND author_root = ?2 AND doc_id = ?3",
@@ -2465,6 +2590,20 @@ mod tests {
         assert_eq!(posts, n);
         eprintln!("scored: {scored}");
         eprintln!("fixture: {n} posts in {:?}", started.elapsed());
+        {
+            let filter = JournalFilter::feed(&reader);
+            let t = std::time::Instant::now();
+            let first = hot_page(&db, &filter, None, 21).await.unwrap();
+            let first_ms = t.elapsed();
+            let mut cursor = first.last().map(|(r, _, _)| r.clone());
+            let t = std::time::Instant::now();
+            for _ in 0..50 {
+                let Some(c) = cursor.take() else { break };
+                let page = hot_page(&db, &filter, Some(c), 21).await.unwrap();
+                cursor = page.last().map(|(r, _, _)| r.clone());
+            }
+            eprintln!("hot: first page {first_ms:?} ({} rows); next 50 pages {:?}", first.len(), t.elapsed());
+        }
         for (name, window) in [("day", Some("day")), ("week", Some("week")), ("month", Some("month")), ("year", Some("year"))] {
             let filter = JournalFilter { since_ms: Some(now - crate::score::window_ms(window)), ..JournalFilter::feed(&reader) };
             let t = std::time::Instant::now();

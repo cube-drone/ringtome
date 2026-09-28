@@ -50,6 +50,7 @@ import {
     FEED_SORTS,
     DEFAULT_SORT,
     isBestSort,
+    isRankedSort,
     sortParams,
     collapseReplyPairs,
     PUBLISHED_AS,
@@ -89,6 +90,7 @@ const STOP_WORDS = {
 /// The feed's orders (pure/feed.js keeps the keys), in words.
 const SORT_WORDS = {
     new: () => t('apps.feed.sort-new', 'newest'),
+    hot: () => t('apps.feed.sort-hot', 'hot'),
     day: () => t('apps.feed.sort-day', 'best today'),
     week: () => t('apps.feed.sort-week', 'best this week'),
     month: () => t('apps.feed.sort-month', 'best this month'),
@@ -281,18 +283,20 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const sortable = meChip && dial;
     const [sort, setSort] = useState(sortable ? null : DEFAULT_SORT);
     const best = isBestSort(sort);
-    // A best page's cursor is the node's (score.rs `Rank`): where the last page ended.
+    // Hot or best: ranked by the node, paged by its cursor, with no "newer" to queue.
+    const ranked = isRankedSort(sort);
+    // A ranked page's cursor is the node's (score.rs `Rank`, `HotRank`): where the last page ended.
     const [after, setAfter] = useState(null);
     const [stop, setStop] = useState(null);
     const stopKey = dial ? stop || DEFAULT_STOP : null;
-    const bestStop = best && stopKey && stopKey !== 'explorer' ? `&stop=${encodeURIComponent(stopKey)}` : '';
+    const bestStop = ranked && stopKey && stopKey !== 'explorer' ? `&stop=${encodeURIComponent(stopKey)}` : '';
 
     const loadPage = async (cursor) => {
         setLoading(true);
         setPageError(false);
         try {
-            if (best) {
-                // The node ranks the whole window at the dial's stop, and pages it.
+            if (ranked) {
+                // The node ranks the feed (hot) or the window (best) at the dial's stop, and pages it.
                 const qs = withOwn(`?${sortParams(sort)}${bestStop}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
                 const page = await api(`${feedDoor}${qs}`);
                 setItems((have) => mergeRanked(cursor ? have : [], page.items));
@@ -311,18 +315,18 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         }
         setLoading(false);
     };
-    const nextCursor = () => (best ? after : feedCursor(items));
+    const nextCursor = () => (ranked ? after : feedCursor(items));
     useEffect(() => {
         if (feedDoor && sort !== null) loadPage(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [feedDoor, ownOut, sort, best ? stopKey : null]);
+    }, [feedDoor, ownOut, sort, ranked ? stopKey : null]);
 
     // Notice new arrivals without showing them: poll the head page on a slow beat (and on
     // window focus - coming back to the tab is when "anything new?" is the live question),
     // and count what isn't already on screen.
     useEffect(() => {
-        // A best order has no "newer": what arrives is ranked on the next look, not queued.
-        if (!feedDoor || best) return;
+        // A ranked order has no "newer": what arrives is ranked on the next look, not queued.
+        if (!feedDoor || ranked) return;
         let live = true;
         const look = async () => {
             try {
@@ -344,7 +348,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
             clearInterval(timer);
             window.removeEventListener('focus', look);
         };
-    }, [root, items, feedDoor, ownOut, best]);
+    }, [root, items, feedDoor, ownOut, ranked]);
 
     // A fresh post of your own joins the stream immediately - your attention is already at
     // the top, so the popping-in objection doesn't apply to the thing you just did. The
@@ -352,12 +356,12 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     // poll later brings the real one, the dedupe swallows it instead of doubling it.
     useEffect(() => {
         // ...unless the reader has left their own posts out ("me" unpicked), or is reading a
-        // best order, where a post nobody has reacted to yet has no place at the top.
-        if (!fresh || ownOut || best) return;
+        // ranked order, where a post nobody has reacted to yet has no place at the top.
+        if (!fresh || ownOut || ranked) return;
         setItems((have) => mergeFeed([fresh], have));
         setPending((p) => p.filter((i) => feedKey(i) !== feedKey(fresh)));
         if (streamRef.current) streamRef.current.scrollTop = 0;
-    }, [fresh, ownOut, best]);
+    }, [fresh, ownOut, ranked]);
 
     const takePending = () => {
         setItems((have) => mergeFeed(have, pending));
@@ -436,6 +440,9 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     // construction, whatever its path score, because the path admits it without entitling
     // it to size. Your own posts bypass in PostEntry, as before.
     const emphasisBand = (item) => {
+        // Hot's lift (slice 2): a post the reader's people liked twice over or more takes the
+        // card's top emphasis - the node's flag, never the score.
+        if (item.lifted) return 'max';
         const eff = effectiveInterest(item, factsByRoot);
         if (eff.kind === 'author-dial' || eff.kind === 'sharer-dial') return eff.band;
         return item.suggested_via ? 'low' : undefined;
@@ -473,7 +480,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const labels = useLabels(labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null, items.length);
     const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, ownOut, sort });
     const shown = search.active
-        ? (best ? mergeRanked([], search.results || []) : mergeFeed([], search.results || [])).filter(
+        ? (ranked ? mergeRanked([], search.results || []) : mergeFeed([], search.results || [])).filter(
               (item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot)
           )
         : [...(scheduled || []), ...visible];
@@ -497,7 +504,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                 </label>`}
                 ${sortable &&
                 sort !== null &&
-                html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first, or the posts the people you trust and follow reacted to best')}>
+                html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked')}>
                     <span class="feed-selectivity-name">${t('apps.feed.sort-by', 'order:')}</span>
                     <select value=${sort} onChange=${(e) => moveSort(e.currentTarget.value)}>
                         ${FEED_SORTS.map((key) => html`<option value=${key} key=${key}>${SORT_WORDS[key]()}</option>`)}
