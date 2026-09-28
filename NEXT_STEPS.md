@@ -22,7 +22,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * RSS for website users
 * Migrate yer content
 * Visual identity
-* report flow
+* report flow (and full-node blocks?)
 * apparently the Posts page only deals with the last 5000 things, and we might need to deal with that the same way we dealt with Feeds... eventually.
 
 ### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
@@ -62,7 +62,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Public posts and fan-out
 
-* Better filters in Lost & Found
+* Better organization in Files
 * Edit-orphaned twins: a re-bake mints a fresh media twin and the old one stays public on
   the author's own shelf (fragment holders reconcile theirs). Found 2026-09-05 beside the
   takedown fix (`retract_post` entombs a buried post's twins); the edit door should retire
@@ -82,9 +82,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   front page is the first thing a scraper finds; a per-address budget beyond the paging.
 * Node-observed feed ("here's everything public that anybody is looking at")
 * more granular or time-limited blocks? ("block for 6 months")
-
-### Public means public (Gateway)
-* the public-HTML browser for this repo
 
 ### Node Management & Federation
 * use the spare key to build a new identity, create a new spare key
