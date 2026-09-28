@@ -952,7 +952,7 @@ export const Profile = ({ current }) => {
                     class="profile-bio"
                     value=${bio.draft}
                     onInput=${(e) => bio.setDraft(e.currentTarget.value)}
-                    rows="12"
+                    rows="6"
                     placeholder=${t('persona.a-line-or-two-about', 'a line or two about you (optional)')}
                 ></textarea>
             </label>

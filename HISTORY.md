@@ -12129,3 +12129,5 @@ Three touches after (Curtis): the tiled identicon of a banner nobody chose was t
 shows at half strength under a veil of the page's sand (`--banner-veil`); the double-size picture
 gets a 5px ring instead of 2px, to hold its edge against the banner; and your reach pill sits in the
 banner's top right corner instead of beside the picture.
+
+The profile editor's bio field is half as tall, 6 rows instead of 12 (Curtis); it still drags taller.
