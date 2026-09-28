@@ -440,6 +440,9 @@ export function useUploadCapture({
     // went in - the placeholder, then the image it becomes - and back into the text, focused,
     // once the upload window closes. Optional.
     placeCursor,
+    // Told each upload's document id the moment it exists, `(docId, file)` (2026-09-28): chat's
+    // upload button sends each file as its own message once it is processed. Optional.
+    onUploadedDoc,
 }) {
     const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
     const filePickRef = useRef(null);
@@ -506,6 +509,7 @@ export function useUploadCapture({
         });
         insertedRefs.current[i] = reference;
         swapToken(i, reference);
+        if (onUploadedDoc) onUploadedDoc(uploadedId, file);
     };
     const onUploadFailed = (i) => swapToken(i, '');
     // The crush has spoken (2026-09-03): the reference written at upload guessed from the

@@ -669,7 +669,7 @@
 
 /* A line of nothing but emoji reads at 150% (Curtis, 2026-09-19). */
 .chat-line-emoji .chat-line-body {
-    font-size: 1.5em;
+    font-size: calc(1.5em * var(--lean, 1));
     line-height: 1.25;
 }
 
@@ -697,6 +697,8 @@
 .chat-line-body {
     color: var(--ink);
     padding-left: 2.4rem;
+    /* The line's lean (2026-09-28): its reactions, glad and sour, make it bigger or smaller. */
+    font-size: calc(1em * var(--lean, 1));
 }
 
 .chat-line-body p {
@@ -838,11 +840,12 @@
     align-items: center;
 }
 
-/* A picture said in a room sits in its line, bounded - a floor is for many lines. */
+/* A picture said in a room sits in its line, bounded - a floor is for many lines. The bounds lean
+   with the line (2026-09-28): bigger for its glad reactions, smaller for its sour ones. */
 .chat-line-body img,
 .chat-line-body video {
-    max-width: min(100%, 28rem);
-    max-height: 20rem;
+    max-width: min(100%, calc(28rem * var(--lean, 1)));
+    max-height: calc(20rem * var(--lean, 1));
     display: block;
 }
 

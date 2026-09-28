@@ -23,6 +23,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Migrate yer content
 * Visual identity
 * report flow
+* apparently the Posts page only deals with the last 5000 things, and we might need to deal with that the same way we dealt with Feeds... eventually.
 
 ### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
 * A person's page has the feed's old shape: its search, picks and counts read that person's newest

@@ -45,7 +45,8 @@ const onlyEmoji = (words) => {
     const count = (words.match(/:[a-z0-9_+-]+:|\p{Extended_Pictographic}/gu) || []).length;
     return count > 0 && count <= 8;
 };
-import { EmojiStrip, shortcodeOf, glyphOf } from '../emoji.js';
+import { EmojiStrip, shortcodeOf, glyphOf, toneOf } from '../emoji.js';
+import { leanScale } from '../pure/lean.js';
 import { useShared, markShared } from '../shares.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -442,8 +443,18 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
     const cls = ['chat-line', cont ? 'chat-line-cont' : '', untrusted ? 'chat-line-untrusted' : '', onlyEmoji(m.words) ? 'chat-line-emoji' : ''].filter(Boolean).join(' ');
     const [revealed, setRevealed] = useState(false);
     const veiled = veil && !revealed;
+    // The line's lean (pure/lean.js): bigger for every glad reaction on it, smaller for every sour.
+    let glad = 0;
+    let sour = 0;
+    for (const r of m.reactions || []) {
+        const tone = toneOf(glyphOf(r.emoji));
+        if (tone === 'good') glad += r.count;
+        if (tone === 'bad') sour += r.count;
+    }
+    const lean = leanScale(glad, sour);
     return html`<li
         class=${found ? `${cls} chat-line-found` : cls}
+        style=${lean === 1 ? undefined : `--lean: ${lean}`}
         data-line=${m.hash}
         title=${untrusted ? t('apps.chat.someone-you-dont-trust', "someone you don't trust") : undefined}
     >
@@ -504,7 +515,7 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
                         key=${r.emoji}
                         title=${mine ? t('apps.chat.who-said-click-to-take-yours-back', '{who} - click to take yours back', { who: whoSaid(r) }) : whoSaid(r)}
                         onClick=${() => onReact && onReact(m.hash, r.emoji, mine)}
-                    ><span class="chat-react-glyph">${glyphOf(r.emoji)}</span> ${r.count}</button>`;
+                    ><span class="chat-react-glyph">${glyphOf(r.emoji)}</span>${r.count > 1 ? ` ${r.count}` : ''}</button>`;
                 })}
             </span>`}
         </div>
@@ -628,7 +639,6 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         catchDrop,
         allowFileDrag,
         catchPaste,
-        pickFiles,
         extras: uploadExtras,
     } = useUploadCapture({
         root,
@@ -639,6 +649,24 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         touched: () => {},
         cursorPos: () => cursor.current,
         onRefused: (message) => setSendError(message),
+    });
+    // The upload button (Curtis, 2026-09-28): each file goes into the room as a line of its own,
+    // as "add picture" sends one - once the node has processed it, since a room refuses media
+    // still being prepared. Drop and paste still write into the draft; only the button sends.
+    // Its own capture, writing into a scratch buffer rather than the draft.
+    const [directBody, setDirectBody] = useState('');
+    const [landing, setLanding] = useState([]); // [{ docId, since }] uploaded, not yet processed
+    const sentLanded = useRef(new Set());
+    const { pickFiles: pickAndSend, extras: sendExtras } = useUploadCapture({
+        root,
+        bucket: CHAT_BUCKET,
+        format: 'marquee',
+        body: directBody,
+        setBody: setDirectBody,
+        touched: () => {},
+        cursorPos: () => null,
+        onRefused: (message) => setSendError(message),
+        onUploadedDoc: (docId) => setLanding((l) => [...l, { docId, since: Date.now() }]),
     });
     // What the floor showed is what this persona has seen (Curtis, 2026-09-18): the newest
     // stamp goes to the `rooms_seen` register, throttled, and the column un-bolds the room.
@@ -868,6 +896,59 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             setSending(false);
         }
     };
+    // Each uploaded file, watched until the node has processed it, then sent as its own line. The
+    // document is watched, not the upload window - closing the window loses nothing.
+    useEffect(() => {
+        if (!landing.length) return undefined;
+        let live = true;
+        const tick = setInterval(async () => {
+            for (const item of landing) {
+                if (sentLanded.current.has(item.docId)) continue;
+                try {
+                    const d = await api(`/api/identity/${root}/docs/${item.docId}`);
+                    if (!live) return;
+                    if (d && d.media) {
+                        // Claimed before the send, so the next tick cannot send it twice; a send
+                        // the room refuses ("still being prepared") lets go, to try again.
+                        sentLanded.current.add(item.docId);
+                        try {
+                            const words = await pickedReference(
+                                root,
+                                { doc: item.docId, format: d.format, title: d.title, animation: !!d.media.animation },
+                                'marquee'
+                            );
+                            await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
+                                method: 'POST',
+                                body: JSON.stringify({ words }),
+                            });
+                        } catch (e) {
+                            sentLanded.current.delete(item.docId);
+                            throw e;
+                        }
+                        if (!live) return;
+                        setLanding((l) => l.filter((x) => x.docId !== item.docId));
+                        setDirectBody('');
+                        atEnd.current = true;
+                        readHistory();
+                    } else if (Date.now() - item.since > 10 * 60 * 1000) {
+                        setLanding((l) => l.filter((x) => x.docId !== item.docId));
+                        setSendError(t('apps.chat.upload-never-finished', 'that upload never finished processing - try it again'));
+                    }
+                } catch {
+                    // not ready, or a blip: the next tick looks again, until the ten minutes are up
+                    if (Date.now() - item.since > 10 * 60 * 1000) {
+                        setLanding((l) => l.filter((x) => x.docId !== item.docId));
+                        setSendError(t('apps.chat.upload-never-finished', 'that upload never finished processing - try it again'));
+                    }
+                }
+            }
+        }, 1000);
+        return () => {
+            live = false;
+            clearInterval(tick);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [landing, root]);
     const beginEdit = (m) => {
         setEditingLine({ hash: m.hash, words: m.words || '' });
         setDraft(m.words || '');
@@ -1354,8 +1435,8 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                       <button
                           class="chat-composer-attach"
                           type="button"
-                          title=${t('apps.chat.attach-a-picture-sound-or-video', 'attach a picture, a sound or a video (drop or paste works too)')}
-                          onClick=${pickFiles}
+                          title=${t('apps.chat.send-a-file', 'send a picture, a sound or a video - it goes in once it is ready (drop or paste into the message to add it there instead)')}
+                          onClick=${pickAndSend}
                       >
                           <${Icons.upload} />
                       </button>
@@ -1387,7 +1468,15 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                           <${Icons.send} weight="fill" />
                       </button>
                   </form>
-                  ${uploadExtras}`}
+                  ${uploadExtras}
+                  ${sendExtras}
+                  ${landing.length > 0 &&
+                  html`<p class="chat-landing null-sub">
+                      <span class="waiting-dot"></span>
+                      ${landing.length === 1
+                          ? t('apps.chat.preparing-a-file', 'preparing a file - it goes in once it is ready')
+                          : t('apps.chat.preparing-n-files', 'preparing {n} files - each goes in once it is ready', { n: landing.length })}
+                  </p>`}`}
             ${sendError && html`<p class="form-error">${sendError}</p>`}
         </div>
     </section>`;

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1121 phrases across 72 files.
+// 1124 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -53,6 +53,7 @@ export default {
     'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
     'apps.chat.media-from-someone-you-dont-trust': "media from someone you don't trust - click to see",
     'apps.chat.who-said-click-to-take-yours-back': '{who} - click to take yours back',
+    'apps.chat.upload-never-finished': 'that upload never finished processing - try it again',
     'apps.chat.knocking': 'knocking…',
     'apps.chat.this-room-is-not-open-to-you': 'this room is not open to you',
     'apps.chat.just-the-two-of-you': 'just the two of you',
@@ -106,10 +107,12 @@ export default {
     'apps.chat.rejoin': 'rejoin',
     'apps.chat.say-something': 'say something…',
     'apps.chat.bytes-of-this-message': 'message length',
-    'apps.chat.attach-a-picture-sound-or-video': 'attach a picture, a sound or a video (drop or paste works too)',
+    'apps.chat.send-a-file': 'send a picture, a sound or a video - it goes in once it is ready (drop or paste into the message to add it there instead)',
     'apps.chat.send-a-picture': 'send one of your pictures or drawings - it goes at once',
     'apps.chat.send-a-picture-heading': 'send a picture',
     'apps.chat.send': 'send',
+    'apps.chat.preparing-a-file': 'preparing a file - it goes in once it is ready',
+    'apps.chat.preparing-n-files': 'preparing {n} files - each goes in once it is ready',
     'apps.chat.searching': 'searching…',
     'apps.chat.nothing-said-that': 'nothing said in your chats says that',
     'apps.chat.n-lines-say-that': '{n} lines say that',

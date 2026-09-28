@@ -12032,3 +12032,31 @@ exactly those two claims red.
 
 Left (NEXT_STEPS): a level past 500 says `more` with nothing to ask for it, and hot's lift is the
 feed's only.
+
+## 2026-09-28 (cont.): chat lines lean
+
+A chat line grows 2.5% for every glad reaction stacked on it and shrinks 2.5% for every sour one
+(Curtis: "silly is how I operate") - the picker's rows (emoji.js `toneOf`), each stack's count, held
+between half and double so a pile-on neither erases a line nor lets it swallow the room
+(pure/lean.js `leanScale`). The line carries a `--lean` factor its body's font size multiplies by, so
+an emoji-only line's 1.5em leans the same way. Every reaction counts, whoever said it - a room is
+its own company, unlike the feed's scores. Pictures and video lean too (Curtis): their bounding box -
+28rem by 20rem - scales by the same factor, so a picture that fills it, as a crushed one usually
+does, grows and shrinks with its line; one smaller than the box keeps its own size.
+
+A reaction pill said by one person is just its emoji (Curtis): the count shows from two up, as the
+feed's label chips already do.
+
+## 2026-09-28 (cont.): chat's upload button sends
+
+Chat's two picture buttons worked two ways - "add picture" sent at once, upload wrote the file into
+the message being typed - and Curtis took the first as the clearer: the upload button now sends
+each file into the room as a line of its own, once the node has processed it; dropping or pasting a
+file into the message still adds it there. The button has its own upload capture writing into a
+scratch buffer (the upload window and its progress as ever), `useUploadCapture` gained an optional
+`onUploadedDoc(docId, file)`, and chat watches each document - not the upload window, so closing it
+loses nothing - until it has media facts, then sends it as "add picture" does; a send the room
+refuses as still being prepared is tried again, and after ten minutes it says the upload never
+finished. A quiet "preparing a file - it goes in once it is ready" shows meanwhile. Probed on a
+scratch node: an uploaded picture reads no media at once and `avif` with its dimensions about 1.25 s
+later.
