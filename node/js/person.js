@@ -159,6 +159,8 @@ const HEX_SIZES = {
     mini: 'person-hex-mini',
     small: 'person-hex-small',
     card: 'person-hex-card',
+    // Twice the card's, over a person's banner (2026-09-28).
+    hero: 'person-hex-hero',
 };
 
 export const PersonHex = ({ person, size = 'small' }) => html`
@@ -301,25 +303,39 @@ const ChatWithButton = ({ myRoot, root, name }) => {
 /// The whole person: picture, names, the shareable address, their bio, and - for anyone who
 /// isn't you - your relationship with them. For you, `you` is what sits where the
 /// relationship would: the page's own management disclosure (persona.js PersonaMenu).
-export const PersonCard = ({ root, current, profile, you, children, beside = null, after = null }) => {
+export const PersonCard = ({ root, current, profile, you, children, beside = null, after = null, banner = null }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
-    return html`
-        <div class="person-card">
-            ${/* What sits beside the picture, in the space to its right (2026-09-28: your own reach). */ ''}
-            <div class="person-card-top">
-                <${PersonHex} person=${person} size="card" />
-                ${beside}
-            </div>
-            <h1 class="person-card-name">
+    const name = html`<h1 class="person-card-name">
                 ${person.primary}
                 ${/* The chat sits with their name (Curtis, 2026-09-20), not down in the
                     relationship panel: talking to somebody is not a dial about them. */ ''}
                 ${!person.isYou && current &&
                 html`<${ChatWithButton} myRoot=${current.root} root=${root} name=${person.primary} />`}
-            </h1>
-            ${person.others.length > 0 &&
-            html`<p class="person-card-others">${person.others.join(' · ')}</p>`}
+            </h1>`;
+    const others = person.others.length > 0 && html`<p class="person-card-others">${person.others.join(' · ')}</p>`;
+    // A person's homepage (Curtis, 2026-09-28): their banner, and over it the picture at twice its
+    // size, their name and their other names - on plates, so a black or busy banner cannot swallow
+    // them - resting on its bottom edge; whatever follows starts flush beneath it.
+    const head = banner
+        ? html`<div class="person-card-hero" style=${banner}>
+              <div class="person-card-top">
+                  <${PersonHex} person=${person} size="hero" />
+                  ${beside}
+              </div>
+              ${name}
+              ${others}
+          </div>`
+        : html`${/* What sits beside the picture, in the space to its right (2026-09-28: your own reach). */ ''}
+              <div class="person-card-top">
+                  <${PersonHex} person=${person} size="card" />
+                  ${beside}
+              </div>
+              ${name}
+              ${others}`;
+    return html`
+        <div class="person-card">
+            ${head}
             ${person.isYou && you}
             ${children}
             <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} slug=${person.slug} />

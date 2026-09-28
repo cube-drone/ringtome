@@ -410,6 +410,52 @@ describe("the avatar (public documents, tenant zero)", function () {
     });
 });
 
+/*
+    The banner (2026-09-28): a profile field beside the avatar - a still picture across the top of
+    the page, crushed at its own larger bound to a born-public picture the `banner` register names,
+    served anonymously like the avatar; cleared, the page wears its identicon tiled again.
+*/
+describe("the banner (a profile field beside the avatar)", function () {
+    this.timeout(30000);
+    let owner, root;
+    const { makePng } = require("./helpers.cjs");
+    const upload = (bytes, type) => {
+        const form = new FormData();
+        form.append("image", new Blob([bytes], { type }), "banner.png");
+        return owner(`api/identity/${root}/banner`, { method: "POST", body: form, file: true });
+    };
+    const bannerField = async () => ((await (await anon(`api/id/${root}/profile`)).json()).fields || []).find((f) => f.field === "banner");
+
+    before(async () => {
+        owner = await makeUserFetch({ prefix: "banner" });
+        root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
+    });
+
+    it("a wide picture becomes the banner: a public picture the profile names, served to anyone", async () => {
+        const resp = await upload(makePng(3000, 300), "image/png");
+        const text = await resp.text();
+        assert.equal(resp.status, 200, text);
+        const doc = JSON.parse(text).doc_id;
+        const field = await bannerField();
+        assert.equal(field && field.value, doc, "the register holds the pointer");
+        const body = await anon(`id/${root}/docs/${doc}/body`);
+        assert.equal(body.status, 200);
+        assert.equal(body.headers.get("content-type"), "image/avif");
+    });
+
+    it("is a still picture or nothing", async () => {
+        const resp = await upload(Buffer.from("not a picture at all"), "application/octet-stream");
+        assert.equal(resp.status, 400, await resp.text());
+    });
+
+    it("cleared, the field is empty and the page wears its pattern", async () => {
+        const resp = await owner(`api/identity/${root}/banner`, { method: "DELETE" });
+        assert.equal(resp.status, 200, await resp.text());
+        const field = await bannerField();
+        assert.ok(!field || field.value === "", `no banner named: ${JSON.stringify(field)}`);
+    });
+});
+
 (HOST_B ? describe : describe.skip)("foreign bodies cross with the fetch", function () {
     this.timeout(30000);
 

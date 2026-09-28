@@ -566,11 +566,14 @@ async fn peek_shelf(state: &AppState, root_hex: &str, endpoint_id: &str) -> usiz
     // The face first: the profile names its avatar by document id, and a peek that shows
     // the name without the face is half a look.
     if let Ok(fields) = public_profile(state, root_hex).await {
-        if let Some(avatar) = profile_value(&fields, "avatar")
-            .and_then(|h| hex::decode(h).ok())
-            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
-        {
-            wanted.push(avatar);
+        // ...and the banner beside it (2026-09-28): the top of their page.
+        for field in ["avatar", "banner"] {
+            if let Some(doc) = profile_value(&fields, field)
+                .and_then(|h| hex::decode(h).ok())
+                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            {
+                wanted.push(doc);
+            }
         }
     }
     for id in pinned.into_iter().chain(posts) {

@@ -915,6 +915,26 @@
 .sig-4 { color: var(--sea); }
 
 /* Avatars: the persona's public picture, everywhere a person shows. */
+/* The banner (2026-09-28): a preview of the top of your page, and its buttons. */
+.profile-banner-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.2rem;
+}
+.profile-banner {
+    width: 100%;
+    height: 5rem;
+    background-size: cover;
+    background-position: center;
+    --j: 6px;
+    clip-path: var(--jag);
+}
+.profile-banner-acts {
+    display: flex;
+    gap: 0.5rem;
+}
+
 .profile-avatar-row {
     display: flex;
     align-items: center;

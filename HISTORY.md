@@ -12095,3 +12095,37 @@ user widgets, the first six of each and "and N more you know". The door answers 
 (`known-followers`: `trusted`, `followed`), and followers.cjs moves bea from "followed by" to "trusted
 by" when she comes to trust ada as well. `PersonCard` gained two slots, beside the picture and after
 the relationship.
+
+## 2026-09-28 (cont.): a profile banner
+
+A new profile field (Curtis): **a banner** across the top of a person's page - the page's full width,
+250px tall - chosen from your pictures or drawings exactly as the avatar is. Until one is chosen, the
+page wears its identicon tiled, the persona's own pattern (pure/identicon.js, 64px tiles).
+
+- **The field**: `banner` joins the profile's closed schema (store.rs `PROFILE_FIELDS`). The wire
+  already takes any profile field name, so older nodes fold it like any other and nothing migrates.
+- **The doors**: `POST /api/identity/{root}/banner` launders a still picture through the ordinary
+  crush, as the avatar's door does, and keeps it as a born-public picture the field names - 800px on
+  the long side, every picture's cap and the page's own width. (A first cut gave banners a special
+  larger crush, argued from "wide screens"; Curtis pointed out the page is 800px wide and the pictures
+  a banner is chosen from are 800px already, so it had nothing to add, and it is gone.) An animation,
+  a video or a sound is refused. `DELETE` clears it, and the page goes back to its pattern.
+- **The pages**: the profile page previews it with "add / change your banner" and "back to your
+  pattern"; the picker sends it as it sends an avatar (`avatarBytes`). A person's page wears it
+  as the head of their card (below); a peek of someone fetches their banner beside their face.
+
+idface.cjs holds a 3000x300 picture becoming the banner, served to anyone, a non-picture refused,
+and a clear emptying the field.
+
+Then the page itself (Curtis): the banner became the card's head. The picture, twice its card size
+(`person-hex-hero`, 9rem), the name and the other names all rest on the banner's bottom edge, with
+the reach pill still beside the picture on your own page; whatever comes next - your settings, or the
+address row on someone else's - starts flush beneath it. The name and the other names sit on
+translucent white plates (`--plate`, jagged like the rest), so they read against a black banner or
+a noisy one. `PersonCard` takes the banner as a style (`banner`), and without it the card is as it
+was, so peeks and lists are unchanged.
+
+Three touches after (Curtis): the tiled identicon of a banner nobody chose was too bold, so it now
+shows at half strength under a veil of the page's sand (`--banner-veil`); the double-size picture
+gets a 5px ring instead of 2px, to hold its edge against the banner; and your reach pill sits in the
+banner's top right corner instead of beside the picture.

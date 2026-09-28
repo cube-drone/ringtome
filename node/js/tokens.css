@@ -100,6 +100,9 @@
        casts, and the hairline of light its bottom edge catches. */
     --sunk-shadow: rgba(0, 0, 0, 0.45);
     --sunk-light: rgba(255, 255, 255, 0.12);
+    --banner-veil: rgba(231, 219, 195, 0.5); /* the page's sand at half, over the tiled identicon of a
+                                                 banner nobody chose: the pattern at half strength */
+    --plate: rgba(255, 255, 255, 0.78); /* a name's plate over a banner: legible on black or on noise */
 
     --hex-border-dark: #bf9152;   /* the outer 2px ring of an application heptagon: caramel */
     --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */

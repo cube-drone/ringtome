@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1130 phrases across 72 files.
+// 1137 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -797,6 +797,11 @@ export default {
     'persona.change-your-picture': 'change your picture',
     'persona.add-a-picture': 'add a picture',
     'persona.choose-your-picture': 'choose your picture',
+    'persona.your-banner': 'your banner',
+    'persona.change-your-banner': 'change your banner',
+    'persona.add-a-banner': 'add a banner',
+    'persona.remove-your-banner': 'back to your pattern',
+    'persona.choose-your-banner': 'choose your banner',
     'persona.name': 'name',
     'persona.what-people-call-you-here': 'what people call you here',
     'persona.bio': 'bio',
@@ -1135,6 +1140,8 @@ export default {
     'identity.routes.missing-image-part': 'missing `image` part',
     'identity.routes.that-doesnt-work-as-an': "that doesn't work as an avatar: {e}",
     'identity.routes.an-avatar-should-be-a': 'an avatar should be a picture - a still image or a small animation',
+    'identity.routes.that-doesnt-work-as-a-banner': "that doesn't work as a banner: {e}",
+    'identity.routes.a-banner-is-a-still-picture': 'a banner is a still picture',
     'identity.routes.document-has-no-readable-head': 'document has no readable head',
     'identity.routes.body-not-on-this-node': 'body not on this node yet',
     'identity.routes.upload-tombstone': '{reason}',

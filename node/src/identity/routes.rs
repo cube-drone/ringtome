@@ -97,6 +97,12 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/avatar",
             post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
         )
+        .route(
+            "/api/identity/{root}/banner",
+            post(set_banner_handler)
+                .delete(clear_banner_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
+        )
         // M3: multi-node.
         .route("/api/identity/adopt/begin", post(adopt_begin_handler))
         .route("/api/identity/adopt/complete", post(adopt_complete_handler))
@@ -5840,6 +5846,57 @@ async fn set_avatar_handler(
     Ok(Json(AvatarResponse {
         doc_id: hex::encode(doc_id),
     }))
+}
+
+/// POST - the profile's banner (Curtis, 2026-09-28): a still picture across the top of your page,
+/// chosen as the avatar is and laundered as every upload is - the ordinary crush, 800px on the long
+/// side, which is the page's own width and every picture's cap - kept as a born-public picture of its
+/// own and named by the profile's `banner` field. Stills only.
+async fn set_banner_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    mut parts: axum::extract::Multipart,
+) -> Result<Json<AvatarResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let mut image: Option<Bytes> = None;
+    while let Some(field) = parts
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-body-e-2", "bad multipart body: {e}", e = e)))?
+    {
+        if field.name().unwrap_or("") == "image" {
+            image = Some(field.bytes().await.map_err(|e| {
+                AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-part-image-e", "bad multipart part `image`: {e}", e = e))
+            })?);
+        }
+    }
+    let image = image.ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.missing-image-part", "missing `image` part")))?;
+    let bytes = image.to_vec();
+    let ingested = tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("banner crush task: {e}")))?
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.that-doesnt-work-as-a-banner", "that doesn't work as a banner: {e}", e = e)))?;
+    if ingested.format != crate::record::documents::Format::Avif {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.a-banner-is-a-still-picture", "a banner is a still picture")));
+    }
+    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
+    let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    let doc_id =
+        crate::record::documents::save_public_media(&db, &signer, &state.files, "banner", ingested, None, None, false).await?;
+    data.profile().set("banner", &hex::encode(doc_id)).await?;
+    Ok(Json(AvatarResponse { doc_id: hex::encode(doc_id) }))
+}
+
+/// DELETE - no banner: the page goes back to its identicon, tiled.
+async fn clear_banner_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    data.profile().set("banner", "").await?;
+    Ok(Json(serde_json::json!({ "banner": null })))
 }
 
 /// Upload a new binary version of an existing document. Same async path; the existing doc_id and

@@ -33,6 +33,14 @@
     height: 4.39rem;
 }
 
+/* Twice the card's, over a person's banner (2026-09-28), with a ring thick enough to hold its
+   edge against whatever the banner is. */
+.person-hex-hero {
+    width: 9rem;
+    height: 8.78rem;
+    padding: 5px;
+}
+
 /* The chip: a heptagon that says who it is when you point at it. Inline in prose, it needs
    air on both sides or it crowds the words it sits between. */
 .person-chip {
@@ -152,6 +160,44 @@
 }
 
 /* The card: everything about them, and everything between you. */
+/* A person's homepage (2026-09-28): the banner, 250px tall, with the picture, name and other names
+   resting on its bottom edge - the name and the other names on translucent plates, so neither
+   disappears against a black or noisy banner - and what follows starts flush beneath it. */
+.person-card-hero {
+    position: relative;
+    height: 250px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 0.3rem;
+    padding: 0 1rem 0.8rem;
+    background-size: cover;
+    background-position: center;
+}
+.person-card-hero .person-card-top {
+    align-self: stretch;
+    align-items: flex-end;
+}
+/* Your reach, in the banner's top right corner. */
+.person-card-hero .person-reach {
+    position: absolute;
+    top: 0.8rem;
+    right: 1rem;
+}
+.person-card-hero .person-card-name,
+.person-card-hero .person-card-others {
+    margin: 0;
+    background: var(--plate);
+    padding: 0.1rem 0.6rem;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
+}
+.person-card-hero .person-card-others {
+    color: var(--ink-soft);
+}
+
 /* The picture and what sits beside it (2026-09-28): on your own page, your reach, off to the right. */
 .person-card-top {
     display: flex;

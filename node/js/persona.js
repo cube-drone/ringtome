@@ -20,6 +20,7 @@ import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { personaHue, shortcode } from './pure/person.js';
+import { identiconUri } from './pure/identicon.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { WarningLists } from './warnings.js';
@@ -745,6 +746,13 @@ async function avatarBytes(root, pick) {
     );
 }
 
+/// The top of a person's page (2026-09-28): their banner across it, or - until they choose one -
+/// their identicon, tiled. One look for the profile's preview and the page itself.
+export const bannerStyle = (root, bannerDoc) =>
+    bannerDoc
+        ? `background-image: url(/id/${root}/docs/${bannerDoc}/body)`
+        : `background-image: linear-gradient(var(--banner-veil), var(--banner-veil)), url("${identiconUri(root)}"); background-size: auto, 64px 64px; background-repeat: repeat`;
+
 function useProfileDraft(root, field) {
     const live = useLive(() => openMirror(root).profile.get(field), [root, field]);
     const mirror = (live && live.value) || '';
@@ -833,6 +841,35 @@ export const Profile = ({ current }) => {
     // offering your drawings as well as your media - make your own. (An outside picture comes in
     // through hrseFiles, like any file, and can be chosen from there.)
     const [choosing, setChoosing] = useState(false);
+    // The banner (2026-09-28): chosen the same way, a still picture across the top of your page.
+    const bannerLive = useLive(() => openMirror(root).profile.get('banner'), [root]);
+    const bannerDoc = (bannerLive && bannerLive.value) || '';
+    const [bannerBusy, setBannerBusy] = useState(false);
+    const [bannerErr, setBannerErr] = useState(null);
+    const [choosingBanner, setChoosingBanner] = useState(false);
+    const pickBanner = async (pick) => {
+        setChoosingBanner(false);
+        setBannerBusy(true);
+        setBannerErr(null);
+        try {
+            const form = new FormData();
+            form.append('image', await avatarBytes(root, pick), 'banner.png');
+            await api(`/api/identity/${root}/banner`, { method: 'POST', body: form });
+        } catch (err) {
+            setBannerErr(err.message);
+        }
+        setBannerBusy(false);
+    };
+    const clearBanner = async () => {
+        setBannerBusy(true);
+        setBannerErr(null);
+        try {
+            await api(`/api/identity/${root}/banner`, { method: 'DELETE' });
+        } catch (err) {
+            setBannerErr(err.message);
+        }
+        setBannerBusy(false);
+    };
     const pickAvatar = async (pick) => {
         setChoosing(false);
         setAvatarBusy(true);
@@ -877,6 +914,28 @@ export const Profile = ({ current }) => {
                 />`}
             </div>
             ${avatarErr && html`<p class="form-error">${avatarErr}</p>`}
+            <div class="profile-banner-row">
+                <div class="profile-banner" style=${bannerStyle(root, bannerDoc)} aria-label=${t('persona.your-banner', 'your banner')}></div>
+                <div class="profile-banner-acts">
+                    <button class="profile-avatar-pick" disabled=${bannerBusy} onClick=${() => setChoosingBanner(true)}>
+                        ${bannerBusy ? t('persona.working-on-it', 'working on it…') : bannerDoc ? t('persona.change-your-banner', 'change your banner') : t('persona.add-a-banner', 'add a banner')}
+                    </button>
+                    ${bannerDoc &&
+                    html`<button class="profile-avatar-pick" disabled=${bannerBusy} onClick=${clearBanner}>
+                        ${t('persona.remove-your-banner', 'back to your pattern')}
+                    </button>`}
+                </div>
+                ${choosingBanner &&
+                html`<${ImagePickModal}
+                    root=${root}
+                    drawings=${true}
+                    DrawingThumb=${DrawingThumb}
+                    heading=${t('persona.choose-your-banner', 'choose your banner')}
+                    onPick=${pickBanner}
+                    onClose=${() => setChoosingBanner(false)}
+                />`}
+            </div>
+            ${bannerErr && html`<p class="form-error">${bannerErr}</p>`}
             <label class="profile-field">
                 <${FieldLabel} label=${t('persona.name', 'name')} field=${name} />
                 <input

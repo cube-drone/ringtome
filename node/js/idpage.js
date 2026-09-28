@@ -17,7 +17,7 @@ import { personaHue } from './pure/person.js';
 import { agoUnit } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { PersonCard, PersonChip } from './person.js';
-import { PersonaMenu } from './persona.js';
+import { PersonaMenu, bannerStyle } from './persona.js';
 import { PublicPosts } from './posts.js';
 import { t, tNodes } from './i18n.js';
 
@@ -246,9 +246,12 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
     // The whole person, in the widget family's largest shape, and then what they have said in
     // public. The profile rides down as a prop: this page had to fetch it to tell reachable
     // from unreachable, and neither the card nor the posts must fetch it twice.
+    // The banner across the top (2026-09-28): theirs, or their identicon tiled until they choose one.
+    const banner = ((profile.fields || []).find((f) => f.field === 'banner') || {}).value || '';
     return html`<${Card}>
         <${PersonCard}
             root=${root}
+            banner=${bannerStyle(root, banner)}
             current=${current}
             profile=${profile}
             you=${persona && session && html`<${PersonaMenu} persona=${persona} session=${session} />`}
