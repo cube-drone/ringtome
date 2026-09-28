@@ -6,6 +6,7 @@
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
     Archive,
+    ChartLine,
     ChatsCircle,
     Funnel,
     Path,
@@ -115,6 +116,8 @@ export { IconContext } from '@phosphor-icons/react';
 export const Icons = {
     // apps (the console tiles + each app's own header)
     persona: UserCircle,
+    // Your own reach, on your own page (2026-09-28): public follows and fetches.
+    stats: ChartLine,
     personas: UserSwitch,
     notes: NotePencil,
     // actions and chrome

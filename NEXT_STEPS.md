@@ -12,7 +12,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Actually Deploy the Thing (Registration Off)
 * API Keys for automated autopost?
 * Everyone subscribed to ringtome at boot
-* "How Many People are Subscribed to Me?"
 * Logging & graphs
 * "Attract Mode"
  * Select a user as the "primary display user"

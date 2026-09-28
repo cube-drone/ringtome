@@ -12060,3 +12060,38 @@ refuses as still being prepared is tried again, and after ten minutes it says th
 finished. A quiet "preparing a file - it goes in once it is ready" shows meanwhile. Probed on a
 scratch node: an uploaded picture reads no media at once and `avif` with its dimensions about 1.25 s
 later.
+
+## 2026-09-28 (cont.): who follows you
+
+Curtis: "how many users do I know (or think) are publicly subscribed to me" - and, once the
+question of showing it to others came up, the answer in names rather than numbers. Closes
+NEXT_STEPS' "How Many People are Subscribed to Me?".
+
+- **Your own page** (`/api/identity/{root}/followers`, the persona's session only) says three things,
+  each for what it is: public follows from every chain this node holds - exact, since a follow
+  withdrawn leaves the chain - and how many of those are people you have a dial on
+  (`edgegraph::followers_of`); about how many more told you by notice (the inbox's `public-edge`
+  notices from people whose chains aren't held - checked on the way: an unfollow sends no notice,
+  publish.rs's retraction pass is silent, so this only climbs, and the stranger tier forgets past its
+  depth); and how many computers fetched you this week, your own devices left out
+  (`demand::askers_of` less `peers_for`) - the only trace a private follow leaves. The tooltip says
+  all of that; nobody else sees any of it.
+- **Anyone else's page** (`/api/identity/{viewer}/known-followers/{subject}`): "followed by Jeff Dorp,
+  Ann and 3 others you know" - the people the viewer has a dial on who publicly follow them, trust
+  first. A count of strangers is never shown to anyone: a public follow is free to mint, each node
+  knows a different subset, and the plan asks for names, not scores.
+
+followers.cjs holds the three numbers (bea and dee from held chains, eve's follow by notice from the
+other node, eve's node counted as a reader), an unfollow leaving the exact count, the counts refused
+to another account, and "followed by" naming bea for cal and nobody for dee. A planted "everyone is
+known" turned it red.
+
+Restyled the same day (Curtis): your own numbers are a pill in the space right of your picture -
+the chart-line icon, then public follows / fetches, each number explaining itself on hover (public
+follows are the exact ones plus those told by notice; the hover splits them). Anyone else's page, after
+your relationship box, says **trusted by** the people you know who publicly trust them, then **followed
+by** those who follow without trusting - trust the weightier claim, each person said once - as small
+user widgets, the first six of each and "and N more you know". The door answers the two groups apart
+(`known-followers`: `trusted`, `followed`), and followers.cjs moves bea from "followed by" to "trusted
+by" when she comes to trust ada as well. `PersonCard` gained two slots, beside the picture and after
+the relationship.

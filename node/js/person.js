@@ -301,12 +301,16 @@ const ChatWithButton = ({ myRoot, root, name }) => {
 /// The whole person: picture, names, the shareable address, their bio, and - for anyone who
 /// isn't you - your relationship with them. For you, `you` is what sits where the
 /// relationship would: the page's own management disclosure (persona.js PersonaMenu).
-export const PersonCard = ({ root, current, profile, you, children }) => {
+export const PersonCard = ({ root, current, profile, you, children, beside = null, after = null }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
     return html`
         <div class="person-card">
-            <${PersonHex} person=${person} size="card" />
+            ${/* What sits beside the picture, in the space to its right (2026-09-28: your own reach). */ ''}
+            <div class="person-card-top">
+                <${PersonHex} person=${person} size="card" />
+                ${beside}
+            </div>
             <h1 class="person-card-name">
                 ${person.primary}
                 ${/* The chat sits with their name (Curtis, 2026-09-20), not down in the
@@ -324,6 +328,8 @@ export const PersonCard = ({ root, current, profile, you, children }) => {
                 read once you have it. */ ''}
             ${!person.isYou && current &&
             html`<${ContactLedger} myRoot=${current.root} theirRoot=${root} />`}
+            ${/* What follows your relationship (2026-09-28: who you know that trusts or follows them). */ ''}
+            ${after}
             ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
         </div>
     `;

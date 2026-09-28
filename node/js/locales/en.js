@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1124 phrases across 72 files.
+// 1130 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -630,6 +630,12 @@ export default {
     'idpage.synced': 'synced {when}',
     'idpage.fetching-their-newest-posts': 'fetching their newest posts…',
     'idpage.checking-for-anything-newer': 'checking for anything newer',
+    'idpage.reach-title': 'only you see this',
+    'idpage.reach-follows-title': '{n} public follows: {exact} from people this computer keeps up with ({known} of them people you know), and about {told} more who told you they follow you - an unfollow from those never reaches you',
+    'idpage.reach-fetches-title': '{n} computers fetched your posts this week, your own devices left out - private followers among them, since a private follow leaves no other trace',
+    'idpage.trusted-by': 'trusted by',
+    'idpage.and-n-more-you-know': 'and {n} more you know',
+    'idpage.followed-by': 'followed by',
     'idpage.thats-not-an-address': "that's not an address",
     'idpage.the-path-after-should-be': "The path after {path} should be a persona's address - two words and a key, like {example}",
     'idpage.this-address-arrived-mangled': 'this address arrived mangled',

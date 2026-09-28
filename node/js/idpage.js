@@ -16,7 +16,7 @@ import { parseSpeakable, speakable } from './speakable.js';
 import { personaHue } from './pure/person.js';
 import { agoUnit } from './pure/ago.js';
 import { Icons } from './icons.js';
-import { PersonCard } from './person.js';
+import { PersonCard, PersonChip } from './person.js';
 import { PersonaMenu } from './persona.js';
 import { PublicPosts } from './posts.js';
 import { t, tNodes } from './i18n.js';
@@ -57,6 +57,69 @@ const SyncLine = ({ syncedMs, refreshing, peek }) => {
                 : t('idpage.checking-for-anything-newer', 'checking for anything newer')}
         </span>`}
     </p>`;
+};
+
+/// Your own reach, on your own page (2026-09-28, Curtis: "how many users do I know (or think) are
+/// publicly subscribed to me"): a pill beside your picture - public follows / fetches - each number
+/// saying on hover what it is. Yours alone; nobody else is shown them.
+const ReachPill = ({ root }) => {
+    const [n, setN] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api(`/api/identity/${root}/followers`)
+            .then((r) => live && setN(r))
+            .catch(() => live && setN(null));
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    if (!n) return null;
+    const follows = n.follow_you + n.told_you;
+    return html`<span class="person-reach" title=${t('idpage.reach-title', 'only you see this')}>
+        <${Icons.stats} />
+        <span
+            class="person-reach-n"
+            title=${t('idpage.reach-follows-title', '{n} public follows: {exact} from people this computer keeps up with ({known} of them people you know), and about {told} more who told you they follow you - an unfollow from those never reaches you', {
+                n: follows,
+                exact: n.follow_you,
+                known: n.you_know,
+                told: n.told_you,
+            })}
+        >${follows}</span>
+        /
+        <span
+            class="person-reach-n"
+            title=${t('idpage.reach-fetches-title', '{n} computers fetched your posts this week, your own devices left out - private followers among them, since a private follow leaves no other trace', { n: n.computers })}
+        >${n.computers}</span>
+    </span>`;
+};
+
+/// Someone else's page (2026-09-28): who among the people YOU know trusts them, and who follows them
+/// without trusting - small user widgets, never a count of strangers, so a crowd of bots adds
+/// nothing. Trust is said first, as the weightier claim; nothing at all when you know none of them.
+const KnownBy = ({ viewer, subject, current }) => {
+    const [known, setKnown] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api(`/api/identity/${viewer}/known-followers/${subject}`)
+            .then((r) => live && setKnown(r))
+            .catch(() => live && setKnown(null));
+        return () => {
+            live = false;
+        };
+    }, [viewer, subject]);
+    if (!known) return null;
+    const row = (group, words, more) =>
+        group && group.count > 0
+            ? html`<p class="person-known-by">
+                  <span class="person-known-by-words">${words}</span>
+                  ${group.people.map((root) => html`<${PersonChip} key=${root} root=${root} current=${current} size="small" />`)}
+                  ${group.count > group.people.length &&
+                  html`<span class="person-known-by-more">${more(group.count - group.people.length)}</span>`}
+              </p>`
+            : null;
+    return html`${row(known.trusted, t('idpage.trusted-by', 'trusted by'), (n) => t('idpage.and-n-more-you-know', 'and {n} more you know', { n }))}
+    ${row(known.followed, t('idpage.followed-by', 'followed by'), (n) => t('idpage.and-n-more-you-know', 'and {n} more you know', { n }))}`;
 };
 
 export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery }) => {
@@ -189,6 +252,8 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             current=${current}
             profile=${profile}
             you=${persona && session && html`<${PersonaMenu} persona=${persona} session=${session} />`}
+            beside=${viewer && viewer === root ? html`<${ReachPill} root=${root} />` : null}
+            after=${viewer && viewer !== root ? html`<${KnownBy} viewer=${viewer} subject=${root} current=${current} />` : null}
         >
             ${profile.foreign && !profile.peek &&
             html`<p class="id-words">${t('idpage.reached-across-the-network--', 'found elsewhere')}</p>`}

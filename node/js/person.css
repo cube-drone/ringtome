@@ -152,6 +152,46 @@
 }
 
 /* The card: everything about them, and everything between you. */
+/* The picture and what sits beside it (2026-09-28): on your own page, your reach, off to the right. */
+.person-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+/* Your reach - public follows / fetches - a quiet pill; each number explains itself on hover. */
+.person-reach {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    padding: 0.2rem 0.7rem;
+    --j: 0.3em;
+    clip-path: var(--jag-1);
+}
+.person-reach-n {
+    font-weight: 600;
+    color: var(--ink);
+    cursor: help;
+}
+
+/* Who you know that trusts them, then who follows without trusting: small chips after a word. */
+.person-known-by {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.person-known-by-more {
+    color: var(--faint);
+}
+
 .person-card-name {
     display: flex;
     align-items: center;

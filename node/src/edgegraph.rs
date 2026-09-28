@@ -382,6 +382,22 @@ pub struct ImplicitRow {
 /// `implicit_edges` (tests/conventions.rs owns the SQL to this module).
 /// Forget an evicted author's mirrored edges - the graph is a cache of public speech read
 /// off a chain this node no longer holds; the statements survive wherever the chain does.
+/// Everyone this node holds a public follow or trust from, naming `subject`, as
+/// `(author, trust, interest)`: the authors whose mirrored edges carry a trust or an interest band
+/// of low or above (2026-09-28). Exact for the chains held - a statement withdrawn is gone from
+/// them - and silent about everyone else.
+pub async fn edges_naming(node_db: &crate::db::Db, subject: &str) -> Result<Vec<(String, Option<String>, Option<String>)>> {
+    node_db
+        .fetch_all(
+            "SELECT author_root, trust, interest FROM edge_graph
+             WHERE subject_root = ?1 AND author_root <> ?1
+               AND (trust IN ('low', 'medium', 'high', 'max') OR interest IN ('low', 'medium', 'high', 'max'))",
+            (subject,),
+        )
+        .await
+        .context("reading who follows or trusts a persona")
+}
+
 pub async fn forget_author(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
     node_db
         .execute(

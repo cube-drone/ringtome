@@ -91,6 +91,8 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             axum::routing::delete(public_annotation_delete_handler),
         )
         .route("/api/identity/{root}/popularity/{author}/{doc}", get(popularity_handler))
+        .route("/api/identity/{root}/followers", get(followers_handler))
+        .route("/api/identity/{root}/known-followers/{subject}", get(known_followers_handler))
         .route(
             "/api/identity/{root}/avatar",
             post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
@@ -4447,6 +4449,109 @@ async fn popularity_handler(
         .filter_map(|(root, b)| b.name.clone().map(|n| (root.clone(), n)))
         .collect::<std::collections::BTreeMap<_, _>>());
     Ok(Json(out))
+}
+
+/// Does this reader have a dial on this person - trust or interest, low or above, and not blocked?
+fn dialled(facts: &crate::selectivity::Facts, root: &str) -> bool {
+    let Some(f) = facts.get(root) else { return false };
+    if f.get("blocked").map(String::as_str) == Some("yes") {
+        return false;
+    }
+    let at = |k: &str| crate::selectivity::band_ordinal(f.get(k).map(String::as_str)).is_some_and(|o| o >= 1);
+    at("trust") || at("interest")
+}
+
+/// GET - who follows this persona, as best this node can tell (2026-09-28, Curtis: "how many
+/// users do I know (or think) are publicly subscribed to me"). Only ever the persona's own: three
+/// numbers, each labelled for what it is -
+/// - `follow_you`: public follows from every chain this node holds - exact for those chains,
+///   since a follow withdrawn leaves them - and `you_know` of those people you have a dial on;
+/// - `told_you`: others whose follow notice reached your inbox - a stranger's unfollow sends no
+///   notice, so it only climbs, and the stranger tier forgets past its depth;
+/// - `computers`: the nodes that fetched you in the last week, your own devices left out - private
+///   followers' nodes among them, which is the only trace a private follow leaves.
+async fn followers_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+    let at_least_low = |band: &Option<String>| crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1);
+    let exact: std::collections::HashSet<String> = crate::edgegraph::edges_naming(&state.node_db, &root)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .filter(|(_, _, interest)| at_least_low(interest))
+        .map(|(a, _, _)| a)
+        .collect();
+    let you_know = exact.iter().filter(|p| dialled(&facts, p)).count();
+    let told_you: std::collections::HashSet<String> = data
+        .inbox()
+        .page(5000)
+        .await?
+        .into_iter()
+        .filter(|n| {
+            n.kind == crate::notifications::KIND_PUBLIC_EDGE
+                && crate::selectivity::band_ordinal(n.interest.as_deref()).is_some_and(|o| o >= 1)
+                && n.sender_root != root
+                && !exact.contains(&n.sender_root)
+        })
+        .map(|n| n.sender_root)
+        .collect();
+    let devices: std::collections::HashSet<String> = crate::net::sync::peers_for(&state.node_db, &root)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .collect();
+    let computers = crate::net::demand::askers_of(&state.node_db, &root, 100_000)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .filter(|a| !devices.contains(a))
+        .count();
+    Ok(Json(serde_json::json!({
+        "follow_you": exact.len(),
+        "you_know": you_know,
+        "told_you": told_you.len(),
+        "computers": computers,
+    })))
+}
+
+/// GET - who among the people this reader has a dial on publicly trusts or follows `subject`: the
+/// profile's "trusted by ... / followed by ..." (2026-09-28). Names, not a score - a stranger's word,
+/// however many there are, counts for nothing here. Trust is the weightier claim (Curtis): a person
+/// who both trusts and follows is said once, under trust; `followed` is only those who follow
+/// without trusting. Each the first six, the reader's own trust in them first, and how many.
+async fn known_followers_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, subject)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    hex_fixed::<32>(&subject, "subject root")?;
+    let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+    let at_least_low = |band: &Option<String>| crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1);
+    let my_trust = |p: &str| crate::selectivity::band_ordinal(facts.get(p).and_then(|f| f.get("trust")).map(String::as_str)).unwrap_or(0);
+    let (mut trusted, mut followed): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    for (p, trust, interest) in crate::edgegraph::edges_naming(&state.node_db, &subject)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        if p == root || !dialled(&facts, &p) {
+            continue;
+        }
+        if at_least_low(&trust) {
+            trusted.push(p);
+        } else if at_least_low(&interest) {
+            followed.push(p);
+        }
+    }
+    let rank = |list: &mut Vec<String>| list.sort_by(|a, b| my_trust(b).cmp(&my_trust(a)).then_with(|| a.cmp(b)));
+    rank(&mut trusted);
+    rank(&mut followed);
+    let group = |list: &[String]| serde_json::json!({ "people": list.iter().take(6).collect::<Vec<_>>(), "count": list.len() });
+    Ok(Json(serde_json::json!({ "trusted": group(&trusted), "followed": group(&followed) })))
 }
 
 /// DELETE - retract one statement: restate it absent, so an older copy cannot win it back.
