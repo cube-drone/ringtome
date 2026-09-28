@@ -703,7 +703,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // A room's description is Marquee (CHAT.md, ruling 1): rendered as such.
     const bodyFormat = item.format === 'room' ? 'marquee' : item.format;
     const tlProfile = useTurbolinks(shownBody || '', bodyFormat);
-    const { lead, cut } = leadOf(shownBody || '', emphasis);
+    const { lead, cut: leadCut } = leadOf(shownBody || '', emphasis);
+    // A book's card always draws its whole table (below), so nothing is ever held back from it.
+    const cut = item.format !== 'book' && leadCut;
     // A book's body is its tree, never prose: no lead cut, the card draws the whole table.
     const shown = item.format === 'book' || wholeThing ? shownBody : lead;
     // Whose labels this reader sees: the register and their ledger, both live. The
@@ -731,6 +733,17 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     });
     const [revealed, setRevealed] = useState(false);
     const veiled = !revealed && (warning.kind === 'blur' || (warning.kind === 'hide' && standalone));
+    // The foot's parts (see the foot, below): each only where the words are on screen to act on.
+    const bodyShown = !!shownBody && !veiled;
+    const seeMore = bodyShown && cut && !wholeThing;
+    const roomDoor = bodyShown && item.format === 'room';
+    const replyWords = item.replies
+        ? item.replies === 1
+            ? t('postentry.1-reply', '1 reply')
+            : t('postentry.n-replies', '{n} replies', { n: item.replies })
+        : !seeMore && item.format !== 'room'
+          ? t('postentry.reply', 'reply')
+          : null;
     const [saidLabels, setSaidLabels] = useState([]);
     const [retractedLabels, setRetractedLabels] = useState([]);
     const [tagging, setTagging] = useState(false);
@@ -1216,36 +1229,24 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                         onUnparsable=${bareSource}
                                     />`
                                   : html`<pre class="reader-plain">${shown}</pre>`}
-                          ${/* A room (CHAT.md, ruling 1): the card says so and opens it; a
-                              stranger's shell has no rooms, so the door is the sign-in. */ ''}
-                          ${/* One word on the right (Curtis, 2026-09-18: "a room" beside
-                              "enter the room" was redundant). */ ''}
-                          ${item.format === 'room' &&
-                          html`<p class="room-card-foot">
-                              <a class="room-card-enter" href=${`/home/chat/${item.author}/${item.doc_id}`}
-                                  ><${Icons.chat} /> ${t('postentry.enter-the-room', 'enter the room')}</a
-                              >
-                          </p>`}
-                          ${cut &&
-                          !wholeThing &&
-                          html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>
-                              ${t('postentry.the-whole-thing', 'the whole thing')}
-                          </button>`}
                       </div>`}`}
-            ${/* The foot line: the reply count when this node knows of any (Curtis,
-                2026-08-27 - "how many replies we THINK exist", honest-partial like the
-                thread it summarizes), else - for an untitled post - just "link" (Curtis,
-                2026-08-26): it goes to the post's own page, where the thread assembles.
-                A titled post with no known replies keeps no foot at all, as before. */ ''}
+            ${/* The card's foot (Curtis, 2026-09-27): centred under the post, large and bold, stacking
+                whichever apply - "see more…" when something was held back; "enter the room" on a
+                room (CHAT.md, ruling 1 - a stranger's shell has no rooms, so the door is the
+                sign-in); and the replies: "N replies" whenever this node knows of any ("how many
+                replies we THINK exist", honest-partial like the thread it summarizes), titled post
+                or not, else "reply" - to the post's own page, where the thread assembles - unless
+                "see more…" already stands there. A room takes no replies, so offers none. */ ''}
             ${!open &&
-            (!title || !!item.replies) &&
-            html`<p class="feed-entry-foot">
-                <a href=${href}>${item.replies
-                    ? item.replies === 1
-                        ? t('postentry.1-reply', '1 reply')
-                        : t('postentry.n-replies', '{n} replies', { n: item.replies })
-                    : t('postentry.link', 'link')}</a>
-            </p>`}
+            html`<div class="feed-entry-acts">
+                ${seeMore &&
+                html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>`}
+                ${roomDoor &&
+                html`<a class="feed-entry-act" href=${`/home/chat/${item.author}/${item.doc_id}`}
+                    ><${Icons.chat} /> ${t('postentry.enter-the-room', 'enter the room')}</a
+                >`}
+                ${replyWords && html`<a class="feed-entry-act" href=${href}>${replyWords}</a>`}
+            </div>`}
         </article>
     `;
 };

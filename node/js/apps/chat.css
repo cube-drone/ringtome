@@ -992,16 +992,3 @@
     color: var(--muted);
 }
 
-.room-card-foot {
-    display: flex;
-    justify-content: flex-end;
-    margin: 0.6rem 0 0;
-    font-size: 0.9em;
-}
-
-.room-card-enter {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    color: var(--teal);
-}

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1081 phrases across 72 files.
+// 1082 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -825,6 +825,9 @@ export default {
     'postentry.and-100-more': 'and {cap}+ more',
     'postentry.and-one-more': 'and one more',
     'postentry.and-n-more': 'and {n} more',
+    'postentry.1-reply': '1 reply',
+    'postentry.n-replies': '{n} replies',
+    'postentry.reply': 'reply',
     'postentry.passed-this-along': 'passed this along',
     'postentry.vouches-for-this-author': 'vouches for this author',
     'postentry.scheduled-for': 'scheduled for {when}',
@@ -860,10 +863,8 @@ export default {
     'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
+    'postentry.see-more': 'see more…',
     'postentry.enter-the-room': 'enter the room',
-    'postentry.the-whole-thing': 'the whole thing',
-    'postentry.1-reply': '1 reply',
-    'postentry.n-replies': '{n} replies',
 
     // --- node/js/postpage.js ---
     'postpage.other-authors-in-the-copy-chain': 'Other Authors in the Copy Chain',

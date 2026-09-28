@@ -1694,23 +1694,39 @@ article:has(.label-emoji-strip) {
     overflow-wrap: anywhere;
 }
 
-.feed-entry-more {
+/* The card's foot (postentry.js, Curtis 2026-09-27): centred under the post, stacking whichever
+   apply - "see more…", "enter the room", the replies - each large and bold, never a footnote at
+   the edge. */
+.feed-entry-acts {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1em;
+    margin: 0.6em 0 0;
+}
+
+.feed-entry-acts:empty {
+    display: none;
+}
+
+.feed-entry-act {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
     background: none;
     border: none;
     color: var(--sea);
     font: inherit;
-    font-size: 0.8em;
-    padding: 0.2em 0;
+    font-size: 1em;
+    font-weight: 700;
+    padding: 0.25em 1em;
+    text-decoration: none;
     cursor: pointer;
 }
 
-.feed-entry-foot {
-    margin: 0.3em 0 0;
-    font-size: 0.75em;
-}
-
-.feed-entry-foot a {
-    color: var(--muted);
+.feed-entry-act:hover {
+    color: var(--teal);
+    text-decoration: underline;
 }
 
 .feed-more {

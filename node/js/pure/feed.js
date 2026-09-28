@@ -199,28 +199,76 @@ export function postImageCap(interest) {
 }
 
 /// Character budgets past which an item shows only its lead. Low-interest sources get cut
-/// aggressively; high-interest sources are never cut - that is their touch of importance.
+/// aggressively; high-interest sources are never cut for length - that is their touch of importance.
+/// Counted in the words a reader reads: a picture's markup, and a link's address, cost nothing
+/// (Curtis, 2026-09-27 - an embed's address is a hundred-odd characters, and a post of pictures
+/// spent the whole budget on them, cutting the sixth in half).
 const CUT_BUDGET = { low: 280, normal: 900 };
 
+/// A picture (an embed): `![caption](target)`. A link: `[text](target)`. Neither is ever cut.
+const EMBED = /!\[[^\]\n]*\]\([^)\s]*\)/g;
+const MARKUP = /!?\[[^\]\n]*\]\([^)\s]*\)/g;
+
+/// The spans of text an item's lead may not end inside, and what each costs toward the budget: a
+/// picture nothing, a link its text.
+function spansOf(text) {
+    return [...text.matchAll(MARKUP)].map((m) => ({
+        from: m.index,
+        to: m.index + m[0].length,
+        cost: m[0].startsWith('!') ? 0 : m[0].indexOf(']') - 1,
+    }));
+}
+
+/// The words a reader reads, counted: every character, less the markup's.
+function readLength(text, spans) {
+    return text.length - spans.reduce((n, s) => n + (s.to - s.from) - s.cost, 0);
+}
+
+/// Where the budget runs out in `text`, as an index never inside a picture or a link.
+function budgetEnd(text, spans, budget) {
+    let spent = 0;
+    let i = 0;
+    for (const s of spans) {
+        if (spent + (s.from - i) >= budget) return i + (budget - spent);
+        spent += s.from - i;
+        if (spent + s.cost > budget) return s.from; // the link would run over: stop before it
+        spent += s.cost;
+        i = s.to;
+    }
+    return Math.min(text.length, i + (budget - spent));
+}
+
 /**
- * The lead of a body, per the item's emphasis: the first paragraph when there are several, a
- * word-boundary slice when one paragraph overruns the budget. `cut` says whether anything was
- * held back - the item's "show the rest" appears exactly when it is true.
+ * The lead of a body, per the item's emphasis. A SECOND picture always ends it, whatever the
+ * interest (Curtis, 2026-09-27): `[picture] words [picture]` shows as `[picture] words`, and the
+ * rest is a click away. Within that, by the budget: the first paragraph when there are several,
+ * else a word-boundary slice - never inside a picture or a link. `cut` says whether anything was
+ * held back - the item's "see more" appears exactly when it is true.
  */
 export function leadOf(body, emphasis) {
-    const text = body || '';
-    if (emphasis === 'high') return { lead: text, cut: false };
+    const full = body || '';
+    const pictures = [...full.matchAll(EMBED)];
+    const second = pictures.length > 1 ? pictures[1].index : -1;
+    const text = second >= 0 ? full.slice(0, second).replace(/\s+$/, '') : full;
+    const atSecond = second >= 0;
+    if (emphasis === 'high') return { lead: text, cut: atSecond };
     const budget = CUT_BUDGET[emphasis] ?? CUT_BUDGET.normal;
+    const spans = spansOf(text);
+    const over = readLength(text, spans) > budget;
     const paras = text.split(/\n[ \t]*\n/);
-    if (paras.length > 1 && (emphasis === 'low' || text.length > budget)) {
+    if (paras.length > 1 && (emphasis === 'low' || over)) {
         return { lead: paras[0], cut: true };
     }
-    if (text.length > budget) {
-        const slice = text.slice(0, budget);
-        const atWord = slice.lastIndexOf(' ');
-        return { lead: slice.slice(0, atWord > budget / 2 ? atWord : budget) + '\u2026', cut: true };
+    if (over) {
+        const end = budgetEnd(text, spans, budget);
+        // Back to a word boundary, but never into markup and never past half the budget.
+        let at = text.lastIndexOf(' ', end);
+        const inside = spans.find((s) => at > s.from && at < s.to);
+        if (inside) at = inside.from;
+        if (at <= end / 2) at = end;
+        return { lead: text.slice(0, at).replace(/\s+$/, '') + '\u2026', cut: true };
     }
-    return { lead: text, cut: false };
+    return { lead: text, cut: atSecond };
 }
 
 /// A feed item's identity: the same post can reach one reader through one author only, but two

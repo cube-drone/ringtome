@@ -178,8 +178,10 @@
     color: var(--dock-text);
 }
 
-/* A pinned document's chip reads as "on": teal fill, so pin state is legible at a glance. */
-.chip-pinned {
+/* A pinned document's chip reads as "on": teal fill, so pin state is legible at a glance - and the
+   glyph inverted to the light dock text. Two classes, so no later `.chip-button` colour can put a
+   sea glyph on the teal (it did, to `.chip-open`: Curtis, 2026-09-27). */
+.chip.chip-pinned {
     color: var(--dock-text);
     background: var(--teal);
     --line: var(--teal);

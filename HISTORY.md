@@ -11609,3 +11609,37 @@ of its source, so nothing here can conflict. Two pure tests, and a drawing.cjs c
 annotations, set before the upload is even processed, ride the documents list the mirror is fed
 from. A picture from media was never copied: every use references the one document, and
 publication reuses its public twin.
+
+## 2026-09-27 (cont.): where a post is cut
+
+A post of dozens of one picture showed five and then half of the sixth - `![Big Fat…` (Curtis).
+The cut (`leadOf`, pure/feed.js) spent its budget on raw source, and a picture's embed is a
+hundred-odd characters of address, so pictures ate it as if they were words and the slice landed
+inside markup. Now: the budget counts what a reader reads - a picture costs nothing, a link only its
+text - and the lead never ends inside a picture or a link (a link straddling the budget is left
+whole for later). And a SECOND picture always ends the lead, at any interest, even when the whole
+post would fit: `[picture] words [picture]` shows as `[picture] words`. The budgets themselves are
+unchanged and still ride the reader's interest dial - low 280, normal 900, high never cut for
+length - while the same dial's other half, the picture size cap, only draws pictures smaller. The
+link to the rest reads "see more…" (was "the whole thing"), bigger and bold, centred as the post's
+last line. Two pure tests - the second-picture rule (red before the change) and the straddling link
+(red with the markup guards planted away).
+
+## 2026-09-27 (cont.): one foot under every post
+
+A feed card's actions now stand together, centred under the post, large and bold like "see more…"
+(Curtis): "see more…" when something was held back, "enter the room" on a room (it had sat small at
+the right), and the replies - "N replies" whenever this node knows of any, whether or not the post
+has a title (a titled post used to show nothing), else "reply" (was "link", and only on untitled
+posts), unless "see more…" is already there. A room takes no replies, so offers none. And a book no
+longer offers "see more…": its card always draws the whole table of contents, but the cut was still
+being judged on the book's body. The retired classes (`feed-entry-more`, `feed-entry-foot`,
+`room-card-foot`, `room-card-enter`) were caught by the dead-CSS cop and removed. Not yet looked at
+in a browser.
+
+A shared post's chip (and chat's lit tools, and Writer's open tags chip) showed a teal glyph on its
+solid teal fill (Curtis: a solid background needs a sufficiently inverted foreground). `.chip-open`
+did set the light dock text - but `.chip-button`, later in the bundle at equal weight, coloured every
+button chip's glyph sea and won. `.chip.chip-open` and `.chip.chip-pinned` now outrank it whatever
+the order. An audit of every rule painting a solid accent background found the rest setting a light
+foreground, or holding no text at all (bars, dots, rims). Rendered to check.

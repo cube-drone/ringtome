@@ -226,6 +226,35 @@ describe('feed emphasis and truncation', () => {
         assert.ok(lead.length < 300);
         assert.ok(lead.endsWith('\u2026'), 'and says it was cut');
     });
+
+    // Curtis, 2026-09-27: a post of dozens of the same picture showed five and then half of the
+    // sixth - `![Big Fat…` - because each embed's address ate the budget as if it were words.
+    const pic = (n) => `![Big Fat Horse ${n}](/api/identity/${'a'.repeat(64)}/docs/${'b'.repeat(32)}/body/big_fat_horse.avif)`;
+
+    it('always cuts at a second picture, at any interest - even when the whole would fit', () => {
+        const post = `${pic(1)}\ntext text text\n${pic(2)}\nmore`;
+        for (const emphasis of ['low', 'normal', 'high']) {
+            const { lead, cut } = leadOf(post, emphasis);
+            assert.equal(cut, true, emphasis);
+            assert.ok(lead.includes(pic(1)) && !lead.includes('Big Fat Horse 2'), `${emphasis}: the first picture, not the second`);
+        }
+        assert.equal(leadOf(`${pic(1)}\ntext text text\n${pic(2)}`, 'normal').lead, `${pic(1)}\ntext text text`);
+        assert.deepEqual(leadOf(`words\n${pic(1)}\nwords`, 'normal'), { lead: `words\n${pic(1)}\nwords`, cut: false }, 'one picture is no cut');
+    });
+
+    it('never cuts a picture or a link in half, and counts neither address as words', () => {
+        // 880 characters of words, then a link whose text would carry the reading past 900: the
+        // budget runs out INSIDE the link, which must end the lead before it rather than split it.
+        const wall = `${pic(1)}\n${'word '.repeat(176)}[a link with some length to it](https://example.com/${'p'.repeat(80)}) ${'word '.repeat(30)}`;
+        const { lead, cut } = leadOf(wall, 'normal');
+        assert.ok(cut);
+        assert.ok(lead.startsWith(pic(1)), 'the picture whole: its address did not spend the budget');
+        const opens = (lead.match(/\[/g) || []).length;
+        const closes = (lead.match(/\)/g) || []).length;
+        assert.equal(opens, closes, `no markup left open: ${lead.slice(-80)}`);
+        assert.ok(lead.endsWith('\u2026'));
+        assert.ok(!lead.includes('[a link'), 'the link, straddling the budget, is left for "see more" whole');
+    });
 });
 
 describe('the feed page merge', () => {

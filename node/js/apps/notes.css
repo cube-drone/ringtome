@@ -533,9 +533,11 @@
     color: var(--sea);
 }
 
-/* An open toggle chip wears the "on" look, like a pinned chip. After `.chip`, which it must
-   override: above it, the equal-specificity `.chip` won and the "on" look never showed. */
-.chip-open {
+/* An open toggle chip wears the "on" look, like a pinned chip: a solid teal, so the glyph inverts
+   to the light dock text. Two classes, so it outranks `.chip` AND `.chip-button` (doc/editor.css,
+   later in the bundle, colours every button chip's glyph sea) whatever order the files load in -
+   one class, and the shared chip read teal on teal (Curtis, 2026-09-27). */
+.chip.chip-open {
     color: var(--dock-text);
     background: var(--teal);
     --line: var(--teal);
