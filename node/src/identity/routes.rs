@@ -90,6 +90,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/public-annotations/{author}/{doc}/{key}/{value}",
             axum::routing::delete(public_annotation_delete_handler),
         )
+        .route("/api/identity/{root}/popularity/{author}/{doc}", get(popularity_handler))
         .route(
             "/api/identity/{root}/avatar",
             post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
@@ -646,6 +647,13 @@ struct FeedQuery {
     /// which the page leaves unpicked - and so sends this - by default). Absent, they are in, as
     /// they always were for any other caller.
     me: Option<String>,
+    /// `sort=best` (PROJECT_PLAN's Scores and sort orders, slice 1): the reader's score, highest
+    /// first, over the posts published inside `window` (day, week, month, year; ever when
+    /// absent). Absent, the feed is chronological, as it always was.
+    sort: Option<String>,
+    window: Option<String>,
+    /// A "best" page's cursor: the `after` the previous page answered (score.rs `Rank`).
+    after: Option<String>,
 }
 
 /// Whether a feed or facets request wants the reader's own posts: yes, unless it says `me=0`.
@@ -660,6 +668,8 @@ struct LabelsQuery {
     q: Option<String>,
     /// `me=0`: count without the reader's own posts, as the feed then shows them.
     me: Option<String>,
+    /// A "best" window (score.rs `window_ms`): count only the posts it shows.
+    window: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1044,10 +1054,7 @@ async fn im_find_handler(
     }
     // Mine first: my own IM rooms, whose one member is them. The audience memo is this
     // node's own, which is why my side is the cheap side to ask.
-    for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
-        if crate::record::documents::Format::from_wire(p.format) != crate::record::documents::Format::Room {
-            continue;
-        }
+    for p in crate::record::documents::public_rooms(data.db()).await? {
         let doc_hex = hex::encode(p.doc_id);
         if crate::chat::im_other(&state, &root, &root, &p.doc_id).await.as_deref() == Some(other.as_str()) {
             return Ok(Json(serde_json::json!({ "author": root, "doc_id": doc_hex })));
@@ -1061,11 +1068,12 @@ async fn im_find_handler(
     }
     // Then theirs by any other road: a room of theirs, marked an IM, that this persona can see
     // at all - an IM is sealed to one person, so seeing it IS being the other half of it.
-    let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
+    let rooms = crate::fanout::JournalFilter { formats: &["room"], ..crate::fanout::JournalFilter::feed(&root) };
+    let rows = crate::fanout::journal_all(&state.node_db, &rooms)
         .await
         .map_err(AppError::Internal)?
         .into_iter()
-        .filter(|r| r.format.as_deref() == Some("room") && r.author_root == other)
+        .filter(|r| r.author_root == other)
         .collect();
     // Through the feed's own gate, as the chats column reads it: a room this persona could
     // not open is not their chat, and landing them in a refusal would be worse than minting
@@ -1141,10 +1149,7 @@ async fn rooms_handler(
     let mut seen: std::collections::HashSet<(String, String)> = Default::default();
     let mut items: Vec<RoomItem> = Vec::new();
     // My own rooms, off my own shelf.
-    for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
-        if crate::record::documents::Format::from_wire(p.format) != crate::record::documents::Format::Room {
-            continue;
-        }
+    for p in crate::record::documents::public_rooms(data.db()).await? {
         let doc_hex = hex::encode(p.doc_id);
         seen.insert((root.clone(), doc_hex.clone()));
         items.push(RoomItem {
@@ -1171,12 +1176,10 @@ async fn rooms_handler(
         });
     }
     // The rooms my feed carries, through the feed's own gate.
-    let rows: Vec<crate::fanout::FeedRow> = crate::fanout::feed_all(&state.node_db, &root, 5000)
+    let rooms = crate::fanout::JournalFilter { formats: &["room"], ..crate::fanout::JournalFilter::feed(&root) };
+    let rows: Vec<crate::fanout::FeedRow> = crate::fanout::journal_all(&state.node_db, &rooms)
         .await
-        .map_err(AppError::Internal)?
-        .into_iter()
-        .filter(|r| r.format.as_deref() == Some("room"))
-        .collect();
+        .map_err(AppError::Internal)?;
     let mut readable = readable_feed_rows(&state, &root, rows.clone()).await;
     // A private chat is judged the way its DOOR judges it (Curtis, 2026-09-20, having
     // opened a chat the other side never saw): the author's node is the only one that
@@ -2094,6 +2097,11 @@ async fn feed_labels_handler(
     if !wants_own(&q.me) {
         rows.retain(|r| r.author_root != root);
     }
+    // A "best" window (2026-09-27): the lists count only what the window shows.
+    if let Some(w) = crate::score::window_ms(q.window.as_deref()) {
+        let since = crate::clock::now_ms() - w;
+        rows.retain(|r| r.published_ms >= since);
+    }
     // The dial (2026-09-08): the lists count only what the feed at this stop shows.
     let rows = rows_at_stop(&state, &owned, &root, rows, q.stop.as_deref()).await?;
     let kinds = feed_kinds(&state, &rows).await?;
@@ -2143,7 +2151,58 @@ async fn feed_handler(
     };
     let page = crate::idface::POSTS_PAGE;
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
-    let (mut rows, more) = if narrow.is_empty() {
+    let mut after: Option<String> = None;
+    let (mut rows, more) = if q.sort.as_deref() == Some("best") {
+        // Best (PROJECT_PLAN's Scores and sort orders): the whole journal inside the window,
+        // at the dial's stop and through any narrowing, ordered by the reader's score. The
+        // order is global, so it is taken whole and paged here - the search's shape - with a
+        // cursor naming one exact place in it.
+        let mut all = crate::fanout::feed_all(&state.node_db, &root, 5000)
+            .await
+            .map_err(AppError::Internal)?;
+        let since = crate::score::window_ms(q.window.as_deref()).map(|w| crate::clock::now_ms() - w);
+        let own = wants_own(&q.me);
+        all.retain(|r| {
+            (own || r.author_root != root)
+                && since.is_none_or(|t| r.published_ms >= t)
+                && matches!(r.format.as_deref(), Some("marquee" | "plaintext" | "book" | "room"))
+        });
+        let all = if narrow.is_empty() {
+            rows_at_stop(&state, &_owned, &root, all, q.stop.as_deref()).await?
+        } else {
+            narrowed(&state, &_owned, &root, all, &narrow, q.stop.as_deref()).await?
+        };
+        let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
+        let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+        let scores = crate::score::scores(&state, &root, &facts, &pairs)
+            .await
+            .map_err(AppError::Internal)?;
+        let mut ranked: Vec<(crate::score::Rank, crate::fanout::FeedRow)> = all
+            .into_iter()
+            .map(|r| {
+                let milli = scores.get(&(r.author_root.clone(), r.doc_id.clone())).map_or(0, |s| s.milli());
+                (crate::score::Rank { milli, published_ms: r.published_ms, doc_id: r.doc_id.clone() }, r)
+            })
+            .collect();
+        ranked.sort_by(|(a, _), (b, _)| {
+            if a.before(b) {
+                std::cmp::Ordering::Less
+            } else if b.before(a) {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        });
+        if let Some(cursor) = q.after.as_deref().and_then(crate::score::Rank::parse) {
+            ranked.retain(|(r, _)| cursor.before(r));
+        }
+        let more = ranked.len() as i64 > page;
+        ranked.truncate(page as usize);
+        if more {
+            after = ranked.last().map(|(r, _)| r.token());
+        }
+        (ranked.into_iter().map(|(_, r)| r).collect(), more)
+    } else if narrow.is_empty() {
         let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1, wants_own(&q.me))
             .await
             .map_err(AppError::Internal)?;
@@ -2157,30 +2216,7 @@ async fn feed_handler(
         if !wants_own(&q.me) {
             all.retain(|r| r.author_root != root);
         }
-        let all = rows_at_stop(&state, &_owned, &root, all, q.stop.as_deref()).await?;
-        let kinds = feed_kinds(&state, &all).await?;
-        let candidates: Vec<crate::search::Candidate> = all
-            .iter()
-            .zip(kinds.iter())
-            .map(|(r, kind)| crate::search::Candidate {
-                author_root: r.author_root.clone(),
-                doc_hex: r.doc_id.clone(),
-                title: r.title.clone(),
-                updated_ms: r.updated_ms,
-                kind,
-            })
-            .collect();
-        let keep = crate::search::matching(&state, &candidates, &narrow, Some(&root))
-            .await
-            .map_err(AppError::Internal)?;
-        let mut all = all;
-        let mut i = 0;
-        all.retain(|_| {
-            let k = keep.contains(&i);
-            i += 1;
-            k
-        });
-        (all, false)
+        (narrowed(&state, &_owned, &root, all, &narrow, q.stop.as_deref()).await?, false)
     };
 
     // A sealed post this reader cannot open is not SHOWN at all (Curtis, 2026-09-02: "I'd
@@ -2389,7 +2425,45 @@ async fn feed_handler(
             }
         })
         .collect();
-    Ok(Json(serde_json::json!({ "items": items, "more": more })))
+    let mut out = serde_json::json!({ "items": items, "more": more });
+    if let Some(after) = after {
+        out["after"] = serde_json::Value::String(after);
+    }
+    Ok(Json(out))
+}
+
+/// The feed rows a search or the facet picks leave (search.rs), at the dial's stop.
+async fn narrowed(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    all: Vec<crate::fanout::FeedRow>,
+    narrow: &crate::search::Narrow,
+    stop: Option<&str>,
+) -> Result<Vec<crate::fanout::FeedRow>, AppError> {
+    let mut all = rows_at_stop(state, data, root, all, stop).await?;
+    let kinds = feed_kinds(state, &all).await?;
+    let candidates: Vec<crate::search::Candidate> = all
+        .iter()
+        .zip(kinds.iter())
+        .map(|(r, kind)| crate::search::Candidate {
+            author_root: r.author_root.clone(),
+            doc_hex: r.doc_id.clone(),
+            title: r.title.clone(),
+            updated_ms: r.updated_ms,
+            kind,
+        })
+        .collect();
+    let keep = crate::search::matching(state, &candidates, narrow, Some(root))
+        .await
+        .map_err(AppError::Internal)?;
+    let mut i = 0;
+    all.retain(|_| {
+        let k = keep.contains(&i);
+        i += 1;
+        k
+    });
+    Ok(all)
 }
 
 /// One page of notifications, dressed like feed rows: byline from the cache, seen-state from
@@ -4077,7 +4151,47 @@ async fn public_annotation_put_handler(
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
     // A label on a sealed post seals under the post's key (ruling 7) - the labeller must
     // hold it, which is to say they must be able to read the words.
-    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc, &root).await? {
+    let seal = crate::idface::seal_key_for(&state, &author, &target_doc, &root).await?;
+    // The tag rules every reader keeps (annotations.rs `bounded`, Curtis, 2026-09-27), kept
+    // at this door too, so this node never says what the readers will drop: no reaction to
+    // your own post, and two tags to a person on anybody else's.
+    if req.key.trim() == ringtome_proto::PublicAnnotation::TAG_KEY {
+        let value = req.value.trim();
+        if author == root && crate::annotations::is_emoji_tag(value) {
+            return Err(AppError::BadRequest(crate::msg!(
+                "routes.no-reacting-to-your-own-post",
+                "a reaction is for somebody else's post"
+            )));
+        }
+        if author != root {
+            let post_key = seal.as_ref().map(|(_, k)| *k);
+            let said: Vec<String> = data
+                .public_annotations()
+                .of(&author, &target_doc)
+                .await?
+                .into_iter()
+                .filter(|r| r.present)
+                .filter_map(|r| {
+                    if r.key == crate::annotations::SEALED_KEY {
+                        post_key
+                            .and_then(|k| crate::annotations::open_statement(&r.value, &k))
+                            .filter(|(k, _)| k == ringtome_proto::PublicAnnotation::TAG_KEY)
+                            .map(|(_, v)| v)
+                    } else {
+                        (r.key == ringtome_proto::PublicAnnotation::TAG_KEY).then_some(r.value)
+                    }
+                })
+                .collect();
+            if !said.iter().any(|v| v == value) && said.len() >= crate::annotations::MAX_TAGS_PER_LABELLER {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "routes.two-tags-to-a-person",
+                    "you can put {cap} tags on somebody else's post - take one back first",
+                    cap = crate::annotations::MAX_TAGS_PER_LABELLER
+                )));
+            }
+        }
+    }
+    let (key, value) = match seal {
         Some((_, post_key)) => (
             crate::annotations::SEALED_KEY.to_string(),
             crate::annotations::seal_statement(&post_key, req.key.trim(), req.value.trim()).map_err(AppError::Internal)?,
@@ -4126,6 +4240,39 @@ async fn public_annotation_put_handler(
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
     }))
+}
+
+/// GET - how this reader's node scores one post (PROJECT_PLAN's Scores and sort orders): every
+/// reaction with who said it, the dial that weighed it and its weight, the interest factor, and
+/// the score - the dossier's "popularity". Only ever for a persona this session owns: it is a
+/// readout of that persona's trust and follow dials, and nobody else's business.
+async fn popularity_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    hex_fixed::<32>(&author, "author root")?;
+    hex_fixed::<16>(&doc, "doc id")?;
+    let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+    let pair = (author.clone(), doc.clone());
+    let reckoning = crate::score::scores(&state, &root, &facts, std::slice::from_ref(&pair))
+        .await
+        .map_err(AppError::Internal)?
+        .remove(&pair)
+        .expect("a score for every post asked");
+    let names = crate::profiles::bylines(
+        &state.node_db,
+        &reckoning.parts.iter().map(|p| p.annotator.clone()).collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    let mut out = serde_json::to_value(&reckoning).map_err(|e| AppError::Internal(e.into()))?;
+    out["names"] = serde_json::json!(names
+        .iter()
+        .filter_map(|(root, b)| b.name.clone().map(|n| (root.clone(), n)))
+        .collect::<std::collections::BTreeMap<_, _>>());
+    Ok(Json(out))
 }
 
 /// DELETE - retract one statement: restate it absent, so an older copy cannot win it back.
@@ -4297,7 +4444,9 @@ async fn replicate_annotations(
         tracing::warn!(cap = REPLICATED_TAGS_CAP, have = tags.len(),
             "a draft carries more tags than publish replicates; the rest stay private");
     }
-    for tag in tags.iter().take(REPLICATED_TAGS_CAP) {
+    // A reaction is for somebody else's post (2026-09-27): an emoji tag on your own draft
+    // stays private, since every reader would drop it (annotations.rs `bounded`).
+    for tag in tags.iter().filter(|t| !crate::annotations::is_emoji_tag(t.trim())).take(REPLICATED_TAGS_CAP) {
         if !tag.trim().is_empty() && fits("tag", tag) {
             desired.insert(("tag".into(), tag.clone()));
         }

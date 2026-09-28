@@ -49,6 +49,9 @@ thiserror = "2"
 # (de)serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# One emoji or not (annotations.rs `is_emoji_tag`): the same Unicode property the client's regex
+# reads, already in the tree beneath other crates.
+regex = "1"
 
 # logging / tracing
 tracing = "0.1"

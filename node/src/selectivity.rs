@@ -57,6 +57,78 @@ pub fn visible_at(stop: &str, row: &RowView<'_>, facts: &Facts) -> bool {
     }
 }
 
+/// The same rule, as a SQL predicate over one `feed_journal` row (2026-09-27, PROJECT_PLAN's
+/// Scores and sort orders, *Shape*): the journal's readers filter in SQL on an index rather than
+/// take the newest rows and ask [`visible_at`] of each. `None` when the stop shows everything.
+///
+/// Membership, not a join: the reader's dials live in their encrypted private store, so the node
+/// hands them to the query as literal lists - `author_root IN (...)`, which the engine answers
+/// from an index it builds over the list - rather than a table of dials joined row by row, which
+/// is the shape that slows down exactly for the reader with ten thousand of them. The precedence
+/// is [`effective_interest`]'s: an author dial decides; without one, a sharer's rebroadcast dial;
+/// without either, a suggestion's path level (`levels`: author -> band word, the reader's
+/// `speculative::levels_for`). The reader's own rows are the caller's to let through.
+/// fanout.rs's tests hold it to [`visible_at`], case by case.
+pub fn stop_predicate(stop: &str, facts: &Facts, levels: &std::collections::HashMap<String, String>) -> Option<String> {
+    let dialled = |key: &str, min: usize| -> Vec<&str> {
+        facts
+            .iter()
+            .filter(|(root, f)| is_root_hex(root) && band_ordinal(f.get(key).map(String::as_str)).is_some_and(|o| o >= min))
+            .map(|(root, _)| root.as_str())
+            .collect()
+    };
+    let levelled = |min: usize| -> Vec<&str> {
+        levels
+            .iter()
+            .filter(|(root, band)| is_root_hex(root) && band_ordinal(Some(band.as_str())).is_some_and(|o| o >= min))
+            .map(|(root, _)| root.as_str())
+            .collect()
+    };
+    // Any author dial at all is an opinion - "none" included - and the sharer's is then never asked.
+    let no_author_dial = not_in("author_root", &dialled("interest", 0));
+    let explicit_at = |min: usize| {
+        format!(
+            "({} OR ({no_author_dial} AND {}))",
+            is_in("author_root", &dialled("interest", min)),
+            is_in("via_root", &dialled("interest_rebroadcasts", min))
+        )
+    };
+    let path_at = |min: usize| {
+        format!(
+            "(suggested_via IS NULL OR {} OR ({no_author_dial} AND {}))",
+            is_in("author_root", &dialled("interest", min)),
+            is_in("author_root", &levelled(min))
+        )
+    };
+    match stop {
+        "high" => Some(explicit_at(3)),
+        "medium" => Some(explicit_at(2)),
+        "interest" => Some("suggested_via IS NULL".to_string()),
+        "speculative" => Some(path_at(3)),
+        "highly-speculative" => Some(path_at(2)),
+        _ => None,
+    }
+}
+
+/// A root as the journal spells it - 64 hex characters - and so safe to write into SQL.
+fn is_root_hex(root: &str) -> bool {
+    root.len() == 64 && root.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn is_in(column: &str, roots: &[&str]) -> String {
+    if roots.is_empty() {
+        return "0".to_string();
+    }
+    format!("{column} IN ({})", roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(","))
+}
+
+fn not_in(column: &str, roots: &[&str]) -> String {
+    if roots.is_empty() {
+        return "1".to_string();
+    }
+    format!("{column} NOT IN ({})", roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(","))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

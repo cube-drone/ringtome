@@ -1131,6 +1131,20 @@
     background: color-mix(in srgb, var(--surface) 84%, var(--ink) 16%);
     border-style: solid;
 }
+/* A reaction wears its lean (2026-09-27): the picker's glad row on green, its sour row on red -
+   over whichever fill the chip would otherwise wear, and a shade deeper when it is yours. */
+.label-chip.label-chip-good {
+    background: var(--react-good);
+}
+.label-chip.label-chip-bad {
+    background: var(--react-bad);
+}
+.label-chip.label-chip-good.label-chip-mine {
+    background: color-mix(in srgb, var(--react-good) 84%, var(--ink) 16%);
+}
+.label-chip.label-chip-bad.label-chip-mine {
+    background: color-mix(in srgb, var(--react-bad) 84%, var(--ink) 16%);
+}
 /* The reaction palette under the open tag input (2026-08-31): pole row first, the whole
    gemoji table behind a divider, scrollable. A dropdown, so the feed does not reflow. */
 /* The card wearing the open palette outranks its siblings (Curtis, 2026-08-31: the
@@ -1201,8 +1215,8 @@ article:has(.label-emoji-strip) {
     display: flex;
     flex-wrap: wrap;
     gap: 0.1rem;
-    width: 15.5rem;
-    max-height: 8.5rem;
+    width: 18.5rem;
+    max-height: 12rem;
     overflow-y: auto;
     padding: 0.4rem;
     background: var(--surface);
@@ -1225,6 +1239,28 @@ article:has(.label-emoji-strip) {
 }
 .label-emoji:hover {
     background: var(--surface-2);
+}
+/* The pole's rows (2026-09-27): ten to a row, each a full line of the strip, the glad on green
+   and the sour on red, so a reaction's lean shows before its face is read. */
+.label-emoji-row {
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    justify-items: center;
+    gap: 0.1rem;
+    padding: 0.1rem 0.15rem;
+    margin-bottom: 0.15rem;
+    --j: 0.2rem;
+    clip-path: var(--jag);
+}
+.label-emoji-row-good {
+    background: var(--react-good);
+}
+.label-emoji-row-bad {
+    background: var(--react-bad);
+}
+.label-emoji-row .label-emoji:hover {
+    background: var(--surface);
 }
 .label-emoji-pole-break {
     flex-basis: 100%;
@@ -1883,6 +1919,23 @@ article:has(.label-emoji-strip) {
     color: var(--faint);
     font-size: 0.78rem;
     min-width: 8.5rem;
+}
+
+/* The feed's order (2026-09-27): beside the dial, worded like it. A native select - the
+   reader's platform draws the list. */
+.feed-sort {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+.feed-sort select {
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.1rem 0.3rem;
 }
 
 /* The seal-and-unlock ceremony on a published post s card (moved from the retired Journal s

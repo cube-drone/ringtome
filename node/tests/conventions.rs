@@ -391,6 +391,59 @@ fn the_client_and_the_wire_cap_a_tag_alike() {
     );
 }
 
+/// Two tags to a person on somebody else's post (2026-09-27), spelled twice: the node's
+/// reads keep two, and the card stops offering "+ tag" after two. If they ever disagree, a
+/// tag the card let you say vanishes from every reader, or a card refuses what would show.
+#[test]
+fn the_client_and_the_node_keep_as_many_tags_a_person() {
+    let js = Path::new(env!("CARGO_MANIFEST_DIR")).join("js/pure/annotations.js");
+    let source = std::fs::read_to_string(&js).expect("readable js/pure/annotations.js");
+    let line = source
+        .lines()
+        .find(|l| l.contains("export const MAX_TAGS_PER_LABELLER"))
+        .expect("js/pure/annotations.js exports MAX_TAGS_PER_LABELLER for the card");
+    let said: usize = line
+        .split('=')
+        .nth(1)
+        .and_then(|v| v.trim().trim_end_matches(';').parse().ok())
+        .expect("MAX_TAGS_PER_LABELLER is a plain number");
+    assert_eq!(said, ringtome_node::annotations::MAX_TAGS_PER_LABELLER);
+}
+
+/// The score's lexicon, spelled twice (2026-09-27): the picker's glad and sour rows colour a
+/// reaction on screen (js/emoji.js `POLE_ROWS`), and the node's score counts the same glyphs
+/// (score.rs `GLAD`, `SOUR`). If they drift, a green chip stops counting - or a plain one
+/// starts - and nothing on screen says so.
+#[test]
+fn the_picker_and_the_score_lean_the_same_way() {
+    let js = Path::new(env!("CARGO_MANIFEST_DIR")).join("js/emoji.js");
+    let source = std::fs::read_to_string(&js).expect("readable js/emoji.js");
+    let escape = regex::Regex::new(r"\\u\{([0-9A-Fa-f]+)\}|\\u([0-9A-Fa-f]{4})").unwrap();
+    let row = |tone: &str| -> Vec<String> {
+        let start = source.find(&format!("tone: '{tone}'")).unwrap_or_else(|| panic!("a '{tone}' row in POLE_ROWS"));
+        let block = &source[start..];
+        let block = &block[..block.find("],\n    },").expect("the row's emoji list closes")];
+        block
+            .lines()
+            .filter(|l| l.trim_start().starts_with("['"))
+            .map(|l| {
+                let glyph = l.split("', '").nth(1).expect("['name', 'glyph']");
+                escape
+                    .captures_iter(glyph)
+                    .map(|c| {
+                        let hex = c.get(1).or(c.get(2)).unwrap().as_str();
+                        char::from_u32(u32::from_str_radix(hex, 16).unwrap()).unwrap()
+                    })
+                    .filter(|c| *c != '\u{FE0F}')
+                    .collect()
+            })
+            .collect()
+    };
+    let rust = |list: &[&str]| list.iter().map(|g| g.to_string()).collect::<Vec<_>>();
+    assert_eq!(row("good"), rust(&ringtome_node::score::GLAD), "the glad row and score.rs GLAD");
+    assert_eq!(row("bad"), rust(&ringtome_node::score::SOUR), "the sour row and score.rs SOUR");
+}
+
 /// The binary stays thin (DESKTOP.md, Stage 1). There is one node, assembled in one place: the
 /// library's `run`. The moment `main.rs` grows its own `AppState { ... }` or its own
 /// `Router::new()`, there are two nodes - the one `just ci` tests and the one the desktop shell

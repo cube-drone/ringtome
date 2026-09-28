@@ -45,7 +45,12 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         return null;
     };
     const publish = async (who, root, title, body, tags, extra = {}) => {
-        const d = await (await j(who, `api/identity/${root}/docs`, { title, body, format: "marquee" })).json();
+        // The create is checked (2026-09-27): once under a full ci run it answered without a
+        // doc id, and the failure surfaced as the publish's "bad doc id" - one step late.
+        const made = await j(who, `api/identity/${root}/docs`, { title, body, format: "marquee" });
+        const madeText = await made.text();
+        assert.equal(made.status, 200, `creating the draft: ${madeText}`);
+        const d = JSON.parse(madeText);
         for (const t of tags) await who(`api/identity/${root}/docs/${d.doc_id}/annotations/tags/${t}`, { method: "PUT" });
         const pub = await j(who, `api/identity/${root}/docs/${d.doc_id}/publish`, extra);
         return { status: pub.status, text: await pub.text(), doc: d.doc_id };

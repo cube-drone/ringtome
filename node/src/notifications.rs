@@ -311,6 +311,9 @@ async fn refresh_from_inner(
         // Curtis, 2026-08-31), stamped by the newest of them.
         let mut fresh: std::collections::BTreeMap<(String, String), (Vec<String>, i64)> =
             Default::default();
+        // Their tags apart (2026-09-27): only the two every reader keeps are news
+        // (annotations.rs `bounded`), however many they said.
+        let mut fresh_tags: std::collections::BTreeMap<(String, String), Vec<String>> = Default::default();
         // The mentions (2026-09-06) ride the same leg: a `mention=<reader>` the author
         // says about their OWN post is news for the reader it names - hosted here,
         // following the author - and collapses per (reader, post) like a label does.
@@ -340,16 +343,23 @@ async fn refresh_from_inner(
             {
                 continue;
             }
-            let words = if l.key == "tag" {
-                l.value.clone()
-            } else {
-                format!("{}: {}", l.key, l.value)
-            };
-            let e = fresh
-                .entry((l.target_author.clone(), hex::encode(l.target_doc)))
-                .or_insert((Vec::new(), 0));
-            e.0.push(words);
+            let at = (l.target_author.clone(), hex::encode(l.target_doc));
+            if l.key == "tag" {
+                fresh_tags.entry(at.clone()).or_default().push(l.value.clone());
+            }
+            let e = fresh.entry(at).or_insert((Vec::new(), 0));
+            if l.key != "tag" {
+                e.0.push(format!("{}: {}", l.key, l.value));
+            }
             e.1 = e.1.max(l.received_at_ms);
+        }
+        for (at, mut tags) in fresh_tags {
+            tags.sort_unstable();
+            tags.dedup();
+            tags.truncate(crate::annotations::MAX_TAGS_PER_LABELLER);
+            if let Some(e) = fresh.get_mut(&at) {
+                e.0.splice(0..0, tags);
+            }
         }
         for ((reader, doc_hex), (words, newest_ms)) in &fresh {
             touched.insert(reader.clone());

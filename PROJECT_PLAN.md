@@ -3595,6 +3595,115 @@ that name or takes an awkward name to avoid them. Disjoint floors cost one short
 end the conversation. One constant names the word; the pure address builder writes the
 floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
 
+### Scores and sort orders: hot and best (settled 2026-09-27; slice 1 built at read time, being rebuilt on stored scores)
+
+"Each item in your feed carries a score ... a unit of content with many positive tags gets a
+very high score ... if someone you trust a lot is responsible for a tag, that tag counts more."
+Chronological stays the default; **hot** and **best** (year, month, week, day) are orders a
+reader picks, for the feed and for reply trees. **No "best ever"** (Curtis): a year is the most
+any order reaches back, which bounds what a score must be kept for. The scale it is built for (Curtis): a
+monkeysphere of 10-100 people per reader, with *some* up- and downvoting.
+
+**The score is the reader's, computed on the reader's node.** It is a reading of labels
+through the reader's own dials - nothing on the wire changes, nothing merges, and two readers
+of one post hold two scores. Per post:
+
+- **What counts:** reaction tags from the picker's glad row (+1) and sour row (-1) - one
+  lexicon, spelled once in each language and pinned together like `MAX_TAGS_PER_LABELLER`.
+  Words and neutral emoji count 0. Each tag counts: two tags to a person means a person may
+  **double-like or double-dislike** (Curtis) - a person contributes -2..+2.
+- **Whose counts, and how much** - the tag's weight is the reader's dial on its annotator:
+  - trusted: linear in the band - low 0.25, medium 0.5, high 0.75, max 1 (Curtis's ramp,
+    "a very naive guess": a starting value, tuned by feel);
+  - followed without trust: counts, less - 0.1 to start, below the lowest trust;
+  - the reader themself: 1;
+  - **everyone else: 0, entirely** - no tie-breaker, no fallback for a reader with no dials.
+    Minting a labeller is free on this network, so any influence from a stranger is suspect
+    (Curtis). This is Denunciations' rule for negative signal applied to both signs: signal
+    counts only when it rides an edge the reader drew. Blocked annotators are 0 as they are
+    invisible.
+- **Interest in the poster, mildly:** the sum is scaled by the reader's interest in the
+  author, about x0.9 (none) to x1.1 (max) - enough to break near-ties, never enough to lift a
+  post nobody reacted to.
+
+**Hot** is time plus score, linear: one max-trust like is worth **one hour** of recency (Curtis),
+a dislike the same hour backwards - `published + score x 1h`. Linear, not logarithmic, at this
+scale: "each like from someone you fully trust is worth an hour" is a sentence a person can
+hold. Hot may also give a high score more of the card (the interest dial's emphasis, extended)
+- the one place a score touches rendering. **Best (window)** is posts published inside the
+window, highest score first, newest first among equals.
+
+**The score is never on the card.** A number on a post is a leaderboard, and it would mean
+nothing to anyone else: it is arithmetic over one reader's private dials. The card surfaces
+nothing new - the reaction chips already say what was said, and by whom. **The whole
+calculation lives in the post's dossier** (postpage.js `PostDossier`, the plain-text log
+folded at the foot of the post page), renamed "history & popularity" (Curtis: "for users who
+want to see how the sausage is made"): every reaction with its annotator, the dial that
+weighed it, and its weight - strangers' reactions listed at x0 - the interest factor, the
+score, and what hot made of it. That honours the recommendation rule that anything the node
+puts in front of you is explainable by naming people, without surfacing it on every card. It
+knowingly bends the feed's standing rule that dials shape rendering, never order
+(pure/feed.js): only in an order the reader chose.
+
+**The popularity lines are the reader's alone.** The dossier's door answers anonymous callers
+too, and the calculation is a readout of the reader's trust and follow dials - so it is computed
+only for a signed-in session's own persona, and never served to anybody else.
+
+**Shape: stored, and kept incrementally** (Curtis, 2026-09-27, over a first cut that reckoned
+at read time from the newest 5000 journal rows - which silently dropped everything older, and
+made every page pay for every reaction in the window: fine for a monkeysphere, not for the
+outlier with 10,000 busy trusted friends). The cost lands at write time, where it is paid once:
+
+- **Two tables per reader:** each annotator's contribution to each post, and the post's total.
+  A reaction noted or retracted recomputes that one annotator's contribution to that one post
+  (two tags at most) and moves the total by the difference, for each reader on the node whose
+  journal holds the post - constant work per reaction, beside the memo write it already costs.
+  Every rule a read applies is applied here instead: two tags to a person, no reaction to your
+  own post, blocks, sealed admission.
+- **A dial change rescores one person** - their contributions to this reader's feed, which is as
+  large as their reacting, not everyone's. Blocking is a dial change, so it takes effect at once.
+  An interest change rescores that author's posts.
+- **A year, then pruned:** a score older than the longest window can never be shown, so it goes.
+- **Two read paths:** a short window (day, week) walks the journal's time index and looks scores
+  up - cost in the window's posts; a year walks the score index and skips what is outside it.
+  The zero tier - posts nobody the reader drew an edge to reacted to - is the plain time index.
+  A page boundary is an exact place in a total order (score in thousandths, then newest, then
+  document id - score.rs `Rank`).
+- **No safety net at run time** (Curtis: a post gently misfiled is a post a little more or less
+  popular than it should be, in a window that ages out on its own). A `rebuild(reader)` exists for
+  the tests, and one asserts that a tangle of reactions, retractions and dial changes kept
+  incrementally equals a rebuild - the systematic bugs (a retraction that never subtracts) are the
+  ones that compound. A change of weights is a rebuild.
+- **Open:** the Law of Conservation of Trust says a firehose's signal rounds to zero - a person
+  who reacts to everything might have their weight split across their reacting. A ranking choice,
+  not a cost one; not yet.
+
+**The feed's other readers get the same treatment - the 5000 cap goes** (found the same day: the
+search, the facet picks, the tag cloud, the search's backlog walk, the chats column and "chat with
+them" all read "the newest 5000 journal rows, then filter", so a room you were in left your chats
+column once 5000 newer posts arrived; and your own rooms came from your newest 500 posts). The aim
+is a million-row journal:
+
+- **One journal filter**, in SQL, for every reader of the journal - reader, own, window, format,
+  the dial's stop, the picks - so rooms are a `format = 'room'` on an index of (reader, format,
+  time), and nothing takes the newest N and hopes.
+- **The tag cloud is stored counts** per reader - (reader, bucket/tag/kind, value) -> count -
+  kept as journal rows and labels come and go, the tag rules applied as they are kept. The
+  unpicked cloud is one small read. A pick narrows through an index on the label's value, and
+  the other rows keep only what shares a post with it (a GROUP BY over the narrowed set) - **unless
+  the pick is larger than 1000 posts** (Curtis: a glad emoji picked could be a bastard of an
+  expensive time): then the lists stay as if nothing were picked, with whole-feed counts, while
+  the posts themselves still narrow. The pick's size is known before any work - a tag's stored
+  count, the smallest count among tags picked together, the sum among buckets.
+- **Search is an inverted index**: a row per (term, post) on an index of the term, so a prefix is
+  a range scan - replacing one token string per post read whole in Rust. Its backlog walk goes by
+  cursor, to the end of the journal.
+
+**Slices:** (1) the score, its breakdown in the dossier, and best (window) - built first at read
+time, now being rebuilt: label columns and indexes; the one journal filter (chats fixed, the cap
+gone); the score tables and best on them; the tag cloud's stored counts; the inverted search
+index. (2) hot, and a high score's emphasis; (3) reply trees.
+
 ### Contact tags: private labels on the people you know (settled 2026-09-10)
 
 "What I'm imagining now is the ability to tag your acquaintances - these are private tags."

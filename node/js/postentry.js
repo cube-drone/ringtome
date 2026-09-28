@@ -28,8 +28,8 @@ import { descriptionOf, excerpt } from './pure/excerpt.js';
 // The reaction palette under the open tag input (Curtis, 2026-08-31): the nine in pole
 // position, then the whole gemoji table - shared with the room's reaction picker
 // (emoji.js). One click says the emoji as a tag.
-import { POLE_EMOJI, EMOJI_PALETTE } from './emoji.js';
-import { groupLabels, isEmojiTag, visibleAnnotations, MAX_TAG_CHARS } from './pure/annotations.js';
+import { EmojiStrip, toneOf } from './emoji.js';
+import { groupLabels, isEmojiTag, mayTag, tagsLeft, visibleAnnotations, MAX_TAG_CHARS } from './pure/annotations.js';
 import {
     FEED_STYLE,
     publishedState,
@@ -771,6 +771,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         setTagging(false);
         if (!value || !current) return;
         const me = current.root;
+        // Two tags to a person on somebody else's post, and no reaction to your own
+        // (Curtis, 2026-09-27) - the node refuses the same, and every reader drops the rest.
+        if (!mayTag(shownLabels, { author: item.author, me, value })) return;
         try {
             await api(`/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}`, {
                 method: 'PUT',
@@ -1071,15 +1074,23 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     // is the agree button when you have not said it yet.
                     const names = g.contributors.map((c) => c.annotator_name || speakable(c.annotator));
                     const mine = current && g.contributors.find((c) => c.annotator === current.root);
-                    const canAgree = !!current && g.key === 'tag' && !mine;
+                    const canAgree =
+                        !!current &&
+                        g.key === 'tag' &&
+                        !mine &&
+                        mayTag(shownLabels, { author: item.author, me: current.root, value: g.value });
                     const soleAuthor =
                         g.contributors.length === 1 && g.contributors[0].annotator === item.author;
+                    // A reaction wears its lean (Curtis, 2026-09-27): the glad on green, the
+                    // sour on red - the picker's own rows (emoji.js POLE_ROWS).
+                    const tone = g.key === 'tag' && isEmojiTag(g.value) ? toneOf(g.value) : null;
                     return html`<span
                         class=${[
                             'label-chip',
                             g.contributors.some((c) => c.annotator === item.author) ? '' : 'label-chip-theirs',
                             canAgree ? 'label-chip-agree' : '',
                             mine ? 'label-chip-mine' : '',
+                            tone === 'good' ? 'label-chip-good' : tone === 'bad' ? 'label-chip-bad' : '',
                         ]
                             .filter(Boolean)
                             .join(' ')}
@@ -1116,6 +1127,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     slice 4): the statement lands on YOUR chain, bylined as yours
                     everywhere it travels. */ ''}
                 ${!!current &&
+                (tagging || tagsLeft(shownLabels, { author: item.author, me: current.root }) > 0) &&
                 (tagging
                     ? html`<span class="label-add-anchor"><input
                           class="label-add-input"
@@ -1142,10 +1154,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           // "thum" narrows to the thumbs, Enter still says the TEXT as the
                           // tag - the filter is a lens, not a commitment. Underscores in
                           // gemoji names read as spaces so "rolling e" finds roll_eyes.
+                          // No palette on your own post: a reaction is for somebody else's.
+                          if (current.root === item.author) return '';
                           const q = tagInput.trim().toLowerCase();
                           const hit = ([name]) => !q || name.replace(/_/g, ' ').includes(q);
-                          const pole = POLE_EMOJI.filter(hit);
-                          const rest = EMOJI_PALETTE.filter(hit);
                           const chip = ([name, ch]) => html`<button
                               class="label-emoji"
                               key=${name}
@@ -1153,13 +1165,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                               onMouseDown=${(e) => e.preventDefault()}
                               onClick=${() => addTag(ch)}
                           >${ch}</button>`;
-                          if (!pole.length && !rest.length) return '';
-                          return html`<span class="label-emoji-strip">
-                              ${pole.map(chip)}
-                              ${pole.length > 0 && rest.length > 0 &&
-                              html`<span class="label-emoji-pole-break"></span>`}
-                              ${rest.map(chip)}
-                          </span>`;
+                          return html`<${EmojiStrip} hit=${hit} chip=${chip} />`;
                       })()}</span>`
                     : html`<button
                           class="label-add"

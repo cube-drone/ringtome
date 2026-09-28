@@ -339,6 +339,36 @@ export function isBackdated(item) {
 }
 
 /// Where to ask for the next page down: the last item shown.
+/// The feed's orders (PROJECT_PLAN's Scores and sort orders, slice 1): newest first, or best -
+/// the reader's score, highest first - over a window. Keys only; the page words them.
+export const FEED_SORTS = ['new', 'day', 'week', 'month', 'year', 'ever'];
+export const DEFAULT_SORT = 'new';
+
+/// Is this sort one of the best orders?
+export const isBestSort = (sort) => FEED_SORTS.includes(sort) && sort !== 'new';
+
+/// The feed door's words for a sort: nothing for newest, `sort=best` and its window for best
+/// (no window is ever).
+export function sortParams(sort) {
+    if (!isBestSort(sort)) return '';
+    return sort === 'ever' ? 'sort=best' : `sort=best&window=${sort}`;
+}
+
+/// A ranked page onto what is shown, in the node's order: `mergeFeed` sorts by date, which
+/// would undo the ranking, so a best page is appended as it came, deduplicated - a score may
+/// move between pages and bring a post round twice.
+export function mergeRanked(seen, page) {
+    const out = (seen || []).slice();
+    const have = new Set(out.map(feedKey));
+    for (const item of page || []) {
+        if (item && !have.has(feedKey(item))) {
+            have.add(feedKey(item));
+            out.push(item);
+        }
+    }
+    return out;
+}
+
 export function feedCursor(items) {
     const last = (items || [])[(items || []).length - 1];
     if (!last) return null;

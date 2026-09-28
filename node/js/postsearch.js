@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'preact/hooks';
 
 import { api } from './net.js';
+import { sortParams } from './pure/feed.js';
 
 const DEBOUNCE_MS = 250;
 
@@ -25,6 +26,9 @@ export function narrowParams(query, picks, extra = {}) {
     // The feed's "me" left unpicked (apps/feed.js) rides along the same way: it narrows a search,
     // and never makes one.
     if (extra.ownOut && parts.length) parts.push('me=0');
+    // A best order (2026-09-27) ranks a search's results the same way, and never makes one.
+    const sort = sortParams(extra.sort);
+    if (sort && parts.length) parts.push(sort);
     return parts.join('&');
 }
 

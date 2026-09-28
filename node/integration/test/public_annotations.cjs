@@ -233,6 +233,63 @@ describe("public annotations: the wire and the mint", function () {
         assert.ok(gone, "a retraction on bea's chain takes the memo row with it");
     });
 
+    it("two tags to a person on somebody else's post, no reaction to your own - at the door and at every read", async function () {
+        if (!bea) this.skip();
+        const put = (who, root, value) =>
+            who(`api/identity/${root}/public-annotations/${adaRoot}/${post}`, {
+                method: "PUT",
+                body: JSON.stringify({ key: "tag", value }),
+            });
+        const tagsBy = async (who, annotator) =>
+            ((await (await who(`api/id/${adaRoot}/posts/${post}`)).json()).annotations || [])
+                .filter((a) => a.key === "tag" && a.annotator === annotator)
+                .map((a) => a.value)
+                .sort();
+
+        // The doors (Curtis, 2026-09-27).
+        const own = await put(ada, adaRoot, "\u{1F44D}");
+        assert.equal(own.status, 400, "the author may not react to their own post");
+        assert.match(await own.text(), /somebody else/);
+        assert.equal((await put(bea, beaRoot, "alpha")).status, 200);
+        assert.equal((await put(bea, beaRoot, "beta")).status, 200);
+        const third = await put(bea, beaRoot, "gamma");
+        assert.equal(third.status, 400, "a third tag of bea's on ada's post is refused");
+        assert.match(await third.text(), /take one back/);
+        assert.equal((await put(bea, beaRoot, "alpha")).status, 200, "saying one of your two again is fine");
+        assert.deepEqual(await tagsBy(bea, beaRoot), ["alpha", "beta"]);
+
+        // The reads: rows no door of ours would have let through, planted in the memo as
+        // another node's labels would arrive. Bea's first two in code-point order stand -
+        // an emoji sorts after every letter, so "aardvark" displaces "beta" and the 🐴 goes -
+        // and the author's own reaction falls.
+        const plant = (annotator, value) =>
+            sql(
+                `INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
+                 VALUES ('${adaRoot}', '${post}', '${annotator}', 'tag', '${value}', 1)`,
+                HOST_B
+            );
+        await plant(beaRoot, "aardvark");
+        await plant(beaRoot, "\u{1F434}");
+        await plant(adaRoot, "\u{1F4AF}");
+        try {
+            assert.deepEqual(await tagsBy(bea, beaRoot), ["aardvark", "alpha"], "two to a person, the same two everywhere");
+            assert.deepEqual(
+                (await tagsBy(bea, adaRoot)).filter((v) => v === "\u{1F4AF}"),
+                [],
+                "the author's reaction to their own post is dropped"
+            );
+            assert.ok((await tagsBy(bea, adaRoot)).includes("mighty"), "the author's words stand");
+        } finally {
+            await sql(
+                `DELETE FROM doc_annotations WHERE target_doc = '${post}' AND noted_ms = 1`,
+                HOST_B
+            );
+            for (const v of ["alpha", "beta"]) {
+                await bea(`api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}/tag/${v}`, { method: "DELETE" });
+            }
+        }
+    });
+
     it("labels ride the fragment - a node holding nothing else receives them (slice 3)", async function () {
         if (!bea || !HOST_C) this.skip();
         // cal follows bea's SHARES only. bea re-tags and rebroadcasts ada's post, and the

@@ -104,6 +104,12 @@
     outline: none;
 }
 
+/* Why a tag did not take (an emoji on your own document, 2026-09-27): said beside the input. */
+.annot-tag-refused {
+    font-size: 0.75rem;
+    color: var(--coral);
+}
+
 .annot-desc {
     background: var(--surface);
     border: 1px solid var(--border);

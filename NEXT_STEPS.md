@@ -24,6 +24,15 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Visual identity
 * report flow
 
+### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
+* Slice 1, rebuilt for a million-row journal (the plan's *Shape*) - still to go: stored
+  per-reader scores kept incrementally, and best (day-year) on them, "ever" dropped; the tag cloud
+  as stored counts (a pick over 1000 posts leaves the lists unthinned); the inverted search index.
+  Each retires one of `fanout::feed_all`'s last capped callers (the best orders, the tag cloud,
+  the search's and the picks' narrowing)
+* Slice 2: hot, and a high score's emphasis
+* Slice 3: reply trees
+
 ### Actual Horse Drawing & Tycooning
 * Drawing app
 * Multiplayer Drawing App (use chat as the heart)

@@ -52,6 +52,7 @@ pub mod nodeshelf;
 pub mod slugs;
 pub mod notifications;
 pub mod outbox;
+pub mod score;
 pub mod search;
 pub mod selectivity;
 pub mod profiles;

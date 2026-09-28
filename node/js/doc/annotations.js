@@ -16,6 +16,7 @@ import { useShadowValue } from '../shadow.js';
 import { openMirror, useLive } from '../mirror.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 import { t } from '../i18n.js';
+import { isEmojiTag } from '../pure/annotations.js';
 
 const html = htm.bind(h);
 
@@ -76,6 +77,7 @@ export const Annotations = ({ root, docId, features }) => {
     // immediately. A pending entry clears once the mirror reflects it (echo arrived).
     const [pending, setPending] = useState({}); // tag -> 'adding' | 'removing'
     const [tagInput, setTagInput] = useState('');
+    const [tagRefused, setTagRefused] = useState(null);
     const mirrorTagsKey = mirrorTags.join(' ');
     useEffect(() => {
         setPending((p) => {
@@ -115,6 +117,14 @@ export const Annotations = ({ root, docId, features }) => {
         const tag = raw.trim().toLowerCase().slice(0, 32);
         setTagInput('');
         if (!tag || shownTags.includes(tag)) return;
+        // A reaction is for somebody else's post (Curtis, 2026-09-27): a tag that is one
+        // emoji never goes on your own document - publish would leave it behind, and every
+        // reader drops one an author says. Refused in words, so it is not mistaken for a slip.
+        if (isEmojiTag(tag)) {
+            setTagRefused(t('doc.annotations.no-reacting-to-your-own', "a reaction is for somebody else's post"));
+            return;
+        }
+        setTagRefused(null);
         setPending((p) => ({ ...p, [tag]: 'adding' }));
         try {
             await api(tagUrl(tag), { method: 'PUT' });
@@ -180,7 +190,10 @@ export const Annotations = ({ root, docId, features }) => {
                     maxlength="32"
                     placeholder=${t('doc.annotations.tag', '+ tag')}
                     value=${tagInput}
-                    onInput=${(e) => setTagInput(e.currentTarget.value)}
+                    onInput=${(e) => {
+                        setTagInput(e.currentTarget.value);
+                        setTagRefused(null);
+                    }}
                     onKeyDown=${(e) => {
                         if (e.key === 'Enter' || e.key === ',') {
                             e.preventDefault();
@@ -189,6 +202,7 @@ export const Annotations = ({ root, docId, features }) => {
                     }}
                     onBlur=${() => addTag(tagInput)}
                 />
+                ${tagRefused && html`<span class="annot-tag-refused">${tagRefused}</span>`}
             </div>
             ${showDesc &&
             html`<textarea

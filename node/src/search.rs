@@ -364,16 +364,59 @@ pub async fn index_pass(state: AppState) -> Result<()> {
         if budget == 0 {
             break;
         }
-        let rows = crate::fanout::feed_all(&state.node_db, &reader, 5000).await?;
-        for r in rows {
+        let feed = crate::fanout::JournalFilter::feed(&reader);
+        // The head first, every beat: what just arrived is what gets searched for.
+        for r in crate::fanout::journal_page(&state.node_db, &feed, None, HEAD_ROWS).await? {
             if budget == 0 {
                 break;
             }
-            let c = Candidate { author_root: r.author_root, doc_hex: r.doc_id, title: r.title, updated_ms: r.updated_ms, kind: "post" }; // the kind is the judge's business, not the index's
-            let _ = bag_for(&state, &c, &mut budget).await?;
+            let _ = bag_for(&state, &candidate(r), &mut budget).await?;
+        }
+        // Then the backlog, from where the last beat stopped, to the end of the journal
+        // (2026-09-27: this walked the newest 5000 rows and never further).
+        let from = walked().lock().expect("walk cursor poisoned").get(&reader).cloned();
+        let page = crate::fanout::journal_page(&state.node_db, &feed, from, WALK_ROWS).await?;
+        let reached_end = (page.len() as i64) < WALK_ROWS;
+        let mut last = None;
+        let mut finished = true;
+        for r in page {
+            if budget == 0 {
+                finished = false;
+                break;
+            }
+            last = Some((r.published_ms, r.doc_id.clone()));
+            let _ = bag_for(&state, &candidate(r), &mut budget).await?;
+        }
+        let mut cursors = walked().lock().expect("walk cursor poisoned");
+        match last {
+            // The whole journal walked: the next beat starts over from the newest.
+            _ if reached_end && finished => {
+                cursors.remove(&reader);
+            }
+            Some(at) => {
+                cursors.insert(reader, at);
+            }
+            None => {}
         }
     }
     Ok(())
+}
+
+/// The newest rows every beat looks at, and the backlog rows one beat walks per reader - bounds
+/// on rows looked at, beside the budget on bodies read, since even an indexed row costs a read.
+const HEAD_ROWS: i64 = 100;
+const WALK_ROWS: i64 = 1000;
+
+/// Where each reader's backlog walk stopped - process memory: a restart walks again from the
+/// newest, which costs only the stamps already stored.
+fn walked() -> &'static std::sync::Mutex<std::collections::HashMap<String, (i64, String)>> {
+    static WALKED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (i64, String)>>> = std::sync::OnceLock::new();
+    WALKED.get_or_init(Default::default)
+}
+
+fn candidate(r: crate::fanout::FeedRow) -> Candidate {
+    // The kind is the judge's business, not the index's.
+    Candidate { author_root: r.author_root, doc_hex: r.doc_id, title: r.title, updated_ms: r.updated_ms, kind: "post" }
 }
 
 /// Forget a post's bag (its author's eviction, a takedown).

@@ -11738,3 +11738,122 @@ attention.rs `line_words`) - and carries its first still picture:
 attention.cjs gained a claim for a picture line in an open room and one in a sealed room: plain
 words, the twin's path, and a rendered PNG, read back from the recorder. The one-HTTP-client
 convention now names sw.js as its one exception: it is its own script, outside the bundle.
+
+## 2026-09-27 (cont.): the emoji pole in three rows
+
+The quick emoji at the head of both pickers (the feed's tag strip and a room's reactions) are now
+three rows of ten (Curtis): the glad ones on a pale green - heart, thumbs up, rofl, people
+hugging, 100, horse, heart eyes, hot face, sunglasses, point up - the sour ones on a pale red -
+thumbs down, poop, rolling eyes, vomiting, nauseated, cursing, melting, cold face, zipper mouth,
+troll - and a plain row of the useful: thinking, eyes, surprised, crying, partying, question, ear,
+full moon face, grimacing, blush. Each row is a ten-column grid, so it is always one full line. `POLE_ROWS` in
+emoji.js holds them, and one `EmojiStrip` there draws the strip for both pickers, which had each
+carried a copy of it; typing a name still narrows every row, and an emptied row goes. Two tokens,
+`--react-good` and `--react-bad`, are sea-green and coral washed pale. The feed's strip grew
+(18.5rem wide, 12rem tall) and the room's picker widened (19rem) to hold a row of ten, with the
+full table still showing under the three rows.
+
+A reaction on a post wears its row's colour too (Curtis): an emoji tag from the glad row on the
+same pale green, from the sour row on the pale red, a shade deeper when it is yours; every other
+emoji and every word keeps the plain chip. `toneOf` in emoji.js reads the lean off `POLE_ROWS`,
+matched without the variation selector so a bare U+2764 heart counts.
+
+## 2026-09-27 (cont.): two tags to a person, and no reacting to your own post
+
+Anyone could put any number of tags on somebody else's post (Curtis asked; the answer was no
+cap at all past 32 characters a tag). Now (Curtis): **two tags to a person on somebody else's
+post**, and **an author may not emoji-tag their own post** - a reaction is for somebody else's.
+Kept in three places, because a door binds only the nodes that run ours:
+
+- **Every read.** annotations.rs `bounded`, after admission, in `for_posts` (every post surface,
+  and the proofs a fragment relays onward) and `label_counts` (the facets): an author's emoji
+  tags fall, and anyone else's tags stand two to a person - the first two in code-point order,
+  which needs no clock, so every node keeps the same two whatever order it learned them in. The
+  bell's "tagged" row names only those two. pure/annotations.js `boundedTags` is the same rule
+  for what the client holds, inside `visibleAnnotations`; `is_emoji_tag` is the client's
+  `isEmojiTag` restated (the `regex` crate's `Extended_Pictographic`, already in the tree, now
+  named directly), tested against the client's own vectors.
+- **The door.** The public-annotation PUT refuses a third tag on somebody else's post (saying one
+  of your two again is fine; a sealed post's statements are opened to count them) and an emoji
+  on your own, in words. Publish no longer replicates a draft's emoji tags: they stay private.
+- **The card.** "+ tag" goes once you have said two on somebody else's post, a chip stops being
+  an agree button when agreeing would be a third, and your own post's tag input has no emoji
+  palette and will not say one (`mayTag`, `tagsLeft`).
+- **Your own documents' tag rows** (Curtis: "Writer's tag input should refuse emoji too"): the
+  shared `Annotations` row - Writer, Drawing, the reader, uploads - refuses a tag that is one
+  emoji, saying why beside the input; so does a new room's tag input, since a room is your own
+  post and its tags are said through the door that now refuses an author's reaction (the room
+  would otherwise be made and the tag quietly not).
+
+`MAX_TAGS_PER_LABELLER` is spelled in both languages, pinned equal by tests/conventions.rs.
+public_annotations.cjs proves the doors and, with rows planted in the memo as a node that skips
+our door would send them, the reads.
+
+## 2026-09-27 (cont.): scores and the best orders (slice 1)
+
+PROJECT_PLAN's *Scores and sort orders*, slice 1 (Curtis's design, settled the same day): the
+feed can be read **best today / this week / this month / this year / ever** beside **newest**.
+A post's score is the reader's own: glad-row reactions +1, sour-row -1, each tag counting (a
+double-like is two), weighed by the reader's dial on whoever said it - trust linear from low
+0.25 to max 1, a follow without trust 0.1, the reader 1, **strangers and the blocked 0** - and
+scaled x0.9..x1.1 by the reader's interest in the author. Starting values all, tuned by feel.
+
+- **score.rs** is the reckoning: the lexicon (`GLAD`, `SOUR` - tests/conventions.rs pins them to
+  the picker's rows in emoji.js), `reckon` giving the number AND every step of it, so the order
+  and its explanation cannot disagree, and `Rank`, a total order (score in thousandths, newest,
+  doc id) whose token is the page cursor.
+- **The feed door** takes `sort=best&window=...&after=...`: the window's journal at the dial's
+  stop, through any search or facet picks (the search branch's narrowing, lifted into
+  `narrowed`), scored in one labels read, ranked, paged. Reckoned at read time - a change of the
+  settled plan made without asking (a stored score was the design), and wrong: it read the newest
+  5000 journal rows, so everything older silently fell out of best. Superseded the same day by the
+  plan's *Shape*: stored per-reader scores kept incrementally, "ever" dropped, and one SQL journal
+  filter for every journal reader - which is how the same 5000 cap was found under the search, the
+  tag cloud and the chats column. The facet counts take `window` too.
+- **The feed page**: an "order:" select beside the curiosity dial, a native one, kept in the
+  same register as the dial's stop and read with it (so a feed left on best never flashes
+  newest); pages merge in the node's order (`mergeRanked` - `mergeFeed` re-sorts by date); no
+  "N updates" polling and no fresh-post-on-top in a best order; a search inside best is ranked.
+- **"history & popularity"**: the post page's dossier is renamed, and lists the reckoning -
+  each reaction, who, their standing in your dials, its weight, the interest factor, the score -
+  from a door of its own, `/api/identity/{root}/popularity/{author}/{doc}`, which answers only a
+  session that owns the persona: it is a readout of that persona's dials. The card shows nothing
+  new; the score is never on it.
+
+scores.cjs holds the order (trust, follow and stranger apart, a word leaning nowhere, newest
+first among equals), the window, the cursor, best inside a search, the window's facet counts,
+and the popularity door for its reader and nobody else; a planted zero follow weight turned three
+of its four claims red.
+
+## 2026-09-27 (cont.): the journal's readers, off the 5000 cap (steps 1-2)
+
+The first two steps of rebuilding slice 1 for a million-row journal (PROJECT_PLAN's *Scores and
+sort orders*, *Shape*). Found on the way: "the newest 5000 journal rows, then filter in memory" sat
+under the search, the facet picks, the tag cloud, the search's backlog walk, the chats column and
+"chat with them" - so a room you followed and never entered left your chats column once 5000 newer
+posts arrived - and your own rooms came from your newest 500 posts.
+
+- **Node rung 0056** (the ladder's third rung since the baseline, which is numbered 53): the label
+  memo's `emoji` column, set as a label is noted (`annotations::reaction_flag` - the one regex), so
+  SQL can drop an author's reaction to their own post; and an index of the journal by (reader,
+  format, time), for picking one kind out of a feed without walking the rest.
+- **One journal filter** (`fanout::JournalFilter`, `journal_page`, `journal_all`): reader, the
+  reader's own posts or not, formats, a window, and the curiosity dial - in SQL, on the index. The
+  dial is `selectivity::stop_predicate`: the reader's dials handed to the query as literal
+  membership lists (`author_root IN (...)`), which the engine answers from an index over the list,
+  rather than a table of dials joined row by row; a test holds it to `visible_at` over 288 rows -
+  every author dial against every path level, each post direct, shared at every rebroadcast dial,
+  and suggested - and went red when the author dial's precedence was planted away. The feed's own
+  newest-first page runs through it.
+- **The chats column and "chat with them"** read rooms through the filter, uncapped; your own
+  rooms come from `documents::public_rooms`, uncapped. rooms.cjs holds a room bea follows but never
+  entered in her column under 8192 planted newer posts - a claim first written in ims.cjs, where a
+  planted return to the old capped read still passed (a private chat reaches the column by the
+  inbox and the entered-rooms register too), and moved to the one road only the feed travels, where
+  the same plant turns it red.
+- **The search's backlog walk** goes to the end of the journal by a resumable cursor (the newest
+  100 rows every beat, then 1000 of the backlog from where it stopped), where it walked the newest
+  5000 and no further.
+
+`fanout::feed_all` keeps four capped callers - the best orders, the tag cloud, and the search's
+and the picks' narrowing - each retired by a step still to come, and says so on its face.

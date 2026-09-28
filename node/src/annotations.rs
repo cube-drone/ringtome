@@ -59,6 +59,67 @@ pub fn open_statement(sealed_hex: &str, post_key: &[u8; 32]) -> Option<(String, 
     Some((k.to_string(), v.to_string()))
 }
 
+/// How many tags one person may put on somebody else's post (Curtis, 2026-09-27): a word or
+/// two of their own, never a wall of them. The author's own tags are not counted here - they
+/// have publish's cap (`REPLICATED_TAGS_CAP`). The client says the same number
+/// (js/pure/annotations.js `MAX_TAGS_PER_LABELLER`; tests/conventions.rs pins the pair).
+pub const MAX_TAGS_PER_LABELLER: usize = 2;
+
+/// Is this tag ONE emoji - a reaction? One pictographic cluster: a base emoji with optional
+/// variation selector and skin tone, ZWJ-joined to more of the same. The client's rule
+/// (js/pure/annotations.js `isEmojiTag`), restated.
+pub fn is_emoji_tag(value: &str) -> bool {
+    static ONE_EMOJI: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"^\p{Extended_Pictographic}\x{FE0F}?\p{Emoji_Modifier}?(?:\x{200D}\p{Extended_Pictographic}\x{FE0F}?\p{Emoji_Modifier}?)*$",
+        )
+        .expect("the one-emoji pattern compiles")
+    });
+    ONE_EMOJI.is_match(value)
+}
+
+/// Which tags on a post stand, as every reader reads them (Curtis, 2026-09-27): an author
+/// reacts to nobody's post by reacting to their own, so the author's emoji tags fall; and
+/// anyone else's tags stand only [`MAX_TAGS_PER_LABELLER`] to a person - the first in
+/// code-point order, which needs no clock, so every node keeps the same two whatever order
+/// it learned them in. The client's door stops at two; this is for everyone else's door.
+/// Everything that is not a tag passes untouched, in its order.
+fn bounded(rows: Vec<MemoRow>) -> Vec<MemoRow> {
+    let mut tags: std::collections::HashMap<(&str, &str, &str), Vec<&str>> = Default::default();
+    for r in &rows {
+        if r.key == TAG_KEY && r.annotator != r.target_author {
+            tags.entry((&r.target_author, &r.target_doc, &r.annotator)).or_default().push(&r.value);
+        }
+    }
+    let mut kept: std::collections::HashSet<(String, String, String, String)> = Default::default();
+    for ((ta, td, annotator), mut values) in tags {
+        values.sort_unstable();
+        values.dedup();
+        for v in values.into_iter().take(MAX_TAGS_PER_LABELLER) {
+            kept.insert((ta.to_string(), td.to_string(), annotator.to_string(), v.to_string()));
+        }
+    }
+    rows.into_iter()
+        .filter(|r| {
+            if r.key != TAG_KEY {
+                return true;
+            }
+            if r.annotator == r.target_author {
+                return !is_emoji_tag(&r.value);
+            }
+            kept.contains(&(r.target_author.clone(), r.target_doc.clone(), r.annotator.clone(), r.value.clone()))
+        })
+        .collect()
+}
+
+const TAG_KEY: &str = ringtome_proto::PublicAnnotation::TAG_KEY;
+
+/// The memo's `emoji` column for a label (node rung 0056): 1 for a tag that is one emoji - a
+/// reaction - so SQL can drop an author's reaction to their own post without the regex.
+fn reaction_flag(key: &str, value: &str) -> i64 {
+    i64::from(key == TAG_KEY && is_emoji_tag(value))
+}
+
 /// Who may see an opened sealed row: the holder themself, or anyone the holder publishes
 /// trust for (the body door's rule, PROJECT_PLAN's Replies under the author's seal).
 async fn holder_admits(state: &AppState, holder: &str, holder_doc: &str, viewer: Option<&str>) -> bool {
@@ -159,11 +220,11 @@ pub async fn open_sealed(
         node_db
             .execute(
                 "INSERT INTO doc_annotations
-                   (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, holder_doc, sealed_as)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10)
+                   (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, holder_doc, sealed_as, emoji)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, ?11)
                  ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
                    sealed = 1, holder_root = excluded.holder_root, holder_doc = excluded.holder_doc, sealed_as = excluded.sealed_as",
-                (target_author, target_doc, annotator.as_str(), k.as_str(), v.as_str(), noted_ms, learned_via.as_str(), holder, holder_doc, sealed_hex.as_str()),
+                (target_author, target_doc, annotator.as_str(), k.as_str(), v.as_str(), noted_ms, learned_via.as_str(), holder, holder_doc, sealed_hex.as_str(), reaction_flag(&k, &v)),
             )
             .await
             .context("opening a sealed label")?;
@@ -199,12 +260,12 @@ async fn note_sealed(
             node_db
                 .execute(
                     "INSERT INTO doc_annotations
-                       (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, holder_doc, sealed_as)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?1, ?2, ?8)
+                       (target_author, target_doc, annotator, key, value, noted_ms, learned_via, sealed, holder_root, holder_doc, sealed_as, emoji)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?1, ?2, ?8, ?9)
                      ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
                        noted_ms = excluded.noted_ms, learned_via = excluded.learned_via,
                        sealed = 1, holder_root = excluded.holder_root, holder_doc = excluded.holder_doc, sealed_as = excluded.sealed_as",
-                    (target_author, target_doc, annotator, k.as_str(), v.as_str(), now_ms(), learned_via, sealed_hex),
+                    (target_author, target_doc, annotator, k.as_str(), v.as_str(), now_ms(), learned_via, sealed_hex, reaction_flag(&k, &v)),
                 )
                 .await
                 .context("noting an opened sealed label")?;
@@ -277,12 +338,12 @@ pub async fn note(
     node_db
         .execute(
             "INSERT INTO doc_annotations
-               (target_author, target_doc, annotator, key, value, noted_ms, learned_via)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+               (target_author, target_doc, annotator, key, value, noted_ms, learned_via, emoji)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
                noted_ms = excluded.noted_ms,
                learned_via = excluded.learned_via",
-            (target_author, target_doc, annotator, key, value, now_ms(), learned_via),
+            (target_author, target_doc, annotator, key, value, now_ms(), learned_via, reaction_flag(key, value)),
         )
         .await
         .context("noting an annotation")?;
@@ -356,7 +417,7 @@ pub async fn label_counts(
         )
         .await
         .context("counting labels")?;
-    let rows = admitted(state, rows.into_iter().map(memo_row).collect(), viewer).await;
+    let rows = bounded(admitted(state, rows.into_iter().map(memo_row).collect(), viewer).await);
     let mut seen: std::collections::HashSet<(String, String, String, String)> = Default::default();
     let mut buckets: std::collections::BTreeMap<String, i64> = Default::default();
     let mut tags: std::collections::BTreeMap<String, i64> = Default::default();
@@ -421,10 +482,10 @@ async fn for_posts_inner(
         return Ok(Default::default());
     }
     let rows = fetch_rows(&state.node_db, &docs).await?;
-    let rows = match viewer {
+    let rows = bounded(match viewer {
         Some(v) => admitted(state, rows, v).await,
         None => rows.into_iter().filter(|r| r.key != SEALED_KEY).collect(),
-    };
+    });
     let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> =
         Default::default();
     for MemoRow { target_author: ta, target_doc: td, annotator, key, value, .. } in rows {
@@ -711,10 +772,102 @@ pub async fn learn_proofs(
 mod tests {
     use super::*;
 
+    fn tag(author: &str, annotator: &str, value: &str) -> MemoRow {
+        MemoRow {
+            target_author: author.into(),
+            target_doc: "d".into(),
+            annotator: annotator.into(),
+            key: "tag".into(),
+            value: value.into(),
+            sealed: false,
+            holder: None,
+            holder_doc: None,
+        }
+    }
+
+    /// The tag rules every reader keeps (2026-09-27): two to a person on somebody else's
+    /// post, the first in code-point order whatever order they arrived in; none of the
+    /// author's own reactions; the author's words, and every other label, untouched.
+    #[test]
+    fn two_tags_to_a_person_and_no_reaction_to_your_own() {
+        let rows = vec![
+            tag("a", "a", "\u{1F4AF}"),
+            tag("a", "a", "mighty"),
+            tag("a", "a", "saucy"),
+            tag("a", "a", "third"),
+            tag("a", "b", "\u{1F434}"),
+            tag("a", "b", "zebra"),
+            tag("a", "b", "alpha"),
+            tag("a", "b", "alpha"),
+            tag("a", "c", "only"),
+            MemoRow { key: "description".into(), ..tag("a", "b", "words") },
+        ];
+        let kept: Vec<(String, String)> =
+            bounded(rows).into_iter().map(|r| (r.annotator, r.value)).collect();
+        let by = |who: &str| kept.iter().filter(|(a, _)| a == who).map(|(_, v)| v.as_str()).collect::<Vec<_>>();
+        assert_eq!(by("a"), ["mighty", "saucy", "third"], "the author's words all stand, their reaction falls");
+        assert_eq!(by("b"), ["zebra", "alpha", "alpha", "words"], "an emoji sorts after every letter; the description is no tag");
+        assert_eq!(by("c"), ["only"]);
+    }
+
+    /// The client's vectors (integration/test/pure/annotations.cjs), so the two rules agree.
+    #[test]
+    fn one_emoji_is_the_clients_rule() {
+        for v in ["\u{2764}\u{FE0F}", "\u{1F44D}", "\u{1F44D}\u{1F3FD}", "\u{1FAC2}", "\u{1F469}\u{200D}\u{1F469}\u{200D}\u{1F466}", "\u{1F4A9}"] {
+            assert!(is_emoji_tag(v), "one emoji: {v}");
+        }
+        for v in ["beef", "beef \u{1F914}", "asshole 100", "100", "\u{1F525}\u{1F525}", ""] {
+            assert!(!is_emoji_tag(v), "not one emoji: {v}");
+        }
+    }
+
     /// Noted, re-noted (idempotent), read page-scoped with the author's own first, and
     /// forgotten on retraction.
     async fn rows_of(db: &Db, d: &str) -> Vec<MemoRow> {
         fetch_rows(db, &[format!("'{d}'")]).await.unwrap()
+    }
+
+    /// Node rung 56 on a node with labels in it (2026-09-27): the rows keep, flagged 0.
+    #[tokio::test]
+    async fn node_rung_56_climbs_onto_a_labelled_memo() {
+        let db = crate::db::test_memory_db().await;
+        let at = crate::migrations::NODE.iter().position(|r| r.version == 56).expect("rung 56 is on the ladder");
+        crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
+        db.execute(
+            "INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
+             VALUES ('a', 'd', 'b', 'tag', 'bread', 1)",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        let (value, emoji): (String, i64) = db
+            .fetch_one("SELECT value, emoji FROM doc_annotations", ())
+            .await
+            .unwrap();
+        assert_eq!((value.as_str(), emoji), ("bread", 0));
+    }
+
+    /// A reaction is flagged as it is noted (node rung 0056), so SQL can tell one without the
+    /// regex; a word, and any other key, is not.
+    #[tokio::test]
+    async fn a_reaction_is_flagged_as_it_is_noted() {
+        let db = crate::db::test_node_db().await;
+        note(&db, "a", "d", "b", "tag", "\u{1F44D}", "chain").await.unwrap();
+        note(&db, "a", "d", "b", "tag", "bread", "chain").await.unwrap();
+        note(&db, "a", "d", "b", "description", "\u{1F44D}", "chain").await.unwrap();
+        let rows: Vec<(String, String, i64)> = db
+            .fetch_all("SELECT key, value, emoji FROM doc_annotations ORDER BY key, value", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                ("description".into(), "\u{1F44D}".into(), 0),
+                ("tag".into(), "bread".into(), 0),
+                ("tag".into(), "\u{1F44D}".into(), 1),
+            ]
+        );
     }
 
     #[tokio::test]

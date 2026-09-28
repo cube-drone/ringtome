@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1102 phrases across 72 files.
+// 1115 phrases across 72 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -26,6 +26,7 @@ export default {
     'apps.chat.requests': 'requests',
     'apps.chat.left': 'left',
     'apps.chat.a-tag-is-n-characters-at-most': 'a tag is {cap} characters at most',
+    'apps.chat.no-reacting-to-your-own-room': "a reaction is for somebody else's post - tag your room with words",
     'apps.chat.the-room-was-made-but-tags-didnt-stick': 'the room was made, but these tags did not stick: {tags}',
     'apps.chat.a-new-chat': 'a new chat',
     'apps.chat.a-name-for-the-room': 'a name for the room',
@@ -153,6 +154,12 @@ export default {
     'apps.feed.stop-interest': 'interest only',
     'apps.feed.stop-medium': 'medium interest only',
     'apps.feed.stop-high': 'high interest only',
+    'apps.feed.sort-new': 'newest',
+    'apps.feed.sort-day': 'best today',
+    'apps.feed.sort-week': 'best this week',
+    'apps.feed.sort-month': 'best this month',
+    'apps.feed.sort-year': 'best this year',
+    'apps.feed.sort-ever': 'best ever',
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
     'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
     'apps.feed.couldnt-discard-it': "couldn't discard it: {message}",
@@ -162,10 +169,13 @@ export default {
     'apps.feed.the-public-copy': 'the public copy',
     'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
     'apps.feed.feed-curiosity': 'feed curiosity:',
+    'apps.feed.sort-title': 'newest first, or the posts the people you trust and follow reacted to best',
+    'apps.feed.sort-by': 'order:',
     'apps.feed.1-update': '1 update',
     'apps.feed.n-updates': '{n} updates',
     'apps.feed.refresh': '· refresh',
     'apps.feed.the-feed': 'the feed',
+    'apps.feed.nothing-in-this-window': 'nothing in your feed was posted in this window.',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
     'apps.feed.searching': 'searching…',
     'apps.feed.nothing-in-your-feed-says-that': 'nothing in your feed says that.',
@@ -331,6 +341,7 @@ export default {
     'copyinto.copy-this-into-your-private': 'copy this into your private notes',
 
     // --- node/js/doc/annotations.js ---
+    'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",
     'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
     'doc.annotations.date': 'date',
     'doc.annotations.time-optional': 'time (optional)',
@@ -891,7 +902,7 @@ export default {
     'postpage.replies-known-here': 'replies known here',
     'postpage.ask-the-author-again': 'check for new replies',
     'postpage.refresh': 'refresh',
-    'postpage.post-history': 'history',
+    'postpage.history-and-popularity': 'history & popularity',
     'postpage.reading-the-ledger': 'loading…',
     'postpage.no-ledger-readable-here': 'no history here',
     'postpage.thread-unreadable': 'thread (no longer readable here)',
@@ -1088,6 +1099,8 @@ export default {
     'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.sealed-no-shares': 'a post shared only with people the author trusts is not passed along',
     'identity.routes.onward-needs-the-key': 'you can only pass along words you can read',
+    'routes.no-reacting-to-your-own-post': "a reaction is for somebody else's post",
+    'routes.two-tags-to-a-person': "you can put {cap} tags on somebody else's post - take one back first",
     'identity.routes.this-node-doesnt-host-that': 'not here',
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',

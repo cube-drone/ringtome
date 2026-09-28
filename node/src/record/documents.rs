@@ -1304,6 +1304,30 @@ pub async fn public_docs(
     rows.into_iter().map(public_doc_from_row).collect()
 }
 
+/// Every live room on the public shelf (2026-09-27): the chats column's own rooms, whatever
+/// else has been posted since - it used to take the newest 500 public posts and keep the rooms
+/// among them, so a busy poster's older rooms left their own chats list.
+pub async fn public_rooms(db: &Db) -> Result<Vec<PublicDoc>, AppError> {
+    catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<PublicDocRow> = db
+        .fetch_all(
+            "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
+                    trusted_only, onward, dated_ms, part_of
+             FROM doc_heads
+             WHERE lane = 'public' AND format = ?1 AND doc_id NOT IN (SELECT doc_id FROM public_retractions)
+             ORDER BY COALESCE(dated_ms, genesis_ms) DESC, doc_id",
+            (doc_format::ROOM as i64,),
+        )
+        .await
+        .context("listing public rooms")
+        .map_err(AppError::Internal)?;
+    rows.into_iter().map(public_doc_from_row).collect()
+}
+
 /// One `doc_heads` row as the shelf reports it - shared by every shelf read so the column
 /// list and its decoding cannot drift apart.
 type PublicDocRow = (

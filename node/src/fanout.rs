@@ -1662,8 +1662,10 @@ fn hex_in_list<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
 /// question this draft does not pretend to answer. The reader's interest dials affect only how
 /// items RENDER (size, opacity, truncation) - which is the client's business, off its own
 /// mirror, where those dials live.
-/// The reader's whole journal, newest first, for the search (search.rs): every row this
-/// node ever served them, capped only as a sanity bound.
+/// The reader's newest `cap` journal rows - **being retired** (PROJECT_PLAN's Scores and sort
+/// orders, *Shape*): its callers filter in memory and silently lose everything past the cap.
+/// The tag cloud, the search's and the picks' narrowing, and the best orders still read it until
+/// their own replacements land; nothing new should. [`journal_page`] is the filter in SQL.
 pub async fn feed_all(node_db: &crate::db::Db, reader: &str, cap: i64) -> Result<Vec<FeedRow>> {
     let rows: Vec<JournalTuple> = node_db
         .fetch_all(
@@ -1728,43 +1730,113 @@ pub async fn feed_page(
     // Filtered here, in the query, so a page is still a full page when the reader has been busy.
     include_own: bool,
 ) -> Result<Vec<FeedRow>> {
-    let own = i64::from(include_own);
-    type Row = JournalTuple;
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
     // makes journals written BEFORE that filter harmless rather than a page of raw bytes
     // rendered as text.
-    let rows: Vec<Row> = match before {
+    let filter = JournalFilter { include_own, ..JournalFilter::feed(reader_root) };
+    journal_page(node_db, &filter, before, limit).await
+}
+
+/// The kinds of post a feed shows: text, books and rooms - never media, which are ingredients.
+pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room"];
+
+/// Which of one reader's journal rows a caller wants (2026-09-27, PROJECT_PLAN's Scores and sort
+/// orders, *Shape*): the one filter every reader of the journal goes through, in SQL on an index -
+/// where the search, the facets, the chats column and "chat with them" each used to take the
+/// newest 5000 rows and filter in memory, and silently lost everything older.
+pub struct JournalFilter<'a> {
+    pub reader: &'a str,
+    /// The reader's own posts too ("me").
+    pub include_own: bool,
+    /// Only these formats (a feed's text kinds, or `room` alone); empty for any.
+    pub formats: &'a [&'a str],
+    /// Only rows published at or after this - a best order's window.
+    pub since_ms: Option<i64>,
+    /// The curiosity dial's stop, as SQL (`selectivity::stop_predicate`); the reader's own rows
+    /// always pass it.
+    pub stop: Option<String>,
+}
+
+impl<'a> JournalFilter<'a> {
+    /// What the feed shows: the text kinds, the reader's own included, the whole of time.
+    pub fn feed(reader: &'a str) -> Self {
+        JournalFilter { reader, include_own: true, formats: FEED_FORMATS, since_ms: None, stop: None }
+    }
+
+    /// The WHERE clause, the reader bound as `?1`. The formats are this file's own words and the
+    /// stop's roots are checked hex, so nothing a caller typed reaches the SQL.
+    fn clause(&self) -> String {
+        let mut parts = vec!["reader_root = ?1".to_string()];
+        if !self.formats.is_empty() {
+            let known: Vec<String> = self
+                .formats
+                .iter()
+                .filter(|f| f.bytes().all(|b| b.is_ascii_lowercase()))
+                .map(|f| format!("'{f}'"))
+                .collect();
+            parts.push(format!("format IN ({})", known.join(",")));
+        }
+        if !self.include_own {
+            parts.push("author_root <> reader_root".to_string());
+        }
+        if let Some(since) = self.since_ms {
+            parts.push(format!("published_ms >= {since}"));
+        }
+        if let Some(stop) = &self.stop {
+            parts.push(format!("(author_root = reader_root OR {stop})"));
+        }
+        parts.join(" AND ")
+    }
+}
+
+const JOURNAL_COLUMNS: &str = "author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms";
+
+/// One page of a reader's journal through `filter`, newest first, after `before` (the last row
+/// shown's `(published_ms, doc_id)`).
+pub async fn journal_page(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+    before: Option<(i64, String)>,
+    limit: i64,
+) -> Result<Vec<FeedRow>> {
+    let clause = filter.clause();
+    // Numbered placeholders: a value used twice binds ONCE - the first cursor branch passed `ms`
+    // twice and bound five values into four slots, which turso refused ("bind index 5 out of
+    // bounds")... only on the cursor branch, which no test paged.
+    let rows: Vec<JournalTuple> = match before {
         None => node_db
             .fetch_all(
-                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
-                 FROM feed_journal WHERE reader_root = ?1
-                   AND format IN ('marquee', 'plaintext', 'book', 'room')
-                   AND (?3 = 1 OR author_root <> reader_root)
-                 ORDER BY published_ms DESC, doc_id LIMIT ?2",
-                (reader_root, limit, own),
+                &format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {clause} ORDER BY published_ms DESC, doc_id LIMIT ?2"),
+                (filter.reader, limit),
             )
             .await,
-        // Numbered placeholders: ?2 appears twice and binds ONE value - the first version
-        // passed `ms` twice and bound five values into four slots, which turso refused with
-        // "bind index 5 out of bounds"... only on the cursor branch, which no test paged.
         Some((ms, doc)) => node_db
             .fetch_all(
-                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
-                 FROM feed_journal WHERE reader_root = ?1
-                   AND format IN ('marquee', 'plaintext', 'book', 'room')
-                   AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
-                   AND (?5 = 1 OR author_root <> reader_root)
-                 ORDER BY published_ms DESC, doc_id LIMIT ?4",
-                (reader_root, ms, doc.as_str(), limit, own),
+                &format!(
+                    "SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {clause}
+                       AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
+                     ORDER BY published_ms DESC, doc_id LIMIT ?4"
+                ),
+                (filter.reader, ms, doc.as_str(), limit),
             )
             .await,
     }
-    .context("reading a feed page")?;
-    Ok(rows
-        .into_iter()
-        .map(journal_row)
-        .collect())
+    .context("reading a journal page")?;
+    Ok(rows.into_iter().map(journal_row).collect())
+}
+
+/// Every row of a reader's journal through `filter`, newest first, unbounded - only for a filter
+/// that picks a small kind (`room`), which no volume of posts grows.
+pub async fn journal_all(node_db: &crate::db::Db, filter: &JournalFilter<'_>) -> Result<Vec<FeedRow>> {
+    let rows: Vec<JournalTuple> = node_db
+        .fetch_all(
+            &format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal WHERE {} ORDER BY published_ms DESC, doc_id", filter.clause()),
+            (filter.reader,),
+        )
+        .await
+        .context("reading a reader's journal")?;
+    Ok(rows.into_iter().map(journal_row).collect())
 }
 
 /// One journal row's columns, as every journal SELECT lists them.
@@ -1986,6 +2058,129 @@ mod tests {
             vec![(None, None)],
             "a follow row outranks a share byline, still"
         );
+    }
+
+    /// The curiosity dial in SQL (`selectivity::stop_predicate`) against the rule it restates
+    /// (`selectivity::visible_at`), row for row: every author dial against every path level,
+    /// each author's post arriving direct, shared by a sharer at every rebroadcast dial, and
+    /// suggested - and the reader's own post through every stop.
+    #[tokio::test]
+    async fn the_dial_in_sql_keeps_exactly_what_the_rule_keeps() {
+        use crate::selectivity::{stop_predicate, visible_at, Facts, RowView};
+        let db = crate::db::test_node_db().await;
+        let reader = "ee".repeat(32);
+        let bands = [None, Some("none"), Some("low"), Some("medium"), Some("high"), Some("max")];
+        let root = |kind: u8, n: usize| format!("{kind:02x}{n:062x}");
+        let mut facts = Facts::new();
+        let mut levels = std::collections::HashMap::new();
+        let sharers: Vec<String> = (0..bands.len()).map(|v| root(0xbb, v)).collect();
+        for (v, band) in bands.iter().enumerate() {
+            if let Some(b) = band {
+                facts.entry(sharers[v].clone()).or_default().insert("interest_rebroadcasts".into(), b.to_string());
+            }
+        }
+        struct Row { author: String, doc: String, via: Option<String>, suggested: Option<String> }
+        let mut rows: Vec<Row> = Vec::new();
+        let mut n = 0;
+        for dial in bands {
+            for level in bands {
+                let author = root(0xaa, n);
+                n += 1;
+                if let Some(d) = dial {
+                    facts.entry(author.clone()).or_default().insert("interest".into(), d.to_string());
+                }
+                if let Some(l) = level {
+                    levels.insert(author.clone(), l.to_string());
+                }
+                let mut push = |via: Option<String>, suggested: Option<String>| {
+                    rows.push(Row { author: author.clone(), doc: format!("{:032x}", rows.len()), via, suggested });
+                };
+                push(None, None);
+                for s in &sharers {
+                    push(Some(s.clone()), None);
+                }
+                push(None, Some(root(0xcc, 0)));
+            }
+        }
+        rows.push(Row { author: reader.clone(), doc: format!("{:032x}", rows.len()), via: None, suggested: None });
+        for (i, r) in rows.iter().enumerate() {
+            db.execute(
+                "INSERT INTO feed_journal
+                   (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms, via_root, suggested_via)
+                 VALUES (?1, ?2, ?3, 't', 'marquee', ?4, ?4, ?4, ?5, ?6)",
+                (reader.as_str(), r.author.as_str(), r.doc.as_str(), i as i64, r.via.as_deref(), r.suggested.as_deref()),
+            )
+            .await
+            .unwrap();
+        }
+        for stop in ["explorer", "highly-speculative", "speculative", "interest", "medium", "high", "nonsense"] {
+            let want: std::collections::BTreeSet<&str> = rows
+                .iter()
+                .filter(|r| {
+                    r.author == reader
+                        || visible_at(
+                            stop,
+                            &RowView {
+                                author: &r.author,
+                                via: r.via.as_deref(),
+                                suggested_via: r.suggested.as_deref(),
+                                suggested_level: r.suggested.as_ref().and_then(|_| levels.get(&r.author)).map(String::as_str),
+                            },
+                            &facts,
+                        )
+                })
+                .map(|r| r.doc.as_str())
+                .collect();
+            let filter = JournalFilter { stop: stop_predicate(stop, &facts, &levels), ..JournalFilter::feed(&reader) };
+            let got = journal_all(&db, &filter).await.unwrap();
+            let got: std::collections::BTreeSet<&str> = got.iter().map(|r| r.doc_id.as_str()).collect();
+            assert_eq!(got, want, "the {stop} stop");
+            assert!(want.len() < rows.len() || matches!(stop, "explorer" | "nonsense"), "the {stop} stop keeps something back - a case worth the name");
+        }
+    }
+
+    /// The journal filter's other terms: formats, the reader's own, a window, and a page after a
+    /// cursor - and a room found under any number of newer posts (the chats column's 5000 cap).
+    #[tokio::test]
+    async fn the_journal_filter_pages_and_narrows_in_sql() {
+        let db = crate::db::test_node_db().await;
+        let reader = "ee".repeat(32);
+        let other = "aa".repeat(32);
+        let row = |author: &str, doc: String, format: &str, ms: i64| (author.to_string(), doc, format.to_string(), ms);
+        let mut rows = vec![row(&other, "d-room".into(), "room", 1), row(&reader, "d-mine".into(), "marquee", 2)];
+        for i in 0..6000 {
+            rows.push(row(&other, format!("d-{i:05}"), "marquee", 10 + i));
+        }
+        rows.push(row(&other, "d-media".into(), "avif", 99_999));
+        for (author, doc, format, ms) in &rows {
+            db.execute(
+                "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+                 VALUES (?1, ?2, ?3, 't', ?4, ?5, ?5, ?5)",
+                (reader.as_str(), author.as_str(), doc.as_str(), format.as_str(), *ms),
+            )
+            .await
+            .unwrap();
+        }
+        let rooms = journal_all(&db, &JournalFilter { formats: &["room"], ..JournalFilter::feed(&reader) }).await.unwrap();
+        assert_eq!(rooms.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-room"], "under 6000 newer posts");
+        let first = journal_page(&db, &JournalFilter::feed(&reader), None, 2).await.unwrap();
+        assert_eq!(first.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-05999", "d-05998"], "no media");
+        let next = journal_page(&db, &JournalFilter::feed(&reader), Some((first[1].published_ms, first[1].doc_id.clone())), 2)
+            .await
+            .unwrap();
+        assert_eq!(next.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-05997", "d-05996"]);
+        let oldest = journal_page(&db, &JournalFilter { since_ms: None, ..JournalFilter::feed(&reader) }, Some((10, "d-00000".into())), 5)
+            .await
+            .unwrap();
+        assert_eq!(oldest.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-mine", "d-room"], "paged to the very end");
+        let not_mine = journal_page(&db, &JournalFilter { include_own: false, ..JournalFilter::feed(&reader) }, Some((10, "d-00000".into())), 5)
+            .await
+            .unwrap();
+        assert_eq!(not_mine.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-room"]);
+        let window = journal_page(&db, &JournalFilter { since_ms: Some(6008), ..JournalFilter::feed(&reader) }, None, 100)
+            .await
+            .unwrap();
+        assert_eq!(window.len(), 2, "published at or after the window's start");
     }
 
     /// The `via_root IS NOT NULL` guard, from the other side. A document we hold BOTH ways -

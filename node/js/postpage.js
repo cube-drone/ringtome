@@ -198,7 +198,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                 />`}
             </section>`}
             ${item && !isBook && html`<${CopyChain} author=${root} annotations=${post.annotations} />`}
-            ${item && html`<${PostDossier} author=${root} doc=${threadDoc} />`}
+            ${item && html`<${PostDossier} author=${root} doc=${threadDoc} reader=${viewer} />`}
         </div>
     `;
 };
@@ -208,9 +208,13 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
 /// it arrived by ('chain', 'fragment', 'envelope', 'door', 'relay:<endpoint>'), so a
 /// reader who feels harassed can reverse-engineer the peer rubber-stamping the traffic in.
 /// Fetched lazily on first unfold; a log, not a page.
-const PostDossier = ({ author, doc }) => {
+const PostDossier = ({ author, doc, reader }) => {
     const [data, setData] = useState(null);
     const [open, setOpen] = useState(false);
+    // The popularity (PROJECT_PLAN's Scores and sort orders): how the signed-in reader's node
+    // scores this post, every step shown - from its own door, which answers only for a persona
+    // the session owns, since it is a readout of that persona's dials.
+    const [pop, setPop] = useState(null);
     useEffect(() => {
         if (!open || data !== null) return;
         let live = true;
@@ -221,10 +225,20 @@ const PostDossier = ({ author, doc }) => {
             live = false;
         };
     }, [open, data, author, doc]);
+    useEffect(() => {
+        if (!open || !reader || pop !== null) return;
+        let live = true;
+        api(`/api/identity/${reader}/popularity/${author}/${doc}`)
+            .then((p) => live && setPop(p))
+            .catch(() => live && setPop(false));
+        return () => {
+            live = false;
+        };
+    }, [open, pop, reader, author, doc]);
     const iso = (ms) => (ms ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : '?');
     const who = (root_, name) => `${name ? `${name} ` : ''}${speakable(root_)}`;
     return html`<details class="post-dossier" onToggle=${(e) => setOpen(e.currentTarget.open)}>
-        <summary>${t('postpage.post-history', 'history')}</summary>
+        <summary>${t('postpage.history-and-popularity', 'history & popularity')}</summary>
         ${data === null && open && html`<p>${t('postpage.reading-the-ledger', 'loading…')}</p>`}
         ${data === false && html`<p>${t('postpage.no-ledger-readable-here', 'no history here')}</p>`}
         ${data &&
@@ -245,10 +259,32 @@ const PostDossier = ({ author, doc }) => {
                     ` claimed ${iso(r.claimed_ms)} noted ${iso(r.noted_ms)} via ${r.learned_via}` +
                     (r.served === true ? ' [served]' : r.served === false ? ' [held/suppressed]' : '')
             ),
+            ...popularityLines(pop, who),
         ]
             .filter(Boolean)
             .join('\n')}</pre>`}
     </details>`;
+};
+
+/// The popularity readout, as the dossier's lines: each reaction with who said it, how the
+/// reader's dial on them weighed it, and what it added; then the interest factor and the score.
+/// Nothing for a reader signed out, or a readout that did not come.
+const popularityLines = (pop, who) => {
+    if (!pop) return [];
+    const signed = (n) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
+    const standing = (s) =>
+        s === 'you' ? 'you' : s && s.trusted ? `trusted ${s.trusted}` : s === 'followed' ? 'followed' : s === 'blocked' ? 'blocked' : 'no edge';
+    const names = pop.names || {};
+    return [
+        `popularity, as this node reckons it for you: ${(pop.parts || []).length} reaction${(pop.parts || []).length === 1 ? '' : 's'}`,
+        ...(pop.parts || []).map(
+            (p) =>
+                `  ${p.value} ${p.tone > 0 ? '+1' : '-1'} by ${who(p.annotator, names[p.annotator])}` +
+                ` - ${standing(p.standing)} x${p.weight.toFixed(2)} = ${signed(p.tone * p.weight)}`
+        ),
+        `  interest in the author: ${pop.interest || 'unset'} x${pop.interest_factor.toFixed(2)}`,
+        `  score ${signed(pop.score)}`,
+    ];
 };
 
 /// One hop up: the post this page's post replies to, as a mini-card. The title comes from

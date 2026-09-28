@@ -3,11 +3,11 @@ const assert = require('node:assert');
 
 let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated, docStatus,
     emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs;
+    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, sortParams, mergeRanked;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated, docStatus,
         postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs } = await import(
+        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, sortParams, mergeRanked } = await import(
         '../../../js/pure/feed.js'
     ));
 });
@@ -426,5 +426,26 @@ describe('docStatus: the three icons (PUBLISH.md ruling 6)', () => {
         assert.equal(docStatus({ fields: { published_as: 'abc' } }), 'public');
         assert.equal(docStatus({ fields: { publish_plan: '{"at":1,"by":"x"}' } }), 'scheduled');
         assert.equal(docStatus({ fields: { published_as: 'abc', publish_plan: '{"at":1,"by":"x"}' } }), 'scheduled');
+    });
+});
+
+// The feed's orders (PROJECT_PLAN's Scores and sort orders, slice 1): newest, or best over a
+// window, spelled for the node's feed door.
+describe('the feed orders', () => {
+    it('words each order for the door: nothing for newest, best and its window, no window for ever', () => {
+        assert.deepEqual(FEED_SORTS, ['new', 'day', 'week', 'month', 'year', 'ever']);
+        assert.equal(sortParams('new'), '');
+        assert.equal(sortParams('week'), 'sort=best&window=week');
+        assert.equal(sortParams('ever'), 'sort=best');
+        assert.equal(sortParams('nonsense'), '', 'an unknown order is newest');
+        assert.ok(isBestSort('day') && !isBestSort('new') && !isBestSort(undefined));
+    });
+    it("keeps a ranked page in the node's order, deduplicating a post a moved score brought round twice", () => {
+        const item = (doc, ms) => ({ author: 'a', doc_id: doc, published_ms: ms });
+        const first = mergeRanked([], [item('old', 1), item('new', 9)]);
+        assert.deepEqual(first.map((i) => i.doc_id), ['old', 'new'], 'not re-sorted by date');
+        const more = mergeRanked(first, [item('new', 9), item('mid', 5)]);
+        assert.deepEqual(more.map((i) => i.doc_id), ['old', 'new', 'mid']);
+        assert.deepEqual(mergeFeed([], [item('old', 1), item('new', 9)]).map((i) => i.doc_id), ['new', 'old'], 'where mergeFeed would have');
     });
 });

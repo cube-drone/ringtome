@@ -44,8 +44,13 @@ import {
     isTextDoc,
     overlayPosted,
     mergeFeed,
+    mergeRanked,
     feedKey,
     feedCursor,
+    FEED_SORTS,
+    DEFAULT_SORT,
+    isBestSort,
+    sortParams,
     collapseReplyPairs,
     PUBLISHED_AS,
 } from '../pure/feed.js';
@@ -79,6 +84,16 @@ const STOP_WORDS = {
     interest: () => t('apps.feed.stop-interest', 'interest only'),
     medium: () => t('apps.feed.stop-medium', 'medium interest only'),
     high: () => t('apps.feed.stop-high', 'high interest only'),
+};
+
+/// The feed's orders (pure/feed.js keeps the keys), in words.
+const SORT_WORDS = {
+    new: () => t('apps.feed.sort-new', 'newest'),
+    day: () => t('apps.feed.sort-day', 'best today'),
+    week: () => t('apps.feed.sort-week', 'best this week'),
+    month: () => t('apps.feed.sort-month', 'best this month'),
+    year: () => t('apps.feed.sort-year', 'best this year'),
+    ever: () => t('apps.feed.sort-ever', 'best ever'),
 };
 
 const EMPTY = new Map();
@@ -260,14 +275,36 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const [pageError, setPageError] = useState(false);
     const streamRef = useRef(null);
 
+    // The order (PROJECT_PLAN's Scores and sort orders, slice 1): newest, or best over a window -
+    // the reader's own feed only. Kept beside the curiosity dial's stop, in the same register,
+    // and read with it; null until that read lands, so a feed left on "best" never flashes
+    // newest first. Any other road is newest, always.
+    const sortable = meChip && dial;
+    const [sort, setSort] = useState(sortable ? null : DEFAULT_SORT);
+    const best = isBestSort(sort);
+    // A best page's cursor is the node's (score.rs `Rank`): where the last page ended.
+    const [after, setAfter] = useState(null);
+    const [stop, setStop] = useState(null);
+    const stopKey = dial ? stop || DEFAULT_STOP : null;
+    const bestStop = best && stopKey && stopKey !== 'explorer' ? `&stop=${encodeURIComponent(stopKey)}` : '';
+
     const loadPage = async (cursor) => {
         setLoading(true);
         setPageError(false);
         try {
-            const qs = withOwn(cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '');
-            const page = await api(`${feedDoor}${qs}`);
-            setItems((have) => mergeFeed(cursor ? have : [], page.items));
-            setMore(!!page.more);
+            if (best) {
+                // The node ranks the whole window at the dial's stop, and pages it.
+                const qs = withOwn(`?${sortParams(sort)}${bestStop}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
+                const page = await api(`${feedDoor}${qs}`);
+                setItems((have) => mergeRanked(cursor ? have : [], page.items));
+                setAfter(page.after || null);
+                setMore(!!page.more);
+            } else {
+                const qs = withOwn(cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '');
+                const page = await api(`${feedDoor}${qs}`);
+                setItems((have) => mergeFeed(cursor ? have : [], page.items));
+                setMore(!!page.more);
+            }
         } catch {
             // A failed page leaves what's shown - but says so. The silent version of this
             // catch hid a server 500 behind a button that "did nothing" (2026-08-06).
@@ -275,16 +312,18 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         }
         setLoading(false);
     };
+    const nextCursor = () => (best ? after : feedCursor(items));
     useEffect(() => {
-        if (feedDoor) loadPage(null);
+        if (feedDoor && sort !== null) loadPage(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [feedDoor, ownOut]);
+    }, [feedDoor, ownOut, sort, best ? stopKey : null]);
 
     // Notice new arrivals without showing them: poll the head page on a slow beat (and on
     // window focus - coming back to the tab is when "anything new?" is the live question),
     // and count what isn't already on screen.
     useEffect(() => {
-        if (!feedDoor) return;
+        // A best order has no "newer": what arrives is ranked on the next look, not queued.
+        if (!feedDoor || best) return;
         let live = true;
         const look = async () => {
             try {
@@ -306,19 +345,20 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
             clearInterval(timer);
             window.removeEventListener('focus', look);
         };
-    }, [root, items, feedDoor, ownOut]);
+    }, [root, items, feedDoor, ownOut, best]);
 
     // A fresh post of your own joins the stream immediately - your attention is already at
     // the top, so the popping-in objection doesn't apply to the thing you just did. The
     // synthesized item merges by the same key the real journal row will carry, so when the
     // poll later brings the real one, the dedupe swallows it instead of doubling it.
     useEffect(() => {
-        // ...unless the reader has left their own posts out ("me" unpicked).
-        if (!fresh || ownOut) return;
+        // ...unless the reader has left their own posts out ("me" unpicked), or is reading a
+        // best order, where a post nobody has reacted to yet has no place at the top.
+        if (!fresh || ownOut || best) return;
         setItems((have) => mergeFeed([fresh], have));
         setPending((p) => p.filter((i) => feedKey(i) !== feedKey(fresh)));
         if (streamRef.current) streamRef.current.scrollTop = 0;
-    }, [fresh, ownOut]);
+    }, [fresh, ownOut, best]);
 
     const takePending = () => {
         setItems((have) => mergeFeed(have, pending));
@@ -333,13 +373,13 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         if (!el || !more) return;
         const onScroll = () => {
             if (el.scrollTop + el.clientHeight > el.scrollHeight - 600 && !loading) {
-                loadPage(feedCursor(items));
+                loadPage(nextCursor());
             }
         };
         el.addEventListener('scroll', onScroll);
         return () => el.removeEventListener('scroll', onScroll);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [more, loading, items]);
+    }, [more, loading, items, after]);
 
     // The slider (PROJECT_PLAN: one slider, two budgets; PROJECT_PLAN's Discovery, slice 3). Pure
     // attention: a read-time floor over rows already journaled, network-silent both ways.
@@ -347,22 +387,40 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     // person's feed and syncs with them, unlike the per-device seal prefs - read once per
     // mount, written on every move. null until the read lands, so the first render filters
     // at the persisted stop rather than flashing Explorer and narrowing.
-    const [stop, setStop] = useState(null);
     useEffect(() => {
         if (!root || !dial) return undefined;
         let live = true;
         api(`/api/identity/${root}/private/kv/feed_selectivity`)
             .then((r) => {
                 if (!live) return;
-                const saved = ((r && r.values) || []).find((v) => v.key === 'stop');
+                const values = (r && r.values) || [];
+                const saved = values.find((v) => v.key === 'stop');
                 const known = saved && SELECTIVITY_STOPS.some((s) => s.key === saved.value);
                 setStop(known ? saved.value : DEFAULT_STOP);
+                if (sortable) {
+                    const order = values.find((v) => v.key === 'sort');
+                    setSort(order && FEED_SORTS.includes(order.value) ? order.value : DEFAULT_SORT);
+                }
             })
-            .catch(() => live && setStop(DEFAULT_STOP));
+            .catch(() => {
+                if (!live) return;
+                setStop(DEFAULT_STOP);
+                if (sortable) setSort(DEFAULT_SORT);
+            });
         return () => {
             live = false;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, dial]);
+    const moveSort = (key) => {
+        setSort(key);
+        setAfter(null);
+        if (streamRef.current) streamRef.current.scrollTop = 0;
+        api(`/api/identity/${root}/private/kv/feed_selectivity/sort`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: key }),
+        }).catch(() => {});
+    };
     const moveStop = (key) => {
         setStop(key);
         api(`/api/identity/${root}/private/kv/feed_selectivity/stop`, {
@@ -384,7 +442,6 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         return item.suggested_via ? 'low' : undefined;
     };
 
-    const stopKey = dial ? stop || DEFAULT_STOP : null;
     // Your own posts always show: the slider curates OTHER people's claims on your
     // attention, and hiding your words from yourself at "high interest only" would read as
     // loss, not selectivity.
@@ -409,13 +466,17 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         narrowParams('', picks),
         stopKey && stopKey !== 'explorer' ? `stop=${encodeURIComponent(stopKey)}` : '',
         ownOut ? 'me=0' : '',
+        // A best window counts only what it shows.
+        best && sort !== 'ever' ? `window=${sort}` : '',
     ]
         .filter(Boolean)
         .join('&');
     const labels = useLabels(labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null, items.length);
-    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, ownOut });
+    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, ownOut, sort });
     const shown = search.active
-        ? mergeFeed([], search.results || []).filter((item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot))
+        ? (best ? mergeRanked([], search.results || []) : mergeFeed([], search.results || [])).filter(
+              (item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot)
+          )
         : [...(scheduled || []), ...visible];
 
     return html`
@@ -434,6 +495,14 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                         onInput=${(e) => moveStop(SELECTIVITY_STOPS[Number(e.currentTarget.value)].key)}
                     />
                     <span class="feed-selectivity-label">${STOP_WORDS[stopKey] ? STOP_WORDS[stopKey]() : ''}</span>
+                </label>`}
+                ${sortable &&
+                sort !== null &&
+                html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first, or the posts the people you trust and follow reacted to best')}>
+                    <span class="feed-selectivity-name">${t('apps.feed.sort-by', 'order:')}</span>
+                    <select value=${sort} onChange=${(e) => moveSort(e.currentTarget.value)}>
+                        ${FEED_SORTS.map((key) => html`<option value=${key} key=${key}>${SORT_WORDS[key]()}</option>`)}
+                    </select>
                 </label>`}
             </div>
             ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
@@ -463,7 +532,12 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                     editing=${item.mine ? edit(item.doc_id) : null}
                 />`
             )}
-            ${items.length === 0 &&
+            ${best &&
+            items.length === 0 &&
+            !loading &&
+            html`<p class="null-sub">${t('apps.feed.nothing-in-this-window', 'nothing in your feed was posted in this window.')}</p>`}
+            ${!best &&
+            items.length === 0 &&
             !loading &&
             (nullState ||
             html`<p class="null-sub">
@@ -486,7 +560,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                 ${t('apps.feed.nothing-at-this-selectivity', 'nothing at this selectivity - slide toward Explorer to widen the feed.')}
             </p>`}
             ${more &&
-            html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(feedCursor(items))}>
+            html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(nextCursor())}>
                 ${loading
                     ? t('apps.feed.reading-further-back', 'reading further back…')
                     : pageError

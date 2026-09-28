@@ -12,7 +12,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST, HOST_B, HOST_C } = require("./fetch.cjs");
+const { HOST, HOST_B, HOST_C, sql } = require("./fetch.cjs");
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -78,6 +78,40 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             if (!kinds.includes("room")) await wait(300);
         }
         assert.ok(kinds.includes("room"), `the feed's kind row lists rooms: ${kinds}`);
+    });
+
+    it("a room reached only by the feed stays in the chats column under any number of newer posts", async () => {
+        // 2026-09-27: the column read the newest 5000 journal rows and kept the rooms among them,
+        // so a room bea follows but never entered left her list once 5000 newer posts arrived.
+        const pantry = await openRoom(ada, adaRoot, "the pantry", "never entered by bea");
+        await pullAndFold(HOST_B, adaRoot);
+        let listed = false;
+        for (let i = 0; i < 30 && !listed; i++) {
+            await beat(HOST_B, "journal-fill");
+            listed = (await rooms(bea, beaRoot)).some((r) => r.doc_id === pantry);
+            if (!listed) await wait(400);
+        }
+        assert.ok(listed, "the room reached bea's list by the feed");
+        // 8192 newer posts in bea's feed, planted by doubling one row thirteen times.
+        const plant = (q) => sql(q, HOST_B);
+        await plant(
+            `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+             VALUES ('${beaRoot}', '${adaRoot}', 'plant', 'filler', 'marquee', 9000000000000, 9000000000000, 9000000000000)`
+        );
+        for (let i = 0; i < 13; i++) {
+            await plant(
+                `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+                 SELECT reader_root, author_root, doc_id || '-${i}', title, format, published_ms + 1, updated_ms, arrived_ms
+                 FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`
+            );
+        }
+        try {
+            const planted = await plant(`SELECT COUNT(*) AS n FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`);
+            assert.equal(Number(planted.rows[0].n), 8192);
+            assert.ok((await rooms(bea, beaRoot)).some((r) => r.doc_id === pantry), "still in bea's chats column");
+        } finally {
+            await plant(`DELETE FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`);
+        }
     });
 
     it("a room is not a reply, and a room stays a room when its words change", async () => {

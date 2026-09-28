@@ -21,7 +21,7 @@ import { useTurbolinks } from '../doc/turbolinks.js';
 import { openMirror, useLive } from '../mirror.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { contactCollection } from '../pure/contact.js';
-import { MAX_TAG_CHARS } from '../pure/annotations.js';
+import { isEmojiTag, MAX_TAG_CHARS } from '../pure/annotations.js';
 import { veilsMedia } from '../pure/chatveil.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
@@ -45,7 +45,7 @@ const onlyEmoji = (words) => {
     const count = (words.match(/:[a-z0-9_+-]+:|\p{Extended_Pictographic}/gu) || []).length;
     return count > 0 && count <= 8;
 };
-import { POLE_EMOJI, EMOJI_PALETTE, shortcodeOf, glyphOf } from '../emoji.js';
+import { EmojiStrip, shortcodeOf, glyphOf } from '../emoji.js';
 import { useShared, markShared } from '../shares.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -223,6 +223,12 @@ const NewRoom = ({ root, onMade }) => {
             setError(t('apps.chat.a-tag-is-n-characters-at-most', 'a tag is {cap} characters at most', { cap: MAX_TAG_CHARS }));
             return;
         }
+        // The room is your own post, and a reaction is for somebody else's (2026-09-27): the
+        // door refuses an author's emoji tag, so it is refused here, before the room is made.
+        if (isEmojiTag(value)) {
+            setError(t('apps.chat.no-reacting-to-your-own-room', "a reaction is for somebody else's post - tag your room with words"));
+            return;
+        }
         setError(null);
         setRoomTags((have) => [...have, value]);
     };
@@ -368,14 +374,12 @@ const Speaker = ({ root, current }) => {
     </a>`;
 };
 
-/// The emoji picker under a line's hover menu (CHAT.md, slice 9): the pole ten, then the
+/// The emoji picker under a line's hover menu (CHAT.md, slice 9): the pole rows, then the
 /// whole table, narrowed as you type a name. One click says the emoji.
 const EmojiPicker = ({ onPick, onClose }) => {
     const [q, setQ] = useState('');
     const needle = q.trim().toLowerCase();
     const hit = ([name]) => !needle || name.replace(/_/g, ' ').includes(needle);
-    const pole = POLE_EMOJI.filter(hit);
-    const rest = EMOJI_PALETTE.filter(hit);
     const chip = ([name, ch]) => html`<button
         class="label-emoji"
         key=${name}
@@ -395,11 +399,7 @@ const EmojiPicker = ({ onPick, onClose }) => {
                 if (e.key === 'Escape') onClose();
             }}
         />
-        <span class="label-emoji-strip chat-emoji-strip">
-            ${pole.map(chip)}
-            ${pole.length > 0 && rest.length > 0 && html`<span class="label-emoji-pole-break"></span>`}
-            ${rest.map(chip)}
-        </span>
+        <${EmojiStrip} hit=${hit} chip=${chip} className="chat-emoji-strip" />
     </span>`;
 };
 
