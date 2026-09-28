@@ -178,10 +178,17 @@ async fn stored(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<
 /// the body when the bytes are here (and stored), else `None` - the caller falls back to
 /// the title. `budget` is the caller's remaining allowance of body reads.
 async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<Option<String>> {
-    if let Some((stamp, tokens)) = stored(&state.node_db, &c.author_root, &c.doc_hex).await? {
-        if stamp == c.updated_ms {
-            return Ok(Some(tokens));
+    let kept = stored(&state.node_db, &c.author_root, &c.doc_hex).await?;
+    if let Some((stamp, tokens)) = &kept {
+        if *stamp == c.updated_ms {
+            return Ok(Some(tokens.clone()));
         }
+    }
+    // Never indexed: the title's words go in at once, stamped 0 so the body's still wanted - a
+    // search finds the post by its title until its words are read (2026-09-28: the index is what a
+    // search asks now, so a post not in it is a post no search finds).
+    if kept.is_none() {
+        keep_bag(&state.node_db, c, 0, &tokens_of(&c.title, "")).await?;
     }
     if *budget == 0 {
         return Ok(None);
@@ -230,16 +237,92 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
         _ => c.title.clone(),
     };
     let tokens = tokens_of(&title, &body);
-    state
-        .node_db
-        .execute(
-            "INSERT INTO post_search (author_root, doc_id, updated_ms, tokens) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(author_root, doc_id) DO UPDATE SET updated_ms = excluded.updated_ms, tokens = excluded.tokens",
-            (c.author_root.as_str(), c.doc_hex.as_str(), c.updated_ms, tokens.as_str()),
+    keep_bag(&state.node_db, c, c.updated_ms, &tokens).await?;
+    Ok(Some(tokens))
+}
+
+/// Keep one post's word bag, stamped (0 for a title alone), and its terms - the inverted index a
+/// search reads (node rung 0059): the post's old terms go and its new ones come, together.
+async fn keep_bag(db: &Db, c: &Candidate, stamp: i64, tokens: &str) -> Result<()> {
+    db.execute(
+        "INSERT INTO post_search (author_root, doc_id, updated_ms, tokens) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(author_root, doc_id) DO UPDATE SET updated_ms = excluded.updated_ms, tokens = excluded.tokens",
+        (c.author_root.as_str(), c.doc_hex.as_str(), stamp, tokens),
+    )
+    .await
+    .context("writing the post index")?;
+    db.execute(
+        "DELETE FROM post_terms WHERE author_root = ?1 AND doc_id = ?2",
+        (c.author_root.as_str(), c.doc_hex.as_str()),
+    )
+    .await
+    .context("clearing a post's terms")?;
+    let terms: Vec<&str> = tokens.split(' ').filter(|t| !t.is_empty()).collect();
+    for chunk in terms.chunks(200) {
+        let rows = chunk.iter().map(|_| "(?, ?, ?)").collect::<Vec<_>>().join(", ");
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|t| {
+                [
+                    turso::Value::Text(t.to_string()),
+                    turso::Value::Text(c.author_root.clone()),
+                    turso::Value::Text(c.doc_hex.clone()),
+                ]
+            })
+            .collect();
+        db.execute(
+            &format!("INSERT OR IGNORE INTO post_terms (term, author_root, doc_id) VALUES {rows}"),
+            turso::params_from_iter(params),
         )
         .await
-        .context("writing the post index")?;
-    Ok(Some(tokens))
+        .context("writing a post's terms")?;
+    }
+    Ok(())
+}
+
+/// The posts whose words hold every one of `terms` (each a prefix of some word - `hits`' rule),
+/// off the inverted index - when the rarest term names at most `cap` posts; `None` when every
+/// term is commoner than that, and walking the feed newest first is the cheaper road. Node-wide:
+/// the caller meets it with the reader's journal.
+pub async fn posts_with_terms(db: &Db, terms: &[String], cap: usize) -> Result<Option<std::collections::HashSet<(String, String)>>> {
+    if terms.is_empty() {
+        return Ok(None);
+    }
+    // The rarest term first: each counted up to cap + 1, off the index's range.
+    let mut rarest: Option<(usize, Vec<(String, String)>)> = None;
+    for t in terms {
+        let hi = format!("{t}\u{10FFFF}");
+        let posts: Vec<(String, String)> = db
+            .fetch_all(
+                "SELECT DISTINCT author_root, doc_id FROM post_terms WHERE term >= ?1 AND term < ?2 LIMIT ?3",
+                (t.as_str(), hi.as_str(), cap as i64 + 1),
+            )
+            .await
+            .context("reading a term's posts")?;
+        if posts.len() <= cap && rarest.as_ref().is_none_or(|(n, _)| posts.len() < *n) {
+            rarest = Some((posts.len(), posts));
+        }
+    }
+    let Some((_, posts)) = rarest else { return Ok(None) };
+    // Every other term, asked of each of those posts' own terms.
+    let mut out = std::collections::HashSet::new();
+    'post: for (a, d) in posts {
+        for t in terms {
+            let hi = format!("{t}\u{10FFFF}");
+            let hit: Option<(i64,)> = db
+                .fetch_optional(
+                    "SELECT 1 FROM post_terms WHERE author_root = ?1 AND doc_id = ?2 AND term >= ?3 AND term < ?4 LIMIT 1",
+                    (a.as_str(), d.as_str(), t.as_str(), hi.as_str()),
+                )
+                .await
+                .context("asking a post for a term")?;
+            if hit.is_none() {
+                continue 'post;
+            }
+        }
+        out.insert((a, d));
+    }
+    Ok(Some(out))
 }
 
 /// Judge `candidates` (newest first) against `narrow`: the indices of those that match, at
@@ -520,6 +603,18 @@ pub async fn index_pass(state: AppState) -> Result<()> {
     Ok(())
 }
 
+/// Before a search reads the index: the newest of the reader's feed indexed now, so a post that
+/// just arrived - or was just written - is found by its words at once, not at the next beat. The
+/// query's own allowance of body reads, spent newest first; an indexed post costs one lookup.
+pub async fn index_head(state: &AppState, reader: &str) -> Result<()> {
+    let feed = crate::fanout::JournalFilter::feed(reader);
+    let mut budget = INDEX_PER_QUERY;
+    for r in crate::fanout::journal_page(&state.node_db, &feed, None, HEAD_ROWS).await? {
+        let _ = bag_for(state, &candidate(r), &mut budget).await?;
+    }
+    Ok(())
+}
+
 /// The newest rows every beat looks at, and the backlog rows one beat walks per reader - bounds
 /// on rows looked at, beside the budget on bodies read, since even an indexed row costs a read.
 const HEAD_ROWS: i64 = 100;
@@ -543,12 +638,66 @@ pub async fn forget_author(node_db: &Db, author_hex: &str) -> Result<()> {
         .execute("DELETE FROM post_search WHERE author_root = ?1", (author_hex,))
         .await
         .context("forgetting an author's post index")?;
+    node_db
+        .execute("DELETE FROM post_terms WHERE author_root = ?1", (author_hex,))
+        .await
+        .context("forgetting an author's terms")?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cand(doc: &str, title: &str) -> Candidate {
+        Candidate { author_root: "aa".repeat(32), doc_hex: doc.to_string(), title: title.to_string(), updated_ms: 1, kind: "post" }
+    }
+
+    /// The inverted index (node rung 0059): every term a prefix of some word, all of them required;
+    /// the rarest term names the set; a set past the cap is `None`, the walk's road; and a post
+    /// indexed again loses its old words.
+    #[tokio::test]
+    async fn terms_find_posts_by_prefix_and_all_of_them() {
+        let db = crate::db::test_node_db().await;
+        let (loaf, bagel, ride) = ("11".repeat(16), "22".repeat(16), "33".repeat(16));
+        keep_bag(&db, &cand(&loaf, "Loaf"), 1, &tokens_of("Loaf", "a sourdough bread loaf")).await.unwrap();
+        keep_bag(&db, &cand(&bagel, "Bagels"), 1, &tokens_of("Bagels", "boiled bread")).await.unwrap();
+        keep_bag(&db, &cand(&ride, "Ride"), 1, &tokens_of("Ride", "a canal ride")).await.unwrap();
+        let docs = |found: Option<std::collections::HashSet<(String, String)>>| {
+            let mut v: Vec<String> = found.expect("a set").into_iter().map(|(_, d)| d).collect();
+            v.sort();
+            v
+        };
+        let find = |t: &[&str], cap| {
+            let db = db.clone();
+            let terms: Vec<String> = t.iter().map(|s| s.to_string()).collect();
+            async move { posts_with_terms(&db, &terms, cap).await.unwrap() }
+        };
+        assert_eq!(docs(find(&["sour"], 10).await), vec![loaf.clone()], "a prefix");
+        assert_eq!(docs(find(&["bread"], 10).await), [loaf.clone(), bagel.clone()]);
+        assert_eq!(docs(find(&["bread", "boil"], 10).await), vec![bagel.clone()], "every term");
+        assert!(docs(find(&["bread", "canal"], 10).await).is_empty(), "no post has both");
+        assert!(find(&["bread"], 1).await.is_none(), "two posts past a cap of one: walk the feed instead");
+        assert_eq!(docs(find(&["bread", "sour"], 1).await), vec![loaf.clone()], "the rarer term names the set");
+        keep_bag(&db, &cand(&loaf, "Loaf"), 2, &tokens_of("Loaf", "rye now")).await.unwrap();
+        assert!(docs(find(&["sour"], 10).await).is_empty(), "indexed again, the old words go");
+        assert_eq!(docs(find(&["rye"], 10).await), vec![loaf.clone()]);
+    }
+
+    /// The term read is a range scan of the index, never the table.
+    #[tokio::test]
+    async fn a_term_is_a_range_of_the_index() {
+        let db = crate::db::test_node_db().await;
+        let plan: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(
+                "EXPLAIN QUERY PLAN SELECT DISTINCT author_root, doc_id FROM post_terms WHERE term >= ?1 AND term < ?2 LIMIT ?3",
+                (),
+            )
+            .await
+            .unwrap();
+        let p = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(p.contains("post_terms_1 (term>=? AND term<?)"), "a range of the index: {p}");
+    }
 
     /// Prefix-by-token, every term required, case-blind, punctuation ignored.
     #[test]

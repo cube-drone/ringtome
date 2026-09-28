@@ -52,6 +52,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // module - joined, rather than an IN list of every post.
         ("feed_journal", vec!["fanout.rs", "annotations.rs"]),
         ("post_search", vec!["search.rs"]),
+        ("post_terms", vec!["search.rs"]),
         ("room_messages", vec!["chat.rs"]),
         ("rooms_open", vec!["chat.rs"]),
         ("room_reactions", vec!["chat.rs"]),

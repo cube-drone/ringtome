@@ -1669,23 +1669,6 @@ fn hex_in_list<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
 /// question this draft does not pretend to answer. The reader's interest dials affect only how
 /// items RENDER (size, opacity, truncation) - which is the client's business, off its own
 /// mirror, where those dials live.
-/// The reader's newest `cap` journal rows - **being retired** (PROJECT_PLAN's Scores and sort
-/// orders, *Shape*): its callers filter in memory and silently lose everything past the cap.
-/// The tag cloud, the search's and the picks' narrowing, and the best orders still read it until
-/// their own replacements land; nothing new should. [`journal_page`] is the filter in SQL.
-pub async fn feed_all(node_db: &crate::db::Db, reader: &str, cap: i64) -> Result<Vec<FeedRow>> {
-    let rows: Vec<JournalTuple> = node_db
-        .fetch_all(
-            "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms
-             FROM feed_journal WHERE reader_root = ?1
-             ORDER BY published_ms DESC, doc_id DESC LIMIT ?2",
-            (reader, cap),
-        )
-        .await
-        .context("reading the whole journal")?;
-    Ok(rows.into_iter().map(journal_row).collect())
-}
-
 /// Who introduced one document to one reader here: the feed journal's byline (CHAT.md;
 /// Curtis, 2026-09-19). The onward hop's `via` for a door the client reached by address
 /// rather than by card - a room's, which the address bar names and no card dresses.
@@ -1994,6 +1977,26 @@ fn page_sql(filter: &JournalFilter<'_>, cursor: bool) -> String {
     } else {
         format!("SELECT {JOURNAL_COLUMNS} {from} WHERE {clause} ORDER BY published_ms DESC, doc_id DESC LIMIT ?2")
     }
+}
+
+/// These posts' rows in a reader's journal, through `filter` - each found by the journal's key, for
+/// a search or a pick that has already named a small set of posts (search.rs, annotations.rs). In
+/// no order; posts not in the reader's feed, or not through the filter, are simply absent.
+pub async fn journal_rows_for(node_db: &crate::db::Db, filter: &JournalFilter<'_>, posts: &[(String, String)]) -> Result<Vec<FeedRow>> {
+    let sql = format!(
+        "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY sqlite_autoindex_feed_journal_1
+         WHERE {} AND author_root = ?2 AND doc_id = ?3",
+        filter.clause("")
+    );
+    let mut out = Vec::new();
+    for (author, doc) in posts {
+        let row: Option<JournalTuple> = node_db
+            .fetch_optional(&sql, (filter.reader, author.as_str(), doc.as_str()))
+            .await
+            .context("reading a post's journal row")?;
+        out.extend(row.map(journal_row));
+    }
+    Ok(out)
 }
 
 /// Every row of a reader's journal through `filter`, newest first, unbounded - for a filter that
@@ -2387,6 +2390,13 @@ mod tests {
         }
         let p = plan(unscored_sql(&filter, false)).await;
         assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a score probed by key: {p}");
+        // A search's or a pick's small set, met with the journal by key.
+        let p = plan(format!(
+            "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY sqlite_autoindex_feed_journal_1 WHERE {} AND author_root = ?2 AND doc_id = ?3",
+            filter.clause("")
+        ))
+        .await;
+        assert!(p.contains("feed_journal_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a post by its key: {p}");
         // The tag cloud's year, and the chats column's rooms.
         let p = plan(format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY feed_journal_by_time WHERE {}", filter.clause(""))).await;
         assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "a window reads only the window: {p}");

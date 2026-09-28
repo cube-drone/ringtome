@@ -165,21 +165,23 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(tagCount(await labels(), "bread"), 2, "the cloud before: bread on two posts");
         // 8192 newer posts in ada's feed, each tagged "planted", laid in by doubling one row.
         const plant = (q) => sql(q, HOST);
+        const PLANT = "abad1dea";
         await plant(
             `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
-             VALUES ('${adaRoot}', '${adaRoot}', 'plant', 'filler', 'marquee', 9000000000000, 9000000000000, 9000000000000)`
+             VALUES ('${adaRoot}', '${adaRoot}', '${PLANT}', 'filler', 'marquee', 9000000000000, 9000000000000, 9000000000000)`
         );
+        // Hex ids (a label read skips a malformed one), each doubling two more hex digits wide.
         for (let i = 0; i < 13; i++) {
             await plant(
                 `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
-                 SELECT reader_root, author_root, doc_id || '-${i}', title, format, published_ms + 1, updated_ms, arrived_ms
-                 FROM feed_journal WHERE reader_root = '${adaRoot}' AND doc_id LIKE 'plant%'`
+                 SELECT reader_root, author_root, doc_id || '${i.toString(16).padStart(2, "0")}', title, format, published_ms + 1, updated_ms, arrived_ms
+                 FROM feed_journal WHERE reader_root = '${adaRoot}' AND doc_id LIKE '${PLANT}%'`
             );
         }
         await plant(
             `INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
              SELECT author_root, doc_id, author_root, 'tag', 'planted', 1 FROM feed_journal
-             WHERE reader_root = '${adaRoot}' AND doc_id LIKE 'plant%'`
+             WHERE reader_root = '${adaRoot}' AND doc_id LIKE '${PLANT}%'`
         );
         try {
             // Planted behind the node's back, so the cached cloud has not heard. A label somebody
@@ -200,9 +202,19 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             assert.ok((big.tags || []).some((x) => x.value === "bikes"), `picking a tag on 8192 posts leaves bikes listed: ${JSON.stringify(big.tags)}`);
             const small = await labels("tag=bread");
             assert.ok(!(small.tags || []).some((x) => x.value === "bikes"), "picking bread still thins bikes away");
+            // The posts themselves (2026-09-28): a pick and a search find what lies under 8192
+            // newer posts - off the labels' value index and the inverted index, not the newest 5000.
+            const feed = (qs) => ada(`api/identity/${adaRoot}/feed?${qs}`).then((r) => r.json());
+            assert.deepEqual(ids(await feed("tag=bread")), [a1, a3].sort(), "a pick finds the two bread posts beneath them");
+            assert.deepEqual(ids(await feed("q=sourdough")), [a1], "and a word finds the loaf");
+            assert.deepEqual(ids(await feed("tag=bread&q=boiled")), [a3], "the two together");
+            const common = (await feed("tag=planted")).items || [];
+            assert.equal(common.length, 100, "a pick on 8192 posts walks the feed newest first and stops at a page");
         } finally {
-            await plant(`DELETE FROM doc_annotations WHERE target_author = '${adaRoot}' AND target_doc LIKE 'plant%'`);
-            await plant(`DELETE FROM feed_journal WHERE reader_root = '${adaRoot}' AND doc_id LIKE 'plant%'`);
+            await plant(`DELETE FROM doc_annotations WHERE target_author = '${adaRoot}' AND target_doc LIKE '${PLANT}%'`);
+            await plant(`DELETE FROM post_terms WHERE doc_id LIKE '${PLANT}%'`);
+            await plant(`DELETE FROM post_search WHERE doc_id LIKE '${PLANT}%'`);
+            await plant(`DELETE FROM feed_journal WHERE reader_root = '${adaRoot}' AND doc_id LIKE '${PLANT}%'`);
             await dee(`api/identity/${deeRoot}/public-annotations/${adaRoot}/${a2}/tag/fresh`, { method: "DELETE" });
         }
     });

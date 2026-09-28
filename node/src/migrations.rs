@@ -102,6 +102,12 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0058_journal_time_order.sql"),
         refold: &[],
     },
+    Rung {
+        version: 59,
+        name: "0059_search_terms.sql",
+        sql: include_str!("../migrations/node/0059_search_terms.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).

@@ -803,44 +803,6 @@ struct Sharer {
     avatar: Option<String>,
 }
 
-/// The journal rows the reader's selectivity dial shows at `stop` (selectivity.rs, the
-/// browser's rule on the node): the reader's own rows always, the rest by the author and
-/// sharer dials off the ledger and the path strength of a suggestion. No stop, or
-/// Explorer, keeps everything. One ledger read for the whole set.
-async fn rows_at_stop(
-    state: &AppState,
-    data: &store::Store,
-    root: &str,
-    rows: Vec<crate::fanout::FeedRow>,
-    stop: Option<&str>,
-) -> Result<Vec<crate::fanout::FeedRow>, AppError> {
-    let Some(stop) = stop.filter(|s| !s.is_empty() && *s != "explorer") else { return Ok(rows) };
-    let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
-    let levels = if rows.iter().any(|r| r.suggested_via.is_some()) {
-        crate::speculative::levels_for(&state.node_db, root)
-            .await
-            .map_err(AppError::Internal)?
-    } else {
-        Default::default()
-    };
-    Ok(rows
-        .into_iter()
-        .filter(|r| {
-            if r.author_root == root {
-                return true;
-            }
-            let level = r.suggested_via.as_ref().and_then(|_| levels.get(&r.author_root)).map(String::as_str);
-            let view = crate::selectivity::RowView {
-                author: &r.author_root,
-                via: r.via_root.as_deref(),
-                suggested_via: r.suggested_via.as_deref(),
-                suggested_level: level,
-            };
-            crate::selectivity::visible_at(stop, &view, &facts)
-        })
-        .collect())
-}
-
 /// The kind of each journal row (search.rs KINDS): a share by its via, a book by its
 /// format, a reply by its link, a post otherwise. One links read for the whole set.
 async fn feed_kinds(state: &AppState, rows: &[crate::fanout::FeedRow]) -> Result<Vec<&'static str>, AppError> {
@@ -2113,7 +2075,21 @@ async fn feed_labels_handler(
         stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
         ..crate::fanout::JournalFilter::feed(&root)
     };
-    let rows = crate::fanout::journal_all(&state.node_db, &filter).await.map_err(AppError::Internal)?;
+    let mut rows = crate::fanout::journal_all(&state.node_db, &filter).await.map_err(AppError::Internal)?;
+    // Searching inside the cloud: the words' posts off the inverted index, when they are few
+    // enough to name, meet the year here - and the words are then settled, not asked again of
+    // every post's bag. Commoner words fall to the per-post judgment below.
+    let mut narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
+    if !narrow.terms.is_empty() {
+        crate::search::index_head(&state, &root).await.map_err(AppError::Internal)?;
+    }
+    if let Some(found) = crate::search::posts_with_terms(&state.node_db, &narrow.terms, 5000)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        rows.retain(|r| found.contains(&(r.author_root.clone(), r.doc_id.clone())));
+        narrow.terms.clear();
+    }
     let rows = readable_feed_rows(&state, &root, rows).await;
     let kinds = feed_kinds(&state, &rows).await?;
     let candidates: Vec<crate::search::Candidate> = rows
@@ -2131,7 +2107,6 @@ async fn feed_labels_handler(
     let known = crate::annotations::for_journal_since(&state, &root, since)
         .await
         .map_err(AppError::Internal)?;
-    let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
     let unpicked = crate::search::Narrow { terms: narrow.terms.clone(), ..Default::default() };
     let whole = crate::search::facets_json_with(&state, &candidates, &unpicked, Some(&root), 0, Some(&known))
         .await
@@ -2243,17 +2218,10 @@ async fn feed_handler(
             }
             (ranked.into_iter().map(|(_, r)| r).collect(), more)
         } else {
-            // A search or the picks inside best: narrowed as the search narrows (step 5 of the
-            // plan's Shape moves this off the capped read), then ordered by the stored scores.
-            let mut all = crate::fanout::feed_all(&state.node_db, &root, 5000)
-                .await
-                .map_err(AppError::Internal)?;
-            all.retain(|r| {
-                (own || r.author_root != root)
-                    && r.published_ms >= since
-                    && matches!(r.format.as_deref(), Some("marquee" | "plaintext" | "book" | "room"))
-            });
-            let all = narrowed(&state, &_owned, &root, all, &narrow, q.stop.as_deref()).await?;
+            // A search or the picks inside best: narrowed off the indexes, then ordered by the
+            // stored scores.
+            let filter = feed_filter(&state, &facts, &root, own, Some(since), q.stop.as_deref()).await?;
+            let all = narrowed(&state, &root, &filter, &narrow).await?;
             let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
             let scores = crate::score::stored_for(&state.node_db, &root, &pairs)
                 .await
@@ -2284,13 +2252,9 @@ async fn feed_handler(
         rows.truncate(page as usize);
         (rows, more)
     } else {
-        let mut all = crate::fanout::feed_all(&state.node_db, &root, 5000)
-            .await
-            .map_err(AppError::Internal)?;
-        if !wants_own(&q.me) {
-            all.retain(|r| r.author_root != root);
-        }
-        (narrowed(&state, &_owned, &root, all, &narrow, q.stop.as_deref()).await?, false)
+        let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
+        let filter = feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
+        (narrowed(&state, &root, &filter, &narrow).await?, false)
     };
 
     // A sealed post this reader cannot open is not SHOWN at all (Curtis, 2026-09-02: "I'd
@@ -2506,18 +2470,104 @@ async fn feed_handler(
     Ok(Json(out))
 }
 
-/// The feed rows a search or the facet picks leave (search.rs), at the dial's stop.
+/// The journal filter a feed request asks for: the reader's own posts or not, a window or not, and
+/// the dial's stop with the reader's dials in it.
+async fn feed_filter<'a>(
+    state: &AppState,
+    facts: &crate::selectivity::Facts,
+    root: &'a str,
+    include_own: bool,
+    since_ms: Option<i64>,
+    stop: Option<&str>,
+) -> Result<crate::fanout::JournalFilter<'a>, AppError> {
+    let stop = stop.filter(|s| !s.is_empty() && *s != "explorer");
+    let levels = match stop {
+        Some(_) => crate::speculative::levels_for(&state.node_db, root).await.map_err(AppError::Internal)?,
+        None => Default::default(),
+    };
+    Ok(crate::fanout::JournalFilter {
+        include_own,
+        since_ms,
+        stop: stop.and_then(|s| crate::selectivity::stop_rule(s, facts, &levels)),
+        ..crate::fanout::JournalFilter::feed(root)
+    })
+}
+
+/// The feed rows a search or the facet picks leave, newest first, at most `search::RESULTS_CAP`
+/// (2026-09-28, PROJECT_PLAN's Scores and sort orders, *Shape*: off indexes, where this took the
+/// newest 5000 journal rows and filtered them). Two roads, chosen per request: a word or a label
+/// that names at most `SET_CAP` posts (the inverted index, the labels' value index) starts from
+/// that small set and meets the journal by key; when every one is commoner, the feed is walked
+/// newest first through `filter` until the matches are found - soon, since they are common. Either
+/// way the exact judgment is `search::matching`'s.
 async fn narrowed(
     state: &AppState,
-    data: &store::Store,
     root: &str,
-    all: Vec<crate::fanout::FeedRow>,
+    filter: &crate::fanout::JournalFilter<'_>,
     narrow: &crate::search::Narrow,
-    stop: Option<&str>,
 ) -> Result<Vec<crate::fanout::FeedRow>, AppError> {
-    let mut all = rows_at_stop(state, data, root, all, stop).await?;
-    let kinds = feed_kinds(state, &all).await?;
-    let candidates: Vec<crate::search::Candidate> = all
+    const SET_CAP: usize = 5000;
+    let db = &state.node_db;
+    if !narrow.terms.is_empty() {
+        crate::search::index_head(state, root).await.map_err(AppError::Internal)?;
+    }
+    let mut sets: Vec<std::collections::HashSet<(String, String)>> = Vec::new();
+    if let Some(found) = crate::search::posts_with_terms(db, &narrow.terms, SET_CAP).await.map_err(AppError::Internal)? {
+        sets.push(found);
+    }
+    for tag in &narrow.tags {
+        if let Some(found) = crate::annotations::posts_labelled(db, "tag", tag, SET_CAP).await.map_err(AppError::Internal)? {
+            sets.push(found.into_iter().collect());
+        }
+    }
+    if !narrow.buckets.is_empty() {
+        // Any of the buckets: a set only if every one of them is small.
+        let mut any: Option<std::collections::HashSet<(String, String)>> = Some(Default::default());
+        for bucket in &narrow.buckets {
+            match crate::annotations::posts_labelled(db, "bucket", bucket, SET_CAP).await.map_err(AppError::Internal)? {
+                Some(found) => {
+                    if let Some(set) = any.as_mut() {
+                        set.extend(found);
+                    }
+                }
+                None => any = None,
+            }
+        }
+        sets.extend(any);
+    }
+    sets.sort_by_key(|s| s.len());
+    let mut out: Vec<crate::fanout::FeedRow> = Vec::new();
+    if let Some((first, rest)) = sets.split_first() {
+        let posts: Vec<(String, String)> = first.iter().filter(|p| rest.iter().all(|s| s.contains(*p))).cloned().collect();
+        let mut rows = crate::fanout::journal_rows_for(db, filter, &posts).await.map_err(AppError::Internal)?;
+        rows.sort_by(|a, b| (b.published_ms, &b.doc_id).cmp(&(a.published_ms, &a.doc_id)));
+        judge(state, root, rows, narrow, &mut out).await?;
+    } else {
+        let mut cursor: Option<(i64, String)> = None;
+        loop {
+            let page = crate::fanout::journal_page(db, filter, cursor.clone(), 500).await.map_err(AppError::Internal)?;
+            let full = page.len() == 500;
+            cursor = page.last().map(|r| (r.published_ms, r.doc_id.clone()));
+            judge(state, root, page, narrow, &mut out).await?;
+            if !full || out.len() >= crate::search::RESULTS_CAP {
+                break;
+            }
+        }
+    }
+    out.truncate(crate::search::RESULTS_CAP);
+    Ok(out)
+}
+
+/// Judge these rows (newest first) by `search::matching` and keep the ones that match.
+async fn judge(
+    state: &AppState,
+    root: &str,
+    rows: Vec<crate::fanout::FeedRow>,
+    narrow: &crate::search::Narrow,
+    out: &mut Vec<crate::fanout::FeedRow>,
+) -> Result<(), AppError> {
+    let kinds = feed_kinds(state, &rows).await?;
+    let candidates: Vec<crate::search::Candidate> = rows
         .iter()
         .zip(kinds.iter())
         .map(|(r, kind)| crate::search::Candidate {
@@ -2528,16 +2578,13 @@ async fn narrowed(
             kind,
         })
         .collect();
-    let keep = crate::search::matching(state, &candidates, narrow, Some(root))
+    let keep: std::collections::HashSet<usize> = crate::search::matching(state, &candidates, narrow, Some(root))
         .await
-        .map_err(AppError::Internal)?;
-    let mut i = 0;
-    all.retain(|_| {
-        let k = keep.contains(&i);
-        i += 1;
-        k
-    });
-    Ok(all)
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .collect();
+    out.extend(rows.into_iter().enumerate().filter(|(i, _)| keep.contains(i)).map(|(_, r)| r));
+    Ok(())
 }
 
 /// One page of notifications, dressed like feed rows: byline from the cache, seen-state from

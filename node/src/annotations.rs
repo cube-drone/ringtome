@@ -486,6 +486,23 @@ pub async fn for_posts(
     for_posts_inner(state, posts, Some(viewer)).await
 }
 
+/// The posts carrying one label - a tag anyone said, or (key `bucket`) the bucket a post was
+/// filed in - off the value index (node rung 0059), when there are at most `cap` of them; `None`
+/// when there are more, and walking the feed newest first is the cheaper road. Node-wide, and a
+/// superset: whose bucket, the two-tag rule and sealed admission are the caller's exact judgment
+/// (search.rs `matching`) to apply to what this finds.
+pub async fn posts_labelled(node_db: &Db, key: &str, value: &str, cap: usize) -> Result<Option<Vec<(String, String)>>> {
+    let posts: Vec<(String, String)> = node_db
+        .fetch_all(
+            "SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
+             WHERE key = ?1 AND value = ?2 LIMIT ?3",
+            (key, value, cap as i64 + 1),
+        )
+        .await
+        .context("reading a label's posts")?;
+    Ok((posts.len() <= cap).then_some(posts))
+}
+
 /// The journal window's labels: the window a range scan of the time index, each post's labels
 /// probed by the memo's key - pinned, table and order both, since this engine's planner picks
 /// neither on its own (the tests ask it).
@@ -989,6 +1006,28 @@ mod tests {
         let t = std::time::Instant::now();
         let kept = bounded(labels.into_iter().map(memo_row).collect());
         eprintln!("bounded: {} rows in {:?}", kept.len(), t.elapsed());
+    }
+
+    /// A pick's posts come off the value index (node rung 0059), and past the cap it says so.
+    #[tokio::test]
+    async fn a_labels_posts_come_off_the_value_index() {
+        let db = crate::db::test_node_db().await;
+        let plan: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(
+                "EXPLAIN QUERY PLAN SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
+                 WHERE key = ?1 AND value = ?2 LIMIT ?3",
+                (),
+            )
+            .await
+            .unwrap();
+        let p = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(p.contains("doc_annotations_by_value (key=? AND value=?)"), "{p}");
+        for d in ["11", "22", "33"] {
+            note(&db, "a", &d.repeat(16), "b", "tag", "bread", "chain").await.unwrap();
+        }
+        assert_eq!(posts_labelled(&db, "tag", "bread", 5).await.unwrap().map(|v| v.len()), Some(3));
+        assert_eq!(posts_labelled(&db, "tag", "bread", 2).await.unwrap(), None, "three past a cap of two");
+        assert_eq!(posts_labelled(&db, "tag", "rye", 2).await.unwrap(), Some(Vec::new()));
     }
 
     /// A reaction is flagged as it is noted (node rung 0056), so SQL can tell one without the

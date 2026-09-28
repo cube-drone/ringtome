@@ -25,11 +25,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * report flow
 
 ### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
-* Slice 1, rebuilt for a million-row journal (the plan's *Shape*) - still to go: the picks'
-  narrowing of the posts (through an index on the label's value, not the newest 5000), and the
-  inverted search index; together they retire `fanout::feed_all`'s last capped caller (the
-  search's and the picks' narrowing, best's included). A search inside the tag cloud still reads
-  one stored word-bag per post of the year until the inverted index lands
+* A person's page has the feed's old shape: its search, picks and counts read that person's newest
+  5000 posts (idface.rs `shelf_of(.., 5000)`, `public_docs(.., 5000)`) - the same treatment as the
+  feed's when someone has more
 * Pruning scores older than a year (the plan says they go; nothing prunes them yet)
 * If best-this-year's ~175 ms a page bites: a cached ranking per reader and window
 * Slice 2: hot, and a high score's emphasis

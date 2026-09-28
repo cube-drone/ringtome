@@ -11938,3 +11938,35 @@ facets.cjs holds the cloud counting from under 8192 planted newer posts, moving 
 persona's label lands, and not thinning for a pick on 8192 posts while a two-post pick still thins;
 three plants (the capped read, no bump on noting, no size cap) each turned it red. The plan guards
 now cover the window read and the label join too.
+
+## 2026-09-28 (cont.): search as an inverted index, picks off the value index - the 5000 cap gone (step 5)
+
+The last step of rebuilding slice 1 for a million-row journal. With it, "the newest 5000 journal
+rows, then filter in memory" has no caller left, and `fanout::feed_all` is gone, with the dial's
+in-memory filter `rows_at_stop`.
+
+- **Node rung 0059**: `post_terms`, a row per (term, post), kept with each post's word bag
+  (`search::keep_bag` replaces a post's terms as it re-indexes); `doc_annotations_by_value`, a
+  label's posts off an index; and `post_search` cleared, so every post is indexed afresh into the
+  terms - a dev node's search thins while the walk catches up. A post is indexed by its title the
+  moment it is met (stamped 0, its body still wanted), by its words when the body is read.
+- **Two roads per request** (`routes::narrowed`): the rarest word or label naming at most 5000 posts
+  (`search::posts_with_terms`, `annotations::posts_labelled`) starts from that set and meets the
+  journal by key (`fanout::journal_rows_for`); when every one is commoner, the feed is walked newest
+  first through the journal filter until a page of matches is found. `search::matching` judges
+  exactly, either road.
+- **Found at once**: the old search indexed bodies while it matched, so a post just written was
+  found by its words; the index alone would not find it until the next beat. `search::index_head`
+  indexes the newest hundred of the feed before any word search.
+- **The tag cloud's search** settles its words off the index when they are rare enough to name, and
+  no longer reads a word bag per post of the year for them.
+
+facets.cjs finds, under 8192 planted newer posts, the older posts by a tag, by a word, and by both,
+and a page of the common planted tag by the walk - first failing on the fixture itself (the planted
+ids were not hex, and a label read skips a malformed id), then passing; a planted return to the cap
+(both roads off, the walk stopped at 5000 rows) turned it red. Rust tests hold prefix-and-every-term
+matching, the rarest term naming the set, re-indexing dropping old words, a pick's cap, and the
+plans of all three new index reads.
+
+Still to do (NEXT_STEPS): a person's page searches and counts their newest 5000 posts - the feed's
+old shape on another surface.

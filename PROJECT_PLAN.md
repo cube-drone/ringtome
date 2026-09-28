@@ -3595,7 +3595,7 @@ that name or takes an awkward name to avoid them. Disjoint floors cost one short
 end the conversation. One constant names the word; the pure address builder writes the
 floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
 
-### Scores and sort orders: hot and best (settled 2026-09-27; slice 1 built at read time, being rebuilt on stored scores)
+### Scores and sort orders: hot and best (settled 2026-09-27; slice 1 built 2026-09-28)
 
 "Each item in your feed carries a score ... a unit of content with many positive tags gets a
 very high score ... if someone you trust a lot is responsible for a tag, that tag counts more."
@@ -3708,14 +3708,22 @@ is a million-row journal:
   while the posts themselves still narrow. The pick's size is read off the unpicked counts - a
   tag's count, the smallest among tags picked together, the sum among buckets. Measured (debug
   build, 131,072 posts, a year of them): the window 159 ms, its labels 427 ms - a cache miss.
-- **Search is an inverted index**: a row per (term, post) on an index of the term, so a prefix is
-  a range scan - replacing one token string per post read whole in Rust. Its backlog walk goes by
-  cursor, to the end of the journal.
+- **Search is an inverted index** (node rung 0059): a row per (term, post) - `post_terms`, kept
+  with each post's word bag - so a query's word is a prefix range scan of the index. A post is
+  indexed by its title the moment it is met and by its words when its body is read (the backlog
+  walk, by cursor to the end of the journal; the newest hundred of a feed before any search, so
+  what just arrived is found at once).
+- **A search or a pick takes one of two roads**, chosen per request: a word or a label naming at
+  most 5000 posts (the inverted index; the labels' value index, also rung 0059) starts from that
+  small set and meets the journal by key; when every one is commoner, the feed is walked newest
+  first until a page of matches is found - soon, since they are common. The exact judgment
+  (whose bucket, the two-tag rule, sealed admission, kinds) is the same either way. Built
+  2026-09-28; with it the newest-5000 read had no caller left and is gone.
 
 **Slices:** (1) the score, its breakdown in the dossier, and best (window) - built first at read
-time, now being rebuilt: label columns and indexes; the one journal filter (chats fixed, the cap
-gone); the score tables and best on them; the tag cloud over a cached year; the picks' narrowing
-and the inverted search index. (2) hot, and a high score's emphasis; (3) reply trees.
+time, then rebuilt: label columns and indexes; the one journal filter (chats fixed); the score
+tables and best on them; the tag cloud over a cached year; the picks' narrowing and the inverted
+search index (the newest-5000 read gone). (2) hot, and a high score's emphasis; (3) reply trees.
 
 ### Contact tags: private labels on the people you know (settled 2026-09-10)
 
