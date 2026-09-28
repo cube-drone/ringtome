@@ -43,6 +43,20 @@ export function blankDrawing() {
 /// A pen's pressure, as a stroke stores it: a whole number from 0 (the lightest touch) to 100 (full).
 export const MAX_PRESSURE = 100;
 
+/// How far a pen's reported pressure moves the stroke's toward it, per sample (Curtis, 2026-09-28:
+/// "the pressure of the line I produce is a little... shaky"). A pen reports far faster than a
+/// hand changes its grip, and its raw pressure jitters sample to sample; each sample now moves the
+/// running pressure this fraction of the way to what the pen said. Small enough to settle the
+/// jitter, large enough that a deliberate press or lift still lands within a few samples.
+export const PRESSURE_SMOOTHING = 0.3;
+
+/// The next running pressure (0..1): `previous` moved `PRESSURE_SMOOTHING` of the way to `raw`.
+/// With no previous (the stroke's first sample) the pen's own word stands.
+export function smoothPressure(previous, raw) {
+    if (previous == null || !Number.isFinite(previous)) return raw;
+    return previous + (raw - previous) * PRESSURE_SMOOTHING;
+}
+
 /// Samples as the pointer gave them - [x, y] from a mouse or finger, [x, y, pressure 0..1] from a
 /// pen - to the stored form: `points` delta-coded as `encodePoints` makes them, and `pressure` one
 /// whole 0..100 per KEPT point (a repeated position is dropped with its pressure, so the two lists

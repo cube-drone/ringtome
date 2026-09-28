@@ -37,6 +37,7 @@ import {
     undo,
     strokeId,
     encodeSamples,
+    smoothPressure,
     decodePoints,
     pressureWidth,
     MAX_SIZE,
@@ -996,7 +997,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const stroke = { id: strokeId(), t: Date.now(), tool: tools.tool, size: Math.round(size) };
         if (current.id !== BASE_LAYER) stroke.layer = current.id;
         if (tools.tool === 'brush') stroke.color = tools.color;
-        live.current = { stroke, pen, samples: [first] };
+        // `pressure`: the running, smoothed pressure (pure/drawing.js `smoothPressure`), which every
+        // sample after the first takes instead of the pen's raw word.
+        live.current = { stroke, pen, samples: [first], pressure: pen ? first[2] : null };
         const ctx = layerContext(current.id);
         if (!ctx) return;
         paintStroke(ctx, stroke, BACKING, [first], pen ? [asPressure(first)] : undefined);
@@ -1244,6 +1247,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const events = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
         for (const ev of events.length ? events : [e]) {
             const next = sampleOf(ev, l.pen);
+            // Smoothed on every sample the pen gave, kept or not, so a dropped repeat still
+            // counts toward where the pressure is heading.
+            if (l.pen) {
+                l.pressure = smoothPressure(l.pressure, next[2]);
+                next[2] = l.pressure;
+            }
             const last = l.samples[l.samples.length - 1];
             if (Math.abs(next[0] - last[0]) < 0.5 && Math.abs(next[1] - last[1]) < 0.5) continue;
             l.samples.push(next);

@@ -12254,3 +12254,10 @@ idface.cjs holds that the node's people door names a new banner once the byline 
 People rows: the banner and its fade are placed from the row's outer edge (`background-origin: border-box`); from the padding box they stopped a pixel short and tiled into the transparent border, drawing a 1px frame (Curtis).
 
 The People app's "known around here" shelf lost its "people known here" note - it only repeated the title (Curtis).
+
+Pen pressure is smoothed (Curtis, trying a tablet: smooth in Firefox and Chrome, but the pressure
+of the line "a little... shaky"): each sample moves the stroke's running pressure 30% of the way to
+the pen's raw reading (`PRESSURE_SMOOTHING`, `smoothPressure` in pure/drawing.js), counting samples
+dropped as repeats too, and the smoothed value is both painted live and stored - no body change,
+nothing for other computers to learn. pure/drawing.cjs holds that jitter around a steady grip
+swings less than half as far, and that a deliberate press still lands within eight samples.

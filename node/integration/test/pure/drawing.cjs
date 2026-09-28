@@ -165,6 +165,22 @@ describe('a pen stroke', () => {
         assert.deepEqual(pressure, [20, 50, 100], 'the repeat left with its pressure; full is 100');
     });
 
+    it('takes a pen\'s pressure smoothed, so a shaky hand draws a steady line (2026-09-28)', () => {
+        assert.equal(d.smoothPressure(null, 0.4), 0.4, 'the first sample is the pen\'s own word');
+        const step = d.smoothPressure(0.5, 1);
+        assert.ok(step > 0.5 && step < 1, 'a press moves the line part of the way, not all of it');
+        // Jitter around a steady grip: the running pressure wobbles far less than the pen did.
+        let p = null;
+        const raw = [0.5, 0.62, 0.41, 0.6, 0.39, 0.61, 0.4, 0.59];
+        const kept = raw.map((r) => (p = d.smoothPressure(p, r)));
+        const swing = (xs) => Math.max(...xs.slice(3)) - Math.min(...xs.slice(3));
+        assert.ok(swing(kept) < swing(raw) / 2, `steadier: ${swing(kept).toFixed(3)} against ${swing(raw).toFixed(3)}`);
+        // ...and a real change of grip still arrives within a handful of samples.
+        p = 0.2;
+        for (let i = 0; i < 8; i++) p = d.smoothPressure(p, 0.9);
+        assert.ok(p > 0.85, `a deliberate press lands: ${p.toFixed(3)}`);
+    });
+
     it('has no pressure when drawn with a mouse, or when any sample lacks one', () => {
         assert.equal(d.encodeSamples([[1, 1], [2, 2]]).pressure, null);
         assert.equal(d.encodeSamples([[1, 1, 0.5], [2, 2]]).pressure, null);

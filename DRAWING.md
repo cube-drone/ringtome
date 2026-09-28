@@ -61,7 +61,11 @@ skip-no-op saves, head checks, sync, retention.
   out of range or not whole) is dropped and the stroke kept; the node reads it by the same rule, and
   the shared vectors hold both to it. Added without a body version: one drawing predated it.
   The page reads `pressure` only from a pen (`pointerType`), and takes every coalesced sample, so a
-  fast pen curve stays a curve.
+  fast pen curve stays a curve. The pressure is **smoothed as it is drawn** (2026-09-28, Curtis: the line's
+  width was "a little... shaky"): each sample moves the stroke's running pressure 30% of the way to
+  what the pen reported (`smoothPressure`, pure/drawing.js), and the smoothed value is what the stroke
+  stores - so every computer repaints the steady line that was drawn, and nothing about the body
+  changes.
 - **The eraser is a stroke** with `tool: "eraser"`: drawn as `destination-out`, it removes whatever
   is under it from the strokes before it. That is what makes merge safe to be simple (below).
 
