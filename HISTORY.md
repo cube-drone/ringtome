@@ -12233,3 +12233,24 @@ each person once, the `recent` cap, the short page with `more`, the clamp, and `
 app.
 
 The stranger's header gained a **home** button (the house), first of its links, back to the front door at `/` (Curtis: in the desktop app, with no back button, a link followed from the front page had no way back).
+
+## 2026-09-28 (cont.): People rows wear their banners
+
+Curtis: the People app's rows use people's banners. Every `PersonRow` (the People app, the node's
+people page, a post's people) now carries the person's banner behind it, under a fade that is solid
+cream where the picture and names sit and thins to `--row-veil` toward the right; a person with no
+banner shows their identicon tiled, as their page does, and a blocked person's banner is hidden as
+their picture is.
+
+- **The byline cache holds the banner** (node rung 0060, `persona_profiles.banner`): profiles.rs reads
+  it with the name and avatar, refreshes on a change to any of the three, and hands it out
+  (`Byline.banner`); the stream's contact rows and `/api/node/personas` carry it. Rows written
+  before the rung learn their banner when the persona's public lane next moves.
+- `usePerson` answers `banner`/`bannerUrl` (your own from your live profile); `bannerStyle` moved to
+  person.js so a row can share it, and persona.js re-exports it.
+
+idface.cjs holds that the node's people door names a new banner once the byline refreshes.
+
+People rows: the banner and its fade are placed from the row's outer edge (`background-origin: border-box`); from the padding box they stopped a pixel short and tiled into the transparent border, drawing a 1px frame (Curtis).
+
+The People app's "known around here" shelf lost its "people known here" note - it only repeated the title (Curtis).

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1158 phrases across 73 files.
+// 1157 phrases across 73 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -260,7 +260,6 @@ export default {
     'apps.people.via-name': 'via {name}',
     'apps.people.via-a-friend': 'via a friend',
     'apps.people.known-around-here': 'known around here',
-    'apps.people.personas-this-node-hosts-or': 'people known here',
     'apps.people.you-used-to-know': 'you used to know',
     'apps.people.relationships-you-set-and-later': 'people you used to follow',
     'apps.people.cleared': 'cleared',

@@ -1,4 +1,4 @@
-//! The byline cache: every persona's most recent public name and avatar, at node level.
+//! The byline cache: every persona's most recent public name, avatar and banner, at node level.
 //!
 //! What a list of humans needs is one fact per face - who is this - and the truth lives in each
 //! persona's own database, one encrypted file apiece. A People roster or a feed that opened a
@@ -21,6 +21,8 @@ use crate::AppState;
 pub struct Byline {
     pub name: Option<String>,
     pub avatar: Option<String>,
+    /// Their banner's public doc_id (2026-09-28: the People app's rows wear it).
+    pub banner: Option<String>,
 }
 
 /// Re-read one persona's public self-claims and store them - writing only on CHANGE, so
@@ -42,29 +44,30 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
             .map(|f| f.value.clone())
             .filter(|v| !v.is_empty())
     };
-    let (name, avatar) = (grab("name"), grab("avatar"));
+    let (name, avatar, banner) = (grab("name"), grab("avatar"), grab("banner"));
 
-    let current: Option<(Option<String>, Option<String>)> = state
+    let current: Option<(Option<String>, Option<String>, Option<String>)> = state
         .node_db
         .fetch_optional(
-            "SELECT name, avatar FROM persona_profiles WHERE root_pubkey = ?1",
+            "SELECT name, avatar, banner FROM persona_profiles WHERE root_pubkey = ?1",
             (root_hex,),
         )
         .await
         .context("reading the byline cache")?;
-    if current.as_ref().is_some_and(|(n, a)| *n == name && *a == avatar) {
+    if current.as_ref().is_some_and(|(n, a, b)| *n == name && *a == avatar && *b == banner) {
         return Ok(());
     }
     state
         .node_db
         .execute(
-            "INSERT INTO persona_profiles (root_pubkey, name, avatar, updated_at_ms)
-             VALUES (?1, ?2, ?3, ?4)
+            "INSERT INTO persona_profiles (root_pubkey, name, avatar, banner, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT (root_pubkey) DO UPDATE SET
                  name = excluded.name,
                  avatar = excluded.avatar,
+                 banner = excluded.banner,
                  updated_at_ms = excluded.updated_at_ms",
-            (root_hex, name, avatar, now_ms()),
+            (root_hex, name, avatar, banner, now_ms()),
         )
         .await
         .context("storing a byline")?;
@@ -107,6 +110,9 @@ pub async fn bylines_healed(state: &AppState, roots: &[String]) -> Result<std::c
     Ok(known)
 }
 
+/// One cached row: root, name, avatar, banner.
+type BylineRow = (String, Option<String>, Option<String>, Option<String>);
+
 pub async fn bylines(node_db: &Db, roots: &[String]) -> Result<std::collections::BTreeMap<String, Byline>> {
     let mut out = std::collections::BTreeMap::new();
     if roots.is_empty() {
@@ -122,10 +128,10 @@ pub async fn bylines(node_db: &Db, roots: &[String]) -> Result<std::collections:
     if quoted.is_empty() {
         return Ok(out);
     }
-    let rows: Vec<(String, Option<String>, Option<String>)> = node_db
+    let rows: Vec<BylineRow> = node_db
         .fetch_all(
             &format!(
-                "SELECT root_pubkey, name, avatar FROM persona_profiles
+                "SELECT root_pubkey, name, avatar, banner FROM persona_profiles
                  WHERE root_pubkey IN ({})",
                 quoted.join(",")
             ),
@@ -133,8 +139,8 @@ pub async fn bylines(node_db: &Db, roots: &[String]) -> Result<std::collections:
         )
         .await
         .context("reading bylines")?;
-    for (root, name, avatar) in rows {
-        out.insert(root, Byline { name, avatar });
+    for (root, name, avatar, banner) in rows {
+        out.insert(root, Byline { name, avatar, banner });
     }
     Ok(out)
 }

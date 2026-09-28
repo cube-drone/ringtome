@@ -351,6 +351,10 @@
     align-items: center;
     gap: 0.7rem;
     background: var(--surface);
+    /* A banner behind the row (2026-09-28) is sized and placed from the OUTER edge: from the
+       padding box, the default, the fade and the picture stopped a border-width short and
+       repeated into the transparent border - a 1px frame of the wrong edge all round. */
+    background-origin: border-box;
     border: 1px solid transparent;
     --line: var(--border);
     position: relative;

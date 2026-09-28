@@ -7289,6 +7289,9 @@ struct ContactRow {
     /// Their avatar's public doc_id, same join, same honesty.
     #[serde(skip_serializing_if = "Option::is_none")]
     avatar: Option<String>,
+    /// ...and their banner's (2026-09-28: the People app's rows wear it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    banner: Option<String>,
     /// The ledger's facts for them, as written (trust, interest, interest_rebroadcasts,
     /// edges_public, blocked, nickname - and whatever future dials add).
     facts: std::collections::BTreeMap<String, String>,
@@ -7346,6 +7349,7 @@ async fn contact_rows(
                 root,
                 name: byline.name,
                 avatar: byline.avatar,
+                banner: byline.banner,
                 facts,
             }
         })

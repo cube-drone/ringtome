@@ -441,6 +441,18 @@ describe("the banner (a profile field beside the avatar)", function () {
         const body = await anon(`id/${root}/docs/${doc}/body`);
         assert.equal(body.status, 200);
         assert.equal(body.headers.get("content-type"), "image/avif");
+        // ...and the byline cache carries it beside the name and picture, which is what a People
+        // row reads (profiles.rs; 2026-09-28) - here through the node's own people door.
+        const { HOST } = require("./fetch.cjs");
+        let listed = null;
+        for (let i = 0; i < 30 && !(listed && listed.banner === doc); i++) {
+            listed = ((await (await anon("api/node/personas")).json()).people || []).find((p) => p.root === root);
+            if (!(listed && listed.banner === doc)) {
+                await beat(HOST, "fold", root);
+                await new Promise((r) => setTimeout(r, 200));
+            }
+        }
+        assert.equal(listed && listed.banner, doc, `the byline names the banner: ${JSON.stringify(listed)}`);
     });
 
     it("is a still picture or nothing", async () => {

@@ -72,6 +72,7 @@ export function usePerson(root, { current, profile: given } = {}) {
         isYou,
         myRoot,
     ]);
+    const myBanner = useLive(() => (isYou ? openMirror(myRoot).profile.get('banner') : null), [isYou, myRoot]);
 
     // The last resort: a stranger, no ledger row, no profile handed down. One fetch.
     const [fetched, setFetched] = useState(null);
@@ -102,6 +103,9 @@ export function usePerson(root, { current, profile: given } = {}) {
         ? (myAvatar && myAvatar.value) || ''
         : fromProfile(source && source.fields, 'avatar') || (contactRow && contactRow.avatar) || '';
     const bio = isYou ? (myBio && myBio.value) || '' : fromProfile(source && source.fields, 'bio');
+    const banner = isYou
+        ? (myBanner && myBanner.value) || ''
+        : fromProfile(source && source.fields, 'banner') || (contactRow && contactRow.banner) || '';
 
     // How to reach them, as the node knows it (idface.rs computes it honestly: a persona it
     // hosts hints itself and their peers; a foreign one hints whatever actually reached
@@ -131,6 +135,9 @@ export function usePerson(root, { current, profile: given } = {}) {
         // from the key, chosen by nobody - stands in, so the row stays recognizable enough
         // to unblock.
         avatarUrl: avatar && !blocked ? `/id/${root}/docs/${avatar}/thumb` : '',
+        // Their banner, hidden by a block as the picture is - their tiled pattern stands in.
+        banner,
+        bannerUrl: banner && !blocked ? `/id/${root}/docs/${banner}/body` : '',
         bio,
         hue: personaHue(root),
         words,
@@ -145,6 +152,22 @@ export function usePerson(root, { current, profile: given } = {}) {
 /// A persona's face as a picture and a colour - what the dock and the launcher wear on the
 /// persona's own tile (Curtis, 2026-09-27): their picture, or the identicon their key draws, and
 /// the ring colour every Person widget gives them. `person` is `usePerson`'s answer.
+/// The top of a person's page (2026-09-28): their banner across it, or - until they choose one -
+/// their identicon, tiled. One look for the profile's preview and the page itself.
+export const bannerStyle = (root, bannerDoc) =>
+    bannerDoc
+        ? `background-image: url(/id/${root}/docs/${bannerDoc}/body)`
+        : `background-image: linear-gradient(var(--banner-veil), var(--banner-veil)), url("${identiconUri(root)}"); background-size: auto, 64px 64px; background-repeat: repeat`;
+
+/// The same banner behind a People row (Curtis, 2026-09-28), under a fade that is solid where the
+/// picture and the names sit and thins toward the right, so the words read on any banner.
+const rowBannerStyle = (person) => {
+    const fade = 'linear-gradient(90deg, var(--surface) 0, var(--surface) 30%, var(--row-veil) 100%)';
+    return person.bannerUrl
+        ? `background-image: ${fade}, url(${person.bannerUrl}); background-size: auto, cover; background-position: 0 0, center`
+        : `background-image: ${fade}, url("${identiconUri(person.root)}"); background-size: auto, 64px 64px; background-repeat: no-repeat, repeat`;
+};
+
 export const faceOf = (person) =>
     person && person.root
         ? { src: person.avatarUrl || identiconUri(person.root), ring: `hsl(${person.hue}, 60%, 55%)`, rim: `hsl(${person.hue}, 55%, 38%)` }
@@ -245,6 +268,7 @@ export const PersonRow = ({ root, current, profile, aside }) => {
         <a
             class=${person.blocked ? 'person-row person-row-blocked' : 'person-row'}
             href=${person.href}
+            style=${rowBannerStyle(person)}
         >
             <${PersonHex} person=${person} size="small" />
             <${PersonNames} person=${person} />

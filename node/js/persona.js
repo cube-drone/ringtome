@@ -21,7 +21,7 @@ import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { personaHue, shortcode } from './pure/person.js';
-import { identiconUri } from './pure/identicon.js';
+import { bannerStyle } from './person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { WarningLists } from './warnings.js';
@@ -756,12 +756,8 @@ async function avatarBytes(root, pick) {
     );
 }
 
-/// The top of a person's page (2026-09-28): their banner across it, or - until they choose one -
-/// their identicon, tiled. One look for the profile's preview and the page itself.
-export const bannerStyle = (root, bannerDoc) =>
-    bannerDoc
-        ? `background-image: url(/id/${root}/docs/${bannerDoc}/body)`
-        : `background-image: linear-gradient(var(--banner-veil), var(--banner-veil)), url("${identiconUri(root)}"); background-size: auto, 64px 64px; background-repeat: repeat`;
+// The banner's look lives with the person widgets now (person.js), which a People row shares.
+export { bannerStyle };
 
 function useProfileDraft(root, field) {
     const live = useLive(() => openMirror(root).profile.get(field), [root, field]);

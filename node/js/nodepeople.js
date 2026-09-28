@@ -52,7 +52,11 @@ export const NodePeople = ({ current, searchQuery }) => {
 
 /// The profile a node listing hands a person row: the byline the node holds.
 const bylineProfile = (p) => ({
-    fields: [...(p.name ? [{ field: 'name', value: p.name }] : []), ...(p.avatar ? [{ field: 'avatar', value: p.avatar }] : [])],
+    fields: [
+        ...(p.name ? [{ field: 'name', value: p.name }] : []),
+        ...(p.avatar ? [{ field: 'avatar', value: p.avatar }] : []),
+        ...(p.banner ? [{ field: 'banner', value: p.banner }] : []),
+    ],
 });
 
 /// One face on the front door's shelf: the picture and the name, a link to their page.

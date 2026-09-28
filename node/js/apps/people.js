@@ -277,9 +277,6 @@ export const PeopleApp = ({ current, searchQuery }) => {
             html`<div class="people-known">
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.known-around-here', 'known around here')}</span>
-                    <span class="people-known-note">
-                        ${t('apps.people.personas-this-node-hosts-or', 'people known here')}
-                    </span>
                 </div>
                 <div class="people-list">
                     ${known.map(

@@ -68,6 +68,7 @@ pub async fn node_personas(
             "speakable": decode_root(r).map(|k| crate::speakable::speakable(&k)),
             "name": b.name,
             "avatar": b.avatar,
+            "banner": b.banner,
             "slug": slug,
         }));
     }
