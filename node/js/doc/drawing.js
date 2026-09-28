@@ -82,6 +82,7 @@ import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.j
 import { FILES_BUCKET } from '../pure/apps.js';
 import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
 import { openMirror } from '../mirror.js';
+import { cachedThumb, rememberThumb } from '../mirror/thumbcache.js';
 
 const html = htm.bind(h);
 
@@ -570,11 +571,60 @@ const THUMB_WIDTH = 120;
 export const DrawingThumb = ({ root, doc, big }) => {
     const key = `${doc.doc_id}:${doc.head}`;
     const [src, setSrc] = useState(thumbCache.get(key) || null);
+    // Kept? 'looking' until this browser's table has answered, then 'kept' or 'missing'.
+    const [kept, setKept] = useState(thumbCache.has(key) ? 'kept' : 'looking');
+    const [seen, setSeen] = useState(false);
+    const holder = useRef(null);
+
+    // 1. The kept thumbnail - this page's, else this browser's (mirror/thumbcache.js) - on screen
+    //    or not: a lookup is cheap, and a reload repaints nothing unchanged.
     useEffect(() => {
         if (thumbCache.has(key)) {
             setSrc(thumbCache.get(key));
+            setKept('kept');
             return undefined;
         }
+        let live = true;
+        setSrc(null);
+        setKept('looking');
+        cachedThumb(root, doc.doc_id, doc.head).then((url) => {
+            if (!live) return;
+            if (url) {
+                thumbCache.set(key, url);
+                setSrc(url);
+            }
+            setKept(url ? 'kept' : 'missing');
+        });
+        return () => {
+            live = false;
+        };
+    }, [root, key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 2. Painting waits for the row to come into view (Curtis, 2026-09-27): a list of thousands of
+    //    drawings paints the handful on screen, and the rest as they are scrolled to.
+    useEffect(() => {
+        if (seen || src) return undefined;
+        const el = holder.current;
+        if (!el || typeof IntersectionObserver === 'undefined') {
+            setSeen(true);
+            return undefined;
+        }
+        const watch = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    setSeen(true);
+                    watch.disconnect();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        watch.observe(el);
+        return () => watch.disconnect();
+    }, [seen, src]);
+
+    // 3. Paint - on screen, and not kept - from the drawing's body, then keep it.
+    useEffect(() => {
+        if (!seen || kept !== 'missing') return undefined;
         let live = true;
         (async () => {
             let detail = await cachedDoc(root, doc.doc_id);
@@ -584,17 +634,23 @@ export const DrawingThumb = ({ root, doc, big }) => {
             }
             if (detail.body == null) return;
             const body = readBody(detail.body);
-            const url = flatten(body, THUMB_WIDTH, await loadPictures(root, body)).toDataURL('image/png');
+            // WebP where the browser can write it (a few KB), PNG where it cannot.
+            const url = flatten(body, THUMB_WIDTH, await loadPictures(root, body)).toDataURL('image/webp', 0.85);
             thumbCache.set(key, url);
-            if (live) setSrc(url);
+            rememberThumb(root, doc.doc_id, doc.head, url);
+            if (live) {
+                setSrc(url);
+                setKept('kept');
+            }
         })().catch(() => {});
         return () => {
             live = false;
         };
-    }, [root, key]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [seen, kept, root, key]); // eslint-disable-line react-hooks/exhaustive-deps
+
     return src
         ? html`<img class=${big ? 'note-row-thumb note-row-thumb-big drawing-thumb drawing-floor' : 'note-row-thumb drawing-thumb drawing-floor'} src=${src} alt="" />`
-        : html`<span class="note-row-thumb drawing-thumb drawing-thumb-empty"><${Icons.drawing} /></span>`;
+        : html`<span ref=${holder} class="note-row-thumb drawing-thumb drawing-thumb-empty"><${Icons.drawing} /></span>`;
 };
 
 // ---------------------------------------------------------------------------------------------

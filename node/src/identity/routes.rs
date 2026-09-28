@@ -647,6 +647,8 @@ struct FeedQuery {
 #[derive(Deserialize, Default)]
 struct LabelsQuery {
     stop: Option<String>,
+    /// The listing's words, when it is being searched: the facets count what it shows.
+    q: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2062,12 +2064,15 @@ async fn room_sync_handler(
 
 /// GET `/api/identity/{root}/feed/labels` - the facets (2026-09-07): every bucket and every
 /// tag across the reader's WHOLE journal with how often each appears, buckets first, the
-/// author's own statements only, over exactly the rows the reader may see.
+/// author's own statements only, over exactly the rows the reader may see. Given the feed's
+/// own narrowing (`bucket=`, `tag=`, `kind=`, `q=` - Curtis, 2026-09-27), counted over what
+/// the narrowed feed shows, each row per `search::facet_sets`.
 async fn feed_labels_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
     axum::extract::Query(q): axum::extract::Query<LabelsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let owned = store::open(&state, &session.account.id, &root).await?;
     let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
@@ -2076,15 +2081,23 @@ async fn feed_labels_handler(
     let rows = readable_feed_rows(&state, &root, rows).await;
     // The dial (2026-09-08): the lists count only what the feed at this stop shows.
     let rows = rows_at_stop(&state, &owned, &root, rows, q.stop.as_deref()).await?;
-    let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let (buckets, tags) = crate::annotations::label_counts(&state, &pairs, Some(&root))
+    let kinds = feed_kinds(&state, &rows).await?;
+    let candidates: Vec<crate::search::Candidate> = rows
+        .iter()
+        .zip(kinds.iter())
+        .map(|(r, kind)| crate::search::Candidate {
+            author_root: r.author_root.clone(),
+            doc_hex: r.doc_id.clone(),
+            title: r.title.clone(),
+            updated_ms: r.updated_ms,
+            kind,
+        })
+        .collect();
+    let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
+    let facets = crate::search::facets_json(&state, &candidates, &narrow, Some(&root), 0)
         .await
         .map_err(AppError::Internal)?;
-    let kinds = crate::search::kind_counts(feed_kinds(&state, &rows).await?.into_iter());
-    let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
-        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
-    };
-    Ok(Json(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) })))
+    Ok(Json(facets))
 }
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly

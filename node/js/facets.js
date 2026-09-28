@@ -40,9 +40,12 @@ const KIND_NAMES = {
     room: () => t('facets.kind-rooms', 'rooms'),
 };
 
-const FacetRow = ({ label, items, picked, onToggle, names }) => {
+const FacetRow = ({ label, items: counted, picked, onToggle, names }) => {
     const [expanded, setExpanded] = useState(false);
-    if (!items || items.length === 0) return null;
+    // A picked value always shows, even once nothing is left under it - so it can be unpicked.
+    const have = new Set((counted || []).map((f) => f.value));
+    const items = [...(counted || []), ...(picked || []).filter((v) => !have.has(v)).map((value) => ({ value, count: 0 }))];
+    if (items.length === 0) return null;
     const { shown, hidden } = facetSlice(items, picked, expanded);
     const word = (v) => (names && names[v] ? names[v]() : v);
     return html`<div class="facet-row">

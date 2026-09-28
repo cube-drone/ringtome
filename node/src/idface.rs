@@ -1957,6 +1957,7 @@ pub async fn id_labels(
     State(state): State<AppState>,
     Path(seg): Path<String>,
     axum::extract::Query(query): axum::extract::Query<PostsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-4", "no such persona here")));
@@ -1967,22 +1968,27 @@ pub async fn id_labels(
     }
     let mut posts = whole_shelf(&state, &root_hex).await;
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
-    let pairs: Vec<(String, String)> = posts.iter().map(|p| (root_hex.clone(), hex::encode(p.doc_id))).collect();
-    let (buckets, tags) = crate::annotations::label_counts(&state, &pairs, query.as_root.as_deref())
-        .await
-        .map_err(AppError::Internal)?;
     // The kind row: the posts by their shape, plus every share the persona passed along.
     let shares = match state.user_dbs.get(&root_hex).await.ok().flatten() {
         Some(db) => crate::record::imaol::rebroadcasts(&db).await.unwrap_or_default().into_iter().filter(|s| s.version_seen.is_some()).count(),
         None => 0,
     };
-    let kinds = crate::search::kind_counts(
-        posts.iter().map(post_kind).chain(std::iter::repeat_n("rebroadcast", shares)),
-    );
-    let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
-        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
-    };
-    Ok(axum::Json(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) })))
+    // As the shelf narrows its posts (id_posts), so the facets count them (Curtis, 2026-09-27).
+    let candidates: Vec<crate::search::Candidate> = posts
+        .iter()
+        .map(|p| crate::search::Candidate {
+            author_root: root_hex.clone(),
+            doc_hex: hex::encode(p.doc_id),
+            title: p.title.clone(),
+            updated_ms: p.head_ms,
+            kind: post_kind(p),
+        })
+        .collect();
+    let narrow = crate::search::Narrow::parse(raw.as_deref(), query.q.as_deref());
+    let facets = crate::search::facets_json(&state, &candidates, &narrow, query.as_root.as_deref(), shares)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(axum::Json(facets))
 }
 
 /// A shelf post's kind (search.rs KINDS): a book by its format, a reply by its link, a

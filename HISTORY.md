@@ -11643,3 +11643,36 @@ did set the light dock text - but `.chip-button`, later in the bundle at equal w
 button chip's glyph sea and won. `.chip.chip-open` and `.chip.chip-pinned` now outrank it whatever
 the order. An audit of every rule painting a solid accent background found the rest setting a light
 foreground, or holding no text at all (bars, dots, rims). Rendered to check.
+
+## 2026-09-27 (cont.): picking a label thins the lists
+
+The facet strip counted the whole set however the listing was narrowed, so a picked "heph" left a
+"peff" no post shares with it standing there, leading nowhere (Curtis). The labels doors - the
+reader's feed, a persona's page, the node's feed - now take the listing's picks and count each row
+over what the OTHER picks leave (`search::facet_sets`, one judgment with the listings': `matching`'s
+core, uncapped for counts). The tag row counts its own picks too, since tags narrow together - so a
+tag sharing no post with the picked ones drops out; the notebook and kind rows are counted without
+their own picks, since those widen (either notebook, any kind), and keep every sibling that could
+still be added. A picked value always stays, at 0 if need be, so it can be unpicked; a persona's
+shares count in the kind row only while nothing but kinds is picked, as the page shows them. The
+typed words stay out of the counts (a recount per keystroke would chase the typing). People's
+contact tags thin the same way, counted client-side over the rows the picked tags leave. A
+facets.cjs claim holds the tag, notebook, kind and persona-page rules; the six claims before it
+stand unchanged.
+
+## 2026-09-27 (cont.): drawing thumbnails, painted once and only when seen
+
+Booting the Drawing app repainted every listed drawing's thumbnail from its whole history - fills
+worked out afresh on the full grid - on every load; the finished pictures lived in page memory only.
+Weighed with Curtis: not the private chain (every edit would append another permanent, synced
+thumbnail - derived data in a log meant for what only you can say), and not a node-made cache (the
+node does not paint - fills, transforms, text and pictures all live in the page, and a Rust twin of
+the painter is the duplication the design avoided). Instead, two changes in the browser:
+`DrawingThumb` paints only once its row nears the screen (IntersectionObserver, 200px ahead), so a
+list of thousands paints the handful in view; and a painted thumbnail is kept in a new local mirror
+table, `drawthumbs` (owner mirror/thumbcache.js), keyed by drawing and version - WebP, a few KB,
+one per drawing (keeping a new version drops the older), at most 3000 per persona, least recently
+used first out. A reload repaints nothing unchanged; an edit or a sync is a new version and a fresh
+paint. Painting waits for the table's answer, so a kept thumbnail is never painted twice. A
+node-kept cache stays possible later, for a new device's first look. The table is Dexie-backed, so
+no pure test holds it; not yet watched in a browser.

@@ -6,9 +6,10 @@
 // back down the stream like anyone else's.
 //
 // This file owns the handle and the stream; `mirror/` holds the tables the stream does NOT feed.
-// Three are exceptions that way, all local-only: `prefs` (UI preferences - mirror/prefs.js owns
-// its key vocabulary and is the only module that touches the table) and the two fingerprinted
-// fetch caches, `docdetails` and `trees` (mirror/doccache.js). A refresh never clears these.
+// Four are exceptions that way, all local-only: `prefs` (UI preferences - mirror/prefs.js owns
+// its key vocabulary and is the only module that touches the table), the two fingerprinted
+// fetch caches, `docdetails` and `trees` (mirror/doccache.js), and `drawthumbs`, the painted
+// drawing thumbnails (mirror/thumbcache.js). A refresh never clears these.
 // Still disposable - they share the mirror's lifetime, so "forget this browser" forgets them too,
 // which is the right privacy posture for tables that record which documents you touch.
 import Dexie, { liveQuery } from 'dexie';
@@ -41,6 +42,9 @@ export function openMirror(root) {
             // fingerprint, trees against the taxonomy-roster fingerprint. Local-only, like prefs.
             docdetails: 'doc_id',
             trees: 'taxonomy_id',
+            // Drawing thumbnails (mirror/thumbcache.js): painted once per drawing version and
+            // kept, so a reload repaints nothing unchanged. Local-only, bounded.
+            drawthumbs: 'key, doc_id, used',
         });
         mirrors.set(root, db);
     }

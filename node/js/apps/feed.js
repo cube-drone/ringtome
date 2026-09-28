@@ -54,7 +54,7 @@ import { useEditWindowOpen } from '../editwindow.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
-import { useSearch } from '../postsearch.js';
+import { useSearch, narrowParams } from '../postsearch.js';
 import { LabelFacets, useLabels, usePicks } from '../facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { t } from '../i18n.js';
@@ -385,8 +385,16 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null));
     // The dial narrows the lists and the search too (Curtis, 2026-09-08): the node counts
     // and matches only what the feed at this stop shows.
-    const stopParam = stopKey && stopKey !== 'explorer' ? `?stop=${encodeURIComponent(stopKey)}` : '';
-    const labels = useLabels(labelsDoor ? `${labelsDoor}${stopParam}` : null, items.length);
+    // And the picks thin the lists themselves (Curtis, 2026-09-27): the node counts each row over
+    // what the other picks leave (search.rs facet_sets), so a label with nothing left drops out.
+    // The words stay out of it - a count per keystroke would chase the typing.
+    const labelQuery = [
+        narrowParams('', picks),
+        stopKey && stopKey !== 'explorer' ? `stop=${encodeURIComponent(stopKey)}` : '',
+    ]
+        .filter(Boolean)
+        .join('&');
+    const labels = useLabels(labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null, items.length);
     const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey });
     const shown = search.active
         ? mergeFeed([], search.results || []).filter((item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot))

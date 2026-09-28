@@ -19,7 +19,7 @@ import { recentPosts, mergePosts, postCursor } from './pure/feed.js';
 import { PostEntry, useOwnPostEditing } from './postentry.js';
 import { publishedState } from './pure/feed.js';
 import { t } from './i18n.js';
-import { useSearch } from './postsearch.js';
+import { useSearch, narrowParams } from './postsearch.js';
 import { shelfItem } from './pure/shelf.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 
@@ -126,7 +126,9 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // query is open. Hooks before the early return below, as always.
     const [picks, setPicks] = usePicks(root ? `id:${root}` : null);
     const viewer = current ? `?as=${current.root}` : '';
-    const labels = useLabels(`/api/id/${root}/labels${viewer}`, (posts || []).length);
+    // The picks thin the lists (Curtis, 2026-09-27; search.rs facet_sets) - the words stay out.
+    const pickQuery = narrowParams('', picks);
+    const labels = useLabels(`/api/id/${root}/labels${viewer}${pickQuery ? `${viewer ? '&' : '?'}${pickQuery}` : ''}`, (posts || []).length);
     const search = useSearch(`/api/id/${root}/posts${viewer}`, searchQuery, picks);
     // A narrowed shelf comes back in the door's own shape: a post is this persona's, a
     // share keeps its ORIGINAL author and wears this persona as its via (Curtis,

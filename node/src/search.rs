@@ -65,7 +65,7 @@ pub fn hits(tokens: &str, terms: &[String]) -> bool {
 /// author's own; tags are AND (each tag narrows) and anyone's, as the cards show them; the
 /// words narrow what survives. Parsed off the raw query string, since `bucket=` and `tag=`
 /// repeat.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Narrow {
     pub terms: Vec<String>,
     pub buckets: Vec<String>,
@@ -246,6 +246,12 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
 /// most `RESULTS_CAP`. Labels first (one memo read for the whole set), then the words -
 /// indexing bodies on the way within `INDEX_PER_QUERY`, spent only on label survivors.
 pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>) -> Result<Vec<usize>> {
+    admitted(state, candidates, narrow, viewer, RESULTS_CAP).await
+}
+
+/// `matching`'s judgment, stopping at `cap` matches (a listing's page) - or not at all, for the
+/// facet counts, which must not depend on where a page happened to end.
+async fn admitted(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>, cap: usize) -> Result<Vec<usize>> {
     let labelled = if narrow.buckets.is_empty() && narrow.tags.is_empty() {
         None
     } else {
@@ -281,12 +287,71 @@ pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narro
         };
         if hits(&bag, &narrow.terms) {
             out.push(i);
-            if out.len() >= RESULTS_CAP {
+            if out.len() >= cap {
                 break;
             }
         }
     }
     Ok(out)
+}
+
+/// Which candidates each facet row counts over, in a narrowed listing (Curtis, 2026-09-27: picking
+/// a label thins the lists to what is still there). A row counts the candidates every OTHER pick
+/// admits - and the tag row its own picks too, since tags narrow together: a tag sharing no post
+/// with the picked ones drops out. The bucket and kind rows' own picks WIDEN (either bucket, any
+/// of the kinds), so those rows are counted without them and keep every sibling that could still
+/// be added. Unnarrowed, every row counts everything.
+pub struct FacetSets {
+    pub kinds: Vec<usize>,
+    pub buckets: Vec<usize>,
+    pub tags: Vec<usize>,
+}
+
+pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>) -> Result<FacetSets> {
+    let all: Vec<usize> = (0..candidates.len()).collect();
+    let judge = |n: Narrow| async move {
+        if n.is_empty() {
+            Ok::<_, anyhow::Error>((0..candidates.len()).collect())
+        } else {
+            admitted(state, candidates, &n, viewer, usize::MAX).await
+        }
+    };
+    if narrow.is_empty() {
+        return Ok(FacetSets { kinds: all.clone(), buckets: all.clone(), tags: all });
+    }
+    Ok(FacetSets {
+        kinds: judge(Narrow { kinds: Vec::new(), ..narrow.clone() }).await?,
+        buckets: judge(Narrow { buckets: Vec::new(), ..narrow.clone() }).await?,
+        tags: judge(narrow.clone()).await?,
+    })
+}
+
+/// A listing's facets as the labels doors answer them - `{ kinds, buckets, tags }`, each a list of
+/// `{ value, count }` - counted per `facet_sets` over `candidates` narrowed by `narrow`.
+/// `shares` is a persona page's passed-along posts, which are no candidates (they carry no words
+/// or labels): they count in the kind row only while nothing but kinds is picked, as the page
+/// itself shows them only then.
+pub async fn facets_json(
+    state: &AppState,
+    candidates: &[Candidate],
+    narrow: &Narrow,
+    viewer: Option<&str>,
+    shares: usize,
+) -> Result<serde_json::Value> {
+    let sets = facet_sets(state, candidates, narrow, viewer).await?;
+    let pairs = |set: &[usize]| -> Vec<(String, String)> {
+        set.iter().map(|&i| (candidates[i].author_root.clone(), candidates[i].doc_hex.clone())).collect()
+    };
+    let shares_here = if (Narrow { kinds: Vec::new(), ..narrow.clone() }).only_kinds() { shares } else { 0 };
+    let kinds = kind_counts(
+        sets.kinds.iter().map(|&i| candidates[i].kind).chain(std::iter::repeat_n("rebroadcast", shares_here)),
+    );
+    let (buckets, _) = crate::annotations::label_counts(state, &pairs(&sets.buckets), viewer).await?;
+    let (_, tags) = crate::annotations::label_counts(state, &pairs(&sets.tags), viewer).await?;
+    let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
+        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
+    };
+    Ok(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) }))
 }
 
 /// The slow beat: index the backlog behind every reader's journal, a bounded slice per pass.

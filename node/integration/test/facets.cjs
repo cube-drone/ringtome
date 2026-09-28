@@ -80,6 +80,22 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual(ids(await feed("bucket=recipes&tag=bikes")), [], "a bucket and a tag that never meet");
     });
 
+    it("picking thins the lists too: a tag with nothing left beside the picked ones drops out, while notebooks and kinds keep what could still widen", async () => {
+        // Curtis, 2026-09-27: pick "heph", and a "peff" no post shares with it disappears.
+        const labels = (qs) => ada(`api/identity/${adaRoot}/feed/labels?${qs}`).then((r) => r.json());
+        const byName = (row) => Object.fromEntries(row.map((x) => [x.value, x.count]));
+        const bread = await labels("tag=bread");
+        assert.deepEqual(byName(bread.tags), { bread: 2, slow: 1 }, "only the tags sharing a post with bread; bikes and pudding gone");
+        assert.deepEqual(byName(bread.buckets), { recipes: 2 }, "only the notebooks holding bread");
+        assert.deepEqual(byName(bread.kinds), { post: 2 });
+        assert.deepEqual(byName((await labels("tag=bread&tag=slow")).tags), { bread: 1, slow: 1 }, "two tags narrow together");
+        const outings = await labels("bucket=outings");
+        assert.deepEqual(byName(outings.buckets), { recipes: 3, outings: 1 }, "a picked notebook keeps its siblings: another would widen");
+        assert.deepEqual(byName(outings.tags), { bikes: 1 }, "but the tags are those in the picked notebook");
+        const shelf = await (await ada(`api/id/${adaRoot}/labels?as=${adaRoot}&tag=bikes`)).json();
+        assert.deepEqual([byName(shelf.tags), byName(shelf.buckets)], [{ bikes: 1 }, { outings: 1 }], "a person's page thins alike");
+    });
+
     it("a person's page counts and narrows the whole held shelf, and a viewer they do not trust never sees the sealed post's labels", async () => {
         let f = null;
         for (let i = 0; i < 20; i++) {

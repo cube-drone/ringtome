@@ -133,7 +133,9 @@ export const PeopleApp = ({ current, searchQuery }) => {
             live = false;
         };
     }, [root]);
-    const tagRow = tagCounts(rows);
+    // Counted over the rows the picked tags leave (Curtis, 2026-09-27): a tag sharing no one with
+    // them drops out, as the feed's do.
+    const tagRow = tagCounts(rowsTagged(rows, picks.tags));
     const sorted = sortContacts(filterContacts(rowsTagged(rows, picks.tags), filter), sortBy);
     const visible = sorted.slice(0, shown);
 

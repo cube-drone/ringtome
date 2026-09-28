@@ -130,15 +130,31 @@ pub async fn node_feed(
 }
 
 /// `GET /api/node/feed/labels`: the facets over the whole stranger's shelf.
-pub async fn node_feed_labels(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn node_feed_labels(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<NodeLabelsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, AppError> {
     let all = crate::nodeshelf::page(&state.node_db, None, 5000).await.map_err(AppError::Internal)?;
-    let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let (buckets, tags) = crate::annotations::label_counts(&state, &pairs, None).await.map_err(AppError::Internal)?;
-    let kinds = crate::search::kind_counts(all.iter().map(|r| r.kind()));
-    let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
-        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
-    };
-    Ok(Json(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) })))
+    // As the node's feed narrows (Curtis, 2026-09-27), so the facets count it.
+    let candidates: Vec<crate::search::Candidate> = all
+        .iter()
+        .map(|r| crate::search::Candidate {
+            author_root: r.author_root.clone(),
+            doc_hex: r.doc_id.clone(),
+            title: r.title.clone(),
+            updated_ms: r.updated_ms,
+            kind: r.kind(),
+        })
+        .collect();
+    let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
+    let facets = crate::search::facets_json(&state, &candidates, &narrow, None, 0).await.map_err(AppError::Internal)?;
+    Ok(Json(facets))
+}
+
+#[derive(Deserialize)]
+pub struct NodeLabelsQuery {
+    q: Option<String>,
 }
 
 #[derive(Deserialize)]
