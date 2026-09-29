@@ -12475,3 +12475,24 @@ its words embed, as that picture's thumbnail - on the card (doc/turbolinks.js `f
 book's, its cover page's) and in the head (idface.rs `first_picture_thumb`) - and a post that is
 itself a picture uses its own; its bytes are never quoted as words. idface.cjs now holds a picture
 post's `og:image` being that picture, and its thumbnail serving - the claim slice 4 left out.
+
+## 2026-09-28 (cont.): starter contacts
+
+Something went to the real live internet, so every persona now begins knowing two blessed identities
+(Curtis): the official Horse Drawing Tycoon 2 persona - medium trust, medium interest, medium
+rebroadcast interest - and Cube Drone - medium trust, low interest, low rebroadcast interest.
+
+- **starters.rs**: the two, as their addresses give them (the base58 root and the `?via=` node key).
+  `seed` writes the three dials on each into the new persona's contact register, folds at once so the
+  follow is in place before the first feed, and fetches each through its via hint in the background -
+  a dark starter never delays a sign-up.
+- **Only at creation** (`create_handler`): a joined or recovered persona keeps its own contacts, and a
+  starter someone dropped stays dropped. Never the persona itself.
+- **Published like any dial** (Curtis chose it over withholding): the new persona's public graph says it
+  follows and trusts them.
+- **Only where meant**: prod nodes outside the test rig - the packaged app and servers. Dev nodes and the
+  rig seed nothing unless `RINGTOME_STARTER_CONTACTS` names a list (`none` empties it; a list that will
+  not parse refuses to boot). The operator editing the list is a later idea (NEXT_STEPS).
+
+starters.rs holds the built-in list parsing to the two and where it applies; device.cjs a persona made on
+a node given a starter beginning with its dials, and a second one too.

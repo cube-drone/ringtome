@@ -11,7 +11,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Launch to Website
 * Actually Deploy the Thing (Registration Off)
 * API Keys for automated autopost?
-* Everyone subscribed to ringtome at boot
 * Logging & graphs
 * "Attract Mode"
  * Select a user as the "primary display user"
@@ -88,6 +87,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * more granular or time-limited blocks? ("block for 6 months")
 
 ### Node Management & Federation
+* **Starter contacts, the operator's own** (Curtis, 2026-09-28): every persona created on a node begins
+  knowing the official Horse Drawing Tycoon 2 persona and Cube Drone (starters.rs, built). Later: the
+  node operator edits that list in their settings, rather than an environment variable.
 * use the spare key to build a new identity, create a new spare key
 * currently spare key account recovery reveals a hugely important secret to potentially a low-level node: bad!
 * declare a "management persona"

@@ -351,6 +351,13 @@ async fn create_handler(
     // Participation implies locatability (the discoverability doctrine): a newborn identity
     // publishes its serving record now, not at some later "act of publication".
     super::serving::publish_best_effort(&state, &created.root_pubkey).await;
+    // The people a new persona begins knowing (starters.rs) - only here, at creation.
+    if !state.config.starter_contacts.is_empty() {
+        match store::open(&state, &session.account.id, &created.root_pubkey).await {
+            Ok(data) => crate::starters::seed(&state, &data, &created.root_pubkey).await,
+            Err(e) => tracing::warn!(error = ?e, "could not open a new persona to seed its starters"),
+        }
+    }
     Ok(Json(CreatedIdentityInfo {
         root_pubkey: created.root_pubkey,
         created_at_ms: created.created_at_ms,

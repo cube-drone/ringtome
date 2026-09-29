@@ -137,6 +137,9 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
     this.timeout(600000);
 
     const token = crypto.randomBytes(32).toString("hex");
+    // A starter contact for this node's newborn personas (starters.rs): somebody no network will
+    // find - the dials are what is claimed; the fetch fails quietly, as a dark starter's would.
+    const starterRoot = crypto.randomBytes(32).toString("hex");
     const host = `127.0.0.1:${DEVICE_PORT}`;
     /// The owner, signed in the ordinary way; `window` is the same person in the app's own window.
     let owner, windowed;
@@ -157,6 +160,7 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
                 RINGTOME_LAUNCH_TOKEN: token,
                 RINGTOME_DISCOVERY: "off",
                 RINGTOME_NODE_NAME: "a-laptop",
+                RINGTOME_STARTER_CONTACTS: `${starterRoot}:nowhere:medium:low:low`,
             },
         });
         for (let i = 0; i < 200; i++) {
@@ -185,6 +189,21 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
         assert.equal((await j(owner, "api/admin/registration", { mode: "closed" }, "PUT")).status, 200, "the owner closes it, as a server's would");
         assert.equal((await signUp("devlate", "password123", undefined, host)).status, 403);
         await j(owner, "api/admin/registration", { mode: "open" }, "PUT");
+    });
+
+    it("a persona made here begins knowing its starters, dialed as a person would dial them (2026-09-28)", async () => {
+        const root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
+        const facts = (await (await owner(`api/identity/${root}/private/kv/contact:${starterRoot}`)).json()).values || [];
+        const dial = (key) => (facts.find((f) => f.key === key) || {}).value;
+        assert.deepEqual(
+            [dial("trust"), dial("interest"), dial("interest_rebroadcasts")],
+            ["medium", "low", "low"],
+            `the starter's dials: ${JSON.stringify(facts)}`
+        );
+        // A second persona gets them too; a persona is never its own starter.
+        const again = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
+        const theirs = (await (await owner(`api/identity/${again}/private/kv/contact:${starterRoot}`)).json()).values || [];
+        assert.ok(theirs.some((f) => f.key === "trust" && f.value === "medium"), "every persona made here");
     });
 
     it("the launch token signs nobody in: it only names the window", async () => {

@@ -200,6 +200,10 @@ pub struct Config {
     /// A value that is not a ringtome address refuses to boot: a typo must not quietly hand
     /// the node to whoever signs up first.
     pub admin_persona: Option<[u8; 32]>,
+    /// Starter contacts (starters.rs, 2026-09-28): the people every persona created here begins
+    /// knowing. The two built in on a prod node outside the test rig; `RINGTOME_STARTER_CONTACTS`
+    /// replaces them (`none` empties the list). A list that will not parse refuses to boot.
+    pub starter_contacts: Vec<crate::starters::Starter>,
     /// `RINGTOME_PUBLIC_URL`: the base URL this node is publicly reachable at
     /// (`https://my-node.ca`), declared by the operator - the node cannot verify its own
     /// reachability, so this is an assertion, not a discovery. When set, minted identity
@@ -400,6 +404,18 @@ impl Config {
             },
         };
 
+        let starter_contacts = match crate::starters::configured(
+            env::var("RINGTOME_STARTER_CONTACTS").ok().as_deref(),
+            environment == Environment::Prod,
+            local_test,
+        ) {
+            Ok(list) => list,
+            Err(e) => {
+                eprintln!("RINGTOME_STARTER_CONTACTS: {e} - refusing to boot rather than seed the wrong people");
+                std::process::exit(2);
+            }
+        };
+
         Self {
             app_version,
             bind_address,
@@ -436,6 +452,7 @@ impl Config {
             node_name,
             public_url,
             admin_persona,
+            starter_contacts,
         }
     }
 
