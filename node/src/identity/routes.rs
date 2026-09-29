@@ -7330,6 +7330,8 @@ impl StreamStamp {
         ] {
             hasher.update(part);
         }
+        // The app's own pictures move with the build, not with any chain.
+        hasher.update(&crate::builtin::fingerprint());
         hasher.finalize().to_hex().to_string()
     }
 }

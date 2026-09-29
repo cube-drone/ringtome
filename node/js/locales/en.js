@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1184 phrases across 76 files.
+// 1185 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -1103,6 +1103,7 @@ export default {
     'chat.a-message-embeds-too-many-documents': 'this message embeds {count} documents - one message may carry {cap}',
     'chat.a-room-cant-bake-web-media': 'save the picture and attach it here instead',
     'chat.that-media-is-still-being-prepared': 'that media is still being prepared - say it again in a moment',
+    'chat.that-picture-isnt-here-any-more': "that picture isn't here any more",
 
     // --- node/src/identity.rs ---
     'identity.recovery-failed': 'recovery failed',

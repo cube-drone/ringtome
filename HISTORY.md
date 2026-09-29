@@ -12580,3 +12580,24 @@ everyone has it; remove it and rebuild, and it's gone.
 Pinned in `builtin.rs`'s unit tests (tags, title and id from a path; every compiled file reads as
 a PNG) and in `integration/test/builtin.cjs` (the list, the bytes, the refused delete, a post, a
 chat sticker).
+
+**A picture that names nothing is left out of a chat line** (same day). Curtis moved a built-in
+picture, rebuilt, and used it in a chat: "an embedded media document is missing". Two fixes:
+
+- The say now leaves out any picture that names nothing: not the speaker's, and not in this build
+  (`bake::drop_embeds`, which removes the whole `![alt](target)`, alt and all). The rest of the line
+  is said. A sticker that names nothing has nothing left to say, so it is refused: "that picture
+  isn't here any more".
+- Why the page still offered the old id: the stream's resume cursor hashed chain heads only, and a
+  rebuild moves no chain, so a returning page kept its old built-in rows. The cursor now also folds
+  in `builtin::fingerprint()` (every built-in's id and bytes), so a page coming back to a rebuilt
+  node gets a fresh list.
+
+builtin.cjs no longer pins particular files. The curation moves them, so the claims take whatever
+the folder holds today.
+
+Posts follow chat's rule too (same day, Curtis: "I want them to drop it the way chat does"):
+`bake::publish` leaves out a private picture that names nothing and publishes the rest, rather
+than stopping at "an embedded media document is missing". `drop_embeds` leaves words untouched,
+whitespace and all, when nothing is missing, so ordinary posts publish byte for byte as written.
+Pinned in builtin.cjs.

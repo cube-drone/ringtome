@@ -1009,8 +1009,17 @@ async fn bake_words(
     let seal_of = key.map(|_| (*author, *doc));
     let mut swaps: Vec<(String, String)> = Vec::new();
     let mut baked: Vec<[u8; 16]> = Vec::new();
+    // A picture that names nothing - not the speaker's, not in this build (a built-in whose file
+    // moved, a picture since deleted) - is left out and the rest is said (Curtis, 2026-09-29:
+    // better than refusing the whole line).
+    let held = docs.all().await?;
+    let mut missing: Vec<String> = Vec::new();
     for r in &refs {
         let MediaRef::PrivateDoc { target, doc_id: media } = r else { continue };
+        if crate::builtin::get(media).is_none() && !held.docs.contains_key(media) {
+            missing.push(target.clone());
+            continue;
+        }
         // One of the app's own pictures - a built-in sticker, most likely - is filed as the
         // speaker's first (`builtin::adopt`). A reaction is a click, not a draft with a poll
         // behind it, so the say waits out the copy here: a worker pass or two, once per
@@ -1044,7 +1053,11 @@ async fn bake_words(
         }
     }
     crate::record::bake::media_budget(state, data, &baked).await?;
-    Ok((crate::record::bake::rewrite(words, &swaps), baked))
+    let words = crate::record::bake::drop_embeds(&crate::record::bake::rewrite(words, &swaps), &missing);
+    if words.is_empty() {
+        return Err(AppError::BadRequest(crate::msg!("chat.that-picture-isnt-here-any-more", "that picture isn't here any more")));
+    }
+    Ok((words, baked))
 }
 
 /// A message's media is this node's to hold while the message is (ruling 11): cover rows

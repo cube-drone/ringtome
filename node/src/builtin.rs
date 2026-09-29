@@ -96,6 +96,22 @@ pub fn all() -> &'static [BuiltIn] {
     &ALL
 }
 
+/// One hash over every built-in's id and bytes: what this build carries. The live stream's
+/// resume cursor folds it in, so a page coming back to a rebuilt node that added, moved or
+/// dropped a file gets a fresh list, not the one it kept (2026-09-29: a moved picture was
+/// still offered under its old id).
+pub fn fingerprint() -> [u8; 32] {
+    static PRINT: LazyLock<[u8; 32]> = LazyLock::new(|| {
+        let mut h = blake3::Hasher::new();
+        for b in all() {
+            h.update(&b.id);
+            h.update(&b.head);
+        }
+        *h.finalize().as_bytes()
+    });
+    *PRINT
+}
+
 /// The built-in with this id, if the build carries one.
 pub fn get(id: &[u8; 16]) -> Option<&'static BuiltIn> {
     BY_ID.get(id).map(|&i| &ALL[i])

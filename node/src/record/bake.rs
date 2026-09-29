@@ -347,6 +347,29 @@ pub fn rewrite(body: &str, swaps: &[(String, String)]) -> String {
     out
 }
 
+/// The words with every picture embed naming one of `targets` taken out whole - `![alt](target)`,
+/// alt and all - for a picture that names nothing any more (a built-in whose file moved, a picture
+/// since deleted): a chat line says the rest rather than failing on it (Curtis, 2026-09-29).
+pub fn drop_embeds(words: &str, targets: &[String]) -> String {
+    if targets.is_empty() {
+        return words.to_string(); // untouched, whitespace and all
+    }
+    let mut out = words.to_string();
+    for target in targets {
+        // From the embed's end back to its own opening `![` on the same line, so an alt with
+        // brackets in it goes too: a missing picture must never stay behind unbaked.
+        let tail = format!("]({target})");
+        while let Some(end) = out.find(&tail) {
+            let line_start = out[..end].rfind('\n').map_or(0, |i| i + 1);
+            let Some(open) = out[line_start..end].rfind("![").map(|i| line_start + i) else {
+                break;
+            };
+            out.replace_range(open..end + tail.len(), "");
+        }
+    }
+    out.trim().to_string()
+}
+
 /// The public URL a baked media doc is embedded as: the anonymous identity-rooted path, with
 /// a decorative filename so the renderer's media-kind sniff has an extension to read.
 /// The public media twins a PUBLISHED body embeds - `/id/<author>/docs/<twin>/body[/...]`
@@ -480,8 +503,16 @@ pub async fn publish(
     let mut baked: Vec<[u8; 16]> = Vec::new();
     let mut items: Vec<BakeItem> = Vec::new();
     let mut blocked = false;
+    // A picture that names nothing - not the author's, not in this build (a built-in whose file
+    // moved, a picture since deleted) - is left out and the rest is published, as a chat line
+    // does (Curtis, 2026-09-29).
+    let held = docs.all().await?;
+    let mut missing: Vec<String> = Vec::new();
     for r in &refs {
         match r {
+            MediaRef::PrivateDoc { target, doc_id: media } if crate::builtin::get(media).is_none() && !held.docs.contains_key(media) => {
+                missing.push(target.clone());
+            }
             MediaRef::PrivateDoc { target, doc_id: media } => {
                 // A picture whose bytes are still ingesting is not a failure - it is a
                 // moment away. Say "ingesting" and let the publish's poll come back, rather
@@ -628,7 +659,7 @@ pub async fn publish(
         }
     }
     Ok(Outcome::Posted(
-        docs.publish(doc_id, Some(rewrite(&body, &swaps)), header_refs, reply, flags).await?,
+        docs.publish(doc_id, Some(drop_embeds(&rewrite(&body, &swaps), &missing)), header_refs, reply, flags).await?,
     ))
 }
 
@@ -988,6 +1019,18 @@ mod tests {
         assert!(out.contains(&format!("[a room](/home/chat/{author}/{doc})")), "a room is not a document");
         assert!(out.contains(&format!("/post/{doc}?via=k2")), "a post's address is not touched");
         assert!(!out.contains("bucket="), "{out}");
+    }
+
+    /// A picture that names nothing leaves the words whole, alt and all; the rest stays as said.
+    #[test]
+    fn a_missing_picture_leaves_the_words() {
+        let gone = "/api/identity/ab/docs/00/body/x.apng".to_string();
+        let words = format!("look ![a [horse]]({gone}) and ![kept](/api/identity/ab/docs/11/body/y.avif)");
+        assert_eq!(super::drop_embeds(&words, std::slice::from_ref(&gone)), "look  and ![kept](/api/identity/ab/docs/11/body/y.avif)", "brackets in the alt go too");
+        let words = format!("look ![a horse]({gone}) and ![kept](/api/identity/ab/docs/11/body/y.avif)");
+        assert_eq!(super::drop_embeds(&words, std::slice::from_ref(&gone)), "look  and ![kept](/api/identity/ab/docs/11/body/y.avif)");
+        assert_eq!(super::drop_embeds(&format!("![sticker]({gone})"), std::slice::from_ref(&gone)), "", "a lone sticker leaves nothing");
+        assert_eq!(super::drop_embeds("  as written\n", &[]), "  as written\n", "nothing missing, nothing touched");
     }
 
     #[test]
