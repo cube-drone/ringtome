@@ -710,6 +710,25 @@ export function addImage(drawing, picture, layerId, entryId, now) {
     return addStroke(out, entry);
 }
 
+/// A sticker, stamped (Curtis, 2026-09-28): the same `image` entry adding a picture makes, but on the
+/// CURRENT layer rather than a new one, centred where it was stamped (`at`, canvas units) at the size
+/// it showed under the cursor (`size`, [w, h] in canvas units). Stamped twice, it is two entries -
+/// each merged, undone, grabbed and erased like any stroke.
+export function stampImage(drawing, picture, layerId, at, size, entryId, now) {
+    const [w, h] = size.map((n) => Math.max(1, Math.round(n)));
+    const entry = {
+        id: entryId,
+        t: now,
+        tool: 'image',
+        points: [Math.round(at[0] - w / 2), Math.round(at[1] - h / 2)],
+        doc: picture.doc,
+        w,
+        h,
+    };
+    if (layerId && layerId !== BASE_LAYER) entry.layer = layerId;
+    return addStroke(drawing, entry);
+}
+
 /// A title as a layer name, or null: control characters become spaces, and a long title is cut
 /// at a character boundary to fit MAX_NAME_BYTES.
 function layerNameFrom(title) {

@@ -334,6 +334,28 @@ its size in canvas units: one pixel to a unit, centred, shrunk (never grown) to 
   knowing the picture's pixels).
 - An animated picture draws as its first frame.
 
+### Stickers
+
+A sticker (Curtis, 2026-09-28) is any picture or drawing of the person's tagged **`sticker`**. The
+**stickers** tool shows them inline in the tools column - newest first, narrowed by their other tags
+(pure/imagepick.js `stickersOf`) - and choosing one puts it in hand: the cursor over the canvas
+becomes the sticker itself, at its own size on screen but never past 128 pixels on its longer side,
+which is as big as a browser lets a cursor be (`stickerCursorSize`). **A click stamps a copy** - on
+the current layer, centred on the click, exactly as big as the cursor showed it - and every click is
+another stamp.
+
+- **A stamp is an `image` entry** (`stampImage`): the one adding a picture makes, on the current
+  layer rather than a new one. So there is nothing new on the wire or in the merge: stamps are
+  undone, grabbed, erased and carried like any stroke, and a pour runs over them as over a picture.
+- **A drawing sticker is flattened once, when chosen** (`drawingAsPicture`, one copy per version), and
+  the stamp names that picture - a snapshot, never a live link, as adding a drawing is.
+- **The cursor is painted from the stamp's own picture** (Curtis, 2026-09-28), not shown as an image
+  element: an animated sticker shows, frozen, the one frame a stamp takes (a picture is painted as
+  its first frame), rather than playing and stamping something else; and a drawing sticker shows
+  from the copy the page holds, before the node could serve it. Stamping the frame currently playing
+  would need a new picture per stamp, and is not done.
+- A text layer takes no stamps (only its own tools), and neither does a hidden one.
+
 ### Undo is a recorded removal, so a merge cannot bring a stroke back
 
 Undo takes the newest stroke out of `strokes` and puts its id in `undone`. Undo again takes the next:

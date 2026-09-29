@@ -283,6 +283,70 @@
     box-shadow: 0 0 0 1px var(--paper);
 }
 
+/* The sticker in hand, as the cursor (2026-09-28): the picture itself, as big as it will stamp. */
+.drawing-sticker-cursor {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    object-fit: fill;
+    opacity: 0.85;
+}
+
+.drawing-paper.stamp,
+.drawing-paper.stamp .drawing-canvas {
+    cursor: none;
+}
+
+/* The shelf of stickers, inline in the tools column. */
+.drawing-stickers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.drawing-sticker-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(3.2rem, 1fr));
+    gap: 0.35rem;
+}
+
+.drawing-sticker {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: var(--surface);
+    border: 1px solid transparent;
+    --line: var(--border);
+    position: relative;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    cursor: pointer;
+}
+
+.drawing-sticker.active {
+    --line: var(--teal);
+    background: var(--paper);
+}
+
+.drawing-sticker-thumb {
+    display: block;
+    aspect-ratio: 1;
+    overflow: hidden;
+}
+
+.drawing-sticker-thumb img,
+.drawing-sticker-thumb canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
 .drawing-cursor.eraser {
     border-style: dashed;
 }

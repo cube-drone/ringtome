@@ -59,6 +59,7 @@ import {
     MAX_NAME_BYTES,
     MAX_REACH,
     addImage,
+    stampImage,
     imagesOf,
     shapeEntry,
     shapeBox,
@@ -79,11 +80,13 @@ import { FONTS } from '@cube-drone/marquee-react-renderer';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
+import { stickersOf, stickerCursorSize, STICKER_TAG, STICKER_MAX_PX } from '../pure/imagepick.js';
+import { togglePick } from '../pure/facets.js';
 import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox, dragBox, dragBoxAt, fitBox } from '../pure/transform.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
-import { openMirror } from '../mirror.js';
+import { openMirror, useLive } from '../mirror.js';
 import { cachedThumb, rememberThumb } from '../mirror/thumbcache.js';
 
 const html = htm.bind(h);
@@ -576,6 +579,69 @@ const THUMB_WIDTH = 120;
 /// A drawing's thumbnail for its list row, drawn here from its strokes - the node keeps thumbnails
 /// only for pictures that came through its image ingest, which a drawing never does (DRAWING.md).
 /// Kept per head, so a drawing redraws its thumbnail exactly when it changes.
+/// The sticker shelf (Curtis, 2026-09-28): every picture and drawing of the person's tagged
+/// `sticker`, inline in the tools column while the sticker tool is in hand, narrowed by their other
+/// tags. Choosing one puts it in hand; a drawing is flattened into a picture first, once per version
+/// (`drawingAsPicture`), as adding one does.
+const StickerShelf = ({ root, chosen, onChoose }) => {
+    const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
+    const [tags, setTags] = useState([]);
+    const [busy, setBusy] = useState(null);
+    const [error, setError] = useState(null);
+    const { stickers, tags: cloud } = stickersOf(docs || [], tags);
+    const choose = async (doc) => {
+        setError(null);
+        if (doc.format !== 'drawing') {
+            onChoose({ source: doc.doc_id, doc: doc.doc_id, width: doc.media.width, height: doc.media.height, title: doc.title || '' });
+            return;
+        }
+        setBusy(doc.doc_id);
+        try {
+            const flat = await drawingAsPicture(root, doc.doc_id);
+            onChoose({ source: doc.doc_id, doc: flat.doc, width: flat.width, height: flat.height, title: flat.title || doc.title || '' });
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(null);
+        }
+    };
+    return html`<div class="drawing-stickers">
+        ${cloud.length > 0 &&
+        html`<div class="imagepick-tags">
+            ${cloud.map(
+                ([tag, count]) => html`<button
+                    key=${tag}
+                    class=${tags.includes(tag) ? 'imagepick-tag active' : 'imagepick-tag'}
+                    onClick=${() => setTags(togglePick(tags, tag))}
+                >${tag} <span class="imagepick-tag-count">${count}</span></button>`
+            )}
+        </div>`}
+        ${stickers.length === 0
+            ? html`<p class="null-sub">${t('doc.drawing.no-stickers', 'tag a picture or a drawing "{tag}" to keep it here', { tag: STICKER_TAG })}</p>`
+            : html`<ul class="drawing-sticker-grid">
+                  ${stickers.map(
+                      (doc) => html`<li key=${doc.doc_id}>
+                          <button
+                              class=${chosen && chosen.source === doc.doc_id ? 'drawing-sticker active' : 'drawing-sticker'}
+                              title=${doc.title || ''}
+                              aria-label=${doc.title || t('doc.drawing.a-sticker', 'a sticker')}
+                              disabled=${busy === doc.doc_id}
+                              onClick=${() => choose(doc)}
+                          >
+                              <span class="drawing-sticker-thumb drawing-floor">
+                                  ${doc.format === 'drawing'
+                                      ? html`<${DrawingThumb} root=${root} doc=${doc} />`
+                                      : doc.media.has_thumb &&
+                                        html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`}
+                              </span>
+                          </button>
+                      </li>`
+                  )}
+              </ul>`}
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
+};
+
 export const DrawingThumb = ({ root, doc, big }) => {
     const key = `${doc.doc_id}:${doc.head}`;
     const [src, setSrc] = useState(thumbCache.get(key) || null);
@@ -764,6 +830,29 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     }, [showMeta]);
     const canvasRef = useRef(null);
     const cursorRef = useRef(null);
+    const stickerCursorRef = useRef(null);
+    // The sticker cursor is PAINTED, from the same picture the stamp will paint (2026-09-28): an
+    // animation shows the one frame a stamp takes rather than playing, and a drawing just flattened
+    // shows from the copy this page holds, before the node has taken it in and could serve an <img>.
+    // Drawn once, on choosing, at up to twice the cursor's size for dense screens.
+    const stickerDoc = tools.tool === 'sticker' && tools.sticker ? tools.sticker.doc : null;
+    useEffect(() => {
+        if (!stickerDoc) return undefined;
+        let live = true;
+        const held = fetchPicture(root, stickerDoc);
+        held.promise.then(() => {
+            const canvas = stickerCursorRef.current;
+            if (!live || !held.ready || !canvas) return;
+            const { naturalWidth: nw, naturalHeight: nh } = held.img;
+            const shrink = Math.min(1, (2 * STICKER_MAX_PX) / Math.max(nw || 1, nh || 1));
+            canvas.width = Math.max(1, Math.round((nw || 1) * shrink));
+            canvas.height = Math.max(1, Math.round((nh || 1) * shrink));
+            canvas.getContext('2d').drawImage(held.img, 0, 0, canvas.width, canvas.height);
+        });
+        return () => {
+            live = false;
+        };
+    }, [root, stickerDoc]);
     const live = useRef(null); // the stroke being drawn: { stroke, pen, samples }
     const opened = session.status !== 'opening' && session.status !== 'waiting';
     // Once this drawing has opened it stays on screen through a reload (the lookout fetching the
@@ -893,6 +982,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const framing = FRAMING_TOOLS[tools.tool] || null;
     const boxTool = cropTool || !!framing;
     const textTool = tools.tool === 'text';
+    const stickerTool = tools.tool === 'sticker';
     const shapeTool = SHAPE_TOOLS.includes(tools.tool);
     const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
 
@@ -909,6 +999,20 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (!cursor || !canvas) return;
         const r = canvas.getBoundingClientRect();
         const off = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        // The sticker in hand IS the cursor (2026-09-28): as big as it will be stamped, no bigger
+        // than a cursor may be.
+        const sticker = stickerCursorRef.current;
+        if (sticker) {
+            if (stickerTool && tools.sticker && !off) {
+                const [w, h] = stickerCursorSize(tools.sticker.width, tools.sticker.height, r.width / W);
+                sticker.style.width = `${w}px`;
+                sticker.style.height = `${h}px`;
+                sticker.style.transform = `translate(${e.clientX - r.left - w / 2}px, ${e.clientY - r.top - h / 2}px)`;
+                sticker.style.display = 'block';
+            } else {
+                sticker.style.display = 'none';
+            }
+        }
         if (!SIZED_TOOLS.includes(tools.tool) || off) {
             cursor.style.display = 'none'; // the grab tool's cursor is the hand, the bucket's a crosshair - not a size
             return;
@@ -949,6 +1053,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         // The crop box (DRAWING.md, "Cropping"): a corner or an edge resizes it, inside moves it,
         // outside draws a fresh one. Nothing is recorded until the crop button.
         // Text: a click places a new text layer there, and its words are typed in the tools column.
+        // A sticker (2026-09-28): one click, one stamp - a copy of the picture in hand, on the current
+        // layer, centred on the click, at the size the cursor shows it.
+        if (stickerTool) {
+            if (!tools.sticker) return;
+            const rect = canvasRef.current.getBoundingClientRect();
+            const [w, h] = stickerCursorSize(tools.sticker.width, tools.sticker.height, rect.width / W);
+            const perUnit = W / rect.width;
+            changeLayers(stampImage(drawing, tools.sticker, current.id, toDrawing(e), [w * perUnit, h * perUnit], strokeId(), Date.now()));
+            return;
+        }
         if (textTool) {
             const [x, y] = toDrawing(e);
             const id = strokeId();
@@ -1356,6 +1470,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket')],
         ['text', Icons.text, t('doc.drawing.text-tool', 'text')],
+        ['sticker', Icons.sticker, t('doc.drawing.sticker-tool', 'stickers')],
         ['transform', Icons.transform, t('doc.drawing.transform', 'transform')],
         ['grab', Icons.grab, t('doc.drawing.grab', 'grab')],
         // Last, away from the transform it resembles (Curtis, 2026-09-27).
@@ -1388,7 +1503,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
           ? 'drawing-paper drawing-floor aim'
           : textTool
             ? 'drawing-paper drawing-floor type'
-            : 'drawing-paper drawing-floor';
+            : stickerTool && tools.sticker
+              ? 'drawing-paper drawing-floor stamp'
+              : 'drawing-paper drawing-floor';
 
     const toolsColumn = tucked.has('tools')
         ? html`<${Rail} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onClick=${() => toggleTuck('tools')} />`
@@ -1490,6 +1607,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       )}
                   </div>
               </div>`}
+              ${stickerTool && html`<${StickerShelf} root=${root} chosen=${tools.sticker} onChoose=${(sticker) => setTools({ sticker })} />`}
               ${cropTool &&
               html`<button class="drawing-tool drawing-crop-go" disabled=${!cropReady} onClick=${cropNow}>
                   <${Icons.crop} /> ${t('doc.drawing.crop', 'crop')}
@@ -1796,7 +1914,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           ref=${paperRef}
                           class=${paperClass}
                           style=${paperSize}
-                          onPointerLeave=${() => cursorRef.current && (cursorRef.current.style.display = 'none')}
+                          onPointerLeave=${() => {
+                              if (cursorRef.current) cursorRef.current.style.display = 'none';
+                              if (stickerCursorRef.current) stickerCursorRef.current.style.display = 'none';
+                          }}
                       >
                           <canvas
                               ref=${canvasRef}
@@ -1805,6 +1926,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                               height=${H * BACKING}
                           ></canvas>
                           <span ref=${cursorRef} class=${tools.tool === 'eraser' ? 'drawing-cursor eraser' : 'drawing-cursor'}></span>
+                          ${stickerTool && tools.sticker && html`<canvas ref=${stickerCursorRef} class="drawing-sticker-cursor"></canvas>`}
                           ${cropBox &&
                           html`<svg ref=${cropRef} class="drawing-crop" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none">
                               <path class="drawing-crop-shade" fill-rule="evenodd" d=${cropPath(cropBox)} />

@@ -51,3 +51,46 @@ describe('the image picker', () => {
     });
 });
 
+
+// Stickers (Curtis, 2026-09-28): a picture or drawing tagged `sticker`, on a shelf in the drawing's
+// tools, stamped where you click.
+describe('the sticker shelf', () => {
+    let p, d;
+    before(async () => {
+        p = await import('../../../js/pure/imagepick.js');
+        d = await import('../../../js/pure/drawing.js');
+    });
+    const pic = (id, tags, ms) => ({ doc_id: id, format: 'avif', media: { width: 40, height: 20 }, tags, created_ms: ms, buckets: ['files'] });
+
+    it('holds the pictures and drawings tagged sticker, newest first, and narrows by their other tags', () => {
+        const docs = [
+            pic('a', ['sticker', 'horse'], 1),
+            pic('b', ['sticker'], 3),
+            pic('c', ['horse'], 2),
+            { doc_id: 'd', format: 'drawing', tags: ['sticker', 'horse'], created_ms: 4 },
+            { doc_id: 'e', format: 'marquee', tags: ['sticker'], created_ms: 5 },
+        ];
+        const all = p.stickersOf(docs);
+        assert.deepEqual(all.stickers.map((s) => s.doc_id), ['d', 'b', 'a'], 'a note is not a sticker, an untagged picture neither');
+        assert.deepEqual(all.tags, [['horse', 2]], 'the cloud leaves out the tag every sticker wears');
+        assert.deepEqual(p.stickersOf(docs, ['horse']).stickers.map((s) => s.doc_id), ['d', 'a']);
+    });
+
+    it('shows under the cursor at its own size, never larger than a cursor may be', () => {
+        assert.deepEqual(p.stickerCursorSize(40, 20, 1), [40, 20]);
+        assert.deepEqual(p.stickerCursorSize(400, 200, 1), [128, 64], 'the longer side capped, the shape kept');
+        assert.deepEqual(p.stickerCursorSize(40, 20, 0.5), [20, 10], 'at the canvas\'s scale');
+    });
+
+    it('stamps a copy on the CURRENT layer, centred where it was stamped, at the size it showed', () => {
+        let body = d.addLayer(d.blankDrawing(), 'aaaaaaaaaaaaaaa2', 1);
+        const layersBefore = body.layers.length;
+        body = d.stampImage(body, { doc: 'f'.repeat(32) }, 'aaaaaaaaaaaaaaa2', [100, 50], [40, 20], 'c000000000000001', 2);
+        body = d.stampImage(body, { doc: 'f'.repeat(32) }, d.BASE_LAYER, [10, 10], [40, 20], 'c000000000000002', 3);
+        assert.equal(body.layers.length, layersBefore, 'no new layer');
+        const [one, two] = body.strokes.filter((s) => s.tool === 'image');
+        assert.deepEqual([one.points, one.w, one.h, one.layer], [[80, 40], 40, 20, 'aaaaaaaaaaaaaaa2']);
+        assert.equal(two.layer, undefined, 'the base layer is the default');
+        assert.deepEqual(two.points, [-10, 0], 'part of it may hang off the edge, as a brush may');
+    });
+});

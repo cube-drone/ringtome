@@ -90,6 +90,7 @@ import {
     House,
     Question,
     Package,
+    Sticker,
     CellSignalNone,
     CellSignalLow,
     CellSignalMedium,
@@ -267,6 +268,8 @@ export const Icons = {
     // ...and its cousins, which frame a picture as your profile picture or your banner.
     asProfile: UserCircle,
     asBanner: IdentificationCard,
+    // ...and stickers, stamped from a shelf of pictures (2026-09-28).
+    sticker: Sticker,
     // ...and text, with its alignments.
     text: TextT,
     alignLeft: TextAlignLeft,

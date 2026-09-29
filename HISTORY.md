@@ -12388,3 +12388,26 @@ bytes, thumbnail and video preview, and the format, size, length and silent-loop
 header, from the author's chain or the fragment ledger; the swapped address keeps `-loop`. Only the
 open web is still crushed. publish.cjs holds a picture, a sound and a silent-loop video each copied
 byte-for-byte, the loop still a loop.
+
+## 2026-09-28 (cont.): stickers
+
+Curtis: a sticker is a picture or drawing in your collection tagged `sticker`; the drawing app's
+**stickers** tool shelves them inline in the tools column (narrowed by their other tags), and the one
+chosen becomes the cursor and stamps a copy of itself, as the cursor shows it, onto the current layer
+at every click (DRAWING.md, "Stickers").
+
+- A stamp is the `image` entry adding a picture already makes, on the current layer and centred on the
+  click (pure/drawing.js `stampImage`) - no new entry kind, nothing new to merge.
+- The shelf is `stickersOf` (pure/imagepick.js): pictures and drawings tagged `sticker`, newest first,
+  the tag cloud of their other tags. A drawing is flattened once when chosen, as adding one is.
+- The cursor is the sticker at its own on-screen size, capped at 128 pixels on the longer side
+  (`stickerCursorSize`), and the stamp is exactly that size in canvas units.
+
+pure/imagepick.cjs holds the shelf, the cursor's size and the stamp on the current layer.
+
+Then two field notes on stickers (Curtis): an animated sticker's cursor played while its stamp took
+the first frame, and a drawing sticker's cursor showed nothing though it stamped fine. One cause -
+the cursor was an `<img>` of the picture's address, the stamp a canvas painting of the page's held
+picture. The cursor is now a canvas painted once, on choosing, from that same held picture: a
+frozen animation shows the frame the stamp will take, and a just-flattened drawing shows before the
+node has taken the copy in.

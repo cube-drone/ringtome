@@ -38,6 +38,32 @@ function narrowed(docs, { query, bucket, drawings }) {
         });
 }
 
+/// The tag that makes a picture or a drawing a sticker (Curtis, 2026-09-28).
+export const STICKER_TAG = 'sticker';
+
+/// The drawing app's sticker shelf: every picture and drawing tagged `sticker`, newest first, the ones
+/// carrying every tag in `tags`; and the tag cloud of the stickers' OTHER tags, counted before those
+/// tags narrow it - `sticker` itself says nothing on a shelf where everything wears it.
+export function stickersOf(docs, tags = []) {
+    const all = (docs || []).filter(pickable(true)).filter((d) => (d.tags || []).includes(STICKER_TAG));
+    const stickers = all.filter((d) => tags.every((t) => (d.tags || []).includes(t))).sort(newestFirst);
+    return { stickers, tags: tagCounts(all).filter(([t]) => t !== STICKER_TAG) };
+}
+
+/// The longest side a sticker shows under the cursor, in screen pixels - what browsers allow a
+/// cursor to be.
+export const STICKER_MAX_PX = 128;
+
+/// How big a sticker shows under the cursor, [w, h] in screen pixels: its own size at the canvas's
+/// scale on screen (`scale` screen pixels per canvas unit), never past STICKER_MAX_PX on its
+/// longer side, never nothing.
+export function stickerCursorSize(width, height, scale) {
+    const w = Math.max(1, (width || 1) * scale);
+    const h = Math.max(1, (height || 1) * scale);
+    const shrink = Math.min(1, STICKER_MAX_PX / Math.max(w, h));
+    return [Math.max(1, w * shrink), Math.max(1, h * shrink)];
+}
+
 /// What the picker shows: `{ pictures, tags, buckets }` - the pictures passing every filter, newest
 /// first; the tag cloud ([tag, count], most-used first) over the pictures before the tag filter;
 /// and every notebook holding any picture at all, alphabetical, so the notebook menu never shrinks
