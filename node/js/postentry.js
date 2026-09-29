@@ -137,7 +137,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
 import { postHref, docHref, roomHref, CopyLinkChip } from './links.js';
-import { RoomTitle } from './roomtitle.js';
+import { RoomTitle, BookTitle } from './roomtitle.js';
 export { publishWithBaking, BakeModal };
 
 /**
@@ -1075,7 +1075,11 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
             />
             ${!open &&
             !!title &&
-            html`<h2 class="feed-entry-title"><a href=${href}>${item.format === 'room' && !item.im ? html`<${RoomTitle}>${title}</${RoomTitle}>` : title}</a></h2>`}
+            html`<h2 class="feed-entry-title"><a href=${href}>${item.format === 'room' && !item.im
+                ? html`<${RoomTitle}>${title}</${RoomTitle}>`
+                : item.format === 'book'
+                  ? html`<${BookTitle}>${title}</${BookTitle}>`
+                  : title}</a></h2>`}
             ${/* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
                 mini-card names what it answers - which is the whole reason context-free
                 "@rando, I disagree" cannot happen here. Suppressed on the thread page

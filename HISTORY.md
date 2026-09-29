@@ -12461,3 +12461,17 @@ renderer's `hooks.turbolink` (doc/usercard.js `marqueeHooks`), which postentry.j
 importing it the other way would loop. A room the reader may not enter is its header alone ("a
 private chat room"), and so is a room inside another room's card, so cards never nest without end.
 The live editor, which renders strings, keeps the smaller card.
+
+Books wear the book icon (Curtis: as a room wears its hash): a book's title in the feed (`BookTitle`, js/roomtitle.js) and on its link card (Phosphor's BookOpen drawn into the card, doc/turbolinks.js) - the icon the app already uses for books.
+
+A post's link card carries a preview (Curtis): the first thirty words of the post, two lines at most, under its title - or, untitled, as its title - and its picture as before; a book, whose body is its table, quotes its cover page and wears the cover's picture when it has none of its own (doc/turbolinks.js `previewOf`). A sealed post shows no words on a card.
+
+Correction (Curtis: posts of Just An Image showed no picture on their link card; and, asked, "posts
+generally don't have thumbnails"): right - a text post is minted with no thumbnail at all
+(`save_public_text` sets none); only a picture has one. So the link card's "the post's picture" and
+slice 4's `og:image` from the post's thumbnail both read a field that is always empty, and the head
+had been falling back to the author's picture every time. A post's picture is now the first picture
+its words embed, as that picture's thumbnail - on the card (doc/turbolinks.js `firstPicture`; a
+book's, its cover page's) and in the head (idface.rs `first_picture_thumb`) - and a post that is
+itself a picture uses its own; its bytes are never quoted as words. idface.cjs now holds a picture
+post's `og:image` being that picture, and its thumbnail serving - the claim slice 4 left out.

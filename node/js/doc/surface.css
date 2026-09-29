@@ -329,6 +329,15 @@ a.rt-card:hover {
     white-space: nowrap;
 }
 
+.rt-card-preview {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 .rt-card-when {
     font-size: 0.75rem;
     color: var(--faint);
@@ -414,6 +423,15 @@ a.rt-card:hover {
     font-size: 0.8rem;
     color: var(--muted);
     flex-shrink: 0;
+}
+
+/* A book's title on its card (2026-09-28): the book icon before it. */
+.rt-card-book {
+    width: 1.05em;
+    height: 1.05em;
+    vertical-align: -0.15em;
+    margin-right: 0.3em;
+    color: var(--teal);
 }
 
 .rt-card-private {

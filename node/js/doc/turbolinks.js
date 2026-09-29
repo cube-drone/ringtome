@@ -21,7 +21,10 @@ import { nameToEmoji } from 'gemoji';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import { bareWebProfile } from '@cube-drone/marquee-html-renderer';
 import { mediaResolver } from '../pure/mediakind.js';
-import { api, apiTextTitled } from '../net.js';
+import { api, apiText, apiTextTitled } from '../net.js';
+import { parseBook } from '../pure/books.js';
+import { mediaPath } from '../pure/ringtome.js';
+import { ownMediaKind, OWN_MEDIA_KINDS } from '../pure/mediakind.js';
 import { excerpt } from '../pure/excerpt.js';
 import { parseRingtome, ringtomePath } from '../pure/ringtome.js';
 import { parseSpeakable, wordsFor } from '../speakable.js';
@@ -68,8 +71,53 @@ export const setTurbolinkReader = (root) => {
 /// `#`, so the title goes bare.
 const ROOM_ICON = `<svg class="rt-card-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.82,96l-11.64,64h-64l11.64-64Z" opacity="0.2"/><path d="M224,88H175.4l8.47-46.57a8,8,0,0,0-15.74-2.86l-9,49.43H111.4l8.47-46.57a8,8,0,0,0-15.74-2.86L95.14,88H48a8,8,0,0,0,0,16H92.23L83.5,152H32a8,8,0,0,0,0,16H80.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,80,224a8,8,0,0,0,7.86-6.57l9-49.43H144.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,144,224a8,8,0,0,0,7.86-6.57l9-49.43H208a8,8,0,0,0,0-16H163.77l8.73-48H224a8,8,0,0,0,0-16Zm-76.5,64H99.77l8.73-48h47.73Z"/></svg>`;
 
+/// A book's icon (Phosphor's BookOpen, duotone - the app's own `Icons.book`, 2026-09-28), before a
+/// book's title on its card, as a room's hash marks a room.
+const BOOK_ICON = `<svg class="rt-card-book" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,56V200H160a32,32,0,0,0-32,32,32,32,0,0,0-32-32H24V56H96a32,32,0,0,1,32,32,32,32,0,0,1,32-32Z" opacity="0.2"/><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/></svg>`;
+
 const escapeHtml = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+/// How many words a post card quotes (2026-09-28): a glance, not a read.
+const PREVIEW_WORDS = 30;
+
+/// A post's preview for its card (Curtis, 2026-09-28): the start of its words, and a picture when the
+/// post has none of its own - for a book, whose words are its table, the cover page's words and
+/// picture. Nothing for a sealed post (its words are for trusted readers) or anything that will not
+/// open; the card stands without it.
+/// A post's picture (Curtis, 2026-09-28): the first picture its words embed, as that picture's
+/// thumbnail. A text post has no thumbnail of its own - only a picture does - so this is the only
+/// picture a post can have.
+function firstPicture(words) {
+    for (const m of (words || '').matchAll(/!\[[^\]\n]*\]\(([^)\s]+)\)/g)) {
+        const path = mediaPath(m[1], typeof window === 'undefined' ? '' : window.location.origin);
+        if (path && ownMediaKind(path) === 'image') return path.replace(/\/body(\/[^/]*)?$/, '/thumb');
+    }
+    return '';
+}
+
+async function previewOf(seg, root, doc, post) {
+    if (post.trusted_only) return { preview: '', cover: '' };
+    // A post that IS a picture (a published drawing): its own thumbnail, and its bytes are never words.
+    if (OWN_MEDIA_KINDS[post.format]) return { preview: '', cover: `/id/${root}/docs/${doc}/thumb` };
+    try {
+        const text = await apiText(`/id/${root}/docs/${doc}/body`);
+        if (post.format !== 'book') return { preview: excerpt(text, post.format || 'marquee', PREVIEW_WORDS) || '', cover: firstPicture(text) };
+        const book = parseBook(text);
+        const page = book && book.cover && book.cover.post;
+        if (!page) return { preview: '', cover: '' };
+        const [words, head] = await Promise.all([
+            apiText(`/id/${root}/docs/${page}/body`).catch(() => ''),
+            api(`/api/id/${seg}/posts/${page}`).catch(() => null),
+        ]);
+        return {
+            preview: excerpt(words, (head && head.format) || 'marquee', PREVIEW_WORDS) || '',
+            cover: firstPicture(words),
+        };
+    } catch {
+        return { preview: '', cover: '' };
+    }
+}
 
 /// What a Ringtome address points at, as this node can see it: `{ kind, href, root, name, avatar,
 /// title, when, thumb }`, or `{ private: true }`. The href is always this node's own path.
@@ -90,13 +138,16 @@ async function resolveRingtome(target) {
     const doc = ref.page || ref.doc;
     try {
         const post = await api(`/api/id/${ref.seg}/posts/${doc}`);
+        const { preview, cover } = await previewOf(ref.seg, root, doc, post);
         return {
             ...who,
             kind: 'post',
             href: ref.kind === 'doc' ? ringtomePath({ seg: ref.seg, kind: 'post', doc }) : ref.path,
             title: post.title || '',
             when: post.published_ms || null,
-            thumb: post.thumb ? `/id/${root}/docs/${doc}/thumb` : '',
+            thumb: cover,
+            book: post.format === 'book',
+            preview,
         };
     } catch {
         /* not a public post here: maybe a document of the reader's own */
@@ -113,13 +164,16 @@ async function resolveRingtome(target) {
         try {
             const { post: published } = await api(`/api/id/${ref.seg}/from/${doc}`);
             const post = await api(`/api/id/${ref.seg}/posts/${published}`);
+            const { preview, cover } = await previewOf(ref.seg, root, published, post);
             return {
                 ...who,
                 kind: 'post',
                 href: ringtomePath({ seg: ref.seg, kind: 'post', doc: published }),
                 title: post.title || '',
                 when: post.published_ms || null,
-                thumb: post.thumb ? `/id/${root}/docs/${published}/thumb` : '',
+                thumb: cover,
+                book: post.format === 'book',
+                preview,
             };
         } catch {
             /* still private */
@@ -205,7 +259,9 @@ function renderRingtome(data, level) {
             ? t('doc.turbolinks.a-chat-room', 'a chat room')
             : data.kind === 'person'
               ? data.title
-              : data.title || t('doc.turbolinks.untitled', 'untitled');
+              : data.title || data.preview || t('doc.turbolinks.untitled', 'untitled');
+    // An untitled post is called by its words, which are then not said twice.
+    const preview = data.kind === 'post' && data.title ? data.preview : '';
     const when =
         level === 'full' && data.when
             ? new Date(data.when).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
@@ -214,7 +270,8 @@ function renderRingtome(data, level) {
         `<a class="rt-card rt-card-${data.kind}" href="${escapeHtml(data.href)}">` +
         `<img class="rt-card-face" src="${escapeHtml(face)}" alt="">` +
         `<span class="rt-card-text"><span class="rt-card-who">${escapeHtml(who)}</span>` +
-        (line ? `<span class="rt-card-title">${escapeHtml(line)}</span>` : '') +
+        (line ? `<span class="rt-card-title">${data.book ? BOOK_ICON : ''}${escapeHtml(line)}</span>` : '') +
+        (level === 'full' && preview ? `<span class="rt-card-preview">${escapeHtml(preview)}</span>` : '') +
         (when ? `<span class="rt-card-when">${escapeHtml(when)}</span>` : '') +
         `</span>` +
         (level === 'full' && data.thumb ? `<img class="rt-card-thumb" src="${escapeHtml(data.thumb)}" alt="" loading="lazy">` : '') +

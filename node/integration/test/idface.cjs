@@ -582,6 +582,22 @@ describe("a post's own head, for the unfurlers outside", function () {
         assert.ok(head.includes(`/post/${post}"`), "and names the post's address");
     });
 
+    it("a post that is just a picture: that picture is its image - a text post has no thumbnail of its own", async function () {
+        this.timeout(60000);
+        const { makePng } = require("./helpers.cjs");
+        const pic = (await (await owner(`api/identity/${root}/docs/binary?title=pony`, { method: "POST", body: makePng(32, 32), file: true })).json()).doc_id;
+        for (let i = 0; i < 60; i++) {
+            if ((await owner(`api/identity/${root}/docs/${pic}/body`)).status === 200) break;
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        const { post } = await publish("", `![pony](/api/identity/${root}/docs/${pic}/body/pony.avif)`);
+        const head = await headOf(`ringtome/user/${short}/post/${post}`);
+        const image = (head.match(/property="og:image" content="([^"]+)"/) || [])[1];
+        assert.ok(image && /\/ringtome\/user\/[A-Za-z0-9]+\/doc\/[0-9a-f]{32}\/thumb$/.test(image), `the post's picture, not the author's: ${head}`);
+        const thumb = await anon(image.replace(/^https?:\/\/[^/]+\//, "").replace(/^\//, ""));
+        assert.equal(thumb.status, 200, "and its thumbnail serves");
+    });
+
     it("a sealed post keeps the person's head - nothing of it reaches an unfurler", async () => {
         const { post } = await publish("Only For Friends", "the secret words", { trusted_only: true });
         const head = await headOf(`ringtome/user/${short}/post/${post}`);

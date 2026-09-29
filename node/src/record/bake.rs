@@ -168,6 +168,12 @@ fn each_directive(
     }
 }
 
+/// Every embed target in a parsed body, in order - for a reader outside this module (the post head's
+/// first picture, idface.rs).
+pub fn each_embed(node: &marquee_parser::Node, on_embed: &mut impl FnMut(&str)) {
+    walk(node, on_embed);
+}
+
 fn walk(node: &marquee_parser::Node, on_embed: &mut impl FnMut(&str)) {
     use marquee_parser::Node;
     match node {

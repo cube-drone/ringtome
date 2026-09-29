@@ -2049,7 +2049,8 @@ sees the label only once it holds their public lane.
 published note's `…/doc/<note>` through its `published_from` - wears the post's own head (idface.rs
 `post_page`): `<title>` the title and the author, `og:title` the title or, untitled, its first nine
 words, `og:description` the author's own description label or the first 200 characters of its words
-(markup dropped, bake.rs `plain_words`), `og:image` the post's thumbnail or the author's picture,
+(markup dropped, bake.rs `plain_words`), `og:image` the first picture its words embed - a text post
+has no thumbnail of its own, only a picture does (corrected 2026-09-28) - else the author's picture,
 `og:type` article, `og:url` its own short-form address. Only for a persona this node hosts, whose shelf
 it vouches for; a sealed post, a post off the shelf, and anyone else's keep the person's head, so
 nothing sealed reaches an unfurler.

@@ -193,18 +193,18 @@ async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result
     let described = labels
         .get(&(root_hex.clone(), doc_hex.clone()))
         .and_then(|ls| ls.iter().find(|a| a.annotator == root_hex && a.key == "description").map(|a| a.value.clone()));
-    let words = match crate::record::documents::public_head(&db, &doc_id).await? {
+    let marquee = crate::record::documents::Format::from_wire(post.format) == crate::record::documents::Format::Marquee;
+    let text = match crate::record::documents::public_head(&db, &doc_id).await? {
         Some(head) => match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
-            Ok(Some(bytes)) => {
-                let text = String::from_utf8_lossy(&bytes).into_owned();
-                let marquee = crate::record::documents::Format::from_wire(post.format)
-                    == crate::record::documents::Format::Marquee;
-                if marquee { crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text) } else { text }
-            }
+            Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
             _ => String::new(),
         },
         None => String::new(),
     };
+    // A post's picture is the first picture its words embed (Curtis, 2026-09-28): a text post has
+    // no thumbnail of its own - only a picture does.
+    let first_picture = if marquee { first_picture_thumb(&text) } else { None };
+    let words = if marquee { crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text) } else { String::new() };
     let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
     let excerpt = described.unwrap_or_else(|| clip(&words, HEAD_EXCERPT_CHARS));
     let title = if post.title.trim().is_empty() {
@@ -231,10 +231,9 @@ async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result
             esc(&excerpt)
         ));
     }
-    let picture = if post.thumb_hash.is_some() {
-        Some(format!("{base}/id/{short}/docs/{doc_hex}/thumb"))
-    } else {
-        profile_value(&fields, "avatar").map(|avatar| format!("{base}/id/{short}/docs/{avatar}/thumb"))
+    let picture = match first_picture {
+        Some(path) => Some(format!("{base}{path}")),
+        None => profile_value(&fields, "avatar").map(|avatar| format!("{base}/id/{short}/docs/{avatar}/thumb")),
     };
     if let Some(picture) = picture {
         head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(&picture)));
@@ -247,6 +246,23 @@ async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result
         )
             .into_response(),
     ))
+}
+
+/// The thumbnail of the first public picture a post's words embed, as a path - whosever it is.
+fn first_picture_thumb(words: &str) -> Option<String> {
+    let doc = marquee_parser::parse(words).ok()?;
+    let mut found: Option<String> = None;
+    crate::record::bake::each_embed(&doc, &mut |target| {
+        if found.is_some() {
+            return;
+        }
+        if let Some((author, twin)) = crate::record::bake::twin_address(target) {
+            let speak = speakable::speakable(&author);
+            let short = speak.rsplit('-').next().unwrap_or(&speak).to_string();
+            found = Some(format!("/ringtome/user/{short}/doc/{}/thumb", hex::encode(twin)));
+        }
+    });
+    found
 }
 
 /// At most `max` characters of `s`, cut at a word and marked when cut.
