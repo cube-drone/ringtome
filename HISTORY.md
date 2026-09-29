@@ -12356,3 +12356,35 @@ idface.cjs holds a titled post's head, an untitled one's first words, the author
 outranking the excerpt, a published note's address wearing its post's head, and a sealed post keeping
 the person's. The deliberate user-database opens in idface.rs are 19 (conventions.rs): the post head's
 one read per page load.
+
+## 2026-09-28 (cont.): pictures get `/ringtome/` addresses; somebody else's is copied at publish
+
+Curtis copied another persona's picture address and pasted it into the feed: it stayed a long plain
+`/id/…/docs/…/body/media.avif` path. Pictures had been left out of the `/ringtome/` links on purpose,
+since signed posts name their `/id/` paths. Now:
+
+- **Addresses**: a public picture serves at `/ringtome/user/<root>/doc/<id>/body[/<name.ext>]` (and
+  `/thumb`) as well as at `/id/…`, which keeps serving; publication mints the new form, root in short
+  form. `bake::twin_address` reads either spelling - the new one at any origin, the old as a path -
+  for the copy door, notification pictures and the bake.
+- **Pasting** a line that is exactly one picture's address gives `![](…)`, the address as this node
+  serves it (`pastedPicture`, `mediaPath`); a `/ringtome/` picture at another origin is drawn from this
+  node.
+- **Posting somebody else's picture** (Curtis: "reference when private, copy at publish"): a private
+  note keeps the reference; publishing copies it into the poster's own public picture through the
+  external bake's registry and worker, reading the bytes by key from this node, and puts the author on
+  the note's provenance, which the post states. The poster's own public pictures are left alone; a
+  sealed post refuses the copy, as it refuses the open web.
+
+pure/ringtome.cjs holds both spellings and the paste; bake.rs both spellings, the classifier and the
+minted form; publish.cjs a picture at its `/ringtome/` address and somebody else's copied and credited.
+Ten acceptance files that read a minted picture path back were taught the new spelling (attention, cascade, chat_media, combinations, comments, copychain, drawing, publish, trusted_posts, video_posts); the first gate run caught the four I had missed.
+
+Then music and video (Curtis: "also music and videos?"). The addresses, the paste and the playback
+already covered them - one byte route, one extension table - but copying somebody else's at publish
+went through the open web's crush: a second lossy pass for a picture or a sound, and a flat refusal
+for a video. Now a public copy of ours is re-minted exactly as it is (bake.rs `foreign_twin`): its
+bytes, thumbnail and video preview, and the format, size, length and silent-loop flag off its signed
+header, from the author's chain or the fragment ledger; the swapped address keeps `-loop`. Only the
+open web is still crushed. publish.cjs holds a picture, a sound and a silent-loop video each copied
+byte-for-byte, the loop still a loop.

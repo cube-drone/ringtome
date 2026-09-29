@@ -131,7 +131,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.ok(pictured, "the pictured post published");
         await pullAndFold(HOST_B, adaRoot);
         const words = await bodyArrives(bea, adaRoot, pictured);
-        assert.ok(words && words.includes(`/id/${adaRoot}/docs/`), `the published body names ada's twin: ${words}`);
+        assert.ok(words && words.includes(`/ringtome/user/${(await import("../../js/speakable.js")).toBase58(adaRoot)}/doc/`), `the published body names ada's twin: ${words}`);
         const r = await j(bea, `api/identity/${beaRoot}/docs/copy`, { author: adaRoot, doc_id: pictured, bucket: "clippings" });
         const said = await r.text();
         assert.equal(r.status, 200, said);

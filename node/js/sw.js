@@ -42,7 +42,7 @@ self.addEventListener('push', (event) => {
 // (Chrome shows `image` on Windows, Linux and Android; macOS's native banners, Safari and Firefox
 // leave it out.)
 async function pictureOf(path) {
-    if (typeof path !== 'string' || !path.startsWith('/id/')) return null;
+    if (typeof path !== 'string' || !(path.startsWith('/ringtome/') || path.startsWith('/id/'))) return null;
     try {
         const response = await fetch(path, { credentials: 'same-origin', signal: AbortSignal.timeout(5000) });
         if (!response.ok) return null;

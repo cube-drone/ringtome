@@ -126,3 +126,30 @@ export function fromLegacyId(pathAndQuery) {
     const base = ringtomePath({ seg, kind: doc ? 'post' : null, doc, page });
     return via.length ? `${base}?via=${via.join(',')}` : base;
 }
+
+/// A document's BYTES - what a picture embeds as - by its address (2026-09-28): `/ringtome/user/<root>/
+/// doc/<doc>/body[/<name.ext>]` at any origin; and, only as a path or at `origin` (this node - `/id/`
+/// and `/api/` are anyone's words at a foreign site), the `/id/<root>/docs/<doc>/body[/…]` spelling
+/// before `/ringtome/` (answered in the new one) and a private `/api/identity/<root>/docs/<doc>/body
+/// [/…]`. The address as this node serves it, or null.
+export function mediaPath(text, origin = '') {
+    const s = (text || '').trim();
+    let path = s;
+    let foreign = false;
+    const abs = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)(\/[^?#]*)?/.exec(s);
+    if (abs) {
+        path = abs[2] || '/';
+        foreign = !origin || !s.startsWith(`${origin}/`);
+    } else if (!s.startsWith('/')) {
+        return null;
+    }
+    path = path.split(/[?#]/, 1)[0];
+    const body = '/body(/[^/]+)?$';
+    let m = new RegExp(`^/ringtome/user/([A-Za-z0-9-]{16,})/doc/([0-9a-f]{32})${body}`).exec(path);
+    if (m) return path;
+    if (foreign) return null;
+    m = new RegExp(`^/id/([A-Za-z0-9-]{16,})/docs/([0-9a-f]{32})${body}`).exec(path);
+    if (m) return `${USER}${m[1]}/doc/${m[2]}/body${m[3] || ''}`;
+    m = new RegExp(`^/api/identity/[0-9a-f]{64}/docs/[0-9a-f]{32}${body}`).exec(path);
+    return m ? path : null;
+}

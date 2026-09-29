@@ -2054,6 +2054,25 @@ words, `og:description` the author's own description label or the first 200 char
 it vouches for; a sealed post, a post off the shelf, and anyone else's keep the person's head, so
 nothing sealed reaches an unfurler.
 
+**Pictures** (Curtis, 2026-09-28: "copy image address", pasted, stayed a long plain path). A public
+picture - any document's bytes - has a `/ringtome/` address too, `/ringtome/user/<root>/doc/<id>/body
+[/<name.ext>]`, served beside the old `/id/<root>/docs/<id>/body/…` (which signed posts still name,
+and which still serves). Publication mints the new form (bake.rs `public_media_target`), the root in
+short form. A paste that is exactly one picture's address - the new form from any origin, the old one
+or a private `/api/identity/…/body/…` from this node - arrives as the picture, `![](<path>)` (pure/
+portable.js `pastedPicture`), and a `/ringtome/` picture at another origin is drawn from this node.
+**Somebody else's picture: a reference while private, a copy at publish** (Curtis: "reference when
+private, copy at publish"). A post may not lean on a picture a reader's node might not hold, so
+publication copies it into the poster's own public picture - through the external bake's registry,
+worker and progress modal, its bytes read from this node by key (`twin_address`) rather than
+downloaded - and adds its author to the note's provenance, which the post states. The copy is a
+**re-mint, never a re-encode** (bake.rs `foreign_twin`): it is already in the house formats, so its
+bytes, thumbnail and video preview go in as they are, with the format, size, length and loop flag
+off its signed header (the author's chain, else the fragment ledger) - lossless, and the same for a
+picture, a sound and a video, which the crush would have refused. Only the open web is crushed. The poster's own
+public pictures are left as they are. A sealed post refuses to copy, as it refuses the open web: the
+background job cannot seal.
+
 ### Resolution: the lens runs the ladder
 
 Every dereference is served by *some* node - the origin as clicked, or your own node after re-homing. A node asked

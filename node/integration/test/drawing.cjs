@@ -163,7 +163,7 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         const post = await publish();
         const anon = makeFetch();
         const words = await (await anon(`id/${root}/docs/${post}/body`)).text();
-        const embed = /^!\[a horse, running\]\((\/id\/[0-9a-f]+\/docs\/[0-9a-f]+\/body\/media\.avif)\)$/m.exec(words);
+        const embed = /^!\[a horse, running\]\((\/ringtome\/user\/[A-Za-z0-9]+\/doc\/[0-9a-f]+\/body\/media\.avif)\)$/m.exec(words);
         assert.ok(embed, `the post is the picture, titled as the drawing: ${words}`);
         const picture = await anon(embed[1].slice(1));
         assert.equal(picture.status, 200, "and the picture serves to anyone");
@@ -231,7 +231,7 @@ describe("drawings: strokes as a document, merged stroke by stroke", function ()
         assert.equal(r.status, 200, text);
         const post = JSON.parse(text).post_id;
         const words = await (await ada(`id/${root}/docs/${post}/body`)).text();
-        const target = /\((\/id\/[^)]+)\)/.exec(words);
+        const target = /\((\/ringtome\/user\/[^)]+)\)/.exec(words);
         assert.ok(target, `the author reads their own post: ${words}`);
         const anon = makeFetch();
         assert.notEqual((await anon(`id/${root}/docs/${post}/body`)).status, 200, "a stranger cannot read the post");

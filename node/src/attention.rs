@@ -541,11 +541,9 @@ const PICTURE_TRIES: usize = 10;
 /// public door, as the account that hosts `root` - so a sealed room's picture opens for its
 /// member exactly as it does on screen, and for nobody else. `None` while it will not serve.
 async fn picture_bytes(state: &AppState, root: &str, picture: &str) -> Option<axum::body::Bytes> {
-    let mut parts = picture.strip_prefix("/id/")?.split('/');
-    let (seg, docs, doc_hex) = (parts.next()?, parts.next()?, parts.next()?);
-    if docs != "docs" {
-        return None;
-    }
+    let (author, twin) = crate::record::bake::twin_address(picture)?;
+    let (seg, doc_hex) = (hex::encode(author), hex::encode(twin));
+    let (seg, doc_hex) = (seg.as_str(), doc_hex.as_str());
     let (_, account) = crate::identity::hosted_roots_with_accounts(&state.node_db)
         .await
         .ok()?

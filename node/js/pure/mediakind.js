@@ -11,7 +11,10 @@
 // so ringtome's spellings render whatever the base table says, today and after marqueemarkup
 // learns them too. Spellings the base already knows (`.ogg`) are left to it.
 
+import { mediaPath } from './ringtome.js';
+
 /// Extension -> media kind, for the formats ringtome stores and serves.
+
 export const OWN_MEDIA_KINDS = { avif: 'image', apng: 'image', webm: 'video', opus: 'audio' };
 
 /// The kind ringtome's own spelling says a target is, or null when it is not one of ours.
@@ -72,7 +75,9 @@ export function mediaResolver(base) {
     return function media(target) {
         const kind = ownMediaKind(target);
         if (kind && base.linkAllowed(target)) {
-            return kind === 'video' && isLoopTarget(target) ? { kind, url: target, loop: true } : { kind, url: target };
+            // A `/ringtome/` picture at another origin is fetched from THIS node, by key (2026-09-28).
+            const url = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(target) ? mediaPath(target) || target : target;
+            return kind === 'video' && isLoopTarget(target) ? { kind, url, loop: true } : { kind, url };
         }
         return base.media.call(base, target);
     };

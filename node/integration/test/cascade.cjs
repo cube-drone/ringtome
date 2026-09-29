@@ -889,10 +889,10 @@ async function setLane(mode) {
             await beat(HOST_C, "bodies-sweep");
             const served = await servedBody(aliceRoot, post, HOST_C);
             assert.ok(
-                served && served.includes("/docs/"),
+                served && /\/docs?\//.test(served),
                 "Cleo's node serves the shared post's words"
             );
-            const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+            const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
             assert.ok(twin, `the served body names the baked twin: ${served}`);
             assert.notEqual(twin, post, "the twin is its own public document");
 
@@ -1335,7 +1335,7 @@ async function setLane(mode) {
                 served && served.includes("anyorigin-bytes"),
                 "the post's words healed from the other sharer"
             );
-            const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+            const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
             assert.ok(twin, `the served body names the twin: ${served}`);
             await beat(HOST_E, "fragment-sweep", allyRoot);
             await beat(HOST_E, "body-heal", allyRoot);

@@ -6,6 +6,21 @@
 // The honest boundary: a URL copied under one of the node's OTHER names (a different port or
 // hostname, another day) doesn't match and passes through untouched.
 
+import { mediaPath } from './ringtome.js';
+import { ownMediaKind } from './mediakind.js';
+
+/// A paste that IS one picture's address (2026-09-28, Curtis: "copy image address", pasted, stayed a
+/// long plain path): the embed that shows it, `![](<the address as this node serves it>)` - or null,
+/// for anything else, which pastes as `stripSelfOrigin` says. Only an address whose name says what
+/// it is (`.avif`, `.webm`, …) becomes an embed; the renderer needs the extension to draw it.
+
+export function pastedPicture(text, origin) {
+    const s = (text || '').trim();
+    if (!s || /\s/.test(s)) return null;
+    const path = mediaPath(s, origin);
+    return path && ownMediaKind(path) ? `![](${path})` : null;
+}
+
 /// Strip this node's own origin from every absolute self-URL in `text`, leaving the
 /// origin-relative path (`http://host/api/x` -> `/api/x`). Only origin-followed-by-slash matches,
 /// so prose that merely mentions the bare origin survives.

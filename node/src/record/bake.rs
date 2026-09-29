@@ -35,6 +35,12 @@ pub enum MediaRef {
     PrivateDoc { target: String, doc_id: [u8; 16] },
     /// An embed fetched from the open web.
     External { target: String },
+    /// Somebody else's PUBLIC picture (2026-09-28, Curtis: "reference when private, copy at
+    /// publish"): in a private note it is a reference to theirs; a public post cannot lean on it -
+    /// a reader's node that does not carry them has no bytes to show - so publication copies it
+    /// into the author's own public twin, read from this node by key rather than downloaded, and
+    /// names whose it was on the post's provenance line.
+    Foreign { target: String, author: [u8; 32] },
 }
 
 impl MediaRef {
@@ -42,8 +48,42 @@ impl MediaRef {
         match self {
             MediaRef::PrivateDoc { target, .. } => target,
             MediaRef::External { target } => target,
+            MediaRef::Foreign { target, .. } => target,
         }
     }
+}
+
+/// A PUBLIC picture's address, read to `(author, twin)`: `/ringtome/user/<root>/doc/<twin>/body[/…]`
+/// at any origin (the marker makes it unambiguous - PROJECT_PLAN's "`/ringtome/` replaces …"), or
+/// the form before it, `/id/<root>/docs/<twin>/body[/…]`, as a path only. The root in any spelling
+/// the speakable parser takes; `None` for anything else.
+pub fn twin_address(target: &str) -> Option<([u8; 32], [u8; 16])> {
+    let path = match target.find("://") {
+        Some(i) => {
+            let after = &target[i + 3..];
+            let path = &after[after.find('/')?..];
+            if !path.starts_with("/ringtome/") {
+                return None;
+            }
+            path
+        }
+        None => target,
+    };
+    let path = path.split(['?', '#']).next().unwrap_or(path);
+    let (seg, rest) = if let Some(r) = path.strip_prefix("/ringtome/user/") {
+        let (seg, rest) = r.split_once('/')?;
+        (seg, rest.strip_prefix("doc/")?)
+    } else {
+        let (seg, rest) = path.strip_prefix("/id/")?.split_once('/')?;
+        (seg, rest.strip_prefix("docs/")?)
+    };
+    let (twin_hex, tail) = rest.split_once('/')?;
+    if tail != "body" && !tail.starts_with("body/") {
+        return None;
+    }
+    let crate::speakable::Parsed::Ok(root) = crate::speakable::parse(seg)? else { return None };
+    let twin = <[u8; 16]>::try_from(hex::decode(twin_hex).ok()?.as_slice()).ok()?;
+    Some((root, twin))
 }
 
 /// Walk a Marquee body for its media embeds, classified against the publishing root.
@@ -218,6 +258,15 @@ fn plain_into(node: &marquee_parser::Node, embed_word: &dyn Fn(&str) -> String, 
 }
 
 fn classify(target: &str, root_hex: &str, out: &mut Vec<MediaRef>) {
+    // A public picture of ours, whoever's: the author's own is public already and stays as it is;
+    // anyone else's is copied at publish. Before the web check, since a `/ringtome/` picture may
+    // arrive as a whole URL at any origin.
+    if let Some((author, _)) = twin_address(target) {
+        if hex::encode(author) != root_hex {
+            out.push(MediaRef::Foreign { target: target.to_string(), author });
+        }
+        return;
+    }
     if target.starts_with("http://") || target.starts_with("https://") {
         out.push(MediaRef::External {
             target: target.to_string(),
@@ -302,12 +351,12 @@ pub fn public_media_refs(body: &str, author_hex: &str) -> Vec<(String, [u8; 16])
     let Ok(doc) = marquee_parser::parse(body) else {
         return Vec::new();
     };
-    let prefix = format!("/id/{author_hex}/docs/");
     let mut found: Vec<(String, [u8; 16])> = Vec::new();
     walk(&doc, &mut |target| {
-        let Some(rest) = target.strip_prefix(&prefix) else { return };
-        let Some((doc_hex, _)) = rest.split_once("/body") else { return };
-        let Some(twin) = hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else { return };
+        let Some((author, twin)) = twin_address(target) else { return };
+        if hex::encode(author) != author_hex {
+            return;
+        }
         if !found.iter().any(|(t, _)| t == target) {
             found.push((target.to_string(), twin));
         }
@@ -325,7 +374,14 @@ pub fn public_media_target(
     // A silent loop says so in its decorative name (2026-09-03): the route ignores the name,
     // the renderer's profile reads `-loop` and draws it looping, muted, without controls.
     let name = if animation { "media-loop" } else { "media" };
-    format!("/id/{root_hex}/docs/{}/body/{name}.{ext}", hex::encode(public_doc))
+    // The `/ringtome/` spelling (2026-09-28), the root in its short form: recognisable at any
+    // origin, rehomed by every reader. The `/id/` form it replaced still serves.
+    let short = hex::decode(root_hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        .map(|root| crate::speakable::speakable(&root).rsplit('-').next().unwrap_or_default().to_string())
+        .unwrap_or_else(|| root_hex.to_string());
+    format!("/ringtome/user/{short}/doc/{}/body/{name}.{ext}", hex::encode(public_doc))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -335,7 +391,7 @@ pub fn public_media_target(
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BakeItem {
     pub source: String,
-    pub kind: &'static str, // "private" | "external"
+    pub kind: &'static str, // "private" | "external" | "copied" (somebody else's public picture)
     pub status: String,     // ready | pending | fetching | failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<u8>,
@@ -408,7 +464,7 @@ pub async fn publish(
     // Once sealed, always sealed: a draft that already holds a key seals again whether or
     // not this request says trusted-only (the edit flow never does).
     let post_key = docs.post_key_if(doc_id, trusted_only).await?;
-    if post_key.is_some() && refs.iter().any(|r| matches!(r, MediaRef::External { .. })) {
+    if post_key.is_some() && refs.iter().any(|r| matches!(r, MediaRef::External { .. } | MediaRef::Foreign { .. })) {
         return Err(AppError::BadRequest(crate::msg!(
             "record.bake.trusted-cant-bake-external",
             "a trusted-only post can't bake media from the open web yet - save the image and attach it directly"
@@ -461,7 +517,8 @@ pub async fn publish(
                     }
                 }
             }
-            MediaRef::External { target } => {
+            MediaRef::External { target } | MediaRef::Foreign { target, .. } => {
+                let kind = if matches!(r, MediaRef::Foreign { .. }) { "copied" } else { "external" };
                 let row = ensure_bake(&state.node_db, root_hex, target).await?;
                 match row.status.as_str() {
                     "ready" => {
@@ -477,11 +534,22 @@ pub async fn publish(
                             .await?
                             .map(|h| crate::record::documents::Format::from_wire(h.format))
                             .unwrap_or(crate::record::documents::Format::Avif);
-                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, false)));
+                        // A copied silent loop stays one (2026-09-28): its minted header says so,
+                        // and the address's `-loop` is what the renderer reads.
+                        let animation = match crate::record::documents::public_header_entry(data.db(), &public).await? {
+                            Some(entry) => match &entry.entry().payload {
+                                ringtome_proto::Payload::Inline(payload) => ringtome_proto::registry::DocHeaderPlain::decode(payload)
+                                    .map(|h| h.animation)
+                                    .unwrap_or(false),
+                                _ => false,
+                            },
+                            None => false,
+                        };
+                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, animation)));
                         baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),
-                            kind: "external",
+                            kind,
                             status: "ready".into(),
                             progress: None,
                             error: None,
@@ -491,7 +559,7 @@ pub async fn publish(
                         blocked = true;
                         items.push(BakeItem {
                             source: target.clone(),
-                            kind: "external",
+                            kind,
                             status: "failed".into(),
                             progress: None,
                             error: row.error.clone(),
@@ -501,7 +569,7 @@ pub async fn publish(
                         blocked = true;
                         items.push(BakeItem {
                             source: target.clone(),
-                            kind: "external",
+                            kind,
                             status: other.to_string(),
                             progress: state.ingest.progress_of(&bake_meter_key(root_hex, target)),
                             error: None,
@@ -518,6 +586,27 @@ pub async fn publish(
     // finally knowable. Checked HERE rather than at upload: a single upload under the per-file
     // cap says nothing about a post that embeds forty of them.
     media_budget(state, data, &baked).await?;
+    // Whose pictures these were (2026-09-28): a copied picture's author joins the note's
+    // provenance, which publication states about the post - the credit travels with the copy.
+    let copied: Vec<String> = refs
+        .iter()
+        .filter_map(|r| match r {
+            MediaRef::Foreign { author, .. } => Some(hex::encode(author)),
+            _ => None,
+        })
+        .collect();
+    if !copied.is_empty() {
+        let annotations = data.annotations();
+        let held = annotations.field(doc_id, crate::record::store::PROVENANCE).await?.unwrap_or_default();
+        let mut chain: Vec<String> = serde_json::from_str(&held).unwrap_or_default();
+        for author in copied {
+            if !chain.contains(&author) {
+                chain.push(author);
+            }
+        }
+        let value = serde_json::to_string(&chain).map_err(|e| AppError::Internal(anyhow!("provenance: {e}")))?;
+        annotations.set_field(doc_id, crate::record::store::PROVENANCE, &value).await?;
+    }
     // The baked twin set IS the header's refs: derived post-rewrite, so it names exactly the
     // public documents a reader's renderer will ask for. Deduplicated - the same picture
     // embedded twice is one obligation, matching the budget's own arithmetic.
@@ -715,35 +804,100 @@ pub async fn bake_pass(state: AppState) -> anyhow::Result<()> {
 }
 
 /// Download, crush, mint. Returns the public doc id or a human tombstone.
-async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], String> {
-    let bytes = crate::net::unfurl::fetch_media_bytes(
-        url,
-        state.config.max_upload_bytes,
-        state.config.local_test,
-    )
-    .await?;
-
-    let meter = state.ingest.clone();
-    let key = bake_meter_key(root, url);
-    meter.set_progress(&key, 0);
-    let crushed = tokio::task::spawn_blocking({
-        let meter = meter.clone();
-        let key = key.clone();
-        move || {
-            let report = |pct: u8| meter.set_progress(&key, pct);
-            crate::media::crush_with_sidecar(&bytes, None, &report)
+/// Somebody's public media, as the minting door takes it - a picture, a sound or a video already
+/// crushed to the house formats when its author uploaded it: the bytes through the public door a
+/// reader's browser uses, its thumbnail (a picture's own, a sound's waveform, a video's poster) and
+/// a video's hover preview beside them, and the rest - format, size, length, whether it is a
+/// silent loop - off its signed header, from the author's chain when this node holds it and from
+/// the fragment ledger when a share brought it. Nothing is decoded or re-encoded.
+async fn foreign_twin(state: &AppState, author: &[u8; 32], twin: &[u8; 16]) -> Result<crate::media::Ingested, String> {
+    use crate::record::documents::Format;
+    let (author_hex, twin_hex) = (hex::encode(author), hex::encode(twin));
+    let read = |thumb: bool| {
+        let (author_hex, twin_hex) = (author_hex.clone(), twin_hex.clone());
+        async move {
+            let response = crate::idface::public_doc_bytes(state, &None, &author_hex, &twin_hex, thumb, None, None)
+                .await
+                .map_err(|e| format!("that isn't public here: {e:?}"))?;
+            if !response.status().is_success() {
+                return Err::<Vec<u8>, String>("that isn't public here - it may have been taken down".into());
+            }
+            Ok(axum::body::to_bytes(response.into_body(), state.config.max_upload_bytes)
+                .await
+                .map_err(|e| format!("reading it: {e}"))?
+                .to_vec())
         }
-    })
-    .await
-    .map_err(|e| format!("bake worker died: {e}"))?
-    .map_err(|te| format!("couldn't process these bytes: {te}"))?;
-
-    // The node cannot decode the codec zoo a video URL arrives in (that laundering is the
-    // browser's job at upload - video-ingest/README.md), so an external video stays refused
-    // with the road named. A video you UPLOADED bakes fine (2026-09-03).
-    if crushed.format == crate::record::documents::Format::WebmAv1 {
-        return Err("a video at a web address can't be fetched and prepared by this computer yet - upload the video instead and embed that".into());
+    };
+    let body = read(false).await?;
+    let from_chain = match state.user_dbs.get(&author_hex).await.map_err(|e| format!("db: {e}"))? {
+        Some(db) => crate::record::documents::public_header_entry(&db, twin)
+            .await
+            .map_err(|e| format!("header: {e:?}"))?
+            .and_then(|entry| match &entry.entry().payload {
+                ringtome_proto::Payload::Inline(payload) => ringtome_proto::registry::DocHeaderPlain::decode(payload).ok(),
+                _ => None,
+            }),
+        None => None,
+    };
+    let header = match from_chain {
+        Some(h) => h,
+        None => crate::fragments::serving_header(&state.node_db, &author_hex, twin)
+            .await
+            .map_err(|e| format!("header: {e}"))?
+            .ok_or_else(|| "that isn't public here".to_string())?,
+    };
+    let format = Format::from_wire(header.format);
+    if !matches!(format, Format::Avif | Format::Apng | Format::OggOpus | Format::WebmAv1) {
+        return Err("that isn't a picture, a sound or a video".into());
     }
+    let thumb_avif = if header.thumb_hash.is_some() { read(true).await.ok() } else { None };
+    let preview_webm = match header.preview_hash {
+        Some(h) => state.files.get_public(iroh_blobs::Hash::from_bytes(h)).await.ok().flatten(),
+        None => None,
+    };
+    Ok(crate::media::Ingested {
+        body,
+        format,
+        thumb_avif,
+        preview_webm,
+        width: header.width,
+        height: header.height,
+        duration_ms: header.duration_ms,
+        animation: header.animation,
+    })
+}
+
+async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], String> {
+    let crushed = match twin_address(url) {
+        // Somebody's public media on the network (2026-09-28): already in the house formats, so it
+        // is re-minted exactly as it is - never crushed again (a second lossy pass, and the crush
+        // refuses video), never downloaded from the origin it was copied at.
+        Some((author, twin)) => foreign_twin(state, &author, &twin).await?,
+        None => {
+            let bytes = crate::net::unfurl::fetch_media_bytes(url, state.config.max_upload_bytes, state.config.local_test).await?;
+            let meter = state.ingest.clone();
+            let key = bake_meter_key(root, url);
+            meter.set_progress(&key, 0);
+            let crushed = tokio::task::spawn_blocking({
+                let meter = meter.clone();
+                let key = key.clone();
+                move || {
+                    let report = |pct: u8| meter.set_progress(&key, pct);
+                    crate::media::crush_with_sidecar(&bytes, None, &report)
+                }
+            })
+            .await
+            .map_err(|e| format!("bake worker died: {e}"))?
+            .map_err(|te| format!("couldn't process these bytes: {te}"))?;
+            // The node cannot decode the codec zoo a video URL arrives in (that laundering is the
+            // browser's job at upload - video-ingest/README.md), so an external video stays
+            // refused with the road named. A video you UPLOADED bakes fine (2026-09-03).
+            if crushed.format == crate::record::documents::Format::WebmAv1 {
+                return Err("a video at a web address can't be fetched and prepared by this computer yet - upload the video instead and embed that".into());
+            }
+            crushed
+        }
+    };
 
     // Mint under the node's own leaf for this root - the session-free path the ingest worker
     // already walks. Public lane only: no epoch keys are needed or touched.
@@ -766,6 +920,37 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
 
 #[cfg(test)]
 mod tests {
+
+    /// A public picture's address in both spellings, the root in any of its own (2026-09-28): the
+    /// `/ringtome/` form at any origin, the `/id/` form as a path only; and publication copies
+    /// somebody else's, leaves the author's own alone, and mints the `/ringtome/` form.
+    #[test]
+    fn a_public_picture_is_read_in_either_spelling_and_anothers_is_copied() {
+        let (mine, theirs) = ([1u8; 32], [2u8; 32]);
+        let twin = [9u8; 16];
+        let short = |r: &[u8; 32]| crate::speakable::speakable(r).rsplit('-').next().unwrap().to_string();
+        let t = hex::encode(twin);
+        for addr in [
+            format!("/ringtome/user/{}/doc/{t}/body/media.avif", short(&theirs)),
+            format!("http://localhost:6305/ringtome/user/{}/doc/{t}/body/media.avif", short(&theirs)),
+            format!("/id/{}/docs/{t}/body/media.avif", hex::encode(theirs)),
+            format!("/id/{}/docs/{t}/body", crate::speakable::speakable(&theirs)),
+        ] {
+            assert_eq!(super::twin_address(&addr), Some((theirs, twin)), "{addr}");
+        }
+        assert_eq!(super::twin_address(&format!("http://x.example/id/{}/docs/{t}/body", hex::encode(theirs))), None, "/id/ at an origin is anyone's");
+        assert_eq!(super::twin_address(&format!("/ringtome/user/{}/post/{t}", short(&theirs))), None, "a post is not a picture");
+        let body = format!(
+            "![a](/ringtome/user/{}/doc/{t}/body/media.avif)\n\n![b](/id/{}/docs/{t}/body/media.avif)",
+            short(&theirs),
+            hex::encode(mine)
+        );
+        let refs = super::media_refs(&body, &hex::encode(mine));
+        assert_eq!(refs.len(), 1, "the author's own public picture stays as it is: {refs:?}");
+        assert!(matches!(&refs[0], super::MediaRef::Foreign { author, .. } if *author == theirs));
+        let minted = super::public_media_target(&hex::encode(mine), &twin, crate::record::documents::Format::Avif, false);
+        assert_eq!(minted, format!("/ringtome/user/{}/doc/{t}/body/media.avif", short(&mine)));
+    }
 
     /// Published words keep no notebook name and no cozy crosslink (2026-09-28): `?bucket=` comes
     /// off every document address, hints stay, and an old `/home` or `/in` link to one of the

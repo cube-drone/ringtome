@@ -210,7 +210,7 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             assert.equal(own.status, 200, await own.clone().text());
             assert.equal(own.headers.get("content-type"), "video/webm");
             const words = await (await ada(`id/${adaRoot}/docs/${squirrelPost}/body`)).text();
-            assert.ok(words.includes(`/docs/${twin}/body/media-loop.webm`), `the page names the twin as a silent loop: ${words}`);
+            assert.ok(words.includes(`/doc/${twin}/body/media-loop.webm`), `the page names the twin as a silent loop: ${words}`);
             // A stranger: the tree, the words, the video and its poster all refuse.
             assert.equal((await dana(`id/${adaRoot}/docs/${book}/body`)).status, 403, "the table of contents is sealed");
             assert.equal((await dana(`id/${adaRoot}/docs/${squirrelPost}/body`)).status, 403, "the page is sealed");
@@ -377,7 +377,7 @@ describe("combinations 2: a scheduled post that is settled, trusted-only and car
         assert.ok(twin, "the header names the picture's twin");
         const own = (await (await ada(`id/${adaRoot}/docs/${post}/body`)).text());
         assert.match(own, /^edited words/, "the words minted are the edited ones");
-        assert.ok(own.includes(`/docs/${twin}/body/`), "and they name the twin");
+        assert.ok(own.includes(`/doc/${twin}/body/`), "and they name the twin");
         const beaWords = await opens(bea, `id/${adaRoot}/docs/${post}/body`);
         assert.ok(beaWords, "the trusted reader gets the words");
         assert.match((await beaWords.text()), /^edited words/);

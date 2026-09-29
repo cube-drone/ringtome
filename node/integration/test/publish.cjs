@@ -272,7 +272,7 @@ describe("publication", () => {
 
             const body = await (await anon(`id/${root}/docs/${postId}/body`)).text();
             assert.ok(!body.includes("127.0.0.1:8125"), "the public body no longer leans on the web");
-            const target = body.match(/\]\((\/id\/[^)]+)\)/)[1];
+            const target = body.match(/\]\((\/ringtome\/user\/[^)]+)\)/)[1];
             const media = await anon(target.slice(1));
             assert.equal(media.status, 200, "the baked bytes serve to a stranger");
             assert.equal(media.headers.get("content-type"), "image/avif", "crushed like any upload");
@@ -280,7 +280,7 @@ describe("publication", () => {
             // The bake just minted a media DOCUMENT on the public lane - same lane as the
             // post. The shelf must list the post and not the ingredient: a media row in a
             // feed renders its bytes as text ("ftypavifmif1miaf..." - the field version).
-            const mediaId = target.match(/\/docs\/([0-9a-f]+)\/body/)[1];
+            const mediaId = target.match(/\/doc\/([0-9a-f]+)\/body/)[1];
             const prof = await (await anon(`api/id/${root}/profile`)).json();
             assert.ok(
                 prof.posts.some((p) => p.doc_id === postId),
@@ -497,5 +497,134 @@ describe("a published link to a private note", () => {
         const answer = await from(linking);
         const found = answer.status === 200 ? (await answer.json()).post : null;
         assert.notEqual(found, linkedPost, "and never counts as the author's");
+    });
+});
+
+/*
+    Somebody else's picture, posted (2026-09-28, Curtis: "reference when private, copy at
+    publish"). In a private note it is a reference to their public picture; publishing copies it
+    into the poster's own public picture - read from this node by key, never downloaded from the
+    origin it was copied at - and the post's provenance names whose it was.
+*/
+describe("somebody else's picture, posted", function () {
+    this.timeout(60000);
+    const { makePng } = require("./helpers.cjs");
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    let theirs, theirRoot, theirPicture;
+
+    before(async () => {
+        theirs = await makeUserFetch({ prefix: "picowner" });
+        theirRoot = (await (await theirs("api/identity", { method: "POST" })).json()).root_pubkey;
+        const pic = await (await theirs(`api/identity/${theirRoot}/docs/binary?title=horse`, { method: "POST", body: makePng(24, 24), file: true })).json();
+        for (let i = 0; i < 60; i++) {
+            if ((await theirs(`api/identity/${theirRoot}/docs/${pic.doc_id}/body`)).status === 200) break;
+            await wait(300);
+        }
+        const note = (await (await theirs(`api/identity/${theirRoot}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title: "My Horse", body: `![horse](/api/identity/${theirRoot}/docs/${pic.doc_id}/body/horse.avif)`, format: "marquee" }),
+        })).json()).doc_id;
+        const pub = await theirs(`api/identity/${theirRoot}/docs/${note}/publish`, { method: "POST" });
+        assert.equal(pub.status, 200, await pub.clone().text());
+        const words = await (await anon(`id/${theirRoot}/docs/${(await pub.json()).post_id}/body`)).text();
+        theirPicture = words.match(/\]\((\/ringtome\/user\/[^)]+)\)/)[1];
+    });
+
+    it("their post embeds its picture at its /ringtome/ address, served to anyone", async () => {
+        assert.match(theirPicture, /^\/ringtome\/user\/[A-Za-z0-9]+\/doc\/[0-9a-f]{32}\/body\/media\.avif$/);
+        const bytes = await anon(theirPicture.slice(1));
+        assert.equal(bytes.status, 200);
+        assert.equal(bytes.headers.get("content-type"), "image/avif");
+    });
+
+    it("posted by someone else, it becomes their own copy, credited", async () => {
+        const note = (await (await owner(`api/identity/${root}/docs`, {
+            method: "POST",
+            // As pasted: the whole URL, at whatever origin it was copied from.
+            body: JSON.stringify({ title: "Look", body: `![a horse](http://localhost:6305${theirPicture})`, format: "marquee" }),
+        })).json()).doc_id;
+        let post = null;
+        let first = true;
+        for (let i = 0; i < 100 && !post; i++) {
+            const r = await owner(`api/identity/${root}/docs/${note}/publish`, { method: "POST" });
+            const b = JSON.parse(await r.text());
+            if (first && r.status === 202) {
+                assert.equal(b.baking[0].kind, "copied", "a copy, not a download");
+                first = false;
+            }
+            assert.ok(!(b.baking || []).some((x) => x.status === "failed"), `copy failed: ${JSON.stringify(b.baking)}`);
+            if (r.status === 200) post = b.post_id;
+            else await wait(500);
+        }
+        assert.ok(post, "the copy landed and the post minted");
+        const words = await (await anon(`id/${root}/docs/${post}/body`)).text();
+        const short = (await import("../../js/speakable.js")).toBase58(root);
+        const mine = words.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
+        assert.ok(mine && mine[1].startsWith(`/ringtome/user/${short}/doc/`), `the post's picture is the poster's own: ${words}`);
+        assert.ok(!words.includes("localhost:6305"), "and leans on no origin");
+        assert.equal((await anon(mine[1].slice(1))).status, 200, "served to anyone");
+        const said = await (await anon(`api/id/${root}/posts/${post}`)).json();
+        assert.ok(
+            (said.annotations || []).some((a) => a.key === "provenance" && a.value === theirRoot && a.annotator === root),
+            `the post names whose picture it was: ${JSON.stringify(said.annotations)}`
+        );
+        // Re-minted, never re-encoded: the copy is the very same bytes.
+        const [a, b] = await Promise.all([anon(theirPicture.slice(1)), anon(mine[1].slice(1))]);
+        assert.deepEqual(Buffer.from(await b.arrayBuffer()), Buffer.from(await a.arrayBuffer()), "the same bytes, not a second lossy pass");
+    });
+
+    it("a sound and a silent-loop video copy the same way - as they are, the loop still a loop", async function () {
+        this.timeout(180000);
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const sample = (f) => fs.readFileSync(path.join(__dirname, "..", "..", "..", "sample_media", f));
+        const uploaded = async (title, bytes) => {
+            const made = await (await theirs(`api/identity/${theirRoot}/docs/binary?title=${title}`, { method: "POST", body: bytes, file: true })).json();
+            for (let i = 0; i < 240; i++) {
+                if ((await theirs(`api/identity/${theirRoot}/docs/${made.doc_id}/body`)).status === 200) return made.doc_id;
+                await wait(500);
+            }
+            throw new Error(`${title} never finished ingesting`);
+        };
+        const sound = await uploaded("buck", sample("buck-audio.ogg"));
+        const loop = await uploaded("squirrel", sample("animated_color_squirrel.gif"));
+        const theirNote = (await (await theirs(`api/identity/${theirRoot}/docs`, {
+            method: "POST",
+            body: JSON.stringify({
+                title: "Noises",
+                body: `![buck](/api/identity/${theirRoot}/docs/${sound}/body/buck.opus)\n\n![squirrel](/api/identity/${theirRoot}/docs/${loop}/body/squirrel-loop.webm)`,
+                format: "marquee",
+            }),
+        })).json()).doc_id;
+        const theirPub = await theirs(`api/identity/${theirRoot}/docs/${theirNote}/publish`, { method: "POST" });
+        assert.equal(theirPub.status, 200, await theirPub.clone().text());
+        const theirWords = await (await anon(`id/${theirRoot}/docs/${(await theirPub.json()).post_id}/body`)).text();
+        const theirSound = theirWords.match(/\]\((\/ringtome\/user\/[^)]+\.opus)\)/)[1];
+        const theirLoop = theirWords.match(/\]\((\/ringtome\/user\/[^)]+-loop\.webm)\)/)[1];
+
+        const note = (await (await owner(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title: "Heard", body: `![a buck](${theirSound})\n\n![a squirrel](${theirLoop})`, format: "marquee" }),
+        })).json()).doc_id;
+        let post = null;
+        for (let i = 0; i < 200 && !post; i++) {
+            const r = await owner(`api/identity/${root}/docs/${note}/publish`, { method: "POST" });
+            const b = JSON.parse(await r.text());
+            assert.ok(!(b.baking || []).some((x) => x.status === "failed"), `copy failed: ${JSON.stringify(b.baking)}`);
+            if (r.status === 200) post = b.post_id;
+            else await wait(500);
+        }
+        assert.ok(post, "both copied and the post minted");
+        const words = await (await anon(`id/${root}/docs/${post}/body`)).text();
+        const short = (await import("../../js/speakable.js")).toBase58(root);
+        const mySound = (words.match(/\]\((\/ringtome\/user\/[^)]+\.opus)\)/) || [])[1];
+        const myLoop = (words.match(/\]\((\/ringtome\/user\/[^)]+\.webm)\)/) || [])[1];
+        assert.ok(mySound && mySound.startsWith(`/ringtome/user/${short}/doc/`), `the sound is the poster's own: ${words}`);
+        assert.ok(myLoop && myLoop.startsWith(`/ringtome/user/${short}/doc/`) && myLoop.endsWith("-loop.webm"), `the video is the poster's own, and still a loop: ${words}`);
+        for (const [theirs_, mine_] of [[theirSound, mySound], [theirLoop, myLoop]]) {
+            const [a, b] = await Promise.all([anon(theirs_.slice(1)), anon(mine_.slice(1))]);
+            assert.equal(b.status, 200, `${mine_} serves`);
+            assert.deepEqual(Buffer.from(await b.arrayBuffer()), Buffer.from(await a.arrayBuffer()), `${mine_}: the same bytes`);
+        }
     });
 });

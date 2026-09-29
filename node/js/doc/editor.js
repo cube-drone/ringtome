@@ -36,7 +36,7 @@ import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture, FILES_BUCKET } from './upload.js';
-import { stripSelfOrigin } from '../pure/portable.js';
+import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
 import { CopyIntoModal } from '../copyinto.js';
@@ -390,7 +390,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             // through untouched, so the upload capture upstream still gets its turn.
             const text = e.clipboardData && e.clipboardData.getData('text/plain');
             if (!text) return;
-            const fixed = stripSelfOrigin(text, window.location.origin);
+            const fixed = pastedPicture(text, window.location.origin) || stripSelfOrigin(text, window.location.origin);
             if (fixed === text) return;
             e.preventDefault();
             const ta = e.currentTarget;

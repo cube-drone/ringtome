@@ -15,7 +15,7 @@ import htm from 'htm';
 import { EditorView, keymap, placeholder as cmPlaceholder, drawSelection, tooltips } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { stripSelfOrigin } from '../pure/portable.js';
+import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
 import { autocompletion } from '@codemirror/autocomplete';
 import { marquee } from '@cube-drone/marquee-codemirror';
 import { smallestChange } from '../pure/caret.js';
@@ -111,11 +111,11 @@ export const LiveMarquee = ({
                     EditorView.domEventHandlers({
                         blur: () => hooks.current.onBlur && hooks.current.onBlur(),
                     }),
-                    // Pasted absolute self-URLs arrive as their portable relative form
-                    // (pure/portable.js) - the transform happens at paste, never under the
-                    // user's cursor at save time.
-                    EditorView.clipboardInputFilter.of((text) =>
-                        stripSelfOrigin(text, window.location.origin)
+                    // Pasted absolute self-URLs arrive as their portable relative form, and a paste
+                    // that is one picture's address arrives as the picture (pure/portable.js) - the
+                    // transform happens at paste, never under the user's cursor at save time.
+                    EditorView.clipboardInputFilter.of(
+                        (text) => pastedPicture(text, window.location.origin) || stripSelfOrigin(text, window.location.origin)
                     ),
                 ],
             }),

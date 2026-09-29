@@ -578,7 +578,7 @@ const base58 = async (host) => {
         const servedRes = await makeFetch(HOST_C)(`id/${adaRoot}/docs/${mpost}/body`);
         assert.equal(servedRes.status, 200, "the parent's words serve on rio's node");
         const served = await servedRes.text();
-        const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+        const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
         assert.ok(twin, `the served body names the baked twin: ${served.slice(0, 200)}`);
         let imageOk = false;
         for (let i = 0; i < 30 && !imageOk; i++) {
@@ -646,7 +646,7 @@ const base58 = async (host) => {
         );
         // Her post's served body names the baked twin, and the twin's bytes serve.
         const served = await (await bea(`id/${beaRoot}/docs/${richReply}/body`)).text();
-        const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+        const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
         assert.ok(twin, `the served body names the baked twin: ${served.slice(0, 200)}`);
         assert.equal(
             (await bea(`id/${beaRoot}/docs/${twin}/body`)).status,

@@ -80,3 +80,27 @@ describe('a ringtome address', () => {
         assert.equal(r.fromLegacyId(`https://x.example/id/${SEG}`), null, 'never at an origin');
     });
 });
+
+describe("a picture's address (2026-09-28)", () => {
+    const ROOT = 'c39be6a02daaf7d357591b057f7b824da7f24a47c98cd594e3869abc1c5a70a3';
+    const TWIN = '7256cefb182137730ceddd3cf1b01135';
+    const O = 'http://localhost:6305';
+
+    it('is read in either spelling, answered in the /ringtome/ one', () => {
+        assert.equal(r.mediaPath(`${O}/id/${ROOT}/docs/${TWIN}/body/media.avif`, O), `/ringtome/user/${ROOT}/doc/${TWIN}/body/media.avif`, 'the old spelling, from this node');
+        assert.equal(r.mediaPath(`https://elsewhere.example/ringtome/user/${SEG}/doc/${TWIN}/body/media.avif`, O), `/ringtome/user/${SEG}/doc/${TWIN}/body/media.avif`, 'the new one, from anywhere');
+        assert.equal(r.mediaPath(`https://elsewhere.example/id/${ROOT}/docs/${TWIN}/body/media.avif`, O), null, '/id/ at a foreign site is anyone\'s');
+        assert.equal(r.mediaPath(`/api/identity/${ROOT}/docs/${TWIN}/body/p.avif`, O), `/api/identity/${ROOT}/docs/${TWIN}/body/p.avif`, 'your own private picture');
+        assert.equal(r.mediaPath(`/ringtome/user/${SEG}/post/${TWIN}`, O), null, 'a post is not bytes');
+    });
+
+    it('pasted alone, becomes the picture; anything else pastes as it did', async () => {
+        const p = await import('../../../js/pure/portable.js');
+        assert.equal(p.pastedPicture(`${O}/id/${ROOT}/docs/${TWIN}/body/media.avif`, O), `![](/ringtome/user/${ROOT}/doc/${TWIN}/body/media.avif)`);
+        assert.equal(p.pastedPicture(`look ${O}/id/${ROOT}/docs/${TWIN}/body/media.avif`, O), null, 'in a sentence: not an embed');
+        assert.equal(p.pastedPicture(`${O}/id/${ROOT}/docs/${TWIN}/body`, O), null, 'no name, no kind: nothing to draw');
+        const m = await import('../../../js/pure/mediakind.js');
+        const media = m.mediaResolver({ linkAllowed: () => true, media: () => null });
+        assert.equal(media(`https://x.example/ringtome/user/${SEG}/doc/${TWIN}/body/media.avif`).url, `/ringtome/user/${SEG}/doc/${TWIN}/body/media.avif`, 'drawn from this node');
+    });
+});

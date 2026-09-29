@@ -198,7 +198,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         assert.ok(twin2, "the re-said header names a twin");
         const words = (await (await ada(`id/${adaRoot}/docs/${pub}/body`)).text());
         assert.match(words, /^edited/, "the new words landed");
-        assert.ok(words.includes(`/docs/${twin2}/body/`), "and they name the twin the header names");
+        assert.ok(words.includes(`/doc/${twin2}/body/`), "and they name the twin the header names");
         const adaTwin = await ada(`id/${adaRoot}/docs/${twin2}/body`);
         assert.equal(adaTwin.status, 200, `the author's own picture after the edit: ${await adaTwin.clone().text()}`);
         const beaTwin = await bea(`id/${adaRoot}/docs/${twin2}/body`);

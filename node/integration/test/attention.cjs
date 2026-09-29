@@ -141,7 +141,9 @@ const roomRoute = async (author, doc) => `/ringtome/user/${(await import("../../
             assert.ok(landed, "the picture finished ingesting");
             return pic.doc_id;
         };
-        const twinPath = new RegExp(`^/id/${beaRoot}/docs/[0-9a-f]{32}/body/media\\.avif$`);
+        // A baked picture's address (2026-09-28: the `/ringtome/` spelling, the root in short form).
+        const beaShort = (await import("../../js/speakable.js")).toBase58(beaRoot);
+        const twinPath = new RegExp(`^/ringtome/user/${beaShort}/doc/[0-9a-f]{32}/body/media\\.avif$`);
 
         const horse = await upload("horse");
         const said = await say(bea, beaRoot, `look at **this** horse\n\n![horse](/api/identity/${beaRoot}/docs/${horse}/body/horse.avif)`);

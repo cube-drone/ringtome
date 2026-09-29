@@ -712,6 +712,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // The /ringtome surface (2026-09-28): a person, and everything beneath them, at the
         // one prefix that can only be us; the persona's head for an unfurler, the app for a
         // reader. `/id/` pages now redirect here; `/id/…/docs/…` bytes stay where they are.
+        // A document's bytes at its `/ringtome/` address (2026-09-28): what a picture embeds as
+        // now. Static segments beat the page wildcard, as under /id.
+        .route("/ringtome/user/{seg}/doc/{doc}/body", get(idface::public_body_route))
+        .route("/ringtome/user/{seg}/doc/{doc}/body/{filename}", get(idface::public_body_named_route))
+        .route("/ringtome/user/{seg}/doc/{doc}/thumb", get(idface::public_thumb_route))
         .route("/ringtome/user/{seg}", get(idface::idface))
         .route("/ringtome/user/{seg}/{*rest}", get(idface::idface_deep))
         .route("/ringtome", get(ui::homepage))

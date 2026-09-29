@@ -207,7 +207,7 @@ fn user_db_opens_are_deliberate() {
         // peer's Hello claims something to put on it, or the wake pass would mint an empty
         // database per unreachable followed stranger per beat.
         ("net/sync.rs", 4),
-        ("record/bake.rs", 1),     // bake_one: ONE persona per external-media job, the ingest pattern
+        ("record/bake.rs", 2),     // bake_one: ONE persona per external-media job, the ingest pattern; foreign_twin: the source author's header, once per copy job (2026-09-28)
         // One open per SHARE - `fragments::current_version` resolves what head this node holds
         // so a share endorses what the reader actually saw. A human gesture, once, never a loop.
         // Plus one per public frontier MOVE - `mirror_retractions` opens the persona whose

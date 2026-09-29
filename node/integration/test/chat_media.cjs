@@ -76,9 +76,10 @@ const esc = (s) => s.replace(/'/g, "''");
         }
         return h;
     };
-    // The twin a said line points at: `/id/<author>/docs/<twin>/body/...`.
+    // The twin a said line points at: `/ringtome/user/<author, short>/doc/<twin>/body/...` (the
+    // `/id/<author>/docs/…` spelling before 2026-09-28).
     const twinOf = (words, author) => {
-        const m = words.match(new RegExp(`/id/${author}/docs/([0-9a-f]{32})/body`));
+        const m = words.match(new RegExp(`/(?:id/${author}/docs|ringtome/user/[A-Za-z0-9]+/doc)/([0-9a-f]{32})/body`));
         return m && m[1];
     };
     // The reader's node fetches the twin off the room's memo fold, then its bytes behind it:
@@ -134,7 +135,7 @@ const esc = (s) => s.replace(/'/g, "''");
         // The reader by link: cal holds ada at room depth, and the twin comes as a fragment.
         assert.ok(await enter(cal, calRoot, adaRoot, gallery), "cal is in the gallery");
         const his = await readAfterSync(HOST_C, cal, calRoot, adaRoot, gallery, (h) => wordsOf(h).some((w) => w && w.includes("look at this")));
-        assert.ok(wordsOf(his).some((w) => w && w.includes(`/id/${adaRoot}/docs/${twin}/body`)), `cal reads the line as said: ${JSON.stringify(wordsOf(his))}`);
+        assert.ok(wordsOf(his).some((w) => w && w.includes(`/doc/${twin}/body`)), `cal reads the line as said: ${JSON.stringify(wordsOf(his))}`);
         const body = await bodyArrives(HOST_C, cal, adaRoot, twin);
         assert.equal(body.status, 200, `the twin's bytes reached cal's node: ${body.status} (fragments held: ${await fragmentsHeld(HOST_C, adaRoot, twin)})`);
         assert.ok((body.headers.get("content-type") || "").startsWith("image/"), `served as an image: ${body.headers.get("content-type")}`);
@@ -172,8 +173,8 @@ const esc = (s) => s.replace(/'/g, "''");
         const said = await say(ada, adaRoot, adaRoot, vault, `![safe](/api/identity/${adaRoot}/docs/${pic}/body/safe.avif)`);
         assert.equal(said.status, 200, await said.text());
         assert.ok(await enter(bea, beaRoot, adaRoot, vault), "bea is in the vault");
-        const hers = await readAfterSync(HOST_B, bea, beaRoot, adaRoot, vault, (h) => wordsOf(h).some((w) => w && w.includes(`/id/${adaRoot}/docs/`)));
-        const line = hers.items.find((m) => m.words && m.words.includes(`/id/${adaRoot}/docs/`));
+        const hers = await readAfterSync(HOST_B, bea, beaRoot, adaRoot, vault, (h) => wordsOf(h).some((w) => w && twinOf(w, adaRoot)));
+        const line = hers.items.find((m) => m.words && twinOf(m.words, adaRoot));
         assert.ok(line, `bea opens the sealed line: ${JSON.stringify(hers)}`);
         const twin = twinOf(line.words, adaRoot);
         const body = await bodyArrives(HOST_B, bea, adaRoot, twin);
