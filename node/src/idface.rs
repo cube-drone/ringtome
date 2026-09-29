@@ -126,9 +126,137 @@ fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -> Option<&'
 pub async fn idface_deep(
     session: Option<Session>,
     state: State<AppState>,
-    Path((seg, _rest)): Path<(String, String)>,
+    Path((seg, rest)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
+    // A post's address wears the POST's head (slice 4 of the `/ringtome/` links, 2026-09-28) - what
+    // an unfurler outside Ringtome shows for a pasted link - and so does a published note's; any
+    // other deeper path, or a post this node cannot vouch for, wears the person's.
+    if let Some(Parsed::Ok(root)) = speakable::parse(&seg) {
+        if let Some(doc) = post_named(&state, &root, &rest).await {
+            if let Some(page) = post_page(&state, root, doc).await? {
+                return Ok(page);
+            }
+        }
+    }
     idface(session, state, Path(seg)).await
+}
+
+/// The public post a deeper path names: `post/<doc>`, a book's `post/<book>/page/<doc>` (the page's
+/// own post), or `doc/<note>` once the note is published (its author's `published_from` label).
+async fn post_named(state: &AppState, root: &[u8; 32], rest: &str) -> Option<[u8; 16]> {
+    let parts: Vec<&str> = rest.trim_matches('/').split('/').collect();
+    let hex_id = match parts.as_slice() {
+        ["post", doc] | ["post", _, "page", doc] => doc.to_string(),
+        ["doc", note] => crate::annotations::published_from(&state.node_db, &hex::encode(root), &note.to_ascii_lowercase())
+            .await
+            .ok()
+            .flatten()?,
+        _ => return None,
+    };
+    hex::decode(hex_id).ok().and_then(|b| <[u8; 16]>::try_from(b).ok())
+}
+
+/// How much of a post's words its head quotes.
+const HEAD_EXCERPT_CHARS: usize = 200;
+
+/// A post's page: the app, under the POST's head - its title, what it says (the author's own
+/// description, else the start of its words), its picture (else the author's), `og:type` article,
+/// and its own short-form address. Only for a persona this node hosts, whose shelf is its to vouch
+/// for; `None` - the person's head instead - for anyone else, for a post that is not on the public
+/// shelf, and for a SEALED post, whose title and words are for trusted readers and never for an
+/// unfurler.
+async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result<Option<Response>, AppError> {
+    let root_hex = hex::encode(root);
+    if !hosted_here(state, &root_hex).await? {
+        return Ok(None);
+    }
+    let Some(db) = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? else {
+        return Ok(None);
+    };
+    let Some(post) = crate::record::documents::public_doc(&db, &doc_id).await? else {
+        return Ok(None);
+    };
+    if post.trusted_only {
+        return Ok(None);
+    }
+    let doc_hex = hex::encode(doc_id);
+    let speak = speakable::speakable(&root);
+    let short = speak.rsplit('-').next().unwrap_or(&speak).to_string();
+    let words_of_name = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
+    let fields = public_profile(state, &root_hex).await.unwrap_or_default();
+    let author = profile_value(&fields, "name").unwrap_or(&words_of_name).to_string();
+
+    // What it says: the author's own description label, else the start of the words.
+    let labels = crate::annotations::for_posts(state, &[(root_hex.clone(), doc_hex.clone())], None)
+        .await
+        .unwrap_or_default();
+    let described = labels
+        .get(&(root_hex.clone(), doc_hex.clone()))
+        .and_then(|ls| ls.iter().find(|a| a.annotator == root_hex && a.key == "description").map(|a| a.value.clone()));
+    let words = match crate::record::documents::public_head(&db, &doc_id).await? {
+        Some(head) => match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
+            Ok(Some(bytes)) => {
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                let marquee = crate::record::documents::Format::from_wire(post.format)
+                    == crate::record::documents::Format::Marquee;
+                if marquee { crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text) } else { text }
+            }
+            _ => String::new(),
+        },
+        None => String::new(),
+    };
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let excerpt = described.unwrap_or_else(|| clip(&words, HEAD_EXCERPT_CHARS));
+    let title = if post.title.trim().is_empty() {
+        let first: String = words.split(' ').take(9).collect::<Vec<_>>().join(" ");
+        if first.is_empty() { author.clone() } else { first }
+    } else {
+        post.title.clone()
+    };
+
+    let base = state.config.public_url.clone().unwrap_or_default();
+    let url = format!("{base}/ringtome/user/{short}/post/{doc_hex}");
+    let mut head = format!(
+        "<title>{} - {}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"article\">\n<meta property=\"og:url\" content=\"{}\">\n<meta property=\"og:site_name\" content=\"{}\">",
+        esc(&title),
+        esc(&author),
+        esc(&title),
+        esc(&url),
+        esc(&author),
+    );
+    if !excerpt.is_empty() {
+        head.push_str(&format!(
+            "\n<meta property=\"og:description\" content=\"{}\">\n<meta name=\"description\" content=\"{}\">",
+            esc(&excerpt),
+            esc(&excerpt)
+        ));
+    }
+    let picture = if post.thumb_hash.is_some() {
+        Some(format!("{base}/id/{short}/docs/{doc_hex}/thumb"))
+    } else {
+        profile_value(&fields, "avatar").map(|avatar| format!("{base}/id/{short}/docs/{avatar}/thumb"))
+    };
+    if let Some(picture) = picture {
+        head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(&picture)));
+    }
+    Ok(Some(
+        (
+            StatusCode::OK,
+            [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
+            axum::response::Html(crate::ui::app_page(state, &head)),
+        )
+            .into_response(),
+    ))
+}
+
+/// At most `max` characters of `s`, cut at a word and marked when cut.
+fn clip(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max).collect();
+    let at = cut.rfind(' ').unwrap_or(cut.len());
+    format!("{}…", cut[..at].trim_end())
 }
 
 /// GET `/id/{seg}` and `/id/{seg}/{*rest}` - the address before `/ringtome/` (PROJECT_PLAN's
@@ -2438,6 +2566,32 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
             < p.genesis_ms + crate::record::documents::edit_window_ms(),
         "thumb": p.thumb_hash.map(hex::encode),
     })
+}
+
+/// GET `/api/id/{root}/from/{doc}` - which public post a document of theirs became (2026-09-28,
+/// PROJECT_PLAN's "`/ringtome/` replaces `/home`, `/in` and `/id`", slice 3): `{ "post": <hex> }`
+/// from the author's own `published_from` label, or the same 404 for a document that is still
+/// private and one that never was - which of those is exactly what a stranger must not learn.
+pub async fn id_from(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, doc)): Path<(String, String)>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let private = || AppError::NotFound(crate::msg!("idface.that-document-is-private", "that document is private"));
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(private());
+    };
+    let root_hex = hex::encode(root);
+    if doc.len() != 32 || !doc.chars().all(|c| c.is_ascii_hexdigit()) || !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(private());
+    }
+    match crate::annotations::published_from(&state.node_db, &root_hex, &doc.to_ascii_lowercase())
+        .await
+        .map_err(AppError::Internal)?
+    {
+        Some(post) => Ok(axum::Json(serde_json::json!({ "post": post }))),
+        None => Err(private()),
+    }
 }
 
 /// GET `/api/id/{root}/posts/{doc}` - one post, by id: the permalink's read (2026-08-25).

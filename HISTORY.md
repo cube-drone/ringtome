@@ -12320,3 +12320,39 @@ discarded). The console is `/ringtome`, an app `/ringtome/<app>`, a notebook's l
 pure/naming.cjs holds a notebook's address, a document's placement (the hint, a stale hint, unfiled,
 drawings) and when the hint is asked; pure/ringtome.cjs the `?bucket=` beside `?via=`; attention.cjs
 the rooms' and the bell's new routes.
+
+## 2026-09-28 (cont.): `/ringtome/` addresses, slice 3 - the private-to-public map
+
+A published post that links a private note shows "(THIS DOCUMENT IS PRIVATE)" until that note is
+published, and then resolves to it on its own (Curtis).
+
+- **`published_from`**: publishing states it as a public label on the post, beside the tags and
+  buckets it already restates (store.rs `PUBLISHED_FROM`); a sealed post seals it with the rest.
+- **The door**: `GET /api/id/{root}/from/{doc}` names the post a document became, from the author's
+  own label only - nobody else's `published_from` counts - with the same 404 for private and
+  never-was. The turbolink card and the document route both ask it after the post read.
+- **Publish-time links** (bake.rs `public_links`): `?bucket=` comes off every document address, since
+  a notebook's name is private; an old `/home/<app>/<id>` or `/in/…/<id>` crosslink becomes the
+  author's document address. A title-spelled cozy link is left as written.
+- The feed card hides the label as machinery, like `mention` and `provenance`.
+
+No rewrite of note links to post links at publish: the document address finds the post through the
+label, including when the note is published later. publish.cjs holds the published words (no notebook
+name, no cozy path), the note private until published and then its post, and a stranger's
+`published_from` never counting; bake.rs the link pass.
+
+## 2026-09-28 (cont.): `/ringtome/` addresses, slice 4 - a post's own head
+
+A post's link pasted into Discord, Slack or an email unfolded as the author's profile card, because
+every `/ringtome/user/…` path served the person's OpenGraph head. Now a post's address - and a book
+page's, and a published note's through `published_from` - serves the post's own (idface.rs
+`post_page`): its title (an untitled post's first nine words), the author's description or the start
+of its words, its picture or the author's, `og:type` article, and its own short-form URL. Hosted
+personas only; a sealed post, one off the shelf, and a persona this node does not host keep the
+person's head, so nothing sealed reaches an unfurler. That closes PROJECT_PLAN's "`/ringtome/`
+replaces `/home`, `/in` and `/id`".
+
+idface.cjs holds a titled post's head, an untitled one's first words, the author's description
+outranking the excerpt, a published note's address wearing its post's head, and a sealed post keeping
+the person's. The deliberate user-database opens in idface.rs are 19 (conventions.rs): the post head's
+one read per page load.

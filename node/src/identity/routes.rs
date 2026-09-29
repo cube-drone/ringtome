@@ -4780,6 +4780,9 @@ async fn replicate_annotations(
         }
         desired.insert((field, value));
     }
+    // Where the post came from (slice 3 of the `/ringtome/` links, 2026-09-28): a link to the draft
+    // resolves to this post from now on, for anyone (store.rs `PUBLISHED_FROM`).
+    desired.insert((store::PUBLISHED_FROM.into(), hex::encode(draft_id)));
     let buckets = bucket_map(data).await?;
     for bucket in buckets.get(&hex::encode(draft_id)).cloned().unwrap_or_default() {
         if fits("bucket", &bucket) {

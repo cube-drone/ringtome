@@ -730,6 +730,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/id/{seg}/posts", get(idface::id_posts))
         .route("/api/id/{seg}/labels", get(idface::id_labels))
         .route("/api/id/{seg}/posts/{doc}", get(idface::id_post))
+        .route("/api/id/{seg}/from/{doc}", get(idface::id_from))
         .route("/api/id/{seg}/posts/{doc}/replies", get(idface::id_post_replies))
         .route("/api/id/{seg}/posts/{doc}/dossier", get(idface::id_post_dossier))
         .route("/api/directory", get(idface::directory))

@@ -1897,7 +1897,7 @@ https://<node>/id/<root>/<path>[?via=<key>[,<key>…]]
 - **Handles alias onto it later** (`/@curtis` → `/id/<root>` on nodes that know the handle) - pointers, never
   authority, per Naming below.
 
-### `/ringtome/` replaces `/home`, `/in` and `/id` (Curtis, 2026-09-28; slices 1 and 2 built 2026-09-28)
+### `/ringtome/` replaces `/home`, `/in` and `/id` (Curtis, 2026-09-28; built 2026-09-28)
 
 **The problem it answers.** A post's address (`/id/<root>/post/<doc>`) pasted into any text box stayed
 plain text: the paste rule stripped our own origin, and marquee only unfolds a line that is a whole
@@ -2028,6 +2028,31 @@ keeps `/ringtome/<app>/<id>`. A diff is `…/doc/<id>/diff`. Crosslinks (dragged
 and with it the address-bar dressing and `slugPathFor`. The node's alerts point at a room's address and
 `/ringtome/notifications`. `/home/…` and `/in/…` are **redirects** now (index.js `LegacyHome`, the old
 cozy resolver kept for exactly this), and nothing in the app mints them.
+
+**Slice 3, as built** (2026-09-28). Publishing states `published_from = <note id>` among the labels it
+restates about the post (store.rs `PUBLISHED_FROM`, routes.rs `replicate_annotations`), sealed with the
+post's other labels when the post is sealed. `GET /api/id/{root}/from/{doc}` answers `{ post }` from the
+**author's own** label (annotations.rs `published_from`: annotator and target author both the author),
+under the post read's shelf rule, with one 404 for private and never-was alike. The resolver asks it
+after the post read, so a document address turns into its post the moment the note is published - in
+the turbolink card and at the address alike - and the feed card hides the label as machinery. The
+publish-time link pass (bake.rs `public_links`) takes `?bucket=` off every document address in the
+words and turns an old `/home/<app>/<id>` or `/in/…/<id>` crosslink into the author's document address.
+One departure: the design imagined rewriting a link to a published note into the post's own address at
+publish; it is not needed - the document address resolves to the post through the label, and keeps
+resolving if the note is published only later. Residuals: a post published before today carries no
+`published_from` until its note is published again; a cozy link spelled by titles rather than an id
+cannot be read off the words and is left as written; a reader's node that does not carry the author
+sees the label only once it holds their public lane.
+
+**Slice 4, as built** (2026-09-28). A post's address - `…/post/<doc>`, a book's `…/page/<doc>`, and a
+published note's `…/doc/<note>` through its `published_from` - wears the post's own head (idface.rs
+`post_page`): `<title>` the title and the author, `og:title` the title or, untitled, its first nine
+words, `og:description` the author's own description label or the first 200 characters of its words
+(markup dropped, bake.rs `plain_words`), `og:image` the post's thumbnail or the author's picture,
+`og:type` article, `og:url` its own short-form address. Only for a persona this node hosts, whose shelf
+it vouches for; a sealed post, a post off the shelf, and anyone else's keep the person's head, so
+nothing sealed reaches an unfurler.
 
 ### Resolution: the lens runs the ladder
 

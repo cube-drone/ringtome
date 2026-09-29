@@ -863,6 +863,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         // The copy chain (2026-09-08) is a list on the post's page, under the replies -
         // never a chip.
         .filter((a) => a.key !== 'provenance')
+        // Which note the post came from (2026-09-28) is how a link to that note finds the post -
+        // machinery, never a chip.
+        .filter((a) => a.key !== 'published_from')
         // The room's own word (Contact tags, ruling 5): "@mentioned", said by the author as
         // a sealed label so the people in the room see why they are there - it dresses
         // the wish chip below, never a chip of its own.

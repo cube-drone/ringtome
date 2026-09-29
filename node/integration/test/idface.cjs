@@ -516,3 +516,76 @@ describe("the banner (a profile field beside the avatar)", function () {
         assert.ok((await thumb.arrayBuffer()).byteLength > 0);
     });
 });
+
+/*
+    A post's own head (2026-09-28, slice 4 of the `/ringtome/` links): what an unfurler outside
+    Ringtome - Discord, Slack, an email client - shows for a pasted post link is the POST: its title
+    (or its first words), the author's description or the start of its words, `og:type` article and
+    its own address. A published note's address wears its post's head. A sealed post keeps the
+    person's head: its title and words are for trusted readers, never for an unfurler.
+*/
+describe("a post's own head, for the unfurlers outside", function () {
+    this.timeout(30000);
+    let owner, root, short;
+    const publish = async (title, body, extra = {}, description = null) => {
+        const d = (await (await owner(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title, body, format: "marquee" }),
+        })).json()).doc_id;
+        if (description) {
+            await owner(`api/identity/${root}/docs/${d}/annotations/fields/description`, {
+                method: "PUT",
+                body: JSON.stringify({ value: description }),
+            });
+        }
+        const pub = await owner(`api/identity/${root}/docs/${d}/publish`, { method: "POST", body: JSON.stringify(extra) });
+        assert.equal(pub.status, 200, await pub.clone().text());
+        return { note: d, post: (await pub.json()).post_id };
+    };
+    const headOf = async (path) => {
+        const r = await anon(path);
+        assert.equal(r.status, 200, path);
+        const html = await r.text();
+        return html.slice(0, html.indexOf("</head>"));
+    };
+
+    before(async () => {
+        owner = await makeUserFetch({ prefix: "posthead" });
+        root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
+        await owner(`api/identity/${root}/profile`, { method: "POST", body: JSON.stringify({ field: "name", value: "Head Tester" }) });
+        short = (await import("../../js/speakable.js")).toBase58(root);
+    });
+
+    it("a titled post: its title, the start of its words, an article at its own address", async () => {
+        const { post } = await publish("On Boats", "boats are **good**, actually");
+        const head = await headOf(`ringtome/user/${short}/post/${post}`);
+        assert.ok(head.includes("<title>On Boats - Head Tester</title>"), head);
+        assert.ok(head.includes('property="og:title" content="On Boats"'));
+        assert.ok(head.includes('property="og:type" content="article"'));
+        assert.ok(head.includes(`/ringtome/user/${short}/post/${post}"`), "its own short-form address");
+        assert.ok(head.includes('property="og:description" content="boats are good, actually"'), "the words, markup dropped");
+    });
+
+    it("an untitled post is called by its first words; the author's description outranks the excerpt", async () => {
+        const untitled = await publish("", "a horse drawn quickly in the rain at dawn by the sea wall today");
+        const bare = await headOf(`ringtome/user/${short}/post/${untitled.post}`);
+        assert.ok(bare.includes('property="og:title" content="a horse drawn quickly in the rain at dawn"'), bare);
+        const described = await publish("Soup", "the long story of the soup", {}, "a short soup summary");
+        const head = await headOf(`ringtome/user/${short}/post/${described.post}`);
+        assert.ok(head.includes('property="og:description" content="a short soup summary"'), head);
+    });
+
+    it("a published note's address wears its post's head", async () => {
+        const { note, post } = await publish("From A Note", "said once, in private first");
+        const head = await headOf(`ringtome/user/${short}/doc/${note}`);
+        assert.ok(head.includes('property="og:title" content="From A Note"'), head);
+        assert.ok(head.includes(`/post/${post}"`), "and names the post's address");
+    });
+
+    it("a sealed post keeps the person's head - nothing of it reaches an unfurler", async () => {
+        const { post } = await publish("Only For Friends", "the secret words", { trusted_only: true });
+        const head = await headOf(`ringtome/user/${short}/post/${post}`);
+        assert.ok(!head.includes("Only For Friends") && !head.includes("secret words"), head);
+        assert.ok(head.includes('property="og:type" content="profile"'), "the person's head instead");
+    });
+});

@@ -503,6 +503,21 @@ pub async fn posts_labelled(node_db: &Db, key: &str, value: &str, cap: usize) ->
     Ok((posts.len() <= cap).then_some(posts))
 }
 
+/// The post an author published from a document of theirs, if any (2026-09-28): their own
+/// `published_from = <doc>` label on one of their own posts (store.rs `PUBLISHED_FROM`). Only the
+/// author's word counts - a label anyone else put on anything never names the author's post.
+pub async fn published_from(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = node_db
+        .fetch_optional(
+            "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
+             WHERE key = ?1 AND value = ?2 AND target_author = ?3 AND annotator = ?3 LIMIT 1",
+            (crate::record::store::PUBLISHED_FROM, doc_hex, author_hex),
+        )
+        .await
+        .context("reading which post a document became")?;
+    Ok(row.map(|(post,)| post))
+}
+
 /// The journal window's labels: the window a range scan of the time index, each post's labels
 /// probed by the memo's key - pinned, table and order both, since this engine's planner picks
 /// neither on its own (the tests ask it).

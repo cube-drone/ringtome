@@ -7,7 +7,7 @@
     the same post. A diverged note is refused rather than shipped with its conflict.
 */
 const assert = require("node:assert");
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch, sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat } = require("./beat.cjs");
 
@@ -419,5 +419,83 @@ describe("taking it down, and saying it again", () => {
         );
         const body = await anon(`id/${root}/docs/${reborn}/body`);
         assert.match(await body.text(), /leisure/, "with the reconsidered words");
+    });
+});
+
+/*
+    A link to a private note, published (2026-09-28, PROJECT_PLAN's "`/ringtome/` replaces `/home`,
+    `/in` and `/id`", slice 3). The published words carry no notebook name (`?bucket=` comes off) and
+    no cozy path (an old `/home/<app>/<id>` crosslink becomes the note's address); the linked note
+    answers "private" to a stranger until it is published, and then its address answers with its
+    post - through the author's own `published_from` label, which nobody else can say for them.
+*/
+describe("a published link to a private note", () => {
+    let linked, linking, linkedPost;
+    const short = async () => (await import("../../js/speakable.js")).toBase58(root);
+    const from = (doc) => anon(`api/id/${root}/from/${doc}`);
+
+    before(async () => {
+        linked = (await (await owner(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title: "Soup", body: "a secret recipe", format: "marquee" }),
+        })).json()).doc_id;
+        const s = await short();
+        linking = (await (await owner(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({
+                title: "Menu",
+                body: `the [soup](/ringtome/user/${s}/doc/${linked}?bucket=family-recipes) and the [old soup](/home/notes/${linked})`,
+                format: "marquee",
+            }),
+        })).json()).doc_id;
+    });
+
+    it("publishes with no notebook name and no cozy path", async () => {
+        const resp = await owner(`api/identity/${root}/docs/${linking}/publish`, { method: "POST" });
+        assert.equal(resp.status, 200, await resp.clone().text());
+        const post = (await resp.json()).post_id;
+        const words = await (await anon(`id/${root}/docs/${post}/body`)).text();
+        const s = await short();
+        assert.ok(!words.includes("bucket="), `no notebook name: ${words}`);
+        assert.ok(!words.includes("/home/"), `no cozy path: ${words}`);
+        assert.equal(words.split(`/ringtome/user/${s}/doc/${linked}`).length - 1, 2, `both links name the note: ${words}`);
+    });
+
+    it("the linked note is private until it is published, and then it is its post", async () => {
+        assert.equal((await from(linked)).status, 404, "private, to anyone asking");
+        assert.equal((await from("ee".repeat(16))).status, 404, "and exactly as private as one that never was");
+        const resp = await owner(`api/identity/${root}/docs/${linked}/publish`, { method: "POST" });
+        assert.equal(resp.status, 200, await resp.clone().text());
+        linkedPost = (await resp.json()).post_id;
+        const answer = await from(linked);
+        assert.equal(answer.status, 200, "published: the address finds its post");
+        assert.equal((await answer.json()).post, linkedPost);
+        // The label is machinery on the post, readable like any other.
+        const post = await (await anon(`api/id/${root}/posts/${linkedPost}`)).json();
+        assert.ok(
+            (post.annotations || []).some((a) => a.key === "published_from" && a.value === linked && a.annotator === root),
+            "said by the author, about the post"
+        );
+    });
+
+    it("only the author's own label names their post", async () => {
+        // Someone else saying `published_from = <the menu note>` about the author's post does not
+        // make the menu note's address find it.
+        const other = await makeUserFetch({ prefix: "fromliar" });
+        const otherRoot = (await (await other("api/identity", { method: "POST" })).json()).root_pubkey;
+        const said = await other(`api/identity/${otherRoot}/public-annotations/${root}/${linkedPost}`, {
+            method: "PUT",
+            body: JSON.stringify({ key: "published_from", value: linking }),
+        });
+        assert.equal(said.status, 200, await said.clone().text());
+        await beat(undefined, "mint", otherRoot);
+        await beat(undefined, "fold", otherRoot);
+        const held = await sql(
+            `SELECT COUNT(*) AS n FROM doc_annotations WHERE annotator = '${otherRoot}' AND key = 'published_from' AND target_doc = '${linkedPost}'`
+        );
+        assert.equal(Number(held.rows[0].n), 1, "the stranger's word is held here, as any label is");
+        const answer = await from(linking);
+        const found = answer.status === 200 ? (await answer.json()).post : null;
+        assert.notEqual(found, linkedPost, "and never counts as the author's");
     });
 });

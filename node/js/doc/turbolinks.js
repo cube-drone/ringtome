@@ -89,6 +89,22 @@ async function resolveRingtome(target) {
         } catch {
             /* not theirs to read */
         }
+        // A private note that has since been published (slice 3, 2026-09-28): the author's own
+        // `published_from` label names the post, and the link becomes the post.
+        try {
+            const { post: published } = await api(`/api/id/${ref.seg}/from/${doc}`);
+            const post = await api(`/api/id/${ref.seg}/posts/${published}`);
+            return {
+                ...who,
+                kind: 'post',
+                href: ringtomePath({ seg: ref.seg, kind: 'post', doc: published }),
+                title: post.title || '',
+                when: post.published_ms || null,
+                thumb: post.thumb ? `/id/${root}/docs/${published}/thumb` : '',
+            };
+        } catch {
+            /* still private */
+        }
     }
     return { private: true };
 }

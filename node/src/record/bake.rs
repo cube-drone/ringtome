@@ -246,6 +246,44 @@ fn classify(target: &str, root_hex: &str, out: &mut Vec<MediaRef>) {
 /// The published body with each baked target swapped for its public twin. Plain substring
 /// replacement is correct here because every `from` came out of the parser as a full target
 /// string - we are replacing exactly what the grammar said the target was.
+/// Links to documents, made fit for the public (PROJECT_PLAN's "`/ringtome/` replaces `/home`, `/in`
+/// and `/id`", slice 3, 2026-09-28). Two passes over the words, both on link targets only:
+///
+/// - **`?bucket=` comes off every document address.** It names the notebook the link was made in,
+///   and a notebook's name is private; in public it has nothing to choose anyway (a reader who is
+///   not the owner never honours it). `?via=` stays.
+/// - **An old crosslink becomes the author's document address.** `/home/<app>/<id>` and
+///   `/in/<notebook>/…/<id>` - the cozy paths drag-to-link wrote before `/ringtome/` - mean the
+///   author's own document, and resolved against a READER's notebooks they open nothing, or the
+///   wrong page. `/ringtome/user/<author>/doc/<id>` resolves for anyone: to the post once the note
+///   is published (its `published_from` label), "(THIS DOCUMENT IS PRIVATE)" until then. A cozy
+///   path spelled by titles rather than an id cannot be read off the words, and is left as written.
+pub fn public_links(body: &str, author_hex: &str) -> String {
+    static BUCKETED: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static COZY: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let bucketed = BUCKETED.get_or_init(|| {
+        regex::Regex::new(r#"(/ringtome/user/[A-Za-z0-9-]+/doc/[0-9a-f]{32})\?([^\s)\]"'<>]*)"#).expect("a valid pattern")
+    });
+    let cozy = COZY.get_or_init(|| {
+        regex::Regex::new(r"\]\((?:/home/[a-z0-9-]+|/in(?:/[a-z0-9-]+)+)/([0-9a-f]{32})\)").expect("a valid pattern")
+    });
+    let out = bucketed.replace_all(body, |c: &regex::Captures| {
+        let kept: Vec<&str> = c[2].split('&').filter(|p| !p.is_empty() && !p.starts_with("bucket=")).collect();
+        if kept.is_empty() {
+            c[1].to_string()
+        } else {
+            format!("{}?{}", &c[1], kept.join("&"))
+        }
+    });
+    let Some(root) = hex::decode(author_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else {
+        return out.into_owned();
+    };
+    let speak = crate::speakable::speakable(&root);
+    let short = speak.rsplit('-').next().unwrap_or(&speak);
+    cozy.replace_all(&out, |c: &regex::Captures| format!("](/ringtome/user/{short}/doc/{})", &c[1]))
+        .into_owned()
+}
+
 pub fn rewrite(body: &str, swaps: &[(String, String)]) -> String {
     let mut out = body.to_string();
     for (from, to) in swaps {
@@ -341,6 +379,8 @@ pub async fn publish(
     let body = resolved.body.ok_or_else(|| {
         AppError::BadRequest(crate::msg!("record.bake.this-notes-words-havent-arrived", "this note's words haven't arrived on this computer yet"))
     })?;
+    // Links to documents, made fit for the public before anything else reads the words.
+    let body = public_links(&body, root_hex);
 
     let refs = media_refs(&body, root_hex);
     if refs.is_empty() {
@@ -726,6 +766,33 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
 
 #[cfg(test)]
 mod tests {
+
+    /// Published words keep no notebook name and no cozy crosslink (2026-09-28): `?bucket=` comes
+    /// off every document address, hints stay, and an old `/home` or `/in` link to one of the
+    /// author's own documents by id becomes that document's address; anything else is untouched.
+    #[test]
+    fn published_links_keep_no_notebook_and_no_cozy_path() {
+        let root = [7u8; 32];
+        let author = hex::encode(root);
+        let speak = crate::speakable::speakable(&root);
+        let short = speak.rsplit('-').next().unwrap();
+        let doc = "0123456789abcdef0123456789abcdef";
+        let body = format!(
+            "see [soup](/ringtome/user/{short}/doc/{doc}?bucket=family-recipes)\n\
+             http://localhost:9/ringtome/user/{short}/doc/{doc}?via=k1&bucket=cook-book\n\
+             [old](/home/notes/{doc}) and [older](/in/cook-book/starters/{doc})\n\
+             [by title](/in/cook-book/soup) [a room](/home/chat/{author}/{doc}) [a post](/ringtome/user/{short}/post/{doc}?via=k2)"
+        );
+        let out = super::public_links(&body, &author);
+        assert!(out.contains(&format!("[soup](/ringtome/user/{short}/doc/{doc})")), "{out}");
+        assert!(out.contains(&format!("http://localhost:9/ringtome/user/{short}/doc/{doc}?via=k1\n")), "hints stay: {out}");
+        assert!(out.contains(&format!("[old](/ringtome/user/{short}/doc/{doc})")), "{out}");
+        assert!(out.contains(&format!("[older](/ringtome/user/{short}/doc/{doc})")), "{out}");
+        assert!(out.contains("[by title](/in/cook-book/soup)"), "a title path cannot be read off the words");
+        assert!(out.contains(&format!("[a room](/home/chat/{author}/{doc})")), "a room is not a document");
+        assert!(out.contains(&format!("/post/{doc}?via=k2")), "a post's address is not touched");
+        assert!(!out.contains("bucket="), "{out}");
+    }
 
     #[test]
     fn the_budget_reads_as_a_sentence_not_a_number() {

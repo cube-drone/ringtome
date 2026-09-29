@@ -510,10 +510,19 @@ const DocResolve = ({ seg, doc, current }) => {
         }
         let live = true;
         (async () => {
+            await api(`/api/id/${seg}/profile`).catch(() => null); // a peek, for someone not carried here
             try {
-                await api(`/api/id/${seg}/profile`).catch(() => null); // a peek, for someone not carried here
                 await api(`/api/id/${seg}/posts/${doc}`);
                 if (live) loc.route(postHref(root, doc), true);
+                return;
+            } catch {
+                /* not a post: perhaps a note that became one */
+            }
+            try {
+                // Slice 3 (2026-09-28): the author's `published_from` label names the post a
+                // private note became; until it is published, the note stays private.
+                const { post } = await api(`/api/id/${seg}/from/${doc}`);
+                if (live) loc.route(postHref(root, post), true);
             } catch {
                 if (live) setPrivateHere(true);
             }

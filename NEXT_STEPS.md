@@ -27,9 +27,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### `/ringtome/` links (PROJECT_PLAN's *`/ringtome/` replaces `/home`, `/in` and `/id`*)
 * Copied post and document addresses carry no `?via=` hints yet (a person's does).
-* Slice 3, the map: `published_from` written at publish; the placeholder turns into the post; links
-  to your own documents rewritten at publish, `?bucket=` dropped from them.
-* Slice 4, the outside: a post page's own OpenGraph head.
+* Posts published before 2026-09-28 carry no `published_from` until their note is published again.
 
 ### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
 * A person's page has the feed's old shape: its search, picks and counts read that person's newest

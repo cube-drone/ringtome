@@ -61,6 +61,13 @@ use crate::AppState;
 /// The annotation field naming a note's published form (its post's doc_id, hex). Private,
 /// like every annotation: the world sees the post, only you see which note it came from.
 pub const PUBLISHED_AS: &str = "published_as";
+/// ...and the same fact the other way round, said in PUBLIC as a label on the post (PROJECT_PLAN's
+/// "`/ringtome/` replaces `/home`, `/in` and `/id`", slice 3, 2026-09-28): `published_from = <note
+/// id>`. A link to the private note - `/ringtome/user/<author>/doc/<note>` - is private until the
+/// note is published, and then this label is how any node carrying the author finds the post.
+/// It says only that this post came from note X, an id nobody holds except from a link the
+/// author gave them.
+pub const PUBLISHED_FROM: &str = "published_from";
 /// A drawing's note of the version it last published (DRAWING.md): the publish bar offers "update"
 /// once the drawing's head has moved past it. Words compare their words instead.
 pub const PUBLISHED_HEAD: &str = "published_head";
