@@ -26,6 +26,7 @@ pub mod auth;
 pub mod clock;
 pub mod config;
 pub mod db;
+pub mod downloads;
 pub mod drawing;
 pub mod edgegraph;
 pub mod error;
@@ -756,6 +757,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/config", get(get_config))
         .route("/api/node", get(node_info))
         // The node's public face (PROJECT_PLAN's The node's public face): a stranger's doors, no session.
+        .route("/api/node/downloads", get(downloads::downloads))
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
         .route("/api/node/personas", get(nodeface::node_personas))

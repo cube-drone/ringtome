@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1192 phrases across 76 files.
+// 1200 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -282,6 +282,13 @@ export default {
     'auth.warning': 'Warning:',
     'auth.linux-works-best-in': 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.',
     'auth.open-in-your-browser': 'Click here to open in your system browser.',
+    'auth.download-mac': 'macOS',
+    'auth.download-windows': 'Windows',
+    'auth.download-linux': 'Linux',
+    'auth.download-looking': 'looking for the newest release…',
+    'auth.download-none-found': "the downloads couldn't be found just now.",
+    'auth.download-every-release': 'every release is here',
+    'auth.this-server-is-running': 'this server is running',
     'auth.app-name': 'horse drawing tycoon 2',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
@@ -297,6 +304,7 @@ export default {
     'auth.sign-in': 'sign in',
     'auth.new-here': 'new here?',
     'auth.import-user': 'import user',
+    'auth.download': 'download',
     'auth.an-account-here-to-host': 'Even if you have a user already on a different node, you need an account on this node to host your user.',
     'auth.name-2': 'name',
     'auth.password': 'password',

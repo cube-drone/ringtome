@@ -36,6 +36,9 @@ import {
     TextAlignCenter,
     TextAlignRight,
     DownloadSimple,
+    AppleLogo,
+    WindowsLogo,
+    LinuxLogo,
     Info,
     SlidersHorizontal,
     Notebook,
@@ -146,6 +149,10 @@ export const Icons = {
     // The front door's other two tabs (2026-09-28): new here, and bringing a user from elsewhere.
     newHere: Question,
     importUser: Package,
+    // the front page's Download tab (2026-09-29): one button per system
+    appleLogo: AppleLogo,
+    windowsLogo: WindowsLogo,
+    linuxLogo: LinuxLogo,
     profile: IdentificationCard,
     settings: Gear,
     computers: Desktop,

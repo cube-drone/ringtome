@@ -14,20 +14,22 @@ const html = htm.bind(h);
 
 const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '';
 
-export const Version = () => {
+/// `className`: the quickbar's by default; the front page's Download tab wears it under its buttons
+/// (2026-09-29, "this server is running …"), the same label and the same link.
+export const Version = ({ className = 'quickbar-version' } = {}) => {
     // A dev node names its branch (src/ui.rs), and the branch is the truth about a local build:
     // it is not any release, whatever version number the checkout carries.
     const branch = meta('app-branch');
     const version = meta('app-version');
     if (branch) {
         return html`<span
-            class="quickbar-version"
+            class=${className}
             title=${t('version.dev-build', 'a development build of {branch}, on {version}', { branch, version })}
         >${branch}</span>`;
     }
     if (!/^\d+\.\d+\.\d+$/.test(version)) return null; // a shell that predates the meta
     return html`<a
-        class="quickbar-version"
+        class=${className}
         href=${releaseUrl(version)}
         target="_blank"
         rel="noopener"

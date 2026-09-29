@@ -12672,3 +12672,24 @@ rollout's pages embedded the retracted copies' addresses.
 Pinned in book_posts.cjs: anonymous readers get a book page's picture at both of its addresses; a
 fresh book after a takedown carries pictures that serve; a page whose picture was retracted heals
 on the next rollout, keeping the same book.
+
+## 2026-09-29: a Download tab on the front page
+
+Curtis: "Next to the 'sign in', 'new here?', 'import user' tabs in the front page, can we add
+'download' section… apple-logo… windows-logo… linux-logo that links the user to the AppImage.
+Under all of this, an understated 'this server is running (version)'."
+
+- **The node reads GitHub, the page doesn't** (`src/downloads.rs`, `GET /api/node/downloads`). If
+  the page fetched api.github.com itself, every visitor who merely opened the sign-in page would be
+  announced to GitHub, each on their own 60-an-hour allowance. The node asks only when somebody
+  opens the tab, keeps the answer for an hour (a failure for five minutes), and picks one download
+  per system: the `.dmg`, the `-setup.exe` (the `.msi` is for administrators), and the `.AppImage`.
+  Never a `.sig`. A system the release has no download for gets no button; when nothing could be
+  found, the tab says so and links every release.
+- **The tab** (`auth.js` DownloadPanel) comes after "import user" and shows even when sign-ups are
+  closed. The desktop app hides it, since it's already downloaded. The three buttons use the
+  phosphor Apple, Windows and Linux logos in the "come in" button's solid teal. Under them, quietly,
+  "this server is running" and the app's own version link. `Version` takes a `className` so the
+  front page wears the quickbar's label and link.
+
+Pinned in downloads.rs's unit test against the 0.2.2 release's real asset names.

@@ -11,6 +11,7 @@ import htm from 'htm';
 import { api, isDevice, isLinuxApp } from './net.js';
 import { t } from './i18n.js';
 import { Icons } from './icons.js';
+import { Version } from './version.js';
 
 const html = htm.bind(h);
 
@@ -154,8 +155,49 @@ const LinuxNotice = () => {
     </div>`;
 };
 
+// The Download tab (Curtis, 2026-09-29): the newest desktop app, one button per system - links the
+// node reads off the GitHub releases page (src/downloads.rs), so a visitor's browser never asks
+// GitHub itself. A system the release didn't ship a download for has no button; when none could be
+// found, the releases page itself. Under it all, quietly, what this server is running - the app's
+// own version link.
+const DownloadPanel = () => {
+    const [found, setFound] = useState(null);
+    useEffect(() => {
+        api('/api/node/downloads')
+            .then(setFound)
+            .catch(() => setFound({ releases: 'https://github.com/cube-drone/ringtome/releases' }));
+    }, []);
+    const systems = found
+        ? [
+              [found.mac, Icons.appleLogo, t('auth.download-mac', 'macOS')],
+              [found.windows, Icons.windowsLogo, t('auth.download-windows', 'Windows')],
+              [found.linux, Icons.linuxLogo, t('auth.download-linux', 'Linux')],
+          ].filter(([href]) => href)
+        : [];
+    return html`<div class="welcome-download">
+        ${!found && html`<p class="null-sub">${t('auth.download-looking', 'looking for the newest release…')}</p>`}
+        ${systems.length > 0 &&
+        html`<div class="download-buttons">
+            ${systems.map(
+                ([href, Icon, name]) => html`<a class="download-button" key=${name} href=${href} title=${found.tag || ''}>
+                    <${Icon} /><span>${name}</span>
+                </a>`
+            )}
+        </div>`}
+        ${found &&
+        systems.length === 0 &&
+        html`<p class="field-note">
+            ${t('auth.download-none-found', "the downloads couldn't be found just now.")}
+            ${' '}<a href=${found.releases} target="_blank" rel="noopener">${t('auth.download-every-release', 'every release is here')}</a>
+        </p>`}
+        <p class="download-server">
+            ${t('auth.this-server-is-running', 'this server is running')}${' '}<${Version} className="download-version" />
+        </p>
+    </div>`;
+};
+
 export const Welcome = ({ session }) => {
-    const [mode, setMode] = useState('login'); // 'login' | 'register' | 'import' | 'recover'
+    const [mode, setMode] = useState('login'); // 'login' | 'register' | 'import' | 'recover' | 'download'
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [spareKey, setSpareKey] = useState('');
@@ -315,7 +357,14 @@ export const Welcome = ({ session }) => {
                         class=${importing ? 'tab active' : 'tab'}
                         onClick=${() => switchMode('import')}
                     ><${Icons.importUser} /> ${t('auth.import-user', 'import user')}</button>`}
+                ${/* The desktop app is already downloaded. */ ''}
+                ${!isDevice() &&
+                html`<button
+                    class=${mode === 'download' ? 'tab active' : 'tab'}
+                    onClick=${() => switchMode('download')}
+                ><${Icons.download} /> ${t('auth.download', 'download')}</button>`}
             </div>
+            ${mode === 'download' && html`<${DownloadPanel} />`}
             ${importing &&
             html`<p class="welcome-note">
                 ${t(
@@ -324,7 +373,8 @@ export const Welcome = ({ session }) => {
                 )}
             </p>`}
 
-            <form class="welcome-form" onSubmit=${submit}>
+            ${mode !== 'download' &&
+            html`<form class="welcome-form" onSubmit=${submit}>
                 <label>
                     ${t('auth.name-2', 'name')}
                     <input
@@ -375,7 +425,7 @@ export const Welcome = ({ session }) => {
                     class="skip-link"
                     onClick=${() => switchMode('recover')}
                 >${t('auth.lost-your-password', 'lost your password?')}</button>`}
-            </form>
+            </form>`}
             </div>
         </div>
     `;
