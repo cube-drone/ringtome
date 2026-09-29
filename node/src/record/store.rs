@@ -1311,6 +1311,10 @@ impl Documents<'_> {
         // PLAINTEXT twins only. A sealed twin is per-post by construction (each post has
         // its own key), so a trusted bake never reuses and never caches: fresh twin, no
         // `published_as`, and the plaintext cache stays unpoisoned for open posts.
+        // Only while that twin still STANDS (Curtis, 2026-09-29: a book taken down and rolled out
+        // again embedded every picture at the address its takedown had retracted - the whole
+        // manual's pictures 404'd). A tombstone is final, so a retracted twin is replaced by a
+        // fresh one, and `published_as` moves to it below.
         if post_key.is_none() {
             if let Some(existing) = self
                 .store
@@ -1320,7 +1324,9 @@ impl Documents<'_> {
                 .and_then(|v| hex::decode(v).ok())
                 .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
             {
-                return Ok((existing, format, head.header.animation));
+                if crate::record::documents::public_head(&self.store.db, &existing).await?.is_some() {
+                    return Ok((existing, format, head.header.animation));
+                }
             }
         }
         let body = self.body(head).await?.ok_or_else(|| {

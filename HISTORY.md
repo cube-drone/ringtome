@@ -12647,3 +12647,28 @@ Feed, the leftmost column should not have a maximum width."
   constants, because the check reads a comparand after `&&` as a branch.
 
 Pinned in pure/filebrowse.cjs.
+
+## 2026-09-29: a republished book's pictures 404'd
+
+Curtis: on horsedrawingtycoon.com the manual (a book) showed none of its pictures to a reader who
+wasn't signed in. From outside, the pages served fine, but every picture they embedded answered
+"no such public document here". The pages' headers named those pictures, minted in the same
+second, so they had existed and were retracted since.
+
+Reproduced on the rig, extending book_posts.cjs's takedown claim. Taking a book down retracts
+its pages and every picture no other post names, which is right: a picture never outlives its
+words. But a private picture remembers its public copy (`published_as`) so later posts can reuse
+it, and `bake_private_media` reused that copy without asking whether it still stood. The fresh
+rollout's pages embedded the retracted copies' addresses.
+
+- `bake_private_media` reuses a public copy only while it still has a public head. Otherwise it
+  mints a fresh one, and `published_as` moves to it.
+- **Healing books already published:** a rollout skips a page whose words haven't changed, so the
+  manual would have stayed broken until every page was edited. `documents::refs_stand` asks
+  whether every picture a published page names still stands, and a rollout now republishes a page
+  whose pictures don't. The page and book keep their addresses and the pictures are minted afresh.
+  Like any republish, the rollout posts its "updated" note naming those pages.
+
+Pinned in book_posts.cjs: anonymous readers get a book page's picture at both of its addresses; a
+fresh book after a takedown carries pictures that serve; a page whose picture was retracted heals
+on the next rollout, keeping the same book.

@@ -1986,6 +1986,28 @@ pub async fn retract_public(
     .await
 }
 
+/// Whether every picture a public post names still stands - `false` when any of its header's refs
+/// has been retracted. A book's rollout republishes such a page even though its words are
+/// unchanged (Curtis, 2026-09-29): its pictures were retracted out from under it, and republishing
+/// is what mints them fresh.
+pub async fn refs_stand(db: &Db, post_id: &[u8; 16]) -> Result<bool, AppError> {
+    let Some(entry) = public_header_entry(db, post_id).await? else {
+        return Ok(true);
+    };
+    let Payload::Inline(payload) = &entry.entry().payload else {
+        return Ok(true);
+    };
+    let Ok(header) = DocHeaderPlain::decode(payload) else {
+        return Ok(true);
+    };
+    for r in &header.refs {
+        if public_head(db, r).await?.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 /// The twins a post's retraction orphans: its public header's refs, less any that another
 /// standing public post of this persona still names. A private twin is minted per bake and
 /// belongs to one post; an external bake is shared per target URL between an author's posts

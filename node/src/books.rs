@@ -307,7 +307,13 @@ async fn rollout(
             .unwrap_or_default();
         let already = data.annotations().field(doc_id, PUBLISHED_VERSION).await?.unwrap_or_default();
         let post_hex = data.annotations().field(doc_id, store::PUBLISHED_AS).await?.unwrap_or_default();
-        if already == head_hex && !post_hex.is_empty() {
+        // Unchanged words skip - unless a picture the page names has been retracted since, which
+        // left the published page embedding an address that 404s (2026-09-29).
+        let stands = match hex::decode(&post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+            Some(post) => crate::record::documents::refs_stand(data.db(), &post).await?,
+            None => true,
+        };
+        if already == head_hex && !post_hex.is_empty() && stands {
             done += 1;
             published.insert(*doc_id, post_hex);
             continue;

@@ -9,6 +9,8 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch, makePng } = require("./helpers.cjs");
+const { makeFetch } = require("./fetch.cjs");
+const anon = makeFetch();
 const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 const { HOST_B, HOST_C } = require("./fetch.cjs");
 
@@ -152,6 +154,15 @@ describe("books: a notebook rolls out as one book", function () {
         const twin = (head.refs || [])[0];
         assert.ok(twin, `the page's header names its picture's public twin: ${JSON.stringify(head.refs)}`);
         assert.equal((await ada(`id/${adaRoot}/docs/${twin}/body`)).status, 200, "and the twin serves");
+        // To anyone (Curtis, 2026-09-29: a book's pictures failed to load for a reader who wasn't
+        // signed in) - at the address the published words carry, as well as the old one.
+        const words = await (await anon(`id/${adaRoot}/docs/${two.fields.published_as}/body`)).text();
+        const addr = words.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
+        assert.ok(addr, `the page embeds its picture's public address: ${words}`);
+        for (const path of [addr[1].slice(1), `id/${adaRoot}/docs/${twin}/body`]) {
+            const r = await anon(path);
+            assert.equal(r.status, 200, `${path}: ${await r.text()}`);
+        }
     });
 
     it("a follower's feed shows one book post and no pages", async function () {
@@ -258,6 +269,10 @@ describe("books: a notebook rolls out as one book", function () {
         const facts = (await (await ada(`api/identity/${adaRoot}/private/kv/books`)).json()).values.find((v) => v.key === bucket);
         assert.equal(JSON.parse(facts.value).published_as_book, undefined, "the book id is forgotten");
         assert.deepEqual((await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [], [], "the shelf is empty");
+        // Chapter two comes back: its picture's public copy was retracted with it (hidden, then
+        // taken down), and the fresh book must carry a picture that serves - not the dead copy's
+        // address (Curtis, 2026-09-29: a republished manual's pictures all 404'd).
+        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/doc:${pages.two}`, { value: "" }, "PUT");
         // A fresh rollout mints a fresh book.
         await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
         let p = null;
@@ -270,5 +285,33 @@ describe("books: a notebook rolls out as one book", function () {
         assert.equal(p.status, "done", JSON.stringify(p));
         assert.notEqual(p.book, book, "a new id: a tombstone is final for the old one");
         assert.equal((await ada(`api/id/${adaRoot}/posts/${p.book}`)).status, 200, "and it stands");
+        const twoPost = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find((d) => d.doc_id === pages.two).fields.published_as;
+        assert.ok(twoPost, "chapter two is in the fresh book");
+        const words = await (await anon(`id/${adaRoot}/docs/${twoPost}/body`)).text();
+        const addr = words.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
+        assert.ok(addr, `chapter two embeds its picture: ${words}`);
+        const pic = await anon(addr[1].slice(1));
+        assert.equal(pic.status, 200, `the fresh book's picture serves to anyone: ${await pic.text()}`);
+
+        // A standing page whose picture was retracted out from under it - the state a book
+        // published before the fix is in - heals on the next rollout, words unchanged: the page is
+        // republished, its picture minted afresh, the book's address kept.
+        const dead = addr[1].match(/\/doc\/([0-9a-f]{32})\//)[1];
+        assert.equal((await ada(`api/identity/${adaRoot}/posts/${dead}`, { method: "DELETE" })).status, 200);
+        assert.equal((await anon(addr[1].slice(1))).status, 404, "the picture is gone and the page still names it");
+        await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
+        let healed = null;
+        for (let i = 0; i < 40; i++) {
+            await beat(undefined, "book-rollout", adaRoot);
+            healed = await plan();
+            if (healed && (healed.status === "done" || healed.status === "failed")) break;
+            await new Promise((r) => setTimeout(r, 500));
+        }
+        assert.equal(healed.status, "done", JSON.stringify(healed));
+        assert.equal(healed.book, p.book, "the same book");
+        const again = await (await anon(`id/${adaRoot}/docs/${twoPost}/body`)).text();
+        const fresh = again.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
+        assert.ok(fresh && fresh[1] !== addr[1], `the page names a fresh picture: ${again}`);
+        assert.equal((await anon(fresh[1].slice(1))).status, 200, "which serves to anyone");
     });
 });
