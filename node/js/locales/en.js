@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1169 phrases across 75 files.
+// 1172 phrases across 75 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -625,8 +625,9 @@ export default {
     'doc.tree.nothing-here-yet---start': 'nothing here yet - start a {itemNoun}, or a section to put them in.',
 
     // --- node/js/doc/turbolinks.js ---
-    'doc.turbolinks.this-document-is-private': '(THIS DOCUMENT IS PRIVATE)',
+    'doc.turbolinks.a-private-chat-room': 'a private chat room',
     'doc.turbolinks.a-chat-room': 'a chat room',
+    'doc.turbolinks.this-document-is-private': '(THIS DOCUMENT IS PRIVATE)',
     'doc.turbolinks.untitled': 'untitled',
 
     // --- node/js/doc/upload.js ---
@@ -901,6 +902,8 @@ export default {
     'postentry.and-100-more': 'and {cap}+ more',
     'postentry.and-one-more': 'and one more',
     'postentry.and-n-more': 'and {n} more',
+    'postentry.a-private-chat-room': 'a private chat room',
+    'postentry.a-chat-room': 'a chat room',
     'postentry.1-reply': '1 reply',
     'postentry.n-replies': '{n} replies',
     'postentry.reply': 'reply',

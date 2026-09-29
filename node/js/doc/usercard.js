@@ -19,6 +19,15 @@ import { identiconUri } from '../pure/identicon.js';
 import { personaHue, displayNames } from '../pure/person.js';
 import { CARD_DIRECTIVE } from '../pure/mentions.js';
 import { personHref } from '../links.js';
+import { parseRingtome } from '../pure/ringtome.js';
+
+/// A room's link as a whole card (2026-09-28): the room's title and its last few lines, as a room
+/// shows in the feed. The component lives with the feed's card (postentry.js), which registers it
+/// here - importing it would make a loop, since the feed's card renders through this module.
+let roomCard = null;
+export const registerRoomCard = (component) => {
+    roomCard = component;
+};
 
 const html = htm.bind(h);
 
@@ -60,6 +69,14 @@ const UserSpan = ({ root, children }) => {
 /// The react renderer's hooks: only `user` is ours - the directive is the block card, the
 /// span the inline one; anything else falls through to Marquee's own handling.
 export const marqueeHooks = {
+    // A room's own link - no one line in it - unfolds as the room, where the reader renders
+    // components; anything else takes the string card (doc/turbolinks.js).
+    turbolink: (target, level) => {
+        if (!roomCard || level === 'bare') return null;
+        const ref = parseRingtome(target);
+        if (!ref || ref.kind !== 'room' || ref.line) return null;
+        return html`<${roomCard} target=${target} />`;
+    },
     directive: (name, attrs) => {
         if (name !== CARD_DIRECTIVE) return null;
         const root = cardRoot(attrs);

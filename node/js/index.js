@@ -54,6 +54,7 @@ import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
 import { NodeFeed, RecentPosts } from './nodefeed.js';
+import { setTurbolinkReader } from './doc/turbolinks.js';
 import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
@@ -175,6 +176,8 @@ const Inside = ({ session }) => {
     const root = persona.current && persona.current.root;
     // The house tooltips follow this persona's "disable tooltips" (the profile's application
     // settings); signed out, or before a persona opens, they are on.
+    // Room cards are read as the persona that is open (doc/turbolinks.js).
+    setTurbolinkReader(root);
     const tooltips = usePrefValue(root, TOOLTIPS_KEY);
     useEffect(() => {
         setTooltipsEnabled(tooltips !== 'off');

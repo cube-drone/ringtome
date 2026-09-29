@@ -100,7 +100,7 @@ const roomRoute = async (author, doc) => `/ringtome/user/${(await import("../../
         assert.ok(await heldOnAda("is the oven on"), "ada's node holds bea's line");
         const alert = await alertWith((a) => a.body === "is the oven on");
         assert.ok(alert, `the line alerted ada: ${JSON.stringify(await alertsFor(adaRoot))}`);
-        assert.match(alert.title, /the kitchen/, "the alert names the room");
+        assert.match(alert.title, / in # the kitchen$/, "the alert names the room, marked as one");
         assert.equal(alert.route, await roomRoute(adaRoot, kitchen), "and points into it");
 
         assert.equal((await say(ada, adaRoot, "it is now")).status, 200);

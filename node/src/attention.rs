@@ -563,11 +563,18 @@ async fn picture_bytes(state: &AppState, root: &str, picture: &str) -> Option<ax
 const MAX_PICTURE_BYTES: usize = 16 * 1024 * 1024;
 
 /// A room's name as its post titles it, or "a room" for a sealed or unheld one.
+/// A room's name for a notification: `# <title>` (Curtis, 2026-09-28 - a room is marked as one
+/// wherever its title stands), or the bare title of a private chat for two, which names a person.
 async fn room_name(state: &AppState, author: &str, doc: &str) -> String {
-    match crate::identity::routes::held_public_header(state, author, doc).await {
+    let title = match crate::identity::routes::held_public_header(state, author, doc).await {
         Ok(Some(h)) if !h.title.trim().is_empty() => h.title,
-        _ => crate::msg!("attention.a-room", "a room").english,
-    }
+        _ => return crate::msg!("attention.a-room", "a room").english,
+    };
+    let im = match hex::decode(doc).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+        Some(doc) => crate::chat::is_im(state, author, &doc).await,
+        None => false,
+    };
+    if im { title } else { format!("# {title}") }
 }
 
 /// A persona's own name, for telling several apart on one machine.

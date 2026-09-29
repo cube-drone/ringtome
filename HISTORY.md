@@ -12435,3 +12435,29 @@ A sticker pill whose picture will not load now hides itself, count and all, inst
 broken image (Curtis) - remembered for the page, so every line's pill of that sticker stays hidden.
 
 Chat: a line's emoji and sticker pickers open upward when opening downward would run past the bottom of the room and there is room above (Curtis: they could open behind the bottom of the page); measured again as the sticker shelf fills, and only ever flipping up.
+
+A chat line's link, pasted, unfolds as the line (Curtis: the card said only "a chat room" and its
+owner): the chat icon (Phosphor's ChatsCircle, drawn into the card's markup), the room's title, and
+who said what - their face, their name and an excerpt of their words (doc/turbolinks.js
+`resolveRoom`). The words come from the room's history door (`?at=<line>`), read as the persona that
+is open - which the shell now tells the turbolink module, clearing its cache when that changes - so a
+sealed room's words reach only its members; a room the reader may not enter shows its title where
+that is public, and its owner. A room's own link (no line) shows the title and the owner.
+
+A link to a room the reader may not enter now reads "a private chat room" (Curtis): the card knows a room is sealed from its public post, and that this reader is refused when the room's history door answers 403 - for a line, or, for a whole room, a one-line probe that joins nothing. Clicking it lands on the room's own refusal, as before: the padlock and "this room is sealed - its author shares it only with people they trust", with nothing joined or synced.
+
+Rooms wear a hash (Curtis): a room's icon is Phosphor's `Hash` (`Icons.room`) wherever one sits beside
+a room - the link card, the bell's room link, chat search results, the feed card's "enter the room" -
+and wherever a room's title stands on its own it gets a `#` before it (`RoomTitle`, js/roomtitle.js):
+the room list, a room's header, a room's card in the feed, and the operating system's notification
+("Bea in # the kitchen", attention.rs `room_name`). Beside the icon the title goes bare, so it never
+reads "# # kitchen". A private chat for two is titled with the other person, and keeps no `#`. The
+Chat app's own tile and "chat with" keep the chat bubbles.
+
+A room's own link (no one line in it) now unfolds as the room does in the feed (Curtis): its hash and
+title over its opening words and last few lines, read as the persona that is open (postentry.js
+`RoomLinkCard`, the feed card's `RoomFloor`). It is a component, not a string, so it rides the
+renderer's `hooks.turbolink` (doc/usercard.js `marqueeHooks`), which postentry.js fills at load -
+importing it the other way would loop. A room the reader may not enter is its header alone ("a
+private chat room"), and so is a room inside another room's card, so cards never nest without end.
+The live editor, which renders strings, keeps the smaller card.

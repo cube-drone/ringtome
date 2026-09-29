@@ -277,7 +277,8 @@ video.reader-media {
    doc/turbolinks.js from this node's own read of it, linking to this node's own address for it. The
    raw link the renderer keeps beside every card is the long, unreadable one here, and the card
    already is the link, so it goes. */
-.mq-turbolink-rich:has(.rt-card) > .mq-turbolink-source {
+.mq-turbolink-rich:has(.rt-card) > .mq-turbolink-source,
+.mq-turbolink-rich:has(.rt-room) > .mq-turbolink-source {
     display: none;
 }
 
@@ -338,6 +339,81 @@ a.rt-card:hover {
     height: 4.5rem;
     flex-shrink: 0;
     object-fit: cover;
+}
+
+/* A room, or a line said in one (2026-09-28): the chat icon, the room's title, and who said what. */
+.rt-card-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    flex-shrink: 0;
+    color: var(--teal);
+}
+
+.rt-card-said {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.rt-card-speaker {
+    width: 1.3rem;
+    height: 1.27rem;
+    flex-shrink: 0;
+    object-fit: cover;
+    clip-path: var(--face-clip);
+}
+
+.rt-card-speaker-name {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.rt-card-said .rt-card-title {
+    font-weight: normal;
+}
+
+/* A room's link as the room (2026-09-28): its title over its last few lines, as in the feed. */
+.rt-room {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.55rem 0.8rem;
+    background: var(--surface);
+    border: 1px solid transparent;
+    --line: var(--border);
+    --j: 4px;
+    clip-path: var(--jag-1);
+}
+
+.rt-room-head {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.rt-room-head svg {
+    font-size: 1.4rem;
+    color: var(--teal);
+    flex-shrink: 0;
+}
+
+.rt-room-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rt-room-owner {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--muted);
+    flex-shrink: 0;
 }
 
 .rt-card-private {

@@ -1041,3 +1041,9 @@
     color: var(--muted);
 }
 
+/* A room's title, marked as a room (2026-09-28): the hash, quieter than the name it stands before. */
+.room-hash {
+    color: var(--muted);
+    font-weight: 400;
+    margin-right: 0.15em;
+}

@@ -14,7 +14,8 @@
 // Journal's fifteen-second lock, same CSS, same promise) guards the door exactly as it did
 // when the affordance lived on the old stack card.
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useContext } from 'preact/hooks';
+import { createContext } from 'preact';
 import htm from 'htm';
 
 import { api, apiText, apiTextTitled } from './net.js';
@@ -44,7 +45,10 @@ import { appById, featuresOf } from './pure/apps.js';
 import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
-import { useTurbolinks } from './doc/turbolinks.js';
+import { useTurbolinks, turbolinkReader } from './doc/turbolinks.js';
+import { registerRoomCard } from './doc/usercard.js';
+import { parseRingtome } from './pure/ringtome.js';
+import { parseSpeakable } from './speakable.js';
 import { agoUnit } from './pure/ago.js';
 import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
 import { parseBook } from './pure/books.js';
@@ -133,6 +137,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
 import { postHref, docHref, roomHref, CopyLinkChip } from './links.js';
+import { RoomTitle } from './roomtitle.js';
 export { publishWithBaking, BakeModal };
 
 /**
@@ -604,6 +609,66 @@ const RoomFloor = ({ item, current, post }) => {
     </ul>`;
 };
 
+/// Inside a room's card already: a room linked from inside one - or a room linking itself - draws only
+/// its header, never another floor, so a card can never nest without end.
+const InRoomCard = createContext(false);
+
+/// A room's link, pasted (Curtis, 2026-09-28): the room as the feed shows it - its title, then its
+/// opening words and last few lines, read as the persona that is open. A room this reader may not
+/// enter, or one inside another card, is its header alone.
+const RoomLinkCard = ({ target }) => {
+    const nested = useContext(InRoomCard);
+    const ref = parseRingtome(target);
+    const parsed = ref && parseSpeakable(ref.seg);
+    const author = parsed && parsed.ok ? parsed.root : null;
+    const reader = turbolinkReader();
+    const owner = usePerson(author);
+    const [room, setRoom] = useState(undefined); // undefined looking, else { title, words, published_ms, locked }
+    const seg = ref ? ref.seg : null;
+    const doc = ref ? ref.doc : null;
+    useEffect(() => {
+        if (!author || !seg || !doc) return undefined;
+        let live = true;
+        (async () => {
+            const post = await api(`/api/id/${seg}/posts/${doc}`).catch(() => null);
+            const said = await apiTextTitled(`/id/${author}/docs/${doc}/body`).catch(() => null);
+            if (!live) return;
+            const title = (post && post.title) || (said && said.title) || '';
+            setRoom({
+                title,
+                words: said ? said.text : null,
+                published_ms: post ? post.published_ms : null,
+                locked: !!(post && post.trusted_only) && !said,
+            });
+        })();
+        return () => {
+            live = false;
+        };
+    }, [author, seg, doc]);
+    if (!author || !ref) return null;
+    const title =
+        (room && room.title) ||
+        (room && room.locked ? t('postentry.a-private-chat-room', 'a private chat room') : t('postentry.a-chat-room', 'a chat room'));
+    const head = html`<a class="rt-room-head" href=${ref.path}>
+        <${Icons.room} />
+        <span class="rt-room-title">${title}</span>
+        <span class="rt-room-owner">${owner.primary}</span>
+    </a>`;
+    const floor = !nested && reader && room && !room.locked && room.words !== null;
+    return html`<div class="rt-room">
+        ${head}
+        ${floor &&
+        html`<${InRoomCard.Provider} value=${true}>
+            <${RoomFloor}
+                item=${{ author, doc_id: ref.doc, published_ms: room.published_ms }}
+                current=${{ root: reader }}
+                post=${room.words}
+            />
+        </${InRoomCard.Provider}>`}
+    </div>`;
+};
+registerRoomCard(RoomLinkCard);
+
 export const PostEntry = ({ item, current, interest, editing, quote, standalone = false }) => {
     const [body, setBody] = useState(undefined);
     const [sealedWords, setSealedWords] = useState('');
@@ -1010,7 +1075,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
             />
             ${!open &&
             !!title &&
-            html`<h2 class="feed-entry-title"><a href=${href}>${title}</a></h2>`}
+            html`<h2 class="feed-entry-title"><a href=${href}>${item.format === 'room' && !item.im ? html`<${RoomTitle}>${title}</${RoomTitle}>` : title}</a></h2>`}
             ${/* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
                 mini-card names what it answers - which is the whole reason context-free
                 "@rando, I disagree" cannot happen here. Suppressed on the thread page
@@ -1256,7 +1321,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>`}
                 ${roomDoor &&
                 html`<a class="feed-entry-act" href=${roomHref(item.author, item.doc_id)}
-                    ><${Icons.chat} /> ${t('postentry.enter-the-room', 'enter the room')}</a
+                    ><${Icons.room} /> ${t('postentry.enter-the-room', 'enter the room')}</a
                 >`}
                 ${replyWords && html`<a class="feed-entry-act" href=${href}>${replyWords}</a>`}
             </div>`}

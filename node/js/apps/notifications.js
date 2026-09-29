@@ -51,7 +51,7 @@ const RoomLink = ({ author, doc, title }) => {
         };
     }, [author, doc, title]);
     if (!author || !doc) return html`<span>${t('apps.notifications.a-room', 'a room')}</span>`;
-    return html`<a class="notif-room" href=${roomHref(author, doc)}><${Icons.chat} /> ${title || name || t('apps.notifications.a-room', 'a room')}</a>`;
+    return html`<a class="notif-room" href=${roomHref(author, doc)}><${Icons.room} /> ${title || name || t('apps.notifications.a-room', 'a room')}</a>`;
 };
 
 const Subject = ({ row }) => {

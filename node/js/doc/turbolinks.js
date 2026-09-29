@@ -21,7 +21,8 @@ import { nameToEmoji } from 'gemoji';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import { bareWebProfile } from '@cube-drone/marquee-html-renderer';
 import { mediaResolver } from '../pure/mediakind.js';
-import { api } from '../net.js';
+import { api, apiTextTitled } from '../net.js';
+import { excerpt } from '../pure/excerpt.js';
 import { parseRingtome, ringtomePath } from '../pure/ringtome.js';
 import { parseSpeakable, wordsFor } from '../speakable.js';
 import { identiconUri } from '../pure/identicon.js';
@@ -49,6 +50,24 @@ const ogPlugin = {
     render: (target, { level, data }) => (data ? renderCard(target, data, level) : null),
 };
 
+/// Who is reading (2026-09-28): a room's words are per-reader - a sealed room's are for its members
+/// only - so a room card asks the room door as the persona that is open. Set by the shell.
+let reader = null;
+export const turbolinkReader = () => reader;
+export const setTurbolinkReader = (root) => {
+    if ((root || null) === reader) return;
+    reader = root || null;
+    // What was resolved for somebody else - or for nobody, before a persona opened - is not this
+    // reader's to see: every card is asked again.
+    resolved.clear();
+    attempted.clear();
+};
+
+/// A room's icon (Phosphor's Hash, duotone - the app's own `Icons.room`, 2026-09-28), as markup: a
+/// card is an HTML string, and cannot hold the component. Beside the room's title, it is the room's
+/// `#`, so the title goes bare.
+const ROOM_ICON = `<svg class="rt-card-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.82,96l-11.64,64h-64l11.64-64Z" opacity="0.2"/><path d="M224,88H175.4l8.47-46.57a8,8,0,0,0-15.74-2.86l-9,49.43H111.4l8.47-46.57a8,8,0,0,0-15.74-2.86L95.14,88H48a8,8,0,0,0,0,16H92.23L83.5,152H32a8,8,0,0,0,0,16H80.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,80,224a8,8,0,0,0,7.86-6.57l9-49.43H144.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,144,224a8,8,0,0,0,7.86-6.57l9-49.43H208a8,8,0,0,0,0-16H163.77l8.73-48H224a8,8,0,0,0,0-16Zm-76.5,64H99.77l8.73-48h47.73Z"/></svg>`;
+
 const escapeHtml = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -66,7 +85,7 @@ async function resolveRingtome(target) {
     const field = (k) => (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
     const who = { root, name: field('name'), avatar: field('avatar') };
     if (!ref.kind) return { ...who, kind: 'person', href: ref.path, title: field('bio') };
-    if (ref.kind === 'room') return { ...who, kind: 'room', href: ref.path };
+    if (ref.kind === 'room') return resolveRoom(ref, who);
     // A post - or a document that is one: the public read answers for both.
     const doc = ref.page || ref.doc;
     try {
@@ -109,8 +128,73 @@ async function resolveRingtome(target) {
     return { private: true };
 }
 
+/// A room, or one line in it (Curtis, 2026-09-28): the room's title, and for a line who said it and
+/// what. As the reader sees them - a room the reader may not enter gives its title where that is
+/// public, and never its words.
+async function resolveRoom(ref, who) {
+    const card = { ...who, kind: 'room', href: ref.path, title: '', speaker: null, words: '', sealed: false };
+    try {
+        const post = await api(`/api/id/${ref.seg}/posts/${ref.doc}`);
+        card.title = post.title || '';
+        card.sealed = !!post.trusted_only;
+        // A sealed room's title travels with its words, for whoever may have them.
+        if (!card.title && post.trusted_only) card.title = (await apiTextTitled(`/id/${who.root}/docs/${ref.doc}/body`).catch(() => ({}))).title || '';
+    } catch {
+        /* not on this node's shelf: the room may still answer its members */
+    }
+    // Whether this reader may enter: a sealed room refuses its history to anyone it does not admit.
+    if (card.sealed && !ref.line && reader) {
+        const open = await api(`/api/identity/${reader}/rooms/${who.root}/${ref.doc}/messages?limit=1`)
+            .then(() => true)
+            .catch(() => false);
+        card.locked = !open;
+    }
+    if (ref.line && reader) {
+        try {
+            const page = await api(`/api/identity/${reader}/rooms/${who.root}/${ref.doc}/messages?at=${ref.line}&limit=20`);
+            const line = (page.items || []).find((m) => m.hash === ref.line);
+            if (line && typeof line.words === 'string') {
+                card.words = excerpt(line.words, 'marquee') || line.words;
+                const profile = await api(`/api/id/${line.speaker}/profile`).catch(() => null);
+                const field = (k) => (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
+                card.speaker = { root: line.speaker, name: field('name'), avatar: field('avatar') };
+                card.when = line.said_ms || null;
+            }
+        } catch (e) {
+            // Refused: a sealed room this reader is not admitted to.
+            if (e.status === 403) card.locked = true;
+        }
+    }
+    if (card.sealed && !card.words && !card.title) card.locked = true;
+    return card;
+}
+
+function renderRoom(data, level) {
+    // A room this reader may not enter says so (Curtis, 2026-09-28) - clicking it lands on the room's
+    // own refusal, and the card should not promise more.
+    const room = data.title || (data.locked ? t('doc.turbolinks.a-private-chat-room', 'a private chat room') : t('doc.turbolinks.a-chat-room', 'a chat room'));
+    const owner = data.name || wordsFor(data.root).join('-');
+    const speaker = data.speaker && (data.speaker.name || wordsFor(data.speaker.root).join('-'));
+    const face = data.speaker && (data.speaker.avatar ? `/id/${data.speaker.root}/docs/${data.speaker.avatar}/thumb` : identiconUri(data.speaker.root));
+    const when =
+        level === 'full' && data.when
+            ? new Date(data.when).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+            : '';
+    return (
+        `<a class="rt-card rt-card-room" href="${escapeHtml(data.href)}">` +
+        ROOM_ICON +
+        `<span class="rt-card-text"><span class="rt-card-who">${escapeHtml(room)}</span>` +
+        (data.words
+            ? `<span class="rt-card-said"><img class="rt-card-speaker" src="${escapeHtml(face)}" alt=""><span class="rt-card-speaker-name">${escapeHtml(speaker)}</span> <span class="rt-card-title">${escapeHtml(data.words)}</span></span>`
+            : `<span class="rt-card-title">${escapeHtml(owner)}</span>`) +
+        (when ? `<span class="rt-card-when">${escapeHtml(when)}</span>` : '') +
+        `</span></a>`
+    );
+}
+
 function renderRingtome(data, level) {
     if (!data) return null;
+    if (data.kind === 'room') return renderRoom(data, level);
     if (data.private) {
         return `<span class="rt-card rt-card-private">${escapeHtml(t('doc.turbolinks.this-document-is-private', '(THIS DOCUMENT IS PRIVATE)'))}</span>`;
     }

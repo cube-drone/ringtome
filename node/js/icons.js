@@ -91,6 +91,7 @@ import {
     Question,
     Package,
     Sticker,
+    Hash,
     CellSignalNone,
     CellSignalLow,
     CellSignalMedium,
@@ -240,6 +241,8 @@ export const Icons = {
     hidden: EyeSlash,
     // Rooms (CHAT.md): the app tile, and the chip a room post wears.
     chat: ChatsCircle,
+    // A room, beside its title (2026-09-28): the hash, as a channel is marked.
+    room: Hash,
     // The place's own settings (apps/device.js): a rack of drives for a server, a laptop for
     // the desktop app - the app wears whichever the person is holding.
     server: HardDrives,

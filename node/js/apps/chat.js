@@ -59,6 +59,7 @@ import { DrawingThumb, drawingAsPicture } from '../doc/drawing.js';
 import { stickersOf } from '../pure/imagepick.js';
 import { togglePick } from '../pure/facets.js';
 import { personHref, postHref, roomHref, copyLink, appHref } from '../links.js';
+import { RoomTitle } from '../roomtitle.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
@@ -152,7 +153,7 @@ const RoomRow = ({ room, current, selected }) => {
             <span class="chat-row-name">
                 ${room.closed && html`<${Icons.settled} />`}
                 ${room.trusted_only && html`<${Icons.trustPrivate} />`}
-                ${room.im ? person.primary || speakable(room.other || room.author) : roomName(words, room)}
+                ${room.im ? person.primary || speakable(room.other || room.author) : html`<${RoomTitle}>${roomName(words, room)}</${RoomTitle}>`}
             </span>
             <span class="chat-row-by">
                 <span class="chat-row-when">${room.latest_ms ? whenWords(room.latest_ms) : t('apps.chat.quiet', 'quiet')}</span>
@@ -1288,7 +1289,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     }
     return html`<section class="chat-room">
         <header class="chat-room-head">
-            <h2 class="chat-room-name">${name}</h2>
+            <h2 class="chat-room-name">${room.im ? name : html`<${RoomTitle}>${name}</${RoomTitle}>`}</h2>
             ${room.trusted_only &&
             html`<span class="label-chip label-chip-flag"><${Icons.trustPrivate} />
                 ${room.im
@@ -1671,7 +1672,7 @@ const SearchResults = ({ current, needle, hits, onOpen }) => {
                 (h) => html`<li key=${h.hash} class="chat-result">
                     <button class="chat-result-hit" type="button" onClick=${() => onOpen(h)}>
                         <span class="chat-result-where">
-                            <${Icons.chat} />
+                            <${Icons.room} />
                             ${h.title || t('apps.chat.a-sealed-room', 'a sealed room')}
                             <span class="chat-result-when">${whenWords(h.said_ms)}</span>
                         </span>
