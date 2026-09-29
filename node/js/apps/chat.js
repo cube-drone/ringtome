@@ -7,7 +7,7 @@
 // you are at the end, one speaker's run of lines attributed once, the composer fixed to the
 // bottom at full width. The room's own post is the first line, said by its creator.
 import { h } from 'preact';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -378,12 +378,34 @@ const Speaker = ({ root, current }) => {
     </a>`;
 };
 
+/// A picker under a line's menu that would open past the bottom of the room - a line near the end of
+/// the floor - opens upward instead, when there is room above (Curtis, 2026-09-28: the pickers opened
+/// behind the bottom of the page). Measured again whenever `size` - what the picker holds - changes,
+/// since the sticker shelf grows once the mirror answers; it only ever flips up, so it never jumps
+/// back and forth under the pointer.
+function usePopSide(size) {
+    const ref = useRef(null);
+    const [up, setUp] = useState(false);
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el || up) return;
+        const floor = el.closest('.chat-floor');
+        const bottom = Math.min(floor ? floor.getBoundingClientRect().bottom : window.innerHeight, window.innerHeight);
+        const top = floor ? Math.max(floor.getBoundingClientRect().top, 0) : 0;
+        const pop = el.getBoundingClientRect();
+        const anchor = el.parentElement ? el.parentElement.getBoundingClientRect() : pop;
+        if (pop.bottom > bottom && anchor.top - top >= pop.height) setUp(true);
+    }, [up, size]);
+    return [ref, up ? 'chat-emoji-pop up' : 'chat-emoji-pop'];
+}
+
 /// The emoji picker under a line's hover menu (CHAT.md, slice 9): the pole rows, then the
 /// whole table, narrowed as you type a name. One click says the emoji.
 const EmojiPicker = ({ onPick, onClose }) => {
     const [q, setQ] = useState('');
     const needle = q.trim().toLowerCase();
     const hit = ([name]) => !needle || name.replace(/_/g, ' ').includes(needle);
+    const [popRef, popClass] = usePopSide(needle);
     const chip = ([name, ch]) => html`<button
         class="label-emoji"
         key=${name}
@@ -392,7 +414,7 @@ const EmojiPicker = ({ onPick, onClose }) => {
         onMouseDown=${(e) => e.preventDefault()}
         onClick=${() => onPick(ch)}
     >${ch}</button>`;
-    return html`<span class="chat-emoji-pop" onMouseDown=${(e) => e.stopPropagation()}>
+    return html`<span ref=${popRef} class=${popClass} onMouseDown=${(e) => e.stopPropagation()}>
         <input
             class="chat-emoji-search"
             placeholder=${t('apps.chat.find-an-emoji', 'find an emoji…')}
@@ -415,6 +437,35 @@ const stickerSrc = (words) => {
     return m ? m[1] : null;
 };
 
+/// Stickers this page could not show (2026-09-28): their pictures never arrived - taken back by the
+/// person whose sticker it was before this node fetched it, say. Remembered for the page, so every
+/// line's pill of it stays hidden rather than each trying and failing again.
+const unshowable = new Set();
+
+/// One reaction's pill: the emoji, or the sticker at 48 by 48, and the count past one. A sticker whose
+/// picture will not load hides its whole pill, count and all (Curtis, 2026-09-28) - a stack nobody can
+/// see is not worth a broken image.
+const ReactPill = ({ r, mine, title, onClick }) => {
+    const src = stickerSrc(r.emoji);
+    const [gone, setGone] = useState(!!src && unshowable.has(src));
+    if (gone) return null;
+    return html`<button class=${mine ? 'chat-react chat-react-mine' : 'chat-react'} type="button" title=${title} onClick=${onClick}>
+        ${src
+            ? html`<img
+                  class="chat-react-sticker"
+                  src=${src}
+                  alt=""
+                  width="48"
+                  height="48"
+                  onError=${() => {
+                      unshowable.add(src);
+                      setGone(true);
+                  }}
+              />`
+            : html`<span class="chat-react-glyph">${glyphOf(r.emoji)}</span>`}${r.count > 1 ? ` ${r.count}` : ''}
+    </button>`;
+};
+
 /// The sticker picker under a line's hover menu (Curtis, 2026-09-28): your stickers - the pictures
 /// and drawings tagged `sticker` (pure/imagepick.js) - narrowed by their other tags. One click says
 /// the sticker; a drawing is flattened into a picture first, as the drawing app does.
@@ -423,6 +474,7 @@ const StickerPicker = ({ root, onPick, onClose }) => {
     const [tags, setTags] = useState([]);
     const [busy, setBusy] = useState(null);
     const { stickers, tags: cloud } = stickersOf(docs || [], tags);
+    const [popRef, popClass] = usePopSide(stickers.length + cloud.length);
     const choose = async (doc) => {
         if (doc.format !== 'drawing') return onPick(doc.doc_id, doc.format === 'apng' ? 'apng' : 'avif');
         setBusy(doc.doc_id);
@@ -434,7 +486,8 @@ const StickerPicker = ({ root, onPick, onClose }) => {
         }
     };
     return html`<span
-        class="chat-emoji-pop chat-sticker-pop"
+        ref=${popRef}
+        class=${`${popClass} chat-sticker-pop`}
         onMouseDown=${(e) => e.stopPropagation()}
         onKeyDown=${(e) => e.key === 'Escape' && onClose()}
     >
@@ -602,15 +655,13 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
                 ${m.reactions.map((r) => {
                     // A pill you are in takes yours back; one you are not says it too.
                     const mine = r.who.some((w) => !!current && w.root === current.root);
-                    return html`<button
-                        class=${mine ? 'chat-react chat-react-mine' : 'chat-react'}
-                        type="button"
+                    return html`<${ReactPill}
                         key=${r.emoji}
+                        r=${r}
+                        mine=${mine}
                         title=${mine ? t('apps.chat.who-said-click-to-take-yours-back', '{who} - click to take yours back', { who: whoSaid(r) }) : whoSaid(r)}
                         onClick=${() => onReact && onReact(m.hash, r.emoji, mine)}
-                    >${stickerSrc(r.emoji)
-                        ? html`<img class="chat-react-sticker" src=${stickerSrc(r.emoji)} alt="" width="48" height="48" />`
-                        : html`<span class="chat-react-glyph">${glyphOf(r.emoji)}</span>`}${r.count > 1 ? ` ${r.count}` : ''}</button>`;
+                    />`;
                 })}
             </span>`}
         </div>

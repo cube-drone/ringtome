@@ -413,7 +413,8 @@ node keeps its own room whole, which is where "all of it" lives.
    it in `refs`, so its picture travels as a line's does (the fold covers it). Anybody else adds
    theirs by saying the same baked words, which name a picture already on the network: no second
    copy, and they need not own the sticker. Stacked and taken back by those words, like an emoji;
-   no tone, so it does not lean the line. Drawn 48 by 48 in its pill. Anything else - an embed of the
+   no tone, so it does not lean the line. Drawn 48 by 48 in its pill; a sticker whose picture will
+   not load (taken back by its first sayer before this node fetched it) hides its whole pill. Anything else - an embed of the
    open web, a sticker inside words - is refused as "one emoji or one sticker". Suite: the feed
    suite's sticker claim, across two nodes.
 10. **The Mute List**

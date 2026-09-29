@@ -421,6 +421,12 @@
     z-index: 40;
 }
 
+/* Near the end of the floor, the picker opens upward (2026-09-28). */
+.chat-emoji-pop.up {
+    top: auto;
+    bottom: 100%;
+}
+
 .chat-emoji-search {
     width: 100%;
     box-sizing: border-box;

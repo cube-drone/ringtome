@@ -12430,3 +12430,8 @@ can click it to add theirs, whether or not they have that sticker (CHAT.md, slic
 
 chat.rs holds what a reaction may say; chat_feed.cjs a sticker said on one node, stacked baked on the
 other with its picture served there, added to by the other person, and taken back.
+
+A sticker pill whose picture will not load now hides itself, count and all, instead of showing a
+broken image (Curtis) - remembered for the page, so every line's pill of that sticker stays hidden.
+
+Chat: a line's emoji and sticker pickers open upward when opening downward would run past the bottom of the room and there is room above (Curtis: they could open behind the bottom of the page); measured again as the sticker shelf fills, and only ever flipping up.
