@@ -5662,6 +5662,9 @@ async fn docs_delete_handler(
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    if crate::builtin::get(&doc_id).is_some() {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.builtin-cant-be-deleted", "that picture comes with the app - it can't be deleted")));
+    }
     let signed = data.documents().delete(&doc_id).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
@@ -6045,6 +6048,9 @@ async fn docs_body_impl(
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    if let Some(b) = crate::builtin::get(&doc_id) {
+        return Ok(builtin_bytes(b));
+    }
     let view = data.documents().all().await?;
 
     // Version-less: not a real document (yet, or ever). Let the ingest queue explain why.
@@ -6110,9 +6116,12 @@ async fn docs_thumb_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    if let Some(b) = crate::builtin::get(&doc_id) {
+        return Ok(builtin_bytes(b));
+    }
     let view = data.documents().all().await?;
     let doc = view
         .docs
@@ -6141,7 +6150,8 @@ async fn docs_thumb_handler(
             (CACHE_CONTROL, "private, max-age=31536000, immutable"),
         ],
         bytes,
-    ))
+    )
+        .into_response())
 }
 
 /// Serve a video document's silent hover-preview clip (the display head's small AV1-in-WebM), a
@@ -6271,6 +6281,9 @@ struct DocSummary {
     /// Pinned to the top of the list (a doc-meta roster flag). Sorting is the client's; the
     /// server only reports the fact.
     pinned: bool,
+    /// One of the app's own pictures (`builtin.rs`): nobody's to delete, retitle or edit.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    builtin: bool,
 }
 
 #[derive(Serialize)]
@@ -6310,7 +6323,69 @@ fn summarize(
         fields,
         buckets,
         pinned: is_pinned,
+        builtin: false,
     }
+}
+
+/// The app's own pictures as list rows (`builtin.rs`), joined like any document's: a persona may
+/// tag, pin or file one in a notebook, on top of the folder tags it comes with. A persona's own
+/// copy of a built-in (filed the first time they used it) shares its id and stands behind it -
+/// the built-in row is the one the list shows.
+fn with_builtins(
+    mut docs: Vec<DocSummary>,
+    annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
+    buckets: &std::collections::BTreeMap<String, Vec<String>>,
+    pinned: &std::collections::BTreeSet<[u8; 16]>,
+) -> Vec<DocSummary> {
+    docs.retain(|d| hex_fixed::<16>(&d.doc_id, "doc id").ok().and_then(|id| crate::builtin::get(&id)).is_none());
+    docs.extend(crate::builtin::all().iter().map(|b| builtin_row(b, annots, buckets, pinned)));
+    docs
+}
+
+fn builtin_row(
+    b: &crate::builtin::BuiltIn,
+    annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
+    buckets: &std::collections::BTreeMap<String, Vec<String>>,
+    pinned: &std::collections::BTreeSet<[u8; 16]>,
+) -> DocSummary {
+    let doc_id = hex::encode(b.id);
+    let (own_tags, fields) = annots.get(&doc_id).map(|a| (a.tags.clone(), a.fields.clone())).unwrap_or_default();
+    let mut tags = b.tags.clone();
+    tags.extend(own_tags.into_iter().filter(|t| !b.tags.contains(t)));
+    DocSummary {
+        title: b.title.clone(),
+        head: hex::encode(b.head),
+        format: crate::record::documents::Format::Apng.as_str(),
+        media: Some(builtin_media(b)),
+        heads: 1,
+        diverged: false,
+        // Undated: they sort beneath everything a persona made themselves.
+        updated_ms: 0,
+        created_ms: 0,
+        tags,
+        fields,
+        buckets: buckets.get(&doc_id).cloned().unwrap_or_default(),
+        pinned: pinned.contains(&b.id),
+        builtin: true,
+        doc_id,
+    }
+}
+
+fn builtin_media(b: &crate::builtin::BuiltIn) -> MediaInfo {
+    MediaInfo { width: Some(b.width), height: Some(b.height), duration_ms: None, has_thumb: true, has_preview: false, animation: b.animation }
+}
+
+/// Serve a built-in's PNG - the body and the thumb alike (they are small, and already a picture).
+fn builtin_bytes(b: &crate::builtin::BuiltIn) -> Response {
+    (
+        [
+            (CONTENT_TYPE, "image/png"),
+            (X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (CONTENT_SECURITY_POLICY, "sandbox"),
+        ],
+        b.bytes,
+    )
+        .into_response()
 }
 
 /// The doc-meta annotations for every document, keyed by doc_id hex - the join input for
@@ -6352,8 +6427,9 @@ async fn docs_list_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
+    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect();
     Ok(Json(DocListResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect(),
+        docs: with_builtins(docs, &annots, &buckets, &pinned),
         undecryptable,
     }))
 }
@@ -6390,6 +6466,9 @@ struct DocDetail {
     /// What the next save must list as `parents`: ALL the DAG's true heads, folded ones
     /// included, so the fork heals through an ordinary write.
     save_parents: Vec<String>,
+    /// One of the app's own pictures (`builtin.rs`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    builtin: bool,
 }
 
 /// One document: all its heads, with bodies.
@@ -6400,6 +6479,20 @@ async fn docs_get_handler(
 ) -> Result<Json<DocDetail>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    if let Some(b) = crate::builtin::get(&doc_id) {
+        return Ok(Json(DocDetail {
+            doc_id: hex::encode(doc_id),
+            diverged: false,
+            format: crate::record::documents::Format::Apng.as_str(),
+            media: Some(builtin_media(b)),
+            title: b.title.clone(),
+            body: None,
+            resolution: "single",
+            heads: vec![DocHead { version: hex::encode(b.head), title: b.title.clone(), timestamp_ms: 0, body: None }],
+            save_parents: Vec::new(),
+            builtin: true,
+        }));
+    }
     let view = data.documents().all().await?;
     let doc = view
         .docs
@@ -6454,6 +6547,7 @@ async fn docs_get_handler(
         },
         heads,
         save_parents,
+        builtin: false,
     }))
 }
 
@@ -6599,9 +6693,10 @@ async fn docs_by_tag_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
-    Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect(),
-    }))
+    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect();
+    let mut docs = with_builtins(docs, &annots, &buckets, &pinned);
+    docs.retain(|d| !d.builtin || d.tags.contains(&tag));
+    Ok(Json(TaggedDocsResponse { docs }))
 }
 
 /// Put a document in a bucket (LWW set-element add; the merge unit is the `(doc, bucket)` pair,
@@ -7455,6 +7550,7 @@ async fn gather(
             .into_iter()
             .map(|r| summarize(r, &annots, &buckets, &pinned))
             .collect();
+        let docs = with_builtins(docs, &annots, &buckets, &pinned);
         match ship_kind(&mut baselines.docs, docs, |d| d.doc_id.clone())? {
             KindShip::Whole(rows) => msg.docs = Some(rows),
             KindShip::Delta { changed, removed } => {

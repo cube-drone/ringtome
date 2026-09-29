@@ -105,7 +105,8 @@ describe("the live cache stream", function () {
         assert.equal(snapshot.type, "snapshot");
         assert.ok(snapshot.cursor.match(/^[0-9a-f]{64}$/), "cursor is an opaque token");
         assert.equal(profileName(snapshot), "First");
-        assert.deepEqual(snapshot.docs, [], "no documents yet");
+        // The app's own pictures ride every snapshot (builtin.cjs); the persona's are what's counted.
+        assert.deepEqual(snapshot.docs.filter((d) => !d.builtin), [], "no documents yet");
         assert.deepEqual(snapshot.taxonomies, []);
 
         // A write echoes down the stream - the mechanism that will clear shadows someday.
@@ -159,7 +160,7 @@ describe("the live cache stream", function () {
         });
         const wholeAgain = await resumed.next();
         assert.equal(wholeAgain.docs_changed, undefined, "unprimed ships whole, not delta");
-        assert.equal(wholeAgain.docs.length, 2, "both notes, refreshed whole");
+        assert.equal(wholeAgain.docs.filter((d) => !d.builtin).length, 2, "both notes, refreshed whole");
 
         // Now primed: a deletion arrives as a removal delta, nothing re-shipped.
         await authed(`api/identity/${root}/docs/${firstDocId}`, { method: "DELETE" });
@@ -174,7 +175,7 @@ describe("the live cache stream", function () {
         await doubtful.opened;
         const again = await doubtful.next();
         assert.equal(again.type, "snapshot");
-        assert.equal(again.docs.length, 1, "the snapshot reflects the deletion");
+        assert.equal(again.docs.filter((d) => !d.builtin).length, 1, "the snapshot reflects the deletion");
         doubtful.ws.close();
     });
 

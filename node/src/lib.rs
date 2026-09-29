@@ -34,6 +34,7 @@ pub mod fragments;
 pub mod postkeys;
 pub mod scheduled;
 pub mod books;
+pub mod builtin;
 pub mod chat;
 pub mod files;
 pub mod fold;

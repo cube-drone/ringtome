@@ -66,7 +66,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
         setTimeout(() => setLinkCopied(false), 1600);
     };
     const saveTitle = async () => {
-        if (!doc || title === (doc.title || '')) return;
+        if (!doc || doc.builtin || title === (doc.title || '')) return;
         try {
             await api(`/api/identity/${root}/docs/${docId}/title`, {
                 method: 'PATCH',
@@ -152,23 +152,26 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     class="editor-title"
                     value=${title}
                     placeholder=${t('doc.reader.untitled', 'untitled')}
+                    readOnly=${!!doc.builtin}
                     onInput=${(e) => setTitle(e.currentTarget.value)}
                     onBlur=${saveTitle}
                 />
                 <span class="reader-chips">
                     ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
                     ${onDeleted &&
+                    !doc.builtin &&
                     html`<${Chip}
                         icon=${Icons.trash}
                         modifier="chip-delete"
                         title=${t('doc.reader.delete-removes-this-document-from', 'delete')}
                         onClick=${remove}
                     />`}
-                    <${Chip}
+                    ${!doc.builtin &&
+                    html`<${Chip}
                         icon=${Icons.copy}
                         title=${t('doc.reader.copy-into-private-notes', 'copy this note into another bucket')}
                         onClick=${() => setCopying(true)}
-                    />
+                    />`}
                     ${copying &&
                     html`<${CopyIntoModal}
                         current=${{ root }}
@@ -180,6 +183,8 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited on two computers at once. Both versions are below.')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
                         : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'merged from two computers')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)}
                     <${Chip}>${doc.format}</${Chip}>
+                    ${/* The app's own pictures (builtin.rs, 2026-09-29): nobody's to delete or rename. */ ''}
+                    ${doc.builtin && html`<${Chip} title=${t('doc.reader.builtin-title', 'this picture comes with the app: anyone can use it, nobody can delete it')}>${t('doc.reader.builtin', 'comes with the app')}</${Chip}>`}
                     <${Chip}>${t('doc.reader.read-only', 'read-only')}</${Chip}>
                     <${Chip}
                         icon=${Icons.link}

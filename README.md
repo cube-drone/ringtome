@@ -140,6 +140,7 @@ PROJECT_PLAN section.
 | `video-ingest/` | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README. |
 | `spike-tauri/` | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](DESKTOP.md). |
 | `sample_media/` | Fixture media for exercising the ingest pipeline. |
+| `default_media/` | The app's own pictures, compiled into the node (`node/build.rs`, `node/src/builtin.rs`). Every PNG here is in every persona's files, tagged by its folders (`sticker/bodies/body_1.png` is `body_1`, tagged `sticker` and `bodies`), and nobody can delete it. Add a file and rebuild to ship it; remove it and rebuild to take it away. |
 
 (`data/` and `scratch/` are runtime output from local test runs, not source.)
 

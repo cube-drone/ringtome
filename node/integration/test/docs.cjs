@@ -35,8 +35,10 @@ async function saveDoc(fetch, root, docId, title, body, parents, format) {
     return res.json();
 }
 
+// The persona's own documents: every list also carries the app's own pictures (builtin.cjs).
 async function listDocs(fetch, root) {
-    return (await fetch(`api/identity/${root}/docs`)).json();
+    const list = await (await fetch(`api/identity/${root}/docs`)).json();
+    return { ...list, docs: list.docs.filter((d) => !d.builtin) };
 }
 
 async function getDoc(fetch, root, docId) {

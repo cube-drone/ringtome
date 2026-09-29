@@ -75,8 +75,9 @@ const saveDoc = async (fetch, root, id, body, parents) => {
 };
 
 const getDoc = (fetch, root, id) => fetch(`api/identity/${root}/docs/${id}`);
+// The persona's own documents: every list also carries the app's own pictures (builtin.cjs).
 const listIds = async (fetch, root) =>
-    (await (await fetch(`api/identity/${root}/docs`)).json()).docs.map((d) => d.doc_id);
+    (await (await fetch(`api/identity/${root}/docs`)).json()).docs.filter((d) => !d.builtin).map((d) => d.doc_id);
 
 (HOST_B ? describe : describe.skip)("documents after a repudiation", function () {
     this.timeout(120000);
@@ -186,7 +187,8 @@ const listIds = async (fetch, root) =>
 
             // --- the world as built, before the strike (the "kept good track" this suite IS):
             const pre = await (await a(`api/identity/${root}/docs`)).json();
-            assert.equal(pre.docs.length, 5, "five documents live before the strike");
+            // The persona's own: every list also carries the app's own pictures (builtin.cjs).
+            assert.equal(pre.docs.filter((d) => !d.builtin).length, 5, "five documents live before the strike");
             const preDiv = await (await getDoc(a, root, docDiv.id)).json();
             assert.equal(preDiv.diverged, true, "docDiv genuinely diverged before the strike");
             const preTags = pre.docs.find((d) => d.doc_id === docA.id).tags;

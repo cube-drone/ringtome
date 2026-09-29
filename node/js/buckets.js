@@ -145,7 +145,8 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
     const destroy = async () => {
         // Count from the mirror, not the roster row - same docs the view shows.
         const docs = await openMirror(root).docs.toArray();
-        const members = docs.filter((d) => (d.buckets || []).includes(bucket));
+        // The app's own pictures (builtin.rs) only leave the notebook - nobody can delete them.
+        const members = docs.filter((d) => !d.builtin && (d.buckets || []).includes(bucket));
         const inside =
             members.length === 0
                 ? 'It is empty - nothing else is lost.'

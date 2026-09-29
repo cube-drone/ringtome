@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1178 phrases across 75 files.
+// 1184 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -604,6 +604,8 @@ export default {
     'doc.reader.conflict': 'conflict',
     'doc.reader.changes-from-two-computers-woven': 'merged from two computers',
     'doc.reader.merged': 'merged',
+    'doc.reader.builtin-title': 'this picture comes with the app: anyone can use it, nobody can delete it',
+    'doc.reader.builtin': 'comes with the app',
     'doc.reader.read-only': 'read-only',
     'doc.reader.copied': 'Copied!',
     'doc.reader.copy-the-files-address-paste': "copy the file's address",
@@ -1079,6 +1081,11 @@ export default {
     'backup.no-such-backup': 'no such backup',
     'backup.only-the-desktop-app-shows-files': 'only the desktop app can show a file on this computer',
 
+    // --- node/src/builtin.rs ---
+    'builtin.not-in-this-build': 'that picture no longer comes with the app',
+    'builtin.no-such-persona-here': "that persona isn't kept on this computer",
+    'builtin.copy-failed': "that picture couldn't be copied: {reason}",
+
     // --- node/src/chat.rs ---
     'chat.say-something': 'say something',
     'chat.thats-not-a-line-of-yours': "that isn't a line of yours here",
@@ -1174,6 +1181,7 @@ export default {
     'identity.routes.those-words-havent-arrived': "those words haven't arrived on this computer yet",
     'identity.routes.a-room-doesnt-copy': "a room can't be copied",
     'identity.routes.a-book-copies-into-a-fresh': 'a book copies whole into a fresh notebook - name a new one',
+    'identity.routes.builtin-cant-be-deleted': "that picture comes with the app - it can't be deleted",
     'identity.routes.bad-multipart-body-e': 'bad multipart body: {e}',
     'identity.routes.bad-multipart-part-name-e': 'bad multipart part {name:?}: {e}',
     'identity.routes.missing-video-part': 'missing `video` part',

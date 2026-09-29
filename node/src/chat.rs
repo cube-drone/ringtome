@@ -1011,6 +1011,26 @@ async fn bake_words(
     let mut baked: Vec<[u8; 16]> = Vec::new();
     for r in &refs {
         let MediaRef::PrivateDoc { target, doc_id: media } = r else { continue };
+        // One of the app's own pictures - a built-in sticker, most likely - is filed as the
+        // speaker's first (`builtin::adopt`). A reaction is a click, not a draft with a poll
+        // behind it, so the say waits out the copy here: a worker pass or two, once per
+        // persona per picture.
+        if crate::builtin::get(media).is_some() {
+            let mut ready = crate::builtin::adopt(state, data, root_hex, media).await?;
+            for _ in 0..60 {
+                if ready {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                ready = crate::builtin::adopt(state, data, root_hex, media).await?;
+            }
+            if !ready {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "chat.that-media-is-still-being-prepared",
+                    "that media is still being prepared - say it again in a moment"
+                )));
+            }
+        }
         if !docs.media_bytes_present(media).await? {
             return Err(AppError::BadRequest(crate::msg!(
                 "chat.that-media-is-still-being-prepared",

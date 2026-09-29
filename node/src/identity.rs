@@ -428,6 +428,17 @@ pub async fn list_for_account(node_db: &Db, account_id: &Uuid) -> Result<Vec<Ide
         .collect())
 }
 
+/// The account that owns `root_hex` on this node, if one does - for work that acts for a persona
+/// without a session in hand (a scheduled publish copying a built-in picture, `builtin::adopt`).
+pub async fn account_of(node_db: &Db, root_hex: &str) -> Result<Option<String>, AppError> {
+    let row: Option<(String,)> = node_db
+        .fetch_optional("SELECT account_id FROM identities WHERE root_pubkey = ?1", (root_hex,))
+        .await
+        .context("finding a persona's account")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(a,)| a))
+}
+
 /// This node's own standing in the identity's key tree: the status name of its signing leaf
 /// ("active", "retired", "repudiated", ...), or "unknown" when the answer can't be computed (a
 /// key or database that won't open must degrade the persona list, never fail it). What the

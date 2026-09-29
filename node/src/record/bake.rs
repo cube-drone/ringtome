@@ -485,8 +485,13 @@ pub async fn publish(
             MediaRef::PrivateDoc { target, doc_id: media } => {
                 // A picture whose bytes are still ingesting is not a failure - it is a
                 // moment away. Say "ingesting" and let the publish's poll come back, rather
-                // than a tombstone the author has to click past (2026-09-03).
-                if !docs.media_bytes_present(media).await? {
+                // than a tombstone the author has to click past (2026-09-03). One of the app's
+                // own pictures is filed as the author's first (`builtin::adopt`), the same wait.
+                let copied = match crate::builtin::get(media) {
+                    Some(_) => crate::builtin::adopt(state, data, root_hex, media).await?,
+                    None => true,
+                };
+                if !copied || !docs.media_bytes_present(media).await? {
                     blocked = true;
                     items.push(BakeItem {
                         source: target.clone(),

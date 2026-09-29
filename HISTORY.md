@@ -12545,3 +12545,38 @@ took its title and format from the fragment shelf only. But a node that holds th
 `format: null`, and the card fell back to `reader-plain`. The new `fragments::card_header` reads
 the chain first and then the fragments, the same way search and copy already did. Pinned in
 shareshelf.cjs, and that claim fails against the old line.
+
+## 2026-09-29: the app's own pictures
+
+Every PNG under `default_media/` is now compiled into the node and appears in every persona's
+files, tagged by its folders. `sticker/bodies/body_1.png` is `body_1`, tagged `sticker` and
+`bodies`, so the drawing and chat sticker shelves pick them up without any change. Nobody owns
+one and nobody can delete one: the build decides what exists. Add a file and rebuild, and
+everyone has it; remove it and rebuild, and it's gone.
+
+- **Compiled in:** `node/build.rs` walks the folder file by file into an `include_bytes!` table.
+  Cargo reruns it whenever anything in the folder changes. Anything that isn't a PNG is left out,
+  with a build warning.
+- **Not a document** (`src/builtin.rs`): a built-in lives in no chain. Its id is derived from its
+  path, so the same file has the same id on every node and across rebuilds. The stream, the
+  docs list and the tagged list add the built-in rows (`with_builtins`). Each row is
+  `format: "apng"` (a still PNG is a one-frame APNG), marked `builtin`, and undated, so it sorts
+  beneath everything the persona made. A persona can still tag, pin or file one in a notebook, on
+  top of its folder tags. The private body, thumb and detail doors answer from the binary, and
+  delete refuses. The Reader shows no trash, no copy and no rename for one, and says "comes with
+  the app"; deleting a notebook deletes only the persona's own documents.
+- **Using one files a copy** (`builtin::adopt`). Publication and a chat say bake a private picture
+  into its public twin, and a built-in has no private bytes. So the first time a persona embeds one
+  in a post, or says one as a sticker, the node queues the PNG through the ordinary upload ingest
+  under the built-in's own id. From then on it is their document, and every existing step
+  (sealing, onward marking, covers) just works. The list keeps showing the built-in row in the
+  copy's place, and the copy comes into view as an ordinary picture only if a later build drops the
+  file. A post waits for the copy the way it waits for any fresh upload ("ingesting"). A sticker is
+  a single click, so the say waits out the copy itself (a worker pass or two, once per persona per
+  picture).
+- `identity::account_of` (root → account) lets the copy be queued without a session, which a
+  scheduled publish needs.
+
+Pinned in `builtin.rs`'s unit tests (tags, title and id from a path; every compiled file reads as
+a PNG) and in `integration/test/builtin.cjs` (the list, the bytes, the refused delete, a post, a
+chat sticker).

@@ -181,7 +181,8 @@ describe("taxonomies: ordered lists of documents", function () {
         assert.deepEqual(await listTaxonomies(user, root), [], "the list is gone");
 
         const docs = await (await user(`api/identity/${root}/docs`)).json();
-        assert.equal(docs.docs.length, 1, "the document is not");
+        // The persona's own: every list also carries the app's own pictures (builtin.cjs).
+        assert.equal(docs.docs.filter((d) => !d.builtin).length, 1, "the document is not");
     });
 
     it("expands nested lists in place - trees are composition", async function () {
