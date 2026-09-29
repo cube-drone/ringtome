@@ -1177,11 +1177,22 @@ pub async fn shelf_of(
     let mut out = Vec::with_capacity(rows.len());
     for (entry,) in rows {
         if let Some((doc, _refs)) = doc_from_entry(&entry) {
-            out.push(doc);
+            if on_shelf(&doc) {
+                out.push(doc);
+            }
         }
     }
     out.sort_by(|a, b| b.display_ms().cmp(&a.display_ms()).then(a.doc_id.cmp(&b.doc_id)));
     Ok(out)
+}
+
+/// What the shelf lists as a post: the chain shelf's own rule (documents.rs `public_docs`, its
+/// `text_only`) - words, a book, a room. A picture, a sound or a video is not a post (Curtis,
+/// 2026-09-29: a peek showed "avatar" and "banner" as posts of binary noise): it stays in the
+/// ledger and serves its bytes - the face and the banner still show - it is only never LISTED.
+fn on_shelf(doc: &crate::record::documents::PublicDoc) -> bool {
+    use ringtome_proto::registry::doc_format;
+    matches!(doc.format, None | Some(doc_format::MARQUEE) | Some(doc_format::BOOK) | Some(doc_format::ROOM))
 }
 
 /// One fragment in the public shelf's shape, with the header's refs (its media twins)
@@ -1907,6 +1918,34 @@ async fn touch(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A peek's shelf lists posts, never the pictures beside them (2026-09-29): an avatar is a
+    /// document on the same lane, and read as a post it was a page of binary noise.
+    #[test]
+    fn the_shelf_lists_words_not_pictures() {
+        use ringtome_proto::registry::doc_format;
+        let doc = |format: Option<u64>| crate::record::documents::PublicDoc {
+            reply_to: None,
+            thread_root: None,
+            doc_id: [0u8; 16],
+            title: "avatar".into(),
+            format,
+            genesis_ms: 0,
+            head_ms: 0,
+            thumb_hash: None,
+            settled: false,
+            trusted_only: false,
+            onward: false,
+            dated_ms: None,
+            part_of: None,
+        };
+        for words in [None, Some(doc_format::MARQUEE), Some(doc_format::BOOK), Some(doc_format::ROOM)] {
+            assert!(super::on_shelf(&doc(words)), "{words:?}");
+        }
+        for media in [Some(doc_format::AVIF), Some(doc_format::APNG), Some(doc_format::OGG_OPUS), Some(doc_format::WEBM_AV1)] {
+            assert!(!super::on_shelf(&doc(media)), "{media:?}");
+        }
+    }
     use super::*;
 
     #[test]

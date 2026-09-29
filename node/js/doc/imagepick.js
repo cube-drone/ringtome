@@ -84,6 +84,13 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
         return () => clearInterval(id);
     }, [upload, root]);
 
+    const uploadNote = !upload
+        ? null
+        : upload.phase === 'sending'
+          ? t('doc.imagepick.uploading', 'uploading… {pct}%', { pct: upload.pct || 0 })
+          : upload.phase === 'preparing'
+            ? t('doc.imagepick.preparing', 'preparing the picture…')
+            : upload.error;
     return html`<${Modal} wide=${true} title=${heading || t('doc.imagepick.add-an-image', 'add an image')} onClose=${onClose}>
         <div class="imagepick">
             <div class="imagepick-filters">
@@ -111,11 +118,7 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
             </div>
             ${upload &&
             html`<p class=${upload.phase === 'failed' ? 'form-error' : 'null-sub'}>
-                ${upload.phase === 'sending'
-                    ? t('doc.imagepick.uploading', 'uploading… {pct}%', { pct: upload.pct || 0 })
-                    : upload.phase === 'preparing'
-                      ? t('doc.imagepick.preparing', 'preparing the picture…')
-                      : upload.error}
+                ${uploadNote}
             </p>`}
                         ${/* The notebooks - sketchbooks too, now that drawings have them (Curtis, 2026-09-27) -
                 as a row of their own above the tags: one at a time, or every one. */ ''}

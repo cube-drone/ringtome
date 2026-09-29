@@ -878,6 +878,10 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     };
     useEffect(() => {
         if (!root || !room) return undefined;
+        // What this computer already holds, at once - then the pull from the creator's node, and
+        // what it brought (Curtis, 2026-09-29: over the real internet the pull takes seconds, and
+        // the room sat empty behind it with no word of why).
+        readHistory();
         api(`/api/identity/${root}/rooms/${author}/${doc}/sync`, { method: 'POST' })
             .catch(() => {})
             .then(readHistory);
@@ -1468,6 +1472,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             html`<div class="chat-gap">
                 <button class="chat-older" disabled=${older} onClick=${readOlder}>${older ? t('apps.chat.reading', 'reading…') : t('apps.chat.earlier', 'earlier…')}</button>
             </div>`}
+            ${!history && html`<p class="chat-empty">${t('apps.chat.looking', 'looking…')}</p>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
                 ${lines.map((m, i) =>

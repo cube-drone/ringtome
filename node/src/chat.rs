@@ -944,9 +944,17 @@ pub async fn say(
     let said_ms = signed.entry().timestamp_ms;
     // Fold it into the memo now - the speaker's own page shows the words at once - then
     // publish it on the room's topic (ruling 5: append first, publish after) and push the
-    // chain to the creator's node, the room's directory of record.
+    // chain to the creator's node, the room's directory of record. The publish is DETACHED
+    // (Curtis, 2026-09-29, the first real-internet test: the other side saw a line seconds
+    // before the person who said it did): over the real network the topic's send can take
+    // seconds, and the speaker's page waits for this answer before it redraws - so the words
+    // were on the creator's screen before their own. This node's own sockets are told at once
+    // inside the spawned send, before any network.
     crate::fold::fold_now(state, root_hex).await;
-    broadcast_entry(state, doc, root_hex, signed.bytes()).await;
+    {
+        let (state, doc, root_hex, bytes) = (state.clone(), *doc, root_hex.to_string(), signed.bytes().to_vec());
+        tokio::spawn(async move { broadcast_entry(&state, &doc, &root_hex, &bytes).await });
+    }
     // The bells (slice 6): one envelope per persona named, the message as evidence, knocked
     // eagerly - the mention's own road, under the room's door at the far end.
     if !mentions.is_empty() {

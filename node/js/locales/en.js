@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1177 phrases across 75 files.
+// 1178 phrases across 75 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -94,6 +94,7 @@ export default {
     'apps.chat.jump-to-the-newest': 'jump to the newest',
     'apps.chat.reading': 'reading…',
     'apps.chat.earlier': 'earlier…',
+    'apps.chat.looking': 'looking…',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
     'apps.chat.one-line-hidden': "one line hidden - from someone you don't trust",
     'apps.chat.n-lines-hidden': "{n} lines hidden - from people you don't trust",
@@ -524,11 +525,11 @@ export default {
     // --- node/js/doc/imagepick.js ---
     'doc.imagepick.not-a-still': "that isn't a still picture - an animation becomes a video, and this wants a picture",
     'doc.imagepick.could-not-take-it-in': "that picture couldn't be taken in",
+    'doc.imagepick.uploading': 'uploading… {pct}%',
+    'doc.imagepick.preparing': 'preparing the picture…',
     'doc.imagepick.add-an-image': 'add an image',
     'doc.imagepick.upload-from-this-computer': 'upload from this computer',
     'doc.imagepick.search-titles': 'search titles',
-    'doc.imagepick.uploading': 'uploading… {pct}%',
-    'doc.imagepick.preparing': 'preparing the picture…',
     'doc.imagepick.notebook': 'notebook',
     'doc.imagepick.every-notebook': 'every notebook',
     'doc.imagepick.no-pictures-match': 'no pictures match.',

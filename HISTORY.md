@@ -12514,3 +12514,26 @@ both upload messages were retired from the catalog). The accept list is spelled 
 A feed card's foot says "link" instead of "reply" when the reader cannot reply (Curtis): replies turned off (the settled wish), or nobody signed in - the front page. A post that already has replies still counts them.
 
 Release notes are back to the commit headers and "which download is which" (Curtis: appending HISTORY.md made a release page far too long). The HISTORY section, its tool (node/tools/release-history.mjs) and its test are gone, and the release job no longer fetches every tag to diff against.
+
+## 2026-09-29: the first real-internet test
+
+Curtis ran the live app between horsedrawingtycoon.com and a living-room PC. Three findings, three fixes:
+
+- **A peek's shelf listed pictures as posts** - "avatar" and "banner", as pages of binary noise - until
+  he followed (a followed persona's shelf reads their chain, which lists words only). The fragment
+  shelf (fragments.rs `shelf_of`) now keeps the chain shelf's own rule (`on_shelf`: words, a book, a
+  room): a picture is never LISTED, and still serves its bytes, so the face and banner still show.
+- **The speaker saw their own words last**: `say` folded the line locally, then waited for the room
+  topic's gossip send before answering the page - seconds over the real internet, so the far side had
+  the words before the person who said them. The send is detached now; this node's own sockets are still
+  told at once.
+- **A room reopened empty**: Chat asked for a sync from the creator's node and only then read the
+  history this computer already held - seconds of nothing but the room's first post, with no word of
+  why. It reads what it holds at once, then syncs and reads again; and says "looking…" before anything
+  has come back.
+
+None of these showed on the rig, where every network hop is instant.
+
+Found on the way: main had been red since addf7b5 (the picture picker's upload button). The strings
+check read `upload.phase === 'preparing'`, a comparison inside the template, as a phrase shown
+unwrapped. The upload line is now worked out before the template (imagepick.js `uploadNote`).
