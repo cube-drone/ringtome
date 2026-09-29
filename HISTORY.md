@@ -12512,3 +12512,5 @@ an `accept="image/*"` attribute silently swallowed every `t()` after it (the sea
 both upload messages were retired from the catalog). The accept list is spelled out instead.
 
 A feed card's foot says "link" instead of "reply" when the reader cannot reply (Curtis): replies turned off (the settled wish), or nobody signed in - the front page. A post that already has replies still counts them.
+
+Release notes are back to the commit headers and "which download is which" (Curtis: appending HISTORY.md made a release page far too long). The HISTORY section, its tool (node/tools/release-history.mjs) and its test are gone, and the release job no longer fetches every tag to diff against.
