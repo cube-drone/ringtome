@@ -43,6 +43,7 @@ pub mod identity;
 pub mod inbox;
 pub mod ingest;
 pub mod inspect;
+pub mod keyprefetch;
 pub mod keystore;
 pub mod loops;
 pub mod media;
@@ -485,6 +486,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(2),
         state.clone(),
         crate::record::bake::bake_pass,
+    );
+    // Sealed posts' keys, asked for while their authors' nodes are up rather than when somebody
+    // reads them later (keyprefetch.rs, 2026-09-29).
+    loops::periodic(
+        "key-prefetch",
+        std::time::Duration::from_secs(30),
+        state.clone(),
+        crate::keyprefetch::prefetch_pass,
     );
     // The media ingest worker: drains the transcode queue. A short cadence keeps upload latency
     // low; a pass drains everything pending, so under load it's effectively continuous.

@@ -1684,6 +1684,21 @@ pub async fn introducer(node_db: &crate::db::Db, reader_root: &str, author_root:
         .and_then(|(v,)| v)
 }
 
+/// The newest trusted-only posts in any reader's feed here - `(reader, author, doc, via)`, newest
+/// arrival first - what the key prefetch walks (`keyprefetch.rs`, 2026-09-29): a sealed post's
+/// key is asked for while its author's node is known to be up, not when somebody opens it later.
+pub async fn sealed_rows(node_db: &crate::db::Db, limit: i64) -> Result<Vec<(String, String, String, Option<String>)>> {
+    node_db
+        .fetch_all(
+            "SELECT reader_root, author_root, doc_id, via_root FROM feed_journal
+             WHERE trusted_only = 1 AND reader_root != author_root
+             ORDER BY arrived_ms DESC LIMIT ?1",
+            (limit,),
+        )
+        .await
+        .context("reading the feeds' sealed posts")
+}
+
 /// Every room in any reader's feed here (CHAT.md; Curtis, 2026-09-18): `(reader, author,
 /// doc, published_ms)` - what the room pulse walks to keep busy rooms cycling.
 pub async fn rooms_in_feeds(node_db: &crate::db::Db) -> Result<Vec<(String, String, String, i64)>> {

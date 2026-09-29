@@ -163,9 +163,8 @@ pub async fn join(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u
     let doc_hex = hex::encode(doc);
     let mut bootstrap: Vec<String> = creator_endpoints(state, author_hex).await;
     for speaker in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
-        for leaf in crate::idface::stored_tree_leaves(state, &speaker).await {
-            let ep = crate::idface::leaf_via_to_endpoint(state, &speaker, &leaf).await;
-            if ep != leaf && !bootstrap.contains(&ep) {
+        for ep in speaker_endpoints(state, &speaker).await {
+            if !bootstrap.contains(&ep) {
                 bootstrap.push(ep);
             }
         }
@@ -2175,6 +2174,20 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
 // ---------------------------------------------------------------------------------------------
 // Reaching the room: the creator's node is the directory of record
 
+/// The nodes that serve one speaker, as this node knows them: their own key tree's endpoints.
+/// Every participant mirrors every other's room chain (CHAT.md, ruling 4), so any speaker's node
+/// is a place to fetch any chain from - and to push one to - when the creator's node is dark.
+async fn speaker_endpoints(state: &AppState, speaker: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for leaf in crate::idface::stored_tree_leaves(state, speaker).await {
+        let ep = crate::idface::leaf_via_to_endpoint(state, speaker, &leaf).await;
+        if ep != leaf && !out.contains(&ep) {
+            out.push(ep);
+        }
+    }
+    out
+}
+
 /// The endpoints that serve the room's creator, in the order the key lane asks them.
 async fn creator_endpoints(state: &AppState, author_hex: &str) -> Vec<String> {
     let mut endpoints: Vec<String> = Vec::new();
@@ -2200,7 +2213,7 @@ async fn creator_endpoints(state: &AppState, author_hex: &str) -> Vec<String> {
 /// push when the creator is hosted here - the chain is already where the directory reads.
 pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16]) {
     if crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false) {
-        return;
+        return; // this node IS the directory: the others pull from it
     }
     for endpoint in creator_endpoints(state, author_hex).await {
         let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
@@ -2210,6 +2223,21 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
                 return;
             }
             Err(e) => tracing::debug!(root = %root_hex, endpoint = %endpoint, error = ?e, "room push failed"),
+        }
+    }
+    // The creator's node is dark: every other speaker's node instead (ruling 4), each of whom
+    // mirrors every chain in the room (Curtis, 2026-09-29: the room goes on while its creator's
+    // computer is off).
+    let doc_hex = hex::encode(doc);
+    for speaker in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+        if speaker == root_hex || speaker == author_hex || crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
+            continue;
+        }
+        for endpoint in speaker_endpoints(state, &speaker).await {
+            let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
+            if crate::net::sync::sync_room_with_peer(state, root_hex, addr, *doc).await.is_ok() {
+                break;
+            }
         }
     }
 }
@@ -2223,6 +2251,7 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     let for_root = crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
     let endpoints = if creator_here { Vec::new() } else { creator_endpoints(state, author_hex).await };
+    let mut creator_dark = false;
     // A sealed room's door now answers to the key (Curtis, 2026-09-20), so fetch it before
     // asking - otherwise the first pull of a room somebody passed along has nothing to show
     // and waits for a read to prime it.
@@ -2261,11 +2290,25 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
                 Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed"),
             }
         }
+        if found.is_none() {
+            // The creator's node is dark (Curtis, 2026-09-29: can the others go on talking?).
+            // Nobody else is asked for the directory here, so it isn't dialed again for every
+            // chain below either - each dial is a timeout.
+            creator_dark = true;
+        }
         found.unwrap_or_default().iter().map(hex::encode).collect()
     };
+    // Everyone this node has heard speak here, too (ruling 4): with the creator dark the
+    // directory is nobody, and a speaker this node already knows is still one to pull.
+    for known in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+        if !speakers.contains(&known) {
+            speakers.push(known);
+        }
+    }
     if !speakers.contains(&author_hex.to_string()) {
         speakers.push(author_hex.to_string());
     }
+    let others: Vec<String> = speakers.iter().filter(|s| *s != root_hex).cloned().collect();
     speakers.retain(|s| s != root_hex);
     let mut exchanged = 0usize;
     let mut landed = false;
@@ -2273,13 +2316,19 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         if crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
             continue; // their chain is already here, whole
         }
-        // The creator's node holds every speaker's chain (ruling 6); the speaker's own
-        // nodes are the fallback.
-        let mut candidates = endpoints.clone();
-        for leaf in crate::idface::stored_tree_leaves(state, &speaker).await {
-            let ep = crate::idface::leaf_via_to_endpoint(state, &speaker, &leaf).await;
-            if ep != leaf && !candidates.contains(&ep) {
+        // The creator's node holds every speaker's chain (ruling 6); the speaker's own nodes
+        // are the fallback, then every other participant's (ruling 4: each mirrors the rest).
+        let mut candidates = if creator_dark { Vec::new() } else { endpoints.clone() };
+        for ep in speaker_endpoints(state, &speaker).await {
+            if !candidates.contains(&ep) {
                 candidates.push(ep);
+            }
+        }
+        for other in others.iter().filter(|o| **o != speaker && **o != author_hex) {
+            for ep in speaker_endpoints(state, other).await {
+                if !candidates.contains(&ep) {
+                    candidates.push(ep);
+                }
             }
         }
         for endpoint in candidates {

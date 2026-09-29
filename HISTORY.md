@@ -12735,3 +12735,51 @@ holds nothing of the room at all (the feed's room card, for a reader who never e
 other source). A node holds every line up to the room's budget, so the newest page says `more`
 when it holds a full budget, and scrolling back asks the archive for the rest.
 chat_history.cjs's first claim now reads the whole room as the newest page plus one scroll-back.
+
+## 2026-09-29: a room goes on while its creator's computer is off
+
+Curtis: "If User A's computer is turned off entirely and User B and User C want to have a
+conversation in the room: can they?" Before: only over gossip, and only for lines that arrived
+live. The durable lane was creator-only. `sync_room` asked the creator's node who had spoken, and
+with it dark learned nobody, so it pulled only the creator's own chain. It tried only the
+creator's node and the speaker's own for each chain. And `push_room` pushed only to the creator.
+
+CHAT.md, ruling 4 says every participant mirrors every other's chain, so the creator's node is
+the directory of record, not the only road. Now:
+- The directory is the creator's answer plus every speaker this node has heard in the room.
+- A chain is fetched from the creator's node, then the speaker's own, then any other
+  participant's (`speaker_endpoints`, which also replaces the inline copy in `join`'s bootstrap).
+  Once the directory ask found the creator dark, the pass doesn't dial it again for every chain.
+- A say whose push the creator's node won't take goes to the other speakers' nodes instead. The
+  creator's own node never fans out; the others pull from it.
+
+Pinned in `chat_offline.cjs`: ada opens a room, bea and cal each speak while ada's node is up,
+then ada's node is unplugged (`/test/unplug`, every protocol both ways) and bea and cal still hear
+each other. The claim fails against the committed `chat.rs`: cal never hears bea. What's left is in
+NEXT_STEPS: a newcomer can't find anyone with the creator dark, and a sealed room's key comes
+only from the creator.
+
+## 2026-09-29: sealed posts' keys asked for at arrival
+
+Curtis: "it'll make 'trusted only' posts work more reliably network wide, not just for chat
+rooms." A sealed post's key is released only after a trust check, by the author's node (their
+contact tags are private, so nobody else can judge), or for an onward post by whoever passed it
+along. A reader's node asked for it when somebody opened the post, so a post that arrived while
+its author was up and was opened once they were gone stayed shut.
+
+`keyprefetch.rs` asks at arrival instead. Every 30 seconds it walks the newest trusted-only rows in
+the feeds here (`fanout::sealed_rows`), takes the seal holder off the header (a reply sealed under
+its parent asks for the parent's key), and asks the way the body door does. It skips a key already
+granted to that reader, one refused lately, and one asked about in the last ten minutes without an
+answer, and asks at most 16 per pass. `fetch_key` records the grant or the refusal as a read would.
+
+Found while testing it: followers mostly had this already, by accident. Folding an author's chain
+opens their sealed labels, which asks for the key on behalf of every hosted follower
+(notifications.rs), so the first follower-only claim passed with the pass switched off. What only
+the prefetch reaches is a sealed post shared in by someone the reader follows, a reply sealed under
+its parent, a post with no sealed label, and a first ask that found the author away.
+- onward.cjs pins the case that matters: cal, who follows bea but whom ada has never met, finds
+  ada's onward post in his feed through bea's share. His node holds no key until the prefetch asks
+  bea's node, then he reads it with both ada's and bea's nodes dark.
+- keyprefetch.cjs pins the follower's outcome (a sealed post and a sealed room, read with the
+  author dark), whichever road delivered the key.

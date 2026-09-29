@@ -45,6 +45,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Chat
 * Opus took a crack at fixing chat search losing visible context, but wasn't smart enough; revisit with Fable
+* A room with its creator's node dark, the rest of CHAT.md ruling 4. Speakers who already know each other now carry on (chat_offline.cjs); still missing: a **newcomer** who has never spoken can't find anyone (the "room frontier on the gossip space", the set of participant chains merged by union, isn't built, and a topic's bootstrap is the creator plus known speakers), and a newcomer to a **sealed** room can be given its key only by the creator's node (or, for an onward room, by the person who passed it to them) - participants who hold the key keep it.
 
 ### Notifications
 * Change the favicon when stuff happens

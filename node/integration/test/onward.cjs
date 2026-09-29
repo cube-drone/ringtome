@@ -13,7 +13,8 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
-const { HOST, HOST_B, HOST_C } = require("./fetch.cjs");
+const { HOST, HOST_B, HOST_C, sql } = require("./fetch.cjs");
+const { withUnplugged } = require("./unplug.cjs");
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -126,6 +127,22 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const refused = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: plain });
         assert.equal(refused.status, 400, "but a plain sealed post is not passed along");
         assert.match(await refused.text(), /not passed along/);
+    });
+
+    it("the key comes early: once the share is in cal's feed his node asks bea's for it, and he opens it with ada's and bea's nodes both dark", async () => {
+        // Keys asked for at arrival (keyprefetch.rs, Curtis, 2026-09-29). A follower's node
+        // already meets a sealed post's key as it folds the author's sealed labels - but cal
+        // follows bea, not ada, and nothing asked for his until he read it.
+        await pullAndFold(HOST_C, beaRoot);
+        assert.ok(await feedRow(cal, calRoot, post), "the share reached cal's feed");
+        const grants = async () =>
+            (await sql(`SELECT 1 AS g FROM post_key_grants WHERE author_root = '${adaRoot}' AND doc_id = '${post}' AND reader_root = '${calRoot}'`, HOST_C)).rows.length;
+        assert.equal(await grants(), 0, "nothing has asked for cal's key yet");
+        await beat(HOST_C, "key-prefetch");
+        assert.equal(await grants(), 1, "the prefetch asked bea's node, on bea's trust");
+        await withUnplugged([HOST, HOST_B], async () => {
+            assert.equal(await opens(cal, `id/${adaRoot}/docs/${post}/body`, 3), "it's the one behind the station", "read with its author and its sharer both dark");
+        });
     });
 
     it("someone the sharer trusts finds the share in his feed and opens it through her node", async () => {
