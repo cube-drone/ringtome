@@ -12496,3 +12496,5 @@ rebroadcast interest - and Cube Drone - medium trust, low interest, low rebroadc
 
 starters.rs holds the built-in list parsing to the two and where it applies; device.cjs a persona made on
 a node given a starter beginning with its dials, and a second one too.
+
+Tom joined the starter contacts (2026-09-29, Curtis): everybody's first friend, as on Myspace - low trust, low interest and low rebroadcast interest, so he is always there and never loud (starters.rs).

@@ -88,7 +88,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Node Management & Federation
 * **Starter contacts, the operator's own** (Curtis, 2026-09-28): every persona created on a node begins
-  knowing the official Horse Drawing Tycoon 2 persona and Cube Drone (starters.rs, built). Later: the
+  knowing the official Horse Drawing Tycoon 2 persona, Cube Drone and Tom (starters.rs, built). Later: the
   node operator edits that list in their settings, rather than an environment variable.
 * use the spare key to build a new identity, create a new spare key
 * currently spare key account recovery reveals a hugely important secret to potentially a low-level node: bad!

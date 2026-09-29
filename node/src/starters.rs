@@ -1,6 +1,6 @@
 //! Starter contacts (Curtis, 2026-09-28, the day something went to the real live internet): the
-//! people every new persona begins its life knowing - the official Horse Drawing Tycoon 2 persona
-//! and Cube Drone - each with the dials set as a person would set them, and published like any dial
+//! people every new persona begins its life knowing - the official Horse Drawing Tycoon 2 persona,
+//! Cube Drone, and Tom (2026-09-29: everybody's first friend, as he always was) - each with the dials set as a person would set them, and published like any dial
 //! (edges are public unless withheld, publish.rs; Curtis chose that they be).
 //!
 //! Seeded when a persona is CREATED here, never when one is joined or recovered: those already have
@@ -27,10 +27,12 @@ pub struct Starter {
     pub rebroadcasts: String,
 }
 
-/// The two, as their addresses give them: `root via trust interest rebroadcast-interest`.
+/// The three, as their addresses give them: `root via trust interest rebroadcast-interest`. Tom is
+/// always there and never loud: low on every dial.
 const BUILT_IN: &str = "\
 EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:medium:medium:medium;\
-HVnmWLq8YSnyiUCupmHM6wP91yrwC6PpcynabWGVHRkL:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:medium:low:low";
+HVnmWLq8YSnyiUCupmHM6wP91yrwC6PpcynabWGVHRkL:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:medium:low:low;\
+J4Rkao4TfvtmVnVyiRu3SgGaN3DcLnEts7xhffjk2q2F:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:low:low:low";
 
 /// A list in the environment's spelling: `root:via[,via]:trust:interest:rebroadcasts`, `;` between
 /// starters; `root` in any spelling an address takes, the bands the dials' own words.
@@ -109,16 +111,17 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
 mod tests {
     use super::*;
 
-    /// The two built in read as themselves; a list says what the environment says; and only a prod
+    /// The three built in read as themselves; a list says what the environment says; and only a prod
     /// node outside the rig seeds without being told (2026-09-28).
     #[test]
     fn the_starters_are_the_two_and_only_where_meant() {
         let two = parse(BUILT_IN).expect("the built-in list parses");
-        assert_eq!(two.len(), 2);
+        assert_eq!(two.len(), 3, "HDT2, Cube Drone, and Tom");
+        assert_eq!((two[2].trust.as_str(), two[2].interest.as_str(), two[2].rebroadcasts.as_str()), ("low", "low", "low"), "Tom: there, and quiet");
         assert_eq!((two[0].trust.as_str(), two[0].interest.as_str(), two[0].rebroadcasts.as_str()), ("medium", "medium", "medium"));
         assert_eq!((two[1].trust.as_str(), two[1].interest.as_str(), two[1].rebroadcasts.as_str()), ("medium", "low", "low"));
         assert_eq!(two[0].via, vec!["9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX".to_string()]);
-        assert_eq!(configured(None, true, false).unwrap().len(), 2, "a prod node");
+        assert_eq!(configured(None, true, false).unwrap().len(), 3, "a prod node");
         assert!(configured(None, false, false).unwrap().is_empty(), "a dev node");
         assert!(configured(None, true, true).unwrap().is_empty(), "the test rig");
         assert!(configured(Some("none"), true, false).unwrap().is_empty(), "turned off");
