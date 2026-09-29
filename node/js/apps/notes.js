@@ -20,7 +20,8 @@ import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
-import { featuresOf, itemNoun, itemPlural, bucketHolds } from '../pure/apps.js';
+import { featuresOf, itemNoun, itemPlural, bucketHolds, FILES_BUCKET } from '../pure/apps.js';
+import { browseFiles, UNFILED } from '../pure/filebrowse.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
@@ -182,7 +183,7 @@ const StatusMark = ({ doc, book }) => {
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
 // description, no date and no tags is one line tall.
 const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
-                   onToggleTag, everything, onFollowHome, book }) => html`<button
+                   onToggleTag, book }) => html`<button
     class=${doc.doc_id === selected ? 'note-row selected' : 'note-row'}
     onClick=${() => onSelect(doc.doc_id)}
     draggable=${true}
@@ -194,10 +195,10 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
         <${StatusMark} doc=${doc} book=${book} />
         ${doc.pinned && html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `}
         ${doc.format === 'drawing'
-            ? html`<${DrawingThumb} root=${root} doc=${doc} big=${everything} />`
+            ? html`<${DrawingThumb} root=${root} doc=${doc} />`
             : doc.media && doc.media.has_thumb
             ? html`<img
-                  class=${everything ? 'note-row-thumb note-row-thumb-big' : 'note-row-thumb'}
+                  class="note-row-thumb"
                   src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
                   alt=""
                   loading="lazy"
@@ -211,20 +212,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
             : formatIcon(doc.format) &&
               html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `}
         <span class="note-row-title-text">${doc.title || t('apps.notes.untitled', 'untitled')}</span>
-        ${everything &&
-        html`<button
-            class="note-row-home"
-            title=${t('apps.notes.follow-me-home-open-this', 'follow me home — open this in its own app')}
-            onClick=${(e) => {
-                e.stopPropagation();
-                onFollowHome(doc);
-            }}
-        ><${Icons.path} /></button>`}
     </span>
-    ${everything &&
-    html`<span class="note-row-buckets">
-        ${(doc.buckets || []).length ? (doc.buckets || []).join(' · ') : t('apps.notes.unfiled', 'unfiled')}
-    </span>`}
     ${feat.description &&
     doc.fields &&
     doc.fields.description &&
@@ -258,6 +246,96 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
     </span>`}
 </button>`;
 
+// hrseFiles™ laid out as the picture picker is (Curtis, 2026-09-29): the notebooks, then the tags,
+// then every file as a square tile - a picture or a drawing as itself, words as their icon and
+// title. The same chips as the picker, so the two read as one design.
+const FileTile = ({ doc, root, bucket, selected, onSelect, onFollowHome }) => {
+    const picture = doc.format === 'drawing' || (doc.media && doc.media.has_thumb);
+    const Kind = formatIcon(doc.format) || Icons.page;
+    return html`<li class="files-tile-slot">
+        <button
+            class=${doc.doc_id === selected ? 'files-tile selected' : 'files-tile'}
+            title=${doc.title || ''}
+            onClick=${() => onSelect(doc.doc_id)}
+            draggable=${true}
+            onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
+        >
+            <span class=${picture ? 'files-tile-face drawing-floor' : 'files-tile-face'}>
+                ${doc.format === 'drawing'
+                    ? html`<${DrawingThumb} root=${root} doc=${doc} big=${true} />`
+                    : picture
+                      ? html`<img
+                            src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
+                            alt=""
+                            loading="lazy"
+                            onError=${(e) => {
+                                // has_thumb, but the blob is not on this node yet
+                                e.currentTarget.style.display = 'none';
+                            }}
+                        />`
+                      : html`<span class="files-tile-kind"><${Kind} /></span>`}
+                ${doc.pinned && html`<span class="files-tile-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span>`}
+            </span>
+            <span class="files-tile-title">
+                <${StatusMark} doc=${doc} />
+                <span class="files-tile-title-text">${doc.title || t('apps.notes.untitled', 'untitled')}</span>
+            </span>
+        </button>
+        <button
+            class="files-tile-home"
+            title=${t('apps.notes.follow-me-home-open-this', 'follow me home — open this in its own app')}
+            onClick=${() => onFollowHome(doc)}
+        ><${Icons.path} /></button>
+    </li>`;
+};
+
+const FileBrowser = ({ root, bucket, browse, notebook, onNotebook, tags, onToggleTag, selected, onSelect, onFollowHome, empty }) => html`<div
+    class="files-browser"
+>
+    <div class="imagepick-buckets" role="group" aria-label=${t('doc.imagepick.notebook', 'notebook')}>
+        <button class=${notebook ? 'imagepick-bucket' : 'imagepick-bucket active'} onClick=${() => onNotebook('')}>
+            <${Icons.notebook} /> ${t('doc.imagepick.every-notebook', 'every notebook')}
+        </button>
+        ${browse.notebooks.map(
+            (b) => html`<button
+                key=${b}
+                class=${notebook === b ? 'imagepick-bucket active' : 'imagepick-bucket'}
+                onClick=${() => onNotebook(notebook === b ? '' : b)}
+            ><${b === FILES_BUCKET ? Icons.filesBucket : Icons.notebook} /> ${b}</button>`
+        )}
+        ${browse.unfiled &&
+        html`<button
+            class=${notebook === UNFILED ? 'imagepick-bucket active' : 'imagepick-bucket'}
+            onClick=${() => onNotebook(notebook === UNFILED ? '' : UNFILED)}
+        ><${Icons.lostFound} /> ${t('apps.notes.unfiled', 'unfiled')}</button>`}
+    </div>
+    ${browse.cloud.length > 0 &&
+    html`<div class="imagepick-tags">
+        ${browse.cloud.map(
+            ([tag, count]) => html`<button
+                key=${tag}
+                class=${tags.includes(tag) ? 'imagepick-tag active' : 'imagepick-tag'}
+                onClick=${() => onToggleTag(tag)}
+            >${tag} <span class="imagepick-tag-count">${count}</span></button>`
+        )}
+    </div>`}
+    ${browse.files.length > 0
+        ? html`<ul class="files-grid">
+              ${browse.files.map(
+                  (d) => html`<${FileTile}
+                      key=${d.doc_id}
+                      doc=${d}
+                      root=${root}
+                      bucket=${bucket}
+                      selected=${selected}
+                      onSelect=${onSelect}
+                      onFollowHome=${onFollowHome}
+                  />`
+              )}
+          </ul>`
+        : html`<p class="null-sub notes-empty">${empty}</p>`}
+</div>`;
+
 // The documents app - the shared surface a "documents" application (Writer, Lost & Found)
 // currently renders. `app` is its registry entry (id, name, icon, style); the document
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
@@ -270,6 +348,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const nouns = itemPlural(app);
     const [busy, setBusy] = useState(false);
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
+    const [notebook, setNotebook] = useState(''); // hrseFiles's notebook pick: '' is every one
 
     // The shared documents-app spine (doc/docapp.js): the live documents, the open document and how
     // to change it (it lives in the URL, so back/forward and deep links just work), the resume-where
@@ -280,7 +359,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // The list: this app's scope, then the search hits, then every active tag, newest-claimed-date
     // first with pinned documents floating (pure/doclist.js holds the rules and their vectors).
     const hits = useSearch(root, searchQuery);
-    const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter, kind: searchKind });
+    // hrseFiles browses as the picture picker does (2026-09-29): its notebook pick and tags narrow
+    // after the search, and the tiles are the list prev/next walks.
+    const ordered = orderDocs(docs, { app, bucket, hits, tags: app.everything ? [] : tagFilter, kind: searchKind });
+    const browse = app.everything ? browseFiles(ordered, { notebook, tags: tagFilter }) : null;
+    const list = browse ? browse.files : ordered;
 
     // Lost & Found's follow-me-home: the document's own address, which opens it in its first
     // notebook's app (pure/naming.js `docPlacement`; the unbucketed stay here).
@@ -300,13 +383,18 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // widths. `startsTucked` is the app's own opening posture (Writer begins as a plain list,
     // its tag column and tree waiting as rails); a stored preference always wins over it.
     const { tucked, toggleTuck } = useColTucks(root, app.id, app.startsTucked);
+    const tagsTucked = tucked.has('tags');
+    const treeTucked = tucked.has('tree');
+    const publishTucked = tucked.has('publish');
 
     // The tree's depth-first doc order (the "book order"), reported by the tree pane.
     const [treeOrder, setTreeOrder] = useState(null);
 
     // Column widths: each column left of the editor drags at its right edge (panes.js - the
     // shared resizer strips + `colw:` prefs + CSS-var plumbing).
-    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree', 'publish']);
+    // The leftmost column has no ceiling in hrseFiles (Curtis, 2026-09-29): a grid of tiles earns
+    // whatever room it is given.
+    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree', 'publish'], {}, app.everything ? ['list'] : []);
     // A notebook published as a book (PROJECT_PLAN's Books): the switch and the hidden marks, and the
     // tree that says which pages sit beneath a hidden section - read once here, worn by
     // the rows, the editor's bar, and the Publish column alike.
@@ -373,8 +461,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
         <div class="notes">
             <div class="notes-columns" style=${colStyle}>
                 ${feat.tagColumn &&
-                (tucked.has('tags')
-                    ? html`<${Rail} icon=${Icons.tag} label="tags" onClick=${() => toggleTuck('tags')} />`
+                (tagsTucked
+                    ? html`<${Rail} icon=${Icons.tag} label=${t('apps.notes.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
                     : html`<${TagColumn}
                           cloud=${tagCloud}
                           active=${tagFilter}
@@ -383,6 +471,23 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                       />${resizer('tags')}`)}
                 ${tucked.has('list')
                     ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
+                    : app.everything
+                    ? html`<aside class="notes-list notes-list-browser">
+                    <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
+                    <${FileBrowser}
+                        root=${root}
+                        bucket=${bucket}
+                        browse=${browse}
+                        notebook=${notebook}
+                        onNotebook=${setNotebook}
+                        tags=${tagFilter}
+                        onToggleTag=${toggleTag}
+                        selected=${selected}
+                        onSelect=${select}
+                        onFollowHome=${followHome}
+                        empty=${!docs ? '' : hits === null ? t('apps.notes.nothing-here-yet', 'nothing here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
+                    />
+                </aside>${resizer('list')}`
                     : html`<aside class="notes-list">
                     <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     ${/* The everything-view is for finding, not making - new things are born
@@ -397,7 +502,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                             (t) => html`<button
                                 class="annot-tag annot-tag-active"
                                 key=${t}
-                                title="remove filter"
+                                title=${t('apps.notes.remove-filter', 'remove filter')}
                                 onClick=${() => toggleTag(t)}
                             >${t} ×</button>`
                         )}
@@ -416,18 +521,16 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                             tagFilter=${tagFilter}
                             onSelect=${select}
                             onToggleTag=${toggleTag}
-                            everything=${!!app.everything}
-                            onFollowHome=${followHome}
                         />`
                     )}
                     ${docs && list.length === 0 &&
                     html`<p class="null-sub notes-empty">
-                        ${hits === null ? 'nothing here yet.' : 'nothing matches.'}
+                        ${hits === null ? t('apps.notes.nothing-here-yet', 'nothing here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
                     </p>`}
                 </aside>${resizer('list')}`}
                 ${feat.tree &&
-                (tucked.has('tree')
-                    ? html`<${Rail} icon=${Icons.tree} label="tree" onClick=${() => toggleTuck('tree')} />`
+                (treeTucked
+                    ? html`<${Rail} icon=${Icons.tree} label=${t('apps.notes.tree', 'tree')} onClick=${() => toggleTuck('tree')} />`
                     : html`<${WikiTree}
                           root=${root}
                           bucket=${bucket}
@@ -442,8 +545,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                           itemNoun=${noun}
                       />${resizer('tree')}`)}
                 ${feat.bookColumn &&
-                (tucked.has('publish')
-                    ? html`<${Rail} icon=${Icons.book} label="publish" onClick=${() => toggleTuck('publish')} />`
+                (publishTucked
+                    ? html`<${Rail} icon=${Icons.book} label=${t('apps.notes.publish', 'publish')} onClick=${() => toggleTuck('publish')} />`
                     : html`<${BookColumn}
                           root=${root}
                           bucket=${bucket}

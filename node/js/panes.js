@@ -58,7 +58,10 @@ export function useColTucks(root, appId, startsTucked = []) {
     };
 }
 
-export function useColWidths(root, appId, cols, mins = {}) {
+/// `open` names columns with no ceiling (Curtis, 2026-09-29: "in Files and also in Feed, the leftmost
+/// column should not have a maximum width"): they drag as wide as the window leaves room for,
+/// short of swallowing the column to their right.
+export function useColWidths(root, appId, cols, mins = {}, open = []) {
     const widths = usePrefMap(root, widthPrefix(appId));
     const prefWidths = {};
     for (const [col, value] of widths || []) {
@@ -69,7 +72,8 @@ export function useColWidths(root, appId, cols, mins = {}) {
     // Per-column floors (the feed's composer needs 260px before its chrome crushes); 140 is
     // the house default. Applied to STORED widths too, so a pref written under an older,
     // lower floor honors the new one on read.
-    const clampW = (c, w) => Math.max(mins[c] ?? 140, Math.min(560, Math.round(w)));
+    const ceiling = (c) => (open.includes(c) ? Math.max(560, window.innerWidth - 320) : 560);
+    const clampW = (c, w) => Math.max(mins[c] ?? 140, Math.min(ceiling(c), Math.round(w)));
     const widthOf = (c) => {
         const w = dragWidths[c] ?? prefWidths[c];
         return w == null ? undefined : clampW(c, w);

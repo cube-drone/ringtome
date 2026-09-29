@@ -613,7 +613,8 @@ export const FeedApp = ({ current, searchQuery }) => {
     const { tucked, toggleTuck } = useColTucks(root, 'feed');
     // The composer's floor is 260px: below that the editor's chrome crushes even in its
     // narrow mode (panes.js applies the floor to drags AND to previously-stored widths).
-    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose'], { compose: 260 });
+    // The composer's column has no ceiling (Curtis, 2026-09-29).
+    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose'], { compose: 260 }, ['compose']);
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     // Your ledger, for the rendering dials: interest shapes an item's size, never its place.

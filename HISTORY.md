@@ -12621,3 +12621,29 @@ Curtis: "I'd like to be able to Pin books, chats, or rebroadcasts."
 - `share_json` is now the one place a share card's JSON is built, for the shelf and the strip alike.
 
 Pinned in pins.cjs (a room and a share, in pin order; the withdrawn share leaves).
+
+## 2026-09-29: hrseFiles browses the way the picture picker does
+
+Curtis: "the design of the picture-chooser is much closer to how the whole files app should look:
+the leftmost column should have the bucket selectors, then the tag selectors, then all of the files
+as square thumbnails - with text files as just their title and an icon. Also: in Files and also in
+Feed, the leftmost column should not have a maximum width."
+
+- **One browsing column** (`notes.js` FileBrowser and FileTile, `pure/filebrowse.js`). It shows the
+  notebooks (every notebook, each by name, and "unfiled" when there are strays, since keeping those
+  findable is this app's job), then the tag cloud, then every file as a square tile. Pictures and
+  drawings show as themselves; words show as their icon and title, with the public/private mark.
+  The notebook and tag chips are the picker's own classes, so the two read as one design. The cloud
+  counts only the chosen notebook, so it never offers a tag that finds nothing, and tags AND as
+  everywhere. Search still narrows first, and the tiles are the order prev/next walks. Follow-me-home
+  sits in a tile's corner on hover; tiles still drag into documents. NoteRow's Files-only branches
+  (the notebook line, the corner button, the big thumbnail) went with it.
+- **No ceiling on the leftmost column.** `useColWidths` takes the columns that may grow past 560px
+  (up to the window, less room for the column to their right): Files' browser and Feed's composer.
+  The browser opens at 480px.
+- Found on the way: the strings check had been blind to part of `notes.js`. The old NoteRow
+  branches threw its tokenizer off, and hid three genuinely bare phrases (a rail label, "remove
+  filter", "nothing here yet.") that are now translated. Three tuck checks are hoisted into named
+  constants, because the check reads a comparand after `&&` as a branch.
+
+Pinned in pure/filebrowse.cjs.

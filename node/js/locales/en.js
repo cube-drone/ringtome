@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1186 phrases across 76 files.
+// 1192 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -216,10 +216,18 @@ export default {
     'apps.notes.private': 'private',
     'apps.notes.pinned': 'pinned',
     'apps.notes.untitled': 'untitled',
-    'apps.notes.follow-me-home-open-this': 'follow me home — open this in its own app',
-    'apps.notes.unfiled': 'unfiled',
     'apps.notes.a-date-you-set-for': 'a date you set for this document (its real last edit was {p0})',
     'apps.notes.two-versions': 'two versions',
+    'apps.notes.follow-me-home-open-this': 'follow me home — open this in its own app',
+    'doc.imagepick.notebook': 'notebook',
+    'doc.imagepick.every-notebook': 'every notebook',
+    'apps.notes.unfiled': 'unfiled',
+    'apps.notes.tags': 'tags',
+    'apps.notes.nothing-here-yet': 'nothing here yet.',
+    'apps.notes.nothing-matches': 'nothing matches.',
+    'apps.notes.remove-filter': 'remove filter',
+    'apps.notes.tree': 'tree',
+    'apps.notes.publish': 'publish',
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.a-room': 'a room',
@@ -530,8 +538,6 @@ export default {
     'doc.imagepick.add-an-image': 'add an image',
     'doc.imagepick.upload-from-this-computer': 'upload from this computer',
     'doc.imagepick.search-titles': 'search titles',
-    'doc.imagepick.notebook': 'notebook',
-    'doc.imagepick.every-notebook': 'every notebook',
     'doc.imagepick.no-pictures-match': 'no pictures match.',
     'doc.imagepick.no-pictures-yet': 'no pictures yet - upload one in any notebook and it will be here.',
     'doc.imagepick.untitled': 'untitled',
