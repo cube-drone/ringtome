@@ -37,19 +37,22 @@ import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
 import { DeviceApp } from './apps/device.js';
 import { ChatApp } from './apps/chat.js';
-import { appsFor, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
+import { appsFor, appById, appLabel } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
-import { slugify, HEX_ID, BUCKET_PREFIX } from './pure/naming.js';
+import { fromLegacyId, rehome, parseRingtome } from './pure/ringtome.js';
+import { postHref, personHref, docHref, roomHref, appHref, personaPageHref, LAUNCHER } from './links.js';
+import { parseSpeakable } from './speakable.js';
+import { api } from './net.js';
+import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
-import { speakable } from './speakable.js';
 import { NodeFeed, RecentPosts } from './nodefeed.js';
 import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
@@ -74,7 +77,7 @@ const NotFound = () => html`
     <div class="console">
         <p class="null-sub">
             ${tNodes('index.theres-nothing-at-this-address', "there's nothing at this address. {home}.", {
-                home: html`<a href="/home">${t('index.back-to-your-applications', 'back to your applications')}</a>`,
+                home: html`<a href=${LAUNCHER}>${t('index.back-to-your-applications', 'back to your applications')}</a>`,
             })}
         </p>
     </div>
@@ -139,81 +142,29 @@ const AtRoute = ({ at, fallback: Fallback, ...props }) =>
         ? html`<${SlugPage} slug=${at.slice(1)} ...${props} />`
         : html`<${Fallback} ...${props} />`;
 
-const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
-    const loc = useLocation();
-    // Async resolutions are TAGGED with the path they answered, and the last actually-PAINTED
-    // view rides a ref. Both are load-bearing (field-tested 2026-07-29): a bare
-    // `syncHit || resolved` fallback once flashed the PREVIOUS document during the hex->cozy
-    // re-dress - the freshest async resolution was one document old, and for a beat it won.
-    // Mid-flight, the user keeps seeing exactly what they last saw; a resolution for a path
-    // we've already left is ignored at render, not just at set.
-    const [resolved, setResolved] = useState(null); // { path, hit: {appId,docId} | 'nope' }
-    const lastView = useRef(null);
-    const cozy = loc.path.startsWith(`/${BUCKET_PREFIX}/`);
-    const segs = loc.path.split('/').filter(Boolean).slice(1); // drop the 'home' or 'in'
-    const app0 = !cozy && segs.length ? appById(segs[0]) : null;
-    const syncHit =
-        app0 && segs.length === 1
-            ? { appId: app0.id, docId: null }
-            : app0 && segs.length === 2 && HEX_ID.test(segs[1])
-            ? { appId: app0.id, docId: segs[1] }
-            : null;
-    useEffect(() => {
-        if (syncHit) return; // exact already - nothing to resolve
-        let alive = true;
-        const path = loc.path;
-        resolveSlugPath(current.root, segs, { cozy })
-            .then((h) =>
-                alive &&
-                setResolved({ path, hit: h ? { appId: h.appId, docId: h.docId } : 'nope' })
-            )
-            .catch(() => alive && setResolved({ path, hit: 'nope' }));
-        return () => {
-            alive = false;
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loc.path]);
-    const fresh = resolved && resolved.path === loc.path ? resolved.hit : null;
-    const view = syncHit || fresh || lastView.current;
-    if (view && view !== 'nope') lastView.current = view;
-    if (!view) {
-        return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
-    }
-    if (view === 'nope') return html`<${NotFound} />`;
-    const app = appById(view.appId);
-    if (!app) return html`<${NotFound} />`;
-    return html`<${DocsApp}
-        key=${app.id}
-        app=${app}
-        current=${current}
-        docId=${view.docId}
-        searchQuery=${searchQuery}
-        searchKind=${searchKind}
-        bucket=${bucket}
-    />`;
-};
-
-
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
-// persona is open, routing takes over. The whole internal UI lives under /home (root bounces
-// there, and stays free for the API / a future public face): `/home` is the console,
-// `/home/notes[/<doc_id>]` the notes app, and `/home/persona` jumps to your own /id page -
-// identity management lives there, with `/home/persona/profile` and `/computers` beneath it
-// (reached by the dock's persona tile). Routes are session-relative and identity-free by
-// design (PROJECT_PLAN, The Client Is a Console).
+// persona is open, routing takes over. The whole internal UI lives under /ringtome (since
+// 2026-09-28; /home and /in before it, which now only redirect): `/ringtome` is the console,
+// `/ringtome/notes` the notes app, a document at its own `/ringtome/user/…/doc/…` address, and
+// `/ringtome/persona` jumps to your own person page -
+// identity management lives there, with `/ringtome/persona/profile` and `/computers` beneath it
+// (reached by the dock's persona tile).
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
     // The node's operator: the only one who presses a room's full-sync (CHAT.md, ruling 6).
     const nodeAdmin = ((session.account && session.account.tags) || []).includes('node_admin');
     const loc = useLocation();
     const open = persona.state === 'open';
-    const inApp = loc.path !== '/home';
+    const inApp = loc.path !== LAUNCHER;
     // The /id lens page: not an app off the registry - People (/home/people) is the app,
     // and id pages are the shareable places it navigates out to - but the frame looks wrong
     // headless, so it gets the band with the viewed persona's name, reported upward by the
     // page once it knows it. (The structural question from 2026-08-01, settled by building
     // the rolodex.)
-    const inId = loc.path.startsWith('/id/') || loc.path.startsWith('/@');
+    // An address under /ringtome/user/ (pure/ringtome.js): a person's or a post's page wears the
+    // person header; a room and your own document are apps, placed below.
+    const ref = parseRingtome(loc.url);
+    const inId = (!!ref && (ref.kind === null || ref.kind === 'post')) || loc.path.startsWith('/@');
     const [idTitle, setIdTitle] = useState(null);
 
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
@@ -230,17 +181,26 @@ const Inside = ({ session }) => {
         return () => setTooltipsEnabled(true);
     }, [tooltips]);
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
-    // Two floors (2026-09-08): `/home/<app>/...` is an app's, `/in/<bucket>/...` a bucket's -
-    // disjoint by construction, so a new app never shadows a notebook somebody named.
-    const pathParts = loc.path.split('/'); // ['', 'home'|'in', '<app-or-bucket>', '<doc?>']
-    const inBuckets = pathParts[1] === BUCKET_PREFIX;
-    const seg = pathParts[2] || '';
-    const appDirect = inBuckets ? null : appById(seg);
-    const cozyBucketRow =
-        inBuckets && seg ? (roster || []).find((b) => slugify(b.name) === seg) || null : null;
-    const appHere =
-        appDirect || (cozyBucketRow ? appForStyle(appTypeOf(cozyBucketRow.name, roster)) : null);
-    const inDoc = !!(appHere && pathParts[3]);
+    // Where the address puts us (PROJECT_PLAN's "`/ringtome/` replaces `/home`, `/in` and `/id`",
+    // slice 2, 2026-09-28): `/ringtome/<app>` is an app, `/ringtome/<app>/notebook/<slug>` one of
+    // its notebooks, `/ringtome/<app>/<doc>` a document in the everything-view (which is no
+    // notebook's); a room's address is Chat; your own document's address is the app of the notebook
+    // it opens in - the one its `?bucket=` names when it is filed there, else its first
+    // (pure/naming.js `docPlacement`), read off the live mirror.
+    const pathParts = loc.path.split('/'); // ['', 'ringtome', '<app>'|'user', ...]
+    const underApps = pathParts[1] === 'ringtome' && pathParts[2] && pathParts[2] !== 'user';
+    const appDirect = underApps ? appById(pathParts[2]) : ref && ref.kind === 'room' ? appById('chat') : null;
+    const notebookSlug = underApps && pathParts[3] === 'notebook' ? pathParts[4] || '' : null;
+    const ownDoc = ref && ref.kind === 'doc' && root && (parseSpeakable(ref.seg) || {}).root === root ? ref.doc : null;
+    const ownDocRow = useLive(() => (ownDoc ? openMirror(root).docs.get(ownDoc) : null), [root, ownDoc]);
+    const placed = ownDoc && ownDocRow ? docPlacement(ownDocRow, roster, ref.bucket) : null;
+    const cozyBucketRow = notebookSlug
+        ? (roster || []).find((b) => slugify(b.name) === notebookSlug) || null
+        : placed && placed.bucket
+          ? (roster || []).find((b) => b.name === placed.bucket) || { name: placed.bucket }
+          : null;
+    const appHere = placed ? placed.app : appDirect;
+    const inDoc = !!(appHere && (ownDoc || (underApps && pathParts[3] && pathParts[3] !== 'notebook')));
 
     // The Persona app wears the current persona's name (live), everywhere its label shows - the
     // console tile and the app header. '' until a persona is open or named, and then `appLabel`
@@ -263,7 +223,7 @@ const Inside = ({ session }) => {
     const appHereId = appHere ? appHere.id : null;
     // A person's page filters too (2026-09-07), from the same slot; the query is the
     // page's, so walking to another person - or another app - starts it blank.
-    const idSeg = inId ? loc.path.split('/')[2] || '' : null;
+    const idSeg = inId ? (ref ? ref.seg : loc.path.split('/')[1] || '') : null;
     useEffect(() => {
         setQuery('');
         setSearchKind('all');
@@ -276,7 +236,8 @@ const Inside = ({ session }) => {
         appHere,
         roster,
         cozyBucketRow,
-        docSegment: pathParts[3],
+        // The everything-view's document: the one route where the notebook is not in the address.
+        docSegment: underApps && pathParts[3] !== 'notebook' ? pathParts[3] : null,
     });
 
     // The Quickbar: the persistent bottom bar, now purely the app dock - a heptagon per app (icon
@@ -306,7 +267,7 @@ const Inside = ({ session }) => {
                     // Your own /id page is the persona app's home now: the lead tile lights there.
                     const isActive =
                         app.id === PERSONA_APP_ID
-                            ? !!root && loc.path === `/id/${speakable(root)}`
+                            ? !!root && loc.path === personHref(root)
                             : !!(appHere && appHere.id === app.id);
                     const badge = app.id === BELL_APP_ID ? unread : app.id === CHAT_APP_ID ? unreadChat : 0;
                     // Clicking the app you're already in closes it (back to the launcher).
@@ -322,7 +283,7 @@ const Inside = ({ session }) => {
                                 .join(' ')}
                             style=${app.id === PERSONA_APP_ID && me ? `--me-ring: ${me.ring}` : undefined}
                             title=${appLabel(app, personaName, isDevice())}
-                            onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
+                            onClick=${() => loc.route(isActive ? LAUNCHER : appHref(app.id))}
                         ><span class="quickbar-hex-face">${app.id === PERSONA_APP_ID && me
                             ? html`<img class="quickbar-hex-img" src=${me.src} alt="" />`
                             : html`<${iconFor(app, isDevice())} />`}</span></button>
@@ -345,8 +306,8 @@ const Inside = ({ session }) => {
     // On a post's page, back climbs ONE level - to the post's author - not all the way out
     // to People: the id namespace nests (/id/:seg/post/:doc), and back walks the nesting.
     const idBack = (() => {
-        const m = loc.path.match(/^(\/id\/[^/]+)\/post\//);
-        return m ? m[1] : '/home/people';
+        const m = loc.path.match(/^(\/ringtome\/user\/[^/]+)\/post\//);
+        return m ? m[1] : appHref('people');
     })();
     const idHeader =
         inId &&
@@ -370,7 +331,7 @@ const Inside = ({ session }) => {
             <span class="app-header-actions">
                 <button
                     class="app-header-btn"
-                    title=${idBack === '/home/people'
+                    title=${idBack === appHref('people')
                         ? t('index.back-to-people', 'back to hrsePeople™')
                         : t('index.back-to-their-page', 'back to their page')}
                     onClick=${() => loc.route(idBack)}
@@ -378,7 +339,7 @@ const Inside = ({ session }) => {
                 <button
                     class="app-header-btn app-header-btn-square"
                     title=${t('index.close', 'close')}
-                    onClick=${() => loc.route('/home')}
+                    onClick=${() => loc.route(LAUNCHER)}
                 ><${Icons.close} /></button>
             </span>
         </header>`;
@@ -417,12 +378,12 @@ const Inside = ({ session }) => {
                 html`<button
                     class="app-header-btn"
                     title=${t('index.back-to-the-list', 'back to the list')}
-                    onClick=${() => loc.route('/home/' + appHere.id)}
+                    onClick=${() => loc.route(bucket && appHere.style ? bucketHref(bucket, roster) : appHref(appHere.id))}
                 ><${Icons.back} /></button>`}
                 <button
                     class="app-header-btn app-header-btn-square"
                     title=${t('index.close-this-app', 'close this app')}
-                    onClick=${() => loc.route('/home')}
+                    onClick=${() => loc.route(LAUNCHER)}
                 ><${Icons.close} /></button>
             </span>
         </header>`) ||
@@ -470,49 +431,199 @@ const Inside = ({ session }) => {
             <${HomeBounce} path="/" />
             <${HomeBounce} path="/feed" />
             <${Console}
-                path="/home"
-                onLaunch=${(id) => loc.route('/home/' + id)}
+                path="/ringtome"
+                onLaunch=${(id) => loc.route(appHref(id))}
                 personaName=${personaName}
                 me=${me}
                 admin=${nodeAdmin}
             />
-            <${PersonaHome} path="/home/persona" persona=${persona} />
-            <${Profile} path="/home/persona/profile" current=${persona.current} />
-            <${Computers} path="/home/persona/computers" current=${persona.current} />
-            <${ContentControl} path="/home/persona/content" current=${persona.current} />
-            <${AppSettings} path="/home/persona/settings" current=${persona.current} />
-            <${Personas} path="/home/persona/personas" persona=${persona} current=${persona.current} />
-            <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
-            <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
-            <${NotificationsApp} path="/home/notifications" current=${persona.current} />
-            <${DeviceApp} path="/home/device" admin=${nodeAdmin} />
-            <${DeviceApp} path="/home/device/:page" admin=${nodeAdmin} />
-            <${ChatApp} path="/home/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
-            <${ChatApp} path="/home/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
-            <${ChatApp} path="/home/chat/:author/:doc" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
-            <${ChatApp} path="/home/chat/:author/:doc/:line" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
-            <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
-            <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
-            <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />
-            <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
-            <${IdPage} path="/id/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
-            <${IdPage} path="/id/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
-            <${AtRoute} path="/:at" fallback=${SlugRoute} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
-            <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${PersonaHome} path="/ringtome/persona" persona=${persona} />
+            <${Profile} path="/ringtome/persona/profile" current=${persona.current} />
+            <${Computers} path="/ringtome/persona/computers" current=${persona.current} />
+            <${ContentControl} path="/ringtome/persona/content" current=${persona.current} />
+            <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
+            <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
+            <${PeopleApp} path="/ringtome/people" current=${persona.current} searchQuery=${query} />
+            <${FeedApp} path="/ringtome/feed" current=${persona.current} searchQuery=${query} />
+            <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
+            <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
+            <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} />
+            <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${ChatApp} path="/ringtome/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${RoomRoute} path="/ringtome/user/:seg/room/:doc" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${RoomRoute} path="/ringtome/user/:seg/room/:doc/line/:line" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${PersonDemo} path="/ringtome/user/:seg/ui-demo" current=${persona.current} />
+            <${DiffPage} path="/ringtome/user/:seg/doc/:doc/diff" current=${persona.current} />
+            <${PostPage} path="/ringtome/user/:seg/post/:doc/page/:page" current=${persona.current} onTitle=${setIdTitle} />
+            <${PostPage} path="/ringtome/user/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
+            <${DocRoute} path="/ringtome/user/:seg/doc/:doc" current=${persona.current} appHere=${appHere} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${IdPage} path="/ringtome/user/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+            <${IdPage} path="/ringtome/user/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+            <${AppRoute} path="/ringtome/:app" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${AppRoute} path="/ringtome/:app/notebook/:notebook" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${AppRoute} path="/ringtome/:app/:doc" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${LegacyId} path="/id/:seg" />
+            <${LegacyId} path="/id/:seg/*" />
+            <${LegacyHome} path="/home" current=${persona.current} />
+            <${LegacyHome} path="/home/*" current=${persona.current} />
+            <${LegacyHome} path="/in/*" current=${persona.current} />
+            <${AtRoute} path="/:at" fallback=${NotFound} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${NotFound} default />
         </${Router}>
     `;
     return inApp ? shell(routed) : stage(routed);
 };
+
+/// The address before `/ringtome/` (2026-09-28): `/id/<seg>[/…]` goes on to its `/ringtome/user/`
+/// form, the hints kept - what the node's own redirect does for a page load, done here for a link
+/// followed inside the app.
+const LegacyId = () => {
+    const loc = useLocation();
+    useEffect(() => {
+        const query = loc.url.includes('?') ? loc.url.slice(loc.url.indexOf('?')) : '';
+        const mapped = fromLegacyId(loc.path + query) || loc.path.replace(/^\/id\//, '/ringtome/user/') + query;
+        loc.route(mapped, true);
+    }, [loc]);
+    return null;
+};
+
+/// "(THIS DOCUMENT IS PRIVATE)": what a document address says to anyone it is not theirs to read,
+/// and - the same words - for one that never existed (PROJECT_PLAN, "`/ringtome/` replaces …").
+const PrivateDoc = () => html`<div class="null-state">
+    <p class="null-title">${t('index.this-document-is-private', '(THIS DOCUMENT IS PRIVATE)')}</p>
+</div>`;
+
+/// `/ringtome/user/<root>/doc/<doc>`: any document, one resolver. Your own opens where it lives; a
+/// public post opens as the post; anything else is private. (The published-from map, slice 3,
+/// turns a private note's address into its post once it is published.)
+const DocResolve = ({ seg, doc, current }) => {
+    const loc = useLocation();
+    const [privateHere, setPrivateHere] = useState(false);
+    const me = current && current.root;
+    useEffect(() => {
+        setPrivateHere(false);
+        const parsed = parseSpeakable(seg);
+        const root = parsed && parsed.ok ? parsed.root : null;
+        if (!root) {
+            setPrivateHere(true);
+            return undefined;
+        }
+        let live = true;
+        (async () => {
+            try {
+                await api(`/api/id/${seg}/profile`).catch(() => null); // a peek, for someone not carried here
+                await api(`/api/id/${seg}/posts/${doc}`);
+                if (live) loc.route(postHref(root, doc), true);
+            } catch {
+                if (live) setPrivateHere(true);
+            }
+        })();
+        return () => {
+            live = false;
+        };
+    }, [seg, doc, me, loc]);
+    return privateHere ? html`<${PrivateDoc} />` : null;
+};
+
 
 /// Root, signed in: the console lives at /home (PROJECT_PLAN's The node's public face, 2026-09-15 - root is the
 /// stranger's front page, and a reader who lands there goes on to their own).
 const HomeBounce = () => {
     const loc = useLocation();
     useEffect(() => {
-        loc.route('/home', true);
+        loc.route(LAUNCHER, true);
     }, [loc]);
     return null;
 };
+
+/// A document app at its `/ringtome/` address (2026-09-28): the app's own list at `/ringtome/<app>`,
+/// one of its notebooks at `…/notebook/<slug>` (the shell reads the notebook off the address), and -
+/// the everything-view alone, which is no notebook's - a document at `/ringtome/<app>/<doc>`.
+const AppRoute = ({ app: appId, doc, current, searchQuery, searchKind, bucket }) => {
+    const app = appById(appId);
+    if (!app || !(app.style || app.everything)) return html`<${NotFound} />`;
+    return html`<${DocsApp}
+        key=${app.id}
+        app=${app}
+        current=${current}
+        docId=${doc && HEX_ID.test(doc) ? doc : null}
+        searchQuery=${searchQuery}
+        searchKind=${searchKind}
+        bucket=${bucket}
+    />`;
+};
+
+/// A document's own address (2026-09-28). Yours opens in the app of the notebook the shell placed
+/// it in (`appHere`); anyone else's goes to the resolver - a public post, or private.
+const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket }) => {
+    const parsed = parseSpeakable(seg);
+    const mine = !!(current && parsed && parsed.ok && parsed.root === current.root);
+    const row = useLive(() => (mine ? openMirror(current.root).docs.get(doc) : null), [mine, current && current.root, doc]);
+    if (!mine) return html`<${DocResolve} seg=${seg} doc=${doc} current=${current} />`;
+    if (row === undefined) return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
+    if (!row || !appHere) return html`<${PrivateDoc} />`;
+    return html`<${DocsApp}
+        key=${appHere.id}
+        app=${appHere}
+        current=${current}
+        docId=${doc}
+        searchQuery=${searchQuery}
+        searchKind=${searchKind}
+        bucket=${bucket}
+    />`;
+};
+
+/// A room at its address (2026-09-28): Chat, open on it.
+const RoomRoute = ({ seg, doc, line, ...props }) => {
+    const parsed = parseSpeakable(seg);
+    if (!parsed || !parsed.ok) return html`<${NotFound} />`;
+    return html`<${ChatApp} author=${parsed.root} doc=${doc} line=${line || null} ...${props} />`;
+};
+
+/// The addresses before `/ringtome/` (2026-09-08's cozy floors: `/home/<app>/…`, `/in/<bucket>/…`),
+/// which documents written before 2026-09-28 still hold in their bodies (a crosslink dragged in,
+/// signed and synced - never rewritten in place). Read once, with the old resolver, and sent on to
+/// the `/ringtome/` address - so nothing mints them and nothing that holds one breaks.
+const LegacyHome = ({ current }) => {
+    const loc = useLocation();
+    const [lost, setLost] = useState(false);
+    const root = current && current.root;
+    useEffect(() => {
+        setLost(false);
+        const parts = loc.path.split('/').filter(Boolean); // ['home'|'in', ...]
+        const cozy = parts[0] === BUCKET_PREFIX;
+        const segs = parts.slice(1);
+        const go = (to) => loc.route(to, true);
+        if (!cozy) {
+            const [first, second, third, fourth] = segs;
+            if (!first) return go(LAUNCHER);
+            if (first === 'persona') return go(personaPageHref(second));
+            if (first === 'device') return go(second ? `${appHref('device')}/${second}` : appHref('device'));
+            if (first === 'chat') {
+                if (!second || second === 'new') return go(second ? `${appHref('chat')}/new` : appHref('chat'));
+                if (HEX_ID64.test(second) && third) return go(roomHref(second, third, fourth || null));
+            }
+            const app = appById(first);
+            if (app && !second) return go(appHref(app.id));
+            if (app && second && HEX_ID.test(second) && root) return go(`${docHref(root, second)}${third === 'diff' ? '/diff' : ''}`);
+        }
+        if (!root) return undefined;
+        let live = true;
+        resolveSlugPath(root, segs, { cozy })
+            .then((hit) => {
+                if (!live) return;
+                if (!hit) return setLost(true);
+                if (hit.docId) return go(docHref(root, hit.docId) + (cozy && segs[0] ? `?bucket=${segs[0]}` : ''));
+                go(cozy && segs[0] ? `${appHref(hit.appId)}/notebook/${segs[0]}` : appHref(hit.appId));
+            })
+            .catch(() => live && setLost(true));
+        return () => {
+            live = false;
+        };
+    }, [loc, root]);
+    return lost ? html`<${NotFound} />` : null;
+};
+const HEX_ID64 = /^[0-9a-f]{64}$/;
 
 /// The front door (Curtis, 2026-09-28): the sign-in, then who posted lately and what they
 /// posted, each with the way on to the rest.
@@ -531,9 +642,15 @@ const Outside = ({ session }) => {
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
     // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed.
-    const signingIn = loc.path === '/' || loc.path === '/home' || loc.path.startsWith('/home/') || loc.path.startsWith('/in/');
+    const signingIn =
+        loc.path === '/' ||
+        loc.path === '/home' ||
+        loc.path.startsWith('/home/') ||
+        loc.path.startsWith('/in/') ||
+        loc.path === LAUNCHER ||
+        (loc.path.startsWith(`${LAUNCHER}/`) && !loc.path.startsWith(`${LAUNCHER}/user/`));
     const onPeople = loc.path === '/people';
-    const title = loc.path.startsWith('/id/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
+    const title = loc.path.startsWith('/ringtome/user/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
     const header = html`<header class="app-header">
         <span class="app-header-lead">
             <a class="app-header-title app-header-link" href="/feed">${title}</a>
@@ -567,7 +684,7 @@ const Outside = ({ session }) => {
             <button
                 class="app-header-btn"
                 title=${t('index.sign-in', 'sign in')}
-                onClick=${() => loc.route('/home')}
+                onClick=${() => loc.route(LAUNCHER)}
             ><${Icons.signIn} /></button>
         </span>
     </header>`;
@@ -578,10 +695,15 @@ const Outside = ({ session }) => {
                 <${FrontDoor} path="/" session=${session} />
                 <${NodeFeed} path="/feed" current=${null} searchQuery=${query} />
                 <${NodePeople} path="/people" current=${null} searchQuery=${query} />
-                <${PostPage} path="/id/:seg/post/:doc/:page" current=${null} onTitle=${setIdTitle} />
-                <${PostPage} path="/id/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />
-                <${IdPage} path="/id/:seg" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
-                <${IdPage} path="/id/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${PostPage} path="/ringtome/user/:seg/post/:doc/page/:page" current=${null} onTitle=${setIdTitle} />
+                <${PostPage} path="/ringtome/user/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />
+                <${DocResolve} path="/ringtome/user/:seg/doc/:doc" current=${null} />
+                <${PrivateDoc} path="/ringtome/user/:seg/room/:doc" />
+                <${PrivateDoc} path="/ringtome/user/:seg/room/:doc/line/:line" />
+                <${IdPage} path="/ringtome/user/:seg" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${IdPage} path="/ringtome/user/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${LegacyId} path="/id/:seg" />
+                <${LegacyId} path="/id/:seg/*" />
                 <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
                 <${FrontDoor} default session=${session} />
             </${Router}>
@@ -613,7 +735,7 @@ const App = () => {
     }
 
     return html`
-        <${LocationProvider} scope="/home">
+        <${LocationProvider} scope=${/^\/(home|in|ringtome)(\/|$)/}>
             <${ErrorBoundary} onError=${error => console.error(error)}>
                 <${PushRoutes} />
                 <div class="app-main">
@@ -624,6 +746,19 @@ const App = () => {
     `;
 };
 
+/// A link to a `/ringtome/` address at ANOTHER origin - pasted from a friend's node, or from a desktop
+/// app's localhost - is this node's own address for the same thing (pure/ringtome.js; 2026-09-28).
+/// Pointed at, focused or clicked, it takes the local path, before the router reads it: so following
+/// it stays here, and so does opening it in a new tab. Anything that is not an address is untouched.
+function rehomeLink(e) {
+    const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('/')) return;
+    const local = rehome(href);
+    if (local) a.setAttribute('href', local);
+}
+
 function main() {
     let app = document.getElementById('app');
     console.log("Horse Drawing Tycoon 2 UI loaded!");
@@ -633,6 +768,7 @@ function main() {
     setLocale(detectLocale());
     // Every `title` in the app becomes the house tooltip - quicker than the browser's (tooltip.js).
     installTooltips();
+    for (const kind of ['pointerover', 'focusin', 'click']) document.addEventListener(kind, rehomeLink, true);
     // One provider at the root sets the house icon style: Phosphor, DUOTONE, sized to the font
     // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
     // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the

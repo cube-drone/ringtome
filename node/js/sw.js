@@ -28,7 +28,7 @@ self.addEventListener('push', (event) => {
             const image = await pictureOf(alert.image);
             await self.registration.showNotification(alert.title || 'Horse Drawing Tycoon 2', {
                 body: alert.body || '',
-                data: { route: alert.route || '/home' },
+                data: { route: alert.route || '/ringtome' },
                 ...(image ? { image } : {}),
             });
         })()
@@ -60,8 +60,9 @@ async function pictureOf(path) {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-    const wanted = (event.notification.data && event.notification.data.route) || '/home';
-    const route = wanted.startsWith('/home') ? wanted : '/home';
+    // Only our own app's addresses (`/ringtome/…`, and the old `/home/…`, which the app redirects).
+    const wanted = (event.notification.data && event.notification.data.route) || '/ringtome';
+    const route = wanted.startsWith('/ringtome') || wanted.startsWith('/home') ? wanted : '/ringtome';
     event.waitUntil(
         (async () => {
             const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

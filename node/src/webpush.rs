@@ -305,7 +305,7 @@ pub async fn push_test(state: &AppState, root: &str) -> Result<Vec<Delivery>> {
         root: root.to_string(),
         title: crate::msg!("webpush.test-title", "Horse Drawing Tycoon 2").english,
         body: crate::msg!("webpush.test-body", "notifications are working in this browser").english,
-        route: "/home/notifications".to_string(),
+        route: "/ringtome/notifications".to_string(),
         picture: None,
         picture_png: None,
     };

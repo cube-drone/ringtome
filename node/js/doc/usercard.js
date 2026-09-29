@@ -18,6 +18,7 @@ import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
 import { identiconUri } from '../pure/identicon.js';
 import { personaHue, displayNames } from '../pure/person.js';
 import { CARD_DIRECTIVE } from '../pure/mentions.js';
+import { personHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -148,7 +149,7 @@ export function userCardHtml(name, attrs) {
     if (!root) return `<div class="user-card user-card-bad">${escapeHtml(nobody())}</div>`;
     const face = faceOf(root);
     const others = face.names.length > 1 ? `<small>${escapeHtml(face.names.slice(1).join(' · '))}</small>` : '';
-    return `<a class="user-card" href="/id/${escapeHtml(speakable(root))}">${face.hex('small')}`
+    return `<a class="user-card" href="${escapeHtml(personHref(root))}">${face.hex('small')}`
         + `<span class="user-card-names"><strong>${escapeHtml(face.names[0] || '')}</strong>${others}</span></a>`;
 }
 
@@ -160,5 +161,5 @@ export function userSpanHtml(name, attrs, renderedChildren) {
     if (!root) return `<span class="user-span user-card-bad">${renderedChildren}</span>`;
     const face = faceOf(root);
     const label = face.known ? escapeHtml(face.names[0]) : renderedChildren;
-    return `<a class="user-span" href="/id/${escapeHtml(speakable(root))}">${face.hex('mini')}<span>${label}</span></a>`;
+    return `<a class="user-span" href="${escapeHtml(personHref(root))}">${face.hex('mini')}<span>${label}</span></a>`;
 }

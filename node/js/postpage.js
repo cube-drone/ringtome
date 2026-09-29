@@ -41,6 +41,7 @@ const CopyChain = ({ author, annotations }) => {
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
+import { postHref } from './links.js';
 
 const html = htm.bind(h);
 
@@ -654,7 +655,7 @@ const ThreadReply = ({ author, doc, byline, current, depth, order }) => {
         html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} order=${order} />`}
         ${depth + 1 >= THREAD_DEPTH_CAP &&
         html`<p class="thread-deeper">
-            <a href=${`/id/${speakable(author)}/post/${doc}`}>
+            <a href=${postHref(author, doc)}>
                 ${t('postpage.continue-this-thread', 'continue this thread')}
             </a>
         </p>`}

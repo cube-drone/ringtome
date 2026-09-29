@@ -37,6 +37,7 @@ import {
     bandOf,
 } from './pure/contact.js';
 import { contactTags, tagCounts, withTag, withoutTag, serialiseTags, TAG_MAX } from './pure/contacttags.js';
+import { personHref, roomHref } from './links.js';
 
 const html = htm.bind(h);
 
@@ -145,7 +146,7 @@ export function usePerson(root, { current, profile: given } = {}) {
         primary: names[0] || '',
         others: names.slice(1),
         // Where clicking any widget goes: their page, in the speakable spelling.
-        href: root ? `/id/${speakable(root)}` : '',
+        href: root ? personHref(root) : '',
     };
 }
 
@@ -303,7 +304,7 @@ const ChatWithButton = ({ myRoot, root, name }) => {
         setError(null);
         try {
             const room = await openIm(myRoot, root, name);
-            loc.route(`/home/chat/${room.author}/${room.doc_id}`);
+            loc.route(roomHref(room.author, room.doc_id));
         } catch (e) {
             setError(e.message || String(e));
             setGoing(false);
@@ -417,7 +418,7 @@ function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
                 setAddress(
                     identityAddress({
                         publicUrl: hosted ? config.public_url : '',
-                        root: speakable(root),
+                        root: toBase58(root),
                         via,
                     })
                 );

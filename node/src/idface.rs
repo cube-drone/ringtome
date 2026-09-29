@@ -15,6 +15,7 @@
 //! behavior for members waits on the resolution ladder. Both are NEXT_STEPS' next bricks, not
 //! forgotten scope.
 
+use axum::extract::RawQuery;
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -130,7 +131,44 @@ pub async fn idface_deep(
     idface(session, state, Path(seg)).await
 }
 
-/// GET `/id/{seg}`: the one URL, both audiences.
+/// GET `/id/{seg}` and `/id/{seg}/{*rest}` - the address before `/ringtome/` (PROJECT_PLAN's
+/// "`/ringtome/` replaces `/home`, `/in` and `/id`", 2026-09-28): sent on to its `/ringtome/` form,
+/// the query (the `?via=` hints) kept. Only the PAGES move; a picture's bytes stay at
+/// `/id/{seg}/docs/…`, which signed documents name and can never stop naming. Temporary rather than
+/// permanent while the grammar is young, so a browser never caches a redirect we later regret.
+pub async fn legacy_id(Path(seg): Path<String>, RawQuery(query): RawQuery) -> axum::response::Redirect {
+    axum::response::Redirect::temporary(&ringtome_from_legacy(&seg, None, query.as_deref()))
+}
+
+pub async fn legacy_id_deep(Path((seg, rest)): Path<(String, String)>, RawQuery(query): RawQuery) -> axum::response::Redirect {
+    axum::response::Redirect::temporary(&ringtome_from_legacy(&seg, Some(&rest), query.as_deref()))
+}
+
+/// `/id/<seg>[/<rest>][?<query>]` as `/ringtome/user/<seg>[/<rest>][?<query>]`, a book's page
+/// (`post/<book>/<page>`, the page's own post id) spelled as the new grammar spells it
+/// (`post/<book>/page/<page>`).
+fn ringtome_from_legacy(seg: &str, rest: Option<&str>, query: Option<&str>) -> String {
+    let mut path = format!("/ringtome/user/{seg}");
+    if let Some(rest) = rest.map(|r| r.trim_matches('/')).filter(|r| !r.is_empty()) {
+        let parts: Vec<&str> = rest.split('/').collect();
+        match parts.as_slice() {
+            ["post", doc, page] if page.len() == 32 && page.chars().all(|c| c.is_ascii_hexdigit()) => {
+                path.push_str(&format!("/post/{doc}/page/{page}"));
+            }
+            _ => {
+                path.push('/');
+                path.push_str(rest);
+            }
+        }
+    }
+    if let Some(q) = query.filter(|q| !q.is_empty()) {
+        path.push('?');
+        path.push_str(q);
+    }
+    path
+}
+
+/// GET `/ringtome/user/{seg}` (and, before 2026-09-28, `/id/{seg}`): the one URL, both audiences.
 pub async fn idface(
     _session: Option<Session>,
     State(state): State<AppState>,
@@ -165,7 +203,7 @@ pub async fn idface(
                         "<h1>this address arrived mangled</h1>\
                          <p>The words on this address don't match its key, so something got \
                          mixed up in transit.</p>\
-                         <p>Did you mean <a href=\"/id/{expected}-{key}\"><code>{expected}-{key_short}…</code></a>?</p>",
+                         <p>Did you mean <a href=\"/ringtome/user/{expected}-{key}\"><code>{expected}-{key_short}…</code></a>?</p>",
                         expected = esc(&expected),
                         key = esc(key),
                         key_short = esc(&key.chars().take(8).collect::<String>()),
@@ -219,7 +257,13 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
     }
     let via: Vec<String> = via.iter().map(|k| speakable::node_key_b58(k).unwrap_or_else(|| k.clone())).collect();
     let base = state.config.public_url.clone().unwrap_or_default();
-    let url = if via.is_empty() { format!("{base}/id/{speak}") } else { format!("{base}/id/{speak}?via={}", via.join(",")) };
+    // The address in its `/ringtome/` form, the root in its short spelling (2026-09-28).
+    let short = speak.rsplit('-').next().unwrap_or(&speak);
+    let url = if via.is_empty() {
+        format!("{base}/ringtome/user/{short}")
+    } else {
+        format!("{base}/ringtome/user/{short}?via={}", via.join(","))
+    };
     let mut head = format!(
         "<title>{}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"profile\">\n<meta property=\"og:url\" content=\"{}\">",
         esc(&name),
@@ -3039,6 +3083,19 @@ mod refresh_order_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The address before `/ringtome/` goes to its new spelling, the hints kept, and a book's
+    /// page (`post/<doc>/<n>`) spelled as the grammar spells it (2026-09-28).
+    #[test]
+    fn an_old_address_finds_its_new_one() {
+        assert_eq!(ringtome_from_legacy("k", None, None), "/ringtome/user/k");
+        assert_eq!(ringtome_from_legacy("k", None, Some("via=a,b")), "/ringtome/user/k?via=a,b");
+        assert_eq!(ringtome_from_legacy("k", Some("post/d"), None), "/ringtome/user/k/post/d");
+        let page = "fedcba9876543210fedcba9876543210";
+        assert_eq!(ringtome_from_legacy("k", Some(&format!("post/d/{page}")), Some("via=a")), format!("/ringtome/user/k/post/d/page/{page}?via=a"));
+        assert_eq!(ringtome_from_legacy("k", Some("gallery"), None), "/ringtome/user/k/gallery");
+        assert_eq!(ringtome_from_legacy("k", Some("/"), None), "/ringtome/user/k");
+    }
 
     /// The visit registry answers the DOOR's question (has this node fetched-and-carried
     /// them), agelessly; retention is the eviction grace's business, not this table's

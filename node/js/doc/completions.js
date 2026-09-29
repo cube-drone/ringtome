@@ -12,8 +12,8 @@ import { openMirror } from '../mirror.js';
 import { speakable } from '../speakable.js';
 import { standingFacts } from '../pure/people.js';
 import { mentionQuery, mentionShape, userCardSource, userSpanSource } from '../pure/mentions.js';
-import { slugPathFor } from './address.js';
-import { slugify, bucketHref, MEDIA_EXT } from '../pure/naming.js';
+import { slugify, MEDIA_EXT } from '../pure/naming.js';
+import { docHref } from '../links.js';
 import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 
@@ -138,24 +138,11 @@ export function linkCompletions(root, bucket) {
                     apply: (view, _completion, from, to) => {
                         // Replace from the opening bracket (one before the match region CM
                         // hands us - the region starts after `[` so titles filter cleanly).
-                        const idText = `[${label}](${bucketHref(bucket)}/${d.doc_id})`;
+                        // The document's address (2026-09-28): final at once, and it unfolds.
+                        const text = `[${label}](${docHref(root, d.doc_id, { row: d, bucket })})`;
                         view.dispatch({
-                            changes: { from: from - 1, to, insert: idText },
-                            selection: { anchor: from - 1 + idText.length },
-                        });
-                        slugPathFor(root, d.doc_id, bucket).then((cozy) => {
-                            if (!cozy) return;
-                            const cozyText = `[${label}](${cozy})`;
-                            try {
-                                const cur = view.state.doc.toString();
-                                const at = cur.indexOf(idText);
-                                if (at === -1) return; // edited away meanwhile: their call
-                                view.dispatch({
-                                    changes: { from: at, to: at + idText.length, insert: cozyText },
-                                });
-                            } catch {
-                                /* the view closed before the cozy form arrived - harmless */
-                            }
+                            changes: { from: from - 1, to, insert: text },
+                            selection: { anchor: from - 1 + text.length },
                         });
                     },
                 };

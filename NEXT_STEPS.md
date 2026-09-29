@@ -25,6 +25,12 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * apparently the Posts page only deals with the last 5000 things, and we might need to deal with that the same way we dealt with Feeds... eventually.
 * a library of fun templates
 
+### `/ringtome/` links (PROJECT_PLAN's *`/ringtome/` replaces `/home`, `/in` and `/id`*)
+* Copied post and document addresses carry no `?via=` hints yet (a person's does).
+* Slice 3, the map: `published_from` written at publish; the placeholder turns into the post; links
+  to your own documents rewritten at publish, `?bucket=` dropped from them.
+* Slice 4, the outside: a post page's own OpenGraph head.
+
 ### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
 * A person's page has the feed's old shape: its search, picks and counts read that person's newest
   5000 posts (idface.rs `shelf_of(.., 5000)`, `public_docs(.., 5000)`) - the same treatment as the

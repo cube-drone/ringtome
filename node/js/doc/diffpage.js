@@ -14,10 +14,11 @@ import { t } from '../i18n.js';
 import { publishedState } from '../pure/feed.js';
 import { lineDiff, sameWords } from '../pure/wordsdiff.js';
 import { publishWithBaking, BakeModal } from './publish.js';
+import { postHref, docHref } from '../links.js';
 
 const html = htm.bind(h);
 
-export const DiffPage = ({ app, doc, current }) => {
+export const DiffPage = ({ doc, current }) => {
     const loc = useLocation();
     const root = current && current.root;
     const row = useLive(() => (root ? openMirror(root).docs.get(doc) : null), [root, doc]);
@@ -27,7 +28,7 @@ export const DiffPage = ({ app, doc, current }) => {
     const [publishing, setPublishing] = useState(false);
     const [baking, setBaking] = useState(null);
     const [note, setNote] = useState(null);
-    const back = () => loc.route(`/home/${app}/${doc}`);
+    const back = () => loc.route(docHref(root, doc));
     useEffect(() => {
         if (!root || !doc || !postId) return undefined;
         let live = true;
@@ -84,7 +85,7 @@ export const DiffPage = ({ app, doc, current }) => {
             </p>
             <span class="diff-page-acts">
                 <button class="publish-bar-view" onClick=${back}><${Icons.back} /> ${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>
-                <a class="publish-bar-view" href=${`/id/${root}/post/${postId}`}><${Icons.docPublic} /> ${t('doc.diffpage.view-public', 'view public')}</a>
+                <a class="publish-bar-view" href=${postHref(root, postId)}><${Icons.docPublic} /> ${t('doc.diffpage.view-public', 'view public')}</a>
                 ${!same &&
                 html`<button class="publish-bar-update" disabled=${publishing} onClick=${update}>
                     <${Icons.update} /> ${publishing ? t('doc.diffpage.publishing', 'publishing…') : t('doc.diffpage.make-your-changes-public', 'make your changes public')}

@@ -42,7 +42,7 @@ export const PeopleLookup = ({ query, onQuery }) => {
         const ref = parseIdReference(value || '');
         if (ref && parseSpeakable(ref.seg)) {
             onQuery(''); // the address was a destination, never a filter to come back to
-            loc.route(`/id/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`);
+            loc.route(`/ringtome/user/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`);
             return;
         }
         onQuery(value);

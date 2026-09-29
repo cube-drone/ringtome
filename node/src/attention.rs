@@ -326,7 +326,7 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
         let fresh: Vec<&crate::chat::UnseenLine> = lines.iter().filter(|l| !known.chat.contains(&l.hash)).collect();
         if !fresh.is_empty() {
             let room = room_name(state, &author, &doc).await;
-            let route = format!("/home/chat/{author}/{doc}");
+            let route = room_route(&author, &doc);
             // Newest first, as read: one alert per line, collapsed below if there are many.
             for line in fresh.into_iter().rev() {
                 let who = line.speaker_name.clone().unwrap_or_else(|| short_name(&line.speaker));
@@ -394,7 +394,19 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
     out
 }
 
-const BELL_ROUTE: &str = "/home/notifications";
+const BELL_ROUTE: &str = "/ringtome/notifications";
+
+/// A room's address in the app (PROJECT_PLAN's "`/ringtome/` replaces `/home`, `/in` and `/id`",
+/// 2026-09-28): `/ringtome/user/<author, short form>/room/<doc>`. An author that is not a hex root
+/// keeps its spelling - the app's resolver answers for it either way.
+fn room_route(author_hex: &str, doc: &str) -> String {
+    let seg = hex::decode(author_hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+        .map(|root| crate::speakable::speakable(&root).rsplit('-').next().unwrap_or_default().to_string())
+        .unwrap_or_else(|| author_hex.to_string());
+    format!("/ringtome/user/{seg}/room/{doc}")
+}
 
 /// A bell row as one alert, in the bell's own words (js/apps/notifications.js's `sentence`).
 async fn bell_alert(
@@ -460,7 +472,7 @@ async fn bell_alert(
     };
     let route = if item.kind == crate::notifications::KIND_ROOM_MENTION {
         match &item.detail {
-            Some(author) => format!("/home/chat/{author}/{}", item.doc_id),
+            Some(author) => room_route(author, &item.doc_id),
             None => BELL_ROUTE.to_string(),
         }
     } else {
@@ -606,20 +618,20 @@ mod tests {
 
     #[test]
     fn a_few_pass_through_and_a_burst_collapses_per_room() {
-        let few = vec![alert(BELL_ROUTE, "a"), alert("/home/chat/x/y", "b")];
+        let few = vec![alert(BELL_ROUTE, "a"), alert("/ringtome/user/x/room/y", "b")];
         assert_eq!(collapse("r", few).len(), 2, "under the burst, every alert stands");
 
         let many = vec![
             alert(BELL_ROUTE, "one"),
             alert(BELL_ROUTE, "two"),
-            alert("/home/chat/x/y", "hi"),
-            alert("/home/chat/x/y", "hello"),
-            alert("/home/chat/z/w", "lone"),
+            alert("/ringtome/user/x/room/y", "hi"),
+            alert("/ringtome/user/x/room/y", "hello"),
+            alert("/ringtome/user/z/room/w", "lone"),
         ];
         let out = collapse("r", many);
         assert_eq!(out.len(), 3, "one per room, one for the bell");
         assert!(out.iter().any(|a| a.route == BELL_ROUTE && a.body.contains("2 new notifications")));
-        assert!(out.iter().any(|a| a.route == "/home/chat/x/y" && a.body.contains("2 new messages") && a.body.contains("hello")));
-        assert!(out.iter().any(|a| a.route == "/home/chat/z/w" && a.body == "lone"), "a lone line stays itself");
+        assert!(out.iter().any(|a| a.route == "/ringtome/user/x/room/y" && a.body.contains("2 new messages") && a.body.contains("hello")));
+        assert!(out.iter().any(|a| a.route == "/ringtome/user/z/room/w" && a.body == "lone"), "a lone line stays itself");
     }
 }

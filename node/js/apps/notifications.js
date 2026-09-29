@@ -21,6 +21,7 @@ import { MiniPost } from '../postentry.js';
 import { PushToggle } from '../push.js';
 import { agoUnit } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
+import { roomHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -50,7 +51,7 @@ const RoomLink = ({ author, doc, title }) => {
         };
     }, [author, doc, title]);
     if (!author || !doc) return html`<span>${t('apps.notifications.a-room', 'a room')}</span>`;
-    return html`<a class="notif-room" href=${`/home/chat/${author}/${doc}`}><${Icons.chat} /> ${title || name || t('apps.notifications.a-room', 'a room')}</a>`;
+    return html`<a class="notif-room" href=${roomHref(author, doc)}><${Icons.chat} /> ${title || name || t('apps.notifications.a-room', 'a room')}</a>`;
 };
 
 const Subject = ({ row }) => {

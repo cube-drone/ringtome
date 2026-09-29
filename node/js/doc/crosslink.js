@@ -3,15 +3,15 @@
 // The editing surfaces (CodeMirror, textareas) natively insert a drag's text/plain at the POINTER
 // on drop - precision for free - so the drag itself carries the link markup. Media docs carry their
 // byte-URL embed (`![title](…/body/name.ext)` - the extension the renderer's kind sniff needs; a
-// cozy /home path serves the app, not bytes, so an embed can't use it). Ordinary docs carry an
-// id-form link (valid immediately), and the cozy form computes in flight - the receiving editor
-// swaps id-form for cozy when it lands.
+// document's address serves the app, not bytes, so an embed can't use it). Ordinary docs carry
+// their `/ringtome/…/doc/` address (2026-09-28), final at once - the cozy form this used to swap in
+// is gone, so the swap registry below only ever answers "nothing to swap".
 //
 // Split out of the addressing rules (it only lived there because it needs a path): this is a wire
 // protocol between two surfaces - the MIME types below are the whole vocabulary - and the swap
 // registry is mutable module state, which the rules deliberately have none of.
-import { slugPathFor } from './address.js';
-import { MEDIA_EXT, slugify, bucketHref } from '../pure/naming.js';
+import { MEDIA_EXT, slugify } from '../pure/naming.js';
+import { docHref } from '../links.js';
 
 /// The drag's own MIME types: what a payload IS, so a receiving surface can decide before it reads.
 /// A section is marked so an editor drop can refuse it - a section isn't insertable text.
@@ -35,13 +35,7 @@ export function startDocDrag(e, root, doc, bucket) {
         );
         return; // the byte URL is already final - nothing to swap
     }
-    const idText = `[${label}](${bucketHref(bucket)}/${doc.doc_id})`;
-    e.dataTransfer.setData('text/plain', idText);
-    dragSwaps.set(
-        idText,
-        slugPathFor(root, doc.doc_id, bucket).then((cozy) => (cozy ? `[${label}](${cozy})` : idText))
-    );
-    setTimeout(() => dragSwaps.delete(idText), 60_000); // an abandoned drag doesn't leak
+    e.dataTransfer.setData('text/plain', `[${label}](${docHref(root, doc.doc_id, { row: doc, bucket })})`);
 }
 
 /// The receiving editor claims a dropped doc-drag's cozy swap (by the exact inserted text).

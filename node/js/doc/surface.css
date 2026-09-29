@@ -272,3 +272,76 @@ video.reader-media {
     max-width: min(100%, 320px);
     max-height: 320px;
 }
+
+/* A Ringtome address, unfolded (2026-09-28): the person's face, their name, what it is - drawn by
+   doc/turbolinks.js from this node's own read of it, linking to this node's own address for it. The
+   raw link the renderer keeps beside every card is the long, unreadable one here, and the card
+   already is the link, so it goes. */
+.mq-turbolink-rich:has(.rt-card) > .mq-turbolink-source {
+    display: none;
+}
+
+.rt-card {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    max-width: 100%;
+    position: relative;
+    padding: 0.55rem 0.8rem;
+    background: var(--surface);
+    border: 1px solid transparent;
+    --line: var(--border);
+    --j: 4px;
+    clip-path: var(--jag-1);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+a.rt-card:hover {
+    --line: var(--teal);
+}
+
+.rt-card-face {
+    width: 2.4rem;
+    height: 2.34rem;
+    flex-shrink: 0;
+    object-fit: cover;
+    clip-path: var(--face-clip);
+}
+
+.rt-card-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.rt-card-who {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.rt-card-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rt-card-when {
+    font-size: 0.75rem;
+    color: var(--faint);
+}
+
+.rt-card-thumb {
+    width: 4.5rem;
+    height: 4.5rem;
+    flex-shrink: 0;
+    object-fit: cover;
+}
+
+.rt-card-private {
+    color: var(--muted);
+    font-style: italic;
+    letter-spacing: 0.02em;
+}

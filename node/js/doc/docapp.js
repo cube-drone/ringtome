@@ -12,7 +12,8 @@ import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
 import { bucketHolds } from '../pure/apps.js';
-import { useSlugDocId, useCozyAddress } from './address.js';
+import { slugify } from '../pure/naming.js';
+import { docHref, appHref } from '../links.js';
 
 // The document each app last had open, keyed `${root}:${app.id}`. In-memory on purpose: a session
 // convenience, like a scroll position, forgotten on reload - the same weight as the shell's
@@ -23,9 +24,10 @@ const lastDocMemory = new Map();
  * The spine. Returns the app's live documents, the open document and how to change it, and the
  * tree-reload bump.
  *
- * - `selected` lives in the URL (`/home/<app>/<doc_id>`), not local state, so back/forward and deep
- *   links just work; a non-hex segment is a cozy slug, resolved in place without redirecting, and a
- *   hex URL dresses itself in the document's cozy address (doc/address.js).
+ * - `selected` lives in the URL - the document's own address, `/ringtome/user/<you>/doc/<id>`
+ *   (2026-09-28), with `?bucket=` when it is filed in more than one notebook, so the address says
+ *   which one it was opened in - not local state, so back/forward and deep links just work. The
+ *   everything-view, which is no notebook's, keeps its own `/ringtome/<app>/<id>`.
  * - RESUME is a one-time, on-open jump: entering the app with nothing selected returns you to the
  *   document you last had open, if the current notebook still holds it. Deliberately going back to
  *   the list later never bounces you in again (the `restored` ref), and the redirect REPLACES
@@ -39,12 +41,18 @@ export function useDocApp(root, app, docId, bucket) {
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
 
-    const selected = useSlugDocId(root, app.id, docId);
-    const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
-    // The everything-view's URLs stay in their own /all namespace, never re-dressed into a
-    // cozy bucket address: one document shows in many places, but an /all link must keep
-    // meaning "the everything-view", not whichever official home the re-dress would pick.
-    useCozyAddress(root, app.everything ? null : selected, bucket);
+    const selected = docId || null;
+    // Where a document, or the list, lives: the document's own address in a notebook app; the
+    // everything-view's own address in Lost & Found (one document shows there beside every other,
+    // and its link must keep meaning "the everything-view"); the notebook's list for no document.
+    const listHref = app.everything || !bucket || bucket === app.style ? appHref(app.id) : `${appHref(app.id)}/notebook/${slugify(bucket)}`;
+    const hrefOf = (id) => {
+        if (!id) return listHref;
+        if (app.everything) return `${appHref(app.id)}/${id}`;
+        const row = (docs || []).find((d) => d.doc_id === id) || null;
+        return docHref(root, id, { row, bucket });
+    };
+    const select = (id) => loc.route(hrefOf(id));
 
     const restored = useRef(false);
     useEffect(() => {
@@ -56,7 +64,7 @@ export function useDocApp(root, app, docId, bucket) {
         if (selected) return; // already on a document - nothing to restore
         const last = lastDocMemory.get(`${root}:${app.id}`);
         if (last && docs.some((d) => d.doc_id === last && bucketHolds(d, app, bucket))) {
-            loc.route(`/home/${app.id}/${last}`, true);
+            loc.route(hrefOf(last), true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [docs, selected]);

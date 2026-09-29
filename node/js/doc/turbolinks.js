@@ -7,6 +7,11 @@
 // behalf, SSRF-guarded, globally rate-limited, and cached per URL (net::unfurl). Same
 // summary shape, so the package's renderCard draws the card.
 //
+// Ahead of all of them, Ringtome's own (2026-09-28, PROJECT_PLAN's "`/ringtome/` replaces `/home`,
+// `/in` and `/id`"): any `/ringtome/…` address, at ANY origin, is resolved by key through this
+// node - a person, a post, a document, a room - and drawn as a card whose link is this node's own
+// address for it. What it cannot see is "(THIS DOCUMENT IS PRIVATE)", never an error.
+//
 // Resolution is two-phase by the plugin contract: resolve() gathers (async, network),
 // render() is sync over gathered data. The gathered data lives in this module's `resolved`
 // map, shared by every surface - one unfurl per URL per page load, no matter how many
@@ -17,6 +22,10 @@ import { parse } from '@cube-drone/marquee-react-renderer';
 import { bareWebProfile } from '@cube-drone/marquee-html-renderer';
 import { mediaResolver } from '../pure/mediakind.js';
 import { api } from '../net.js';
+import { parseRingtome, ringtomePath } from '../pure/ringtome.js';
+import { parseSpeakable, wordsFor } from '../speakable.js';
+import { identiconUri } from '../pure/identicon.js';
+import { t } from '../i18n.js';
 import {
     composeTurbolinks,
     defaultPlugins,
@@ -40,7 +49,89 @@ const ogPlugin = {
     render: (target, { level, data }) => (data ? renderCard(target, data, level) : null),
 };
 
-const plugins = [...defaultPlugins, ogPlugin];
+const escapeHtml = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+/// What a Ringtome address points at, as this node can see it: `{ kind, href, root, name, avatar,
+/// title, when, thumb }`, or `{ private: true }`. The href is always this node's own path.
+async function resolveRingtome(target) {
+    const ref = parseRingtome(target);
+    const parsed = ref && parseSpeakable(ref.seg);
+    if (!parsed || !parsed.ok) return { private: true };
+    const root = parsed.root;
+    const via = ref.via.length ? `?via=${ref.via.join(',')}` : '';
+    // The profile first: for someone this node does not carry, asking is the peek that makes
+    // their posts readable here at all.
+    const profile = await api(`/api/id/${ref.seg}/profile${via}`).catch(() => null);
+    const field = (k) => (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
+    const who = { root, name: field('name'), avatar: field('avatar') };
+    if (!ref.kind) return { ...who, kind: 'person', href: ref.path, title: field('bio') };
+    if (ref.kind === 'room') return { ...who, kind: 'room', href: ref.path };
+    // A post - or a document that is one: the public read answers for both.
+    const doc = ref.page || ref.doc;
+    try {
+        const post = await api(`/api/id/${ref.seg}/posts/${doc}`);
+        return {
+            ...who,
+            kind: 'post',
+            href: ref.kind === 'doc' ? ringtomePath({ seg: ref.seg, kind: 'post', doc }) : ref.path,
+            title: post.title || '',
+            when: post.published_ms || null,
+            thumb: post.thumb ? `/id/${root}/docs/${doc}/thumb` : '',
+        };
+    } catch {
+        /* not a public post here: maybe a document of the reader's own */
+    }
+    if (ref.kind === 'doc') {
+        try {
+            const mine = await api(`/api/identity/${root}/docs/${doc}`);
+            return { ...who, kind: 'doc', href: ref.path, title: mine.title || '' };
+        } catch {
+            /* not theirs to read */
+        }
+    }
+    return { private: true };
+}
+
+function renderRingtome(data, level) {
+    if (!data) return null;
+    if (data.private) {
+        return `<span class="rt-card rt-card-private">${escapeHtml(t('doc.turbolinks.this-document-is-private', '(THIS DOCUMENT IS PRIVATE)'))}</span>`;
+    }
+    const face = data.avatar ? `/id/${data.root}/docs/${data.avatar}/thumb` : identiconUri(data.root);
+    const who = data.name || wordsFor(data.root).join('-');
+    const line =
+        data.kind === 'room'
+            ? t('doc.turbolinks.a-chat-room', 'a chat room')
+            : data.kind === 'person'
+              ? data.title
+              : data.title || t('doc.turbolinks.untitled', 'untitled');
+    const when =
+        level === 'full' && data.when
+            ? new Date(data.when).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+            : '';
+    return (
+        `<a class="rt-card rt-card-${data.kind}" href="${escapeHtml(data.href)}">` +
+        `<img class="rt-card-face" src="${escapeHtml(face)}" alt="">` +
+        `<span class="rt-card-text"><span class="rt-card-who">${escapeHtml(who)}</span>` +
+        (line ? `<span class="rt-card-title">${escapeHtml(line)}</span>` : '') +
+        (when ? `<span class="rt-card-when">${escapeHtml(when)}</span>` : '') +
+        `</span>` +
+        (level === 'full' && data.thumb ? `<img class="rt-card-thumb" src="${escapeHtml(data.thumb)}" alt="" loading="lazy">` : '') +
+        `</a>`
+    );
+}
+
+const ringtomePlugin = {
+    name: 'ringtome',
+    match: (target) => parseRingtome(target) !== null,
+    resolve: (target) => resolveRingtome(target).catch(() => ({ private: true })),
+    render: (target, { level, data }) => renderRingtome(data, level),
+};
+
+// Ours first: a `/ringtome/` address must never fall through to the OpenGraph fetcher, which
+// would draw the author's page head rather than the thing.
+const plugins = [ringtomePlugin, ...defaultPlugins, ogPlugin];
 
 // One stylesheet for the whole chain, injected once - turbolinkStyles collects each
 // plugin's declared skin plus the standard card's baseline.

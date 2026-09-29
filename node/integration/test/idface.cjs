@@ -34,9 +34,9 @@ before(async () => {
     speakableAddr = prof.speakable;
 });
 
-describe("the /id face", () => {
+describe("the /ringtome/user face (the /id face until 2026-09-28)", () => {
     it("serves a hosted persona's public face to a stranger (the shelf)", async () => {
-        const resp = await anon(`id/${root}`); // the hex escape hatch
+        const resp = await anon(`ringtome/user/${root}`); // the hex escape hatch
         assert.equal(resp.status, 200);
         assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
         const body = await resp.text();
@@ -54,13 +54,13 @@ describe("the /id face", () => {
     });
 
     it("a persona with no picture offers no og:image - the app draws the face", async () => {
-        const body = await (await anon(`id/${root}`)).text();
+        const body = await (await anon(`ringtome/user/${root}`)).text();
         assert.ok(!body.includes("og:image"), "no picture, no image meta");
         assert.ok(body.includes("app.js"), "the identicon is the app's, drawn from the same bytes as the console's");
     });
 
     it("serves the same face at the speakable spelling, words verified", async () => {
-        const resp = await anon(`id/${speakableAddr}`);
+        const resp = await anon(`ringtome/user/${speakableAddr}`);
         assert.equal(resp.status, 200);
         const body = await resp.text();
         assert.ok(body.includes("Idface Test Persona"));
@@ -69,7 +69,7 @@ describe("the /id face", () => {
     it("REFUSES lying words, loudly, with the truth in hand", async () => {
         const key = speakableAddr.split("-")[2];
         const trueWords = speakableAddr.split("-").slice(0, 2).join("-");
-        const resp = await anon(`id/pagoda-dimension-${key}`);
+        const resp = await anon(`ringtome/user/pagoda-dimension-${key}`);
         assert.equal(resp.status, 400);
         const body = await resp.text();
         assert.ok(body.includes("mangled"), "the refusal says what happened");
@@ -78,32 +78,32 @@ describe("the /id face", () => {
 
     it("tombstones a root nobody here carries - warmly, 404", async () => {
         const stranger = "ee".repeat(32);
-        const resp = await anon(`id/${stranger}`);
+        const resp = await anon(`ringtome/user/${stranger}`);
         assert.equal(resp.status, 404);
         const body = await resp.text();
         assert.ok(body.includes("app.js"), "the same page, under a 404 - the app says nothing is here");
-        assert.ok(body.includes("/id/"), "it hands over the re-homeable address");
+        assert.ok(body.includes("/ringtome/user/"), "it hands over the re-homeable address");
     });
 
     it("hands a SESSION the SPA shell instead - the lens is the console's job", async () => {
-        const resp = await owner(`id/${root}`);
+        const resp = await owner(`ringtome/user/${root}`);
         assert.equal(resp.status, 200);
         const body = await resp.text();
-        assert.ok(body.includes("app.js"), "the SPA boots at /id for members");
+        assert.ok(body.includes("app.js"), "the SPA boots at /ringtome/user for members");
     });
 
     it("serves DEEP paths under a persona - the SPA's routes resolve in the client", async () => {
         // Two path params, one handler: axum extracts positionally, so the deep route needs
         // its own destructuring (a 500 here was the widget gallery's first finding).
-        const resp = await owner(`id/${root}/ui-demo`);
+        const resp = await owner(`ringtome/user/${root}/ui-demo`);
         assert.equal(resp.status, 200);
         assert.ok((await resp.text()).includes("app.js"), "a member gets the SPA to route it");
-        const anonDeep = await anon(`id/${root}/ui-demo`);
+        const anonDeep = await anon(`ringtome/user/${root}/ui-demo`);
         assert.equal(anonDeep.status, 200, "a stranger gets the persona's face, not a crash");
     });
 
     it("404s garbage that is not an address in any spelling", async () => {
-        const resp = await anon("id/not-an-address-at-all-really");
+        const resp = await anon("ringtome/user/not-an-address-at-all-really");
         assert.equal(resp.status, 404);
     });
 
@@ -123,6 +123,26 @@ describe("the /id face", () => {
 
         const missing = await anon(`api/id/${"ee".repeat(32)}/profile`);
         assert.equal(missing.status, 404);
+    });
+
+    it("the address before /ringtome/ redirects to it, hints kept - and a picture's bytes never move (2026-09-28)", async () => {
+        const at = async (path) => {
+            const r = await anon(path, { redirect: "manual" });
+            return [r.status, r.headers.get("location")];
+        };
+        assert.deepEqual(await at(`id/${speakableAddr}`), [307, `/ringtome/user/${speakableAddr}`]);
+        assert.deepEqual(await at(`id/${root}?via=k1,k2`), [307, `/ringtome/user/${root}?via=k1,k2`]);
+        const [doc, page] = ["0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"];
+        assert.deepEqual(await at(`id/${root}/post/${doc}`), [307, `/ringtome/user/${root}/post/${doc}`]);
+        assert.deepEqual(await at(`id/${root}/post/${doc}/${page}`), [307, `/ringtome/user/${root}/post/${doc}/page/${page}`], "a book's page, in the new spelling");
+        // The short form, and the app for every deeper path.
+        const short = speakableAddr.split("-")[2];
+        const face = await anon(`ringtome/user/${short}`);
+        assert.equal(face.status, 200, "the bare base58 is an address");
+        assert.ok((await face.text()).includes(`/ringtome/user/${short}`), "and the head's own URL is in the short form");
+        const deep = await anon(`ringtome/user/${short}/post/${doc}`);
+        assert.ok((await deep.text()).includes("app.js"), "a post's address is the app");
+        assert.ok((await (await anon("ringtome/notes")).text()).includes("app.js"), "and so is every other /ringtome/ path");
     });
 });
 

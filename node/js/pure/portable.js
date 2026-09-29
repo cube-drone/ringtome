@@ -7,11 +7,20 @@
 // hostname, another day) doesn't match and passes through untouched.
 
 /// Strip this node's own origin from every absolute self-URL in `text`, leaving the
-/// origin-relative path (`http://host/api/x` -> `/api/x`, `/home/...` links alike). Only
-/// origin-followed-by-slash matches, so prose that merely mentions the bare origin survives.
+/// origin-relative path (`http://host/api/x` -> `/api/x`). Only origin-followed-by-slash matches,
+/// so prose that merely mentions the bare origin survives.
+///
+/// EXCEPT a Ringtome address (Curtis, 2026-09-28): `…/ringtome/…` keeps the origin it was pasted
+/// with. A whole URL alone on a line is marquee's turbolink sugar, which a bare path never is; it
+/// still opens in a reader that is not ours; and every Ringtome renderer rehomes it on sight
+/// (pure/ringtome.js), so the origin costs nothing. What still strips is everything else under us
+/// - a picture's `/api/identity/…/body` above all, which publication bakes only in its path form.
 export function stripSelfOrigin(text, origin) {
     if (!text || !origin) return text;
-    return text.split(origin + '/').join('/');
+    return text
+        .split(origin + '/')
+        .map((piece, i) => (i === 0 ? piece : piece.startsWith('ringtome/') ? `${origin}/${piece}` : `/${piece}`))
+        .join('');
 }
 
 /// The `?via=` set for a minted address: this node first (the one provably alive - it is
@@ -28,8 +37,9 @@ export function viaHints(self, peers = [], cap = 10) {
     return out;
 }
 
-/// The mirror image of the stripper: MINT the persona's shareable identity address
-/// (PROJECT_PLAN, Addressing - "The prefix gets its name: /id/"). The origin comes from the
+/// MINT the persona's shareable identity address (PROJECT_PLAN, Addressing - since 2026-09-28
+/// under `/ringtome/user/`, the prefix that can only be us; "`/ringtome/` replaces `/home`, `/in`
+/// and `/id`"). The origin comes from the
 /// operator's declared public URL and nowhere else - never window.location, whose origin
 /// (localhost, a LAN name, a tailnet alias) proves nothing about what the world can dial. No
 /// declared URL means the origin-free path form: minimal, always correct, and the honest
@@ -39,5 +49,5 @@ export function identityAddress({ publicUrl, root, via = [] }) {
     const base = (publicUrl || '').trim().replace(/\/+$/, '');
     const keys = (via || []).filter(Boolean);
     const query = keys.length ? `?via=${keys.join(',')}` : '';
-    return `${base}/id/${root}${query}`;
+    return `${base}/ringtome/user/${root}${query}`;
 }

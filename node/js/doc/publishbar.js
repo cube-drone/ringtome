@@ -23,6 +23,7 @@ import { docStatus, isScheduled, publishedState } from '../pure/feed.js';
 import { Modal } from '../modal.js';
 import { api } from '../net.js';
 import { Icons } from '../icons.js';
+import { postHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -173,7 +174,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             ${standing === 'public' &&
             html`<a
                 class="publish-bar-view"
-                href=${`/id/${root}/post/${postId}`}
+                href=${postHref(root, postId)}
                 title=${t('doc.editor.open-the-public-version', 'open the public version')}
             ><${Icons.docPublic} /> ${t('doc.editor.view', 'view')}</a>`}
             ${standing === 'public' &&

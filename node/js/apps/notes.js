@@ -16,12 +16,11 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from '../net.js';
-import { openMirror, useLive } from '../mirror.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
-import { featuresOf, itemNoun, itemPlural, homeAppFor, bucketHolds } from '../pure/apps.js';
+import { featuresOf, itemNoun, itemPlural, bucketHolds } from '../pure/apps.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
@@ -33,6 +32,7 @@ import { t } from '../i18n.js';
 import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
+import { docHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -282,12 +282,10 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const hits = useSearch(root, searchQuery);
     const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter, kind: searchKind });
 
-    // Lost & Found's follow-me-home: route to the document's OFFICIAL app (first bucket's
-    // type, via the live roster; the unbucketed stay home here) - the deep-link
-    // bucket correction picks the right notebook once there, because the doc knows its own.
+    // Lost & Found's follow-me-home: the document's own address, which opens it in its first
+    // notebook's app (pure/naming.js `docPlacement`; the unbucketed stay here).
     const loc = useLocation();
-    const roster = useLive(() => (app.everything ? openMirror(root).buckets.toArray() : []), [root]);
-    const followHome = (d) => loc.route(`/home/${homeAppFor(d, roster).id}/${d.doc_id}`);
+    const followHome = (d) => loc.route(docHref(root, d.doc_id));
 
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));

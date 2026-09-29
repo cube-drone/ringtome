@@ -221,6 +221,34 @@ describe('matchSlugPath', () => {
     });
 });
 
+describe('where a notebook and a document live under /ringtome/ (2026-09-28)', () => {
+    it('a notebook: the app for its home notebook, the app and the slug for any other', async () => {
+        const n = await import('../../../js/pure/naming.js');
+        assert.equal(n.bucketHref('default'), '/ringtome/notes');
+        assert.equal(n.bucketHref('drawing'), '/ringtome/drawing');
+        assert.equal(n.bucketHref('Cook Book', [{ name: 'Cook Book', app: 'default' }]), '/ringtome/notes/notebook/cook-book');
+    });
+
+    it('a document opens in the notebook its address asks for, if it is filed there, else its first', async () => {
+        const n = await import('../../../js/pure/naming.js');
+        const roster = [{ name: 'Cook Book', app: 'default' }, { name: 'Family Recipes', app: 'default' }];
+        const soup = { doc_id: 'a'.repeat(32), buckets: ['Cook Book', 'Family Recipes'] };
+        assert.equal(n.docPlacement(soup, roster, 'family-recipes').bucket, 'Family Recipes');
+        assert.equal(n.docPlacement(soup, roster, 'nowhere').bucket, 'Cook Book', 'a stale hint is harmless');
+        assert.equal(n.docPlacement(soup, roster, null).app.id, 'notes');
+        assert.equal(n.docPlacement({ buckets: [] }, roster, null).app.id, 'lost-found', 'unfiled: Lost & Found');
+        assert.equal(n.docPlacement({ buckets: ['drawing'] }, roster, null).app.id, 'drawing');
+    });
+
+    it('asks which notebook only when there is a choice', async () => {
+        const n = await import('../../../js/pure/naming.js');
+        const soup = { buckets: ['Cook Book', 'Family Recipes'] };
+        assert.equal(n.bucketHint(soup, 'Family Recipes'), 'family-recipes');
+        assert.equal(n.bucketHint({ buckets: ['Cook Book'] }, 'Cook Book'), null, 'filed once: no question');
+        assert.equal(n.bucketHint(soup, 'Somewhere Else'), null, 'not filed there: no hint');
+    });
+});
+
 describe('buildSlugPath', () => {
     it('wears the app id for a home bucket', () => {
         assert.equal(buildSlugPath(doc(1, 'Shopping List'), { docs: [doc(1, 'Shopping List')] }),

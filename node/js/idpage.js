@@ -201,7 +201,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
                 ${tNodes(
                     'idpage.the-path-after-should-be',
                     "The path after {path} should be a persona's address - two words and a key, like {example}",
-                    { path: html`<code>/id/</code>`, example: html`<code>sway-broke-AwTy…</code>` },
+                    { path: html`<code>/ringtome/user/</code>`, example: html`<code>AwTy…</code>` },
                 )}
             </p>
         <//>`;
@@ -214,7 +214,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             <p>${t('idpage.the-words-on-this-address', 'This address is damaged.')}</p>
             <p>
                 ${tNodes('idpage.did-you-mean', 'Did you mean {suggestion}?', {
-                    suggestion: html`<a href="/id/${parsed.expected}-${key}"
+                    suggestion: html`<a href="/ringtome/user/${parsed.expected}-${key}"
                         ><code>${parsed.expected}-${key.slice(0, 8)}…</code></a
                     >`,
                 })}
@@ -239,7 +239,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             ${via
                 ? t('idpage.none-of-the-computers-its', 'none of the computers its address points at answered.')
                 : t('idpage.its-address-carries-no-hints', 'its address carries no hints about where to find it.')}</p>
-            <p class="id-address"><code>/id/${speak}</code></p>
+            <p class="id-address"><code>/ringtome/user/${speak}</code></p>
         <//>`;
     }
 

@@ -157,7 +157,7 @@ export const PushRoutes = () => {
         if (!('serviceWorker' in navigator)) return undefined;
         const onMessage = (event) => {
             const d = event.data;
-            if (d && d.type === 'route' && typeof d.route === 'string' && d.route.startsWith('/home')) loc.route(d.route);
+            if (d && d.type === 'route' && typeof d.route === 'string' && (d.route.startsWith('/ringtome') || d.route.startsWith('/home'))) loc.route(d.route);
         };
         navigator.serviceWorker.addEventListener('message', onMessage);
         return () => navigator.serviceWorker.removeEventListener('message', onMessage);

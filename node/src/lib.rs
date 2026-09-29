@@ -709,7 +709,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/home", get(ui::homepage))
         // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
         // deeper resource paths; the segment parser only reads the first segment for now.
-        .route("/id/{seg}", get(idface::idface))
+        // The /ringtome surface (2026-09-28): a person, and everything beneath them, at the
+        // one prefix that can only be us; the persona's head for an unfurler, the app for a
+        // reader. `/id/` pages now redirect here; `/id/…/docs/…` bytes stay where they are.
+        .route("/ringtome/user/{seg}", get(idface::idface))
+        .route("/ringtome/user/{seg}/{*rest}", get(idface::idface_deep))
+        .route("/ringtome", get(ui::homepage))
+        .route("/ringtome/{*wildcard}", get(ui::homepage))
+        .route("/id/{seg}", get(idface::legacy_id))
         // Public document bytes: static segments beat the page wildcard below, so these
         // resolve first (matchit's specificity, relied on deliberately).
         .route("/id/{seg}/docs/{doc}/body", get(idface::public_body_route))
@@ -718,7 +725,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             get(idface::public_body_named_route),
         )
         .route("/id/{seg}/docs/{doc}/thumb", get(idface::public_thumb_route))
-        .route("/id/{seg}/{*rest}", get(idface::idface_deep))
+        .route("/id/{seg}/{*rest}", get(idface::legacy_id_deep))
         .route("/api/id/{seg}/profile", get(idface::id_profile))
         .route("/api/id/{seg}/posts", get(idface::id_posts))
         .route("/api/id/{seg}/labels", get(idface::id_labels))

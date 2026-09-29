@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1157 phrases across 73 files.
+// 1164 phrases across 75 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -47,6 +47,7 @@ export default {
     'apps.chat.someone-you-dont-trust': "someone you don't trust",
     'apps.chat.edited': '(edited)',
     'apps.chat.react-with-an-emoji': 'react with an emoji',
+    'apps.chat.copy-link': 'copy link',
     'apps.chat.edit-this-line': 'edit',
     'apps.chat.delete-this-line': 'delete',
     'apps.chat.mute-this-person': 'mute this person in the room',
@@ -618,6 +619,11 @@ export default {
     'doc.tree.section': 'section',
     'doc.tree.nothing-here-yet---start': 'nothing here yet - start a {itemNoun}, or a section to put them in.',
 
+    // --- node/js/doc/turbolinks.js ---
+    'doc.turbolinks.this-document-is-private': '(THIS DOCUMENT IS PRIVATE)',
+    'doc.turbolinks.a-chat-room': 'a chat room',
+    'doc.turbolinks.untitled': 'untitled',
+
     // --- node/js/doc/upload.js ---
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
     'doc.upload.drag-a-file-here-or': 'drag a file here, or',
@@ -672,7 +678,6 @@ export default {
     'index.more-search-options': 'more search options',
     'index.show': 'show',
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',
-    'index.looking-that-up': 'looking that up…',
     'index.filter-their-posts': 'filter their posts…',
     'index.back-to-people': 'back to hrsePeople™',
     'index.back-to-their-page': 'back to their page',
@@ -681,6 +686,8 @@ export default {
     'index.back-to-the-list': 'back to the list',
     'index.close-this-app': 'close this app',
     'index.loading': 'Loading…',
+    'index.this-document-is-private': '(THIS DOCUMENT IS PRIVATE)',
+    'index.looking-that-up': 'looking that up…',
     'index.people': 'people',
     'index.this-node': 'this node',
     'index.search-this-node': 'search this node…',
@@ -688,6 +695,10 @@ export default {
     'index.feed': 'feed',
     'index.sign-in': 'sign in',
     'index.loading-2': 'Loading…',
+
+    // --- node/js/links.js ---
+    'links.copied': 'copied!',
+    'links.copy-link': 'copy link',
 
     // --- node/js/modal.js ---
     'modal.close': 'close',
@@ -980,7 +991,7 @@ export default {
     // --- node/js/slugpage.js ---
     'slugpage.looking': 'looking…',
     'slugpage.nobody-here-by-that-name': 'nobody on this node goes by that name',
-    'slugpage.a-name-is-this-nodes': 'short names only work on this site. A real address starts with /id/.',
+    'slugpage.a-name-is-this-nodes': 'short names only work on this site. A real address starts with /ringtome/user/.',
 
     // --- node/js/version.js ---
     'version.dev-build': 'a development build of {branch}, on {version}',

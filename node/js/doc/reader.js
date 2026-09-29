@@ -20,7 +20,7 @@ import { decoratedBodyUrl, FileDropper } from './upload.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
-import { slugPathFor } from './address.js';
+import { docHref, shareUrl } from '../links.js';
 import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
@@ -32,7 +32,7 @@ const html = htm.bind(h);
 // The reader: read-only display of one document's resolved current state. `body` arrives
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
-const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
+const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const [copying, setCopying] = useState(false); // copy into private notes (2026-09-08)
     // The shared read-only loader (doc/detail.js). Write failures below get their own state; the
     // header shows whichever error is live.
@@ -49,12 +49,13 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
     const [linkCopied, setLinkCopied] = useState(false);
     // For a MEDIA document the useful link is the file itself: the decorated byte URL pastes
     // straight into `![](…)` and renders (the cozy document address never can - the embed
-    // sniff needs the extension). Text documents keep the crosslink address.
+    // sniff needs the extension). A text document copies its address (2026-09-28): a
+    // `/ringtome/…/doc/` link, which unfolds wherever it is pasted in the app.
     const isMedia = doc && doc.format !== 'marquee' && doc.format !== 'plaintext';
     const copyLink = async () => {
         const p = isMedia
             ? decoratedBodyUrl(root, docId, doc.format, doc.title, !!(doc.media && doc.media.animation))
-            : await slugPathFor(root, docId, bucket);
+            : await shareUrl(docHref(root, docId));
         if (!p) return;
         try {
             await navigator.clipboard.writeText(p);

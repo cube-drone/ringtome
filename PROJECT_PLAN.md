@@ -1884,16 +1884,150 @@ https://<node>/id/<root>/<path>[?via=<key>[,<key>…]]
   anonymous visitor at the same path gets one of the gateway's three answers (Moderation, The Web Gateway): the shelf
   with its disclaimer, the signpost, or the honest dead end; an authenticated member asking about an off-shelf root
   gets the temporary fetch-and-serve.
-- **`/home` stays identity-free, exactly as ruled.** No foreign root ever appears under `/home`; the console's
+- *(Superseded 2026-09-28 - see "`/ringtome/` replaces `/home`, `/in` and `/id`" below.)* **`/home` stays identity-free, exactly as ruled.** No foreign root ever appears under `/home`; the console's
   people surface is a **rolodex** (`/home/people` - your follows, friends, contact names, identity-free at the
   list level) whose entries navigate *out* to `/id/<root>`. The structural signal survives unrefined: a `/home`
   URL is never shareable, an `/id/` URL always is.
 - **The query namespace is reserved, `/id/`-wide.** `?via=` (reachability hints) and the eventual view/log
   modifier belong to the address layer; resource paths under `/id/` never define their own query parameters.
+  *(Amended 2026-09-28, Curtis: a document's address may carry `?bucket=` - which notebook it was opened in
+  - see "`/ringtome/` replaces `/home`, `/in` and `/id`".)*
   Costless in practice: signed documents carry the origin-free *path* form, so query strings never survive into
   stored references anyway - they are envelope, not address.
 - **Handles alias onto it later** (`/@curtis` → `/id/<root>` on nodes that know the handle) - pointers, never
   authority, per Naming below.
+
+### `/ringtome/` replaces `/home`, `/in` and `/id` (Curtis, 2026-09-28; slices 1 and 2 built 2026-09-28)
+
+**The problem it answers.** A post's address (`/id/<root>/post/<doc>`) pasted into any text box stayed
+plain text: the paste rule stripped our own origin, and marquee only unfolds a line that is a whole
+`scheme://` URL, so it rendered as a long unreadable path - not even a link. A link from another node
+unfolded, but through the generic OpenGraph fetcher, which drew the *author's* card, not the post. There
+was no copy-link on a feed card, a post or a chat line. And a private note linking another private note
+published the link verbatim (a cozy `/in/…` path), which on the post resolves against the *reader's*
+notebooks - nothing, or the wrong page - even after the target is itself published.
+
+**The ruling.** Every address the app mints, and every address its URL bar shows, is one grammar under
+one prefix that can only be us:
+
+```
+https://<any origin>/ringtome/user/<root>                          a person
+https://<any origin>/ringtome/user/<root>/post/<doc>               a public post
+https://<any origin>/ringtome/user/<root>/post/<book>/page/<doc>   a book's page (the page's own post id)
+https://<any origin>/ringtome/user/<root>/doc/<doc>                any other document, private or public
+https://<any origin>/ringtome/user/<root>/room/<doc>[/line/<hash>] a chat room, or one line in it
+https://<any origin>/ringtome/<app>[/…]                            the console's apps (launcher: /ringtome)
+```
+
+`<root>` is the **short form**: bare base58, no checksum words (44 characters); the resolver still
+accepts hex and the worded form. `<doc>` is the 32-hex document id. `?via=` stays the address layer's.
+`user` is reserved under `/ringtome/`: no app may take it.
+
+- **The origin is a lens, never trusted, and the marker makes that mechanical.** `/id/` could appear on
+  any site; `/ringtome/` announces itself. Any Ringtome renderer seeing `/ringtome/…` at any origin
+  **rehomes it at render**: the link drawn, and the card fetched, are the reader's own node's. A link
+  copied from `http://localhost:8374/…` inside a public post works for every reader. Resolution is by
+  key (root and document id), and signatures prove what arrives, so a hostile origin costs nothing.
+- **The URL bar is the copy source.** Posts, people, rooms and documents navigate at their `/ringtome/`
+  addresses, so "copy the address bar" is always right; a copy button on feed cards, posts, chat lines
+  and the editor copies exactly that (the desktop app has no address bar). A copy mints the node's
+  public URL when it has one, and its own origin otherwise.
+- **Stored text keeps the origin (the paste strip goes).** A whole URL on its own line is marquee's
+  turbolink sugar, and it still opens in a reader that is not ours. *Supersedes* "signed documents carry
+  the origin-free path" above: render-time rehoming does the strip's job without rewriting what the
+  author pasted. Residual: a desktop app's links carry `localhost`, dead outside Ringtome (Discord,
+  email) until there is a public gateway to mint against.
+- **The cozy `/home` and `/in` paths are discarded** (Curtis: "everything uses the complicated ugly
+  paths - we're essentially replacing 'home' (which could be any site) with 'ringtome' (which can be only
+  us)"). *Supersedes* "*Local addresses: three floors*" and "`/home` stays identity-free": a private
+  document now has an address that names you and looks shareable - and it is safe to share, because
+  anyone else gets the private placeholder below. Documents already hold `/home/…` and `/in/…` links in
+  their bodies (drag-to-link), and rewriting synced text in place would fight the merge, so the old
+  paths **redirect** to their `/ringtome/` form forever; nothing mints them. `/id/…` is likewise an alias
+  that redirects: published bodies carry `/id/<root>/docs/<twin>/body/…` picture paths inside signed
+  documents, which can never change.
+
+**One resolver** takes `/ringtome/user/<root>/{post,doc}/<doc>` - a wrong kind still lands:
+
+1. the reader holds the document (it is theirs, or public and carried here): open it, or draw its card;
+2. one of `<root>`'s public posts carries **`published_from = <doc>`**: that post;
+3. otherwise **"(THIS DOCUMENT IS PRIVATE)"** - the same answer whether the document is private or
+   never existed.
+
+A reader's node that does not carry `<root>` asks the persona's node, by the ladder below, as a post
+peek already does.
+
+**The private-to-public map: `published_from`.** Publishing already records `published_as` (note → post)
+on the private note, which no stranger can read. Publishing now also writes the reverse as a **public
+label on the post**, `published_from = <note id>` - an ordinary signed annotation, riding the chain to
+every node that carries the persona; no wire change (Curtis: acceptable). So a published post that
+links a private note shows the placeholder *until that note is published*, and then resolves on its own,
+with nothing republished. What it reveals: that this post came from note X - a random 128-bit id nobody
+has except from a link its author already gave them.
+
+**The turbolink.** A ringtome turbolink plugin (doc/turbolinks.js, ahead of the OpenGraph one) matches
+`/ringtome/` at any origin and draws from the resolver: a post card (byline, title, first picture,
+replies), a person card, a room line for members, or the placeholder. Mid-sentence, the same address is
+an ordinary link, drawn rehomed. A post page's own server head becomes the post's (title, picture,
+snippet) rather than the author's, for the unfurlers outside.
+
+**Slices.**
+1. *The links*: `/ringtome/` routes on the node and in the app, `/id/` redirecting; the resolver and
+   its turbolink card and placeholder; the paste strip gone; copy buttons.
+2. *The URL bar*: every content page and app at its `/ringtome/` address; `/home` and `/in` redirect.
+3. *The map*: `published_from` at publish; the placeholder turning into the post.
+4. *The outside*: the post page's own OpenGraph head.
+
+**Settled** (Curtis, 2026-09-28): a notebook's own page is `/ringtome/<app>/notebook/<bucket slug>`; a
+document filed in two notebooks carries `?bucket=` (below), and opens in its first without one.
+
+**Slice 1, as built** (2026-09-28). `pure/ringtome.js` mints, reads (at any origin) and rehomes the
+grammar; `links.js` is the one place the app mints an address (`personHref`, `postHref`, `docHref`,
+`roomHref`) and its whole shareable URL (`shareUrl`: the declared public URL, else this page's
+origin). The node serves `/ringtome/user/{seg}[/…]` with the persona's head (its `og:url` now the
+short form) and every other `/ringtome/…` path as the app; `/id/{seg}[/…]` pages answer **307** to
+their `/ringtome/` spelling, hints kept - temporary while the grammar is young - and `/id/…/docs/…`
+bytes never move. In the app: the person and post pages live at their `/ringtome/` addresses and
+old `/id/` links bounce there; a `/doc/` address opens your own document where it lives, a public
+post as the post, and otherwise "(THIS DOCUMENT IS PRIVATE)"; a `/room/` address still lands in
+`/home/chat/…` until slice 2 moves the address bar. The `ringtome` turbolink plugin runs ahead of the
+OpenGraph one and draws a card (face, name, title, date, picture) or the placeholder, linking to this
+node's own path, and the raw link beside it is hidden; an ordinary link to a `/ringtome/` address at
+another origin takes the local path when pointed at, focused or clicked. A copy-link chip sits on
+feed cards and posts (just before copy-into-notes), on chat lines, and in the editor; the reader's
+copy-link gives a text document its `/doc/` address. Two departures from the design above:
+
+- **The paste strip stays for everything but Ringtome addresses.** A pasted self-URL to a picture
+  (`/api/identity/…/body`) must still arrive as a path, because publication bakes only the path
+  form - a `localhost` picture would be an external embed the node refuses to fetch. A
+  `/ringtome/…` URL keeps its origin, as ruled.
+- **A book's page is its own post id** (`/post/<book>/page/<doc>`), as the old `/id/` links were.
+
+Residuals: a copied post or document address carries no `?via=` yet (a person's does), so a reader's
+node finds a stranger by the directory alone; the placeholder is still words, not yet the map of
+slice 3.
+
+**`?bucket=`** (Curtis, 2026-09-28). A document can be filed in several notebooks at once, and its
+address alone does not say which it was opened in - so when it is filed in more than one, its address
+carries the notebook in view as a slug, `…/doc/<id>?bucket=family-recipes` (pure/naming.js
+`bucketHint`). A preference, never an authority: honoured only for the document's owner and only while
+it is still filed there; stale or foreign, it is ignored and the document opens in its first notebook
+(`docPlacement`). A notebook's name is private, so the hint must not leak into public text: posts'
+own addresses never carry it, and slice 3's rewrite at publish drops it.
+
+**Slice 2, as built** (2026-09-28). The signed-in app lives under `/ringtome`: the console at
+`/ringtome`, each app at `/ringtome/<app>`, a notebook's list at `/ringtome/<app>/notebook/<slug>`
+(`bucketHref`), the persona's pages at `/ringtome/persona/…`, a room at its
+`/ringtome/user/<author>/room/<doc>[/line/<hash>]`, and your own document at its
+`/ringtome/user/<you>/doc/<id>` - the shell reads the notebook it opens in off the mirror row and the
+`?bucket=` (`docPlacement`), and the app from that notebook's type, so the documents app itself is
+unchanged. Selecting a document routes to its address (with `?bucket=` when it is filed twice); the
+header's notebook switcher routes to the notebook's list; the everything-view, which is no notebook's,
+keeps `/ringtome/<app>/<id>`. A diff is `…/doc/<id>/diff`. Crosslinks (dragged in, or picked from the
+`[` completion) are written as the document's address, final at once - the cozy-form swap is gone,
+and with it the address-bar dressing and `slugPathFor`. The node's alerts point at a room's address and
+`/ringtome/notifications`. `/home/…` and `/in/…` are **redirects** now (index.js `LegacyHome`, the old
+cozy resolver kept for exactly this), and nothing in the app mints them.
 
 ### Resolution: the lens runs the ladder
 
@@ -3576,7 +3710,10 @@ Residuals: a chain is what the source's author said, so a source that dropped it
 drops them for everyone downstream; the fresh twins a posted copy mints carry no
 provenance statements of their own - the post does.
 
-### Local addresses: three floors (settled 2026-09-08)
+### Local addresses: three floors (settled 2026-09-08; superseded 2026-09-28)
+
+*Superseded by "`/ringtome/` replaces `/home`, `/in` and `/id`" under Addressing: the cozy paths are
+discarded, and survive only as redirects. Kept as the record of why they were built.*
 
 The console's own addresses live on three floors that can never meet:
 

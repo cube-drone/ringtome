@@ -25,6 +25,7 @@ import { Chip, NavChips } from './chips.js';
 import { Annotations } from './annotations.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
 import { api, xhrUpload, saveFile } from '../net.js';
+import { docHref } from '../links.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { ColourPicker } from './colourpicker.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
@@ -735,7 +736,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         try {
             await session.save(); // the duplicate is of the drawing as it stands, unsaved strokes too
             const made = await duplicateDrawing(root, docId);
-            loc.route(`/home/drawing/${made}`); // the copy opens, in the Drawing app
+            loc.route(docHref(root, made)); // the copy opens, in the Drawing app
         } catch (e) {
             setActionError(e.message);
         } finally {

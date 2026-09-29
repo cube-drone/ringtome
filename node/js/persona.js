@@ -26,6 +26,7 @@ import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
+import { personHref, personaPageHref, LAUNCHER } from './links.js';
 
 const html = htm.bind(h);
 
@@ -595,7 +596,7 @@ export const PersonaHome = ({ persona }) => {
     const loc = useLocation();
     const root = persona.current && persona.current.root;
     useEffect(() => {
-        if (root) loc.route(`/id/${speakable(root)}`, true);
+        if (root) loc.route(personHref(root), true);
     }, [root]); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
 };
@@ -635,35 +636,35 @@ export const PersonaMenu = ({ persona, session }) => {
             ${session && session.account && (session.account.tags || []).includes(NODE_ADMIN_TAG) &&
             html`<p class="persona-menu-note">${t('persona.you-administer-this-node', 'you administer this node')}</p>`}
             <nav class="persona-menu">
-                <a class="persona-menu-item" href="/home/persona/profile">
+                <a class="persona-menu-item" href=${personaPageHref('profile')}>
                     <span class="persona-menu-icon"><${Icons.profile} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.profile', 'profile')}</strong>
                         <small>${t('persona.your-name-and-how-you', 'your name and how you appear')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href="/home/persona/settings">
+                <a class="persona-menu-item" href=${personaPageHref('settings')}>
                     <span class="persona-menu-icon"><${Icons.appSettings} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.application-settings-menu', 'application settings')}</strong>
                         <small>${t('persona.how-the-app-behaves', 'how the app behaves for you, on this browser')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href="/home/persona/personas">
+                <a class="persona-menu-item" href=${personaPageHref('personas')}>
                     <span class="persona-menu-icon"><${Icons.personas} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.your-personas', 'your personas')}</strong>
                         <small>${t('persona.manage-who-you-appear-to-be', 'manage who you appear to be')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href="/home/persona/computers">
+                <a class="persona-menu-item" href=${personaPageHref('computers')}>
                     <span class="persona-menu-icon"><${Icons.computers} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.your-computers-2', 'your computers')}</strong>
                         <small>${t('persona.the-machines-that-carry-this', "the computers you're signed in on")}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href="/home/persona/content">
+                <a class="persona-menu-item" href=${personaPageHref('content')}>
                     <span class="persona-menu-icon"><${Icons.biohazard} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.content-control', 'content control')}</strong>
@@ -828,7 +829,7 @@ export const Profile = ({ current }) => {
             if (bio.dirty) await bio.commit();
             // Saved: back to your own page, where the words now show (Curtis, 2026-09-27). A
             // failed save stays here, with its error.
-            loc.route(`/id/${speakable(root)}`);
+            loc.route(personHref(root));
             return;
         } catch (e) {
             setFlash(e.message || 'that save did not take - try again');
@@ -1098,7 +1099,7 @@ export const Personas = ({ persona, current }) => {
                             : html`<button
                                   class="persona-row-switch"
                                   disabled=${busy || p.standing !== 'active'}
-                                  onClick=${run(() => persona.switchTo(p.root_pubkey).then(() => loc.route('/home')))}
+                                  onClick=${run(() => persona.switchTo(p.root_pubkey).then(() => loc.route(LAUNCHER)))}
                               >${t('persona.switch', 'switch')}</button>`}
                     </div>`;
                 })}

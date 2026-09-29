@@ -17,6 +17,7 @@ import htm from 'htm';
 import { api, isDevice } from '../net.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
+import { appHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -40,7 +41,7 @@ const Landing = () => html`
     <div class="device">
         <nav class="device-menu">
             ${pages().map(
-                (page) => html`<a class="removal-option" href=${`/home/device/${page}`} key=${page}>
+                (page) => html`<a class="removal-option" href=${`${appHref('device')}/${page}`} key=${page}>
                     <span class="removal-option-title">${page === 'registration' ? t('device.registration', 'Registration') : t('device.backups', 'Backups')}</span>
                     <span class="removal-option-sub">
                         ${page === 'registration'

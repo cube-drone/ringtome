@@ -60,17 +60,39 @@ export const pathSegments = (segs) => (segs || []).filter(Boolean).map((s) => de
 /// practice - but a pure function should not depend on its caller's ordering, and the module's
 /// doctrine is that ties are deterministic and boring. (The colliding bucket's own links may still
 /// resolve nowhere; a derived address is a pointer, never authority.)
-/// Where a bucket lives (Curtis, 2026-09-08): apps own `/home/<app>`, and every other
+/// Where a bucket LIVED (Curtis, 2026-09-08; the cozy addresses, superseded 2026-09-28 by
+/// `/ringtome/` - see `bucketHref` below - and kept to read old links): apps owned `/home/<app>`, and every other
 /// bucket lives under its own word, `/in/<slug>`, so a new app can never shadow a
 /// notebook somebody already named - the two namespaces are disjoint by construction. An
 /// app's home bucket (the one that wears the app's style name) keeps the app's address.
 export const BUCKET_PREFIX = 'in';
 
-/// The address of a bucket's own list: `/home/<app>` for an app's home bucket, else
-/// `/in/<slug>`.
-export function bucketHref(bucketName) {
-    const app = appForStyle(bucketName);
-    return app && bucketName === app.style ? `/home/${app.id}` : `/${BUCKET_PREFIX}/${slugify(bucketName)}`;
+/// The address of a notebook's own list (2026-09-28, PROJECT_PLAN's "`/ringtome/` replaces …"):
+/// `/ringtome/<app>` for an app's home notebook, else `/ringtome/<app>/notebook/<slug>` - the app
+/// that opens a notebook of its type, found through the roster when one is given.
+export function bucketHref(bucketName, roster) {
+    const app = appForStyle(appTypeOf(bucketName, roster));
+    if (!app) return '/ringtome';
+    return bucketName === app.style ? `/ringtome/${app.id}` : `/ringtome/${app.id}/notebook/${slugify(bucketName)}`;
+}
+
+/// Where a document opens (2026-09-28): the notebook and the app around it. The notebook the
+/// address asks for (`hint`, a slug) when the document is filed there, else its first; the app
+/// is that notebook's, and an unfiled document's is Lost & Found - `homeAppFor`'s rule.
+export function docPlacement(row, roster, hint) {
+    const names = (row && row.buckets) || [];
+    const bucket = (hint && names.find((n) => slugify(n) === hint)) || names[0] || null;
+    const app = bucket ? appForStyle(appTypeOf(bucket, roster)) : appById('lost-found');
+    return { bucket, app };
+}
+
+/// The `?bucket=` a document's address carries: the notebook in view, as a slug - but only when
+/// the document is filed in more than one, since that is the only time which one it was opened
+/// in is a question. Null otherwise.
+export function bucketHint(row, bucket) {
+    const names = (row && row.buckets) || [];
+    if (names.length < 2 || !bucket || !names.includes(bucket)) return null;
+    return slugify(bucket) || null;
 }
 
 export function bucketFor(seg, roster, { cozy = false } = {}) {

@@ -77,7 +77,8 @@ export function speakable(rootHex) {
     return `${a}-${b}-${toBase58(rootHex)}`;
 }
 
-/// A pasted reference in ANY dress - a full shared URL, an /id/ path, or a bare address -
+/// A pasted reference in ANY dress - a full shared URL, a `/ringtome/user/` or old `/id/` path, or
+/// a bare address -
 /// dissected to { seg, via } for the lookup box. The seg is NOT validated here beyond
 /// shape-finding; route it to /id/<seg> and let that surface's own grammar judge it (a
 /// mangled checksum gets the "did you mean" there, which beats a terse refusal here).
@@ -86,7 +87,7 @@ export function parseIdReference(text) {
     let t = (text || '').trim();
     if (!t) return null;
     let via = '';
-    const m = t.match(/\/id\/([^/?#\s]+)[^?#\s]*(?:\?([^#\s]*))?/);
+    const m = t.match(/\/(?:ringtome\/user|id)\/([^/?#\s]+)[^?#\s]*(?:\?([^#\s]*))?/);
     if (m) {
         t = decodeURIComponent(m[1]);
         const viaMatch = (m[2] || '').match(/(?:^|&)via=([^&]*)/);

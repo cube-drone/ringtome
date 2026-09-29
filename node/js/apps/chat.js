@@ -56,6 +56,7 @@ import { insertNewlineAndIndent } from '@codemirror/commands';
 import { ImagePickModal } from '../doc/imagepick.js';
 import { pickedReference } from '../doc/pickref.js';
 import { DrawingThumb } from '../doc/drawing.js';
+import { personHref, postHref, roomHref, copyLink, appHref } from '../links.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
@@ -141,7 +142,7 @@ const RoomRow = ({ room, current, selected }) => {
     // Bold where something was said since this persona last looked (the `rooms_seen`
     // register, synced to every computer); the newest word's time beneath every room.
     const cls = ['chat-row', selected ? 'chat-row-selected' : '', room.unread ? 'chat-row-unread' : ''].filter(Boolean).join(' ');
-    return html`<li class=${cls} onClick=${() => loc.route(`/home/chat/${room.author}/${room.doc_id}`)}>
+    return html`<li class=${cls} onClick=${() => loc.route(roomHref(room.author, room.doc_id))}>
         <span class="chat-row-face" title=${person.primary || speakable(room.author)}>
             <${PersonHex} person=${person} size="small" />
         </span>
@@ -182,7 +183,7 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     />`;
     return html`<aside class="chat-rooms">
         <${PaneHead} label=${t('apps.chat.chats', 'chats')} onTuck=${onTuck} />
-        <button class="chat-new-btn" onClick=${() => loc.route('/home/chat/new')}>
+        <button class="chat-new-btn" onClick=${() => loc.route(`${appHref('chat')}/new`)}>
             ${t('apps.chat.new-chat', '+ new chat')}
         </button>
         ${rooms && rooms.length === 0
@@ -369,7 +370,7 @@ const NewRoom = ({ root, onMade }) => {
 /// this reader calls them (their nickname when one is set, else the display name), inline.
 const Speaker = ({ root, current }) => {
     const person = usePerson(root, { current });
-    return html`<a class="chat-speaker" href=${`/id/${speakable(root)}`}>
+    return html`<a class="chat-speaker" href=${personHref(root)}>
         <${PersonHex} person=${person} size="small" />
         <span class="chat-speaker-name">${person.primary || speakable(root)}</span>
     </a>`;
@@ -426,7 +427,7 @@ const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notic
     <${PersonChip} root=${m.notice_subject} current=${current} />
 </li>`;
 
-const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, onMute, hushed, found }) => {
+const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, onMute, hushed, found, room }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -470,6 +471,15 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
             <button class="chat-line-act" type="button" title=${t('apps.chat.react-with-an-emoji', 'react with an emoji')} onClick=${() => setPicking((p) => !p)}>
                 <${Icons.smiley} />
             </button>
+            ${/* This line's address (2026-09-28): pasted in the app it unfolds for the room's
+                members, and for nobody else. */ ''}
+            ${room &&
+            html`<button
+                class="chat-line-act"
+                type="button"
+                title=${t('apps.chat.copy-link', 'copy link')}
+                onClick=${() => copyLink(roomHref(room.author, room.doc, m.hash)).catch(() => {})}
+            ><${Icons.link} /></button>`}
             ${mine &&
             html`<button class="chat-line-act" type="button" title=${t('apps.chat.edit-this-line', 'edit')} onClick=${() => onEdit && onEdit(m)}><${Icons.rename} /></button>
                 <button class="chat-line-act chat-line-act-danger" type="button" title=${t('apps.chat.delete-this-line', 'delete')} onClick=${() => onDelete && onDelete(m)}><${Icons.trash} /></button>`}
@@ -979,7 +989,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             /* the list re-reads on the next look */
         }
         if (onChanged) onChanged();
-        loc.route('/home/chat');
+        loc.route(appHref('chat'));
     };
     const closeRoom = async () => {
         if (!roomDraft || closing) return;
@@ -1033,7 +1043,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         try {
             await api(`/api/identity/${root}/posts/${doc}`, { method: 'DELETE' });
             if (onChanged) onChanged();
-            loc.route('/home/chat');
+            loc.route(appHref('chat'));
         } catch (e) {
             setSendError(e.message || String(e));
             setGoing(false);
@@ -1054,7 +1064,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             });
             setBlocking(false);
             if (onChanged) onChanged();
-            loc.route('/home/chat');
+            loc.route(appHref('chat'));
         } catch (e) {
             setSendError(e.message || String(e));
             setBlocking(false);
@@ -1231,7 +1241,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     <${Icons.colRebroadcast} />
                 </button>`}
                 ${!room.im &&
-                html`<a class="chip chip-button" href=${`/id/${speakable(author)}/post/${doc}`} title=${t('apps.chat.the-rooms-post', "the room's post")}>
+                html`<a class="chip chip-button" href=${postHref(author, doc)} title=${t('apps.chat.the-rooms-post', "the room's post")}>
                     <${Icons.feed} />
                 </a>`}
                 ${room.im &&
@@ -1297,7 +1307,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         ${at &&
         html`<p class="chat-landed">
             ${t('apps.chat.you-are-reading-back', 'reading back from a search')}
-            <button class="chat-older" type="button" onClick=${() => loc.route(`/home/chat/${author}/${doc}`)}>
+            <button class="chat-older" type="button" onClick=${() => loc.route(roomHref(author, doc))}>
                 ${t('apps.chat.jump-to-the-newest', 'jump to the newest')}
             </button>
         </p>`}
@@ -1347,6 +1357,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                                   nobody: the menu stands down with the composer. */ ''}
                               hushed=${iAmMuted}
                               found=${at === m.hash}
+                              room=${{ author, doc }}
                           />`
                 )}
             </ul>
@@ -1583,7 +1594,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
         restored.current = true;
         const [was, wasDoc] = wasOpen.split('/');
         if ((page.items || []).some((r) => r.author === was && r.doc_id === wasDoc)) {
-            loc.route(`/home/chat/${was}/${wasDoc}`);
+            loc.route(roomHref(was, wasDoc));
         } else {
             setWasOpen('');
         }
@@ -1636,7 +1647,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                               one is a route and the box empties behind you. */ ''}
                           onOpen=${(h) => {
                               if (onSearch) onSearch('');
-                              loc.route(`/home/chat/${h.author}/${h.doc_id}/${h.hash}`);
+                              loc.route(roomHref(h.author, h.doc_id, h.hash));
                           }}
                       />`
                     : makingNew
@@ -1644,7 +1655,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                           root=${root}
                           onMade=${(post) => {
                               load();
-                              loc.route(`/home/chat/${root}/${post}`);
+                              loc.route(roomHref(root, post));
                           }}
                       />`
                     : selected

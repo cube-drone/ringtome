@@ -13,6 +13,7 @@ import { t } from '../i18n.js';
 import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
+import { postHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -29,7 +30,7 @@ const soft = (loc) => (e) => {
 const Tree = ({ section, root, book, page, depth, loc }) => html`<ul class=${depth === 0 ? 'book-reader-list book-reader-list-top' : 'book-reader-list'}>
     ${section.pages.map(
         (p) => html`<li class=${p.post === page ? 'book-reader-page book-reader-page-current' : 'book-reader-page'} key=${p.post}>
-            <a href=${`/id/${root}/post/${book}/${p.post}`} onClick=${soft(loc)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
+            <a href=${postHref(root, book, p.post)} onClick=${soft(loc)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
         </li>`
     )}
     ${section.sections.map(
@@ -101,7 +102,7 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     if (payload === null) return html`<p class="postpage-missing">${t('doc.bookreader.this-book-cannot-be-read', 'this book cannot be read here yet')}</p>`;
     const nav = page ? neighbours(payload, page) : { index: -1, prev: null, next: null, order: neighbours(payload, '').order };
     const here = nav.index >= 0 ? nav.order[nav.index] : null;
-    const go = (post) => loc.route(post ? `/id/${root}/post/${book}/${post}` : `/id/${root}/post/${book}`);
+    const go = (post) => loc.route(postHref(root, book, post || null));
     const steps = html`<nav class="book-reader-nav">
         <button class="book-reader-step" disabled=${!nav.prev} title=${t('doc.bookreader.the-page-before', 'the page before')} onClick=${() => nav.prev && go(nav.prev.post)}>
             <${Icons.back} /> ${t('doc.bookreader.previous', 'previous')}

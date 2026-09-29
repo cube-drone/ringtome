@@ -40,12 +40,12 @@ import { stripSelfOrigin } from '../pure/portable.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
 import { CopyIntoModal } from '../copyinto.js';
-import { slugPathFor } from './address.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { ImagePickModal } from './imagepick.js';
 import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
+import { CopyLinkChip, docHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -151,20 +151,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         document.addEventListener('mousedown', onDown);
         return () => document.removeEventListener('mousedown', onDown);
     }, [showMeta]); // the tags/date/description dropdown
-    // The copy-a-cozy-link chip: computes this doc's derived address (doc/address.js) and puts it on
-    // the clipboard - the crosslink you paste into another document.
-    const [linkCopied, setLinkCopied] = useState(false);
-    const copyLink = async () => {
-        const p = await slugPathFor(root, docId, bucket);
-        if (!p) return;
-        try {
-            await navigator.clipboard.writeText(p);
-        } catch {
-            return; // clipboard denied: no false "copied!"
-        }
-        setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 1600);
-    };
 
     // File upload + crosslink drops: the shared capture hook (doc/upload.js) - placeholders at the
     // cursor, the modal, the reference swap, and the dragged-document cozy dressing. The chip
@@ -544,14 +530,10 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                         onPick=${insertPicked}
                         onClose=${() => setPicking(false)}
                     />`}
-                    <${Chip}
-                        icon=${Icons.link}
-                        on=${linkCopied}
-                        title=${linkCopied
-                            ? 'Copied!'
-                            : 'Copy a link to this document (paste it into another document to crosslink)'}
-                        onClick=${copyLink}
-                    />
+                    ${/* The document's address (2026-09-28): a `/ringtome/…/doc/` link - pasted into
+                        another document it unfolds as this one for you, and says "private" to anyone
+                        else until it is published. */ ''}
+                    <${CopyLinkChip} path=${docHref(root, docId)} />
                     <${Chip} modifier=${status === 'error' ? 'chip-diverged' : null} title=${statusTip}>
                         ${status === 'clean'
                             ? html`<${Icons.saved} />`
@@ -623,7 +605,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                 row=${row}
                 publish=${publishThis}
                 differs=${differs}
-                diffHref=${`/home/notes/${docId}/diff`}
+                diffHref=${`${docHref(root, docId)}/diff`}
                 onPublished=${() => setHeadPoll((n) => n + 1)}
             />`}
             ${available.length > 1 &&

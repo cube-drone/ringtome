@@ -33,6 +33,8 @@ const base58 = async (host) => {
 };
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+// A room's address in the app (2026-09-28): the author in the short form.
+const roomRoute = async (author, doc) => `/ringtome/user/${(await import("../../js/speakable.js")).toBase58(author)}/room/${doc}`;
 
 (HOST_B ? describe : describe.skip)("attention: every badge that lights, said out loud", function () {
     this.timeout(600000);
@@ -99,7 +101,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const alert = await alertWith((a) => a.body === "is the oven on");
         assert.ok(alert, `the line alerted ada: ${JSON.stringify(await alertsFor(adaRoot))}`);
         assert.match(alert.title, /the kitchen/, "the alert names the room");
-        assert.equal(alert.route, `/home/chat/${adaRoot}/${kitchen}`, "and points into it");
+        assert.equal(alert.route, await roomRoute(adaRoot, kitchen), "and points into it");
 
         assert.equal((await say(ada, adaRoot, "it is now")).status, 200);
         await beat(HOST, "fold", adaRoot);
@@ -172,7 +174,8 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         for (let i = 0; i < 30 && !sealed; i++) {
             await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${pantry}/sync`, { method: "POST" });
             await beat(HOST, "fold", beaRoot);
-            sealed = (await alertsFor(adaRoot)).find((a) => a.route === `/home/chat/${adaRoot}/${pantry}`);
+            const pantryRoute = await roomRoute(adaRoot, pantry);
+            sealed = (await alertsFor(adaRoot)).find((a) => a.route === pantryRoute);
             if (!sealed) await wait(400);
         }
         assert.ok(sealed, `the sealed line alerted ada: ${JSON.stringify(await alertsFor(adaRoot))}`);
@@ -201,7 +204,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         }
         assert.ok(lit, "ada's bell lit for bea's reply");
 
-        const alert = await alertWith((a) => a.route === "/home/notifications" && /replied/.test(a.body));
+        const alert = await alertWith((a) => a.route === "/ringtome/notifications" && /replied/.test(a.body));
         assert.ok(alert, `the bell's row alerted: ${JSON.stringify(await alertsFor(adaRoot))}`);
         assert.match(alert.body, /sourdough notes/, "naming the post, as the bell's card does");
     });
@@ -294,7 +297,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             const alert = decryptPush(got.body, ua, auth);
             assert.equal(alert.body, "anyone for toast", "the browser reads the words");
             assert.match(alert.title, /the kitchen/);
-            assert.equal(alert.route, `/home/chat/${adaRoot}/${kitchen}`, "and knows where the click lands");
+            assert.equal(alert.route, await roomRoute(adaRoot, kitchen), "and knows where the click lands");
 
             // The diagnostic: a test push, now, reported per service - and marked to show even
             // over a focused tab, since that is where the button is.

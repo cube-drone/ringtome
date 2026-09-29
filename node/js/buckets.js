@@ -23,6 +23,7 @@ import { useLocation } from 'preact-iso';
 import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { appTypeOf, bucketsForApp, DEFAULT_STYLE, RESERVED_BUCKETS } from './pure/apps.js';
+import { bucketHref } from './pure/naming.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
@@ -47,7 +48,9 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
     const switchBucket = (name) => {
         setBucketPick(name);
         if (root && appHere) lastBucketMemory.set(`${root}:${appHere.id}`, name);
-        if (cozyBucketRow) loc.route(`/home/${appHere.id}`);
+        // The notebook is in the address (2026-09-28): switching goes to its list - the app's own
+        // for its home notebook, `…/notebook/<slug>` for any other.
+        loc.route(bucketHref(name, roster));
     };
 
     useEffect(() => {

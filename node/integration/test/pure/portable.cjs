@@ -18,6 +18,16 @@ describe('stripSelfOrigin', () => {
         );
     });
 
+    it('keeps a Ringtome address whole - the origin is the turbolink, and every reader rehomes it (2026-09-28)', () => {
+        const post = `${O}/ringtome/user/AbCdEfGhJkLmNpQrStUv/post/0123456789abcdef0123456789abcdef`;
+        assert.equal(stripSelfOrigin(post, O), post);
+        assert.equal(
+            stripSelfOrigin(`${post}\n![](${O}/api/identity/aa/docs/bb/body/pic.avif)`, O),
+            `${post}\n![](/api/identity/aa/docs/bb/body/pic.avif)`,
+            'and a picture beside it still strips'
+        );
+    });
+
     it('rewrites every occurrence, not just the first', () => {
         assert.equal(
             stripSelfOrigin(`${O}/api/x and ${O}/home/notes/y`, O),
@@ -45,32 +55,32 @@ describe('stripSelfOrigin', () => {
 describe('identityAddress (the minting half)', () => {
     const ROOT = 'ab'.repeat(32);
 
-    it('mints origin + /id/<root> + via when the operator declared a public URL', () => {
+    it('mints origin + /ringtome/user/<root> + via when the operator declared a public URL', () => {
         assert.equal(
             identityAddress({ publicUrl: 'https://my-node.ca', root: ROOT, via: ['k1', 'k2'] }),
-            `https://my-node.ca/id/${ROOT}?via=k1,k2`
+            `https://my-node.ca/ringtome/user/${ROOT}?via=k1,k2`
         );
     });
 
     it('mints the origin-free path form when no public URL is declared', () => {
         assert.equal(
             identityAddress({ publicUrl: null, root: ROOT, via: ['k1'] }),
-            `/id/${ROOT}?via=k1`
+            `/ringtome/user/${ROOT}?via=k1`
         );
-        assert.equal(identityAddress({ root: ROOT }), `/id/${ROOT}`, 'no via: no query at all');
+        assert.equal(identityAddress({ root: ROOT }), `/ringtome/user/${ROOT}`, 'no via: no query at all');
     });
 
     it('normalizes the declared URL (trailing slashes, stray whitespace)', () => {
         assert.equal(
             identityAddress({ publicUrl: ' https://my-node.ca/ ', root: ROOT }),
-            `https://my-node.ca/id/${ROOT}`
+            `https://my-node.ca/ringtome/user/${ROOT}`
         );
     });
 
     it('drops empty via entries rather than minting ?via= with holes', () => {
         assert.equal(
             identityAddress({ publicUrl: '', root: ROOT, via: ['', null, 'k'] }),
-            `/id/${ROOT}?via=k`
+            `/ringtome/user/${ROOT}?via=k`
         );
     });
 });

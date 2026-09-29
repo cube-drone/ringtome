@@ -132,6 +132,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 // surfaces that always found them here.
 import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
+import { postHref, docHref, roomHref, CopyLinkChip } from './links.js';
 export { publishWithBaking, BakeModal };
 
 /**
@@ -464,7 +465,7 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
             month: 'short',
             day: 'numeric',
         });
-    return html`<a class="minipost" href=${`/id/${speakable(author)}/post/${doc_id}`}>
+    return html`<a class="minipost" href=${postHref(author, doc_id)}>
         <span class="minipost-who" title=${person.primary}><${PersonHex} person=${person} size="mini" /></span>
         <span class=${title ? 'minipost-title' : 'minipost-words'}>${title || words || t('postentry.link', 'link')}</span>
         ${when && html`<span class="minipost-when">${when}</span>`}
@@ -479,7 +480,7 @@ const BookSection = ({ section, author, depth }) => html`<li class="book-card-se
     <ul class="book-card-list">
         ${section.pages.map(
             (p) => html`<li class="book-card-page" key=${p.post}>
-                <a href=${`/id/${author}/post/${p.post}`}>${p.title || t('postentry.untitled-page', 'untitled page')}</a>
+                <a href=${postHref(author, p.post)}>${p.title || t('postentry.untitled-page', 'untitled page')}</a>
             </li>`
         )}
         ${section.sections.map((s, i) => html`<${BookSection} key=${`${depth}-${i}`} section=${s} author=${author} depth=${depth + 1} />`)}
@@ -690,7 +691,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // months promising took the href over on 2026-08-26, the day after it was built. The
     // permalink's profile-visit-first load keeps the fresh-sync the author-page link used
     // to buy.
-    const href = `/id/${speakable(item.author)}/post/${item.doc_id}`;
+    const href = postHref(item.author, item.doc_id);
     // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
     // refetch of what they typed. The item prop's copies are snapshots; a page refresh
     // reconciles everything against the canonical fold anyway.
@@ -969,12 +970,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         ? editing.row.format === 'drawing'
                             ? html`<a
                                   class="chip chip-button"
-                                  href=${`/home/drawing/${editing.row.doc_id}`}
+                                  href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
                               ><${Icons.drawing} /></a>`
                             : html`<a
                                   class="chip chip-button"
-                                  href=${`/home/notes/${editing.row.doc_id}`}
+                                  href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
                               ><${Icons.notes} /></a>`
                         : editing &&
@@ -995,6 +996,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           ><${Icons.rename} /></button>`)}
                     ${editing && !open && item.kind !== 'share' && !item.private_doc &&
                     html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
+                    ${/* The post's address (2026-09-28), just before the copy into notes: pasted
+                        in the app it unfolds as this card; pasted outside, it opens. */ ''}
+                    ${!open && html`<${CopyLinkChip} path=${href} />`}
                     ${/* Copy into private notes, last on every card (Curtis, 2026-09-08: the
                         same seat on your own posts and other people's). */ ''}
                     ${/* A room is a conversation, not a note (Curtis, 2026-09-18): it does
@@ -1248,7 +1252,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 ${seeMore &&
                 html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>`}
                 ${roomDoor &&
-                html`<a class="feed-entry-act" href=${`/home/chat/${item.author}/${item.doc_id}`}
+                html`<a class="feed-entry-act" href=${roomHref(item.author, item.doc_id)}
                     ><${Icons.chat} /> ${t('postentry.enter-the-room', 'enter the room')}</a
                 >`}
                 ${replyWords && html`<a class="feed-entry-act" href=${href}>${replyWords}</a>`}

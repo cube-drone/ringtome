@@ -12261,3 +12261,62 @@ the pen's raw reading (`PRESSURE_SMOOTHING`, `smoothPressure` in pure/drawing.js
 dropped as repeats too, and the smoothed value is both painted live and stored - no body change,
 nothing for other computers to learn. pure/drawing.cjs holds that jitter around a steady grip
 swings less than half as far, and that a deliberate press still lands within eight samples.
+
+## 2026-09-28 (cont.): `/ringtome/` addresses, slice 1 - the links
+
+Curtis: a post's address pasted into any text box stayed ugly plain text; he wanted a URL whose
+provenance is clear - `https://any.site/ringtome/user/<id>/post/<id>` - that every Ringtome renderer
+rehomes to its own node and unfolds, with `/ringtome/` replacing `/home`, `/in` and `/id` everywhere
+(PROJECT_PLAN, "`/ringtome/` replaces `/home`, `/in` and `/id`"; the design is written there with its
+slices). Slice 1:
+
+- **The grammar** (`pure/ringtome.js`): `/ringtome/user/<root>` a person, `…/post/<doc>` a post,
+  `…/post/<book>/page/<doc>` a book's page, `…/doc/<doc>` any document, `…/room/<doc>[/line/<hash>]`
+  a chat line; the root in its short form (bare base58). Read at any origin, rehomed to a path, the
+  old `/id/` spelling mapped. `links.js` mints every address and its shareable URL.
+- **The node**: `/ringtome/user/{seg}[/…]` serves the persona's head (its `og:url` now the short form)
+  and `/ringtome/…` the app; `/id/` pages 307 to their `/ringtome/` spelling, hints kept, while
+  `/id/…/docs/…` picture bytes stay put (signed documents name them).
+- **The app**: person and post pages at `/ringtome/` addresses, old `/id/` links bouncing there; a
+  `/doc/` address opens your own document, a public post as the post, anything else as "(THIS
+  DOCUMENT IS PRIVATE)"; a room address lands in the chat. Every page link the app wrote by hand now
+  comes from `links.js`.
+- **Unfolding**: a `ringtome` turbolink plugin, ahead of the OpenGraph one, resolves by key through
+  this node - peeking a stranger first - and draws a card (face, name, title, date, picture) or the
+  placeholder, the raw link beside it hidden; a plain link to a `/ringtome/` address at another origin
+  takes the local path when pointed at, focused or clicked.
+- **Pasting** keeps a `/ringtome/` URL's origin (a whole URL alone on a line is marquee's turbolink);
+  every other self-URL - a picture's `/api/identity/…/body` - still strips, since publication bakes
+  only the path form.
+- **Copying**: a copy-link chip on feed cards and posts (before copy-into-notes), on chat lines and in
+  the editor; the reader's copy-link gives a text document its `/doc/` address.
+
+pure/ringtome.cjs holds the grammar (minting, any origin, hints, what is not an address, the old
+spelling); pure/portable.cjs that a Ringtome URL keeps its origin while a picture beside it strips;
+idface.cjs the `/ringtome/user/` face in every spelling, the 307s with hints and book pages, the short
+form's head, and the app at every deeper path.
+
+## 2026-09-28 (cont.): `/ringtome/` addresses, slice 2 - the address bar
+
+The signed-in app moved from `/home` and `/in` to `/ringtome`, so the address bar is always the link
+to copy (Curtis: "the current URL bar is the most obvious source for that link"; the cozy paths
+discarded). The console is `/ringtome`, an app `/ringtome/<app>`, a notebook's list
+`/ringtome/<app>/notebook/<slug>`, the persona's pages `/ringtome/persona/…`, a room
+`/ringtome/user/<author>/room/<doc>[/line/<hash>]`, and your own document
+`/ringtome/user/<you>/doc/<id>`.
+
+- **Which notebook** (Curtis): a document filed in more than one carries `?bucket=<slug>` - the notebook
+  it was opened in - and opens in its first without one; a stale or foreign hint is ignored
+  (pure/naming.js `docPlacement`, `bucketHint`; the grammar reads it beside `?via=`). The shell places
+  your own document off its mirror row, so the documents app is unchanged; selecting a document routes
+  to its address, the notebook switcher to the notebook's list.
+- **Crosslinks** are written as the document's address, final at once: the id-link-then-cozy-swap, the
+  address-bar dressing and `slugPathFor` are gone.
+- **Alerts** point at a room's address and `/ringtome/notifications` (attention.rs, webpush.rs); the
+  service worker and the push route accept `/ringtome/` (and `/home/`, which the app redirects).
+- **The old addresses redirect**: `/home/…` and `/in/…` - still in documents' bodies from before today -
+  are read once by the old resolver (index.js `LegacyHome`) and sent on; nothing mints them.
+
+pure/naming.cjs holds a notebook's address, a document's placement (the hint, a stale hint, unfiled,
+drawings) and when the hint is asked; pure/ringtome.cjs the `?bucket=` beside `?via=`; attention.cjs
+the rooms' and the bell's new routes.
