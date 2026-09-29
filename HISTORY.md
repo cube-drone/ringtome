@@ -12510,3 +12510,5 @@ becomes a video, not a picture - says that plainly rather than waiting forever.
 A trap found on the way: the strings extractor reads `/*` as a comment's start anywhere in a template, so
 an `accept="image/*"` attribute silently swallowed every `t()` after it (the search box's placeholder and
 both upload messages were retired from the catalog). The accept list is spelled out instead.
+
+A feed card's foot says "link" instead of "reply" when the reader cannot reply (Curtis): replies turned off (the settled wish), or nobody signed in - the front page. A post that already has replies still counts them.

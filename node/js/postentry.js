@@ -803,12 +803,18 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     const bodyShown = !!shownBody && !veiled;
     const seeMore = bodyShown && cut && !wholeThing;
     const roomDoor = bodyShown && item.format === 'room';
+    // Whether this reader could answer (Curtis, 2026-09-29): not with replies turned off (the settled
+    // wish), and not signed out - the front page's visitors. Where they cannot, the foot is just the
+    // post's own link rather than an offer that goes nowhere.
+    const canReply = !!(current && current.root) && !item.settled;
     const replyWords = item.replies
         ? item.replies === 1
             ? t('postentry.1-reply', '1 reply')
             : t('postentry.n-replies', '{n} replies', { n: item.replies })
         : !seeMore && item.format !== 'room'
-          ? t('postentry.reply', 'reply')
+          ? canReply
+              ? t('postentry.reply', 'reply')
+              : t('postentry.link', 'link')
           : null;
     const [saidLabels, setSaidLabels] = useState([]);
     const [retractedLabels, setRetractedLabels] = useState([]);
