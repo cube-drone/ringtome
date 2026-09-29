@@ -55,7 +55,9 @@ import { userCardHtml, userSpanHtml, useUserCards } from '../doc/usercard.js';
 import { insertNewlineAndIndent } from '@codemirror/commands';
 import { ImagePickModal } from '../doc/imagepick.js';
 import { pickedReference } from '../doc/pickref.js';
-import { DrawingThumb } from '../doc/drawing.js';
+import { DrawingThumb, drawingAsPicture } from '../doc/drawing.js';
+import { stickersOf } from '../pure/imagepick.js';
+import { togglePick } from '../pure/facets.js';
 import { personHref, postHref, roomHref, copyLink, appHref } from '../links.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
@@ -405,6 +407,67 @@ const EmojiPicker = ({ onPick, onClose }) => {
     </span>`;
 };
 
+/// A sticker said as a reaction (2026-09-28): the words are exactly one picture embed. Its picture's
+/// address, or null for an emoji.
+const STICKER_WORDS = /^!\[[^\]\n]*\]\(([^()\s]+)\)$/;
+const stickerSrc = (words) => {
+    const m = STICKER_WORDS.exec(words || '');
+    return m ? m[1] : null;
+};
+
+/// The sticker picker under a line's hover menu (Curtis, 2026-09-28): your stickers - the pictures
+/// and drawings tagged `sticker` (pure/imagepick.js) - narrowed by their other tags. One click says
+/// the sticker; a drawing is flattened into a picture first, as the drawing app does.
+const StickerPicker = ({ root, onPick, onClose }) => {
+    const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
+    const [tags, setTags] = useState([]);
+    const [busy, setBusy] = useState(null);
+    const { stickers, tags: cloud } = stickersOf(docs || [], tags);
+    const choose = async (doc) => {
+        if (doc.format !== 'drawing') return onPick(doc.doc_id, doc.format === 'apng' ? 'apng' : 'avif');
+        setBusy(doc.doc_id);
+        try {
+            const flat = await drawingAsPicture(root, doc.doc_id);
+            onPick(flat.doc, 'avif');
+        } finally {
+            setBusy(null);
+        }
+    };
+    return html`<span
+        class="chat-emoji-pop chat-sticker-pop"
+        onMouseDown=${(e) => e.stopPropagation()}
+        onKeyDown=${(e) => e.key === 'Escape' && onClose()}
+    >
+        ${cloud.length > 0 &&
+        html`<span class="imagepick-tags">
+            ${cloud.map(
+                ([tag, count]) => html`<button
+                    key=${tag}
+                    type="button"
+                    class=${tags.includes(tag) ? 'imagepick-tag active' : 'imagepick-tag'}
+                    onClick=${() => setTags(togglePick(tags, tag))}
+                >${tag} <span class="imagepick-tag-count">${count}</span></button>`
+            )}
+        </span>`}
+        ${stickers.length === 0
+            ? html`<span class="null-sub">${t('apps.chat.no-stickers', 'tag a picture or a drawing "sticker" to react with it')}</span>`
+            : html`<span class="chat-sticker-grid">
+                  ${stickers.map(
+                      (doc) => html`<button
+                          key=${doc.doc_id}
+                          type="button"
+                          class="chat-sticker-choice drawing-floor"
+                          title=${doc.title || ''}
+                          disabled=${busy === doc.doc_id}
+                          onClick=${() => choose(doc)}
+                      >${doc.format === 'drawing'
+                          ? html`<${DrawingThumb} root=${root} doc=${doc} />`
+                          : doc.media.has_thumb && html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" />`}</button>`
+                  )}
+              </span>`}
+    </span>`;
+};
+
 /// One line on the floor. `cont` is a line by the same speaker as the one before it: the
 /// speaker is implied, so it wears no card (IRC's and Slack's run-of-lines). Hovering a
 /// line shows its menu (CHAT.md, slice 9): the smiley opens the emoji picker; a line of
@@ -430,6 +493,7 @@ const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notic
 const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, onMute, hushed, found, room }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
+    const [stickering, setStickering] = useState(false);
     const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     const mine = !!current && current.root === m.speaker;
     const whoSaid = (r) => r.who.map((w) => w.name || speakable(w.root)).join(', ');
@@ -448,6 +512,7 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
     let glad = 0;
     let sour = 0;
     for (const r of m.reactions || []) {
+        if (stickerSrc(r.emoji)) continue; // a sticker has no tone
         const tone = toneOf(glyphOf(r.emoji));
         if (tone === 'good') glad += r.count;
         if (tone === 'bad') sour += r.count;
@@ -471,6 +536,15 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
             <button class="chat-line-act" type="button" title=${t('apps.chat.react-with-an-emoji', 'react with an emoji')} onClick=${() => setPicking((p) => !p)}>
                 <${Icons.smiley} />
             </button>
+            <button
+                class="chat-line-act"
+                type="button"
+                title=${t('apps.chat.react-with-a-sticker', 'react with a sticker')}
+                onClick=${() => {
+                    setPicking(false);
+                    setStickering((p) => !p);
+                }}
+            ><${Icons.sticker} /></button>
             ${/* This line's address (2026-09-28): pasted in the app it unfolds for the room's
                 members, and for nobody else. */ ''}
             ${room &&
@@ -491,6 +565,15 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
                 title=${t('apps.chat.mute-this-person', 'mute this person in the room')}
                 onClick=${() => onMute(m.speaker)}
             ><${Icons.mute} /></button>`}
+            ${stickering &&
+            html`<${StickerPicker}
+                root=${current.root}
+                onClose=${() => setStickering(false)}
+                onPick=${(doc, ext) => {
+                    setStickering(false);
+                    onReact(m.hash, `![sticker](/api/identity/${current.root}/docs/${doc}/body/sticker.${ext})`);
+                }}
+            />`}
             ${picking &&
             html`<${EmojiPicker}
                 onClose=${() => setPicking(false)}
@@ -525,7 +608,9 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
                         key=${r.emoji}
                         title=${mine ? t('apps.chat.who-said-click-to-take-yours-back', '{who} - click to take yours back', { who: whoSaid(r) }) : whoSaid(r)}
                         onClick=${() => onReact && onReact(m.hash, r.emoji, mine)}
-                    ><span class="chat-react-glyph">${glyphOf(r.emoji)}</span>${r.count > 1 ? ` ${r.count}` : ''}</button>`;
+                    >${stickerSrc(r.emoji)
+                        ? html`<img class="chat-react-sticker" src=${stickerSrc(r.emoji)} alt="" width="48" height="48" />`
+                        : html`<span class="chat-react-glyph">${glyphOf(r.emoji)}</span>`}${r.count > 1 ? ` ${r.count}` : ''}</button>`;
                 })}
             </span>`}
         </div>
@@ -1008,14 +1093,25 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     // A reaction (slice 9): an emoji said in answer to a line - a message on this persona's
     // own chain that names the line, stacked under it by the door.
     const react = async (hash, code, retract = false) => {
-        try {
-            await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
-                method: 'POST',
-                body: JSON.stringify({ words: code, reacts_to: hash, retract }),
-            });
-            readHistory();
-        } catch (e) {
-            setSendError(e.message || String(e));
+        // A sticker just flattened from a drawing is a moment from being bakeable: the room says
+        // "still being prepared", and the sticker is said again shortly rather than refused.
+        const fresh = !retract && code.startsWith('![') && code.includes('/api/identity/');
+        for (let tries = 0; ; tries++) {
+            try {
+                await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
+                    method: 'POST',
+                    body: JSON.stringify({ words: code, reacts_to: hash, retract }),
+                });
+                readHistory();
+                return;
+            } catch (e) {
+                if (fresh && e.status === 400 && tries < 12) {
+                    await new Promise((r) => setTimeout(r, 800));
+                    continue;
+                }
+                setSendError(e.message || String(e));
+                return;
+            }
         }
     };
     // The creator's moderation (CHAT.md, ruling 8): a label on the room post, and a line in

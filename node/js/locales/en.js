@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1167 phrases across 75 files.
+// 1169 phrases across 75 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -40,6 +40,7 @@ export default {
     'apps.chat.opening': 'opening…',
     'apps.chat.open-a-room': 'open a room',
     'apps.chat.find-an-emoji': 'find an emoji…',
+    'apps.chat.no-stickers': 'tag a picture or a drawing "sticker" to react with it',
     'apps.chat.muted': 'muted',
     'apps.chat.unmuted': 'unmuted',
     'apps.chat.deputized': 'deputized',
@@ -47,6 +48,7 @@ export default {
     'apps.chat.someone-you-dont-trust': "someone you don't trust",
     'apps.chat.edited': '(edited)',
     'apps.chat.react-with-an-emoji': 'react with an emoji',
+    'apps.chat.react-with-a-sticker': 'react with a sticker',
     'apps.chat.copy-link': 'copy link',
     'apps.chat.edit-this-line': 'edit',
     'apps.chat.delete-this-line': 'delete',
@@ -1072,7 +1074,7 @@ export default {
     'chat.say-something': 'say something',
     'chat.thats-not-a-line-of-yours': "that isn't a line of yours here",
     'chat.that-line-is-already-deleted': 'that line is already deleted',
-    'chat.a-reaction-is-one-emoji': 'a reaction is one emoji',
+    'chat.a-reaction-is-one-emoji': 'a reaction is one emoji or one sticker',
     'chat.you-havent-said-that-emoji-here': "you haven't said that emoji here",
     'chat.no-such-line-to-react-to': "that line isn't here to react to",
     'chat.that-is-too-long-for-one-message': 'that is too long for one message',

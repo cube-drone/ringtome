@@ -428,6 +428,27 @@ fn is_shortcode(words: &str) -> bool {
     matches!(inner, Some(i) if !i.is_empty() && i.len() <= 48 && i.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'+' || b == b'-'))
 }
 
+/// A sticker said in answer to a line (Curtis, 2026-09-28): exactly one picture embed and nothing
+/// else - `![<alt>](<target>)` - naming either one of the speaker's own private pictures (the say
+/// bakes it into the room, as a line's picture) or a public picture already on the network, as a
+/// sticker somebody else said is when you add yours to it. The target, or `None`.
+fn sticker_target(words: &str) -> Option<&str> {
+    let inner = words.strip_prefix("![")?.strip_suffix(')')?;
+    let (alt, target) = inner.split_once("](")?;
+    if alt.len() > 64 || alt.contains(['[', ']', '\n']) || target.is_empty() || target.contains(['(', ')', ' ', '\n']) {
+        return None;
+    }
+    let own_private = target.starts_with("/api/identity/") && target.contains("/body");
+    (own_private || crate::record::bake::twin_address(target).is_some()).then_some(target)
+}
+
+/// What a reaction may say: one emoji shortcode, or one sticker. `baked` for the words as the
+/// memo holds them, after the say - then a sticker must name a public picture, never a private one.
+fn is_reaction(words: &str, baked: bool) -> bool {
+    is_shortcode(words)
+        || sticker_target(words).is_some_and(|t| !baked || crate::record::bake::twin_address(t).is_some())
+}
+
 /// The emoji stacked under each of `targets` (CHAT.md, slice 9): the memo's rows plus any
 /// the archive handed over, one per person per emoji however often they said it, opened
 /// with the room's key when sealed, most-said first. Names off the bylines memo.
@@ -461,7 +482,7 @@ async fn stack_reactions(
         } else {
             String::from_utf8(body).ok()
         };
-        let Some(emoji) = emoji.filter(|e| is_shortcode(e)) else { continue };
+        let Some(emoji) = emoji.filter(|e| is_reaction(e, true)) else { continue };
         let per_target = stacks.entry(hex::encode(target)).or_default();
         match per_target.iter_mut().find(|(e, _)| *e == emoji) {
             Some((_, who)) => {
@@ -790,14 +811,15 @@ pub async fn say(
     }
     // A delete says nothing of its own: the entry's body is the one word it is.
     let words = if deletes.is_some() { "deleted" } else { words };
-    // A reaction (slice 9): one emoji shortcode, answering a line this node holds of the
-    // room. No bake, no mentions, no notice - just the stack under the line. Taken back
+    // A reaction (slice 9): one emoji shortcode - or one sticker (2026-09-28) - answering a line this
+    // node holds of the room. No mentions, no notice - just the stack under the line; a sticker of
+    // the speaker's own is baked into the room like a line's picture. Taken back
     // (`retract`) by naming the reaction it withdraws: the chain keeps both, the memo stops
     // counting.
     let mut retracts: Option<[u8; 32]> = deletes;
     if let Some(target) = reacts_to {
-        if !is_shortcode(words) {
-            return Err(AppError::BadRequest(crate::msg!("chat.a-reaction-is-one-emoji", "a reaction is one emoji")));
+        if !is_reaction(words, false) {
+            return Err(AppError::BadRequest(crate::msg!("chat.a-reaction-is-one-emoji", "a reaction is one emoji or one sticker")));
         }
         if retract {
             let mut standing = my_reactions(state, root_hex, author_hex, doc, &target, words).await?;
@@ -858,9 +880,11 @@ pub async fn say(
     } else {
         None
     };
-    // Media rides the room the way it rides a share (ruling 11): the say bakes - a line's
-    // words, never a reaction's emoji.
-    let (words, refs) = if reacts_to.is_some() || deletes.is_some() {
+    // Media rides the room the way it rides a share (ruling 11): the say bakes - a line's words, and
+    // a fresh sticker (2026-09-28); never an emoji, a take-back (it names the words as they were
+    // baked) or somebody else's public sticker, which is already on the network.
+    let fresh_sticker = reacts_to.is_some() && !retract && sticker_target(words).is_some_and(|t| t.starts_with("/api/identity/"));
+    let (words, refs) = if (reacts_to.is_some() && !fresh_sticker) || deletes.is_some() {
         (words.to_string(), Vec::new())
     } else {
         bake_words(state, data, root_hex, &author, doc, &head, key, words).await?
@@ -1938,6 +1962,10 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                 )
                 .await
                 .context("noting a room reaction")?;
+            // A sticker's picture travels as a line's does (2026-09-28).
+            if !msg.refs.is_empty() && !hosted {
+                covers.push((room_author.clone(), hex::encode(signed.hash()), msg.refs.clone()));
+            }
             continue;
         }
         landed += state
@@ -2458,6 +2486,28 @@ pub async fn sync_open_rooms(state: &AppState, root_hex: &str) -> Result<usize> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A reaction is one emoji or one sticker, and nothing else (2026-09-28): a sticker is exactly one
+    /// picture embed - the speaker's own private picture when said, a public picture once baked (or
+    /// when it is somebody else's sticker being added to).
+    #[test]
+    fn a_reaction_is_one_emoji_or_one_sticker() {
+        let twin = format!("/ringtome/user/{}/doc/{}/body/media.avif", hex::encode([3u8; 32]), "ab".repeat(16));
+        let private = format!("/api/identity/{}/docs/{}/body/s.avif", hex::encode([3u8; 32]), "cd".repeat(16));
+        assert!(is_reaction(":heart:", false) && is_reaction(":heart:", true));
+        assert!(is_reaction(&format!("![sticker]({twin})"), true), "a baked sticker");
+        assert!(is_reaction(&format!("![sticker]({private})"), false), "a fresh one, before the bake");
+        assert!(!is_reaction(&format!("![sticker]({private})"), true), "never private once said");
+        for not in [
+            format!("look ![sticker]({twin})"),
+            format!("![sticker]({twin}) ![again]({twin})"),
+            "![sticker](https://example.com/x.png)".to_string(),
+            "hello".to_string(),
+            format!("[sticker]({twin})"),
+        ] {
+            assert!(!is_reaction(&not, false), "{not}");
+        }
+    }
 
     #[test]
     fn the_budget_has_no_knob_outside_the_rig() {

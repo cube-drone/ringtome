@@ -12411,3 +12411,22 @@ the cursor was an `<img>` of the picture's address, the stamp a canvas painting 
 picture. The cursor is now a canvas painted once, on choosing, from that same held picture: a
 frozen animation shows the frame the stamp will take, and a just-flattened drawing shows before the
 node has taken the copy in.
+
+## 2026-09-28 (cont.): sticker reactions in chat
+
+Curtis: besides an emoji, a chat line can be answered with a sticker, kept to 48 by 48, and anyone
+can click it to add theirs, whether or not they have that sticker (CHAT.md, slice 9, "Stickers").
+
+- **The door** (chat.rs): a reaction is one emoji shortcode or one sticker - exactly one picture
+  embed (`sticker_target`, `is_reaction`). A fresh sticker is the speaker's own picture; the say bakes
+  it into the room like a line's picture (a public twin, or sealed under the room's key) and carries it
+  in `refs`, and the fold now covers a reaction's refs as it does a line's, so the picture reaches the
+  other nodes. Adding to somebody's sticker says the same baked words - a picture already out there.
+  The stack reads stickers by the baked form only, never a private address.
+- **The line** (apps/chat.js): a sticker button beside the smiley opens your stickers (`stickersOf`,
+  narrowed by their other tags; a drawing flattened first), and a pill shows the sticker at 48 by 48;
+  clicking one adds yours, clicking your own takes it back. A drawing just flattened may not be
+  bakeable for a moment, so the say is retried rather than refused. Stickers have no tone.
+
+chat.rs holds what a reaction may say; chat_feed.cjs a sticker said on one node, stacked baked on the
+other with its picture served there, added to by the other person, and taken back.

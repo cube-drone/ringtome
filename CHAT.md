@@ -406,6 +406,16 @@ node keeps its own room whole, which is where "all of it" lives.
    in the memo (the chain keeps both; the stacks stop counting). The same key is slice 8's
    delete. The rooms badge and the bold ignore reactions. Suite: the feed suite's reaction
    claim, take-back and re-say included.
+   **Stickers** (Curtis, 2026-09-28): a reaction may also be one sticker - its body exactly one
+   picture embed, `![sticker](<target>)`. Said fresh, the target is one of the speaker's own
+   pictures tagged `sticker` (a drawing flattened first), and the say bakes it into the room as a
+   line's picture is baked - a public twin, or sealed under the room's key - and the reaction carries
+   it in `refs`, so its picture travels as a line's does (the fold covers it). Anybody else adds
+   theirs by saying the same baked words, which name a picture already on the network: no second
+   copy, and they need not own the sticker. Stacked and taken back by those words, like an emoji;
+   no tone, so it does not lean the line. Drawn 48 by 48 in its pill. Anything else - an embed of the
+   open web, a sticker inside words - is refused as "one emoji or one sticker". Suite: the feed
+   suite's sticker claim, across two nodes.
 10. **The Mute List**
 11. **IMs.** **Built 2026-09-20** (ruling 12). The header grows `im` (key 23), absent when
    false and carried forward on re-publication - once an IM, always an IM. The publish door

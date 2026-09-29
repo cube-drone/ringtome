@@ -9,7 +9,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, makePng } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
 const { HOST, HOST_B, HOST_C, sql } = require("./fetch.cjs");
 
@@ -273,6 +273,69 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             await wait(300);
         }
         assert.equal(thumbs && thumbs.count, 2, "said again, it counts again");
+    });
+
+    it("a sticker said in answer to a line: baked into a picture everyone can see, and anyone adds theirs to it (2026-09-28)", async function () {
+        this.timeout(120000);
+        const history = async (who, root) => (await (await who(`api/identity/${root}/rooms/${adaRoot}/${room}/messages`)).json());
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: "sticker this" });
+        assert.equal(said.status, 200, await said.text());
+        let line = null;
+        for (let i = 0; i < 30 && !line; i++) {
+            await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST_B, "fold", adaRoot);
+            line = (await history(bea, beaRoot)).items.find((m) => m.words === "sticker this");
+            if (!line) await wait(300);
+        }
+        assert.ok(line, "bea sees the line");
+        // Bea's own picture, as her sticker.
+        const pic = (await (await bea(`api/identity/${beaRoot}/docs/binary?title=wave`, { method: "POST", body: makePng(24, 24), file: true })).json()).doc_id;
+        for (let i = 0; i < 60; i++) {
+            if ((await bea(`api/identity/${beaRoot}/docs/${pic}/body`)).status === 200) break;
+            await wait(300);
+        }
+        const sticker = `![sticker](/api/identity/${beaRoot}/docs/${pic}/body/wave.avif)`;
+        const r = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: sticker, reacts_to: line.hash });
+        assert.equal(r.status, 200, await r.text());
+        for (const not of ["![a](https://example.com/x.png)", `look ${sticker}`]) {
+            const refused = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: not, reacts_to: line.hash });
+            assert.equal(refused.status, 400, `${not}: ${await refused.text()}`);
+        }
+        // On ada's node: one sticker, baked - a public picture of bea's, never her private one.
+        const stickerOn = (h) => ((h.items.find((m) => m.hash === line.hash) || {}).reactions || []).find((x) => x.emoji.startsWith("!["));
+        let stack = null;
+        for (let i = 0; i < 40; i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            stack = stickerOn(await history(ada, adaRoot));
+            if (stack) break;
+            await wait(300);
+        }
+        assert.ok(stack, "bea's sticker stacked on ada's node");
+        assert.match(stack.emoji, /^!\[sticker\]\(\/ringtome\/user\/[A-Za-z0-9]+\/doc\/[0-9a-f]{32}\/body\/media\.avif\)$/, "baked to a public picture");
+        const src = stack.emoji.match(/\((\/[^)]+)\)/)[1];
+        let served = null;
+        for (let i = 0; i < 40 && !(served && served.status === 200); i++) {
+            served = await ada(src.slice(1));
+            if (served.status !== 200) await wait(300);
+        }
+        assert.equal(served.status, 200, "and the picture travelled with it to ada's node");
+        // Ada adds hers - the same words, though the picture is bea's.
+        const plus = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${room}/messages`, { words: stack.emoji, reacts_to: line.hash });
+        assert.equal(plus.status, 200, await plus.text());
+        stack = stickerOn(await history(ada, adaRoot));
+        assert.equal(stack && stack.count, 2, `two people, one sticker: ${JSON.stringify(stack)}`);
+        // Bea takes hers back by the words as they were baked.
+        const back = await j(bea, `api/identity/${beaRoot}/rooms/${adaRoot}/${room}/messages`, { words: stack.emoji, reacts_to: line.hash, retract: true });
+        assert.equal(back.status, 200, await back.text());
+        for (let i = 0; i < 30; i++) {
+            await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${room}/sync`, { method: "POST" });
+            await beat(HOST, "fold", beaRoot);
+            stack = stickerOn(await history(ada, adaRoot));
+            if (stack && stack.count === 1) break;
+            await wait(300);
+        }
+        assert.ok(stack && stack.count === 1 && stack.who[0].root === adaRoot, `bea's is withdrawn, ada's stands: ${JSON.stringify(stack)}`);
     });
 
     it("a line edits and deletes by later entries: the newest words stand in its place, marked; a deleted line leaves the floor; only one's own lines change", async () => {

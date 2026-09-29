@@ -462,6 +462,46 @@
     cursor: pointer;
 }
 
+/* A sticker said as a reaction (2026-09-28): never larger than 48 by 48. */
+.chat-react-sticker {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    display: block;
+}
+
+.chat-sticker-pop {
+    max-width: 17rem;
+}
+
+.chat-sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 48px);
+    gap: 0.3rem;
+}
+
+.chat-sticker-choice {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.chat-sticker-choice:hover {
+    border-color: var(--teal);
+}
+
+.chat-sticker-choice img,
+.chat-sticker-choice canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
 .chat-react-mine {
     border-color: var(--teal);
     background: var(--surface-2);
