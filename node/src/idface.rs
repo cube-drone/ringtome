@@ -2381,10 +2381,7 @@ pub async fn id_posts(
             Shelf::Share(i) => {
                 let s = &shares[*i];
                 let doc_hex = hex::encode(s.doc_id);
-                let header = crate::fragments::serving_header(&state.node_db, &s.author_root, &s.doc_id)
-                    .await
-                    .ok()
-                    .flatten();
+                let header = crate::fragments::card_header(&state, &s.author_root, &s.doc_id).await;
                 serde_json::json!({
                     "kind": "share",
                     "author": s.author_root,

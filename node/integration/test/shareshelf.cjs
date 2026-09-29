@@ -88,3 +88,34 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(words, "the words nobody passed along");
     });
 });
+
+/*
+    A share of a post whose author lives on the same node (Curtis, 2026-09-29: HDT2 passed
+    along Cube Drone's post, both on horsedrawingtycoon.com, and the card drew the Marquee
+    as plain text). The node holds the author's chain, so it never kept a fragment - and the
+    share row took its header from the fragment shelf alone, going out with no format.
+*/
+describe("a share of a neighbour's post keeps its format", function () {
+    this.timeout(120000);
+
+    it("the share on the sharer's shelf says marquee, and carries the title", async () => {
+        const ada = await makeUserFetch({ prefix: "nextada" });
+        const adaRoot = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
+        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "next door", body: "**bold** words", format: "marquee" })).json();
+        const pub = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {});
+        const said = await pub.text();
+        assert.equal(pub.status, 200, said);
+        const post = JSON.parse(said).post_id;
+
+        const dee = await makeUserFetch({ prefix: "nextdee" });
+        const deeRoot = (await (await dee("api/identity", { method: "POST" })).json()).root_pubkey;
+        const shared = await j(dee, `api/identity/${deeRoot}/rebroadcasts`, { author: adaRoot, doc_id: post });
+        assert.equal(shared.status, 200, await shared.text());
+
+        const shelf = await (await dee(`api/id/${deeRoot}/posts?as=${deeRoot}`)).json();
+        const share = (shelf.posts || []).find((p) => p.kind === "share" && p.doc_id === post);
+        assert.ok(share, "the share is on dee's shelf");
+        assert.equal(share.format, "marquee", "the card knows to render Marquee");
+        assert.equal(share.title, "next door");
+    });
+});

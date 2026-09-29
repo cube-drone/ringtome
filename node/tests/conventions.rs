@@ -213,7 +213,9 @@ fn user_db_opens_are_deliberate() {
         // Plus one per public frontier MOVE - `mirror_retractions` opens the persona whose
         // chain just moved to mirror its retractions into the death log: per-edge, the
         // rebroadcast::refresh_from pattern, and the handle is hot from the sync that fired it.
-        ("fragments.rs", 2),
+        // Plus `card_header` (2026-09-29): one per SHARE CARD on a persona page's shelf page -
+        // bounded by the page size, and hot for the authors a page repeats.
+        ("fragments.rs", 3),
         // One open per fragment REQUEST - a stranger asking for one document, and the open is
         // how we answer from our own copy of that author's chain. Per-request, not per-persona:
         // the loop this test guards against would be opening every author we hold to answer one

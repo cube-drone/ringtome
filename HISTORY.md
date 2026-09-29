@@ -12537,3 +12537,11 @@ None of these showed on the rig, where every network hop is instant.
 Found on the way: main had been red since addf7b5 (the picture picker's upload button). The strings
 check read `upload.phase === 'preparing'`, a comparison inside the template, as a phrase shown
 unwrapped. The upload line is now worked out before the template (imagepick.js `uploadNote`).
+
+**A shared neighbour's post drew as plain text** (same day). HDT2 shared Cube Drone's post (both
+on horsedrawingtycoon.com), and on HDT2's page the Marquee rendered as raw text. The share row
+took its title and format from the fragment shelf only. But a node that holds the author's chain
+(someone hosted on it, or someone followed) never keeps a fragment, so the row went out with
+`format: null`, and the card fell back to `reader-plain`. The new `fragments::card_header` reads
+the chain first and then the fragments, the same way search and copy already did. Pinned in
+shareshelf.cjs, and that claim fails against the old line.

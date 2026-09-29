@@ -921,6 +921,28 @@ pub async fn serving_header(
     }
 }
 
+/// The header of a public post this node HOLDS, however it came to hold it: the author's own
+/// chain when this node syncs them (a persona on this node, anyone followed), else the fragment
+/// shelf. A shared post's card needs both halves (Curtis, 2026-09-29: a persona's rebroadcast of
+/// a sibling persona's post drew as plain text - the author is hosted here, so no fragment was
+/// ever kept, and the share row went out with no format at all). Never fetches.
+pub async fn card_header(
+    state: &crate::AppState,
+    author_root: &str,
+    doc_id: &[u8; 16],
+) -> Option<ringtome_proto::registry::DocHeaderPlain> {
+    if let Ok(Some(db)) = state.user_dbs.get(author_root).await {
+        if let Ok(Some(entry)) = crate::record::documents::public_header_entry(&db, doc_id).await {
+            if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                    return Some(h);
+                }
+            }
+        }
+    }
+    serving_header(&state.node_db, author_root, doc_id).await.ok().flatten()
+}
+
 /// Ring the eager body heal behind a fragment arrival: the header just landed from this
 /// origin, so the bytes it names are one dial away at the same door - spawned, because no
 /// fold or sweep should wait on a network round trip it only benefits from. The public-edge
