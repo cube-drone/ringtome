@@ -668,11 +668,32 @@ pub(crate) async fn looked_within(node_db: &crate::db::Db, root_hex: &str, now: 
 /// author's own annotations chain (mirror or peek alike carry it), each resolved to the
 /// post - the mirror's shelf, or for a peek whatever the ledger fetched. A pin whose post
 /// is not here yet is simply not in the strip until it lands.
-async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Vec<crate::record::documents::PublicDoc> {
+///
+/// Also the pins about somebody else's post (Curtis, 2026-09-29: "Pin books, chats, or
+/// rebroadcasts"): a post this persona passes along, placed on their page while the share
+/// stands - a withdrawn share takes its pin with it. The strip's order is `Pinned::order`.
+struct Pinned {
+    order: Vec<crate::record::imaol::Pin>,
+    posts: Vec<crate::record::documents::PublicDoc>,
+    shares: Vec<crate::record::imaol::RebroadcastRow>,
+}
+
+async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Pinned {
     let Ok(Some(db)) = state.user_dbs.get(root_hex).await else {
-        return Vec::new();
+        return Pinned { order: Vec::new(), posts: Vec::new(), shares: Vec::new() };
     };
-    let ids = crate::record::imaol::pinned_docs(&db, root_hex).await.unwrap_or_default();
+    let order = crate::record::imaol::pins(&db).await.unwrap_or_default();
+    let ids: Vec<[u8; 16]> = order.iter().filter(|p| p.author == root_hex).map(|p| p.doc_id).collect();
+    let shares: Vec<crate::record::imaol::RebroadcastRow> = if order.iter().any(|p| p.author != root_hex) {
+        crate::record::imaol::rebroadcasts(&db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| !s.is_retracted() && order.iter().any(|p| p.author == s.author_root && p.doc_id == s.doc_id))
+            .collect()
+    } else {
+        Vec::new()
+    };
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
         let doc = if peek {
@@ -702,7 +723,25 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Vec<crate:
             out.push(p);
         }
     }
-    out
+    Pinned { order, posts: out, shares }
+}
+
+/// One share on a persona's shelf, as a card: the ORIGINAL author's post, worn with this persona
+/// as its via. Title and format off whatever header this node holds (`fragments::card_header`).
+async fn share_json(state: &AppState, s: &crate::record::imaol::RebroadcastRow, via: &str) -> serde_json::Value {
+    let header = crate::fragments::card_header(state, &s.author_root, &s.doc_id).await;
+    serde_json::json!({
+        "kind": "share",
+        "author": s.author_root,
+        "doc_id": hex::encode(s.doc_id),
+        "title": header.as_ref().map(|h| h.title.clone()),
+        "format": header
+            .as_ref()
+            .map(|h| crate::record::documents::Format::from_wire(h.format).as_str()),
+        "published_ms": s.received_at_ms,
+        "shared_ms": s.received_at_ms,
+        "via": via,
+    })
 }
 
 /// The peek's footprint, measured now and written to the registry (PROJECT_PLAN's Peeks, ruling 6).
@@ -2378,23 +2417,7 @@ pub async fn id_posts(
                     .unwrap_or(0);
                 post_json(p, n)
             }
-            Shelf::Share(i) => {
-                let s = &shares[*i];
-                let doc_hex = hex::encode(s.doc_id);
-                let header = crate::fragments::card_header(&state, &s.author_root, &s.doc_id).await;
-                serde_json::json!({
-                    "kind": "share",
-                    "author": s.author_root,
-                    "doc_id": doc_hex,
-                    "title": header.as_ref().map(|h| h.title.clone()),
-                    "format": header
-                        .as_ref()
-                        .map(|h| crate::record::documents::Format::from_wire(h.format).as_str()),
-                    "published_ms": s.received_at_ms,
-                    "shared_ms": s.received_at_ms,
-                    "via": root_hex,
-                })
-            }
+            Shelf::Share(i) => share_json(&state, &shares[*i], &root_hex).await,
         });
     }
     attach_annotations(&state, &root_hex, &mut items, query.as_root.as_deref()).await;
@@ -3112,7 +3135,7 @@ pub async fn id_profile(
     posts.truncate(POSTS_PAGE as usize);
     // The pinned strip (PROJECT_PLAN's Peeks, ruling 12): the author's own pins, most recently pinned
     // first, each the post as this node holds it - the mirror's, or for a peek the ledger's.
-    let mut pinned: Vec<crate::record::documents::PublicDoc> = pinned_here(&state, &root_hex, peek).await;
+    let Pinned { order: pin_order, posts: mut pinned, shares: pinned_shares } = pinned_here(&state, &root_hex, peek).await;
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut pinned).await;
     // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
     // address minted here should carry (Addressing: hints are keys, never addresses).
@@ -3174,6 +3197,25 @@ pub async fn id_profile(
     attach_annotations(&state, &root_hex, &mut profile_posts, query.as_root.as_deref()).await;
     let mut pinned_posts: Vec<serde_json::Value> = pinned.iter().map(|p| post_json(p, 0)).collect();
     attach_annotations(&state, &root_hex, &mut pinned_posts, query.as_root.as_deref()).await;
+    // The strip in pin order, the persona's own posts and the posts they pass along together
+    // (Curtis, 2026-09-29). A pinned share wears `pinned`: its card carries no annotations of
+    // its own to say so.
+    let pinned_posts: Vec<serde_json::Value> = {
+        let mut strip = Vec::with_capacity(pin_order.len());
+        for pin in &pin_order {
+            let doc_hex = hex::encode(pin.doc_id);
+            if pin.author == root_hex {
+                if let Some(v) = pinned_posts.iter().find(|v| v["doc_id"] == doc_hex.as_str()) {
+                    strip.push(v.clone());
+                }
+            } else if let Some(s) = pinned_shares.iter().find(|s| s.author_root == pin.author && s.doc_id == pin.doc_id) {
+                let mut v = share_json(&state, s, &root_hex).await;
+                v["pinned"] = serde_json::Value::Bool(true);
+                strip.push(v);
+            }
+        }
+        strip
+    };
 
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,

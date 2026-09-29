@@ -12601,3 +12601,23 @@ Posts follow chat's rule too (same day, Curtis: "I want them to drop it the way 
 than stopping at "an embedded media document is missing". `drop_embeds` leaves words untouched,
 whitespace and all, when nothing is missing, so ordinary posts publish byte for byte as written.
 Pinned in builtin.cjs.
+
+## 2026-09-29: pin books, chats, or rebroadcasts
+
+Curtis: "I'd like to be able to Pin books, chats, or rebroadcasts."
+
+- **Books and rooms.** The pin chip used to need the in-place editor, which only a post with a
+  private note behind it has, so a book (published from a notebook) never showed it. The chip now
+  shows on any post that is yours.
+- **Posts you pass along.** A pin is the same `pin` statement, said by the sharer about the shared
+  post. The new `imaol::pins` reads every present pin on the persona's chain, whoever's post it
+  names. `pinned_here` keeps the ones that name a share still standing (a withdrawn share takes its
+  pin with it), and the page's strip comes back in pin order: the persona's own posts and their
+  shares together. A pinned share is marked `pinned`, since a share card carries no annotations of
+  its own. The client keys pins by whose post it is, so a pinned share leaves "recent posts", and the
+  card's chip reads the pin from `via` for a share.
+- **A pin is never a label now.** Anyone's pin places the post on the page of whoever said it.
+  PROJECT_PLAN's Peeks, ruling 11, is amended to match.
+- `share_json` is now the one place a share card's JSON is built, for the shelf and the strip alike.
+
+Pinned in pins.cjs (a room and a share, in pin order; the withdrawn share leaves).

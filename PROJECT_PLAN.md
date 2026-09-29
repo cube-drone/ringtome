@@ -3630,7 +3630,12 @@ their numbers, since the code cites them.
 10. **Trusted-only is unchanged**: a sealed post peeked shows its title and refuses its
     body.
 11. **A public pin is a public annotation** - `pin = yes`, said and retracted through the
-    label routes, honoured only when the annotator is the author.
+    label routes, honoured only when the annotator is the author. *Amended 2026-09-29 (Curtis:
+    "Pin books, chats, or rebroadcasts"):* any post of the author's pins, a book and a room
+    included, and so does a post they pass along: the same statement, said by the sharer
+    about the shared post, which places it in the SHARER's strip, as a share, only while the
+    share stands. A pin is therefore never a label, whoever said it: it is placement on
+    the page of whoever said it.
 12. **Pinned first, and only once.** The author's page opens with the pinned strip - most
     recently pinned first, twenty at most - and leaves the pinned posts out of "recent
     posts"; the API's pages and the feed keep them in place. Every card wears a pinned chip;

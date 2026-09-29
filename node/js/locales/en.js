@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1185 phrases across 76 files.
+// 1186 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -926,6 +926,7 @@ export default {
     'postentry.thread': 'thread',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',
+    'postentry.pinned-share-chip-title': 'pinned to the top of the page of the person passing it along',
     'postentry.pinned-chip-title': 'the author pinned this to the top of their page',
     'postentry.pinned': 'pinned',
     'postentry.mentioned-chip-title': 'these words are for the people named in them',

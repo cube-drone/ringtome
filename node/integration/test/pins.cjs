@@ -122,3 +122,50 @@ const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.s
         assert.deepEqual(peeked, [], "the peek's strip emptied on its next look");
     });
 });
+
+/*
+    Pin books, chats, or rebroadcasts (Curtis, 2026-09-29). A room pins like any post of the
+    author's; a post they pass along pins too - the same statement, said by the sharer about the
+    post - and sits in the strip, in pin order, as the share it is. Withdrawing the share takes
+    its pin off the page.
+*/
+describe("pins beyond words: a room, and a post passed along", function () {
+    this.timeout(120000);
+
+    it("both head the sharer's page, most recently pinned first; the withdrawn share leaves", async () => {
+        const dee = await makeUserFetch({ prefix: "pindee" });
+        const deeRoot = (await (await dee("api/identity", { method: "POST" })).json()).root_pubkey;
+        const theirs = (await (await j(dee, `api/identity/${deeRoot}/docs`, { title: "passed on", body: "**theirs**", format: "marquee" })).json()).doc_id;
+        const theirPost = JSON.parse(await (await j(dee, `api/identity/${deeRoot}/docs/${theirs}/publish`, {})).text()).post_id;
+
+        const eve = await makeUserFetch({ prefix: "pineve" });
+        const eveRoot = (await (await eve("api/identity", { method: "POST" })).json()).root_pubkey;
+        const d = await (await j(eve, `api/identity/${eveRoot}/docs`, { title: "a room", body: "come in", format: "marquee" })).json();
+        await eve(`api/identity/${eveRoot}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
+        const roomPub = await j(eve, `api/identity/${eveRoot}/docs/${d.doc_id}/publish`, { room: true });
+        const roomText = await roomPub.text();
+        assert.equal(roomPub.status, 200, roomText);
+        const room = JSON.parse(roomText).post_id;
+        const shared = await j(eve, `api/identity/${eveRoot}/rebroadcasts`, { author: deeRoot, doc_id: theirPost });
+        assert.equal(shared.status, 200, await shared.text());
+
+        const pin = (author, doc) => j(eve, `api/identity/${eveRoot}/public-annotations/${author}/${doc}`, { key: "pin", value: "yes" }, "PUT");
+        assert.equal((await pin(eveRoot, room)).status, 200);
+        await new Promise((res) => setTimeout(res, 5)); // pin order is the statements' time
+        assert.equal((await pin(deeRoot, theirPost)).status, 200);
+
+        const strip = (await (await eve(`api/id/${eveRoot}/profile`)).json()).pinned || [];
+        assert.deepEqual(strip.map((p) => [p.kind || "post", p.doc_id]), [["share", theirPost], ["post", room]], "newest pin first");
+        const [share, pinnedRoom] = strip;
+        assert.equal(share.author, deeRoot, "the share is still its author speaking");
+        assert.equal(share.via, eveRoot, "passed along by the page's persona");
+        assert.equal(share.pinned, true, "and the card is told it's pinned");
+        assert.equal(share.format, "marquee");
+        assert.equal(pinnedRoom.format, "room");
+
+        const withdrawn = await j(eve, `api/identity/${eveRoot}/rebroadcasts`, { author: deeRoot, doc_id: theirPost, retract: true });
+        assert.equal(withdrawn.status, 200, await withdrawn.text());
+        const after = (await (await eve(`api/id/${eveRoot}/profile`)).json()).pinned || [];
+        assert.deepEqual(after.map((p) => p.doc_id), [room], "a pin on a share no longer passed along leaves the page");
+    });
+});

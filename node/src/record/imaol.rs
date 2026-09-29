@@ -664,24 +664,40 @@ pub async fn annotations_of(
         .collect())
 }
 
-/// The author's PINS (PROJECT_PLAN's Peeks, ruling 11): their own present `pin` statements about their
-/// own posts, most recently pinned first, capped at the strip's twenty. Only the author's
-/// chain is read - anyone else's `pin` is a label, never a placement.
+/// The author's PINS (PROJECT_PLAN's Peeks, ruling 11): their own present `pin` statements about
+/// their own posts, most recently pinned first, capped at the strip's twenty. Only the author's
+/// chain is read - anyone else's `pin` is never a placement on this author's page.
 pub async fn pinned_docs(db: &Db, author_hex: &str) -> Result<Vec<[u8; 16]>, AppError> {
+    Ok(pins(db).await?.into_iter().filter(|p| p.author == author_hex).map(|p| p.doc_id).collect())
+}
+
+/// One of the author's pins: the post it places, whosever it is, and when it was said.
+pub struct Pin {
+    /// The pinned post's author, hex: the chain's own author for their posts, someone else for
+    /// a post this author passed along (Curtis, 2026-09-29: "Pin books, chats, or rebroadcasts").
+    pub author: String,
+    pub doc_id: [u8; 16],
+}
+
+/// Every present `pin` on the author's own chain, most recently pinned first, twenty at most -
+/// the whole strip. A pin about someone else's post places it only while the author still
+/// passes that post along; the page checks that, not this read.
+/// The database is the author's own: every statement in it is theirs.
+pub async fn pins(db: &Db) -> Result<Vec<Pin>, AppError> {
     catch_up_annotations(db).await?;
-    let rows: Vec<(Vec<u8>,)> = db
+    let rows: Vec<(String, Vec<u8>)> = db
         .fetch_all(
-            "SELECT target_doc FROM public_annotations
-             WHERE target_author = ?1 AND key = 'pin' AND present = 1
+            "SELECT target_author, target_doc FROM public_annotations
+             WHERE key = 'pin' AND present = 1
              ORDER BY timestamp_ms DESC, seq DESC LIMIT 20",
-            (author_hex,),
+            (),
         )
         .await
         .context("reading the author's pins")
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .filter_map(|(d,)| <[u8; 16]>::try_from(d.as_slice()).ok())
+        .filter_map(|(author, d)| Some(Pin { author, doc_id: <[u8; 16]>::try_from(d.as_slice()).ok()? }))
         .collect())
 }
 

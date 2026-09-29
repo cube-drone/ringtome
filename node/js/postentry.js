@@ -214,8 +214,12 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 /// The author's own pin (PROJECT_PLAN's Peeks, ruling 11-12): one public annotation, `pin`, said about
 /// their own post and retracted to unpin - the page's strip reads it, the card wears it.
 /// Beside the note-pencil and the takedown, for the author only; never from the Writer.
+/// A post the page's persona passes along is theirs to pin too (Curtis, 2026-09-29: "Pin books,
+/// chats, or rebroadcasts"): the same statement, said by the sharer - `via` - about the post.
+/// A share's card carries no annotations, so the page says `pinned` on it outright.
+const pinner = (item) => (item.kind === 'share' ? item.via : item.author);
 const pinnedByAuthor = (item) =>
-    (item.annotations || []).some((a) => a.key === PIN_KEY && a.annotator === item.author);
+    !!item.pinned || (item.annotations || []).some((a) => a.key === PIN_KEY && a.annotator === pinner(item));
 
 const PinButton = ({ item, current, pinned, onPinned }) => {
     const [busy, setBusy] = useState(false);
@@ -923,9 +927,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         ...saidLabels.filter((a) => !baseLabels.some((b) => labelKey(b) === labelKey(a))),
     ]
         .filter((a) => !retractedLabels.includes(labelKey(a)))
-        // The author's own pin is chrome (the chip above), not a label; anyone else's is a
-        // label like any other (PROJECT_PLAN's Peeks, ruling 11).
-        .filter((a) => !(a.key === PIN_KEY && a.annotator === item.author))
+        // A pin is chrome (the chip above), never a label: the author's places the post on their
+        // page, and anyone else's places it on THEIR page, beside their share of it (PROJECT_PLAN's
+        // Peeks, ruling 11, as amended 2026-09-29).
+        .filter((a) => a.key !== PIN_KEY)
         // A mention is machinery, not a label (Curtis, 2026-09-07: comments naming people
         // wore a root hex as a chip): the statement's wire form is the mentioned root, and
         // the card in the words already shows WHO. Hidden at display only - the statement
@@ -1068,7 +1073,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                               aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
                           ><${Icons.rename} /></button>`)}
-                    ${editing && !open && item.kind !== 'share' && !item.private_doc &&
+                    ${/* Any post of yours - a book and a room too, which have no in-place editor
+                        - and any post you pass along (2026-09-29). */ ''}
+                    ${!open && !item.private_doc && !!current && !!current.root && pinner(item) === current.root &&
                     html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
                     ${/* The post's address (2026-09-28), just before the copy into notes: pasted
                         in the app it unfolds as this card; pasted outside, it opens. */ ''}
@@ -1127,7 +1134,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
             ${!open && (shownLabels.length > 0 || !!current || item.trusted_only || item.settled || pinned) &&
             html`<div class="feed-entry-labels">
                 ${pinned &&
-                html`<span class="label-chip label-chip-flag" title=${t('postentry.pinned-chip-title', 'the author pinned this to the top of their page')}><${Icons.pin} /> ${t('postentry.pinned', 'pinned')}</span>`}
+                html`<span class="label-chip label-chip-flag" title=${item.kind === 'share'
+                    ? t('postentry.pinned-share-chip-title', 'pinned to the top of the page of the person passing it along')
+                    : t('postentry.pinned-chip-title', 'the author pinned this to the top of their page')}><${Icons.pin} /> ${t('postentry.pinned', 'pinned')}</span>`}
                 ${/* The author's wishes wear chips of their own, first in the row (Curtis,
                     2026-09-03: "I didn't know that this post was trusted-only") - chrome,
                     not labels: nobody said them, the header did. */ ''}

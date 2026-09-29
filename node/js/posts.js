@@ -93,9 +93,11 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     };
 
     // The pinned strip (PROJECT_PLAN's Peeks, ruling 12): the author's pins, most recently pinned first,
-    // above the shelf - and OUT of the shelf below (Curtis, 2026-09-05: "we just saw it").
-    const pinnedIds = new Set((pinned || []).map((p) => p.doc_id));
-    const pinnedItems = (pinned || []).map((p) => ({
+    // above the shelf - and OUT of the shelf below (Curtis, 2026-09-05: "we just saw it"). A post
+    // they pass along pins too (2026-09-29), so a pin is keyed by whose post it is, not its id alone.
+    const pinKey = (p) => `${p.kind === 'share' ? p.author : root}:${p.doc_id}`;
+    const pinnedKeys = new Set((pinned || []).map(pinKey));
+    const pinnedItems = (pinned || []).map((p) => p.kind === 'share' ? shelfItem(p, { root, authorName, authorAvatar, mine }) : ({
         author: root,
         doc_id: p.doc_id,
         title: p.title,
@@ -119,7 +121,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // road and the narrowed one below).
     const dress = { root, authorName, authorAvatar, mine };
     const items = [...scheduledItems, ...list
-        .filter((p) => p.kind === 'share' || !pinnedIds.has(p.doc_id))
+        .filter((p) => !pinnedKeys.has(pinKey(p)))
         .map((p) => shelfItem(p, dress))];
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
@@ -144,10 +146,10 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
             <h2 class="public-posts-head">${t('posts.pinned', 'pinned')}</h2>
             ${shownPinned.map(
                 (item) => html`<${PostEntry}
-                    key=${`pinned:${item.doc_id}`}
+                    key=${`pinned:${item.kind || 'post'}:${item.doc_id}`}
                     item=${item}
                     current=${current}
-                    editing=${mine ? editingFor(item.doc_id) : null}
+                    editing=${mine && item.kind !== 'share' ? editingFor(item.doc_id) : null}
                 />`
             )}
         </section>`}

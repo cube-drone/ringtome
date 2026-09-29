@@ -15,6 +15,7 @@ export function shelfItem(p, { root, authorName, authorAvatar, mine }) {
             format: p.format,
             published_ms: p.published_ms,
             via: p.via,
+            pinned: !!p.pinned,
             mine: false,
         };
     }
