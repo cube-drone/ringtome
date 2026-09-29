@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1172 phrases across 75 files.
+// 1177 phrases across 75 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -522,8 +522,13 @@ export default {
     'doc.editor.publish-the-changes': 'publish the changes',
 
     // --- node/js/doc/imagepick.js ---
+    'doc.imagepick.not-a-still': "that isn't a still picture - an animation becomes a video, and this wants a picture",
+    'doc.imagepick.could-not-take-it-in': "that picture couldn't be taken in",
     'doc.imagepick.add-an-image': 'add an image',
+    'doc.imagepick.upload-from-this-computer': 'upload from this computer',
     'doc.imagepick.search-titles': 'search titles',
+    'doc.imagepick.uploading': 'uploading… {pct}%',
+    'doc.imagepick.preparing': 'preparing the picture…',
     'doc.imagepick.notebook': 'notebook',
     'doc.imagepick.every-notebook': 'every notebook',
     'doc.imagepick.no-pictures-match': 'no pictures match.',

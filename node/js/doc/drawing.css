@@ -608,6 +608,28 @@
     flex-wrap: wrap;
 }
 
+/* Upload from this computer (2026-09-29): first in the row, the way in for a picture you don't have
+   here yet. */
+.imagepick-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--dock-text);
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    cursor: pointer;
+}
+
+.imagepick-upload:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .imagepick-search {
     flex: 1;
     min-width: 12rem;

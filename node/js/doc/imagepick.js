@@ -5,16 +5,17 @@
 // drawings too (`drawings`, with `DrawingThumb` passed in to show them - this module is the
 // drawing's, and cannot import it back). The filtering is pure/imagepick.js.
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { Modal } from '../modal.js';
 import { openMirror, useLive } from '../mirror.js';
-import { pickPictures } from '../pure/imagepick.js';
+import { pickPictures, isPicture } from '../pure/imagepick.js';
+import { api } from '../net.js';
 import { togglePick } from '../pure/facets.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
-import { FILES_BUCKET } from './upload.js';
+import { FILES_BUCKET, uploadBinary } from './upload.js';
 
 const html = htm.bind(h);
 
@@ -37,9 +38,68 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
         setShown(PAGE);
     };
 
+    // Upload from this computer (Curtis, 2026-09-29: setting a profile picture on a new site meant
+    // uploading somewhere else first). The picture goes up as any upload does, is filed in "files",
+    // and - once the node has taken it in - is picked exactly as if it had been clicked in the grid.
+    // `upload`: null, or { phase: 'sending' | 'preparing' | 'failed', pct, doc, job, error }.
+    const [upload, setUpload] = useState(null);
+    const fileRef = useRef(null);
+    const sendFile = async (file) => {
+        if (!file) return;
+        setUpload({ phase: 'sending', pct: 0 });
+        try {
+            const res = await uploadBinary(root, file, file.name, (pct) => setUpload((u) => (u ? { ...u, pct } : u)));
+            await api(`/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(FILES_BUCKET)}`, { method: 'PUT' }).catch(() => {});
+            setUpload({ phase: 'preparing', doc: res.doc_id, job: res.job_id, title: file.name });
+        } catch (e) {
+            setUpload({ phase: 'failed', error: e.message });
+        }
+    };
+    const fileChosen = (e) => {
+        const input = e.currentTarget;
+        sendFile(input.files && input.files[0]);
+        input.value = null; // the same file chosen again is a fresh choice
+    };
+    // Taken in: the finished picture arrives in the mirror, and it is the pick.
+    useEffect(() => {
+        if (!upload || upload.phase !== 'preparing') return;
+        const row = (docs || []).find((d) => d.doc_id === upload.doc);
+        if (!row || !row.media) return;
+        if (!isPicture(row)) {
+            setUpload({ phase: 'failed', error: t('doc.imagepick.not-a-still', "that isn't a still picture - an animation becomes a video, and this wants a picture") });
+            return;
+        }
+        setUpload(null);
+        onPick({ doc: row.doc_id, format: row.format, width: row.media.width, height: row.media.height, animation: !!row.media.animation, title: row.title || upload.title || '' });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docs, upload]);
+    // ...or refused: the ingest queue says why.
+    useEffect(() => {
+        if (!upload || upload.phase !== 'preparing' || !upload.job) return undefined;
+        const id = setInterval(async () => {
+            const jobs = await api(`/api/identity/${root}/ingest`).catch(() => []);
+            const job = (jobs || []).find((j) => j.job_id === upload.job);
+            if (job && job.status === 'failed') setUpload({ phase: 'failed', error: job.error || t('doc.imagepick.could-not-take-it-in', "that picture couldn't be taken in") });
+        }, 1500);
+        return () => clearInterval(id);
+    }, [upload, root]);
+
     return html`<${Modal} wide=${true} title=${heading || t('doc.imagepick.add-an-image', 'add an image')} onClose=${onClose}>
         <div class="imagepick">
             <div class="imagepick-filters">
+                <button
+                    class="imagepick-upload"
+                    type="button"
+                    disabled=${upload && upload.phase !== 'failed'}
+                    onClick=${() => fileRef.current && fileRef.current.click()}
+                ><${Icons.upload} /> ${t('doc.imagepick.upload-from-this-computer', 'upload from this computer')}</button>
+                <input
+                    ref=${fileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng,image/bmp,image/tiff"
+                    hidden
+                    onChange=${fileChosen}
+                />
                 <input
                     class="imagepick-search"
                     type="search"
@@ -49,7 +109,15 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                     onInput=${(e) => narrow(setQuery)(e.currentTarget.value)}
                 />
             </div>
-            ${/* The notebooks - sketchbooks too, now that drawings have them (Curtis, 2026-09-27) -
+            ${upload &&
+            html`<p class=${upload.phase === 'failed' ? 'form-error' : 'null-sub'}>
+                ${upload.phase === 'sending'
+                    ? t('doc.imagepick.uploading', 'uploading… {pct}%', { pct: upload.pct || 0 })
+                    : upload.phase === 'preparing'
+                      ? t('doc.imagepick.preparing', 'preparing the picture…')
+                      : upload.error}
+            </p>`}
+                        ${/* The notebooks - sketchbooks too, now that drawings have them (Curtis, 2026-09-27) -
                 as a row of their own above the tags: one at a time, or every one. */ ''}
             ${buckets.length > 0 &&
             html`<div class="imagepick-buckets" role="group" aria-label=${t('doc.imagepick.notebook', 'notebook')}>

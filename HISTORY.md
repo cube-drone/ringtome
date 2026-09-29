@@ -12498,3 +12498,15 @@ starters.rs holds the built-in list parsing to the two and where it applies; dev
 a node given a starter beginning with its dials, and a second one too.
 
 Tom joined the starter contacts (2026-09-29, Curtis): everybody's first friend, as on Myspace - low trust, low interest and low rebroadcast interest, so he is always there and never loud (starters.rs).
+
+The picture picker uploads (Curtis, opening the new site: setting a profile picture and banner meant
+uploading somewhere else first). **Upload from this computer** leads the picker's row (doc/imagepick.js):
+the picture goes up as any upload does (`uploadBinary`, now exported from doc/upload.js), is filed in
+"files", and once the node has taken it in it is picked exactly as if clicked in the grid - so the
+profile picture, the banner and a drawing's "add an image" all gain it at once. Progress reads "uploading…
+N%", then "preparing the picture…"; a failed crush says why (the ingest queue), and an animation - which
+becomes a video, not a picture - says that plainly rather than waiting forever.
+
+A trap found on the way: the strings extractor reads `/*` as a comment's start anywhere in a template, so
+an `accept="image/*"` attribute silently swallowed every `t()` after it (the search box's placeholder and
+both upload messages were retired from the catalog). The accept list is spelled out instead.

@@ -49,7 +49,7 @@ export function fmtBytes(n) {
 const titled = (root, path, title) =>
     `/api/identity/${root}/docs/${path}?title=${encodeURIComponent(title)}`;
 
-const uploadBinary = (root, file, title, onPct) =>
+export const uploadBinary = (root, file, title, onPct) =>
     xhrUpload(titled(root, 'binary', title), file, onPct);
 
 function uploadVideoParts(root, videoBlob, audioBlob, title, onPct) {
