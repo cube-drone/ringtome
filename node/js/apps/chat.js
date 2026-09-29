@@ -85,6 +85,11 @@ const APP_ID = 'chat';
 /// The floor's backstop poll; the socket is what makes it live.
 const HISTORY_POLL_MS = 15000;
 
+/// The last floor each room showed, this page-load (Curtis, 2026-09-29: coming back to a room
+/// from the feed began empty and waited on a round trip for the history this computer already
+/// had). A room comes back as it was left, and the fresh read replaces it a moment later.
+const floorsSeen = new Map();
+
 /// How close to the end counts as "at the end" - the pin that keeps a reader at the bottom
 /// as new lines land, and lets go the moment they scroll up to read.
 const AT_END_PX = 40;
@@ -675,6 +680,13 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     const [room, setRoom] = useState(undefined); // undefined loading, null refused, object entered
     const [refusal, setRefusal] = useState('');
     const [history, setHistory] = useState(null); // { items, closed, more }
+    // Which history read is newest: an answer that set out before another one already shown is
+    // dropped (2026-09-29: the poll's read, begun just before a line landed, finished after the
+    // live lane's read and took the line back off the floor until the next thing was said).
+    const readsAsked = useRef(0);
+    const readShown = useRef(0);
+    const floorOf = useRef('');
+    floorOf.current = `${root}/${author}/${doc}`;
     const [older, setOlder] = useState(false); // an earlier page on its way
     const [archiving, setArchiving] = useState(false);
     // Passing a room along (Curtis, 2026-09-19): a room is a post, and a rebroadcast is how
@@ -846,7 +858,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         if (!root) return undefined;
         let live = true;
         setRoom(undefined);
-        setHistory(null);
+        setHistory(floorsSeen.get(`${root}/${author}/${doc}`) || null);
         atEnd.current = true;
         api(`/api/identity/${root}/rooms/${author}/${doc}`)
             .then((r) => live && setRoom(r))
@@ -866,8 +878,16 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         // Landed on a line's own address (Curtis, 2026-09-20): the page it sits on, rather
         // than the newest - the conversation as it was when that was said.
         const where = at ? `?at=${at}` : '';
+        const asked = ++readsAsked.current;
+        const floorKey = `${root}/${author}/${doc}`;
         api(`/api/identity/${root}/rooms/${author}/${doc}/messages${where}`)
-            .then(setHistory)
+            .then((h) => {
+                if (asked < readShown.current) return; // a newer read is already on the floor
+                if (floorKey !== floorOf.current) return; // the page has moved to another room
+                readShown.current = asked;
+                if (!at) floorsSeen.set(floorKey, h);
+                setHistory(h);
+            })
             .catch(() => {});
         api(`/api/identity/${root}/rooms/${author}/${doc}/chatters`)
             .then((c) => {
@@ -876,12 +896,17 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             })
             .catch(() => {});
     };
+    // What this computer already holds, at once - beside the room's own details rather than after
+    // them (Curtis, 2026-09-29: the floor waited on one round trip, then another).
+    useEffect(() => {
+        if (root) readHistory();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root, author, doc]);
     useEffect(() => {
         if (!root || !room) return undefined;
-        // What this computer already holds, at once - then the pull from the creator's node, and
-        // what it brought (Curtis, 2026-09-29: over the real internet the pull takes seconds, and
-        // the room sat empty behind it with no word of why).
-        readHistory();
+        // Then the pull from the creator's node, and what it brought (Curtis, 2026-09-29: over
+        // the real internet the pull takes seconds, and the room sat empty behind it with no
+        // word of why).
         api(`/api/identity/${root}/rooms/${author}/${doc}/sync`, { method: 'POST' })
             .catch(() => {})
             .then(readHistory);
@@ -1472,7 +1497,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             html`<div class="chat-gap">
                 <button class="chat-older" disabled=${older} onClick=${readOlder}>${older ? t('apps.chat.reading', 'reading…') : t('apps.chat.earlier', 'earlier…')}</button>
             </div>`}
-            ${!history && html`<p class="chat-empty">${t('apps.chat.looking', 'looking…')}</p>`}
+            ${!history && html`<p class="chat-empty"><span class="status-spin"><${Icons.spinner} /></span></p>`}
             ${history && lines.length === 0 && html`<p class="chat-empty">${t('apps.chat.nobody-has-said-anything-here', 'nobody has said anything here yet')}</p>`}
             <ul class="chat-lines">
                 ${lines.map((m, i) =>

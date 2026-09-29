@@ -89,13 +89,24 @@ const esc = (s) => s.replace(/'/g, "''");
         assert.ok(entered, "bea is in the long room");
         assert.equal(entered.archivist, false, "bea's node is not the archive");
         assert.equal(entered.archived, false, "and nobody pressed full-sync");
-        const whole = await readAfterSync(HOST_B, bea, beaRoot, [`line ${LINES}`, "line 1"]);
+        // The newest page is what bea's node holds, answered without asking anyone (Curtis,
+        // 2026-09-29: a guest's every read waited 2.36s on the creator's node); one scroll-back
+        // reads the rest out of the archive.
+        const top = await readAfterSync(HOST_B, bea, beaRoot, [`line ${LINES}`, `line ${LINES - BUDGET + 1}`]);
         assert.deepEqual(
-            wordsOf(whole),
-            Array.from({ length: LINES }, (_, i) => `line ${LINES - i}`),
-            `every line, newest first, on bea's floor: ${JSON.stringify(wordsOf(whole))}`
+            wordsOf(top),
+            Array.from({ length: BUDGET }, (_, i) => `line ${LINES - i}`),
+            `the budget, newest first, on bea's floor: ${JSON.stringify(wordsOf(top))}`
         );
-        assert.equal(!!whole.more, false, "nothing lies beneath line 1");
+        assert.equal(top.more, true, "a full budget says the archive may hold more");
+        const oldest = Math.min(...top.items.map((m) => m.said_ms));
+        const rest = await history(bea, beaRoot, adaRoot, room, `?before_ms=${oldest}`);
+        assert.deepEqual(
+            [...wordsOf(top), ...wordsOf(rest)],
+            Array.from({ length: LINES }, (_, i) => `line ${LINES - i}`),
+            `every line, newest first, through the archive: ${JSON.stringify(wordsOf(rest))}`
+        );
+        assert.equal(!!rest.more, false, "nothing lies beneath line 1");
         assert.equal(await held(HOST), LINES, "the creator's node holds every line");
         assert.equal(await held(HOST_B), BUDGET, "bea's node holds the budget and no more");
     });

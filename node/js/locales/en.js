@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1200 phrases across 76 files.
+// 1199 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -94,7 +94,6 @@ export default {
     'apps.chat.jump-to-the-newest': 'jump to the newest',
     'apps.chat.reading': 'reading…',
     'apps.chat.earlier': 'earlier…',
-    'apps.chat.looking': 'looking…',
     'apps.chat.nobody-has-said-anything-here': 'nobody has said anything here yet',
     'apps.chat.one-line-hidden': "one line hidden - from someone you don't trust",
     'apps.chat.n-lines-hidden': "{n} lines hidden - from people you don't trust",

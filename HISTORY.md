@@ -12693,3 +12693,45 @@ Under all of this, an understated 'this server is running (version)'."
   front page wears the quickbar's label and link.
 
 Pinned in downloads.rs's unit test against the 0.2.2 release's real asset names.
+
+## 2026-09-29: the second real-internet chat test
+
+Curtis, testing the new release with the host (A) and a guest (B) on different machines:
+
+- **A line of A's appeared on B's floor, then vanished until A spoke again.** The page applied
+  whichever history answer arrived last, not whichever was asked for last. So the 15-second poll's
+  read, begun just before the line landed, finished after the live lane's read and put the older
+  floor back. Every read is now numbered, and an answer older than the one shown is dropped, as
+  is one for a room the page has since left.
+- **B's floor started empty on returning to the room.** The first history read now goes out
+  beside the room's details instead of after them. And each room's last floor is kept for the
+  page-load, so a room comes back as it was left, and the fresh read replaces it a moment later.
+- **"looking…" is the house spinner** (`status-spin`).
+
+Not settled here: B still sees seconds between saying something (a line, a reaction) and seeing
+it, while A doesn't. Everything on that path is local on B's node: `say` appends, folds, and
+detaches both network sends; `history` and `room_admits` read local tables. So the wait is B's node
+answering slowly, not a network round trip in the request. The falsifying number is how long B's
+`POST …/messages` and `GET …/messages` take in the browser's Network tab. If they're seconds, B's
+node is queueing requests behind something (every request and background loop shares one
+`node_db` connection, one statement at a time); if they're fast, the delay is on the page.
+
+A's node being off: live lines still pass between B and C over gossip if each has spoken before
+(a topic's bootstrap is the creator's endpoints plus the known speakers'). But the durable lane is
+creator-only: `sync_room` asks the creator's node who has spoken and pulls from there, and
+`push_room` pushes only there. So a line missed live doesn't heal until A is back, and a
+newcomer's history can't arrive. CHAT.md, ruling 4's "room frontier on the gossip space" (chains
+fetched from any peer that holds them) isn't built.
+
+**The guest's 2.36 seconds** (same day). Curtis read the timings off the guest's Network tab: the
+say's POST took 30ms, and the history GET right after it took 2.36s. The newest page of a room
+holding fewer lines than a page (every young room) asked the creator's node for older lines
+(`archive_history`) before it answered, on every read, after every line said. The creator's
+own node is the archive and skips that ask, so the host never saw it.
+
+The newest page now answers from what this node holds. The page's own pull brings the recent
+lines, and the archive is asked on scroll-back, on landing at an older line, and when this node
+holds nothing of the room at all (the feed's room card, for a reader who never entered, has no
+other source). A node holds every line up to the room's budget, so the newest page says `more`
+when it holds a full budget, and scrolling back asks the archive for the rest.
+chat_history.cjs's first claim now reads the whole room as the newest page plus one scroll-back.

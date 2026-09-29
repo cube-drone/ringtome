@@ -1645,11 +1645,24 @@ pub async fn history(
         rows.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.2.cmp(&a.2)));
     }
     // Past what this node keeps: the archive (ruling 6). Asked only when the local page
-    // came up short and this node is not the archivist itself.
+    // came up short and this node is not the archivist itself - and never for the NEWEST page
+    // (Curtis, 2026-09-29, timing a guest's floor over the real internet: every read of a room
+    // with fewer lines than a page asked the creator's node first, 2.36s behind each line said,
+    // while the creator's own node, the archivist, answered at once). The newest page is what
+    // this node holds; the page's own pull brings the recent lines. A node holds every line up
+    // to the room's budget, so the archive can hold older ones only when this node's memo is
+    // full: then the page says there is more, and scrolling back asks the archive for it. A
+    // node holding NOTHING of the room still asks - the feed's room card, for a reader who never
+    // entered, has no other source.
+    let newest_page = before_ms.is_none();
+    let archivist = archivist_here(state, author_hex, &doc_hex).await;
     let mut more = rows.len() as i64 >= behind;
     let mut total = held_count(state, author_hex, &doc_hex, closed.unwrap_or(i64::MAX)).await;
+    if newest_page && !archivist && !more {
+        more = total >= room_budget() as i64;
+    }
     let mut archived_reactions: Vec<(Vec<u8>, String, Vec<u8>, i64)> = Vec::new();
-    if (rows.len() as i64) < limit && !archivist_here(state, author_hex, &doc_hex).await {
+    if (rows.len() as i64) < limit && !archivist && (!newest_page || total == 0) {
         let oldest = rows.last().map(|r| r.3).unwrap_or(ceiling);
         let want = limit - rows.len() as i64;
         let held: std::collections::HashSet<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
