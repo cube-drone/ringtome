@@ -856,7 +856,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                           onClick=${() => toggleTuck('compose')}
                       />`
                     : html`${tab('compose', Icons.notes, t('apps.feed.write', 'write'))}<aside class="feed-compose">
-                              <${PaneHead} label=${t('apps.feed.write-2', 'write')} onTuck=${() => toggleTuck('compose')} />
+                              <${PaneHead} icon=${Icons.notes} label=${t('apps.feed.write-2', 'write')} onTuck=${() => toggleTuck('compose')} />
                               ${draftId
                                   ? html`<${Composer}
                                         root=${root}

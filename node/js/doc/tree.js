@@ -668,7 +668,7 @@ export const WikiTree = ({
                 if (tree) completeDrag({ intoId: tree.taxonomy_id });
             }}
         >
-            ${onMinimize && html`<${PaneHead} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
+            ${onMinimize && html`<${PaneHead} icon=${Icons.tree} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
             <div class="tree-toolbar">
                 <button class="tree-tool jag-line" onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}

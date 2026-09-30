@@ -18,10 +18,11 @@ import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
-/// A column's little header: its name, and the button that tucks it away. Two files drew this by
-/// hand - the documents app for each of its three columns, the tree pane for itself.
-export const PaneHead = ({ label, onTuck }) => html`<div class="pane-head">
-    <span class="pane-head-label">${label}</span>
+/// A column's little header: its icon and name, and the button that tucks it away. Two files drew
+/// this by hand - the documents app for each of its three columns, the tree pane for itself. The
+/// icon is the one its rail wears (2026-09-30), so a column and its tucked tab are the same thing.
+export const PaneHead = ({ icon = null, label, onTuck }) => html`<div class="pane-head jag-line">
+    <span class="pane-head-label">${icon && html`<${icon} />`}${label}</span>
     <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${onTuck}>
         <${Icons.back} />
     </button>
@@ -185,7 +186,7 @@ export function useColWidths(root, appId, cols, mins = {}, open = []) {
 // for it through `features.tagColumn`, and the chat app keeps one for rooms (Curtis,
 // 2026-09-20). `label` names what the tags are on, when "tags" is not enough.
 export const TagColumn = ({ cloud, active, onToggleTag, onTuck, label }) => html`<aside class="tag-column">
-    <${PaneHead} label=${label || t('panes.tags', 'tags')} onTuck=${onTuck} />
+    <${PaneHead} icon=${Icons.tag} label=${label || t('panes.tags', 'tags')} onTuck=${onTuck} />
     ${cloud.map(
         ([tag, count]) => html`<button
             key=${tag}

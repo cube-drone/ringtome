@@ -57,23 +57,44 @@
 }
 
 /* --- collapsible columns (the everything-app's tuckable panes) --- */
-/* A pane's little header: its name and the tuck-away button. */
+/* A pane's little header: its name and the tuck-away button - the rail it tucks to, turned on its
+   side (Curtis, 2026-09-30: headers "a little more visually distinct from the column contents"): the
+   rail's fill and jagged line, the name in ink, and a little air before what it heads. */
 .pane-head {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: var(--muted);
+    background: var(--surface-2);
+    --line: var(--border);
+    --j: 3px;
+    color: var(--ink-soft);
     font-size: 0.75rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.2rem 0.3rem 0.3rem;
+    letter-spacing: 0.06em;
+    padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+    margin-bottom: 0.4rem;
+}
+
+/* The column's icon beside its name, the rail's own. */
+.pane-head-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.pane-head-label svg {
+    flex-shrink: 0;
+    font-size: 1rem;
 }
 
 .pane-min {
     display: inline-flex;
     background: none;
     border: 0;
-    padding: 0.1rem;
+    padding: 0.15rem;
     color: var(--muted);
     cursor: pointer;
     font-size: 0.9rem;

@@ -227,7 +227,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
             </button>`
         );
     return html`<aside class="book-column">
-        <${PaneHead} label=${t('doc.bookcol.publish', 'publish')} onTuck=${onTuck} />
+        <${PaneHead} icon=${Icons.book} label=${t('doc.bookcol.publish', 'publish')} onTuck=${onTuck} />
         <div class="book-block">
         <label class="book-switch" title=${t('doc.bookcol.a-book-publishes-as-one', 'publishes the whole notebook as one book')}>
             <input type="checkbox" checked=${on} onChange=${(e) => setBook(bucket, e.currentTarget.checked)} />

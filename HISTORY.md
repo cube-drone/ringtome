@@ -13366,3 +13366,24 @@ and for new (both waiting on the next rollout, as the list's marks group them), 
 with the standing in its tooltip; a section hidden from the book goes grey too. A picture filed in
 the notebook, and a notebook that isn't a book, wear nothing. Seen in headless Chrome: a book of four
 pages, one of each standing.
+
+The notebook switcher heads the list column now (Curtis, 2026-09-30: it "lives on the title bar:
+that's not an ideal spot for it, let's move it to the top of the drawings or notes column, above new
+note / new drawing" - the new-notebook button with it, being part of it). The shell hands its roster
+and switch down as a context (`BucketShelf`, buckets.js) rather than through the routes, and
+`DocsApp` puts the one `BucketSwitcher` above "+ new" in either list (the plain list and the Files
+browser), under the header's old condition: an app with notebooks, and more than one allowed. Its
+styles left the ink band - muted buttons turning teal, an ink name pill with a border line taking the
+row's width - and its menu is the column's width, since the column scrolls and would cut a wider one
+off. The app header keeps its title and search. Seen in headless Chrome, closed and open.
+
+Column headers stand apart from their columns (Curtis, 2026-09-30: "a little more visually distinct
+from the column contents"): `PaneHead` is the rail it tucks to, turned on its side - the rail's
+`--surface-2` fill and jagged line (`jag-line`), the name in ink at weight 600 with a little more
+letter-spacing, and 0.4rem of air before the contents - so every column in every app (Writer, Drawing,
+Files, the bank, chat, the feed's composer, a drawing's tools and layers) wears it at once. Seen in
+headless Chrome.
+Then (Curtis: "Can the pane heads also carry the pane icon?"): `PaneHead` takes an `icon`, worn
+before the name, and every column passes the one its rail wears - tags, the list, the tree, publish,
+links, the bank's market and portfolio, chat's rooms, the feed's composer, a drawing's tools and
+layers - so a column and its tucked tab are visibly the same thing. Seen in headless Chrome.

@@ -11,7 +11,7 @@
 // what let Recipes and Wikibook wear the same skeleton before they were folded back into
 // Writer (2026-08-08), and what lets Lost & Found wear it now without importing a line.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useContext } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -26,6 +26,7 @@ import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { LinksColumn } from '../doc/linkcol.js';
+import { BucketShelf, BucketSwitcher } from '../buckets.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 import { DrawingThumb } from '../doc/drawing.js';
@@ -355,6 +356,13 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // to change it (it lives in the URL, so back/forward and deep links just work), the resume-where
     // -you-left-off jump, and the tree-reload bump a delete needs.
     const { docs, selected, select, treeReload, bumpTree } = useDocApp(root, app, docId, bucket);
+    // The notebook switcher heads the list column (2026-09-30; it was in the app header). A switcher
+    // over one notebook offers a choice that isn't one.
+    const shelf = useContext(BucketShelf);
+    const switcher =
+        shelf && app.style && !app.soleBucket
+            ? html`<${BucketSwitcher} root=${root} app=${app} roster=${shelf.roster} bucket=${bucket} onSwitch=${shelf.onSwitch} />`
+            : null;
 
 
     // The list: this app's scope, then the search hits, then every active tag, newest-claimed-date
@@ -480,7 +488,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
                     : app.everything
                     ? html`${tab('list', Icons.list, nouns)}<aside class="notes-list notes-list-browser">
-                    <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
+                    <${PaneHead} icon=${Icons.list} label=${nouns} onTuck=${() => toggleTuck('list')} />
+                    ${switcher}
                     <${FileBrowser}
                         root=${root}
                         bucket=${bucket}
@@ -496,7 +505,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     />
                 </aside>${resizer('list')}`
                     : html`${tab('list', Icons.list, nouns)}<aside class="notes-list">
-                    <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
+                    <${PaneHead} icon=${Icons.list} label=${nouns} onTuck=${() => toggleTuck('list')} />
+                    ${switcher}
                     ${/* The everything-view is for finding, not making - new things are born
                         in their own apps, where they land in a real notebook. */ ''}
                     ${!app.everything &&

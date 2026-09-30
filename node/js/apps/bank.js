@@ -261,13 +261,13 @@ export const BankApp = ({ current }) => {
         ${tucked.has('market')
             ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
             : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
-                  <${PaneHead} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
+                  <${PaneHead} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
                   <${Market} root=${root} balance=${bank.balance} onBought=${() => setAsked((n) => n + 1)} />
               </aside>${resizer('market')}`}
         ${tucked.has('portfolio')
             ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
             : html`${tab('portfolio', Icons.bank, t('apps.bank.portfolio', 'portfolio'))}<aside class="bank-portfolio">
-                  <${PaneHead} label=${t('apps.bank.portfolio', 'portfolio')} onTuck=${() => toggleTuck('portfolio')} />
+                  <${PaneHead} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onTuck=${() => toggleTuck('portfolio')} />
                   <${Portfolio}
                       root=${root}
                       instruments=${bank.instruments || []}

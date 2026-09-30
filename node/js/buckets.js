@@ -15,7 +15,7 @@
 //   - arriving on a deep document link, the in-memory choice is gone but the PAGE knows its
 //     notebook, so once the mirror answers we correct the bucket to hold it - at most once per
 //     document, so a deliberate later switch is never fought.
-import { h } from 'preact';
+import { h, createContext } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
@@ -94,10 +94,15 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
     return { bucket, switchBucket };
 }
 
+/// The shelf, handed from the shell (index.js) to the app that shows the switcher: the roster of
+/// notebooks and the way to move along it.
+export const BucketShelf = createContext(null);
+
 // The bucket switcher: a doc-app is a shelf of notebooks (buckets), and this is how you move
-// along the shelf. It sits in the app header next to the title: a plus (bind a fresh, empty
-// notebook of this app's type), arrows that page left/right along the rail (wrapping), and the
-// current bucket's name - click it for the full list, where the current one can also be deleted.
+// along the shelf. It heads the app's list column, above "+ new" (Curtis, 2026-09-30 - it sat in
+// the app header, not an ideal spot): a plus (bind a fresh, empty notebook of this app's type),
+// arrows that page left/right along the rail (wrapping), and the current bucket's name - click it
+// for the full list, where the current one can also be deleted.
 // Deleting is the heavy hammer: every document inside is tombstoned, then the bucket itself is
 // undefined - hence the BIG confirm. The home bucket (the eponymous one) can't be deleted.
 export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {

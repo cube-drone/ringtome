@@ -126,14 +126,16 @@ body {
 }
 
 /* The bucket switcher: plus (a new notebook), arrows (page along the shelf), and the current
-   bucket's name - a little mono pill; click it for the full list. Lives on the ink band, so
-   everything wears the dock text colour. */
+   bucket's name - a little mono pill; click it for the full list. It heads the app's list column
+   (2026-09-30; the ink header band before), across the column's width, the name taking what the
+   buttons leave. */
 .bucket-switch {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 0.1rem;
+    gap: 0.15rem;
     flex-shrink: 0;
+    margin-bottom: 0.4rem;
 }
 
 .bucket-btn {
@@ -142,14 +144,13 @@ body {
     background: none;
     border: 0;
     padding: 0.15rem;
-    color: var(--dock-text);
-    opacity: 0.7;
+    color: var(--muted);
     cursor: pointer;
     font-size: 1rem;
 }
 
 .bucket-btn:hover:not(:disabled) {
-    opacity: 1;
+    color: var(--teal);
 }
 
 .bucket-btn:disabled {
@@ -160,33 +161,36 @@ body {
 .bucket-name {
     background: none;
     border: 1px solid transparent;
-    --line: color-mix(in srgb, var(--dock-text) 40%, transparent);
+    --line: var(--border);
     position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
     padding: 0.15rem 0.55rem;
-    color: var(--dock-text);
+    color: var(--ink);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.85rem;
     cursor: pointer;
-    max-width: 11rem;
+    flex: 1;
+    min-width: 0;
+    text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .bucket-name:hover {
-    --line: var(--dock-text);
+    --line: var(--teal);
 }
 
 /* The full list: a dropdown off the pill. Every bucket of this app (name + how many documents),
-   the current one bolded, and - for a non-home bucket - the delete row at the bottom. */
+   the current one bolded, and - for a non-home bucket - the delete row at the bottom. The column's
+   width exactly: the column scrolls, and a menu wider than it would be cut off. */
 .bucket-menu {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
+    right: 0;
     z-index: 60;
-    min-width: 230px;
     display: flex;
     flex-direction: column;
     padding: 0.3rem;

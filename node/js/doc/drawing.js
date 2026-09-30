@@ -1510,7 +1510,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const toolsColumn = tucked.has('tools')
         ? html`<${Rail} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onClick=${() => toggleTuck('tools')} />`
         : html`${tab('tools', Icons.drawing, t('doc.drawing.tools', 'tools'))}<aside class="drawing-tools" style=${colStyle}>
-              <${PaneHead} label=${t('doc.drawing.tools', 'tools')} onTuck=${() => toggleTuck('tools')} />
+              <${PaneHead} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onTuck=${() => toggleTuck('tools')} />
               ${/* The tools are icons, each named in its tooltip (Curtis, 2026-09-26). */ ''}
               <div class="drawing-toolset">
                   ${toolButtons.map(
@@ -1723,7 +1723,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const layersColumn = tucked.has('layers')
         ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
         : html`${tab('layers', Icons.layers, t('doc.drawing.layers-and-map', 'layers & map'))}<aside class="drawing-layers" style=${colStyle}>
-              <${PaneHead} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
+              <${PaneHead} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
               ${shown &&
               html`<${Navigator}
                   zoom=${zoom}

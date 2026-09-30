@@ -41,7 +41,7 @@ import { BankApp } from './apps/bank.js';
 import { ChatApp } from './apps/chat.js';
 import { appsFor, appById, appLabel } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';
-import { BucketSwitcher, useBucketChoice } from './buckets.js';
+import { BucketShelf, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { CornerBank } from './cornerbank.js';
 import { Version } from './version.js';
@@ -392,16 +392,6 @@ const Inside = ({ session }) => {
         html`<header class="app-header">
             <span class="app-header-lead">
                 <span class="app-header-title">${appLabel(appHere, personaName, isDevice())}</span>
-                ${/* A switcher over one notebook offers a choice that isn't one. */ ''}
-                ${!!appHere.style &&
-                !appHere.soleBucket &&
-                html`<${BucketSwitcher}
-                    root=${root}
-                    app=${appHere}
-                    roster=${roster}
-                    bucket=${bucket}
-                    onSwitch=${switchBucket}
-                />`}
             </span>
             ${appHere.lookup && html`<${PeopleLookup} query=${query} onQuery=${setQuery} />`}
             ${showSearch &&
@@ -516,7 +506,10 @@ const Inside = ({ session }) => {
         </${Router}>
     `;
     // A node administrator on a server may super-pin posts to its front page (frontdoor.js).
-    return html`<${SuperPinner.Provider} value=${nodeAdmin && !isDevice()}>${inApp ? shell(routed) : stage(routed)}</${SuperPinner.Provider}>`;
+    // The notebook shelf, for the switcher heading an app's list column (buckets.js).
+    return html`<${SuperPinner.Provider} value=${nodeAdmin && !isDevice()}><${BucketShelf.Provider} value=${{ roster, onSwitch: switchBucket }}
+        >${inApp ? shell(routed) : stage(routed)}</${BucketShelf.Provider}
+    ></${SuperPinner.Provider}>`;
 };
 
 /// The address before `/ringtome/` (2026-09-28): `/id/<seg>[/…]` goes on to its `/ringtome/user/`

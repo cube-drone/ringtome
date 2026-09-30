@@ -190,7 +190,7 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
         selected=${!!selected && selected.author === r.author && selected.doc === r.doc_id}
     />`;
     return html`<aside class="chat-rooms">
-        <${PaneHead} label=${t('apps.chat.chats', 'chats')} onTuck=${onTuck} />
+        <${PaneHead} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onTuck=${onTuck} />
         <button class="chat-new-btn" onClick=${() => loc.route(`${appHref('chat')}/new`)}>
             ${t('apps.chat.new-chat', '+ new chat')}
         </button>

@@ -11,6 +11,7 @@ import { docHref } from '../links.js';
 import { parseRingtome } from '../pure/ringtome.js';
 import { incomingTo, outgoingOf, linkLabel } from '../pure/doclinks.js';
 import { PaneHead } from '../panes.js';
+import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -40,7 +41,7 @@ export const LinksColumn = ({ root, docId, docs, onTuck }) => {
         .sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
     const outgoing = outgoingOf(rows, docId);
     return html`<aside class="links-column">
-        <${PaneHead} label=${t('doc.linkcol.links', 'links')} onTuck=${onTuck} />
+        <${PaneHead} icon=${Icons.link} label=${t('doc.linkcol.links', 'links')} onTuck=${onTuck} />
         ${!docId
             ? html`<p class="null-sub">${t('doc.linkcol.open-a-note', 'open a note to see what links to it, and what it links to.')}</p>`
             : html`
