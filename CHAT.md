@@ -69,6 +69,15 @@ node keeps its own room whole, which is where "all of it" lives.
    every other's, so nothing depends on an author being online. The bounds: a room with
    nobody live and the creator dark is unreachable, which is when nothing is happening in it;
    and a lurker who never speaks has no chain and is visible only as presence.
+   *Built 2026-09-29 (Curtis: "just keeping track of the last 20-50 people to post in a room
+   should be loads for anybody to get bootstrapped"), as a remembered directory rather than a
+   gossip frontier:* every node that holds a room answers the directory ask with its fifty most
+   recent speakers, and the newer ask (`WantRoomReach`) says where each is served, because a
+   newcomer holds no speaker's key tree and a root alone finds no node. A node remembers every
+   directory it is told (`room_directory`), and the room pulse learns it for rooms in a feed
+   while the creator's node is up. With the creator dark, a node asks the remembered speakers'
+   nodes, whoever passed the room along, and the nodes that delivered the room post, then pulls
+   each chain from any participant's node.
 5. **Live is gossip, and gossip carries the same entries.** Each room has an iroh-gossip
    topic; every live machine of every participant joins it, bootstrapped from the creator's
    node and the peer ledger's rows for the participants it already knows. A message is signed

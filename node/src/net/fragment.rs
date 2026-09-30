@@ -97,6 +97,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantRoom { author, doc_id, for_root, key_proof }) => {
             crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root, key_proof).await
         }
+        Some(FragmentMessage::WantRoomReach { author, doc_id, for_root, key_proof }) => {
+            crate::chat::answer_room_reach(&state, &conn, &author, &doc_id, &for_root, key_proof).await
+        }
         Some(FragmentMessage::WantRoomHistory { author, doc_id, for_root, before_ms, limit, key_proof }) => {
             // Streamed (CHAT.md, ruling 6): a page of history is more than one frame holds,
             // so the answer is a run of small frames ended by an empty one.
@@ -220,6 +223,40 @@ async fn answer_key(
 
 /// Ask one endpoint who has spoken in a room (CHAT.md, ruling 4): the creator's node is the
 /// directory of record. An empty list is "nobody yet" and "not for you" alike.
+/// The room's recent speakers and where each is served (2026-09-29): `WantRoomReach`. An `Err`
+/// from a node that predates the question is the caller's cue to ask `fetch_room` instead.
+pub async fn fetch_room_reach(
+    state: &AppState,
+    endpoint_id: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+    for_root: &[u8; 32],
+) -> Result<Vec<([u8; 32], Vec<[u8; 32]>)>> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for a room's reach: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    let peer: [u8; 32] = *conn.remote_id().as_bytes();
+    write_frame(
+        &mut send,
+        &FragmentMessage::WantRoomReach {
+            author: *author,
+            doc_id: *doc_id,
+            for_root: *for_root,
+            key_proof: crate::chat::key_proof_for(state, doc_id, &peer).await,
+        },
+    )
+    .await?;
+    send.finish().ok();
+    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room reach timed out")??;
+    conn.close(0u8.into(), b"done");
+    match answer {
+        Some(FragmentMessage::RoomReach { speakers }) => Ok(speakers),
+        other => Err(anyhow!("unexpected answer to a room reach ask: {other:?}")),
+    }
+}
+
 pub async fn fetch_room(
     state: &AppState,
     endpoint_id: &str,

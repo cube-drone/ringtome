@@ -162,7 +162,7 @@ pub async fn join(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u
         .ok_or_else(|| anyhow!("the room's key hasn't arrived - no topic without it"))?;
     let doc_hex = hex::encode(doc);
     let mut bootstrap: Vec<String> = creator_endpoints(state, author_hex).await;
-    for speaker in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+    for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
         for ep in speaker_endpoints(state, &speaker).await {
             if !bootstrap.contains(&ep) {
                 bootstrap.push(ep);
@@ -1921,9 +1921,55 @@ pub async fn answer_room(
     if !fragment_door_admits(state, conn, &head, &author_hex, doc, for_root, key_proof).await {
         return empty;
     }
-    let roots = participants(&state.node_db, &author_hex, &doc_hex).await.unwrap_or_default();
+    // The most recent speakers, newest first - this node's own lines, then whatever directory it
+    // was told (2026-09-29): enough for a newcomer to find the room with its creator's node dark.
+    let roots = recent_speakers(&state.node_db, &author_hex, &doc_hex).await;
     let participants = roots.iter().filter_map(|r| crate::pubkey::decode(r)).collect();
     ringtome_proto::fragment::FragmentMessage::Room { participants }
+}
+
+/// The directory with where to reach each speaker (2026-09-29), under the same door as
+/// `answer_room`: the endpoints this node already knows serve them, asking nobody while it
+/// answers - a newcomer holds no speaker's key tree, and a root alone finds no node.
+pub async fn answer_room_reach(
+    state: &AppState,
+    conn: &iroh::endpoint::Connection,
+    author: &[u8; 32],
+    doc: &[u8; 16],
+    for_root: &[u8; 32],
+    key_proof: Option<[u8; 32]>,
+) -> ringtome_proto::fragment::FragmentMessage {
+    use ringtome_proto::fragment::{FragmentMessage, MAX_REACH_ENDPOINTS, MAX_ROOM_REACH};
+    let empty = FragmentMessage::RoomReach { speakers: Vec::new() };
+    let author_hex = hex::encode(author);
+    let doc_hex = hex::encode(doc);
+    let Some((head, _)) = room_head(state, &author_hex, doc).await else { return empty };
+    if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+        return empty;
+    }
+    if !fragment_door_admits(state, conn, &head, &author_hex, doc, for_root, key_proof).await {
+        return empty;
+    }
+    let ours = state.endpoint.id().to_string();
+    let mut speakers = Vec::new();
+    for root_hex in recent_speakers(&state.node_db, &author_hex, &doc_hex).await.into_iter().take(MAX_ROOM_REACH) {
+        let Some(root) = crate::pubkey::decode(&root_hex) else { continue };
+        // This node serves them too when they're hosted here.
+        let mut eps: Vec<String> = if crate::identity::is_hosted(&state.node_db, &root_hex).await.unwrap_or(false) { vec![ours.clone()] } else { Vec::new() };
+        for ep in known_endpoints(state, &root_hex).await {
+            if !eps.contains(&ep) {
+                eps.push(ep);
+            }
+        }
+        let endpoints = eps
+            .iter()
+            .filter_map(|e| e.parse::<iroh::PublicKey>().ok())
+            .map(|k| *k.as_bytes())
+            .take(MAX_REACH_ENDPOINTS)
+            .collect();
+        speakers.push((root, endpoints));
+    }
+    FragmentMessage::RoomReach { speakers }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2178,6 +2224,20 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
 /// Every participant mirrors every other's room chain (CHAT.md, ruling 4), so any speaker's node
 /// is a place to fetch any chain from - and to push one to - when the creator's node is dark.
 async fn speaker_endpoints(state: &AppState, speaker: &str) -> Vec<String> {
+    let mut out = known_endpoints(state, speaker).await;
+    // A speaker whose tree this node holds but whose peer rows it never derived: their signed
+    // serving records, resolved (the key lane's rung for an author it has never dialled).
+    if out.is_empty() {
+        crate::net::sync::derive_peers_for(state, speaker).await;
+        out = known_endpoints(state, speaker).await;
+    }
+    out
+}
+
+/// Where this node already knows a speaker is served, asking nobody: their key tree's
+/// endpoints, their peer rows, and what a room directory said about them (2026-09-29: a newcomer
+/// holds none of a speaker's tree, and can't find their node from their root alone).
+async fn known_endpoints(state: &AppState, speaker: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for leaf in crate::idface::stored_tree_leaves(state, speaker).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, speaker, &leaf).await;
@@ -2185,7 +2245,166 @@ async fn speaker_endpoints(state: &AppState, speaker: &str) -> Vec<String> {
             out.push(ep);
         }
     }
+    for ep in crate::net::sync::peers_for(&state.node_db, speaker).await.unwrap_or_default() {
+        if !out.contains(&ep) {
+            out.push(ep);
+        }
+    }
+    let told: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT endpoints FROM room_directory WHERE speaker_root = ?1 AND endpoints != '' ORDER BY heard_ms DESC LIMIT 4",
+            (speaker,),
+        )
+        .await
+        .unwrap_or_default();
+    for (list,) in told {
+        for ep in list.split(',').filter(|e| !e.is_empty()) {
+            if !out.iter().any(|o| o == ep) {
+                out.push(ep.to_string());
+            }
+        }
+    }
     out
+}
+
+/// How many speakers a room's directory names: the most recent (Curtis, 2026-09-29: "just
+/// keeping track of the last 20-50 people to post in a room should be loads for anybody to get
+/// bootstrapped, even in pretty adverse network conditions").
+const ROOM_DIRECTORY: usize = 50;
+/// How long a remembered directory stands before the pulse asks for it again.
+const DIRECTORY_STALE_MS: i64 = 60 * 60 * 1000;
+
+/// The room's most recent speakers as this node knows them, newest first, at most
+/// `ROOM_DIRECTORY`: who spoke in the lines it holds, then whoever a directory answer named. What
+/// this node tells a dialer who asks, and whom it asks itself when the creator's node is dark.
+async fn recent_speakers(node_db: &Db, author_hex: &str, doc_hex: &str) -> Vec<String> {
+    let heard: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT speaker_root FROM room_messages WHERE room_author = ?1 AND room_doc = ?2
+             GROUP BY speaker_root ORDER BY MAX(said_ms) DESC LIMIT ?3",
+            (author_hex, doc_hex, ROOM_DIRECTORY as i64),
+        )
+        .await
+        .unwrap_or_default();
+    let told: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT speaker_root FROM room_directory WHERE room_author = ?1 AND room_doc = ?2
+             ORDER BY heard_ms DESC LIMIT ?3",
+            (author_hex, doc_hex, ROOM_DIRECTORY as i64),
+        )
+        .await
+        .unwrap_or_default();
+    let mut out: Vec<String> = Vec::new();
+    for (r,) in heard.into_iter().chain(told) {
+        if out.len() >= ROOM_DIRECTORY {
+            break;
+        }
+        if !out.contains(&r) {
+            out.push(r);
+        }
+    }
+    out
+}
+
+/// Keep a directory answer: its speakers, in its order, with where each is served when the
+/// answer said - the fifty most recently heard kept. An answer that names no endpoints (an older
+/// node's) leaves any already known in place.
+async fn remember_directory(node_db: &Db, author_hex: &str, doc_hex: &str, speakers: &[(String, Vec<String>)]) {
+    let now = crate::clock::now_ms();
+    for (i, (speaker, endpoints)) in speakers.iter().take(ROOM_DIRECTORY).enumerate() {
+        let _ = node_db
+            .execute(
+                "INSERT INTO room_directory (room_author, room_doc, speaker_root, heard_ms, endpoints) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (room_author, room_doc, speaker_root) DO UPDATE SET heard_ms = MAX(heard_ms, excluded.heard_ms),
+                   endpoints = CASE WHEN excluded.endpoints = '' THEN endpoints ELSE excluded.endpoints END",
+                (author_hex, doc_hex, speaker.as_str(), now - i as i64, endpoints.join(",")),
+            )
+            .await;
+    }
+    let _ = node_db
+        .execute(
+            "DELETE FROM room_directory WHERE room_author = ?1 AND room_doc = ?2 AND speaker_root NOT IN
+               (SELECT speaker_root FROM room_directory WHERE room_author = ?1 AND room_doc = ?2
+                ORDER BY heard_ms DESC LIMIT ?3)",
+            (author_hex, doc_hex, ROOM_DIRECTORY as i64),
+        )
+        .await;
+}
+
+/// When this node last learned the room's directory from somebody, if ever.
+async fn directory_learned_ms(node_db: &Db, author_hex: &str, doc_hex: &str) -> Option<i64> {
+    node_db
+        .fetch_optional::<(Option<i64>,)>(
+            "SELECT MAX(heard_ms) FROM room_directory WHERE room_author = ?1 AND room_doc = ?2",
+            (author_hex, doc_hex),
+        )
+        .await
+        .ok()
+        .flatten()
+        .and_then(|(ms,)| ms)
+}
+
+/// Ask for the room's directory - the creator's node first (the directory of record), then any
+/// node this one knows holds the room: the recent speakers' own, whoever passed the room to
+/// `viewer_hex`, and the nodes that delivered the room post itself (CHAT.md, ruling 4; Curtis,
+/// 2026-09-29: a newcomer with the creator's node dark has nobody to ask otherwise). The
+/// creator's answer stands even when it names nobody - a room nobody has spoken in yet; anyone
+/// else's counts only when it names somebody. Remembered, and returned with whether the
+/// creator's node answered at all (a dark creator isn't dialed again for every chain).
+async fn directory_ask(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> (Vec<String>, bool) {
+    let (Some(author), Some(for_root)) = (crate::pubkey::decode(author_hex), crate::pubkey::decode(viewer_hex)) else {
+        return (Vec::new(), false);
+    };
+    let doc_hex = hex::encode(doc);
+    let creator = creator_endpoints(state, author_hex).await;
+    let mut others: Vec<String> = Vec::new();
+    let add = |eps: Vec<String>, out: &mut Vec<String>| {
+        for ep in eps {
+            if !creator.contains(&ep) && !out.contains(&ep) {
+                out.push(ep);
+            }
+        }
+    };
+    for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
+        if speaker != viewer_hex && speaker != author_hex {
+            add(speaker_endpoints(state, &speaker).await, &mut others);
+        }
+    }
+    if let Some(via) = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &doc_hex).await {
+        add(speaker_endpoints(state, &via).await, &mut others);
+    }
+    add(crate::fragments::deliverers_of(&state.node_db, author_hex).await.unwrap_or_default(), &mut others);
+    let ours = state.endpoint.id().to_string();
+    for (endpoint, from_creator) in creator.iter().map(|e| (e, true)).chain(others.iter().map(|e| (e, false))) {
+        if *endpoint == ours {
+            continue;
+        }
+        // Where each speaker is served, if the node knows the question; the bare directory from
+        // a node that predates it.
+        let answer: anyhow::Result<Vec<(String, Vec<String>)>> =
+            match crate::net::fragment::fetch_room_reach(state, endpoint, &author, doc, &for_root).await {
+                Ok(rows) => Ok(rows
+                    .into_iter()
+                    .map(|(root, eps)| {
+                        let eps = eps.iter().filter_map(|e| iroh::PublicKey::from_bytes(e).ok()).map(|k| k.to_string()).collect();
+                        (hex::encode(root), eps)
+                    })
+                    .collect()),
+                Err(_) => crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root)
+                    .await
+                    .map(|list| list.iter().map(|r| (hex::encode(r), Vec::new())).collect()),
+            };
+        match answer {
+            Ok(rows) if from_creator || !rows.is_empty() => {
+                remember_directory(&state.node_db, author_hex, &doc_hex, &rows).await;
+                return (rows.into_iter().map(|(r, _)| r).collect(), from_creator);
+            }
+            Ok(_) => {}
+            Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed"),
+        }
+    }
+    (Vec::new(), false)
 }
 
 /// The endpoints that serve the room's creator, in the order the key lane asks them.
@@ -2229,7 +2448,7 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     // mirrors every chain in the room (Curtis, 2026-09-29: the room goes on while its creator's
     // computer is off).
     let doc_hex = hex::encode(doc);
-    for speaker in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+    for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
         if speaker == root_hex || speaker == author_hex || crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
             continue;
         }
@@ -2248,8 +2467,8 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
 pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Result<usize> {
     let doc_hex = hex::encode(doc);
     let creator_here = crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false);
-    let for_root = crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
-    let author = crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
+    crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
+    crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
     let endpoints = if creator_here { Vec::new() } else { creator_endpoints(state, author_hex).await };
     let mut creator_dark = false;
     // A sealed room's door now answers to the key (Curtis, 2026-09-20), so fetch it before
@@ -2280,27 +2499,16 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         }
         who
     } else {
-        let mut found: Option<Vec<[u8; 32]>> = None;
-        for endpoint in &endpoints {
-            match crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root).await {
-                Ok(list) => {
-                    found = Some(list);
-                    break;
-                }
-                Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed"),
-            }
-        }
-        if found.is_none() {
-            // The creator's node is dark (Curtis, 2026-09-29: can the others go on talking?).
-            // Nobody else is asked for the directory here, so it isn't dialed again for every
-            // chain below either - each dial is a timeout.
-            creator_dark = true;
-        }
-        found.unwrap_or_default().iter().map(hex::encode).collect()
+        // The creator's node first; with it dark, anyone this node knows holds the room (Curtis,
+        // 2026-09-29: can the others go on talking? And can a newcomer find them?). A dark
+        // creator isn't dialed again for every chain below - each dial is a timeout.
+        let (found, creator_answered) = directory_ask(state, root_hex, author_hex, doc).await;
+        creator_dark = !creator_answered;
+        found
     };
-    // Everyone this node has heard speak here, too (ruling 4): with the creator dark the
-    // directory is nobody, and a speaker this node already knows is still one to pull.
-    for known in participants(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+    // Every recent speaker this node knows of, too (ruling 4): its own lines' and any directory
+    // it was told, so a speaker already known is still one to pull.
+    for known in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
         if !speakers.contains(&known) {
             speakers.push(known);
         }
@@ -2516,7 +2724,15 @@ async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
                 if let Ok(mut m) = PULSED.lock() {
                     m.insert(key, now);
                 }
-                remote_latest(&state, &reader, &author, &doc).await
+                let latest = remote_latest(&state, &reader, &author, &doc).await;
+                // While the creator's node is up, learn who speaks here (2026-09-29): a reader
+                // who hasn't entered the room yet can still find it if that node goes dark.
+                if latest.is_some()
+                    && directory_learned_ms(&state.node_db, &author, &doc_hex).await.is_none_or(|ms| now - ms > DIRECTORY_STALE_MS)
+                {
+                    directory_ask(&state, &reader, &author, &doc).await;
+                }
+                latest
             }
         };
         if let Some(ms) = latest {

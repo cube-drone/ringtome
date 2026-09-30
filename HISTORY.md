@@ -12783,3 +12783,38 @@ its parent, a post with no sealed label, and a first ask that found the author a
   bea's node, then he reads it with both ada's and bea's nodes dark.
 - keyprefetch.cjs pins the follower's outcome (a sealed post and a sealed room, read with the
   author dark), whichever road delivered the key.
+
+## 2026-09-29: a newcomer finds a room whose creator is dark
+
+Curtis: "the newcomer COULD get room histories from other folk in that room, but in order to know
+who to even ask they'd need... the chat history, which they don't have. 🐔 and 🥚 … just keeping
+track of the last 20-50 people to post in a room should be loads for anybody to get bootstrapped."
+
+- **The directory is the recent speakers.** Every node that holds a room already answered the
+  directory ask, not only the creator's, but with every speaker, alphabetically, up to 1,000.
+  `answer_room` now names the fifty most recent, newest first, from its own lines and any directory
+  it was told (`recent_speakers`).
+- **Remembered** (`room_directory`, node migration step 0061): every directory answer, whoever gave
+  it, capped at fifty per room. The room pulse, which already contacts the creator's node for every
+  room in a feed that nobody here has entered, learns the directory in the same visit when the
+  remembered one is missing or more than an hour old.
+- **Asked of more than the creator** (`directory_ask`): the creator's nodes, then the remembered
+  speakers' nodes, whoever passed the room along (the feed's introducer), and the nodes that
+  delivered the room post. `sync_room`, the live channel's bootstrap and `push_room`'s dark-creator
+  fallback all use that list.
+- **Names aren't enough: a wire addition.** The first cut learned the right speakers and still read
+  nothing. A node that holds no speaker's key tree can't find their node from their root alone
+  (`derive_peers_for` resolves a persona through the leaves of a tree it holds). So a new fragment
+  pair, `WantRoomReach`/`RoomReach` (tags 16/17, proto), asks the same question under the same door
+  and gets each speaker with up to four endpoints that serve them. The answering node doesn't run
+  discovery while answering. The memo keeps the endpoints, and `known_endpoints` reads them before
+  anything is resolved. A node that predates the pair drops the stream on the unknown tag, and the
+  asker falls back to `WantRoom` on the same endpoint. That fallback has no rig test, since the rig
+  runs one release.
+
+Pinned in `chat_offline.cjs`'s newcomer claim: eve, on a fifth node, follows ada, so the room is
+in her feed, and never enters. Her node's pulse learns the directory while ada is up. Ada's node
+goes dark, and eve enters and reads bea's and cal's lines off their own nodes. It failed, with an
+empty floor, until the reach pair carried the endpoints. The proto unit test pins the pair's round
+trip, a full answer within one frame, and both caps. CHAT.md, ruling 4 carries a note of what was
+built.

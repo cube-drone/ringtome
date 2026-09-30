@@ -133,6 +133,15 @@ pub enum FragmentMessage {
     WantRoom { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], key_proof: Option<[u8; 32]> },
     /// The participants' roots. Empty for "nobody yet" and "not for you" alike.
     Room { participants: Vec<[u8; 32]> },
+    /// The room's directory WITH where to reach each speaker (2026-09-29): the same question
+    /// and the same door as `WantRoom`, for a newcomer who holds none of the speakers' key trees
+    /// and so could not find their nodes from their roots alone - the reason a newcomer with the
+    /// creator's node dark had nobody to ask. A node that predates it drops the stream on the
+    /// unknown tag, and the asker falls back to `WantRoom`.
+    WantRoomReach { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], key_proof: Option<[u8; 32]> },
+    /// The room's most recent speakers, newest first, each with the endpoints the answering node
+    /// knows serve them (at most `MAX_REACH_ENDPOINTS`). Empty as `Room` is.
+    RoomReach { speakers: Vec<([u8; 32], Vec<[u8; 32]>)> },
     /// The archive's history (CHAT.md, ruling 6): the room's messages said before
     /// `before_ms`, newest first, at most `limit` - asked of the creator's node, which keeps
     /// the room whole, by a reader whose own node keeps only the budget. `for_root` is the
@@ -153,6 +162,12 @@ pub enum FragmentMessage {
 
 /// Cap on a room directory answer: the speaker ceiling (CHAT.md, ruling 6).
 pub const MAX_ROOM_PARTICIPANTS: usize = 1000;
+
+/// Cap on a reach answer's speakers: the room's recent posters (Curtis, 2026-09-29: "the last 20-50
+/// people to post in a room should be loads for anybody to get bootstrapped").
+pub const MAX_ROOM_REACH: usize = 50;
+/// Cap on the endpoints named for one speaker: fifty speakers at four each fit a frame.
+pub const MAX_REACH_ENDPOINTS: usize = 4;
 
 /// Cap on one history frame's entries: three messages of the largest size fit the frame.
 pub const MAX_ROOM_HISTORY_ITEMS: usize = 3;
@@ -222,6 +237,8 @@ const TAG_WANT_ROOM: u64 = 12;
 const TAG_ROOM: u64 = 13;
 const TAG_WANT_ROOM_HISTORY: u64 = 14;
 const TAG_ROOM_HISTORY: u64 = 15;
+const TAG_WANT_ROOM_REACH: u64 = 16;
+const TAG_ROOM_REACH: u64 = 17;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -339,6 +356,29 @@ impl FragmentMessage {
                 w.array(participants.len() as u64);
                 for p in participants {
                     w.bytes(p);
+                }
+            }
+            Self::WantRoomReach { author, doc_id, for_root, key_proof } => {
+                w.array(if key_proof.is_some() { 5 } else { 4 });
+                w.uint(TAG_WANT_ROOM_REACH);
+                w.bytes(author);
+                w.bytes(doc_id);
+                w.bytes(for_root);
+                if let Some(proof) = key_proof {
+                    w.bytes(proof);
+                }
+            }
+            Self::RoomReach { speakers } => {
+                w.array(2);
+                w.uint(TAG_ROOM_REACH);
+                w.array(speakers.len() as u64);
+                for (root, endpoints) in speakers {
+                    w.array(2);
+                    w.bytes(root);
+                    w.array(endpoints.len() as u64);
+                    for e in endpoints {
+                        w.bytes(e);
+                    }
                 }
             }
             Self::WantRoomHistory { author, doc_id, for_root, before_ms, limit, key_proof } => {
@@ -500,6 +540,35 @@ impl FragmentMessage {
                     participants.push(r.bytes_fixed::<32>()?);
                 }
                 Self::Room { participants }
+            }
+            (TAG_WANT_ROOM_REACH, arity @ 4..=5) => Self::WantRoomReach {
+                author: r.bytes_fixed::<32>()?,
+                doc_id: r.bytes_fixed::<16>()?,
+                for_root: r.bytes_fixed::<32>()?,
+                key_proof: if arity == 5 { Some(r.bytes_fixed::<32>()?) } else { None },
+            },
+            (TAG_ROOM_REACH, 2) => {
+                let count = r.array()?;
+                if count > MAX_ROOM_REACH as u64 {
+                    return Err(ProtoError::BadEntry("room reach too long"));
+                }
+                let mut speakers = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    if r.array()? != 2 {
+                        return Err(ProtoError::BadEntry("a reach row is a root and its endpoints"));
+                    }
+                    let root = r.bytes_fixed::<32>()?;
+                    let n = r.array()?;
+                    if n > MAX_REACH_ENDPOINTS as u64 {
+                        return Err(ProtoError::BadEntry("too many endpoints for one speaker"));
+                    }
+                    let mut endpoints = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        endpoints.push(r.bytes_fixed::<32>()?);
+                    }
+                    speakers.push((root, endpoints));
+                }
+                Self::RoomReach { speakers }
             }
             (TAG_WANT_ROOM_HISTORY, arity @ 6..=7) => Self::WantRoomHistory {
                 author: r.bytes_fixed::<32>()?,
@@ -759,6 +828,27 @@ pub fn verify_retraction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The reach pair (2026-09-29): round-trips, a full answer fits one frame, and a list past
+    /// either cap is refused.
+    #[test]
+    fn room_reach_round_trips_fits_a_frame_and_refuses_too_much() {
+        let full = FragmentMessage::RoomReach { speakers: vec![([7u8; 32], vec![[8u8; 32]; MAX_REACH_ENDPOINTS]); MAX_ROOM_REACH] };
+        for message in [
+            FragmentMessage::WantRoomReach { author: [1u8; 32], doc_id: [2u8; 16], for_root: [3u8; 32], key_proof: None },
+            FragmentMessage::WantRoomReach { author: [1u8; 32], doc_id: [2u8; 16], for_root: [3u8; 32], key_proof: Some([4u8; 32]) },
+            FragmentMessage::RoomReach { speakers: vec![([5u8; 32], vec![[6u8; 32]]), ([9u8; 32], Vec::new())] },
+            FragmentMessage::RoomReach { speakers: Vec::new() },
+            full.clone(),
+        ] {
+            assert_eq!(FragmentMessage::decode(&message.encode()).unwrap(), message);
+        }
+        assert!(full.encode().len() <= MAX_FRAGMENT_FRAME_BYTES, "fifty speakers, four endpoints each, in one frame");
+        let many = FragmentMessage::RoomReach { speakers: vec![([7u8; 32], Vec::new()); MAX_ROOM_REACH + 1] };
+        assert!(FragmentMessage::decode(&many.encode()).is_err(), "past the speaker cap");
+        let wide = FragmentMessage::RoomReach { speakers: vec![([7u8; 32], vec![[8u8; 32]; MAX_REACH_ENDPOINTS + 1])] };
+        assert!(FragmentMessage::decode(&wide.encode()).is_err(), "past the endpoint cap");
+    }
 
     #[test]
     fn shelf_messages_round_trip_and_refuse_a_long_list() {

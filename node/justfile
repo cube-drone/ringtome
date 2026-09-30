@@ -380,7 +380,9 @@ ui-watch:
 # (REFACTOR_UI S1), and this recipe is where it will live.
 ui-check: ui-build
     cd "{{justfile_directory()}}/js" && npx eslint .
-    cd "{{justfile_directory()}}/integration" && npx mocha --no-config 'test/pure/*.cjs'
+    # --timeout: each file's first `before` imports the modules it tests, and under load (a full
+    # `just ci` beside a clippy run, 2026-09-29) that alone passed mocha's 2s default.
+    cd "{{justfile_directory()}}/integration" && npx mocha --no-config --timeout 15000 'test/pure/*.cjs'
 
 # Watch-rebuild the CSS bundle on save (run in a separate terminal).
 ui-csswatch:
