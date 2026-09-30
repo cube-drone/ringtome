@@ -2604,6 +2604,9 @@ pub async fn heads_for(
 pub struct SearchRow {
     pub doc_id: String,
     pub tokens: String,
+    /// The links its body makes (2026-10-01, the Writer's Links column): what the column lists as
+    /// outgoing, and - inverted across every row - as incoming.
+    pub links: Vec<crate::record::bake::DocLink>,
 }
 
 /// Normalize text into the bag: lowercase alphanumeric runs, 2..=32 chars. Unicode-aware
@@ -2633,6 +2636,7 @@ pub async fn search_rows(
     keys: &EpochKeys,
     files: &FileStore,
     annots: &BTreeMap<[u8; 16], String>,
+    root_hex: &str,
 ) -> Result<Vec<SearchRow>, AppError> {
     catch_up(db, keys).await?;
     // (doc_id, title, heads_fp, head_bodies) - the search index's staleness inputs per doc.
@@ -2642,13 +2646,13 @@ pub async fn search_rows(
         .await
         .context("reading heads for search")
         .map_err(AppError::Internal)?;
-    let cached: BTreeMap<Vec<u8>, (Vec<u8>, String)> = db
-        .fetch_all::<(Vec<u8>, Vec<u8>, String)>("SELECT doc_id, fp, tokens FROM doc_search", ())
+    let cached: BTreeMap<Vec<u8>, (Vec<u8>, String, String)> = db
+        .fetch_all::<(Vec<u8>, Vec<u8>, String, String)>("SELECT doc_id, fp, tokens, links FROM doc_search", ())
         .await
         .context("reading search rows")
         .map_err(AppError::Internal)?
         .into_iter()
-        .map(|(id, fp, tokens)| (id, (fp, tokens)))
+        .map(|(id, fp, tokens, links)| (id, (fp, tokens, links)))
         .collect();
 
     let mut out = Vec::new();
@@ -2673,9 +2677,10 @@ pub async fn search_rows(
         hasher.update(annot_text.as_bytes());
         let fp = hasher.finalize().as_bytes().to_vec();
         match cached.get(&doc_id) {
-            Some((have, tokens)) if *have == fp => out.push(SearchRow {
+            Some((have, tokens, links)) if *have == fp => out.push(SearchRow {
                 doc_id: hex::encode(id),
                 tokens: tokens.clone(),
+                links: serde_json::from_str(links).unwrap_or_default(),
             }),
             _ => stale.push((id, fp, title)),
         }
@@ -2692,6 +2697,7 @@ pub async fn search_rows(
             if let Some(annot_text) = annots.get(&id) {
                 tokenize_into(annot_text, &mut tokens);
             }
+            let mut links = Vec::new();
             let doc = load_doc(db, &id).await?;
             if !doc.versions.is_empty() {
                 // Empty device-name map: conflict labels' device names are presentation,
@@ -2703,12 +2709,18 @@ pub async fn search_rows(
                 if let Some(body) = resolved.body.as_ref().filter(|_| words) {
                     tokenize_into(body, &mut tokens);
                 }
+                // Links are Marquee's: a plain page's brackets are only brackets.
+                let marquee = Format::from_wire(doc.display_head().and_then(|v| v.header.format)) == Format::Marquee;
+                if let Some(body) = resolved.body.as_ref().filter(|_| marquee) {
+                    links = crate::record::bake::doc_links(body, root_hex);
+                }
             }
             let tokens = tokens.into_iter().collect::<Vec<_>>().join(" ");
+            let links_json = serde_json::to_string(&links).unwrap_or_else(|_| "[]".to_string());
             db.execute(
-                "INSERT INTO doc_search (doc_id, fp, tokens) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(doc_id) DO UPDATE SET fp = excluded.fp, tokens = excluded.tokens",
-                (id.to_vec(), fp, tokens.clone()),
+                "INSERT INTO doc_search (doc_id, fp, tokens, links) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(doc_id) DO UPDATE SET fp = excluded.fp, tokens = excluded.tokens, links = excluded.links",
+                (id.to_vec(), fp, tokens.clone(), links_json),
             )
             .await
             .context("writing search row")
@@ -2716,6 +2728,7 @@ pub async fn search_rows(
             out.push(SearchRow {
                 doc_id: hex::encode(id),
                 tokens,
+                links,
             });
         }
     }
@@ -5684,7 +5697,7 @@ mod tests {
         )
         .await;
 
-        let rows = search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new(), "").await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
         for want in ["quick", "fox", "brown", "the"] {
             assert!(tokens.contains(&want.to_string()), "has {want}: {tokens:?}");
@@ -5693,6 +5706,39 @@ mod tests {
         assert!(!tokens.contains(&"x".to_string()), "single letters dropped");
         // "QUICK" and "quick" fold to one token.
         assert_eq!(tokens.iter().filter(|t| *t == "quick").count(), 1);
+    }
+
+    /// A Marquee note's row carries the links its body makes (2026-10-01, the Writer's Links
+    /// column), the author's own documents marked; an edit that drops a link drops it from the row;
+    /// and a plain page's brackets are only brackets.
+    #[tokio::test]
+    async fn search_rows_carry_a_marquee_body_s_links() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let root_hex = hex::encode([3u8; 32]);
+        let (note, target, plain) = (new_doc_id(), new_doc_id(), new_doc_id());
+        let target_hex = hex::encode(target);
+        let body = format!("see [the other one](/ringtome/user/{root_hex}/doc/{target_hex}) and [the web](https://example.com)");
+        let v1 = save_fmt(&db, &key, &keys, &files, note, vec![], "linker", body.as_bytes(), Format::Marquee).await;
+        save(&db, &key, &keys, &files, plain, vec![], "plain", body.as_bytes()).await;
+
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new(), &root_hex).await.unwrap();
+        let links_of = |rows: &[SearchRow], id: &[u8; 16]| rows.iter().find(|r| r.doc_id == hex::encode(id)).unwrap().links.clone();
+        let links = links_of(&rows, &note);
+        assert_eq!(links.len(), 2);
+        assert_eq!((links[0].text.as_str(), links[0].doc.as_deref()), ("the other one", Some(target_hex.as_str())));
+        assert_eq!((links[1].to.as_str(), links[1].doc.as_deref()), ("https://example.com", None));
+        assert!(links_of(&rows, &plain).is_empty(), "a plain page has no links");
+
+        // Served from the cache, the links come back as they went in.
+        let again = search_rows(&db, &keys, &files, &BTreeMap::new(), &root_hex).await.unwrap();
+        assert_eq!(links_of(&again, &note), links);
+
+        save_fmt(&db, &key, &keys, &files, note, vec![v1], "linker", b"no links now", Format::Marquee).await;
+        let after = search_rows(&db, &keys, &files, &BTreeMap::new(), &root_hex).await.unwrap();
+        assert!(links_of(&after, &note).is_empty(), "the edit dropped them");
     }
 
     /// Annotation text (a long description, tags) is indexed alongside the body - the whole
@@ -5708,7 +5754,7 @@ mod tests {
 
         let mut annots = BTreeMap::new();
         annots.insert(doc_id, "marzipan confectionery\ndessert".to_string());
-        let rows = search_rows(&db, &keys, &files, &annots).await.unwrap();
+        let rows = search_rows(&db, &keys, &files, &annots, "").await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
         for want in ["marzipan", "confectionery", "dessert", "body", "words"] {
             assert!(tokens.contains(&want.to_string()), "has {want}: {tokens:?}");
@@ -5736,17 +5782,17 @@ mod tests {
             .0
         }
 
-        let rows = search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new(), "").await.unwrap();
         assert!(tokens_of(&rows, &doc_id).contains(&"alpha".to_string()));
         let fp1 = fp(&db, &doc_id).await;
 
         // Re-run, nothing changed: same fingerprint (served from cache).
-        search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        search_rows(&db, &keys, &files, &BTreeMap::new(), "").await.unwrap();
         assert_eq!(fp(&db, &doc_id).await, fp1, "unchanged doc keeps its row");
 
         // Edit the body: new head, new tokens, new fingerprint.
         save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"beta").await;
-        let rows = search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new(), "").await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
         assert!(tokens.contains(&"beta".to_string()), "re-indexed: {tokens:?}");
         assert!(!tokens.contains(&"alpha".to_string()), "old body gone: {tokens:?}");
@@ -5756,7 +5802,7 @@ mod tests {
         // Change only the annotation (body fixed): still re-indexes.
         let mut annots = BTreeMap::new();
         annots.insert(doc_id, "gamma".to_string());
-        let rows = search_rows(&db, &keys, &files, &annots).await.unwrap();
+        let rows = search_rows(&db, &keys, &files, &annots, "").await.unwrap();
         assert!(tokens_of(&rows, &doc_id).contains(&"gamma".to_string()));
         assert_ne!(fp(&db, &doc_id).await, fp2, "an annotation change re-indexes");
     }
@@ -5789,14 +5835,14 @@ mod tests {
             .unwrap();
 
         // Before the blob (reader's own empty store): title indexes, body doesn't.
-        let rows = search_rows(&reader, &keys, &no_blob, &BTreeMap::new()).await.unwrap();
+        let rows = search_rows(&reader, &keys, &no_blob, &BTreeMap::new(), "").await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
         assert!(tokens.contains(&"title".to_string()), "title indexed: {tokens:?}");
         assert!(!tokens.contains(&"secret".to_string()), "body not here yet: {tokens:?}");
 
         // The blob arrives (backfill) - the writer's store now stands in as the reader's, blob
         // present. Same log, no chain change: the fingerprint moves on body presence alone.
-        let rows = search_rows(&reader, &keys, &with_blob, &BTreeMap::new()).await.unwrap();
+        let rows = search_rows(&reader, &keys, &with_blob, &BTreeMap::new(), "").await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
         assert!(tokens.contains(&"secret".to_string()), "body now indexed: {tokens:?}");
     }

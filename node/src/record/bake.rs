@@ -168,6 +168,111 @@ fn each_directive(
     }
 }
 
+/// One link a body makes (2026-10-01, the Writer's Links column): where it goes, the words it wears,
+/// and - when it is one of the author's own documents - that document's id, hex.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DocLink {
+    pub to: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
+}
+
+/// Every link a Marquee body makes - `[words](target)` and a bare turbolink line - in document
+/// order, once per target. Read with the parser, as the embeds are: a target inside code, or
+/// escaped, is not a link. Embeds are not links (a picture shown is not a page pointed at).
+pub fn doc_links(body: &str, root_hex: &str) -> Vec<DocLink> {
+    let Ok(doc) = marquee_parser::parse(body) else {
+        return Vec::new();
+    };
+    let mut found: Vec<DocLink> = Vec::new();
+    each_link(&doc, &mut |target, text| {
+        if !found.iter().any(|l| l.to == target) {
+            found.push(DocLink { to: target.to_string(), text, doc: own_doc(target, root_hex) });
+        }
+    });
+    found
+}
+
+fn each_link(node: &marquee_parser::Node, on_link: &mut impl FnMut(&str, String)) {
+    use marquee_parser::Node;
+    match node {
+        Node::Link { target, children } => {
+            let mut text = String::new();
+            for child in children {
+                text_of(child, &mut text);
+            }
+            on_link(target, text.trim().to_string());
+        }
+        Node::Turbolink { target } => on_link(target, String::new()),
+        Node::Document { children, .. }
+        | Node::Paragraph { children }
+        | Node::Heading { children, .. }
+        | Node::Blockquote { children }
+        | Node::List { children, .. }
+        | Node::ListItem { children }
+        | Node::Emphasis { children }
+        | Node::Strong { children }
+        | Node::Strikethrough { children }
+        | Node::Span { children, .. }
+        | Node::Directive { children, .. }
+        | Node::InvalidDirective { children, .. } => {
+            for child in children {
+                each_link(child, on_link);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A link's words, as plain text.
+fn text_of(node: &marquee_parser::Node, out: &mut String) {
+    use marquee_parser::Node;
+    match node {
+        Node::Text { value } => out.push_str(value),
+        Node::CodeSpan { text } => out.push_str(text),
+        Node::Emoji { slug } => {
+            out.push(':');
+            out.push_str(slug);
+            out.push(':');
+        }
+        Node::Emphasis { children } | Node::Strong { children } | Node::Strikethrough { children } | Node::Span { children, .. } => {
+            for child in children {
+                text_of(child, out);
+            }
+        }
+        Node::HardBreak => out.push(' '),
+        _ => {}
+    }
+}
+
+/// The author's own document a link target names, as hex: `/ringtome/user/<them>/doc/<id>` whose
+/// root is `root_hex` (in any spelling, at any origin, hints and all), or the cozy paths drag-to-link
+/// wrote before `/ringtome/` - `/home/<app>/<id>` and `/in/…/<id>` - which only ever meant the
+/// author's own. `None` for anything else: someone else's document, a post, the web.
+pub fn own_doc(target: &str, root_hex: &str) -> Option<String> {
+    let path = match target.find("://") {
+        Some(i) => {
+            let after = &target[i + 3..];
+            &after[after.find('/')?..]
+        }
+        None => target,
+    };
+    let path = path.split(['?', '#']).next().unwrap_or(path);
+    let is_id = |s: &str| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit());
+    if let Some(rest) = path.strip_prefix("/ringtome/user/") {
+        let (seg, rest) = rest.split_once('/')?;
+        let id = rest.strip_prefix("doc/")?.split('/').next()?;
+        let crate::speakable::Parsed::Ok(root) = crate::speakable::parse(seg)? else { return None };
+        return (hex::encode(root) == root_hex && is_id(id)).then(|| id.to_ascii_lowercase());
+    }
+    if path.starts_with("/home/") || path.starts_with("/in/") {
+        let id = path.trim_end_matches('/').rsplit('/').next()?;
+        return is_id(id).then(|| id.to_ascii_lowercase());
+    }
+    None
+}
+
 /// Every embed target in a parsed body, in order - for a reader outside this module (the post head's
 /// first picture, idface.rs).
 pub fn each_embed(node: &marquee_parser::Node, on_embed: &mut impl FnMut(&str)) {
@@ -962,6 +1067,42 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
 
 #[cfg(test)]
 mod tests {
+
+    /// A body's links, for the Writer's Links column (2026-10-01): each target once, in order, its
+    /// words as plain text, and the author's own documents recognised in every spelling - the
+    /// `/ringtome/` address at any origin with its hints, the cozy paths before it - while someone
+    /// else's document, the web, a picture and a link inside code are not the author's.
+    #[test]
+    fn a_body_s_links_and_which_are_the_author_s_own() {
+        use super::{doc_links, own_doc};
+        let me = [7u8; 32];
+        let them = [9u8; 32];
+        let me_hex = hex::encode(me);
+        let short = |root: &[u8; 32]| {
+            let s = crate::speakable::speakable(root);
+            s.rsplit('-').next().unwrap().to_string()
+        };
+        let (a, b, c) = ("a".repeat(32), "b".repeat(32), "c".repeat(32));
+        let body = format!(
+            "See [*my* note](/ringtome/user/{mine}/doc/{a}?bucket=x) and [theirs](/ringtome/user/{theirs}/doc/{b}).\n\n\
+             An [old one](/home/notes/{c}), the [web](https://example.com), and [my note again](/ringtome/user/{mine}/doc/{a}?bucket=x).\n\n\
+             ![a picture](/ringtome/user/{mine}/doc/{b}/body/pic.avif) and `[code](/home/notes/{c})`.",
+            mine = short(&me),
+            theirs = short(&them),
+        );
+        let links = doc_links(&body, &me_hex);
+        let seen: Vec<(&str, Option<&str>)> = links.iter().map(|l| (l.text.as_str(), l.doc.as_deref())).collect();
+        assert_eq!(
+            seen,
+            vec![("my note", Some(a.as_str())), ("theirs", None), ("old one", Some(c.as_str())), ("web", None)],
+            "in order, once per target, pictures and code aside"
+        );
+        assert_eq!(own_doc(&format!("https://horse.example/ringtome/user/{}/doc/{a}#top", short(&me)), &me_hex), Some(a.clone()), "at any origin");
+        assert_eq!(own_doc(&format!("/ringtome/user/{me_hex}/doc/{a}"), &me_hex), Some(a.clone()), "the root in hex");
+        assert_eq!(own_doc(&format!("/ringtome/user/{}/post/{a}", short(&me)), &me_hex), None, "a post is not a note");
+        assert_eq!(own_doc("/home/notes/not-an-id", &me_hex), None);
+        assert!(doc_links("not [closed", &me_hex).is_empty());
+    }
 
     /// A public picture's address in both spellings, the root in any of its own (2026-09-28): the
     /// `/ringtome/` form at any origin, the `/id/` form as a path only; and publication copies

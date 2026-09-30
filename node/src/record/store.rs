@@ -853,6 +853,7 @@ impl Documents<'_> {
             &self.store.authorship.epoch_keys,
             &self.store.files,
             &annots,
+            &hex::encode(self.store.root),
         )
         .await?;
         Ok(rows

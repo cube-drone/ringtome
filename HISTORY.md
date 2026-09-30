@@ -13207,3 +13207,33 @@ triggering anything yet and it has a lot to offer."
 The feed's "further back" button sits flush with the cards again (Curtis, 2026-10-01): it kept an
 `align-self: center` from before the feed column could grow past the post measure, so in a wide
 column its measure-wide bar centred itself in the spare room. It takes the stream's own left edge now.
+
+### The Writer's Links column (2026-10-01)
+
+Curtis: "new column in the Writer app: Links - while I have a document open, Links displays first
+the incoming links to and then outgoing links from that document."
+
+- **The index carries the links.** Each document's search row (`doc_search`, the token bag the node
+  streams to the mirror) gains `links`: every `[words](target)` and turbolink a Marquee body makes,
+  in order, once per target, read with the parser (`bake::doc_links`) - not a link inside code, not
+  an embed. A link to one of the persona's own documents is marked with its id (`bake::own_doc`):
+  the `/ringtome/user/<them>/doc/<id>` address in any spelling of the root, at any origin, hints and
+  all, and the cozy `/home/…` and `/in/…` paths older notes still hold. The row's fingerprint
+  already covers the body, so links re-index exactly when the words do, and the stream's
+  per-row hash ships a changed link like any change.
+- **User rung 28** (`0028_doc_links.sql`) adds the column and empties `doc_search`, a memo, so the
+  next read re-indexes every note once, links and all.
+- **The column** (`doc/linkcol.js`, `pure/doclinks.js`): "linking here" - every other note whose
+  links name this one, by title, from any notebook - then "linked from here" in the note's own
+  order: your notes by title, a Ringtome address in the app, the web in a new tab, a deleted note
+  said as deleted. No request of its own: both lists invert the mirror's rows, so the column follows
+  a save. Resizable and tuckable like the others; for a new Writer it starts as a rail, with the
+  tags, tree and publish columns (`startsTucked`) - a device with stored tuck choices sees it open.
+
+Pinned: `bake` (own documents in every spelling, others' and posts not, order, dedupe, code and
+pictures aside), `documents` (a Marquee row's links, the cache returning them, an edit dropping
+them, a plain page with none), `pure/doclinks.cjs` (incoming once each and never itself, outgoing
+in order, a wordless link's label).
+Then (Curtis: "de-dupe links in this list"): "linked from here" shows each place once - one of your
+notes once however it was addressed (a notebook hint or not, the old `/home/…` path), anywhere else
+once per address, a trailing slash aside; the first link to a place keeps its words.

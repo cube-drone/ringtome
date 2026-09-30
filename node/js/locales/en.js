@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1305 phrases across 84 files.
+// 1314 phrases across 85 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -292,6 +292,7 @@ export default {
     'apps.notes.remove-filter': 'remove filter',
     'apps.notes.tree': 'tree',
     'apps.notes.publish': 'publish',
+    'apps.notes.links': 'links',
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.a-room': 'a room',
@@ -635,6 +636,16 @@ export default {
     'doc.imagepick.no-pictures-yet': 'no pictures yet - upload one in any notebook and it will be here.',
     'doc.imagepick.untitled': 'untitled',
     'doc.imagepick.show-more': 'show more ({left} left)',
+
+    // --- node/js/doc/linkcol.js ---
+    'doc.linkcol.untitled': 'untitled',
+    'doc.linkcol.deleted': 'deleted',
+    'doc.linkcol.links': 'links',
+    'doc.linkcol.open-a-note': 'open a note to see what links to it, and what it links to.',
+    'doc.linkcol.linking-here': 'linking here',
+    'doc.linkcol.nothing-links-here': 'nothing links here yet.',
+    'doc.linkcol.linked-from-here': 'linked from here',
+    'doc.linkcol.links-nowhere': "this note doesn't link anywhere yet.",
 
     // --- node/js/doc/marqueebody.js ---
     'doc.marqueebody.this-marquee-doesnt-parse-right': 'this page has a formatting problem. Showing the plain text.',

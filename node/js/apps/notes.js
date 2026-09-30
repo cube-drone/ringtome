@@ -25,6 +25,7 @@ import { browseFiles, UNFILED } from '../pure/filebrowse.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
+import { LinksColumn } from '../doc/linkcol.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 import { DrawingThumb } from '../doc/drawing.js';
@@ -386,6 +387,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const tagsTucked = tucked.has('tags');
     const treeTucked = tucked.has('tree');
     const publishTucked = tucked.has('publish');
+    const linksTucked = tucked.has('links');
 
     // The tree's depth-first doc order (the "book order"), reported by the tree pane.
     const [treeOrder, setTreeOrder] = useState(null);
@@ -394,7 +396,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // shared resizer strips + `colw:` prefs + CSS-var plumbing).
     // The leftmost column has no ceiling in hrseFiles (Curtis, 2026-09-29): a grid of tiles earns
     // whatever room it is given.
-    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree', 'publish'], {}, app.everything ? ['list'] : []);
+    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree', 'publish', 'links'], {}, app.everything ? ['list'] : []);
     // A notebook published as a book (PROJECT_PLAN's Books): the switch and the hidden marks, and the
     // tree that says which pages sit beneath a hidden section - read once here, worn by
     // the rows, the editor's bar, and the Publish column alike.
@@ -556,6 +558,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                           onTuck=${() => toggleTuck('publish')}
                           onSelect=${select}
                       />${resizer('publish')}`)}
+                ${/* What links to the open note, and what it links to (2026-10-01). */ ''}
+                ${feat.linkColumn &&
+                (linksTucked
+                    ? html`<${Rail} icon=${Icons.link} label=${t('apps.notes.links', 'links')} onClick=${() => toggleTuck('links')} />`
+                    : html`<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)}
                 <${RightColumn}
                     root=${root}
                     docId=${selected}
