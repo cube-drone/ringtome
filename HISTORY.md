@@ -13337,3 +13337,32 @@ as one, and it trades its transparent border for a pixel of padding - the same s
 neighbours, but its clip, line and paper share one edge (a first try left a hair of paper outside its
 steps), and its bottom row lies over the editor's top line, covering it between the tab's sides. Its
 icon keeps the teal. Seen at 4x in headless Chrome.
+
+### Notes that reached a notebook outside its tree (2026-09-30)
+
+Curtis: "When I copy a document into a bucket from, say, the web, it joins that bucket but it doesn't
+join that bucket's taxonomy - as far as I can tell there's no way to get that document into the
+taxonomy at that point: it's forever lost." Only "+ new note" filed into the tree; a copy, a move
+between notebooks, or a tree minted empty on first opening (after the notes) all left notes in the
+notebook and out of the tree - and the Writer hid the tree's unfiled bin (`showUnfiled=false`) on the
+premise that its list "plays that role", which it can't: the list lists, but can't file. The tree
+code said as much ("they'd fall out of the tree with no way back in").
+
+- **The unfiled bin shows in the Writer** (`apps/notes.js`): it appears only while something is
+  unfiled, and its rows drag into place with the tree's own drag - into a section, beside a note, or
+  onto the pane for the top level. That rescues the notes already stranded, whatever stranded them.
+- **A copy files itself** (`copyinto.js`, `doc/tree.js fileIntoTree`): into the top of the notebook's
+  tree as a new note is, when the notebook has a tree (a book copies into a fresh notebook with its
+  own). `ensureTreeRoot`'s lookup is `existingTreeRoot` now, shared.
+
+Seen in headless Chrome: a note in a notebook, the tree opened for the first time, the note waiting
+under "unfiled".
+
+The book tree's icons wear their page's standing (Curtis, 2026-09-30: "green if the page is
+published, orange if the page is changed, and gray if the page is hidden-from-the-publication"): the
+Writer hands the tree its book facts, and each page row's icon takes `pageStanding` - the list's own
+reckoning against the last rollout - as `--sea` for in the book as published, `--peach` for changed
+and for new (both waiting on the next rollout, as the list's marks group them), `--faint` for hidden,
+with the standing in its tooltip; a section hidden from the book goes grey too. A picture filed in
+the notebook, and a notebook that isn't a book, wear nothing. Seen in headless Chrome: a book of four
+pages, one of each standing.

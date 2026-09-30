@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1314 phrases across 85 files.
+// 1318 phrases across 85 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -728,6 +728,10 @@ export default {
     'doc.session.embed-removed-over-cap': '(“{alt}” removed — one page holds {cap} embedded files)',
 
     // --- node/js/doc/tree.js ---
+    'doc.tree.hidden-from-the-book': 'hidden from the book',
+    'doc.tree.new-since-the-last-rollout': 'new since the last rollout',
+    'doc.tree.changed-since-the-last-rollout': 'changed since the last rollout',
+    'doc.tree.in-the-book-as-published': 'in the book as published',
     'doc.tree.untitled-section': '(untitled section)',
     'doc.tree.untitled-section-2': '(untitled section)',
     'doc.tree.a-new-section-inside-this': 'a new section inside this one',

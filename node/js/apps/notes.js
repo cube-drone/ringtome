@@ -538,7 +538,12 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 ${feat.tree &&
                 (treeTucked
                     ? html`<${Rail} icon=${Icons.tree} label=${t('apps.notes.tree', 'tree')} onClick=${() => toggleTuck('tree')} />`
-                    : html`${tab('tree', Icons.tree, t('apps.notes.tree', 'tree'))}<${WikiTree}
+                    : html`${tab('tree', Icons.tree, t('apps.notes.tree', 'tree'))}${/* The unfiled bin shows (Curtis,
+                          2026-09-30: a note copied in "doesn't join that bucket's taxonomy… it's forever
+                          lost"): the list lists every note but can't file one, so a note that reached
+                          the notebook any way but "+ new" - a copy, a move, the tree minted after
+                          the notes - waits in the bin, and drags from there into place. The bin
+                          shows only while something's in it. */ ''}<${WikiTree}
                           root=${root}
                           bucket=${bucket}
                           selected=${selected}
@@ -546,7 +551,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                           searchQuery=${searchQuery}
                           searchKind=${searchKind}
                           reloadKey=${treeReload}
-                          showUnfiled=${false}
+                          showUnfiled=${true}
+                          book=${book}
                           onMinimize=${() => toggleTuck('tree')}
                           onOrder=${setTreeOrder}
                           itemNoun=${noun}

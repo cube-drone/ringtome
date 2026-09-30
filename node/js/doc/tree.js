@@ -20,6 +20,8 @@ import { kindHolds } from '../pure/doclist.js';
 import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIdsUnder }
     from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
+import { pageStanding } from '../pure/books.js';
+import { isTextDoc } from '../pure/feed.js';
 import { PaneHead } from '../panes.js';
 import { t } from '../i18n.js';
 
@@ -29,12 +31,27 @@ const html = htm.bind(h);
 // ONE module-level dedupe for everyone who might need the root - the tree pane and the list's
 // list's new-thing button alike - so two writes racing on first touch share a single create.
 const rootMints = new Map(); // `${root}:${bucket}` -> in-flight create promise
-export async function ensureTreeRoot(root, bucket) {
+async function existingTreeRoot(root, bucket) {
     const rows = await openMirror(root).taxonomies.toArray();
     const match = rows
         .filter((t) => t.title === rootTitleFor(bucket))
         .sort((a, b) => (a.taxonomy_id < b.taxonomy_id ? -1 : 1))[0];
-    if (match) return match.taxonomy_id;
+    return match ? match.taxonomy_id : null;
+}
+
+/// File a document at the top of its notebook's tree (Curtis, 2026-09-30: a note copied into a notebook
+/// "joins that bucket but it doesn't join that bucket's taxonomy"), as a new note is - when the
+/// notebook has a tree. One that has none yet mints it on first opening, and its unfiled bin shows
+/// whatever was there before.
+export async function fileIntoTree(root, bucket, docId) {
+    const rid = await existingTreeRoot(root, bucket);
+    if (!rid) return;
+    await api(`/api/identity/${root}/taxonomies/${rid}/members/${docId}`, { method: 'PUT', body: JSON.stringify({}) });
+}
+
+export async function ensureTreeRoot(root, bucket) {
+    const found = await existingTreeRoot(root, bucket);
+    if (found) return found;
     const key = `${root}:${bucket}`;
     if (!rootMints.has(key)) {
         rootMints.set(
@@ -47,6 +64,26 @@ export async function ensureTreeRoot(root, bucket) {
     }
     return rootMints.get(key);
 }
+
+/// A standing's icon colour (tree.css): published green, pending orange, hidden grey.
+const STANDING_CLASS = {
+    current: 'tree-row-icon tree-standing-current',
+    changed: 'tree-row-icon tree-standing-pending',
+    new: 'tree-row-icon tree-standing-pending',
+    hidden: 'tree-row-icon tree-standing-hidden',
+};
+
+/// What a page icon's colour says, in its tooltip.
+const standingTitle = (standing) =>
+    standing === 'hidden'
+        ? t('doc.tree.hidden-from-the-book', 'hidden from the book')
+        : standing === 'new'
+          ? t('doc.tree.new-since-the-last-rollout', 'new since the last rollout')
+          : standing === 'changed'
+            ? t('doc.tree.changed-since-the-last-rollout', 'changed since the last rollout')
+            : standing === 'current'
+              ? t('doc.tree.in-the-book-as-published', 'in the book as published')
+              : undefined;
 
 // One page leaf. Title reads LIVE from the mirror row (so an editor rename re-titles the tree
 // immediately); the tree snapshot's summary is the fallback. A search filters pages out of the
@@ -73,6 +110,10 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     // not yet synced) passes: only a KNOWN wrong kind hides a row.
     const facts = live || summary;
     if (facts && !kindHolds(facts, ops.kind)) return null;
+    // In a book, the page's standing against the last rollout colours its icon (Curtis, 2026-09-30):
+    // green in the book as published, orange changed or new since, grey hidden from it. A picture
+    // filed in the notebook is not a page, and a notebook that isn't a book wears nothing.
+    const standing = ops.book && live && isTextDoc(live) ? pageStanding(live, ops.book.hiddenDocs, ops.book.hidden) : null;
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
     // Media pages wear their kind (image/video/audio); text pages keep the page glyph.
     const icon =
@@ -127,7 +168,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
             if (parent) ops.completeDrag({ parentNode: parent, refId: id, after });
         }}
     >
-        <${icon} />
+        <span class=${STANDING_CLASS[standing] || 'tree-row-icon'} title=${standingTitle(standing)}><${icon} /></span>
         <span class="tree-row-title">${title}</span>
     </div>`;
 };
@@ -211,7 +252,10 @@ const SectionNode = ({ node, parent, depth, ops }) => {
             }}
         >
             <span class=${open ? 'tree-caret open' : 'tree-caret'}><${Icons.forward} /></span>
-            <${open ? Icons.sectionOpen : Icons.section} />
+            <span
+                class=${ops.book && ops.book.hidden.has(`sec:${node.taxonomy_id}`) ? STANDING_CLASS.hidden : 'tree-row-icon'}
+                title=${ops.book && ops.book.hidden.has(`sec:${node.taxonomy_id}`) ? standingTitle('hidden') : undefined}
+            ><${open ? Icons.sectionOpen : Icons.section} /></span>
             <span class="tree-row-title">${node.title || t('doc.tree.untitled-section-2', '(untitled section)')}</span>
             <span class="tree-row-actions" onClick=${(e) => e.stopPropagation()}>
                 <button
@@ -304,7 +348,8 @@ const UnfiledBin = ({ unfiled, ops }) => {
  * @param selected     the open doc's id (highlights its row)
  * @param onSelect     called with a doc_id when a page row is clicked
  * @param reloadKey    bump to force a refetch (e.g. after deleting a doc from the editor)
- * @param showUnfiled  the unfiled bin; off when a sibling list column already plays that role
+ * @param showUnfiled  the unfiled bin: the way back into the tree for a page that reached the bucket
+ *                     some other way (the Writer shows it since 2026-09-30 - its list lists, but can't file)
  * @param onMinimize   when present, the toolbar grows a tuck-away button (collapsible column)
  * @param onOrder      called with the depth-first doc order (the "book order") after each fetch
  * @param itemNoun     what the hosting app calls one of its things ("page", "note") - the tree grows
@@ -324,6 +369,7 @@ export const WikiTree = ({
     onMinimize,
     onOrder,
     itemNoun = 'page',
+    book = null, // the notebook's book facts when it is one (apps/notes.js): colours the icons
 }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const taxRows = useLive(() => openMirror(root).taxonomies.toArray(), [root]);
@@ -483,9 +529,9 @@ export const WikiTree = ({
 
     // Delete a section: unhook it from its parent, then delete it and every DESCENDANT section
     // (collected from the snapshot we're looking at). Pages are never deleted by this - with an
-    // unfiled bin they land there (visible, re-fileable); WITHOUT one (Notes hides it, the list
-    // plays that role) they'd fall out of the tree with no way back in, so instead they're
-    // re-placed at the top level FIRST, then the sections come down - place-before-remove, the
+    // unfiled bin they land there (visible, re-fileable); WITHOUT one (a host that hides it)
+    // they'd fall out of the tree with no way back in, so instead they're re-placed at the top
+    // level FIRST, then the sections come down - place-before-remove, the
     // same ordering doctrine as a move, so a failure mid-way leaves visible duplicates, never a
     // page lost from the tree. A page that also lives in another section (a diamond) is left
     // alone - its other home keeps it in the tree already.
@@ -604,6 +650,7 @@ export const WikiTree = ({
         // 2026-07-30: a free `itemNoun` in SectionNode threw on the first section rendered,
         // and every subsequent render aborted mid-diff - orphaned panels piling up).
         itemNoun,
+        book,
     };
 
     const empty = !tree || !(tree.members || []).length;

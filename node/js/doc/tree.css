@@ -164,3 +164,22 @@
     letter-spacing: 0.06em;
     margin-bottom: 0.3rem;
 }
+
+/* In a book, a page's icon wears its standing against the last rollout (Curtis, 2026-09-30): green in
+   the book as published, orange changed or new since, grey hidden from it - and a hidden section
+   grey too. The icon keeps its own colour on a selected row. */
+.tree-row-icon {
+    display: inline-flex;
+}
+
+.tree-standing-current {
+    color: var(--sea);
+}
+
+.tree-standing-pending {
+    color: var(--peach);
+}
+
+.tree-standing-hidden {
+    color: var(--faint);
+}

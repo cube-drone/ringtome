@@ -17,6 +17,7 @@ import { Modal } from './modal.js';
 import { openMirror, useLive } from './mirror.js';
 import { bucketHref } from './pure/naming.js';
 import { docHref } from './links.js';
+import { fileIntoTree } from './doc/tree.js';
 
 const html = htm.bind(h);
 
@@ -60,6 +61,9 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
                           body: JSON.stringify({ author: source.author, doc_id: source.doc_id, bucket: name, new: !!isNew, private: !!source.private }),
                       })
                   ).doc_id;
+            // Into the notebook's tree as well as the notebook (2026-09-30), as a new note goes; a book
+            // copies into a fresh notebook, whose tree it brings.
+            if (!book) await fileIntoTree(root, name, docId).catch(() => {});
             setDone({ doc_id: docId, bucket: name });
             if (onDone) onDone(docId, name);
         } catch (e) {
