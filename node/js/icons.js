@@ -7,6 +7,7 @@
 import {
     Archive,
     PiggyBank,
+    Bank,
     ChartLine,
     ChatsCircle,
     Funnel,
@@ -218,6 +219,8 @@ export const Icons = {
     lostFound: Archive,
     // hrseBank™ (2026-09-29)
     bank: PiggyBank,
+    // a hrseBond in the market: the treasury's columns (2026-09-30)
+    bond: Bank,
     people: UsersThree,
     feed: Megaphone,
     notifications: Bell,

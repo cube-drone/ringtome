@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1245 phrases across 79 files.
+// 1278 phrases across 80 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -25,6 +25,11 @@ export default {
     'apps.bank.kind-post-reacted': 'reactions received on posts',
     'apps.bank.kind-follow': 'people followed',
     'apps.bank.kind-followed': 'people following you',
+    'apps.bank.kind-bond': 'hrseBonds bought',
+    'apps.bank.kind-bond-interest': 'hrseBond interest',
+    'apps.bank.kind-bond-matured': 'hrseBonds matured',
+    'apps.bank.kind-bond-sold': 'hrseBonds sold',
+    'apps.bank.kind-debt-interest': 'interest on debt',
     'apps.bank.untitled': 'something untitled',
     'apps.bank.wrote-n-words-in': 'wrote {n} new words in',
     'apps.bank.over-n-saves': ' · {count} saves',
@@ -44,8 +49,27 @@ export default {
     'apps.bank.reacted-to-your-posts': 'reacted {emoji} to your posts',
     'apps.bank.followed': 'followed',
     'apps.bank.followed-you': 'followed you',
+    'apps.bank.bought-n-horsebonds': 'bought {count} hrseBonds',
+    'apps.bank.bought-a-horsebond': 'bought a hrseBond',
+    'apps.bank.n-horsebonds-paid': '{count} hrseBonds paid their interest',
+    'apps.bank.a-horsebond-paid': 'a hrseBond paid its interest',
+    'apps.bank.a-horsebond-matured': 'a hrseBond matured, and returned its price',
+    'apps.bank.sold-n-hrsebonds': 'sold {count} hrseBonds',
+    'apps.bank.sold-a-hrsebond': 'sold a hrseBond',
+    'apps.bank.interest-on-debt': 'interest on your debt, at 2% a day',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
+    'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
+    'apps.bank.hrsebond': 'hrseBond',
+    'apps.bank.buy': 'buy',
+    'apps.bank.sold': 'sold',
+    'apps.bank.matured': 'matured',
+    'apps.bank.day-of': 'day {days} of {of}',
+    'apps.bank.nothing-held-yet': 'nothing held yet - the market is to the left.',
+    'apps.bank.paid-so-far': 'paid {amount}',
+    'apps.bank.sell': 'sell',
+    'apps.bank.market': 'market',
+    'apps.bank.portfolio': 'portfolio',
     'apps.bank.nothing-yet': 'nothing earned yet - write something, draw something, say something.',
 
     // --- node/js/apps/chat.js ---
@@ -1147,6 +1171,16 @@ export default {
     'backup.no-such-backup': 'no such backup',
     'backup.only-the-desktop-app-shows-files': 'only the desktop app can show a file on this computer',
 
+    // --- node/src/bank.rs ---
+    'bank.no-such-instrument': 'no such instrument',
+    'bank.not-an-amount': "that isn't an amount",
+    'bank.a-horsebond-costs-at-least': 'a hrseBond costs at least H$ 2,000',
+    'bank.a-hrsebond-costs-at-most': 'a hrseBond costs at most H$ 1,000,000',
+    'bank.you-cant-afford-that': "you can't afford that",
+    'bank.sell-only-in-debt': 'a hrseBond can be sold only to get out of debt',
+    'bank.no-such-bond': 'no such hrseBond',
+    'bank.nothing-to-sell': 'that hrseBond has nothing left to sell',
+
     // --- node/src/builtin.rs ---
     'builtin.not-in-this-build': 'that picture no longer comes with the app',
     'builtin.no-such-persona-here': "that persona isn't kept on this computer",
@@ -1398,6 +1432,7 @@ export default {
 
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',
+    'test_endpoints.not-a-date': 'not a date',
     'test_endpoints.sql-error-e': 'sql error: {e}',
     'test_endpoints.unplug-unknown-alpn': 'no such protocol {name}; this node speaks {known}',
     'test_endpoints.unplug-bad-direction': 'no such direction {other}; use both, inbound or outbound',

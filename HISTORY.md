@@ -13026,3 +13026,65 @@ children after the time, and `CornerBank` brings a hairline divider and the bala
 own type on its line. The divider appears only once there's a balance to show, and a click still
 opens hrseBank.
 hrseBank lost its "the ledger" heading: a plain rule separates the summary from the months (Curtis).
+
+## 2026-09-29: HorseBucks, slice 4: HorseBonds, debt, and the market column
+
+Curtis: "open a column to the left of our horsebank statement (using our column logic) for
+purchasing horse-themed fictitious financial instruments."
+- **Purchases** are the persona's private registers (`horse_instruments`), one key per purchase and
+  synced to their own computers. Two computers buying at once make two bonds, and both stand (the
+  design's rule 3). `POST /bank/instruments` refuses anything under H$ 2,000 and nothing else:
+  buying past the balance is how debt happens.
+- **The instruments phase** (`bank.rs`), after earnings:
+  - a bond's price out;
+  - 1% of it on each heartbeat day after the purchase day, for a hundred of them (simple interest,
+    as settled);
+  - its price back after the hundredth.
+  Then **debt**: walking the heartbeat days in order over a running balance, each day that ends
+  below zero charges 2% of it, rounded toward zero, so the charge compounds. Heartbeat days are
+  the ledger's own `heartbeat` lines: days, never a clock. Line amounts are `i64`, so debt past
+  9.2 × 10^16 H$ saturates for now (NEXT_STEPS).
+- **The market column** (`apps/bank.js` Market, with the panes' column machinery: resizable,
+  tucks to a rail): the HorseBond's terms, an amount, a buy button, and the persona's bonds with
+  day N of 100, paid so far, and a bar. The ledger learns the new kinds, and a line keeps its own
+  sign, so a purchase reads −H$.
+- **`/test/heartbeat`** (local test only) writes a heartbeat for a given date, since no test can
+  wait a hundred days.
+
+Pinned in bank.cjs, to the horsepenny. A fresh persona (today's 10 H$) buys a 2,000 H$ bond; a
+199,999-penny bond is refused. After three heartbeat days the bond has paid 6,000 and the balance
+is −206,037: today −199,000 → −202,980, then each day +1,000 heartbeat +2,000 interest and 2%
+toward zero. After 101 days it has paid for exactly 100 and matured.
+Held HorseBonds moved out of the market into a column of their own (Curtis: "tuck our purchased HorseBonds in a new column, Portfolio"): market, portfolio, then the statement, each tuckable and resizable, the portfolio empty-stated until something is bought.
+
+### hrseBank: no overdraft, selling out of debt, the bordered bond (2026-09-30)
+
+Curtis, after sinking a persona 15 quadrillion H$ into debt buying bonds with money it didn't have:
+"should not allow any transaction that would spend more money than the user has: overdraft is for
+special cases, not the average case… If you're in debt you should be allowed to sell bonds."
+
+- **No overdraft** (`bank.rs` `buy_handler`): the node folds the ledger, then refuses a purchase
+  past the balance, whatever sent it. Debt still arrives through the special cases (two computers
+  each affording one purchase, merged) and still compounds. HORSE_BASED_CURRENCIES.md rule 3 says so.
+- **Selling** (`POST /api/identity/{root}/bank/instruments/{id}/sell`), only while the balance is
+  below zero: the register gains `sold_ms`, a `bond_sold` line returns the price, interest already
+  paid stays paid, and no day from the sale on pays or matures. A matured or sold bond has nothing to sell.
+  The portfolio shows a sell button on each still-paying bond while in debt.
+- **The market's square**: a hrseBond, now, in a thick-bordered padded box wearing Phosphor's Bank,
+  its terms in a hover title ("pays 1% interest every day for 100 days"), the buy button centred.
+  An unaffordable bond greys out; buy stays disabled past the balance.
+- **The statement sits flush left**: balance, summary and months at one measure, uncentred.
+- **`/test/credit`** (local test only) writes a line straight into a persona's ledger, since no
+  test can buy its way into debt any more.
+
+Pinned in bank.cjs: H$ 10 buys no bond; funded to H$ 4,000, two bonds spend it to 0 and a third is
+refused; a sale while solvent is refused; debited H$ 1,000 the balance is −102,000 (today's 2%), and
+selling returns exactly 200,000. After three days the kept bond has paid 6,000 and the sold one 0;
+after 101 the kept one matures and the sold one never does. Debt's compounding moved to its own
+claim: −100,000 and three heartbeat days → −104,037.
+
+Then (Curtis: "a slider from $2000 to the user's current amount of money, maxing out at $1M - past
+that users will require a better financial instrument"): the amount is a range slider under its
+price, H$ 2,000 to the balance or a million, whichever is less. The ceiling is the node's too
+(`BOND_MAX`; bank.cjs: a H$ 1,000,000.01 bond is refused "at most", whatever the balance). A
+held bond now reads kind and progress, then its amount on a row of its own, then what it has paid.

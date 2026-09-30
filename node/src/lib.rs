@@ -774,6 +774,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/downloads", get(downloads::downloads))
         .route("/api/node/census", get(census::census_handler))
         .route("/api/identity/{root}/bank", get(bank::bank_handler))
+        .route("/api/identity/{root}/bank/instruments", axum::routing::post(bank::buy_handler))
+        .route("/api/identity/{root}/bank/instruments/{id}/sell", axum::routing::post(bank::sell_handler))
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
         .route("/api/node/personas", get(nodeface::node_personas))
@@ -815,6 +817,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/sql", axum::routing::post(test_endpoints::raw_sql))
             .route("/test/mark", axum::routing::post(test_endpoints::mark))
             .route("/test/beat", axum::routing::post(test_endpoints::beat))
+            .route("/test/heartbeat", axum::routing::post(test_endpoints::heartbeat))
+            .route("/test/credit", axum::routing::post(test_endpoints::credit))
             .route(
                 "/test/revalidation",
                 axum::routing::post(test_endpoints::revalidation_mode),

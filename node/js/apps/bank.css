@@ -1,8 +1,55 @@
-/* hrseBank™ (apps/bank.js, 2026-09-29): the balance large, what each kind paid, and the ledger. */
+/* hrseBank™ (apps/bank.js, 2026-09-29): the market column, then the statement - the balance large,
+   what each kind paid, and the ledger by month. */
+.bank-app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.bank-columns {
+    display: flex;
+    gap: 1rem;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+}
+
+.bank-columns .bank-portfolio {
+    width: var(--w-portfolio, 240px);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 1rem;
+}
+
+.bank-portfolio-empty {
+    padding: 0.4rem 0.2rem;
+}
+
+.bank-columns .bank-market {
+    width: var(--w-market, 280px);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
 .bank {
-    max-width: var(--post-measure);
-    margin: 0 auto;
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
     padding: 1.2rem 1rem 2rem;
+}
+
+/* Everything flush left, at one measure (2026-09-30): the balance, the summary, the months. */
+.bank > * {
+    max-width: var(--post-measure);
 }
 
 .bank-balance {
@@ -11,7 +58,6 @@
     font-size: 2.2rem;
     font-weight: 700;
     color: var(--ink);
-    text-align: center;
 }
 
 .bank-kinds {
@@ -116,4 +162,147 @@
 
 .bank-month .bank-lines {
     margin-top: 0.3rem;
+}
+
+/* The market (2026-09-29): each instrument a bordered square, its terms on hover (2026-09-30). */
+.bank-market-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: 0.4rem 0.2rem 1rem;
+}
+
+.bank-instrument {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 1rem;
+    background: var(--surface);
+    border: 4px solid var(--ink);
+    cursor: help;
+}
+
+/* More than the balance holds (2026-09-30): the whole square greys back. */
+.bank-instrument.unaffordable {
+    opacity: 0.45;
+    filter: grayscale(1);
+}
+
+.bank-instrument-name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--ink);
+}
+
+.bank-instrument-name svg {
+    font-size: 1.5rem;
+}
+
+/* The price above its slider (2026-09-30): H$ 2,000 to what the balance holds, a million at most. */
+.bank-instrument-amount {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.bank-instrument-price {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 1.1rem;
+    text-align: center;
+}
+
+.bank-instrument-amount input {
+    width: 100%;
+    accent-color: var(--teal);
+}
+
+/* A solid fill: light words on the teal. */
+.bank-buy {
+    align-self: center;
+    padding: 0.4rem 1rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--bg);
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    cursor: pointer;
+}
+
+.bank-buy:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.bank-holdings {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.bank-holding {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.15rem 0.5rem;
+    padding: 0.4rem 0.5rem;
+    background: var(--surface);
+    font-size: 0.85rem;
+}
+
+/* The kind on the first line, the amount on its own below (2026-09-30), room for a long number. */
+.bank-holding-kind {
+    font-weight: 600;
+}
+
+.bank-holding-price {
+    grid-column: 1 / -1;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    overflow-wrap: anywhere;
+}
+
+.bank-holding-progress,
+.bank-holding-paid {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.bank-holding-paid {
+    grid-column: 1 / -1;
+}
+
+.bank-holding-bar {
+    grid-column: 1 / -1;
+    height: 4px;
+    background: var(--surface-2);
+}
+
+/* Selling (2026-09-30): only offered in debt, the way out of it. */
+.bank-sell {
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding: 0.15rem 0.7rem;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.bank-sell:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.bank-holding-bar span {
+    display: block;
+    height: 100%;
+    background: var(--sea);
 }

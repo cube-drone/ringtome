@@ -8,6 +8,8 @@ import htm from 'htm';
 import { api } from '../net.js';
 import { t } from '../i18n.js';
 import { PersonChip } from '../person.js';
+import { Icons } from '../icons.js';
+import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
 
@@ -27,7 +29,15 @@ const KINDS = {
     post_reacted: () => t('apps.bank.kind-post-reacted', 'reactions received on posts'),
     follow: () => t('apps.bank.kind-follow', 'people followed'),
     followed: () => t('apps.bank.kind-followed', 'people following you'),
+    bond: () => t('apps.bank.kind-bond', 'hrseBonds bought'),
+    bond_interest: () => t('apps.bank.kind-bond-interest', 'hrseBond interest'),
+    bond_matured: () => t('apps.bank.kind-bond-matured', 'hrseBonds matured'),
+    bond_sold: () => t('apps.bank.kind-bond-sold', 'hrseBonds sold'),
+    debt_interest: () => t('apps.bank.kind-debt-interest', 'interest on debt'),
 };
+
+/// A line's amount with its own sign: earnings rise, purchases and debt fall.
+const signed = (pennies) => (String(pennies).startsWith('-') ? formatHorseBucks(pennies) : `+${formatHorseBucks(pennies)}`);
 
 /// One grouped row (pure/ledger.js), in words: a run's count, its document, its emoji, its people.
 const RowWords = ({ row, current }) => {
@@ -61,6 +71,16 @@ const RowWords = ({ row, current }) => {
             return html`${t('apps.bank.followed', 'followed')} ${people}`;
         case 'followed':
             return html`${people} ${t('apps.bank.followed-you', 'followed you')}`;
+        case 'bond':
+            return many ? t('apps.bank.bought-n-horsebonds', 'bought {count} hrseBonds', { count: row.count }) : t('apps.bank.bought-a-horsebond', 'bought a hrseBond');
+        case 'bond_interest':
+            return many ? t('apps.bank.n-horsebonds-paid', '{count} hrseBonds paid their interest', { count: row.count }) : t('apps.bank.a-horsebond-paid', 'a hrseBond paid its interest');
+        case 'bond_matured':
+            return t('apps.bank.a-horsebond-matured', 'a hrseBond matured, and returned its price');
+        case 'bond_sold':
+            return many ? t('apps.bank.sold-n-hrsebonds', 'sold {count} hrseBonds', { count: row.count }) : t('apps.bank.sold-a-hrsebond', 'sold a hrseBond');
+        case 'debt_interest':
+            return t('apps.bank.interest-on-debt', 'interest on your debt, at 2% a day');
         default:
             return row.kind;
     }
@@ -74,7 +94,7 @@ const Month = ({ month, lines, open, onToggle, current }) => html`<li class="ban
     <button class=${open ? 'bank-month-head open' : 'bank-month-head'} type="button" aria-expanded=${open} onClick=${onToggle}>
         <span class="bank-month-name">${monthName(month.month)}</span>
         <span class="bank-month-count">${t('apps.bank.n-lines', '{n} lines', { n: month.lines })}</span>
-        <span class="bank-line-amount">+${formatHorseBucks(month.pennies)}</span>
+        <span class="bank-line-amount">${signed(month.pennies)}</span>
     </button>
     ${open &&
     (lines
@@ -83,12 +103,115 @@ const Month = ({ month, lines, open, onToggle, current }) => html`<li class="ban
                   (row) => html`<li class="bank-line" key=${row.key + row.at_ms}>
                       <span class="bank-line-what"><${RowWords} row=${row} current=${current} /></span>
                       <span class="bank-line-when">${new Date(row.at_ms).toLocaleDateString()}</span>
-                      <span class="bank-line-amount">+${formatHorseBucks(row.pennies)}</span>
+                      <span class="bank-line-amount">${signed(row.pennies)}</span>
                   </li>`
               )}
           </ul>`
         : html`<p class="null-sub">${t('apps.bank.counting', 'counting…')}</p>`)}
 </li>`;
+
+/// The market column (Curtis, 2026-09-29: "a column to the left of our horsebank statement… for
+/// purchasing horse-themed fictitious financial instruments"): hrseBonds for now - a bordered
+/// square, its terms on hover, a slider from H$ 2,000 to what the balance holds (at most a million,
+/// 2026-09-30), a buy button. Nothing is sold past the balance (2026-09-30:
+/// "overdraft is for special cases, not the average case"): an unaffordable bond greys out, and the
+/// node refuses it besides.
+const BOND_MIN = 2000; // whole H$ (bank.rs BOND_MIN)
+const BOND_MAX = 1000000; // whole H$ (bank.rs BOND_MAX)
+
+const Market = ({ root, balance, onBought }) => {
+    const [bucks, setBucks] = useState(BOND_MIN);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    // The balance in whole H$, held to the bond's ceiling before it leaves BigInt: a balance past
+    // a million is still only a million on the slider.
+    const whole = BigInt(balance || '0') / 100n;
+    const top = Number(whole > BigInt(BOND_MAX) ? BigInt(BOND_MAX) : whole);
+    const affordable = top >= BOND_MIN;
+    const chosen = Math.min(Math.max(bucks, BOND_MIN), Math.max(top, BOND_MIN));
+    const price = BigInt(chosen) * 100n;
+    const buy = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/bank/instruments`, {
+                method: 'POST',
+                body: JSON.stringify({ kind: 'horsebond', pennies: String(price) }),
+            });
+            onBought();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<div class="bank-market-body">
+        <section
+            class=${affordable ? 'bank-instrument' : 'bank-instrument unaffordable'}
+            title=${t('apps.bank.hrsebond-terms', 'pays 1% interest every day for 100 days')}
+        >
+            <h3 class="bank-instrument-name"><${Icons.bond} /> ${t('apps.bank.hrsebond', 'hrseBond')}</h3>
+            <label class="bank-instrument-amount">
+                <span class="bank-instrument-price">${formatHorseBucks(price)}</span>
+                <input
+                    type="range"
+                    min=${BOND_MIN}
+                    max=${Math.max(top, BOND_MIN)}
+                    step="1"
+                    value=${chosen}
+                    disabled=${!affordable}
+                    onInput=${(e) => setBucks(Number(e.currentTarget.value))}
+                />
+            </label>
+            <button class="bank-buy" type="button" disabled=${busy || !affordable} onClick=${buy}>${busy ? '…' : t('apps.bank.buy', 'buy')}</button>
+            ${error && html`<p class="form-error">${error}</p>`}
+        </section>
+    </div>`;
+};
+
+/// The portfolio column (Curtis, 2026-09-29: "tuck our purchased HorseBonds in a new column"):
+/// every instrument held, newest first, with how far along each is. In debt, a bond still paying
+/// can be sold for its price (2026-09-30: "If you're in debt you should be allowed to sell bonds").
+const Portfolio = ({ root, instruments, inDebt, onSold }) => {
+    const [busy, setBusy] = useState(null);
+    const [error, setError] = useState(null);
+    const sell = async (id) => {
+        setBusy(id);
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/bank/instruments/${id}/sell`, { method: 'POST' });
+            onSold();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(null);
+        }
+    };
+    const progress = (b) => {
+        if (b.sold) return t('apps.bank.sold', 'sold');
+        if (b.matured) return t('apps.bank.matured', 'matured');
+        return t('apps.bank.day-of', 'day {days} of {of}', { days: b.days, of: b.of_days });
+    };
+    if (instruments.length === 0) return html`<p class="null-sub bank-portfolio-empty">${t('apps.bank.nothing-held-yet', 'nothing held yet - the market is to the left.')}</p>`;
+    return html`<ul class="bank-holdings">
+        ${instruments.map(
+            (b) => html`<li class="bank-holding" key=${b.id}>
+                <span class="bank-holding-kind">${t('apps.bank.hrsebond', 'hrseBond')}</span>
+                <span class="bank-holding-progress">${progress(b)}</span>
+                <span class="bank-holding-price">${formatHorseBucks(b.pennies)}</span>
+                <span class="bank-holding-paid">${t('apps.bank.paid-so-far', 'paid {amount}', { amount: formatHorseBucks(b.paid) })}</span>
+                <span class="bank-holding-bar"><span style=${`width: ${Math.round((100 * b.days) / b.of_days)}%`}></span></span>
+                ${inDebt &&
+                !b.sold &&
+                !b.matured &&
+                html`<button class="bank-sell" type="button" disabled=${busy !== null} onClick=${() => sell(b.id)}>
+                    ${busy === b.id ? '…' : t('apps.bank.sell', 'sell')}
+                </button>`}
+            </li>`
+        )}
+        ${error && html`<p class="form-error">${error}</p>`}
+    </ul>`;
+};
 
 export const BankApp = ({ current }) => {
     const root = current && current.root;
@@ -97,6 +220,9 @@ export const BankApp = ({ current }) => {
     // Each month's lines, once fetched; the newest arrives with the first answer.
     const [lines, setLines] = useState({});
     const [open, setOpen] = useState(new Set());
+    const { tucked, toggleTuck } = useColTucks(root, 'bank');
+    const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio'], { market: 240, portfolio: 200 });
+    const [asked, setAsked] = useState(0); // bumped after a purchase or a sale: ask the ledger again
     useEffect(() => {
         if (!root) return undefined;
         let live = true;
@@ -105,15 +231,15 @@ export const BankApp = ({ current }) => {
                 if (!live) return;
                 setBank(b);
                 if (b.month) {
-                    setLines({ [b.month]: b.lines });
-                    setOpen(new Set([b.month]));
+                    setLines((l) => ({ ...l, [b.month]: b.lines }));
+                    setOpen((o) => (o.size ? o : new Set([b.month])));
                 }
             })
             .catch((e) => live && setError(e.message || String(e)));
         return () => {
             live = false;
         };
-    }, [root]);
+    }, [root, asked]);
     const toggle = (month) => {
         const next = new Set(open);
         if (next.has(month)) next.delete(month);
@@ -127,11 +253,29 @@ export const BankApp = ({ current }) => {
         }
         setOpen(next);
     };
-    if (error) return html`<div class="bank"><p class="form-error">${error}</p></div>`;
-    if (!bank) return html`<div class="bank"><p class="null-sub">${t('apps.bank.counting', 'counting…')}</p></div>`;
+    if (error) return html`<div class="bank-app"><div class="bank"><p class="form-error">${error}</p></div></div>`;
+    if (!bank) return html`<div class="bank-app"><div class="bank"><p class="null-sub">${t('apps.bank.counting', 'counting…')}</p></div></div>`;
     const kinds = Object.entries(bank.by_kind || {}).filter(([, p]) => p !== '0');
     const months = bank.months || [];
-    return html`<div class="bank">
+    return html`<div class="bank-app"><div class="bank-columns" style=${colStyle}>
+        ${tucked.has('market')
+            ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
+            : html`<aside class="bank-market">
+                  <${PaneHead} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
+                  <${Market} root=${root} balance=${bank.balance} onBought=${() => setAsked((n) => n + 1)} />
+              </aside>${resizer('market')}`}
+        ${tucked.has('portfolio')
+            ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
+            : html`<aside class="bank-portfolio">
+                  <${PaneHead} label=${t('apps.bank.portfolio', 'portfolio')} onTuck=${() => toggleTuck('portfolio')} />
+                  <${Portfolio}
+                      root=${root}
+                      instruments=${bank.instruments || []}
+                      inDebt=${String(bank.balance).startsWith('-')}
+                      onSold=${() => setAsked((n) => n + 1)}
+                  />
+              </aside>${resizer('portfolio')}`}
+        <div class="bank">
         <p class="bank-balance">${formatHorseBucks(bank.balance)}</p>
         ${kinds.length > 0 &&
         html`<table class="bank-kinds">
@@ -159,5 +303,6 @@ export const BankApp = ({ current }) => {
                       />`
                   )}
               </ul>`}
-    </div>`;
+        </div>
+    </div></div>`;
 };

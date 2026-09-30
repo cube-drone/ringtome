@@ -39,6 +39,19 @@ const PER_REACTION_GIVEN: i64 = HORSEBUCK;
 const PER_REACTION_RECEIVED: i64 = 5 * HORSEBUCK;
 const PER_HEARTBEAT: i64 = 10 * HORSEBUCK;
 
+// The instruments (HORSE_BASED_CURRENCIES.md, "HorseBonds"; Curtis, 2026-09-29).
+/// Where purchases live: the persona's private registers, one key per purchase, synced to their
+/// own computers - two computers buying at once make two bonds, and both stand.
+pub const INSTRUMENTS: &str = "horse_instruments";
+/// A HorseBond's smallest price, and how many heartbeat days it pays before it returns its price.
+pub const BOND_MIN: i64 = 2000 * HORSEBUCK;
+/// And at most a million (Curtis, 2026-09-30: "past that users will require a better financial
+/// instrument").
+pub const BOND_MAX: i64 = 1_000_000 * HORSEBUCK;
+const BOND_DAYS: usize = 100;
+/// Debt's daily compounding, as a rational: 2%.
+const DEBT_RATE: (i64, i64) = (2, 100);
+
 // ---------------------------------------------------------------------------------------------
 // Measuring what's new
 
@@ -314,7 +327,190 @@ pub async fn catch_up(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
-    bank(data, lines).await
+    bank(data, lines).await?;
+    instruments(data).await
+}
+
+/// One hrseBond as bought: its id (the register's key), price, when, and when it was sold, if it was.
+pub struct Bond {
+    pub id: String,
+    pub pennies: i64,
+    pub bought_ms: i64,
+    pub sold_ms: Option<i64>,
+}
+
+/// Every instrument the persona holds, oldest first.
+pub async fn bonds(data: &Store) -> Result<Vec<Bond>> {
+    let (registers, _) = data.private_registers(INSTRUMENTS).all().await.map_err(|e| anyhow::anyhow!("reading instruments: {e}"))?;
+    let mut out: Vec<Bond> = registers
+        .into_iter()
+        .filter_map(|r| {
+            let v: serde_json::Value = serde_json::from_str(&r.value).ok()?;
+            (v["kind"] == "horsebond").then_some(())?;
+            Some(Bond { id: r.key, pennies: v["pennies"].as_str()?.parse().ok()?, bought_ms: v["bought_ms"].as_i64()?, sold_ms: v["sold_ms"].as_i64() })
+        })
+        .collect();
+    out.sort_by_key(|b| (b.bought_ms, b.id.clone()));
+    Ok(out)
+}
+
+/// The instruments' lines, after the earnings: each bond's price out, its 1% a heartbeat day for
+/// the hundred heartbeat days after the day it was bought, and its price back after the hundredth;
+/// then debt - 2% of the balance, compounding, on every heartbeat day that ends below zero.
+/// Heartbeat days are the ledger's own `heartbeat` lines: days, never a clock.
+async fn instruments(data: &Store) -> Result<()> {
+    let have = banked(data).await?;
+    let is_new = |kind: &str, source: &str| !have.contains(&(kind.to_string(), source.to_string()));
+    let days: Vec<String> = {
+        let mut d: Vec<(String,)> = data.db().fetch_all("SELECT source FROM bank_lines WHERE kind = 'heartbeat'", ()).await?;
+        d.sort();
+        d.into_iter().map(|(s,)| s).collect()
+    };
+    let day_ms = |date: &str| i64::from(crate::heartbeat::day_of_date(date).unwrap_or(0)) * 86_400_000;
+    let mut lines: Vec<Line> = Vec::new();
+    for bond in bonds(data).await? {
+        if is_new("bond", &bond.id) {
+            lines.push(Line { kind: "bond", source: bond.id.clone(), pennies: -bond.pennies, at_ms: bond.bought_ms, detail: json!({ "price": bond.pennies.to_string() }) });
+        }
+        let bought_day = crate::heartbeat::utc_date(bond.bought_ms);
+        // A sold bond (2026-09-30) pays no day from the day it was sold, and never matures.
+        let sold_day = bond.sold_ms.map(crate::heartbeat::utc_date);
+        let paying: Vec<&String> = days
+            .iter()
+            .filter(|d| **d > bought_day && sold_day.as_ref().is_none_or(|s| *d < s))
+            .take(BOND_DAYS)
+            .collect();
+        if let Some(sold) = bond.sold_ms {
+            if is_new("bond_sold", &bond.id) {
+                lines.push(Line { kind: "bond_sold", source: bond.id.clone(), pennies: bond.pennies, at_ms: sold, detail: json!({ "bond": bond.id }) });
+            }
+        }
+        for (n, date) in paying.iter().enumerate() {
+            let source = format!("{}:{date}", bond.id);
+            if is_new("bond_interest", &source) {
+                lines.push(Line { kind: "bond_interest", source, pennies: bond.pennies / 100, at_ms: day_ms(date), detail: json!({ "bond": bond.id, "day": n + 1 }) });
+            }
+        }
+        if bond.sold_ms.is_none() && paying.len() == BOND_DAYS && is_new("bond_matured", &bond.id) {
+            lines.push(Line { kind: "bond_matured", source: bond.id.clone(), pennies: bond.pennies, at_ms: day_ms(paying[BOND_DAYS - 1]), detail: json!({ "bond": bond.id }) });
+        }
+    }
+    bank(data, lines).await?;
+
+    // Debt, day by day in order, each day's charge on the balance its predecessors left.
+    let mut ledger: Vec<(i64, i128)> = data
+        .db()
+        .fetch_all::<(i64, i64)>("SELECT at_ms, pennies FROM bank_lines", ())
+        .await?
+        .into_iter()
+        .map(|(at, p)| (at, i128::from(p)))
+        .collect();
+    let mut charges: Vec<Line> = Vec::new();
+    for date in &days {
+        if !is_new("debt_interest", date) {
+            continue;
+        }
+        let end = day_ms(date) + 86_400_000;
+        let balance: i128 = ledger.iter().filter(|(at, _)| *at < end).map(|(_, p)| p).sum();
+        if balance >= 0 {
+            continue;
+        }
+        // Toward zero, then held to what one line can carry (debt past 9.2 x 10^16 H$ saturates
+        // until the ledger keeps true bigints).
+        let charge = (balance * i128::from(DEBT_RATE.0) / i128::from(DEBT_RATE.1)).clamp(i128::from(i64::MIN), 0) as i64;
+        if charge == 0 {
+            continue;
+        }
+        let at = end - 1;
+        ledger.push((at, i128::from(charge)));
+        charges.push(Line { kind: "debt_interest", source: date.clone(), pennies: charge, at_ms: at, detail: json!({ "balance": balance.to_string() }) });
+    }
+    bank(data, charges).await
+}
+
+#[derive(serde::Deserialize)]
+pub struct BuyRequest {
+    kind: String,
+    /// Horsepennies, as a decimal string.
+    pennies: String,
+}
+
+/// POST `/api/identity/{root}/bank/instruments` - buy one (hrseBonds, for now), if the balance
+/// affords it. The purchase is a private register of its own; the ledger folds it on the next ask.
+pub async fn buy_handler(
+    session: crate::auth::Session,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(root): axum::extract::Path<String>,
+    axum::Json(req): axum::Json<BuyRequest>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    use crate::error::AppError;
+    if req.kind != "horsebond" {
+        return Err(AppError::BadRequest(crate::msg!("bank.no-such-instrument", "no such instrument")));
+    }
+    let pennies: i64 = req.pennies.parse().map_err(|_| AppError::BadRequest(crate::msg!("bank.not-an-amount", "that isn't an amount")))?;
+    if pennies < BOND_MIN {
+        return Err(AppError::BadRequest(crate::msg!("bank.a-horsebond-costs-at-least", "a hrseBond costs at least H$ 2,000")));
+    }
+    if pennies > BOND_MAX {
+        return Err(AppError::BadRequest(crate::msg!("bank.a-hrsebond-costs-at-most", "a hrseBond costs at most H$ 1,000,000")));
+    }
+    let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    // No overdraft (Curtis, 2026-09-30: "should not allow any transaction that would spend more
+    // money than the user has: overdraft is for special cases, not the average case"). Debt still
+    // happens - two computers buying at once, each affording it alone - and is still charged.
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    if balance(&data).await.map_err(AppError::Internal)? < i128::from(pennies) {
+        return Err(AppError::BadRequest(crate::msg!("bank.you-cant-afford-that", "you can't afford that")));
+    }
+    let id = {
+        use rand::RngCore;
+        let mut b = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut b);
+        hex::encode(b)
+    };
+    let value = json!({ "kind": "horsebond", "pennies": pennies.to_string(), "bought_ms": crate::clock::now_ms() }).to_string();
+    data.private_registers(INSTRUMENTS).set(&id, &value).await?;
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    Ok(axum::Json(json!({ "id": id })))
+}
+
+/// POST `/api/identity/{root}/bank/instruments/{id}/sell` - the way out of debt (Curtis,
+/// 2026-09-30: "If you're in debt you should be allowed to sell bonds… now I need an out"). Only
+/// while the balance is below zero; the bond returns its price, keeps what it already paid, and
+/// pays nothing from the day it's sold. A matured or sold bond has nothing to sell.
+pub async fn sell_handler(
+    session: crate::auth::Session,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path((root, id)): axum::extract::Path<(String, String)>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    use crate::error::AppError;
+    let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    if balance(&data).await.map_err(AppError::Internal)? >= 0 {
+        return Err(AppError::BadRequest(crate::msg!("bank.sell-only-in-debt", "a hrseBond can be sold only to get out of debt")));
+    }
+    let Some(bond) = bonds(&data).await.map_err(AppError::Internal)?.into_iter().find(|b| b.id == id) else {
+        return Err(AppError::NotFound(crate::msg!("bank.no-such-bond", "no such hrseBond")));
+    };
+    let matured: Option<(i64,)> = data
+        .db()
+        .fetch_optional("SELECT 1 FROM bank_lines WHERE kind = 'bond_matured' AND source = ?1", (id.as_str(),))
+        .await
+        .map_err(AppError::Internal)?;
+    if bond.sold_ms.is_some() || matured.is_some() {
+        return Err(AppError::BadRequest(crate::msg!("bank.nothing-to-sell", "that hrseBond has nothing left to sell")));
+    }
+    let value = json!({ "kind": "horsebond", "pennies": bond.pennies.to_string(), "bought_ms": bond.bought_ms, "sold_ms": crate::clock::now_ms() }).to_string();
+    data.private_registers(INSTRUMENTS).set(&id, &value).await?;
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    Ok(axum::Json(json!({ "sold": id })))
+}
+
+/// A line put straight into the ledger, for the test rig only (`/test/credit`): funding a persona,
+/// or sinking one into debt, without the months of earning either would take.
+pub async fn credit_for_test(data: &Store, pennies: i64) -> Result<()> {
+    let source = format!("{}", crate::clock::now_ms());
+    bank(data, vec![Line { kind: "test_credit", source, pennies, at_ms: crate::clock::now_ms(), detail: json!({}) }]).await
 }
 
 /// The balance, in horsepennies, summed exactly.
@@ -398,12 +594,31 @@ pub async fn bank_handler(
             })
         })
         .collect();
+    // Each bond's progress, off its own lines.
+    let paid: Vec<(String, String, i64)> = data
+        .db()
+        .fetch_all("SELECT kind, source, pennies FROM bank_lines WHERE kind IN ('bond_interest', 'bond_matured')", ())
+        .await
+        .map_err(crate::error::AppError::Internal)?;
+    let instruments: Vec<serde_json::Value> = bonds(&data)
+        .await
+        .map_err(crate::error::AppError::Internal)?
+        .into_iter()
+        .rev()
+        .map(|b| {
+            let prefix = format!("{}:", b.id);
+            let days = paid.iter().filter(|(k, s, _)| k == "bond_interest" && s.starts_with(&prefix)).count();
+            let earned: i128 = paid.iter().filter(|(k, s, _)| k == "bond_interest" && s.starts_with(&prefix)).map(|(_, _, p)| i128::from(*p)).sum();
+            let matured = paid.iter().any(|(k, s, _)| k == "bond_matured" && *s == b.id);
+            json!({ "id": b.id, "kind": "horsebond", "pennies": b.pennies.to_string(), "bought_ms": b.bought_ms, "days": days, "of_days": BOND_DAYS, "paid": earned.to_string(), "matured": matured, "sold": b.sold_ms.is_some() })
+        })
+        .collect();
     let months: Vec<serde_json::Value> = months
         .into_iter()
         .rev()
         .map(|(m, (count, pennies))| json!({ "month": m, "lines": count, "pennies": pennies.to_string() }))
         .collect();
-    Ok(axum::Json(json!({ "balance": total.to_string(), "by_kind": by_kind, "months": months, "month": month, "lines": lines })))
+    Ok(axum::Json(json!({ "balance": total.to_string(), "by_kind": by_kind, "instruments": instruments, "months": months, "month": month, "lines": lines })))
 }
 
 #[cfg(test)]

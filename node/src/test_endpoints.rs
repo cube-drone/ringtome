@@ -213,6 +213,41 @@ pub async fn beat(
 }
 
 #[derive(serde::Deserialize)]
+pub struct CreditRequest {
+    pub root: String,
+    /// Horsepennies; negative to sink the persona into debt.
+    pub pennies: i64,
+}
+
+/// Credit (or debit) a persona's HorseBucks ledger directly (bank.rs `credit_for_test`): no overdraft
+/// means no test can buy its way into debt any more (2026-09-30).
+pub async fn credit(State(state): State<AppState>, Json(req): Json<CreditRequest>) -> Result<Json<Value>, AppError> {
+    let data = crate::record::store::open_agented(&state, &req.root).await?;
+    crate::bank::catch_up(&state, &data, &req.root).await.map_err(AppError::Internal)?;
+    crate::bank::credit_for_test(&data, req.pennies).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "pennies": req.pennies })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct HeartbeatRequest {
+    pub root: String,
+    /// `YYYY-MM-DD`: the day the persona "used the app".
+    pub date: String,
+}
+
+/// Record a heartbeat for a given day (HORSE_BASED_CURRENCIES.md, 2026-09-29): HorseBonds pay per
+/// heartbeat day, and no test can wait a hundred of them. Written as the node writes a real one -
+/// the profile's `heartbeat` field, signed with the node's key for the persona.
+pub async fn heartbeat(State(state): State<AppState>, Json(req): Json<HeartbeatRequest>) -> Result<Json<Value>, AppError> {
+    if crate::heartbeat::day_of_date(&req.date).is_none() {
+        return Err(AppError::BadRequest(crate::msg!("test_endpoints.not-a-date", "not a date")));
+    }
+    let data = crate::record::store::open_agented(&state, &req.root).await?;
+    crate::record::imaol::set_profile_field(data.db(), data.signer(), crate::heartbeat::FIELD, &req.date).await?;
+    Ok(Json(serde_json::json!({ "date": req.date })))
+}
+
+#[derive(serde::Deserialize)]
 pub struct MarkRequest {
     pub note: String,
 }

@@ -70,3 +70,93 @@ describe("HorseBucks: the ledger", function () {
         assert.equal(again.balance, b.balance, "asking again pays nothing twice");
     });
 });
+
+/*
+    hrseBonds and debt (HORSE_BASED_CURRENCIES.md; Curtis 2026-09-29, 2026-09-30). A bond costs what
+    the balance can pay and no more - "overdraft is for special cases, not the average case". It pays
+    1% of its price on each heartbeat day after the day it was bought, for a hundred of them, then
+    returns its price. In debt, a bond still paying can be sold for its price: the way out. A
+    heartbeat day that ends below zero charges 2% of the balance, rounded toward zero, compounding.
+    Heartbeat days and money are written by the rig (`/test/heartbeat`, `/test/credit`): nobody
+    waits a hundred days, or earns H$ 4,000, for a test.
+*/
+describe("HorseBucks: bonds and debt", function () {
+    this.timeout(120000);
+
+    const { makeFetch } = require("./fetch.cjs");
+    const rig = makeFetch();
+    const dayAfter = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    const persona = async (prefix) => {
+        const who = await makeUserFetch({ prefix });
+        const root = (await (await who("api/identity", { method: "POST" })).json()).root_pubkey;
+        for (let i = 0; i < 50; i++) {
+            const fields = await (await who(`api/identity/${root}/profile`)).json();
+            if (fields.some((f) => f.field === "heartbeat")) break;
+            await wait(100);
+        }
+        return { who, root, bank: async () => (await who(`api/identity/${root}/bank`)).json() };
+    };
+
+    it("a bond costs no more than the balance, pays its interest, sells in debt, and matures", async () => {
+        const { who: bea, root, bank } = await persona("bondbea");
+        const buy = (pennies) => j(bea, `api/identity/${root}/bank/instruments`, { kind: "horsebond", pennies });
+        const sell = (id) => bea(`api/identity/${root}/bank/instruments/${id}/sell`, { method: "POST" });
+        assert.equal((await bank()).balance, "1000", "today's heartbeat, and nothing else");
+        assert.equal((await buy("200000")).status, 400, "no overdraft: H$ 10 buys no bond");
+
+        await j(rig, "test/credit", { root, pennies: 399000 });
+        assert.equal((await buy("199999")).status, 400, "a hrseBond costs at least H$ 2,000");
+        const huge = await buy("100000001");
+        assert.equal(huge.status, 400);
+        assert.match(await huge.text(), /at most/, "and at most H$ 1,000,000, whatever the balance");
+        for (let n = 0; n < 2; n++) {
+            const bought = await buy("200000");
+            assert.equal(bought.status, 200, await bought.text());
+        }
+        assert.equal((await bank()).balance, "0", "two bonds spend H$ 4,000 exactly");
+        assert.equal((await buy("200000")).status, 400, "and a third is more than the balance");
+        const [sold, kept] = (await bank()).instruments;
+        assert.equal((await sell(sold.id)).status, 400, "not in debt: nothing to get out of");
+
+        await j(rig, "test/credit", { root, pennies: -100000 });
+        // Today ends at -H$ 1,000 and pays 2% of it.
+        assert.equal((await bank()).balance, "-102000", "debt charges its interest today");
+        const out = await sell(sold.id);
+        assert.equal(out.status, 200, await out.text());
+        const after = await bank();
+        assert.equal(after.balance, "98000", "the sale returns the price");
+        assert.equal(after.instruments.find((b) => b.id === sold.id).sold, true);
+        assert.equal((await sell(sold.id)).status, 400, "and sells once");
+
+        for (let n = 1; n <= 3; n++) {
+            await j(rig, "test/heartbeat", { root, date: dayAfter(n) });
+        }
+        const three = await bank();
+        const keptNow = three.instruments.find((b) => b.id === kept.id);
+        assert.equal(keptNow.days, 3, "three heartbeat days after the purchase");
+        assert.equal(keptNow.paid, "6000", "1% of H$ 2,000 each day");
+        assert.equal(three.instruments.find((b) => b.id === sold.id).paid, "0", "a sold bond pays nothing after its sale");
+        assert.equal(three.balance, String(98000 + 3 * 1000 + 6000), "heartbeats and one bond's interest");
+
+        for (let n = 4; n <= 101; n++) {
+            await j(rig, "test/heartbeat", { root, date: dayAfter(n) });
+        }
+        const done = (await bank()).instruments;
+        const matured = done.find((b) => b.id === kept.id);
+        assert.equal(matured.days, 100, "a hundred days, and no more");
+        assert.equal(matured.paid, "200000", "H$ 20 a day for a hundred days");
+        assert.equal(matured.matured, true, "then its price comes back");
+        assert.equal(done.find((b) => b.id === sold.id).matured, false, "a sold bond never matures");
+    });
+
+    it("debt compounds, day by day", async () => {
+        const { root, bank } = await persona("debtcal");
+        await j(rig, "test/credit", { root, pennies: -100000 });
+        for (let n = 1; n <= 3; n++) {
+            await j(rig, "test/heartbeat", { root, date: dayAfter(n) });
+        }
+        // Today ends at -99,000 and pays -1,980; each later day adds 1,000 for the heartbeat, then
+        // charges 2% of what's left, toward zero: -1,999, -2,019, -2,039.
+        assert.equal((await bank()).balance, "-104037", "the debt compounds");
+    });
+});

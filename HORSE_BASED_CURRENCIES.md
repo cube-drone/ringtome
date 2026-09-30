@@ -25,7 +25,13 @@ of DAU over time as seen from this node), then HorseBucks, whose interest runs o
 3. **Nothing is rejected and nothing is rolled back.** A purchase is an entry, not a request. If
    two computers each buy something the balance could only afford once, the chains merge, both
    purchases stand, and the fold comes out lower, possibly negative. You keep the house *and* the
-   jet-ski; you are in debt. A double-spend is a consequence, not a conflict.
+   jet-ski; you are in debt. A double-spend is a consequence, not a conflict. **But no one computer
+   spends past the balance it sees** (Curtis, 2026-09-30: "should not allow any transaction that
+   would spend more money than the user has: overdraft is for special cases, not the average
+   case"): the node refuses the purchase, whatever sent it, and the market greys out what the
+   balance can't pay. Debt comes only from the special cases - the merge above, and its interest.
+   The way out is **selling a hrseBond**, offered only while in debt: it returns the price, keeps
+   the interest already paid, and pays nothing from the day it's sold.
 4. **Balances may go negative, at credit-card rates.** Debt is the honest outcome of rule 3, and it
    compounds: *settled* (Curtis, 2026-09-29) at **2% per day, compounding** (per heartbeat day, as all
    time is here). Debt doubles in about 35 days and grows about 1,380-fold in a year.
@@ -157,8 +163,9 @@ A new app whose only job is the persona's horse capital:
   explanation beside every amount, so the bank can show its working.
 - **Instruments held,** with what each has paid and when it matures.
 
-The bank is also where buying happens. Every purchase is a ledger entry (above), and an overdrawn
-purchase simply shows the debt.
+The bank is also where buying happens. Every purchase is a ledger entry (above); a purchase past
+the balance is refused on the computer that makes it, and a merge that overdraws anyway simply shows
+the debt.
 
 **The balance in the corner** (Curtis, 2026-09-29): the persona's HorseBucks sit in the quickbar's
 bottom-right corner, rightmost, to the right of the clock, and clicking them opens hrseBank. The
