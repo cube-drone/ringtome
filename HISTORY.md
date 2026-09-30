@@ -13088,3 +13088,38 @@ that users will require a better financial instrument"): the amount is a range s
 price, H$ 2,000 to the balance or a million, whichever is less. The ceiling is the node's too
 (`BOND_MAX`; bank.cjs: a H$ 1,000,000.01 bond is refused "at most", whatever the balance). A
 held bond now reads kind and progress, then its amount on a row of its own, then what it has paid.
+
+### The front door: its name, a marquee of taglines, super-pins (2026-09-30)
+
+Curtis: on a server, node administrators may super-pin public posts to the top of the front page,
+"above 'lately on this node' but after 'posted lately'"; "this node" becomes Horse Drawing Tycoon 2;
+the tagline becomes an endlessly scrolling marquee of taglines; both customizable in the Server app.
+
+- **`frontdoor.rs`**, owning two node tables on a new rung (`0064_front_door.sql`): `front_door`
+  (one row: the name and a JSON list of taglines, NULL for "the app's own") and `super_pins`.
+  `GET /api/node/front` answers the name, the taglines and the pins as feed cards (the node feed's
+  card-building, now `nodeface::feed_items`); `PUT /api/admin/front` sets the words;
+  `PUT|DELETE /api/admin/super-pins/{author}/{doc}` pins and unpins. Refused on a device, and only
+  a post the stranger's shelf holds - open, its author listed, not a share (`nodeshelf::post_row`).
+  A pin whose post has left the shelf simply isn't shown.
+- **The defaults live in the page** (`frontdoor.js`), in `t()`: the name and Curtis's seven
+  taglines, so they read in the stranger's language and a later release's reach every server that
+  never chose. Saving the defaults unchanged saves nothing; "back to the app's own" forgets.
+- **The marquee** replaces "a cozy corner of the internet" under the sign-in: the run laid twice
+  and slid one run's width, so the seam never shows; a horse between lines; paced by length; held
+  still on hover; standing still under prefers-reduced-motion.
+- **The header** on the front page and `/feed` wears the name instead of "this node".
+- **The super-pin chip** (Phosphor's CrownSimple) sits on an open post's card after the author's
+  own pin, for a node administrator on a server (`SuperPinner`, provided by `Inside`); the pinned
+  shelf ("pinned here") sits between the rule and "lately on this node".
+- **Server customization** in hrseServer: the name (the default as placeholder) and the taglines,
+  one to a line. Not offered in hrseDevice.
+
+Pinned in frontdoor.cjs: nothing chosen answers null; a plain account is refused (403); names and
+taglines come back trimmed, blank lines dropped, an 81-character name refused; a sealed post and an
+unknown one can't be pinned; pinning twice is once; a stranger sees the pin as a card; unpinned,
+it's gone. The file puts every choice back, since the rig is shared.
+
+Then (Curtis: "now that we have 'horse drawing tycoon 2' in the homepage's title, we don't need a
+separate version of that at the top of the selfsame page"): the sign-in's pixel-font heading is gone,
+from the recovery screen too, so the page opens on the marquee under the header's name.

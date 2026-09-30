@@ -11,6 +11,8 @@ import { FeedStream } from './apps/feed.js';
 import { PostEntry } from './postentry.js';
 import { api } from './net.js';
 import { t } from './i18n.js';
+import { Icons } from './icons.js';
+import { useFront } from './frontdoor.js';
 
 const html = htm.bind(h);
 
@@ -68,5 +70,16 @@ export const RecentPosts = ({ limit = 10 }) => {
                 loc.route('/feed');
             }}
         >${t('nodefeed.see-more', 'see more...')}</a>
+    </section>`;
+};
+
+/// The super-pinned posts, above "lately on this node". Nothing at all when none are pinned.
+export const SuperPins = () => {
+    const f = useFront();
+    const pins = (f && f.pins) || [];
+    if (pins.length === 0) return null;
+    return html`<section class="front-shelf feed-app">
+        <h2 class="front-shelf-title front-pins-title"><${Icons.superPin} /> ${t('frontdoor.pinned-here', 'pinned here')}</h2>
+        ${pins.map((item) => html`<${PostEntry} key=${`${item.author}:${item.doc_id}`} item=${item} current=${null} />`)}
     </section>`;
 };

@@ -12,6 +12,7 @@ import { api, isDevice, isLinuxApp } from './net.js';
 import { t } from './i18n.js';
 import { Icons } from './icons.js';
 import { Version } from './version.js';
+import { Marquee } from './frontdoor.js';
 
 const html = htm.bind(h);
 
@@ -269,7 +270,6 @@ export const Welcome = ({ session }) => {
         return html`
             <div class="welcome">
                 <${LinuxNotice} />
-                <h1 class="welcome-title">${t('auth.app-name', 'horse drawing tycoon 2')}</h1>
                 <p class="welcome-sub">${t('auth.locked-out-your-spare-key', 'locked out? your spare key gets you back in.')}</p>
                 <div class="welcome-box">
                 <form class="welcome-form" onSubmit=${submit}>
@@ -338,8 +338,7 @@ export const Welcome = ({ session }) => {
     return html`
         <div class="welcome">
             <${LinuxNotice} />
-            <h1 class="welcome-title">${t('auth.app-name-2', 'horse drawing tycoon 2')}</h1>
-            <p class="welcome-sub">${t('auth.a-cozy-corner-of-the', 'a cozy corner of the internet')}</p>
+            <${Marquee} />
 
             <${LocalServerNotice} />
             <div class="welcome-box">

@@ -250,6 +250,23 @@ pub async fn page(node_db: &Db, before: Option<(i64, String)>, limit: i64) -> Re
     Ok(rows.into_iter().map(row_of).collect())
 }
 
+/// One post as the stranger's shelf holds it - open, its author listed, the author's own row
+/// rather than a share of it - or None. What a super-pin (frontdoor.rs) may point at.
+pub async fn post_row(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Option<ShelfRow>> {
+    let row: Option<RowTuple> = node_db
+        .fetch_optional(
+            &format!(
+                "SELECT author_root, doc_id, via_root, title, format, published_ms, updated_ms, settled, trusted_only, dated_ms, reply_to_author, reply_to_doc
+                 FROM node_shelf s WHERE trusted_only = 0 AND via_root = '' AND {LISTED}
+                   AND author_root = ?1 AND doc_id = ?2"
+            ),
+            (author_root, doc_id),
+        )
+        .await
+        .context("reading one post from the node shelf")?;
+    Ok(row.map(row_of))
+}
+
 /// Who posted most recently (Curtis, 2026-09-28: the front door shows the last twenty): the
 /// posters of the newest `scan` open rows a stranger may see - a share counts as the sharer's,
 /// as the listing does - distinct, newest first, at most `want`. A bounded walk down the

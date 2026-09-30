@@ -72,16 +72,58 @@
     margin: 0 0 1rem;
 }
 
-.welcome-title {
-    font-family: "Press Start 2P", monospace;
-    font-size: 1.6rem;
-    color: var(--teal);
-    margin: 0 0 0.4rem;
-}
-
 .welcome-sub {
     color: var(--muted);
     margin: 0 0 2rem;
+}
+
+/* The taglines, scrolling forever under the name (frontdoor.js, 2026-09-30): the run laid twice,
+   sliding one run's width, so the seam never shows. Each line trails a horse, the last one's
+   leading into the second run. A hover holds it still; less motion, asked for, stops it. */
+.marquee {
+    margin: 0 0 2rem;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--muted);
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+
+.marquee-track {
+    display: inline-block;
+    animation: marquee-slide var(--marquee-seconds, 60s) linear infinite;
+}
+
+.marquee:hover .marquee-track {
+    animation-play-state: paused;
+}
+
+.marquee-line::after {
+    content: "🐎";
+    margin: 0 1.5em;
+}
+
+@keyframes marquee-slide {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .marquee {
+        white-space: normal;
+        mask-image: none;
+    }
+
+    .marquee-track {
+        animation: none;
+    }
+
+    .marquee-line[aria-hidden="true"] {
+        display: none;
+    }
 }
 
 .welcome-tabs {
@@ -369,6 +411,13 @@ a.download-version:focus-visible {
     color: var(--muted);
     font-weight: 600;
     margin: 0 0 0.8rem;
+}
+
+/* Super-pinned posts (2026-09-30): the crown beside the words. */
+.front-pins-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
 }
 
 .front-people {

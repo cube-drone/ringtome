@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1278 phrases across 80 files.
+// 1294 phrases across 82 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -184,11 +184,13 @@ export default {
     'apps.chat.pick-a-chat': 'pick a chat on the left, or start a new one',
 
     // --- node/js/apps/device.js ---
-    'device.only-for-the-people-who-look-after-this': 'These settings are only for the people who look after this place.',
     'device.registration': 'Registration',
-    'device.backups': 'Backups',
     'device.who-may-sign-up-here': 'who may sign up here',
+    'device.backups': 'Backups',
     'device.copies-of-everything-to-keep-safe': 'copies of everything here, to keep somewhere safe',
+    'device.server-customization': 'Server customization',
+    'device.the-front-pages-name-and-taglines': "the front page's name, and the taglines scrolling under it",
+    'device.only-for-the-people-who-look-after-this': 'These settings are only for the people who look after this place.',
     'device.mode-open': 'open',
     'device.mode-open-sub': 'anyone who can reach this place may sign up',
     'device.mode-password': 'password-protected',
@@ -213,6 +215,9 @@ export default {
     'device.show-in-folder': 'show in folder',
     'device.download': 'download',
     'device.restoring-is-not-here-yet': "Restoring from a backup isn't here yet.",
+    'device.front-page-name': "the front page's name",
+    'device.taglines-one-per-line': 'taglines, one to a line, scrolling under the sign-in',
+    'device.back-to-the-apps-own': "back to the app's own",
 
     // --- node/js/apps/feed.js ---
     'apps.feed.stop-explorer': 'explorer',
@@ -349,7 +354,6 @@ export default {
     'auth.download-none-found': "the downloads couldn't be found just now.",
     'auth.download-every-release': 'every release is here',
     'auth.this-server-is-running': 'this server is running',
-    'auth.app-name': 'horse drawing tycoon 2',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
     'auth.spare-key': 'spare key',
@@ -359,8 +363,6 @@ export default {
     'auth.move-me-in': 'move me in',
     'auth.let-me-back-in': 'let me back in',
     'auth.back-to-signing-in': 'back to signing in',
-    'auth.app-name-2': 'horse drawing tycoon 2',
-    'auth.a-cozy-corner-of-the': 'a cozy corner of the internet',
     'auth.sign-in': 'sign in',
     'auth.new-here': 'new here?',
     'auth.import-user': 'import user',
@@ -746,6 +748,18 @@ export default {
     'facets.buckets': 'in',
     'facets.tags': 'tagged',
 
+    // --- node/js/frontdoor.js ---
+    'frontdoor.default-name': 'Horse Drawing Tycoon 2',
+    'frontdoor.tagline-draw-and-share': 'finally, a way to draw and share pictures of horses',
+    'frontdoor.tagline-tycoon': 'a tycoon game where you draw horses indefinitely',
+    'frontdoor.tagline-p2p': 'a horse-themed peer-to-peer social network',
+    'frontdoor.tagline-least-qualified': 'a social network designed by the least qualified possible person to design a social network',
+    'frontdoor.tagline-marquee': "finally a home for the internet's lost marquee element",
+    'frontdoor.tagline-both': 'horses! drawings! both at the same time!',
+    'frontdoor.tagline-zug-zug': 'do you remember when you played Starcraft 2 and you clicked on a guy a few too many times and he started to say weird comedy things? anyways, zug zug.',
+    'frontdoor.take-this-off-the-front-page': "take this off the server's front page",
+    'frontdoor.super-pin-this': "super-pin this to the top of the server's front page",
+
     // --- node/js/idpage.js ---
     'idpage.synced': 'synced {when}',
     'idpage.fetching-their-newest-posts': 'fetching their newest posts…',
@@ -788,7 +802,6 @@ export default {
     'index.loading': 'Loading…',
     'index.looking-that-up': 'looking that up…',
     'index.people': 'people',
-    'index.this-node': 'this node',
     'index.search-this-node': 'search this node…',
     'index.home': 'home',
     'index.feed': 'feed',
@@ -808,6 +821,7 @@ export default {
     'apps.nodefeed.on-this-node': 'on this node',
     'nodefeed.lately-on-this-node': 'lately on this node',
     'nodefeed.see-more': 'see more...',
+    'frontdoor.pinned-here': 'pinned here',
 
     // --- node/js/nodepeople.js ---
     'apps.nodepeople.hosted-here': 'hosted here',
@@ -1204,6 +1218,12 @@ export default {
     'chat.a-room-cant-bake-web-media': 'save the picture and attach it here instead',
     'chat.that-media-is-still-being-prepared': 'that media is still being prepared - say it again in a moment',
     'chat.that-picture-isnt-here-any-more': "that picture isn't here any more",
+
+    // --- node/src/frontdoor.rs ---
+    'frontdoor.name-too-long': 'that name is longer than a header can hold',
+    'frontdoor.too-many-taglines': 'at most a hundred taglines, each under 500 characters',
+    'frontdoor.only-a-server': 'only a server has a front page to pin to',
+    'frontdoor.only-public-posts-here': 'only a public post hosted here can go on the front page',
 
     // --- node/src/identity.rs ---
     'identity.recovery-failed': 'recovery failed',

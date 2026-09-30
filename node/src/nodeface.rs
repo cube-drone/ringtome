@@ -122,15 +122,22 @@ pub async fn node_feed(
         });
         (all, false)
     };
+    let items = feed_items(&state, rows).await?;
+    Ok(Json(serde_json::json!({ "items": items, "more": more })))
+}
+
+/// Shelf rows as the front page's cards read them: bylines, labels and reply counts beside each.
+/// The node feed's, and the super-pins' above it (frontdoor.rs).
+pub async fn feed_items(state: &AppState, rows: Vec<crate::nodeshelf::ShelfRow>) -> Result<Vec<serde_json::Value>, AppError> {
     let mut roots: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
     roots.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     roots.sort();
     roots.dedup();
     let bylines = crate::profiles::bylines(&state.node_db, &roots).await.unwrap_or_default();
     let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let labels = crate::annotations::for_posts(&state, &pairs, None).await.map_err(AppError::Internal)?;
+    let labels = crate::annotations::for_posts(state, &pairs, None).await.map_err(AppError::Internal)?;
     let replies = crate::replies::known_counts(&state.node_db, &pairs).await.map_err(AppError::Internal)?;
-    let items: Vec<serde_json::Value> = rows
+    Ok(rows
         .into_iter()
         .map(|r| {
             let b = bylines.get(&r.author_root).cloned().unwrap_or_default();
@@ -157,8 +164,7 @@ pub async fn node_feed(
                 "annotations": labels.get(&key).map(|v| v.iter().map(|a| serde_json::json!({ "annotator": a.annotator, "key": a.key, "value": a.value })).collect::<Vec<_>>()).unwrap_or_default(),
             })
         })
-        .collect();
-    Ok(Json(serde_json::json!({ "items": items, "more": more })))
+        .collect())
 }
 
 /// `GET /api/node/feed/labels`: the facets over the whole stranger's shelf.

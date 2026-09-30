@@ -8,6 +8,8 @@
 // - Backups: make one and watch it go, and see the ones already made - downloaded from a server,
 //   shown in the file manager on a desktop, where they are already on this disk
 //   (node/src/backup.rs). Restoring is not here yet.
+// - Server customization (servers only, 2026-09-30): the front page's name and its marquee's
+//   taglines (node/src/frontdoor.rs). A desktop app has no front page for strangers.
 //
 // The word "node" never appears on these pages: it is the protocol's word, not the person's.
 import { h } from 'preact';
@@ -18,13 +20,21 @@ import { api, isDevice } from '../net.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
 import { appHref } from '../links.js';
+import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
 
 const html = htm.bind(h);
 
 /// The pages this app offers here: a desktop app has no Registration page (see above).
 // A desktop app's owner has the same sign-up choices a server's has (Curtis, 2026-09-28: every
 // desktop app is a localhost multi-user server now).
-const pages = () => ['registration', 'backups'];
+const pages = () => (isDevice() ? ['registration', 'backups'] : ['registration', 'backups', 'customization']);
+
+/// Each page's name and what it's for, as the landing lists them.
+const PAGE_WORDS = () => ({
+    registration: [t('device.registration', 'Registration'), t('device.who-may-sign-up-here', 'who may sign up here')],
+    backups: [t('device.backups', 'Backups'), t('device.copies-of-everything-to-keep-safe', 'copies of everything here, to keep somewhere safe')],
+    customization: [t('device.server-customization', 'Server customization'), t('device.the-front-pages-name-and-taglines', "the front page's name, and the taglines scrolling under it")],
+});
 
 export const DeviceApp = ({ page, admin }) => {
     if (!admin) {
@@ -34,6 +44,7 @@ export const DeviceApp = ({ page, admin }) => {
     }
     if (page === 'registration') return html`<${Registration} />`;
     if (page === 'backups') return html`<${Backups} />`;
+    if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
     return html`<${Landing} />`;
 };
 
@@ -42,12 +53,8 @@ const Landing = () => html`
         <nav class="device-menu">
             ${pages().map(
                 (page) => html`<a class="removal-option" href=${`${appHref('device')}/${page}`} key=${page}>
-                    <span class="removal-option-title">${page === 'registration' ? t('device.registration', 'Registration') : t('device.backups', 'Backups')}</span>
-                    <span class="removal-option-sub">
-                        ${page === 'registration'
-                            ? t('device.who-may-sign-up-here', 'who may sign up here')
-                            : t('device.copies-of-everything-to-keep-safe', 'copies of everything here, to keep somewhere safe')}
-                    </span>
+                    <span class="removal-option-title">${PAGE_WORDS()[page][0]}</span>
+                    <span class="removal-option-sub">${PAGE_WORDS()[page][1]}</span>
                 </a>`
             )}
         </nav>
@@ -245,6 +252,75 @@ const Backups = () => {
                       })}
                   </ul>`}
             <p class="null-sub">${t('device.restoring-is-not-here-yet', "Restoring from a backup isn't here yet.")}</p>
+        </div>
+    `;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Server customization
+
+/// The front page's name and taglines (Curtis, 2026-09-30). Left as the app's own, they stay the
+/// app's own - saved as nothing, so they read in each stranger's language and follow later
+/// releases; "back to the app's own" forgets whatever was chosen.
+const Customization = () => {
+    const [loaded, setLoaded] = useState(false);
+    const [name, setName] = useState('');
+    const [lines, setLines] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [saved, setSaved] = useState(false);
+    const ownLines = defaultTaglines().join('\n');
+    useEffect(() => {
+        api('/api/node/front')
+            .then((f) => {
+                setName(f.name || '');
+                setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
+                setLoaded(true);
+            })
+            .catch((e) => setError(e.message));
+    }, [ownLines]);
+    const save = async (body) => {
+        setBusy(true);
+        setError('');
+        setSaved(false);
+        try {
+            const f = await api('/api/admin/front', { method: 'PUT', body: JSON.stringify(body) });
+            setName(f.name || '');
+            setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
+            setSaved(true);
+            refreshFront();
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    if (!loaded) {
+        return html`<div class="device">${error ? html`<p class="form-error">${error}</p>` : html`<p class="null-sub">${t('device.looking', 'looking…')}</p>`}</div>`;
+    }
+    return html`
+        <div class="device">
+            <h2 class="computers-title">${t('device.server-customization', 'Server customization')}</h2>
+            <label class="device-field">
+                <span>${t('device.front-page-name', "the front page's name")}</span>
+                <input type="text" maxlength="80" value=${name} placeholder=${defaultName()} onInput=${(e) => setName(e.currentTarget.value)} />
+            </label>
+            <label class="device-field">
+                <span>${t('device.taglines-one-per-line', 'taglines, one to a line, scrolling under the sign-in')}</span>
+                <textarea class="device-taglines" rows="10" value=${lines} onInput=${(e) => setLines(e.currentTarget.value)}></textarea>
+            </label>
+            ${error && html`<p class="form-error">${error}</p>`}
+            ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
+            <div class="device-actions">
+                <button
+                    class="removal-go"
+                    disabled=${busy}
+                    onClick=${() => save({ name, taglines: lines.trim() === ownLines.trim() ? null : lines.split('\n') })}
+                >${busy ? '…' : t('device.save', 'save')}</button>
+                <button class="computer-remove" disabled=${busy} onClick=${() => save({ name: null, taglines: null })}>
+                    ${t('device.back-to-the-apps-own', "back to the app's own")}
+                </button>
+            </div>
         </div>
     `;
 };

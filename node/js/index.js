@@ -56,7 +56,8 @@ import { Icons, IconContext, iconFor } from './icons.js';
 import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
-import { NodeFeed, RecentPosts } from './nodefeed.js';
+import { NodeFeed, RecentPosts, SuperPins } from './nodefeed.js';
+import { SuperPinner, useFront, frontName } from './frontdoor.js';
 import { setTurbolinkReader } from './doc/turbolinks.js';
 import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
@@ -480,7 +481,8 @@ const Inside = ({ session }) => {
             <${NotFound} default />
         </${Router}>
     `;
-    return inApp ? shell(routed) : stage(routed);
+    // A node administrator on a server may super-pin posts to its front page (frontdoor.js).
+    return html`<${SuperPinner.Provider} value=${nodeAdmin && !isDevice()}>${inApp ? shell(routed) : stage(routed)}</${SuperPinner.Provider}>`;
 };
 
 /// The address before `/ringtome/` (2026-09-28): `/id/<seg>[/…]` goes on to its `/ringtome/user/`
@@ -644,12 +646,14 @@ const LegacyHome = ({ current }) => {
 const HEX_ID64 = /^[0-9a-f]{64}$/;
 
 /// The front door (Curtis, 2026-09-28): the sign-in, then who posted lately and what they
-/// posted, each with the way on to the rest.
+/// posted, each with the way on to the rest - and between them, what the server's administrators
+/// super-pinned (2026-09-30).
 const FrontDoor = ({ session }) => html`<div class="front-door">
     <${Welcome} session=${session} />
     <${HitCounter} />
     <${RecentPeople} limit=${20} />
     <hr class="front-rule" />
+    <${SuperPins} />
     <${RecentPosts} limit=${10} />
 </div>`;
 
@@ -669,7 +673,9 @@ const Outside = ({ session }) => {
         loc.path === LAUNCHER ||
         (loc.path.startsWith(`${LAUNCHER}/`) && !loc.path.startsWith(`${LAUNCHER}/user/`));
     const onPeople = loc.path === '/people';
-    const title = loc.path.startsWith('/ringtome/user/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : t('index.this-node', 'this node');
+    // The place's own name (2026-09-30: Horse Drawing Tycoon 2 unless its administrators chose one).
+    const front = useFront();
+    const title = loc.path.startsWith('/ringtome/user/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : frontName(front);
     const header = html`<header class="app-header">
         <span class="app-header-lead">
             <a class="app-header-title app-header-link" href="/feed">${title}</a>

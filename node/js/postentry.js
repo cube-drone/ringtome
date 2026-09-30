@@ -23,6 +23,7 @@ import { useEditWindowOpen } from './editwindow.js';
 import { openMirror, useLive } from './mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
+import { SuperPinChip } from './frontdoor.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
@@ -1077,6 +1078,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         - and any post you pass along (2026-09-29). */ ''}
                     ${!open && !item.private_doc && !!current && !!current.root && pinner(item) === current.root &&
                     html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
+                    ${/* A node administrator's super-pin (2026-09-30): onto the server's front page. */ ''}
+                    ${!open && !item.private_doc && !item.trusted_only && item.kind !== 'share' && !!current && html`<${SuperPinChip} item=${item} />`}
                     ${/* The post's address (2026-09-28), just before the copy into notes: pasted
                         in the app it unfolds as this card; pasted outside, it opens. */ ''}
                     ${!open && html`<${CopyLinkChip} path=${href} />`}

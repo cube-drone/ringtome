@@ -27,6 +27,7 @@ pub mod clock;
 pub mod config;
 pub mod db;
 pub mod downloads;
+pub mod frontdoor;
 pub mod drawing;
 pub mod edgegraph;
 pub mod error;
@@ -777,6 +778,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/identity/{root}/bank/instruments", axum::routing::post(bank::buy_handler))
         .route("/api/identity/{root}/bank/instruments/{id}/sell", axum::routing::post(bank::sell_handler))
         .route("/api/node/feed", get(nodeface::node_feed))
+        .route("/api/node/front", get(frontdoor::front_handler))
+        .route("/api/admin/front", axum::routing::put(frontdoor::set_handler))
+        .route("/api/admin/super-pins/{author}/{doc}", axum::routing::put(frontdoor::pin_handler).delete(frontdoor::unpin_handler))
         .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
         .route("/api/node/personas", get(nodeface::node_personas))
         .route("/api/node/slugs/{slug}", get(nodeface::slug_resolve))

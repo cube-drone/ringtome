@@ -7,6 +7,7 @@
 import {
     Archive,
     PiggyBank,
+    CrownSimple,
     Bank,
     ChartLine,
     ChatsCircle,
@@ -219,6 +220,8 @@ export const Icons = {
     lostFound: Archive,
     // hrseBank™ (2026-09-29)
     bank: PiggyBank,
+    // a node administrator's pin to the server's front page (frontdoor.js, 2026-09-30)
+    superPin: CrownSimple,
     // a hrseBond in the market: the treasury's columns (2026-09-30)
     bond: Bank,
     people: UsersThree,

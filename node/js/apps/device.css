@@ -28,7 +28,8 @@
     font-size: 0.85rem;
 }
 
-.device-field input {
+.device-field input,
+.device-field textarea {
     font: inherit;
     font-size: 1rem;
     color: var(--ink);
@@ -37,7 +38,8 @@
     padding: 0.45rem 0.6rem;
 }
 
-.device-field input:focus {
+.device-field input:focus,
+.device-field textarea:focus {
     outline: 2px solid var(--glow);
     border-color: var(--teal);
 }
@@ -53,4 +55,16 @@
     color: var(--ink-soft);
     font-size: 0.85rem;
     line-height: 1.5;
+}
+
+/* Server customization (2026-09-30): the taglines, one to a line, and room to read them. */
+.device-taglines {
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.device-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
 }
