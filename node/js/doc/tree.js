@@ -73,6 +73,8 @@ const STANDING_CLASS = {
     hidden: 'tree-row-icon tree-standing-hidden',
 };
 
+const HIDDEN = 'hidden';
+
 /// What a page icon's colour says, in its tooltip.
 const standingTitle = (standing) =>
     standing === 'hidden'
@@ -195,6 +197,8 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     ]
         .filter(Boolean)
         .join(' ');
+    // A section hidden from the book goes grey (2026-09-30), as its pages do.
+    const sectionHidden = !!ops.book && ops.book.hidden.has(`sec:${node.taxonomy_id}`);
     return html`
         <div
             class=${cls}
@@ -252,10 +256,9 @@ const SectionNode = ({ node, parent, depth, ops }) => {
             }}
         >
             <span class=${open ? 'tree-caret open' : 'tree-caret'}><${Icons.forward} /></span>
-            <span
-                class=${ops.book && ops.book.hidden.has(`sec:${node.taxonomy_id}`) ? STANDING_CLASS.hidden : 'tree-row-icon'}
-                title=${ops.book && ops.book.hidden.has(`sec:${node.taxonomy_id}`) ? standingTitle('hidden') : undefined}
-            ><${open ? Icons.sectionOpen : Icons.section} /></span>
+            <span class=${sectionHidden ? STANDING_CLASS.hidden : 'tree-row-icon'} title=${sectionHidden ? standingTitle(HIDDEN) : undefined}
+                ><${open ? Icons.sectionOpen : Icons.section}
+            /></span>
             <span class="tree-row-title">${node.title || t('doc.tree.untitled-section-2', '(untitled section)')}</span>
             <span class="tree-row-actions" onClick=${(e) => e.stopPropagation()}>
                 <button

@@ -70,13 +70,20 @@ pub async fn node_personas(
             "avatar": b.avatar,
             "banner": b.banner,
             "slug": slug,
+            "last_active": b.last_active,
         }));
     }
-    // Everyone by name; "posted lately" keeps its own order, newest first.
+    // Everyone by their last heartbeat, the most recent first (Curtis, 2026-09-30: "whoever logged
+    // in most recently at the top"), then by name within a day - a heartbeat is a date - and anyone
+    // with none yet last; "posted lately" keeps its own order, newest first.
     if recent.is_none() {
         people.sort_by(|a, b| {
+            let day = |v: &serde_json::Value| v["last_active"].as_str().map(str::to_string);
             let name = |v: &serde_json::Value| v["name"].as_str().unwrap_or("").to_lowercase();
-            name(a).cmp(&name(b)).then_with(|| a["root"].as_str().cmp(&b["root"].as_str()))
+            day(b)
+                .cmp(&day(a))
+                .then_with(|| name(a).cmp(&name(b)))
+                .then_with(|| a["root"].as_str().cmp(&b["root"].as_str()))
         });
     }
     Ok(Json(serde_json::json!({ "people": people })))

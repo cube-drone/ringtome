@@ -13492,3 +13492,12 @@ The application settings page carries the version (Curtis, 2026-09-30: with the 
 gone, a phone signed in had "no way to see this"): under the settings, "version" and the running
 build's name - the bar's own `Version`, linked to its release notes, or a dev build's branch - then
 "every release" (`RELEASES_URL`, now beside `releaseUrl` in pure/releasename.js). Seen at 400px.
+
+The public people page runs by heartbeat (Curtis, 2026-09-30: "chronologically ordered by heartbeat?
+whoever logged in most recently at the top?"): `/api/node/personas` sorts everyone by the byline's
+`last_active` - the heartbeat, a date - most recent first, by name within a day, anyone with none yet
+last, and says it (`last_active`) in each row; "posted lately" keeps its own order. Pinned in
+nodeface.cjs: two past heartbeats a day apart, the later above, and every heartbeat in the list most
+recent first. The full gate also caught a string of today's: the book tree's hidden section passed
+`'hidden'` to its tooltip inside a template, which reads to the strings check as copy bypassing
+`t()`; it's a constant now, out of the template.

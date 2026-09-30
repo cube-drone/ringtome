@@ -115,6 +115,26 @@ describe("the node's public face: a stranger's doors", function () {
         assert.ok(items.includes(open2), "and so is cal's post");
     });
 
+    it("the people door lists the most recently active first, by their heartbeat (2026-09-30)", async () => {
+        // Two past days, a day apart: below everyone active today, and in their own order.
+        const rig = makeFetch();
+        await j(rig, "test/heartbeat", { root: beaRoot, date: "2026-01-01" });
+        await j(rig, "test/heartbeat", { root: adaRoot, date: "2026-01-02" });
+        let people = [];
+        for (let i = 0; i < 30; i++) {
+            await beat(HOST, "fold", adaRoot);
+            await beat(HOST, "fold", beaRoot);
+            people = (await (await stranger("api/node/personas")).json()).people || [];
+            const at = (r) => (people.find((p) => p.root === r) || {}).last_active;
+            if (at(adaRoot) === "2026-01-02" && at(beaRoot) === "2026-01-01") break;
+            await wait(200);
+        }
+        const roots = people.map((p) => p.root);
+        assert.ok(roots.indexOf(adaRoot) >= 0 && roots.indexOf(adaRoot) < roots.indexOf(beaRoot), "ada's later heartbeat above bea's");
+        const days = people.map((p) => p.last_active || "");
+        assert.deepEqual(days, [...days].sort().reverse(), "every heartbeat most recent first, none last");
+    });
+
     it("the front door's shelves: who posted lately, newest first, and a shorter first page (2026-09-28)", async () => {
         // Posted in order ada, bea, ada (sealed - a stranger never sees it, so it cannot count),
         // cal: the newest open posts are cal's, then bea's, then ada's.
