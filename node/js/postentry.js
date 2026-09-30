@@ -1016,6 +1016,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini heptagon made you
                 hover. The when and - for your own posts - the unlock ride its actions slot. */ ''}
+            <div class="feed-entry-head">
             <${PersonBanner}
                 root=${item.author}
                 current=${current}
@@ -1096,6 +1097,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 : item.format === 'book'
                   ? html`<${BookTitle}>${title}</${BookTitle}>`
                   : title}</a></h2>`}
+            </div>
             ${/* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
                 mini-card names what it answers - which is the whole reason context-free
                 "@rando, I disagree" cannot happen here. Suppressed on the thread page
@@ -1321,7 +1323,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           ${item.format === 'book'
                               ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
                               : item.format === 'room'
-                                ? html`<${RoomFloor} item=${item} current=${current} post=${shownBody} />`
+                                ? html`${/* In the post's own paper (Curtis, 2026-09-30): a room's
+                                      opening line and its latest, bubbled as a post's words are. */ ''}<div class="reader-marquee jag-line">
+                                      <${RoomFloor} item=${item} current=${current} post=${shownBody} />
+                                  </div>`
                                 : bodyFormat === 'marquee'
                                   ? html`<${MarqueeBody}
                                         source=${shown}

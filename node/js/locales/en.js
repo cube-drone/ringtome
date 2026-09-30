@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1317 phrases across 85 files.
+// 1315 phrases across 85 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -243,8 +243,6 @@ export default {
     'apps.feed.feed-curiosity': 'feed curiosity:',
     'apps.feed.sort-title': 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked',
     'apps.feed.sort-by': 'order:',
-    'apps.feed.counts-this-window': 'counts cover this window',
-    'apps.feed.counts-this-year': 'counts cover the last year',
     'apps.feed.1-update': '1 update',
     'apps.feed.n-updates': '{n} updates',
     'apps.feed.refresh': '· refresh',

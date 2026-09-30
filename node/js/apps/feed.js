@@ -519,11 +519,6 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                 picks=${picks}
                 onPicks=${setPicks}
                 meChip=${meChip}
-                note=${meChip
-                    ? best
-                        ? t('apps.feed.counts-this-window', 'counts cover this window')
-                        : t('apps.feed.counts-this-year', 'counts cover the last year')
-                    : null}
             />
             ${/* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
                 the dial's corner it was hard to see): centred, and always the same height, so the

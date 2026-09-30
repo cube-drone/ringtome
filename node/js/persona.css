@@ -1707,6 +1707,59 @@ article:has(.label-emoji-strip) {
     margin: 0.3em 0 0;
 }
 
+/* The card's head: the author's banner and the title as one grid (the banner flattened into it), so
+   the pieces can move. Wide, as ever: the author, with the date and the buttons at the row's end,
+   then the title beneath. Once the card is any narrower than its full measure (Curtis, 2026-09-30:
+   the date and buttons crowded the name "eventually swallowing them entirely" - a narrow window
+   or a wide neighbouring column alike, so the card measures itself), they stack: the author, then
+   the title, then the date and the buttons, which wrap if they must. 760px is a full card's content
+   width less a hair, whatever the card's scale. */
+.feed-entry {
+    container-type: inline-size;
+}
+
+.feed-entry-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.7rem;
+    margin-bottom: 0.4em;
+}
+
+.feed-entry-head > .person-banner {
+    display: contents;
+}
+
+.feed-entry-head .feed-entry-title {
+    grid-column: 1 / -1;
+    margin-top: 0.6em;
+}
+
+@container (max-width: 760px) {
+    .feed-entry-head {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .feed-entry-head .feed-entry-title {
+        order: 1;
+    }
+
+    /* At the right, as they sit on a wide card (Curtis, 2026-09-30), wrapping from the right. */
+    .feed-entry-head .person-banner-actions {
+        order: 2;
+        grid-column: 1 / -1;
+        justify-self: end;
+        justify-content: flex-end;
+        margin: 0.5em 0 0;
+        flex-wrap: wrap;
+    }
+
+    /* And the date without its internet time: the room it takes is the room the stack is short of. */
+    .feed-entry-head .feed-entry-beats {
+        display: none;
+    }
+}
+
 .feed-entry-title a {
     color: var(--ink);
     text-decoration: none;

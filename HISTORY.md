@@ -13422,3 +13422,27 @@ home button. Seen at 400 and 1300px.
 The front page's shelf headings - "posted lately", "pinned here", "lately on this node" - are centred
 and a size up, 1rem to 1.3rem (Curtis, 2026-09-30); the pinned one's crown centres with its words.
 And the shelves' "see more..." links are centred under them and a size up, 0.9rem to 1.1rem.
+
+A narrow feed card stacks its head (Curtis, 2026-09-30: the date and buttons crowded the poster's
+name, "eventually swallowing them entirely and even starting to run out of horizontal space… first
+author, then title, then date, then buttons"). The card's banner and title are one
+`.feed-entry-head` grid now (postentry.js; the banner flattened into it with `display: contents`,
+so its face, names and actions are grid pieces), and the card is a size container: at its full
+measure it reads as before - the author, the date and buttons at the row's end, the title beneath -
+and once it is any narrower (under 760px of content, a full card less a hair at any scale; a narrow
+window and a wide neighbouring column alike) the date and buttons drop below the title, wrapping if
+they must. Seen in headless Chrome at 1300 and 560px, a titled and an untitled post.
+Then (Curtis: "if stacked, can the time and buttons stay right-aligned? also… just hide the internet
+time"): the stacked date-and-buttons row sits at the right and wraps from the right, and the date
+drops its internet time (`.feed-entry-beats`) while stacked - a full-width card keeps it. Seen at 560px.
+
+A chat in the feed sits in the post's paper (Curtis, 2026-09-30: "can we put all of the chat content
+in a bubble like the one that we use for post content?"): a room card's lines - its opening words, the
+"and n more" rule, its latest - are wrapped in the same `.reader-marquee jag-line` the post's words
+wear (postentry.js), whose inner line bodies already drop their own. Seen in headless Chrome: a room
+of three lines.
+The feed's tag lists no longer say "counts cover the last year" (Curtis, 2026-09-30: "kind of
+unnecessary hedging"); the best order's "counts cover this window", which says something different
+- only what's in view is counted - stays.
+Then (Curtis: "please remove that too"): "counts cover this window" goes as well - the feed's tag
+lists carry no note at all.
