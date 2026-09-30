@@ -142,6 +142,14 @@ pub enum FragmentMessage {
     /// The room's most recent speakers, newest first, each with the endpoints the answering node
     /// knows serve them (at most `MAX_REACH_ENDPOINTS`). Empty as `Room` is.
     RoomReach { speakers: Vec<([u8; 32], Vec<[u8; 32]>)> },
+    /// The network's daily actives, estimated (HORSE_BASED_CURRENCIES.md, 2026-09-29): the asker's
+    /// HyperLogLog sketches for recent UTC days (days since 1970-01-01), each `CENSUS_REGISTERS`
+    /// bytes. The answerer merges them into its own - per-register maximum, so it's commutative
+    /// and idempotent - and answers with the merged sketches for the same days, so one round trip
+    /// spreads what both nodes knew. A sketch holds register maxima of root hashes, never roots.
+    WantCensus { sketches: Vec<(u32, Vec<u8>)> },
+    /// The merged sketches, for the days the asker named.
+    Census { sketches: Vec<(u32, Vec<u8>)> },
     /// The archive's history (CHAT.md, ruling 6): the room's messages said before
     /// `before_ms`, newest first, at most `limit` - asked of the creator's node, which keeps
     /// the room whole, by a reader whose own node keeps only the budget. `for_root` is the
@@ -168,6 +176,11 @@ pub const MAX_ROOM_PARTICIPANTS: usize = 1000;
 pub const MAX_ROOM_REACH: usize = 50;
 /// Cap on the endpoints named for one speaker: fifty speakers at four each fit a frame.
 pub const MAX_REACH_ENDPOINTS: usize = 4;
+
+/// A census sketch's size: 1,024 one-byte registers, about 3% error.
+pub const CENSUS_REGISTERS: usize = 1024;
+/// Days in one census exchange: today, yesterday, and the day before.
+pub const MAX_CENSUS_DAYS: usize = 3;
 
 /// Cap on one history frame's entries: three messages of the largest size fit the frame.
 pub const MAX_ROOM_HISTORY_ITEMS: usize = 3;
@@ -239,6 +252,8 @@ const TAG_WANT_ROOM_HISTORY: u64 = 14;
 const TAG_ROOM_HISTORY: u64 = 15;
 const TAG_WANT_ROOM_REACH: u64 = 16;
 const TAG_ROOM_REACH: u64 = 17;
+const TAG_WANT_CENSUS: u64 = 18;
+const TAG_CENSUS: u64 = 19;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -366,6 +381,16 @@ impl FragmentMessage {
                 w.bytes(for_root);
                 if let Some(proof) = key_proof {
                     w.bytes(proof);
+                }
+            }
+            Self::WantCensus { sketches } | Self::Census { sketches } => {
+                w.array(2);
+                w.uint(if matches!(self, Self::WantCensus { .. }) { TAG_WANT_CENSUS } else { TAG_CENSUS });
+                w.array(sketches.len() as u64);
+                for (day, registers) in sketches {
+                    w.array(2);
+                    w.uint(u64::from(*day));
+                    w.bytes(registers);
                 }
             }
             Self::RoomReach { speakers } => {
@@ -569,6 +594,25 @@ impl FragmentMessage {
                     speakers.push((root, endpoints));
                 }
                 Self::RoomReach { speakers }
+            }
+            (tag @ (TAG_WANT_CENSUS | TAG_CENSUS), 2) => {
+                let count = r.array()?;
+                if count > MAX_CENSUS_DAYS as u64 {
+                    return Err(ProtoError::BadEntry("too many census days"));
+                }
+                let mut sketches = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    if r.array()? != 2 {
+                        return Err(ProtoError::BadEntry("a census sketch is a day and its registers"));
+                    }
+                    let day = u32::try_from(r.uint()?).map_err(|_| ProtoError::BadEntry("census day out of range"))?;
+                    let registers = r.bytes()?.to_vec();
+                    if registers.len() != CENSUS_REGISTERS {
+                        return Err(ProtoError::BadEntry("a census sketch is exactly its registers"));
+                    }
+                    sketches.push((day, registers));
+                }
+                if tag == TAG_WANT_CENSUS { Self::WantCensus { sketches } } else { Self::Census { sketches } }
             }
             (TAG_WANT_ROOM_HISTORY, arity @ 6..=7) => Self::WantRoomHistory {
                 author: r.bytes_fixed::<32>()?,
@@ -828,6 +872,26 @@ pub fn verify_retraction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The census pair (2026-09-29): round-trips, three days fit a frame, and anything past the
+    /// day cap or not exactly a sketch's registers is refused.
+    #[test]
+    fn census_round_trips_and_refuses_the_malformed() {
+        let full = vec![(20_000u32, vec![7u8; CENSUS_REGISTERS]); MAX_CENSUS_DAYS];
+        for message in [
+            FragmentMessage::WantCensus { sketches: full.clone() },
+            FragmentMessage::Census { sketches: full.clone() },
+            FragmentMessage::Census { sketches: Vec::new() },
+        ] {
+            let bytes = message.encode();
+            assert!(bytes.len() <= MAX_FRAGMENT_FRAME_BYTES);
+            assert_eq!(FragmentMessage::decode(&bytes).unwrap(), message);
+        }
+        let many = FragmentMessage::Census { sketches: vec![(1, vec![0u8; CENSUS_REGISTERS]); MAX_CENSUS_DAYS + 1] };
+        assert!(FragmentMessage::decode(&many.encode()).is_err(), "past the day cap");
+        let short = FragmentMessage::Census { sketches: vec![(1, vec![0u8; CENSUS_REGISTERS - 1])] };
+        assert!(FragmentMessage::decode(&short.encode()).is_err(), "not a sketch's size");
+    }
 
     /// The reach pair (2026-09-29): round-trips, a full answer fits one frame, and a list past
     /// either cap is refused.

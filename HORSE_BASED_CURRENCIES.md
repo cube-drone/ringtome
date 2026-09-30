@@ -10,7 +10,7 @@ danger. There is no global order and no referee, so a persona's two computers ca
 HorseBucks at once, and no scheme stops that. This design doesn't try to. It removes the
 consequences instead.
 
-**The order of building** (Curtis, 2026-09-29): heartbeats first (with the last one on a persona's
+**The order of building** (Curtis, 2026-09-29), heartbeats and the DAU counter built the same day: heartbeats first (with the last one on a persona's
 card, and the People page sortable by recent activity), then the network DAU counter (with a graph
 of DAU over time as seen from this node), then HorseBucks, whose interest runs on heartbeat days.
 
@@ -276,7 +276,7 @@ reports to Horse Drawing Tycoon Prime ("kind of against decentralized policy"): 
 the network's DAU from the nodes it has talked to lately, and shows it on its own front page under
 the sign-in: *Now with [0 0 0 0 0 0 3] active users!*, in mechanical odometer digits.
 
-*Proposed:* a **HyperLogLog** sketch per day, gossiped.
+*Built 2026-09-29* (`census.rs`): a **HyperLogLog** sketch per day, gossiped.
 - **Each node feeds its own actives in:** the hash of every hosted persona's root that did anything
   on this node today (sign-in, a read, a write). The node knows that from its own sessions, so this
   needs no heartbeats. When heartbeats land, any heartbeat a node holds goes in too.

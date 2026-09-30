@@ -77,6 +77,20 @@ pub async fn prune_quiet_askers(node_db: &Db, now: i64) -> Result<u64> {
 /// past the cap goes stale, pulls on its own wake pass, and the pull re-stamps it back to
 /// the top. Successive moves sweep the whole asker set with no rotation bookkeeping - the
 /// ordering key advances BECAUSE delivery succeeded, on the other side of the wire.
+/// Every node that asked about any persona here since `since_ms` - one of the census's sources of
+/// "nodes this one has talked to lately" (census.rs, 2026-09-29). Freshest first.
+pub async fn recent_askers(node_db: &Db, since_ms: i64) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM identity_demand WHERE last_asked_ms >= ?1
+             GROUP BY endpoint_id ORDER BY MAX(last_asked_ms) DESC",
+            (since_ms,),
+        )
+        .await
+        .context("listing recent askers")?;
+    Ok(rows.into_iter().map(|(e,)| e).collect())
+}
+
 pub async fn askers_of(node_db: &Db, root_hex: &str, limit: i64) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(

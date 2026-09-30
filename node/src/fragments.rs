@@ -1096,6 +1096,20 @@ pub async fn note_deliverer(node_db: &Db, author_root: &str, endpoint_id: &str) 
 /// endpoint-shaped, so a heal walk dials them directly with no resolution ladder (and no
 /// chance of the dial-an-unresolved-key mistake). Capped: an author served by many relays
 /// wants the recent few, not a census.
+/// Every endpoint that handed this node a fragment since `since_ms`, whoever's - the census's other
+/// gossip partners (census.rs, 2026-09-29).
+pub async fn recent_deliverers(node_db: &Db, since_ms: i64) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM fragment_deliverers WHERE served_at_ms >= ?1
+             GROUP BY endpoint_id ORDER BY MAX(served_at_ms) DESC",
+            (since_ms,),
+        )
+        .await
+        .context("listing recent fragment deliverers")?;
+    Ok(rows.into_iter().map(|(e,)| e).collect())
+}
+
 pub async fn deliverers_of(node_db: &Db, author_root: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(

@@ -18,12 +18,10 @@ use crate::AppState;
 
 /// How many times any byline on this node has changed since it started (2026-09-29, Curtis: "in
 /// order to see someone's updated name, banner or profile pic, I'd need to make some other arbitrary
-/// change to my people page?"). The live stream re-sends a persona's contact rows when THEIR OWN
-/// chains move; a contact renaming themselves moved nobody's chain here but their own, so the rows
-/// kept the old name until the reader's ledger happened to change. The stream folds this into its
-/// contacts stamp, so a changed byline re-gathers the roster, and only the rows that changed ship.
-/// In memory on purpose: a restart resets it, and a returning page's cursor then misses and gets a
-/// fresh snapshot, which is the honest answer after a restart anyway.
+/// change to my people page?"). The live stream re-sent a persona's contact rows only when THEIR OWN
+/// chains moved; a contact renaming themselves moved nobody's chain here but their own. This count
+/// is the stream's cheap cue to look again: when it moves, each open stream recomputes its reader's
+/// contacts `digest`, and only a change there moves the reader's cursor and ships rows.
 static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// The byline cache's change count (`EPOCH`).
@@ -91,11 +89,15 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
                  banner = excluded.banner,
                  last_active = excluded.last_active,
                  updated_at_ms = excluded.updated_at_ms",
-            (root_hex, name, avatar, banner, last_active, now_ms()),
+            (root_hex, name, avatar, banner, last_active.clone(), now_ms()),
         )
         .await
         .context("storing a byline")?;
     changed();
+    // A heartbeat this node now holds is an active persona for the census (census.rs).
+    if let Some(day) = last_active.as_deref().and_then(crate::heartbeat::day_of_date) {
+        crate::census::saw(state, root_hex, day).await;
+    }
     Ok(())
 }
 
@@ -134,6 +136,36 @@ pub async fn bylines_healed(state: &AppState, roots: &[String]) -> Result<std::c
         known = bylines(&state.node_db, roots).await?;
     }
     Ok(known)
+}
+
+/// A digest of the byline rows of `roots` as the cache holds them now: which exist, and when each
+/// last changed. The live stream stamps a reader's contacts with it (2026-09-29), so a contact
+/// renaming themselves moves THAT reader's cursor - and a byline changing anywhere else on the
+/// node moves nobody's.
+pub async fn digest(node_db: &Db, roots: &[String]) -> [u8; 32] {
+    let quoted: Vec<String> = roots
+        .iter()
+        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|r| format!("'{r}'"))
+        .collect();
+    let mut h = blake3::Hasher::new();
+    if !quoted.is_empty() {
+        let rows: Vec<(String, i64)> = node_db
+            .fetch_all(
+                &format!(
+                    "SELECT root_pubkey, updated_at_ms FROM persona_profiles WHERE root_pubkey IN ({}) ORDER BY root_pubkey",
+                    quoted.join(",")
+                ),
+                (),
+            )
+            .await
+            .unwrap_or_default();
+        for (root, at) in rows {
+            h.update(root.as_bytes());
+            h.update(&at.to_be_bytes());
+        }
+    }
+    *h.finalize().as_bytes()
 }
 
 /// One cached row: root, name, avatar, banner, last heartbeat.

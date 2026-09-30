@@ -97,6 +97,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantRoom { author, doc_id, for_root, key_proof }) => {
             crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root, key_proof).await
         }
+        Some(FragmentMessage::WantCensus { sketches }) => crate::census::answer(&state, sketches).await,
         Some(FragmentMessage::WantRoomReach { author, doc_id, for_root, key_proof }) => {
             crate::chat::answer_room_reach(&state, &conn, &author, &doc_id, &for_root, key_proof).await
         }
@@ -223,6 +224,24 @@ async fn answer_key(
 
 /// Ask one endpoint who has spoken in a room (CHAT.md, ruling 4): the creator's node is the
 /// directory of record. An empty list is "nobody yet" and "not for you" alike.
+/// Swap census sketches (census.rs, 2026-09-29): ours out, the peer's merged answer back. An `Err`
+/// from a node that predates the question leaves it alone for a day.
+pub async fn fetch_census(state: &AppState, endpoint_id: &str, sketches: Vec<(u32, Vec<u8>)>) -> Result<Vec<(u32, Vec<u8>)>> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for the census: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(&mut send, &FragmentMessage::WantCensus { sketches }).await?;
+    send.finish().ok();
+    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("census timed out")??;
+    conn.close(0u8.into(), b"done");
+    match answer {
+        Some(FragmentMessage::Census { sketches }) => Ok(sketches),
+        other => Err(anyhow!("unexpected answer to a census ask: {other:?}")),
+    }
+}
+
 /// The room's recent speakers and where each is served (2026-09-29): `WantRoomReach`. An `Err`
 /// from a node that predates the question is the caller's cue to ask `fetch_room` instead.
 pub async fn fetch_room_reach(

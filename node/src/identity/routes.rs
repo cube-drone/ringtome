@@ -7336,10 +7336,7 @@ impl StreamStamp {
     }
 }
 
-async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp, AppError> {
-    // A contact's name, picture, banner or heartbeat changing moves no chain of this persona's:
-    // the byline cache's own change count stands in for it (profiles.rs `EPOCH`).
-    let bylines_epoch = crate::profiles::epoch();
+async fn stream_stamp(db: &crate::db::Db, view_epoch: u64, roster: [u8; 32]) -> Result<StreamStamp, AppError> {
     use ringtome_proto::registry::service;
     let mut frontiers = crate::net::sync::local_frontiers(db, true)
         .await
@@ -7377,7 +7374,9 @@ async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp
         }
     }
     parts[1].extend_from_slice(&view_epoch.to_be_bytes());
-    parts[3].extend_from_slice(&bylines_epoch.to_be_bytes());
+    // A contact's name, picture, banner or heartbeat changing moves no chain of this persona's:
+    // the digest of their contacts' byline rows stands in for it (`roster_digest`).
+    parts[3].extend_from_slice(&roster);
     let stamp = |i: usize| *blake3::hash(&parts[i]).as_bytes();
     Ok(StreamStamp {
         profile: stamp(0),
@@ -7444,6 +7443,13 @@ impl Moved {
             contacts: prev.contacts != now.contacts,
         }
     }
+}
+
+/// The reader's contacts' byline rows, digested (profiles.rs `digest`, 2026-09-29): the contacts
+/// stamp's stand-in for a contact's name, picture, banner or heartbeat changing.
+async fn roster_digest(state: &AppState, data: &store::Store) -> [u8; 32] {
+    let roots: Vec<String> = data.contacts().await.unwrap_or_default().into_iter().map(|(root, _)| root).collect();
+    crate::profiles::digest(&state.node_db, &roots).await
 }
 
 /// The roster as the stream ships it.
@@ -7654,7 +7660,7 @@ async fn serve_stream(
         .await
         .map_err(|e| anyhow::anyhow!("opening db for stream: {e}"))?;
 
-    let mut stamp = stream_stamp(&db, state.view_epochs.get(&root))
+    let mut stamp = stream_stamp(&db, state.view_epochs.get(&root), roster_digest(&state, &data).await)
         .await
         .map_err(anyhow::Error::new)?;
     // This socket's per-row fingerprints of what it last shipped, per keyed kind. Fresh
@@ -7731,7 +7737,7 @@ async fn serve_stream(
             }
         }
         // Reached after a guarded tick or a nudge: re-stamp, and push only what moved.
-        let now = stream_stamp(&db, state.view_epochs.get(&root))
+        let now = stream_stamp(&db, state.view_epochs.get(&root), roster_digest(&state, &data).await)
             .await
             .map_err(anyhow::Error::new)?;
         // The badge recounts on every wake - the derived fold's nudge is a wake with no

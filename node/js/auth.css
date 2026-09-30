@@ -190,6 +190,112 @@
     cursor: default;
 }
 
+/* --- the hit counter (census.js, 2026-09-29): "Now with [0 0 0 0 0 0 3] active users!" --- */
+
+.hit-counter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1rem 0 0.5rem;
+}
+
+.hit-counter-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font: inherit;
+    color: var(--ink-soft);
+    background: none;
+    border: none;
+    padding: 0.2rem;
+    cursor: pointer;
+}
+
+.hit-counter-wheels {
+    display: inline-flex;
+    gap: 2px;
+}
+
+/* A solid wheel: light digits on the dark fill. */
+.hit-counter-wheel {
+    display: inline-block;
+    min-width: 1.1em;
+    padding: 0.15rem 0.2rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-weight: 700;
+    text-align: center;
+    color: var(--bg);
+    background: var(--ink);
+    --j: 2px;
+    clip-path: var(--jag-1);
+}
+
+.hit-counter-graph {
+    width: 100%;
+    max-width: 32rem;
+}
+
+/* The graph with its scale: the tallest day and 0 down the left edge. */
+.hit-counter-frame {
+    display: flex;
+    gap: 0.3rem;
+}
+
+.hit-counter-scale {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    color: var(--faint);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+}
+
+.hit-counter-plot {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    background: var(--surface);
+}
+
+.hit-counter-line-path {
+    fill: none;
+    stroke: var(--teal);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+
+/* An invisible, wider target around each day's dot, so a hover or a tap lands. */
+.hit-counter-hit {
+    fill: transparent;
+    cursor: pointer;
+}
+
+.hit-counter-dot {
+    fill: var(--teal-deep);
+}
+
+.hit-counter-day.pointed .hit-counter-dot {
+    fill: var(--ink);
+}
+
+.hit-counter-dates {
+    display: flex;
+    justify-content: space-between;
+    margin: 0.2rem 0 0 1.6rem;
+    color: var(--faint);
+    font-size: 0.7rem;
+}
+
+.hit-counter-readout {
+    margin: 0.3rem 0 0;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+
 /* --- the Download tab (2026-09-29): one button per system, and what this server runs --- */
 
 .welcome-download {

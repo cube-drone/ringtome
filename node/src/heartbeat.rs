@@ -34,6 +34,22 @@ pub fn utc_date(ms: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// A heartbeat's date back to its day number (days since 1970-01-01), or `None` if it isn't one -
+/// Howard Hinnant's `days_from_civil`.
+pub fn day_of_date(date: &str) -> Option<u32> {
+    let mut parts = date.splitn(3, '-');
+    let (y, m, d): (i64, i64, i64) = (parts.next()?.parse().ok()?, parts.next()?.parse().ok()?, parts.next()?.parse().ok()?);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    u32::try_from(era * 146_097 + doe - 719_468).ok()
+}
+
 /// Days since 1970-01-01 to a proleptic Gregorian date (Howard Hinnant's `civil_from_days`).
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
@@ -60,6 +76,8 @@ pub fn note(state: &AppState, root_hex: &str) {
     }
     let (state, root) = (state.clone(), root_hex.to_string());
     tokio::spawn(async move {
+        // Active today, on this node: into today's census sketch (census.rs).
+        crate::census::saw(&state, &root, crate::census::day_of(crate::clock::now_ms())).await;
         if let Err(e) = beat(&state, &root, &today).await {
             tracing::debug!(root = %root, error = ?e, "a heartbeat wasn't sent; the next activity tries again");
             SENT.lock().expect("heartbeats poisoned").remove(&root);
@@ -91,5 +109,9 @@ mod tests {
         assert_eq!(super::utc_date(1_790_726_399_999), "2026-09-29");
         assert_eq!(super::utc_date(1_790_726_400_000), "2026-09-30");
         assert_eq!(super::utc_date(-1), "1969-12-31");
+        for day in [0u32, 11_016, 20_725, 47_541] {
+            assert_eq!(super::day_of_date(&super::utc_date(i64::from(day) * 86_400_000)), Some(day), "round trip");
+        }
+        assert_eq!(super::day_of_date("last tuesday"), None);
     }
 }

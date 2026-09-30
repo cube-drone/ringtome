@@ -12913,3 +12913,54 @@ recipe has the same hazard for any socket claim that fails midway.
 The main integration suite now exits when its last test ends (`exit: true` in
 integration/.mocharc.cjs), so a claim that fails while holding a socket can't hang the rig and CI.
 The root hooks and the recipe's teardown still run.
+
+## 2026-09-29: the network census, and its hit counter
+
+Step 2 of the HorseBucks road. Every node estimates the network's daily actives from the nodes it
+talks to, instead of reporting to a centre (Curtis). The front page shows it under the sign-in:
+*Now with [0 0 0 0 0 0 3] active users!*
+
+- **The sketch** (`census.rs`): a 1,024-register HyperLogLog per UTC day, keyed by a
+  domain-separated hash of the root. Linear counting keeps a young network's counts exact. Sketches
+  merge by per-register maximum, so the merge is commutative and idempotent, a persona on two
+  computers counts once, and the registers name nobody. `census_days` (node migration step 0063)
+  keeps each day's registers for three days and its estimate for good, for the graph.
+- **What goes in:** personas active here today (`heartbeat::note`), and any heartbeat this node
+  holds for anyone (`profiles::refresh`, off `last_active`).
+- **How it spreads:** a new fragment pair, `WantCensus`/`Census` (tags 18/19). The asker sends
+  its recent days; the answerer merges them and answers with the merged days; the asker merges
+  that. What a node hands on includes what it was handed. Every 10 minutes the node asks up to
+  eight peers, each at most every three hours; a node that predates the question is left alone for
+  a day.
+- **"Nodes it talked to lately"** first read only `identity_peers`, and found nobody on the rig:
+  follows don't write peer rows, only a slow derive sweep does. The pass now takes the endpoints
+  that answered fetches (`foreign_fetches`), asked for updates (`identity_demand`), synced
+  (`identity_peers`) or delivered fragments, all within two days, each read added in its owning
+  module.
+- **The counter** (`census.js`, `GET /api/node/census`): the larger of today-so-far and yesterday,
+  on mechanical wheels that roll up on load. Click it for a bar graph of each day's estimate as
+  this node saw it. It counts personas, not people.
+
+Pinned: census.rs's unit tests (small counts exact, a thousand within 8%, a repeat counted once,
+merges commutative and idempotent), the proto round trip, the page's pure helpers, and
+census.cjs. That one builds a ring of follows across three nodes, sees each start with only its
+own actives, and after a few swap rounds finds all three on one estimate, at least as large as any
+saw alone.
+
+Fixed before it landed: the byline count first went straight into every stream's contacts stamp,
+so any byline changing anywhere on the node moved every open page's cursor. That sent
+cursor-only frames, and livecache.cjs's "echoes writes" claim caught one arriving where the
+profile echo belonged. A returning page would also have got a needless full snapshot. The contacts
+stamp now carries a digest of the READER's own contacts' byline rows (`profiles::digest`, roots and
+when each last changed), so only a change to your contacts moves your cursor. The node-wide count
+stays as the tick's cheap cue to recompute. livecache.cjs also waits for a new persona's heartbeat
+before opening a stream, since that asynchronous profile write could otherwise be "the next frame".
+The counter's graph always shows the last thirty days (Curtis: "can it go back a month and treat
+every value it doesn't have as 0 with a connecting line?"): one point per UTC day, a day this node
+has no estimate for counted 0 (`pure/census.js` `censusMonth`), drawn as a line through a dot per
+day, with each day's count on hover. It replaced a bar chart that showed nothing until two days
+of history existed.
+Then made readable (Curtis: "there's no way to read the values on that graph!"): the tallest day
+and 0 down the left edge; the first, middle and last dates underneath; a readout line saying
+"today so far: N active", or the date and count of whichever day is hovered or tapped; and an
+invisible wider target around each dot so the hover lands.

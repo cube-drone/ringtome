@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1203 phrases across 76 files.
+// 1209 phrases across 77 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -319,6 +319,14 @@ export default {
     'buckets.couldnt-create-it': "couldn't create it: {message}",
     'buckets.couldnt-delete-it': "couldn't delete it: {message}",
     'buckets.delete-this': 'Delete this {bucketNoun}…',
+
+    // --- node/js/census.js ---
+    'census.what-it-counts': "this computer's best guess at how many people used the network today, from the computers it talks to",
+    'census.now-with': 'Now with',
+    'census.active-users': 'active users!',
+    'census.graph': 'daily active users, by day',
+    'census.readout-today': 'today so far: {n} active',
+    'census.readout-day': '{date}: {n} active',
 
     // --- node/js/computers.js ---
     'computers.this-computers-key': "this computer's key: {p0}",

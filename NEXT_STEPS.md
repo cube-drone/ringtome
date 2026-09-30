@@ -42,8 +42,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Drawing app
 * Multiplayer Drawing App (use chat as the heart)
 * HorseBucks and Other Currencies - designed in [HORSE_BASED_CURRENCIES.md](HORSE_BASED_CURRENCIES.md). In this order (Curtis, 2026-09-29), each needing the one before:
-  1. **Heartbeats:** the daily public heartbeat; the last one shown on a persona's card; the People page sortable by recent activity.
-  2. **Network DAU:** the gossiped daily sketch, the odometer under the sign-in, and a click-through graph of DAU over time as this node has seen it.
+  1. ~~Heartbeats~~ - built 2026-09-29.
+  2. ~~Network DAU~~ - built 2026-09-29.
   3. **HorseBucks:** hrseBank, earning, HorseBonds - interest runs on heartbeat days.
 
 ### Chat

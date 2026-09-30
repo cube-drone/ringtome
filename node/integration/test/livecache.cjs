@@ -46,6 +46,18 @@ async function rawLogin(host) {
     return { username, cookie, authed };
 }
 
+// The day's heartbeat is a profile write of its own (heartbeat.rs, 2026-09-29), sent
+// asynchronously after a persona's first request. A claim that reads "the next frame" lets it land
+// before the stream opens, or the heartbeat is the next frame.
+async function heartbeatLanded(authed, root) {
+    for (let i = 0; i < 50; i++) {
+        const fields = await (await authed(`api/identity/${root}/profile`)).json();
+        if (fields.some((f) => f.field === "heartbeat")) return;
+        await new Promise((res) => setTimeout(res, 100));
+    }
+    throw new Error("the persona's heartbeat never landed");
+}
+
 // A websocket with promise-shaped reads: `await next()` yields the next JSON frame.
 function openStream(host, root, cookie, cursor) {
     const url = `ws://${host}/api/identity/${root}/stream${
@@ -98,6 +110,7 @@ describe("the live cache stream", function () {
             method: "POST",
             body: JSON.stringify({ field: "name", value: "First" }),
         });
+        await heartbeatLanded(authed, root);
 
         const stream = openStream(HOST, root, cookie);
         await stream.opened;
@@ -189,6 +202,7 @@ describe("the live cache stream", function () {
             method: "PUT",
             body: JSON.stringify({ value: "medium" }),
         });
+        await heartbeatLanded(authed, root);
 
         const stream = openStream(HOST, root, cookie);
         await stream.opened;

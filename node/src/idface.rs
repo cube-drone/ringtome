@@ -534,6 +534,21 @@ pub async fn fetched_via(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Res
     Ok(row.and_then(|(via,)| via))
 }
 
+/// Every endpoint that answered a fetch here since `since_ms` - one of the census's sources of
+/// "nodes this one has talked to lately" (census.rs, 2026-09-29). Freshest first.
+pub(crate) async fn recent_answerers(state: &AppState, since_ms: i64) -> Vec<String> {
+    let rows: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT last_via FROM foreign_fetches WHERE last_via IS NOT NULL AND fetched_at_ms >= ?1
+             GROUP BY last_via ORDER BY MAX(fetched_at_ms) DESC",
+            (since_ms,),
+        )
+        .await
+        .unwrap_or_default();
+    rows.into_iter().map(|(e,)| e).collect()
+}
+
 pub(crate) async fn foreign_fetch_row(
     state: &AppState,
     root_hex: &str,

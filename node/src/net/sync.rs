@@ -2447,6 +2447,24 @@ pub fn endpoint_to_id(peer_hex: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Every endpoint serving a persona this node holds, touched since `since_ms` - synced with,
+/// resolved by the derive sweep (which keeps followed authors' rows fresh), or newly learned -
+/// "the nodes it has communicated with recently", the census's gossip partners (census.rs,
+/// 2026-09-29). Freshest first.
+pub async fn recently_synced_endpoints(node_db: &Db, since_ms: i64) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM identity_peers
+             GROUP BY endpoint_id
+             HAVING MAX(MAX(COALESCE(last_synced_ms, 0), COALESCE(last_resolved_ms, 0), added_at_ms)) >= ?1
+             ORDER BY MAX(MAX(COALESCE(last_synced_ms, 0), COALESCE(last_resolved_ms, 0), added_at_ms)) DESC",
+            (since_ms,),
+        )
+        .await
+        .context("listing recently touched endpoints")?;
+    Ok(rows.into_iter().map(|(e,)| e).collect())
+}
+
 pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(

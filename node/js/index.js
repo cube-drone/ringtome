@@ -15,6 +15,7 @@ import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso
 import { PushRoutes } from './push.js';
 
 import { useSession, Welcome } from './auth.js';
+import { HitCounter } from './census.js';
 import {
     usePersona,
     NullState,
@@ -641,6 +642,7 @@ const HEX_ID64 = /^[0-9a-f]{64}$/;
 /// posted, each with the way on to the rest.
 const FrontDoor = ({ session }) => html`<div class="front-door">
     <${Welcome} session=${session} />
+    <${HitCounter} />
     <${RecentPeople} limit=${20} />
     <hr class="front-rule" />
     <${RecentPosts} limit=${10} />

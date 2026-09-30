@@ -35,6 +35,7 @@ pub mod fragments;
 pub mod postkeys;
 pub mod scheduled;
 pub mod books;
+pub mod census;
 pub mod builtin;
 pub mod chat;
 pub mod files;
@@ -488,6 +489,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         state.clone(),
         crate::record::bake::bake_pass,
     );
+    // The network's daily actives: sketches swapped with the nodes this one talks to (census.rs).
+    loops::periodic("census", std::time::Duration::from_secs(10 * 60), state.clone(), crate::census::pass);
     // Sealed posts' keys, asked for while their authors' nodes are up rather than when somebody
     // reads them later (keyprefetch.rs, 2026-09-29).
     loops::periodic(
@@ -768,6 +771,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node", get(node_info))
         // The node's public face (PROJECT_PLAN's The node's public face): a stranger's doors, no session.
         .route("/api/node/downloads", get(downloads::downloads))
+        .route("/api/node/census", get(census::census_handler))
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
         .route("/api/node/personas", get(nodeface::node_personas))
