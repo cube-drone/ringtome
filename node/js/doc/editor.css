@@ -18,10 +18,9 @@
 }
 
 .editor-body {
-    background: var(--paper);
-    border: 1px solid var(--border);
+    background-color: var(--paper);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.85rem;
@@ -34,15 +33,36 @@
 
 .editor-body:focus {
     outline: none;
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }
 
 .editor-tabs {
     display: flex;
     gap: 0.4rem;
-    /* Fold-tabs sit right on top of the text: pull the body up to nearly meet them (the .reader
-       flex-column adds 0.6rem between children). */
-    margin-bottom: -0.4rem;
+    /* The tabs stand ON the editor they switch (Curtis, 2026-09-30: they floated a little above it,
+       which made their open bottom read as a mistake): the .reader column's 0.6rem gap taken back,
+       and two pixels more - each box's line sits one pixel inside its transparent border, so this
+       is what lands a tab's sides on the editor's top line. Stacked above the editor, so its
+       background doesn't paint over the tabs' last pixel; and in from the left, clear of the
+       editor's cut corner. */
+    margin-bottom: calc(-0.6rem - 2 * var(--lw));
+    padding-left: 0.6rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* The open tab is the editor's own paper (Curtis, 2026-09-30: it should "share the background color
+   of the editor window and extend slightly over the editor window in such a way as there is no
+   visible border"): paper to its very edge, and its line the editor's colour so the two outlines run on
+   as one. It trades its transparent border for the same pixel of padding - one size with its
+   neighbours, but its clip, its line and its paper now share an edge (no paper hair outside the
+   steps), and its bottom row lies over the editor's top line, which its paper covers between its
+   sides and its sides meet. Its icon keeps the teal that says which one is open. */
+.editor-tabs .tab.active {
+    background: var(--paper);
+    --line: var(--border);
+    border-width: 0;
+    padding: calc(0.3rem + var(--lw)) calc(0.6rem + var(--lw));
 }
 
 /* Read-only mode's title: the input's look without the input. */
@@ -58,9 +78,8 @@
    look inside comes from the marquee extension's bundled theme + marquee-css. */
 .editor-live {
     background: var(--surface);
-    border: 1px solid var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
+    clip-path: var(--jag-1); /* the corners clear; the line is CodeMirror's box's, just inside */
     min-height: 50vh;
     overflow: hidden;
 }
@@ -71,9 +90,22 @@
     min-height: 50vh;
     max-height: 75vh;
     background: var(--paper);
-    border: 1px solid var(--border);
+    background-clip: padding-box; /* the paper inside its line, not a white hair above it (the tabs land on the line) */
+    border: var(--lw) solid transparent;
+    --line: var(--border);
     --j: 3px;
     clip-path: var(--jag-1);
+}
+
+/* CodeMirror writes this box's markup, so it can't wear .jag-line: its ring is written beside it
+   (tokens.css has the pattern). CodeMirror already positions the box. */
+.editor-live .cm-editor::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--line);
+    clip-path: var(--ring-1);
 }
 
 .editor-live .cm-content {
@@ -119,9 +151,8 @@
     max-height: 75vh;
     overflow-y: auto;
     background: var(--paper);
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     padding: 0.8rem;
     /* scrollToSource centers the cursor's node; smooth keeps the tracking legible. */
     scroll-behavior: smooth;
@@ -134,6 +165,7 @@
     background: none;
     border: 0;
     clip-path: none;
+    --line: transparent; /* no ring either */
     padding: 0;
 }
 

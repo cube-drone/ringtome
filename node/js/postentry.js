@@ -273,7 +273,7 @@ const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
             </p>
             <div class="feed-unpublish-acts">
                 <button
-                    class="feed-unpublish-go"
+                    class="feed-unpublish-go jag-line"
                     disabled=${going}
                     onClick=${async () => {
                         setGoing(true);
@@ -1224,7 +1224,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 (tagging || tagsLeft(shownLabels, { author: item.author, me: current.root }) > 0) &&
                 (tagging
                     ? html`<span class="label-add-anchor"><input
-                          class="label-add-input"
+                          class="label-add-input jag-field"
                           maxlength="32"
                           placeholder=${t('postentry.tag-placeholder', 'a tag')}
                           maxlength=${MAX_TAG_CHARS}
@@ -1309,7 +1309,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
                               ${bodyFormat === 'marquee'
                                   ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
-                                  : html`<pre class="reader-plain">${shown}</pre>`}
+                                  : html`<pre class="reader-plain jag-line">${shown}</pre>`}
                           </div>
                           <button class="feed-entry-unveil" onClick=${() => setRevealed(true)}>
                               ${t('postentry.tagged-show-anyway', 'tagged {tags} - show anyway', { tags: warning.tags.join(', ') })}
@@ -1328,7 +1328,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                         profile=${tlProfile}
                                         onUnparsable=${bareSource}
                                     />`
-                                  : html`<pre class="reader-plain">${shown}</pre>`}
+                                  : html`<pre class="reader-plain jag-line">${shown}</pre>`}
                       </div>`}`}
             ${/* The card's foot (Curtis, 2026-09-27): centred under the post, large and bold, stacking
                 whichever apply - "see more…" when something was held back; "enter the room" on a

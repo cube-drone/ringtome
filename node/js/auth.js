@@ -276,6 +276,7 @@ export const Welcome = ({ session }) => {
                     <label>
                         ${t('auth.name', 'name')}
                         <input
+                            class="jag-field"
                             type="text"
                             value=${username}
                             onInput=${(e) => setUsername(e.currentTarget.value)}
@@ -287,7 +288,7 @@ export const Welcome = ({ session }) => {
                     <label>
                         ${t('auth.spare-key', 'spare key')}
                         <textarea
-                            class="spare-paste"
+                            class="spare-paste jag-field"
                             rows="3"
                             placeholder=${t('auth.paste-your-spare-key-here', 'paste your spare key here - the whole file is fine')}
                             value=${spareKey}
@@ -298,6 +299,7 @@ export const Welcome = ({ session }) => {
                     <label>
                         ${t('auth.new-password', 'new password')}
                         <input
+                            class="jag-field"
                             type="password"
                             value=${password}
                             onInput=${(e) => setPassword(e.currentTarget.value)}
@@ -309,6 +311,7 @@ export const Welcome = ({ session }) => {
                     html`<label>
                         ${t('auth.new-sign-in-name', 'new sign-in name')}
                         <input
+                            class="jag-field"
                             type="text"
                             value=${newUsername}
                             onInput=${(e) => setNewUsername(e.currentTarget.value)}
@@ -377,6 +380,7 @@ export const Welcome = ({ session }) => {
                 <label>
                     ${t('auth.name-2', 'name')}
                     <input
+                        class="jag-field"
                         type="text"
                         value=${username}
                         onInput=${(e) => setUsername(e.currentTarget.value)}
@@ -392,6 +396,7 @@ export const Welcome = ({ session }) => {
                 <label>
                     ${t('auth.password', 'password')}
                     <input
+                        class="jag-field"
                         type="password"
                         value=${password}
                         onInput=${(e) => setPassword(e.currentTarget.value)}
@@ -404,6 +409,7 @@ export const Welcome = ({ session }) => {
                 html`<label>
                     ${t('auth.sign-up-password', 'sign-up password')}
                     <input
+                        class="jag-field"
                         type="password"
                         value=${signupPassword}
                         onInput=${(e) => setSignupPassword(e.currentTarget.value)}

@@ -31,7 +31,7 @@ export const PaneHead = ({ label, onTuck }) => html`<div class="pane-head">
 /// downward, which brings the column back when clicked. In a narrow window it is a tab, and the
 /// open column's own tab is `active` - still in the strip, where it was, marked as the one open.
 export const Rail = ({ icon, label, onClick, active = false }) => html`<button
-    class=${active ? 'pane-rail active' : 'pane-rail'}
+    class=${active ? 'pane-rail jag-line active' : 'pane-rail jag-line'}
     title=${active ? `close ${label}` : `show ${label}`}
     aria-pressed=${active}
     onClick=${onClick}

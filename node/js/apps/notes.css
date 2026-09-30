@@ -95,9 +95,8 @@
     width: 1.9rem;
     padding: 0.5rem 0.2rem;
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--muted);
     cursor: pointer;
     font-size: 1rem;
@@ -105,7 +104,7 @@
 
 .pane-rail:hover {
     color: var(--teal);
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 /* The open tab in a narrow window's strip (panes.js `tab`): still in its place, lifted to the page's
@@ -114,7 +113,7 @@
 .pane-rail.active {
     color: var(--teal);
     background: var(--surface);
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .pane-rail-label {
@@ -403,9 +402,8 @@
 
 .note-row {
     background: var(--surface);
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     padding: 0.45rem 0.6rem;
     cursor: pointer;
     font: inherit;
@@ -417,11 +415,11 @@
 }
 
 .note-row:hover {
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }
 
 .note-row.selected {
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .note-row-title {
@@ -445,7 +443,6 @@
     object-fit: cover;
     --j: 4px;
     clip-path: var(--jag-1);
-    border: 1px solid var(--border);
     flex-shrink: 0;
     background: var(--surface-2);
 }
@@ -637,20 +634,19 @@
     font-size: 0.65rem;
     color: var(--pink);
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 0.25em;
-    clip-path: var(--jag-1);
     padding: 0.02rem 0.4rem;
 }
 
 .note-row-tag:hover {
-    border-color: var(--pink);
+    --line: var(--pink);
 }
 
 .note-row-tag.active {
     background: var(--pink);
     color: var(--surface);
-    border-color: var(--pink);
+    --line: var(--pink);
 }
 
 /* A user-claimed display date shown on a list row - subtly marked so it reads as a claim. */

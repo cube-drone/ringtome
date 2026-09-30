@@ -13282,3 +13282,58 @@ works, with the title on top"): `.reader-head` wraps and its `.editor-title` tak
 row in every editor, file reader and drawing - once only the narrow editor's arrangement (the
 400px container query keeps its other job, hiding the view-mode tabs; the drawing's `min-width`
 override went with it). Seen at 1300px in headless Chrome.
+
+### Jagged lines, as classes, with a gate (2026-09-30)
+
+Curtis: "in many places throughout our app… we tried to do a jagged edge but instead just removed the
+corners entirely", then "this has proven to be kind of a reliable pain. Can we make this more
+reproducible somehow?" A clip cuts a border off at its corners, so the house draws a jagged line as a
+ring (2026-09-10) - but the ring took four coordinated pieces in two files, and an audit found 59
+places that had missed one: a real border under the clip (32: the pane rails, the mode tabs, note rows,
+the tree's buttons, the editor and reader frames, the publish bar, annotation fields, upload,
+notifications…), a `--line` with no ring to paint it (6), and hover/selected states recolouring
+`border-color` (21, the tree's selected row among them).
+
+Not SASS (weighed: a mixin would co-locate the pattern, but costs a compiler and every house check
+reads `.css`; the syntax was never what kept breaking). Instead:
+
+- **Classes** (tokens.css): `jag-line`, `jag-line-2`, `jag-line-top` are the whole pattern - the
+  transparent border, the clip, the ring on `::after` - so a box wears one in its markup and its
+  stylesheet says only `--line`, and `--line` again in its states. `--ring-top` is new, for a tab.
+- **Fields found broken all along**: an input, a textarea or a select draws no `::after`, so every
+  field in the old ring lists (the sign-in inputs, name, spare-key paste, bio, ledger nickname and
+  select, label input) had no line at all. `jag-field` paints the jagged line as background layers
+  instead - four edges and a diagonal across each corner, in `--line`, over the field's
+  `background-color` - and now carries the annotations' date, time and description, the editor
+  body, the upload name, the slug input and the audience select too.
+- **Every site moved**: CSS rules say `--line`; markup wears the class (thumbnails, being `<img>`, keep
+  the clip and drop the line). CodeMirror's box and its autocomplete popup (a 2px line) write their
+  ring beside their own rule, as markup we don't write can't wear a class; `.editor-live` keeps only
+  the clip so the frame draws one line, not two. Places that switch a line off (chat's composer, room
+  cards, the side-by-side preview) set `--line: transparent` too.
+- **The gate** (`integration/test/pure/conventions.cjs`, in `ui-check`): fails on a jagged clip over a
+  solid border, a `--line` with no ring, a state recolouring `border-color` on a ringed box or painting
+  one on an unringed jagged box, a ring list naming a field, and a `jag-field` rule using the
+  `background` shorthand. Dashed and single-side borders are exempt; a box is ringed by its markup's
+  class (a modifier named after its box counts - `chip-diverged` on `.chip`). Proven by planting both
+  original mistakes in a throwaway stylesheet: caught.
+
+The two old ring lists stay for the boxes that already worked that way (less the fields), commented
+as the older way; moving them onto the classes is a follow-up. Seen at 4x in headless Chrome: the
+mode tabs' stepped tops, a rail's corner, the editor frame, and a sign-in field at rest and focused.
+
+The Writer's mode tabs stand on the editor now (Curtis, 2026-09-30: "they sit a little bit above the
+editor box they're tabs for: which makes their lack of line on the bottom a little confusing… flush
+with the editor boundary… and a little bit to the right so that they don't overlap with the
+corners"): the column's 0.6rem gap taken back and two pixels more (each box's line sits a pixel
+inside its transparent border), the strip stacked above the editor and inset 0.6rem clear of its cut
+corner, and the live editor's and the read view's paper kept inside their line
+(`background-clip: padding-box`) so no white hair sits between a tab and the line it lands on. Seen at
+4x in headless Chrome in interactive and read-only modes.
+Then (Curtis: "can the currently selected tab share the background color of the editor window and…
+extend slightly over the editor window in such a way as there is no visible border for that specific
+tab item?"): the open tab is the editor's paper, its line the editor's colour so the outlines run on
+as one, and it trades its transparent border for a pixel of padding - the same size as its
+neighbours, but its clip, line and paper share one edge (a first try left a hair of paper outside its
+steps), and its bottom row lies over the editor's top line, covering it between the tab's sides. Its
+icon keeps the teal. Seen at 4x in headless Chrome.

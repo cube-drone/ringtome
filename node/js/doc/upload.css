@@ -21,18 +21,17 @@
 .upload-name {
     flex: 1;
     min-width: 0;
-    background: var(--paper);
-    border: 1px solid var(--border);
+    background-color: var(--paper);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     padding: 0.3rem 0.5rem;
     font: inherit;
     color: var(--ink);
 }
 
 .upload-name:disabled {
-    background: none;
-    border-color: transparent;
+    background-color: none;
+    --line: transparent;
     color: var(--ink);
     opacity: 0.9;
 }
@@ -47,9 +46,8 @@
 .upload-bar {
     height: 10px;
     background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    --line: var(--border-strong);
     --j: 2.5px;
-    clip-path: var(--jag);
     overflow: hidden;
 }
 

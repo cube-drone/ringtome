@@ -30,9 +30,8 @@
     font-size: 0.85em;
     color: var(--ink-soft);
     background: none;
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 4px;
-    clip-path: var(--jag-1);
     padding: 0.2rem 0.6rem;
     cursor: pointer;
 }
@@ -53,16 +52,15 @@
     font-size: 0.85em;
     color: var(--ink-soft);
     background: none;
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 4px;
-    clip-path: var(--jag-1);
     padding: 0.2rem 0.6rem;
     cursor: pointer;
 }
 
 .notif-mark-read:hover {
     color: var(--ink);
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }
 
 .notif-list {
@@ -119,9 +117,8 @@
 .notif-stranger {
     margin-left: 0.4em;
     padding: 0.05em 0.4em;
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 0.25em;
-    clip-path: var(--jag-1);
     color: var(--muted);
     font-size: 0.75em;
     white-space: nowrap;

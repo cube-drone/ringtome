@@ -176,7 +176,7 @@ body {
 }
 
 .bucket-name:hover {
-    border-color: var(--dock-text);
+    --line: var(--dock-text);
 }
 
 /* The full list: a dropdown off the pill. Every bucket of this app (name + how many documents),
@@ -336,7 +336,7 @@ body {
 }
 
 .search-opts-kind:hover {
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }
 
 .app-header-search::placeholder {

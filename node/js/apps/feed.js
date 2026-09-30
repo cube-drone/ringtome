@@ -119,7 +119,7 @@ const PostBody = ({ doc }) => {
     return html`<div class="feed-item-body">
         ${doc.format === 'marquee'
             ? html`<${MarqueeBody} source=${doc.body} profile=${tlProfile} onUnparsable=${bareSource} />`
-            : html`<pre class="reader-plain">${doc.body}</pre>`}
+            : html`<pre class="reader-plain jag-line">${doc.body}</pre>`}
     </div>`;
 };
 
@@ -890,7 +890,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                     >
                                         ${t('apps.feed.only-show-to', 'only show to')}
                                         <select
-                                            class="feed-audience"
+                                            class="feed-audience jag-field"
                                             value=${audienceNext}
                                             onChange=${(e) => setAudienceNext(e.currentTarget.value)}
                                         >

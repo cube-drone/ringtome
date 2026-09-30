@@ -19,7 +19,7 @@
     cursor: pointer;
 }
 .copy-bucket:hover {
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }
 .copy-new-bucket {
     display: inline-flex;

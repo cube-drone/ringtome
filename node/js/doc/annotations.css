@@ -24,10 +24,9 @@
 
 .annot-date,
 .annot-time {
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background-color: var(--surface);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     font: inherit;
     font-size: 0.78rem;
@@ -38,7 +37,7 @@
 .annot-date:focus,
 .annot-time:focus {
     outline: none;
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }
 
 .annot-time:disabled {
@@ -59,9 +58,8 @@
     font-size: 0.72rem;
     color: var(--pink);
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 0.25em;
-    clip-path: var(--jag-1);
     padding: 0.08rem 0.5rem;
 }
 
@@ -111,10 +109,9 @@
 }
 
 .annot-desc {
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background-color: var(--surface);
+    --line: var(--border);
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink-soft);
     font: inherit;
     font-size: 0.8rem;
@@ -126,5 +123,5 @@
 
 .annot-desc:focus {
     outline: none;
-    border-color: var(--border-strong);
+    --line: var(--border-strong);
 }

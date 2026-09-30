@@ -187,7 +187,7 @@ export const NotificationsApp = ({ current }) => {
             <div class="notif-bar">
                 <${PushToggle} root=${root} />
                 ${unseen > 0 &&
-                html`<button class="notif-mark-read" onClick=${markAllRead}>
+                html`<button class="notif-mark-read jag-line" onClick=${markAllRead}>
                     ${t('apps.notifications.mark-all-read', 'mark all read')}
                 </button>`}
             </div>
@@ -256,7 +256,7 @@ export const NotificationsApp = ({ current }) => {
                                       />`}
                                       ${r.stranger &&
                                       html`<span
-                                          class="notif-stranger"
+                                          class="notif-stranger jag-line"
                                           title=${t('apps.notifications.you-dont-follow-them-so', "someone you don't follow")}
                                       >${t('apps.notifications.a-stranger', 'a stranger')}</span>`}
                                   </span>

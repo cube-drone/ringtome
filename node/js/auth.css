@@ -137,9 +137,9 @@
     display: flex;
     align-items: center;
     background: none;
-    border: 1px solid var(--border-strong);
+    border: var(--lw) solid transparent; /* its line is a ring: .jag-line-top on Writer's, the list's on the front door's */
+    --line: var(--border-strong);
     --j: 3px;
-    clip-path: var(--jag-top);
     color: var(--muted);
     padding: 0.3rem 0.6rem;
     font-size: 1.2rem; /* icon-only tabs; the name is in the tooltip */
@@ -149,7 +149,7 @@
 
 .tab.active {
     color: var(--teal);
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 /* The front door's own tabs stand free of any panel, so they take the whole jag and draw their
@@ -165,7 +165,6 @@
 }
 
 .welcome-tabs .tab.active {
-    border-color: transparent;
     --line: var(--teal);
 }
 
@@ -184,21 +183,19 @@
     font-size: 0.9rem;
 }
 
-.welcome-form input {
-    background: var(--field);
-    border: 1px solid transparent;
+.welcome-form .jag-field {
+    background-color: var(--field);
     --line: var(--border-strong);
     position: relative;
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     padding: 0.55rem 0.7rem;
     font: inherit;
 }
 
-.welcome-form input:focus {
+.welcome-form .jag-field:focus {
     outline: none;
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .field-note {

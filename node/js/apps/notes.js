@@ -185,7 +185,7 @@ const StatusMark = ({ doc, book }) => {
 // description, no date and no tags is one line tall.
 const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
                    onToggleTag, book }) => html`<button
-    class=${doc.doc_id === selected ? 'note-row selected' : 'note-row'}
+    class=${doc.doc_id === selected ? 'note-row jag-line selected' : 'note-row jag-line'}
     onClick=${() => onSelect(doc.doc_id)}
     draggable=${true}
     onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
@@ -235,7 +235,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
     html`<span class="note-row-tags">
         ${doc.tags.map(
             (t) => html`<span
-                class=${tagFilter.includes(t) ? 'note-row-tag active' : 'note-row-tag'}
+                class=${tagFilter.includes(t) ? 'note-row-tag jag-line active' : 'note-row-tag jag-line'}
                 key=${t}
                 role="button"
                 onClick=${(e) => {
@@ -507,7 +507,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     html`<div class="notes-tagfilter">
                         ${tagFilter.map(
                             (t) => html`<button
-                                class="annot-tag annot-tag-active"
+                                class="annot-tag annot-tag-active jag-line"
                                 key=${t}
                                 title=${t('apps.notes.remove-filter', 'remove filter')}
                                 onClick=${() => toggleTag(t)}

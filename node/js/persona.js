@@ -442,7 +442,7 @@ export const JoinFlow = ({ persona }) => {
             </p>
             <form class="welcome-form" onSubmit=${finish}>
                 <textarea
-                    class="spare-paste"
+                    class="spare-paste jag-field"
                     rows="4"
                     placeholder=${t('persona.invite-code-only-needed-if', "invite code (only needed if it doesn't arrive on its own)")}
                     value=${grantCode}
@@ -548,7 +548,7 @@ export const NamePicker = ({ persona, account }) => {
             <form class="welcome-form" onSubmit=${submit}>
                 <input
                     type="text"
-                    class="name-input"
+                    class="name-input jag-field"
                     value=${name}
                     onInput=${(e) => setName(e.currentTarget.value)}
                     autocapitalize="off"
@@ -946,7 +946,7 @@ export const Profile = ({ current }) => {
             <label class="profile-field">
                 <${FieldLabel} label=${t('persona.name', 'name')} field=${name} />
                 <input
-                    class="name-input"
+                    class="name-input jag-field"
                     value=${name.draft}
                     onInput=${(e) => name.setDraft(e.currentTarget.value)}
                     placeholder=${t('persona.what-people-call-you-here', 'what people call you here')}
@@ -956,7 +956,7 @@ export const Profile = ({ current }) => {
             <label class="profile-field">
                 <${FieldLabel} label=${t('persona.bio', 'bio')} field=${bio} />
                 <textarea
-                    class="profile-bio"
+                    class="profile-bio jag-field"
                     value=${bio.draft}
                     onInput=${(e) => bio.setDraft(e.currentTarget.value)}
                     rows="6"
@@ -1021,7 +1021,7 @@ const NodeSlug = ({ root }) => {
             <span class="profile-slug-row">
                 <span class="profile-slug-at">@</span>
                 <input
-                    class="profile-slug-input"
+                    class="profile-slug-input jag-field"
                     type="text"
                     maxlength="32"
                     placeholder=${t('persona.a-name', 'a-name')}
@@ -1088,7 +1088,7 @@ export const Personas = ({ persona, current }) => {
                 ${list.map((p) => {
                     const mine = current && current.root === p.root_pubkey;
                     const words = speakable(p.root_pubkey).split('-').slice(0, 2).join('-');
-                    return html`<div class=${mine ? 'persona-row persona-row-current' : 'persona-row'} key=${p.root_pubkey}>
+                    return html`<div class=${mine ? 'persona-row jag-line persona-row-current' : 'persona-row jag-line'} key=${p.root_pubkey}>
                         <span class="persona-chip" style="background: hsl(${personaHue(p.root_pubkey)}, 60%, 55%)"></span>
                         <span class="persona-row-words">
                             <strong>${names[p.root_pubkey] || words}</strong>
@@ -1097,7 +1097,7 @@ export const Personas = ({ persona, current }) => {
                         ${mine
                             ? html`<span class="persona-row-mark">${t('persona.this-browser', 'this browser')}</span>`
                             : html`<button
-                                  class="persona-row-switch"
+                                  class="persona-row-switch jag-line"
                                   disabled=${busy || p.standing !== 'active'}
                                   onClick=${run(() => persona.switchTo(p.root_pubkey).then(() => loc.route(LAUNCHER)))}
                               >${t('persona.switch', 'switch')}</button>`}

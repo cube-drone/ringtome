@@ -376,7 +376,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             : null;
 
     const sourcePane = html`<textarea
-        class="editor-body"
+        class="editor-body jag-field"
         ref=${sourceRef}
         value=${body}
         onInput=${(e) => {
@@ -421,7 +421,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             </div>`;
         }
         if (mode === 'read') {
-            return format === 'marquee' ? rendered : html`<pre class="reader-plain">${body}</pre>`;
+            return format === 'marquee' ? rendered : html`<pre class="reader-plain jag-line">${body}</pre>`;
         }
         if (mode === 'interactive' && format === 'marquee') {
             return html`<${LiveMarquee}
@@ -447,7 +447,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         if (mode === 'side' && format === 'marquee') {
             return html`<div class="editor-side">
                 <div class="editor-side-source">${sourcePane}</div>
-                <div class="editor-side-preview">${rendered}</div>
+                <div class="editor-side-preview jag-line">${rendered}</div>
             </div>`;
         }
         return sourcePane;
@@ -563,7 +563,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
-                html`<div class="editor-meta" ref=${metaPanelRef}>
+                html`<div class="editor-meta jag-line" ref=${metaPanelRef}>
                     <${Annotations} root=${root} docId=${docId} features=${feat} />
                 </div>`}
             </header>
@@ -592,7 +592,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                             <input type="checkbox" checked=${hiddenHere} onChange=${(e) => book.mark(`doc:${docId}`, e.currentTarget.checked)} />
                             ${t('doc.editor.hide-from-the-book', 'hide from the book')}
                         </label>
-                        <button class="publish-bar-update" disabled=${true} title=${t('doc.editor.the-book-rolls-out-from', 'publish from the Publish column')}>
+                        <button class="publish-bar-update jag-line" disabled=${true} title=${t('doc.editor.the-book-rolls-out-from', 'publish from the Publish column')}>
                             <${Icons.update} /> ${t('doc.editor.publish-the-changes', 'publish the changes')}
                         </button>
                     </span>
@@ -614,7 +614,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                 ${available.map(
                     (m) => html`<button
                         key=${m}
-                        class=${mode === m ? 'tab active' : 'tab'}
+                        class=${mode === m ? 'tab jag-line-top active' : 'tab jag-line-top'}
                         title=${MODES[m]}
                         onClick=${() => pickMode(m)}
                     ><${MODE_ICONS[m]} /></button>`

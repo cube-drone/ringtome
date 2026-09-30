@@ -81,6 +81,87 @@ describe('css conventions', () => {
             'colour literals outside tokens.css:\n  ' + offenders.join('\n  '));
     });
 
+    // The jagged line (Curtis, 2026-09-30: "this has proven to be kind of a reliable pain"). A clip
+    // cuts a border off at the corners, so a jagged box with a line draws the line as a ring and
+    // keeps its own border transparent (tokens.css). A box gets its ring from a class in its markup
+    // - `jag-line`, `jag-line-2`, `jag-line-top`, or `jag-field` for an input, a textarea or a
+    // select, which draw no `::after` and so paint theirs as background - or, the older way, from
+    // a ring list in tokens.css. The ways it has gone wrong, each found here:
+    //   - a jagged clip over a real, solid border: the corners just vanish;
+    //   - a `--line` with no ring to paint it: no border at all;
+    //   - a hover or selected state that recolours `border-color` on a ringed box, or paints one
+    //     on a jagged box with no ring: the corners vanish in that state;
+    //   - a ring list naming a field, where an `::after` never draws;
+    //   - a `jag-field` rule with the `background` shorthand, which wipes its painted line away.
+    // Dashed and dotted lines stay borders (their corner gap reads as one more gap), as do
+    // single-side borders - a divider is a line, not a box.
+    it('draws every jagged line as a ring, never as a clipped border', () => {
+        const rules = [];
+        for (const f of cssFiles) {
+            const text = read(f).replace(/\/\*[\s\S]*?\*\//g, '');
+            for (const m of text.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+                const decls = {};
+                for (const d of m[2].split(';')) {
+                    const i = d.indexOf(':');
+                    if (i > 0) decls[d.slice(0, i).trim()] = d.slice(i + 1).trim();
+                }
+                const line = text.slice(0, m.index).split('\n').length;
+                for (const sel of m[1].split(',').map((x) => x.trim()).filter(Boolean)) {
+                    if (!sel.startsWith('@')) rules.push({ sel, decls, where: `${rel(f)}:${line}` });
+                }
+            }
+        }
+        const listed = new Set(
+            rules.filter((r) => r.sel.endsWith('::after') && /var\(--ring/.test(r.decls['clip-path'] || '')).map((r) => r.sel.slice(0, -'::after'.length))
+        );
+        const listedNames = [...listed].map((sel) => (sel.match(/^\.([\w-]+)$/) || [])[1]).filter(Boolean);
+        // Every class a line of markup wears, and every tag that wears it (tags span lines).
+        const token = (cls) => new RegExp(`(^|[\\s'"\`])${cls}([\\s'"\`]|$)`);
+        const markupLines = allJs.split('\n').filter((l) => /class/.test(l));
+        const worn = (cls, withAny) => markupLines.some((l) => token(cls).test(l) && withAny.some((w) => token(w).test(l)));
+        const RING_CLASSES = ['jag-line', 'jag-line-2', 'jag-line-top', 'jag-field'];
+        const lastClass = (sel) => (sel.match(/\.([\w-]+)(?![\w-])[^.\s]*$/) || [])[1];
+        // A state strips to its box: `.note-row.selected` and `.tab:hover` are `.note-row` and `.tab`.
+        const box = (sel) =>
+            sel.replace(/:(hover|focus-visible|focus-within|focus|active|disabled)\b/g, '').replace(/(\.[\w-]+)\.(active|selected|open|picked|current|drop-into)$/, '$1');
+        // A modifier named after its box (`chip-diverged` on a `.chip`, applied through a component
+        // prop no markup line shows) is that box's.
+        const classed = (sel) => {
+            const cls = lastClass(sel);
+            return !!cls && (RING_CLASSES.includes(cls) || worn(cls, [...RING_CLASSES, ...listedNames]) || listedNames.some((n) => cls.startsWith(`${n}-`)));
+        };
+        // Judged by its box, never by a state's class (`.x.active` is `.x`'s, whatever else wears `active`).
+        const ringed = (sel) => listed.has(sel) || listed.has(box(sel)) || classed(box(sel));
+        const fieldClassed = (sel) => {
+            const cls = lastClass(box(sel));
+            return !!cls && (cls === 'jag-field' || worn(cls, ['jag-field']));
+        };
+        const jagged = (d) => /var\(--jag(-1|-top|-bottom)?\)/.test(d['clip-path'] || '');
+        const solid = (v) => !!v && !/transparent|none|dashed|dotted|^0$/.test(v);
+        const fieldTag = (cls) => new RegExp(`<(input|textarea|select)\\b[^>]*?[\\s'"\`]${cls}[\\s'"\`]`).test(allJs);
+        // Boxes that clip to a jag in their own rules, whatever their border does at rest.
+        const jaggedBoxes = new Set(rules.filter((r) => jagged(r.decls)).map((r) => r.sel));
+        const dashedBoxes = new Set(rules.filter((r) => /dashed|dotted/.test(r.decls.border || '')).map((r) => r.sel));
+        const wrong = [];
+        for (const r of rules) {
+            const d = r.decls;
+            if (r.sel.endsWith('::after')) {
+                const cls = (r.sel.slice(0, -'::after'.length).match(/^\.([\w-]+)$/) || [])[1];
+                if (cls && listed.has(`.${cls}`) && fieldTag(cls)) wrong.push(`${r.where} .${cls}: a field draws no ::after - give it .jag-field`);
+                continue;
+            }
+            if (r.sel.endsWith('::before')) continue;
+            const state = box(r.sel) !== r.sel;
+            if (jagged(d) && solid(d.border) && !ringed(r.sel)) wrong.push(`${r.where} ${r.sel}: a jagged clip over a solid border cuts its corners - make it a ring`);
+            if (d['--line'] && d['--line'] !== 'transparent' && !ringed(r.sel)) wrong.push(`${r.where} ${r.sel}: --line with no ring to paint it`);
+            if (state && solid(d['border-color']) && ringed(r.sel)) wrong.push(`${r.where} ${r.sel}: recolour the ring with --line, not border-color`);
+            if (state && solid(d['border-color']) && !ringed(r.sel) && jaggedBoxes.has(box(r.sel)) && !dashedBoxes.has(box(r.sel)))
+                wrong.push(`${r.where} ${r.sel}: a state paints a real border on a jagged box - make the box a ring and recolour --line`);
+            if (d.background && fieldClassed(r.sel) && r.sel !== '.jag-field') wrong.push(`${r.where} ${r.sel}: a .jag-field paints its line as background - set background-color, not background`);
+        }
+        assert.deepEqual(wrong, [], `jagged lines drawn wrong:\n  ${wrong.join('\n  ')}`);
+    });
+
     it('imports every partial from index.css (no orphans, no missing files)', () => {
         const index = read(path.join(JS_DIR, 'index.css'));
         const imported = [...index.matchAll(/@import\s+"\.\/([^"]+)"/g)].map((m) => m[1]);

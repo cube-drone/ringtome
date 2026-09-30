@@ -52,7 +52,7 @@
 }
 
 .ceremony-download:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
     color: var(--teal);
 }
 
@@ -75,12 +75,10 @@
 }
 
 .name-input {
-    background: var(--field);
-    border: 1px solid transparent;
+    background-color: var(--field);
     --line: var(--border-strong);
     position: relative;
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     padding: 0.55rem 0.7rem;
     font: inherit;
@@ -90,7 +88,7 @@
 
 .name-input:focus {
     outline: none;
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .skip-link {
@@ -104,12 +102,10 @@
 }
 
 .spare-paste {
-    background: var(--surface);
-    border: 1px solid transparent;
+    background-color: var(--surface);
     --line: var(--border-strong);
     position: relative;
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--sea);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.75rem;
@@ -119,7 +115,7 @@
 
 .spare-paste:focus {
     outline: none;
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 /* --- your computers --- */
@@ -209,7 +205,7 @@
 }
 
 .persona-address-copy:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .persona-menu {
@@ -300,7 +296,7 @@
 }
 
 .persona-menu-item:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
     transform: translateY(-1px);
 }
 
@@ -321,7 +317,7 @@
 }
 
 .persona-menu-danger:hover {
-    border-color: var(--coral);
+    --line: var(--coral);
 }
 
 .profile-field {
@@ -358,11 +354,9 @@
     font: inherit;
     padding: 0.35rem 0.5rem;
     --j: 0.25em;
-    clip-path: var(--jag-1);
-    border: 1px solid transparent;
     --line: var(--border-strong);
     position: relative;
-    background: var(--field);
+    background-color: var(--field);
     color: var(--ink);
 }
 .profile-slug-last {
@@ -370,12 +364,10 @@
 }
 
 .profile-bio {
-    background: var(--field);
-    border: 1px solid transparent;
+    background-color: var(--field);
     --line: var(--border-strong);
     position: relative;
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     padding: 0.55rem 0.7rem;
     font: inherit;
@@ -385,7 +377,7 @@
 
 .profile-bio:focus {
     outline: none;
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .computers {
@@ -490,12 +482,12 @@
 
 .removal-option:hover,
 .removal-option-picked {
-    border-color: var(--sea);
+    --line: var(--sea);
 }
 
 .removal-option-forceful:hover,
 .removal-option-forceful.removal-option-picked {
-    border-color: var(--coral);
+    --line: var(--coral);
 }
 
 .removal-option-title {
@@ -625,7 +617,7 @@
 
 .profile-save:disabled {
     background: var(--surface);
-    border-color: var(--border);
+    --line: var(--border);
     color: var(--faint);
     cursor: default;
 }
@@ -751,7 +743,7 @@
 }
 
 .ledger-block:hover {
-    border-color: var(--coral);
+    --line: var(--coral);
 }
 
 .ledger-blocked {
@@ -788,12 +780,10 @@
 }
 
 .ledger-select {
-    background: var(--field);
-    border: 1px solid transparent;
+    background-color: var(--field);
     --line: var(--border);
     position: relative;
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     font: inherit;
     font-size: 0.8rem;
@@ -884,12 +874,10 @@
 }
 
 .ledger-nick {
-    background: var(--surface);
-    border: 1px solid transparent;
+    background-color: var(--surface);
     --line: var(--border);
     position: relative;
     --j: 3px;
-    clip-path: var(--jag-1);
     color: var(--ink);
     font: inherit;
     font-size: 0.85rem;
@@ -899,7 +887,7 @@
 
 .ledger-nick:focus {
     outline: none;
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .person-cell {
@@ -1093,7 +1081,7 @@
 }
 
 .feed-post:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .feed-item-title {
@@ -1189,11 +1177,9 @@ article:has(.label-emoji-strip) {
     font-size: 0.78rem;
     padding: 0.05rem 0.3rem;
     --j: 0.25em;
-    clip-path: var(--jag-1);
-    border: 1px solid transparent;
     --line: var(--border);
     position: relative;
-    background: var(--surface);
+    background-color: var(--surface);
     color: var(--ink);
 }
 
@@ -1354,12 +1340,10 @@ article:has(.label-emoji-strip) {
     font-size: 0.78rem;
     width: 7rem;
     padding: 0.1rem 0.55rem;
-    border: 1px solid transparent;
     --line: var(--teal);
     position: relative;
     --j: 0.25em;
-    clip-path: var(--jag-1);
-    background: var(--field);
+    background-color: var(--field);
     color: var(--ink);
 }
 
@@ -1411,7 +1395,7 @@ article:has(.label-emoji-strip) {
 }
 
 .public-posts-more:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .public-posts-more:disabled {
@@ -1617,7 +1601,7 @@ article:has(.label-emoji-strip) {
 }
 
 .feed-unpublish-go {
-    border-color: var(--warn, var(--border-strong));
+    --line: var(--warn, var(--border-strong));
     color: var(--ink);
 }
 
@@ -1844,7 +1828,7 @@ article:has(.label-emoji-strip) {
 }
 
 .feed-fresh-btn:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 /* The "preparing media for the network" modal: a post's embedded media, each with its bake

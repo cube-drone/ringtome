@@ -287,7 +287,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                 (r, i) => html`<div class="upload-row" key=${i}>
                     <div class="upload-row-top">
                         <input
-                            class="upload-name"
+                            class="upload-name jag-field"
                             value=${r.name}
                             disabled=${r.phase === 'failed'}
                             title="the file's name"
@@ -318,11 +318,11 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                         </span>
                     </div>
                     ${r.encPct != null &&
-                    html`<div class="upload-bar">
+                    html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.encPct}%`}></div>
                     </div>`}`}
                     ${r.phase === 'uploading' &&
-                    html`<div class="upload-bar">
+                    html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.pct}%`}></div>
                     </div>`}
                     ${r.phase === 'queued' &&
@@ -332,7 +332,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                     </div>
                     ${r.queueStatus === 'processing' &&
                     r.srvPct != null &&
-                    html`<div class="upload-bar">
+                    html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.srvPct}%`}></div>
                     </div>`}`}
                     ${r.phase === 'done' &&

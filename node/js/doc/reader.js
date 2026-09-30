@@ -129,7 +129,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const mediaUrl = decoratedBodyUrl(root, docId, doc.format, doc.title, !!(doc.media && doc.media.animation));
     let body;
     if (doc.format === 'plaintext') {
-        body = html`<pre class="reader-plain">${doc.body ?? t('doc.reader.body-not-on-this-computer', '(body not on this computer yet)')}</pre>`;
+        body = html`<pre class="reader-plain jag-line">${doc.body ?? t('doc.reader.body-not-on-this-computer', '(body not on this computer yet)')}</pre>`;
     } else if (doc.format === 'marquee') {
         body =
             doc.body == null
@@ -214,7 +214,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
-                html`<div class="editor-meta">
+                html`<div class="editor-meta jag-line">
                     <${Annotations} root=${root} docId=${docId} />
                 </div>`}
             </header>

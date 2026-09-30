@@ -1889,7 +1889,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             </span>
             <${NavChips} nav=${nav} />
         </span>
-        ${showMeta && html`<div class="editor-meta" ref=${metaPanelRef}><${Annotations} root=${root} docId=${docId} /></div>`}
+        ${showMeta && html`<div class="editor-meta jag-line" ref=${metaPanelRef}><${Annotations} root=${root} docId=${docId} /></div>`}
         ${session.error && html`<p class="form-error">${session.error}</p>`}
         ${actionError && html`<p class="form-error">${actionError}</p>`}
     </header>`;

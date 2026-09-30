@@ -69,6 +69,9 @@
     --lw: 1px;
     --ring-1: polygon(evenodd, 0px var(--j), var(--j) 0px, calc(100% - var(--j)) 0px, 100% var(--j), 100% calc(100% - var(--j)), calc(100% - var(--j)) 100%, var(--j) 100%, 0px calc(100% - var(--j)), 0px var(--j), var(--lw) calc(var(--lw) + var(--j)), calc(var(--lw) + var(--j)) var(--lw), calc(100% - var(--lw) - var(--j)) var(--lw), calc(100% - var(--lw)) calc(var(--lw) + var(--j)), calc(100% - var(--lw)) calc(100% - var(--lw) - var(--j)), calc(100% - var(--lw) - var(--j)) calc(100% - var(--lw)), calc(var(--lw) + var(--j)) calc(100% - var(--lw)), var(--lw) calc(100% - var(--lw) - var(--j)), var(--lw) calc(var(--lw) + var(--j)));
     --ring: polygon(evenodd, 0px calc(2 * var(--j)), var(--j) calc(2 * var(--j)), var(--j) var(--j), calc(2 * var(--j)) var(--j), calc(2 * var(--j)) 0px, calc(100% - 2 * var(--j)) 0px, calc(100% - 2 * var(--j)) var(--j), calc(100% - var(--j)) var(--j), calc(100% - var(--j)) calc(2 * var(--j)), 100% calc(2 * var(--j)), 100% calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) 100%, calc(2 * var(--j)) 100%, calc(2 * var(--j)) calc(100% - var(--j)), var(--j) calc(100% - var(--j)), var(--j) calc(100% - 2 * var(--j)), 0px calc(100% - 2 * var(--j)), 0px calc(2 * var(--j)), var(--lw) calc(var(--lw) + 2 * var(--j)), calc(var(--lw) + var(--j)) calc(var(--lw) + 2 * var(--j)), calc(var(--lw) + var(--j)) calc(var(--lw) + var(--j)), calc(var(--lw) + 2 * var(--j)) calc(var(--lw) + var(--j)), calc(var(--lw) + 2 * var(--j)) var(--lw), calc(100% - var(--lw) - 2 * var(--j)) var(--lw), calc(100% - var(--lw) - 2 * var(--j)) calc(var(--lw) + var(--j)), calc(100% - var(--lw) - var(--j)) calc(var(--lw) + var(--j)), calc(100% - var(--lw) - var(--j)) calc(var(--lw) + 2 * var(--j)), calc(100% - var(--lw)) calc(var(--lw) + 2 * var(--j)), calc(100% - var(--lw)) calc(100% - var(--lw) - 2 * var(--j)), calc(100% - var(--lw) - var(--j)) calc(100% - var(--lw) - 2 * var(--j)), calc(100% - var(--lw) - var(--j)) calc(100% - var(--lw) - var(--j)), calc(100% - var(--lw) - 2 * var(--j)) calc(100% - var(--lw) - var(--j)), calc(100% - var(--lw) - 2 * var(--j)) calc(100% - var(--lw)), calc(var(--lw) + 2 * var(--j)) calc(100% - var(--lw)), calc(var(--lw) + 2 * var(--j)) calc(100% - var(--lw) - var(--j)), calc(var(--lw) + var(--j)) calc(100% - var(--lw) - var(--j)), calc(var(--lw) + var(--j)) calc(100% - var(--lw) - 2 * var(--j)), var(--lw) calc(100% - var(--lw) - 2 * var(--j)), var(--lw) calc(var(--lw) + 2 * var(--j)));
+    /* The ring of the top-only jag (a tab): the steps along the top, straight down the sides, and
+       no line along the bottom, which is where a tab opens onto its page. */
+    --ring-top: polygon(evenodd, 0px 100%, 0px calc(2 * var(--j)), var(--j) calc(2 * var(--j)), var(--j) var(--j), calc(2 * var(--j)) var(--j), calc(2 * var(--j)) 0px, calc(100% - 2 * var(--j)) 0px, calc(100% - 2 * var(--j)) var(--j), calc(100% - var(--j)) var(--j), calc(100% - var(--j)) calc(2 * var(--j)), 100% calc(2 * var(--j)), 100% 100%, calc(100% - var(--lw)) 100%, calc(100% - var(--lw)) calc(var(--lw) + 2 * var(--j)), calc(100% - var(--lw) - var(--j)) calc(var(--lw) + 2 * var(--j)), calc(100% - var(--lw) - var(--j)) calc(var(--lw) + var(--j)), calc(100% - var(--lw) - 2 * var(--j)) calc(var(--lw) + var(--j)), calc(100% - var(--lw) - 2 * var(--j)) var(--lw), calc(var(--lw) + 2 * var(--j)) var(--lw), calc(var(--lw) + 2 * var(--j)) calc(var(--lw) + var(--j)), calc(var(--lw) + var(--j)) calc(var(--lw) + var(--j)), calc(var(--lw) + var(--j)) calc(var(--lw) + 2 * var(--j)), var(--lw) calc(var(--lw) + 2 * var(--j)), var(--lw) 100%);
     --dot-clip: polygon(
         30% 0, 70% 0, 85% 15%, 100% 30%, 100% 70%, 85% 85%, 70% 100%, 30% 100%, 15% 85%, 0 70%, 0 30%, 15% 15%
     );
@@ -118,28 +121,110 @@
     --viewport: #e0302a;      /* the navigator's red square (Drawing): where the stage is looking, on the minimap */
 }
 
-/* The jagged line's ring (see --ring above): every box that wears it. */
+/* The jagged line, as a class (Curtis, 2026-09-30: "this has proven to be kind of a reliable pain").
+   One class is the whole pattern - the transparent border that keeps the box's size, the clip,
+   the ring on `::after` - so a box wears `jag-line` in its markup and its stylesheet says only
+   its colour: `--line`, and `--line` again in its hover or selected state (never `border-color`,
+   which would paint a real border and cut its corners). `jag-line` is the one-step corner,
+   `jag-line-2` the two-step, `jag-line-top` a tab's. `--j` sizes the step and `--lw` the line, as
+   everywhere. The gate is integration/test/pure/conventions.cjs. */
+.jag-line,
+.jag-line-2,
+.jag-line-top {
+    position: relative;
+    border: var(--lw) solid transparent;
+}
+
+.jag-line {
+    clip-path: var(--jag-1);
+}
+
+.jag-line-2 {
+    clip-path: var(--jag);
+}
+
+.jag-line-top {
+    clip-path: var(--jag-top);
+}
+
+.jag-line::after,
+.jag-line-2::after,
+.jag-line-top::after {
+    content: '';
+    position: absolute;
+    inset: 0; /* the padding box, as the ring lists below: a box that hides its overflow keeps it */
+    pointer-events: none;
+    background: var(--line);
+}
+
+.jag-line::after {
+    clip-path: var(--ring-1);
+}
+
+.jag-line-2::after {
+    clip-path: var(--ring);
+}
+
+.jag-line-top::after {
+    clip-path: var(--ring-top);
+}
+
+/* A text field's jagged line. An input, a textarea or a select draws no `::after` - browsers
+   never render one on them - so the ring is painted as its background instead: four edge lines and
+   a diagonal stroke across each one-step corner, all `--line`, over whatever `background-color`
+   the field chooses (so a field rule sets `background-color`, never the `background` shorthand,
+   which would wipe the line away). */
+.jag-field {
+    border: var(--lw) solid transparent;
+    clip-path: var(--jag-1);
+    background-origin: border-box;
+    background-repeat: no-repeat;
+    background-image:
+        linear-gradient(var(--line), var(--line)),
+        linear-gradient(var(--line), var(--line)),
+        linear-gradient(var(--line), var(--line)),
+        linear-gradient(var(--line), var(--line)),
+        linear-gradient(to bottom right, var(--line) calc(50% + var(--lw)), transparent 0),
+        linear-gradient(to bottom left, var(--line) calc(50% + var(--lw)), transparent 0),
+        linear-gradient(to top right, var(--line) calc(50% + var(--lw)), transparent 0),
+        linear-gradient(to top left, var(--line) calc(50% + var(--lw)), transparent 0);
+    background-position:
+        var(--j) 0,
+        var(--j) 100%,
+        0 var(--j),
+        100% var(--j),
+        0 0,
+        100% 0,
+        0 100%,
+        100% 100%;
+    background-size:
+        calc(100% - 2 * var(--j)) var(--lw),
+        calc(100% - 2 * var(--j)) var(--lw),
+        var(--lw) calc(100% - 2 * var(--j)),
+        var(--lw) calc(100% - 2 * var(--j)),
+        var(--j) var(--j),
+        var(--j) var(--j),
+        var(--j) var(--j),
+        var(--j) var(--j);
+}
+
+/* The jagged line's ring (see --ring above): every box that wears it - the way before the classes
+   above, kept for the boxes that already work this way; a new box wears a class instead. (A field
+   named here draws nothing: see .jag-field.) */
 .chip::after,
-.welcome-form input::after,
 .copy-bucket::after,
 .minipost::after,
 .person-chip-label::after,
 .ceremony-download::after,
-.name-input::after,
-.spare-paste::after,
 .persona-address-copy::after,
-.profile-bio::after,
 .computer-row::after,
 .removal-option::after,
 .profile-save::after,
 .ledger-glance::after,
 .ledger-block::after,
-.ledger-select::after,
 .people-sort::after,
 .people-more::after,
-.ledger-nick::after,
 .feed-post::after,
-.label-add-input::after,
 .public-posts-more::after,
 .feed-entry-via-roster::after,
 .feed-unpublish-no::after,

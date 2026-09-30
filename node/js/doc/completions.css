@@ -7,11 +7,24 @@
    upright and full-size. */
 .cm-tooltip.cm-tooltip-autocomplete {
     background: var(--surface);
-    border: 2px solid var(--ink);
+    --lw: 2px;
+    border: var(--lw) solid transparent;
+    --line: var(--ink);
     --j: 4px;
     clip-path: var(--jag-1);
     box-shadow: 0 8px 20px var(--shadow-drop);
     overflow: hidden;
+}
+
+/* Its two-pixel ink line as a ring (CodeMirror writes the markup, so no .jag-line; the tooltip is
+   already absolutely placed). */
+.cm-tooltip.cm-tooltip-autocomplete::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--line);
+    clip-path: var(--ring-1);
 }
 
 .cm-tooltip-autocomplete > ul {

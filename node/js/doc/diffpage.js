@@ -68,7 +68,7 @@ export const DiffPage = ({ doc, current }) => {
     if (!postId) {
         return html`<section class="diff-page">
             <p>${t('doc.diffpage.this-document-has-no-public', 'this document has no public version to compare against')}</p>
-            <button class="publish-bar-view" onClick=${back}>${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>
+            <button class="publish-bar-view jag-line" onClick=${back}>${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>
         </section>`;
     }
     if (!words) return html`<p class="null-sub">…</p>`;
@@ -84,10 +84,10 @@ export const DiffPage = ({ doc, current }) => {
                 ${t('doc.diffpage.the-private-words-against-the', 'what an update would change')}
             </p>
             <span class="diff-page-acts">
-                <button class="publish-bar-view" onClick=${back}><${Icons.back} /> ${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>
-                <a class="publish-bar-view" href=${postHref(root, postId)}><${Icons.docPublic} /> ${t('doc.diffpage.view-public', 'view public')}</a>
+                <button class="publish-bar-view jag-line" onClick=${back}><${Icons.back} /> ${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>
+                <a class="publish-bar-view jag-line" href=${postHref(root, postId)}><${Icons.docPublic} /> ${t('doc.diffpage.view-public', 'view public')}</a>
                 ${!same &&
-                html`<button class="publish-bar-update" disabled=${publishing} onClick=${update}>
+                html`<button class="publish-bar-update jag-line" disabled=${publishing} onClick=${update}>
                     <${Icons.update} /> ${publishing ? t('doc.diffpage.publishing', 'publishing…') : t('doc.diffpage.make-your-changes-public', 'make your changes public')}
                 </button>`}
             </span>

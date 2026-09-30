@@ -26,9 +26,8 @@
     align-items: center;
     gap: 0.3rem;
     background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    --line: var(--border-strong);
     --j: 3px;
-    clip-path: var(--jag-1);
     padding: 0.25rem 0.55rem;
     font: inherit;
     font-size: 0.85rem;
@@ -37,7 +36,7 @@
 }
 
 .tree-tool:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 /* One tree row - a section header or a page leaf. Indentation rides an inline padding-left. */
@@ -46,9 +45,7 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.25rem 0.4rem;
-    border: 1px solid transparent;
     --j: 2.5px;
-    clip-path: var(--jag);
     cursor: pointer;
     min-width: 0;
 }
@@ -58,7 +55,7 @@
 }
 
 .tree-row.selected {
-    border-color: var(--teal);
+    --line: var(--teal);
     background: var(--surface-2);
 }
 
@@ -127,7 +124,7 @@
 
 .tree-row.drop-into {
     background: color-mix(in srgb, var(--teal) 18%, transparent);
-    border-color: var(--teal);
+    --line: var(--teal);
 }
 
 .tree-row.lifting {

@@ -153,14 +153,14 @@ export const Annotations = ({ root, docId, features }) => {
             html`<div class="annot-row">
                 <label class="annot-label" title=${t('doc.annotations.the-date-and-time-this', 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then')}>${t('doc.annotations.date', 'date')}</label>
                 <input
-                    class="annot-date"
+                    class="annot-date jag-field"
                     type="date"
                     value=${claimed.date}
                     onInput=${claimed.onDate}
                     onBlur=${claimed.flush}
                 />
                 <input
-                    class="annot-time"
+                    class="annot-time jag-field"
                     type="time"
                     value=${claimed.time}
                     onInput=${claimed.onTime}
@@ -176,7 +176,7 @@ export const Annotations = ({ root, docId, features }) => {
                     (Curtis, 2026-08-29; the strings migration wrapped the literal without
                     seeing the shadow). */ ''}
                 ${shownTags.map(
-                    (tag) => html`<span class="annot-tag" key=${tag}>
+                    (tag) => html`<span class="annot-tag jag-line" key=${tag}>
                         ${tag}
                         <button
                             class="annot-tag-x"
@@ -206,7 +206,7 @@ export const Annotations = ({ root, docId, features }) => {
             </div>
             ${showDesc &&
             html`<textarea
-                class="annot-desc"
+                class="annot-desc jag-field"
                 placeholder=${t('doc.annotations.a-short-description-optional', 'a short description (optional)')}
                 value=${desc.value}
                 onInput=${desc.onInput}

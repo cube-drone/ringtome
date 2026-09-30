@@ -355,7 +355,7 @@ const NewRoom = ({ root, onMade }) => {
             <div class="chat-new-foot">
                 <label class="feed-settle">
                     ${t('apps.chat.only-show-to', 'only show to')}
-                    <select class="feed-audience" value=${audience} onChange=${(e) => setAudience(e.currentTarget.value)}>
+                    <select class="feed-audience jag-field" value=${audience} onChange=${(e) => setAudience(e.currentTarget.value)}>
                         <option value="">${t('apps.chat.everyone', 'everyone')}</option>
                         <option value="onward">${t('apps.chat.people-i-trust-and-onward', 'people I trust, and onward')}</option>
                         <option value="trusted">${t('apps.chat.people-i-trust', 'people I trust')}</option>
@@ -1332,7 +1332,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             ${room.im
                 ? html`<span class="chat-people-two"><${PersonChip} root=${room.other || author} current=${current} /></span>`
                 : html`<details class="chat-people">
-                <summary class="chat-people-summary">
+                <summary class="chat-people-summary jag-line">
                     <${PersonChip} root=${author} current=${current} />
                     ${others.length > 0 &&
                     html`<span class="chat-people-others">${others.length === 1 ? t('apps.chat.and-one-other', 'and one other') : t('apps.chat.and-n-others', 'and {n} others', { n: others.length })}</span>`}
@@ -1457,7 +1457,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     ${t('apps.chat.block-them-question', 'Block {who}? You stop seeing anything of theirs, here and everywhere else. They are not told.', { who: name })}
                 </p>
                 <div class="feed-unpublish-acts">
-                    <button class="feed-unpublish-go" onClick=${blockThem}>${t('apps.chat.block', 'block')}</button>
+                    <button class="feed-unpublish-go jag-line" onClick=${blockThem}>${t('apps.chat.block', 'block')}</button>
                     <button class="feed-unpublish-no" onClick=${() => setBlocking(false)}>${t('apps.chat.never-mind', 'never mind')}</button>
                 </div>
             </${Modal}>`}
@@ -1474,7 +1474,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     ${t('apps.chat.do-you-want-to-take-the-room-down', 'Do you want to take the room down? It may take a while.')}
                 </p>
                 <div class="feed-unpublish-acts">
-                    <button class="feed-unpublish-go" disabled=${going} onClick=${takeDown}>
+                    <button class="feed-unpublish-go jag-line" disabled=${going} onClick=${takeDown}>
                         ${going ? t('apps.chat.taking-it-down', 'taking it down…') : t('apps.chat.take-it-down', 'take it down')}
                     </button>
                     <button class="feed-unpublish-no" disabled=${going} onClick=${() => setDeleting(false)}>${t('apps.chat.keep-it', 'keep it')}</button>
@@ -1559,7 +1559,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             >
                 <p class="feed-unpublish-warn">${t('apps.chat.delete-this-line-question', 'Delete this line? It may take a while to disappear everywhere.')}</p>
                 <div class="feed-unpublish-acts">
-                    <button class="feed-unpublish-go" onClick=${deleteLine}>${t('apps.chat.delete', 'delete')}</button>
+                    <button class="feed-unpublish-go jag-line" onClick=${deleteLine}>${t('apps.chat.delete', 'delete')}</button>
                     <button class="feed-unpublish-no" onClick=${() => setDeletingLine(null)}>${t('apps.chat.keep-it', 'keep it')}</button>
                 </div>
             </${Modal}>`}

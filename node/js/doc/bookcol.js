@@ -189,7 +189,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                 ${t('doc.bookcol.removes-the-book-and-every', 'It may take a while to disappear everywhere. The pages stay in this notebook.')}
             </p>
             <div class="feed-unpublish-acts">
-                <button class="feed-unpublish-go" disabled=${takingDown} onClick=${takeDown}>
+                <button class="feed-unpublish-go jag-line" disabled=${takingDown} onClick=${takeDown}>
                     ${takingDown ? t('doc.bookcol.taking-it-down', 'taking it down…') : t('doc.bookcol.yes-take-it-down', 'yes, take it down')}
                 </button>
                 <button class="feed-unpublish-no" disabled=${takingDown} onClick=${() => setAskingTakedown(false)}>

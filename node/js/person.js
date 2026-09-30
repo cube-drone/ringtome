@@ -332,7 +332,7 @@ const ChatWithButton = ({ myRoot, root, name }) => {
     };
     return html`
         <button
-            class="person-card-chat"
+            class="person-card-chat jag-line"
             type="button"
             disabled=${going}
             title=${t('person.chat-with-them-privately', 'chat with them, privately')}
@@ -599,7 +599,7 @@ const Dial = ({ label, hint, stops, value, onPick }) => html`
     <label class="ledger-dial">
         <span class="ledger-label">${label}${hint && html`<small>${hint}</small>`}</span>
         <select
-            class="ledger-select"
+            class="ledger-select jag-field"
             value=${bandOf(value) || 'none'}
             onChange=${(e) => onPick(e.currentTarget.value)}
         >
@@ -644,7 +644,7 @@ const ContactTagsEditor = ({ myRoot, tags, onChange }) => {
         )}
         ${adding
             ? html`<input
-                  class="label-add-input"
+                  class="label-add-input jag-field"
                   list=${listId}
                   maxlength=${TAG_MAX}
                   placeholder=${t('person.a-tag', 'a tag')}
@@ -751,7 +751,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                     <small>${t('person.sharing-how-you-hold-people', 'is this relationship visible to others')}</small>
                 </span>
                 <select
-                    class="ledger-select"
+                    class="ledger-select jag-field"
                     value=${edgesPublic ? 'yes' : 'no'}
                     onChange=${(e) => put('edges_public', e.currentTarget.value)}
                 >
@@ -765,7 +765,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                     <small>${t('person.only-you-ever-see-this', 'only you ever see this name')}</small>
                 </span>
                 <input
-                    class="ledger-nick"
+                    class="ledger-nick jag-field"
                     type="text"
                     placeholder=${t('person.a-name-of-your-choosing', 'a name of your choosing')}
                     value=${nickDraft !== null ? nickDraft : facts.nickname || ''}

@@ -53,6 +53,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Notifications
 * Change the favicon when stuff happens
 
+### Look and feel
+* Move the two old ring lists in `tokens.css` onto the `jag-line` classes (the ~40 boxes that still get their jagged line by being named there), then retire the lists - the conventions gate keeps both honest meanwhile.
+
 ### Localization
 * An in-ui way to cheat your presented language, for testing
  * just fully do french and spanish or something

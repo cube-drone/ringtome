@@ -166,14 +166,14 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             </label>`}
             ${standing === 'private' &&
             html`<button
-                class="publish-bar-publish"
+                class="publish-bar-publish jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.publish---makes-this-content', 'publish')}
                 onClick=${publishNow}
             ><${Icons.docPublic} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.publish', 'publish')}</button>`}
             ${standing === 'public' &&
             html`<a
-                class="publish-bar-view"
+                class="publish-bar-view jag-line"
                 href=${postHref(root, postId)}
                 title=${t('doc.editor.open-the-public-version', 'open the public version')}
             ><${Icons.docPublic} /> ${t('doc.editor.view', 'view')}</a>`}
@@ -181,7 +181,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             differs &&
             diffHref &&
             html`<a
-                class="publish-bar-diff"
+                class="publish-bar-diff jag-line"
                 href=${diffHref}
                 title=${t('doc.editor.what-differs-between-these-words', 'what differs between these words and the public version')}
             ><${Icons.conflict} /> ${t('doc.editor.diff', 'diff')}</a>`}
@@ -189,7 +189,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             differs &&
             windowOpen !== false &&
             html`<button
-                class="publish-bar-update"
+                class="publish-bar-update jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.make-your-changes-public', 'make your changes public')}
                 onClick=${publishNow}
@@ -198,26 +198,26 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             differs &&
             windowOpen === false &&
             html`<button
-                class="publish-bar-update"
+                class="publish-bar-update jag-line"
                 disabled=${true}
                 title=${t('doc.editor.this-document-was-published-over', 'posts can only be edited for a day')}
             ><${Icons.update} /> ${t('doc.editor.update', 'update')}</button>`}
             ${standing === 'public' &&
             html`<button
-                class="publish-bar-unpublish"
+                class="publish-bar-unpublish jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.take-this-post-back-off', 'take this post back off the network')}
                 onClick=${() => setAskingTakedown(true)}
             ><${Icons.unpublish} /> ${t('doc.editor.unpublish', 'unpublish')}</button>`}
             ${standing === 'scheduled' &&
             html`<button
-                    class="publish-bar-update"
+                    class="publish-bar-update jag-line"
                     disabled=${publishing}
                     title=${t('doc.editor.re-read-the-date-and', 'publish, or reschedule')}
                     onClick=${publishNow}
                 ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>
                 <button
-                    class="publish-bar-unpublish"
+                    class="publish-bar-unpublish jag-line"
                     disabled=${publishing}
                     title=${t('doc.editor.cancel-the-schedule---the', 'cancel the schedule - the words stay private')}
                     onClick=${cancelSchedule}
@@ -239,7 +239,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 ${t('doc.editor.this-removes-it-from-other', 'It may take a while to disappear everywhere.')}
             </p>
             <div class="feed-unpublish-acts">
-                <button class="feed-unpublish-go" disabled=${publishing} onClick=${takeDown}>
+                <button class="feed-unpublish-go jag-line" disabled=${publishing} onClick=${takeDown}>
                     ${publishing ? t('doc.editor.taking-it-down', 'taking it down…') : t('doc.editor.yes-take-it-down', 'yes, take it down')}
                 </button>
                 <button class="feed-unpublish-no" disabled=${publishing} onClick=${() => setAskingTakedown(false)}>

@@ -405,7 +405,7 @@
 }
 
 .person-row:hover {
-    border-color: var(--teal);
+    --line: var(--teal);
     transform: translateY(-1px);
 }
 

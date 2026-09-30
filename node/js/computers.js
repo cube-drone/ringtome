@@ -269,7 +269,7 @@ export const Computers = ({ current }) => {
                       </p>
                       <form class="welcome-form" onSubmit=${invite}>
                           <textarea
-                              class="spare-paste"
+                              class="spare-paste jag-field"
                               rows="4"
                               placeholder=${t('computers.paste-the-new-computers-code', "paste the new computer's code here")}
                               value=${requestCode}

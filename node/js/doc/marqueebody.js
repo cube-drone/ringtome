@@ -24,14 +24,14 @@ import { t } from '../i18n.js';
 const html = htm.bind(h);
 
 /// Just the source, unadorned.
-export const bareSource = (_error, source) => html`<pre class="reader-plain">${source}</pre>`;
+export const bareSource = (_error, source) => html`<pre class="reader-plain jag-line">${source}</pre>`;
 
 /// The default: what happened, and then the source so nothing is hidden.
 export const marqueeApology = (_error, source) => html`<div>
     <p class="null-sub">
         ${t('doc.marqueebody.this-marquee-doesnt-parse-right', 'this page has a formatting problem. Showing the plain text.')}
     </p>
-    <pre class="reader-plain">${source}</pre>
+    <pre class="reader-plain jag-line">${source}</pre>
 </div>`;
 
 /// The parser's own complaint, for someone with the document open in an editor.
@@ -50,7 +50,7 @@ export const MarqueeBody = ({ source, profile, handle, onNodeClick, onUnparsable
     } catch (error) {
         return onUnparsable(error, source);
     }
-    return html`<div class="reader-marquee"><${Marquee}
+    return html`<div class="reader-marquee jag-line"><${Marquee}
         ref=${handle}
         source=${source}
         animate="visible"

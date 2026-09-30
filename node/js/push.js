@@ -133,10 +133,10 @@ export const PushToggle = ({ root }) => {
         return html`<p class="push-note">${t('push.blocked', 'notifications are blocked for this site - your browser\'s settings can allow them')}</p>`;
     }
     return html`<div class="push-toggle">
-        <button class="push-button" disabled=${busy} onClick=${on ? turnOff : turnOn}>
+        <button class="push-button jag-line" disabled=${busy} onClick=${on ? turnOff : turnOn}>
             ${on ? t('push.stop-notifying', 'stop notifying this browser') : t('push.notify-this-browser', 'notify me in this browser')}
         </button>
-        ${on && html`<button class="push-button" disabled=${busy} onClick=${sendTest}>${t('push.send-a-test', 'send a test')}</button>`}
+        ${on && html`<button class="push-button jag-line" disabled=${busy} onClick=${sendTest}>${t('push.send-a-test', 'send a test')}</button>`}
         ${error && html`<span class="push-error">${error}</span>`}
         ${report &&
         html`<span class="push-note">

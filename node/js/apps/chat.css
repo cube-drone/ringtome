@@ -280,9 +280,8 @@
     gap: 0.4rem;
     cursor: pointer;
     color: var(--ink-soft);
-    border: 1px solid var(--border);
+    --line: var(--border);
     --j: 4px;
-    clip-path: var(--jag-1);
     padding: 0.15rem 0.5rem;
     list-style: none;
 }
@@ -757,6 +756,7 @@
     background: none;
     border: none;
     clip-path: none;
+    --line: transparent; /* no ring either */
     padding: 0;
 }
 
@@ -817,6 +817,7 @@
     background: transparent;
     border: none;
     clip-path: none;
+    --line: transparent; /* no ring either */
     overflow: visible;
 }
 
@@ -824,6 +825,7 @@
     background: var(--field);
     border: 1px solid var(--border);
     clip-path: none;
+    --line: transparent; /* a plain square border here: no ring over it */
     min-height: 2.6rem;
     max-height: 10rem;
 }
@@ -1021,6 +1023,7 @@
     background: none;
     border: none;
     clip-path: none;
+    --line: transparent; /* no ring either */
     padding: 0;
 }
 

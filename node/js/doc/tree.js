@@ -78,7 +78,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     const icon =
         formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
     const cls = [
-        'tree-row',
+        'tree-row jag-line-2',
         isSelected ? 'selected' : '',
         hover ? `drop-${hover}` : '',
         lifting ? 'lifting' : '',
@@ -140,14 +140,14 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     const [hover, setHover] = useState(null); // 'before' | 'after' | 'into' | null
     const [lifting, setLifting] = useState(false);
     if (!node.members) {
-        return html`<div class="tree-row tree-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
+        return html`<div class="tree-row jag-line-2 tree-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
             <${Icons.section} />
             <span class="tree-row-title">${node.title || t('doc.tree.untitled-section', '(untitled section)')} ↩</span>
         </div>`;
     }
     const open = !ops.folded.has(node.taxonomy_id);
     const cls = [
-        'tree-row',
+        'tree-row jag-line-2',
         'tree-row-section',
         hover ? `drop-${hover}` : '',
         lifting ? 'lifting' : '',
@@ -623,10 +623,10 @@ export const WikiTree = ({
         >
             ${onMinimize && html`<${PaneHead} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
             <div class="tree-toolbar">
-                <button class="tree-tool" onClick=${() => newPage(null)}>
+                <button class="tree-tool jag-line" onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}
                 </button>
-                <button class="tree-tool" onClick=${() => newSection(null)}>
+                <button class="tree-tool jag-line" onClick=${() => newSection(null)}>
                     <${Icons.sectionNew} /> ${t('doc.tree.section', 'section')}
                 </button>
             </div>

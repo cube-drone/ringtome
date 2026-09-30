@@ -46,7 +46,7 @@ const nobody = () => t('doc.usercard.a-card-naming-nobody', 'a user card naming 
 /// the small heptagon, the names beside it, a link to their page, sized to its content.
 const UserCard = ({ root }) => {
     const person = usePerson(root);
-    return html`<a class="user-card" href=${person.href}>
+    return html`<a class="user-card jag-line" href=${person.href}>
         <${PersonHex} person=${person} size="small" />
         <span class="user-card-names">
             <strong>${person.primary}</strong>
@@ -80,7 +80,7 @@ export const marqueeHooks = {
     directive: (name, attrs) => {
         if (name !== CARD_DIRECTIVE) return null;
         const root = cardRoot(attrs);
-        if (!root) return html`<div class="user-card user-card-bad">${nobody()}</div>`;
+        if (!root) return html`<div class="user-card jag-line user-card-bad">${nobody()}</div>`;
         return html`<${UserCard} root=${root} />`;
     },
     span: (name, attrs, children) => {
@@ -163,10 +163,10 @@ const faceOf = (root) => {
 export function userCardHtml(name, attrs) {
     if (name !== CARD_DIRECTIVE) return null;
     const root = cardRoot(attrs);
-    if (!root) return `<div class="user-card user-card-bad">${escapeHtml(nobody())}</div>`;
+    if (!root) return `<div class="user-card jag-line user-card-bad">${escapeHtml(nobody())}</div>`;
     const face = faceOf(root);
     const others = face.names.length > 1 ? `<small>${escapeHtml(face.names.slice(1).join(' · '))}</small>` : '';
-    return `<a class="user-card" href="${escapeHtml(personHref(root))}">${face.hex('small')}`
+    return `<a class="user-card jag-line" href="${escapeHtml(personHref(root))}">${face.hex('small')}`
         + `<span class="user-card-names"><strong>${escapeHtml(face.names[0] || '')}</strong>${others}</span></a>`;
 }
 
