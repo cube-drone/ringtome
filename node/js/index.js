@@ -154,6 +154,21 @@ const AtRoute = ({ at, fallback: Fallback, ...props }) =>
 // `/ringtome/persona` jumps to your own person page -
 // identity management lives there, with `/ringtome/persona/profile` and `/computers` beneath it
 // (reached by the dock's persona tile).
+/// One of the account's other personas, stacked above the dock's persona tile (Curtis, 2026-09-30:
+/// switching is "something I'm doing a lot of"): their face in their colour, their name on hover,
+/// a click to be them.
+const SiblingTile = ({ root, current, onPick }) => {
+    const person = usePerson(root, { current });
+    const face = faceOf(person);
+    return html`<button
+        class="quickbar-hex quickbar-hex-lead quickbar-hex-me"
+        style=${face ? `--me-ring: ${face.ring}` : undefined}
+        title=${person.primary}
+        aria-label=${person.primary}
+        onClick=${() => onPick(root)}
+    ><span class="quickbar-hex-face">${face && html`<img class="quickbar-hex-img" src=${face.src} alt="" />`}</span></button>`;
+};
+
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
     // The node's operator: the only one who presses a room's full-sync (CHAT.md, ruling 6).
@@ -266,6 +281,17 @@ const Inside = ({ session }) => {
         [root]
     );
     const unreadChat = unreadChatRow && typeof unreadChatRow.value === 'number' ? unreadChatRow.value : 0;
+    // The account's other personas, for the switcher over the persona tile.
+    const siblings = (persona.personas || []).filter((p) => p.standing === 'active' && p.root_pubkey !== root).map((p) => p.root_pubkey);
+    // Become another of them where you stand: your own page follows you to theirs, and a document
+    // of the one you were goes back to its app's list, since it isn't the new persona's.
+    const becomeSibling = async (next) => {
+        const onMyPage = !!root && loc.path === personHref(root);
+        if (document.activeElement) document.activeElement.blur();
+        await persona.switchTo(next);
+        if (onMyPage) loc.route(personHref(next));
+        else if (inDoc && appHere) loc.route(appHref(appHere.id));
+    };
     const bar = html`
         <footer class="quickbar">
             <span class="quickbar-apps">
@@ -278,7 +304,8 @@ const Inside = ({ session }) => {
                             : !!(appHere && appHere.id === app.id);
                     const badge = app.id === BELL_APP_ID ? unread : app.id === CHAT_APP_ID ? unreadChat : 0;
                     // Clicking the app you're already in closes it (back to the launcher).
-                    return html`<span class="quickbar-slot" key=${app.id}>
+                    const lead = app.id === PERSONA_APP_ID;
+                    return html`<span class=${lead ? 'quickbar-slot quickbar-slot-persona' : 'quickbar-slot'} key=${app.id}>
                         <button
                             class=${[
                                 'quickbar-hex',
@@ -289,7 +316,8 @@ const Inside = ({ session }) => {
                                 .filter(Boolean)
                                 .join(' ')}
                             style=${app.id === PERSONA_APP_ID && me ? `--me-ring: ${me.ring}` : undefined}
-                            title=${appLabel(app, personaName, isDevice())}
+                            title=${lead && siblings.length > 0 ? undefined : appLabel(app, personaName, isDevice())}
+                            aria-label=${appLabel(app, personaName, isDevice())}
                             onClick=${() => loc.route(isActive ? LAUNCHER : appHref(app.id))}
                         ><span class="quickbar-hex-face">${app.id === PERSONA_APP_ID && me
                             ? html`<img class="quickbar-hex-img" src=${me.src} alt="" />`
@@ -298,6 +326,12 @@ const Inside = ({ session }) => {
                             and a badge within it would be cut to the shape. */ ''}
                         ${badge > 0 &&
                         html`<span class="quickbar-badge">${badge > 99 ? '99+' : badge}</span>`}
+                        ${/* The other personas, stacked above on hover in place of the name. */ ''}
+                        ${lead &&
+                        siblings.length > 0 &&
+                        html`<span class="quickbar-switcher">
+                            ${siblings.map((r) => html`<${SiblingTile} key=${r} root=${r} current=${persona.current} onPick=${becomeSibling} />`)}
+                        </span>`}
                     </span>`;
                 })}
             </span>

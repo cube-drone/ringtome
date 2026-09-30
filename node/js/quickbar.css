@@ -120,6 +120,28 @@ a.quickbar-version:focus-visible {
     transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
+/* The account's other personas (index.js SiblingTile, 2026-09-30): stacked above the persona
+   tile while it's pointed at or keyboard-focused, nearest first, a click to become one. The
+   stack's own bottom padding bridges the gap, so moving up to it never lets the hover go. Only a
+   KEYBOARD focus opens it (:focus-visible): a click leaves the tile focused, and the dock never
+   goes away, so plain focus-within held the stack open for good. */
+.quickbar-switcher {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 0.4rem;
+    padding-bottom: 0.4rem;
+}
+
+.quickbar-slot-persona:hover .quickbar-switcher,
+.quickbar-slot-persona:has(:focus-visible) .quickbar-switcher {
+    display: flex;
+}
+
 /* The user's own tile (Persona, first) runs a little bigger than the rest. */
 .quickbar-hex-lead {
     --qh-w: 54px;

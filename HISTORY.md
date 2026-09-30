@@ -13123,3 +13123,20 @@ it's gone. The file puts every choice back, since the rig is shared.
 Then (Curtis: "now that we have 'horse drawing tycoon 2' in the homepage's title, we don't need a
 separate version of that at the top of the selfsame page"): the sign-in's pixel-font heading is gone,
 from the recovery screen too, so the page opens on the marquee under the header's name.
+
+A feed card's byline heptagon grew half again (Curtis, 2026-09-30): the banner's small face is 3rem
+across, not 2 (person.css, scoped to `.person-banner`, so rows and chips keep theirs).
+
+### Switching personas from the dock (2026-09-30)
+
+Curtis, running Cube Drone, Horse Drawing Tycoon 2 Official and Tom from one account: "when I hover
+over the user chip in the bottom left corner of the screen, instead of popping up a tooltip with my
+user name, can we have all of the other user chips I manage from this account appear just above
+it". Pointing at (or focusing) the dock's persona tile now stacks the account's other active
+personas above it - each a heptagon in their own picture and colour, their name on hover - and a
+click becomes them (`SiblingTile`, index.js; `.quickbar-switcher`). You stay where you are: your own
+page follows you to theirs, and a document of the persona you were goes back to its app's list. With
+no other personas the tile keeps its name as before.
+Then: a click on your own tile left it focused, and `:focus-within` held the stack open for good
+(the dock never goes away to take the focus with it). Only a keyboard focus opens it now
+(`:has(:focus-visible)`), which a mouse click doesn't set.

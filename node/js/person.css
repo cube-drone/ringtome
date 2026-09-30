@@ -121,6 +121,12 @@
     text-decoration: none;
 }
 
+/* Half again the small face, on a card's byline (Curtis, 2026-09-30). */
+.person-banner .person-hex-small {
+    width: 3rem;
+    height: 2.925rem;
+}
+
 /* Their names, stacked - shared by the banner and the roster row. */
 .person-names {
     display: flex;
