@@ -5,7 +5,9 @@
 // The trio, complete: `:` emoji, `[` links AND Marquee's span tags (one bracket, two grammars -
 // the picker offers both and your next keystrokes disambiguate), `!` a media picker over the
 // bucket's files - each a source in this module, handed to LiveMarquee by the hosting editor.
+// Then `@` people, and `:::` at a line's start, Marquee's block directives (2026-09-30).
 import { nameToEmoji } from 'gemoji';
+import { FONTS } from '@cube-drone/marquee-html-renderer';
 
 import { api } from '../net.js';
 import { openMirror } from '../mirror.js';
@@ -16,6 +18,8 @@ import { slugify, MEDIA_EXT } from '../pure/naming.js';
 import { docHref } from '../links.js';
 import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
 import { FILES_BUCKET } from '../pure/apps.js';
+import { placeholderAt } from '../pure/placeholder.js';
+import { t } from '../i18n.js';
 
 /// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
 /// both (the link and media pickers each carried their own and one drifted - the second copy
@@ -39,7 +43,6 @@ const SPAN_TAGS = [
     { name: 'huge' },
     { name: 'enormous' },
     { name: 'size', value: true, hint: 'size=1-7' },
-    { name: 'font', value: true, hint: 'font=name' },
     { name: 'color', value: true, hint: 'color=#rgb' },
     { name: 'spoiler' },
     { name: 'sidenote' },
@@ -80,6 +83,23 @@ const TAG_OPTIONS = SPAN_TAGS.map(({ name, value, hint }) => ({
     },
 }));
 
+// Every font Marquee draws, one completion each (Curtis, 2026-09-30: "one hint for each font we
+// offer - otherwise it's tough for users to know what the options even are"): `font=lobster`,
+// its family's own name beside it, filling `[font=lobster]text[/font]` with "text" selected. The
+// list is the renderer's own (`FONTS`), so a face it learns is offered here with no edit.
+const FONT_OPTIONS = Object.entries(FONTS).map(([token, family]) => ({
+    label: `font=${token}`,
+    detail: family,
+    apply: (view, _completion, from, to) => {
+        const open = `[font=${token}]`;
+        const start = from - 1;
+        view.dispatch({
+            changes: { from: start, to, insert: `${open}text[/font]` },
+            selection: { anchor: start + open.length, head: start + open.length + 'text'.length },
+        });
+    },
+}));
+
 // Built once: every gemoji as a completion - the label is the marquee source form (`:smile:`,
 // what filling inserts; marquee renders it via the profile's emoji table), the detail shows
 // the glyph itself so picking is visual.
@@ -95,6 +115,8 @@ const EMOJI_OPTIONS = Object.entries(nameToEmoji).map(([name, ch]) => ({
 export function emojiCompletions(context) {
     const word = context.matchBefore(/:[\w+-]*$/);
     if (!word) return null;
+    // A colon after a colon is a directive's `:::`, the block picker's (below), never an emoji.
+    if (word.from > 0 && context.state.sliceDoc(word.from - 1, word.from) === ':') return null;
     // Bare `:` only pops explicitly-adjacent to typing (it always is, when live), but never
     // fires on a colon inside a completed pair - the trailing-`:` case above.
     return {
@@ -147,7 +169,7 @@ export function linkCompletions(root, bucket) {
                     },
                 };
             });
-        return { from: word.from + 1, options: [...options, ...TAG_OPTIONS], validFor: /^[^[\]\n]*$/ };
+        return { from: word.from + 1, options: [...options, ...TAG_OPTIONS, ...FONT_OPTIONS], validFor: /^[^[\]\n]*$/ };
     };
 }
 
@@ -282,4 +304,91 @@ export function mentionCompletions(root, also) {
         });
         return { from: at + 1, options, validFor: /^[^\n@]{0,40}$/ };
     };
+}
+
+// Marquee's block directives (Curtis, 2026-09-30: "The ':::' isn't triggering anything yet and it
+// has a lot to offer"): what `:::` can open at the start of a line, as the renderer draws it
+// (marquee-html-renderer's directive switch, and marquee-css's schemes and layouts). A hand
+// transcription like SPAN_TAGS: a directive Marquee grows costs a completion here, nothing more.
+// `conflict`/`variant` are never typed (the app writes them), `meta` says what the document's own
+// title and tags already do, and `user` is the `@` picker's. Each fill is a whole container with
+// its closer, and a placeholder selected inside it, so the next keystroke writes the content.
+const LAYOUT_SLOTS = {
+    'nav-footer': ['nav', 'main', 'footer'],
+    'two-column-nav-footer': ['nav', 'main', 'right', 'footer'],
+    'three-column-nav-footer': ['nav', 'left', 'main', 'right', 'footer'],
+};
+const SCHEMES = ['noir', 'terminal', 'parchment', 'hotdog-stand'];
+
+/// `head` opens it, `body` fills it, and `pick` is the part of the fill left selected.
+const blockDirectives = () => [
+    { label: ':::center', detail: t('completions.block-center', 'centre what it holds'), head: ':::center', body: 'text' },
+    { label: ':::right', detail: t('completions.block-right', 'align what it holds to the right'), head: ':::right', body: 'text' },
+    { label: ':::left', detail: t('completions.block-left', 'back to the left, inside a centre or a right'), head: ':::left', body: 'text' },
+    { label: ':::spoiler', detail: t('completions.block-spoiler', 'blur a whole passage or picture until pointed at'), head: ':::spoiler', body: 'text' },
+    {
+        label: ':::table',
+        detail: t('completions.block-table', 'a table: a row per line, a cell per [c]…[/c], the first row as headings'),
+        head: ':::table header=row',
+        body: '[c]heading[/c] [c]heading[/c]\n[c]cell[/c] [c]cell[/c]',
+        pick: 'heading',
+    },
+    {
+        label: ':::media',
+        detail: t('completions.block-media', 'size the picture it holds: small, medium, large, full, or pixels'),
+        head: ':::media width=medium',
+        body: 'picture',
+    },
+    ...SCHEMES.map((scheme) => ({
+        label: `:::section scheme=${scheme}`,
+        detail: t('completions.block-scheme', 'a passage in the {scheme} colours', { scheme }),
+        head: `:::section scheme=${scheme}`,
+        body: 'text',
+    })),
+    {
+        label: ':::section font=',
+        detail: t('completions.block-font', 'a passage in one font (the fonts are offered as you type)'),
+        head: ':::section font=serif',
+        body: 'text',
+        pick: 'serif',
+    },
+    ...Object.entries(LAYOUT_SLOTS).map(([layout, slots]) => ({
+        label: `:::page layout=${layout}`,
+        detail: t('completions.block-layout', 'a page laid out in regions: {slots}', { slots: slots.join(', ') }),
+        head: `:::page layout=${layout}`,
+        body: slots.map((slot) => `:::section slot=${slot}\n${slot}\n:::`).join('\n'),
+        pick: slots[0],
+    })),
+];
+
+/// The `:::` picker, at the start of a line (leading whitespace allowed) - a directive opens
+/// only there. Picking writes the whole container and selects its placeholder. On a directive's
+/// own line, after `font=`, it offers the fonts instead.
+export function blockCompletions(context) {
+    const line = context.state.doc.lineAt(context.pos);
+    const before = context.state.sliceDoc(line.from, context.pos);
+    const font = before.match(/^\s*:::(?:page|section)\b.*\bfont=([\w-]*)$/);
+    if (font) {
+        return {
+            from: context.pos - font[1].length,
+            options: Object.entries(FONTS).map(([token, family]) => ({ label: token, detail: family })),
+            validFor: /^[\w-]*$/,
+        };
+    }
+    const opened = before.match(/^(\s*):::([\w-]*)$/);
+    if (!opened) return null;
+    const from = line.from + opened[1].length;
+    const options = blockDirectives().map(({ label, detail, head, body, pick }) => ({
+        label,
+        detail,
+        apply: (view, _completion, _from, to) => {
+            const text = `${head}\n${body}\n:::`;
+            const at = placeholderAt(head, body, pick || body);
+            view.dispatch({
+                changes: { from, to, insert: text },
+                selection: { anchor: from + at, head: from + at + (pick || body).length },
+            });
+        },
+    }));
+    return { from, options, validFor: /^:::[\w-]*$/ };
 }

@@ -43,10 +43,6 @@ federated, unapologetically Old Internet.
   [`2026-08-chain-genesis-roundup.md`](history/2026-08-chain-genesis-roundup.md), the full-chain
   audit — every read whose cost grew with an identity's history, and the rule that came out of
   fixing them.
-- [`NOTES_APP.md`](NOTES_APP.md) — the first application spec: multi-device encrypted notes on
-  the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
-  Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
-  canonical statements graduated to PROJECT_PLAN's Data Layer.
 - Public annotations, books, and peeks/ceilings/pins are sections of `PROJECT_PLAN.md` now
   (their working documents were folded in on 2026-09-06; the moment-by-moment record is
   `HISTORY.md`'s).

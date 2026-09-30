@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1296 phrases across 83 files.
+// 1305 phrases across 84 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -517,6 +517,17 @@ export default {
     // --- node/js/doc/colourpicker.js ---
     'doc.colourpicker.hue-and-shade': 'hue ring and shade triangle',
     'doc.colourpicker.hex': 'colour as hex',
+
+    // --- node/js/doc/completions.js ---
+    'completions.block-center': 'centre what it holds',
+    'completions.block-right': 'align what it holds to the right',
+    'completions.block-left': 'back to the left, inside a centre or a right',
+    'completions.block-spoiler': 'blur a whole passage or picture until pointed at',
+    'completions.block-table': 'a table: a row per line, a cell per [c]…[/c], the first row as headings',
+    'completions.block-media': 'size the picture it holds: small, medium, large, full, or pixels',
+    'completions.block-scheme': 'a passage in the {scheme} colours',
+    'completions.block-font': 'a passage in one font (the fonts are offered as you type)',
+    'completions.block-layout': 'a page laid out in regions: {slots}',
 
     // --- node/js/doc/diffpage.js ---
     'doc.diffpage.your-changes-are-public': 'your changes are public',

@@ -13180,3 +13180,26 @@ Then (Curtis: SERVER.md is a document for operators, not a plan): SERVER.md is b
 the release workflow copies it from there again; SIGNING.md stays in `plans/` ("more instructions for
 me than for anybody"). CHAT.md joined the plans; NOTES_APP.md was deleted in `4684ccd`, and README's
 link to it is still dead, as noted above.
+And README's dead NOTES_APP.md entry is gone (Curtis, 2026-09-30); the notes app's story stays in git and here.
+
+### The typing hints: every font, and `:::` blocks (2026-09-30)
+
+Curtis: the `[` picker hinted at `[font` "but it stops there: I'd like it if it provided one hint for
+each font we offer… could we provide a hint as well for block-level elements? The ':::' isn't
+triggering anything yet and it has a lot to offer."
+
+- **Fonts** (`doc/completions.js`): the single `font=name` entry became one per face - `font=lobster`,
+  the family's own name beside it - filling `[font=lobster]text[/font]` with "text" selected. The
+  list is the renderer's exported `FONTS` (four standard stacks and the 31 shipped faces), so a
+  face Marquee adds is offered with no edit here.
+- **`:::`** at a line's start opens a block picker (`blockCompletions`, in the Writer's editor):
+  centre, right and left; the block spoiler; a table with a heading row; sized media; a section in
+  each of the four colour schemes; a section in one font, the fonts offered as you type after
+  `font=`; and the three page layouts, each with its section slots written out. Every fill is a
+  whole container with its closer and a placeholder selected inside. Not offered: `conflict` and
+  `variant` (the app writes them), `meta` (the document's own title and tags say it), `user` (the
+  `@` picker's). The emoji picker now steps aside for a colon after a colon, which is what had
+  `:::` waking the wrong picker.
+- Where the fill's selection lands is `pure/placeholder.js`, tested: a value at the end of the
+  opening line, a layout's placeholder line (not the `nav` in `nav-footer` or `slot=nav` - the
+  test caught the first), a table's heading inside its cell.

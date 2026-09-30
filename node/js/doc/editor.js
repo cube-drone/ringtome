@@ -37,7 +37,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture, FILES_BUCKET } from './upload.js';
 import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
-import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
+import { blockCompletions, emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
@@ -432,6 +432,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                     linkCompletions(root, bucket),
                     mediaCompletions(root, bucket),
                     mentionSource,
+                    blockCompletions,
                 ]}
                 initialSelection=${recallCursor(root, docId)}
                 caret=${caret}
