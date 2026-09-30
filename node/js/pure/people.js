@@ -6,20 +6,21 @@
 // the ledger holds. Values in, values out; the reactive plumbing lives in apps/people.js.
 
 import { bandOrdinal } from './contact.js';
+import { byRecentActivity } from './heartbeat.js';
 
 /// The two orderings the shelf offers. Both descend (most first); the tie-break is the root,
 /// so two same-scored contacts never shuffle between renders or devices.
-export const PEOPLE_SORTS = [{ key: 'trust' }, { key: 'interest' }]; // words: apps/people.js SORT_WORDS
+export const PEOPLE_SORTS = [{ key: 'trust' }, { key: 'interest' }, { key: 'recent' }]; // words: apps/people.js SORT_WORDS
 
 /// Order contact rows by one fact, descending, blocked personas sinking to the bottom
 /// regardless (a blocked contact is still YOURS to see and unblock - hidden would mean
 /// unfindable - but it never outranks the living relationships).
+/// `recent` (2026-09-29) orders by their last heartbeat instead: newest first, the never-seen last.
 export function sortContacts(rows, by) {
     const score = (r) => bandOrdinal((r.facts || {})[by]) ?? 0;
     const blocked = (r) => ((r.facts || {}).blocked === 'yes' ? 1 : 0);
-    return [...(rows || [])].sort(
-        (a, b) => blocked(a) - blocked(b) || score(b) - score(a) || (a.root < b.root ? -1 : 1)
-    );
+    const rank = by === 'recent' ? (a, b) => byRecentActivity(a.last_active, b.last_active) : (a, b) => score(b) - score(a);
+    return [...(rows || [])].sort((a, b) => blocked(a) - blocked(b) || rank(a, b) || (a.root < b.root ? -1 : 1));
 }
 
 /// How many rows the shelf renders before "show more". The search-first rule (settled

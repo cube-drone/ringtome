@@ -7399,6 +7399,10 @@ struct ContactRow {
     /// ...and their banner's (2026-09-28: the People app's rows wear it).
     #[serde(skip_serializing_if = "Option::is_none")]
     banner: Option<String>,
+    /// Their last heartbeat's UTC date (heartbeat.rs, 2026-09-29): "active today", and the People
+    /// page's "recent activity" order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_active: Option<String>,
     /// The ledger's facts for them, as written (trust, interest, interest_rebroadcasts,
     /// edges_public, blocked, nickname - and whatever future dials add).
     facts: std::collections::BTreeMap<String, String>,
@@ -7457,6 +7461,7 @@ async fn contact_rows(
                 name: byline.name,
                 avatar: byline.avatar,
                 banner: byline.banner,
+                last_active: byline.last_active,
                 facts,
             }
         })

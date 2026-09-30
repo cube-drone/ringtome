@@ -139,6 +139,8 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
         .await
         .map_err(AppError::Internal)?;
     let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
+    // The persona did something here, signed in: today's heartbeat, once (heartbeat.rs).
+    crate::heartbeat::note(state, root_hex);
     Ok(Store {
         db,
         root,

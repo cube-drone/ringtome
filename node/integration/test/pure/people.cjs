@@ -11,8 +11,8 @@ before(async () => {
 const row = (root, facts) => ({ root, facts });
 
 describe('the People shelf', () => {
-    it('offers the two orderings: trust and interest', () => {
-        assert.deepEqual(PEOPLE_SORTS.map((s) => s.key), ['trust', 'interest']);
+    it('offers the orderings: trust, interest and recent activity', () => {
+        assert.deepEqual(PEOPLE_SORTS.map((s) => s.key), ['trust', 'interest', 'recent']);
     });
 
     it('orders by the chosen fact, descending', () => {
@@ -25,6 +25,16 @@ describe('the People shelf', () => {
     it('missing or garbage facts score zero, and ties break by root - stable everywhere', () => {
         const rows = [row('cc', {}), row('aa', { trust: 'what' }), row('bb', { trust: 'none' })];
         assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['aa', 'bb', 'cc']);
+    });
+
+    it('recent activity: the newest heartbeat first, the never-seen after, blocked still last (2026-09-29)', () => {
+        const rows = [
+            { ...row('aa', {}), last_active: '2026-09-01' },
+            { ...row('bb', {}) },
+            { ...row('cc', { blocked: 'yes' }), last_active: '2026-09-29' },
+            { ...row('dd', {}), last_active: '2026-09-28' },
+        ];
+        assert.deepEqual(sortContacts(rows, 'recent').map((r) => r.root), ['dd', 'aa', 'bb', 'cc']);
     });
 
     it('blocked personas sink to the bottom regardless of score - visible, never outranking', () => {

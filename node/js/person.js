@@ -30,6 +30,7 @@ import { speakable, toBase58 } from './speakable.js';
 import { identityAddress, viaHints } from './pure/portable.js';
 import { personaHue, displayNames, signalLevel } from './pure/person.js';
 import { identiconUri } from './pure/identicon.js';
+import { daysSince } from './pure/heartbeat.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import {
@@ -74,6 +75,7 @@ export function usePerson(root, { current, profile: given } = {}) {
         myRoot,
     ]);
     const myBanner = useLive(() => (isYou ? openMirror(myRoot).profile.get('banner') : null), [isYou, myRoot]);
+    const myHeartbeat = useLive(() => (isYou ? openMirror(myRoot).profile.get('heartbeat') : null), [isYou, myRoot]);
 
     // The last resort: a stranger, no ledger row, no profile handed down. One fetch.
     const [fetched, setFetched] = useState(null);
@@ -107,6 +109,10 @@ export function usePerson(root, { current, profile: given } = {}) {
     const banner = isYou
         ? (myBanner && myBanner.value) || ''
         : fromProfile(source && source.fields, 'banner') || (contactRow && contactRow.banner) || '';
+    // Their last heartbeat, a UTC date (heartbeat.rs, 2026-09-29): "active today".
+    const lastActive = isYou
+        ? (myHeartbeat && myHeartbeat.value) || ''
+        : fromProfile(source && source.fields, 'heartbeat') || (contactRow && contactRow.last_active) || '';
 
     // How to reach them, as the node knows it (idface.rs computes it honestly: a persona it
     // hosts hints itself and their peers; a foreign one hints whatever actually reached
@@ -140,6 +146,7 @@ export function usePerson(root, { current, profile: given } = {}) {
         banner,
         bannerUrl: banner && !blocked ? `/id/${root}/docs/${banner}/body` : '',
         bio,
+        lastActive,
         hue: personaHue(root),
         words,
         names,
@@ -149,6 +156,19 @@ export function usePerson(root, { current, profile: given } = {}) {
         href: root ? personHref(root) : '',
     };
 }
+
+/// When a persona last used the app, as a date never a time (heartbeat.rs, Curtis 2026-09-29).
+const ActiveLine = ({ date }) => {
+    const days = daysSince(date, Date.now());
+    if (days === null) return null;
+    const said =
+        days === 0
+            ? t('person.active-today', 'active today')
+            : days === 1
+              ? t('person.active-yesterday', 'active yesterday')
+              : t('person.active-days-ago', 'active {n} days ago', { n: days });
+    return html`<p class="person-card-active" title=${date}>${said}</p>`;
+};
 
 /// A persona's face as a picture and a colour - what the dock and the launcher wear on the
 /// persona's own tile (Curtis, 2026-09-27): their picture, or the identicon their key draws, and
@@ -372,6 +392,7 @@ export const PersonCard = ({ root, current, profile, you, children, beside = nul
             ${/* What follows your relationship (2026-09-28: who you know that trusts or follows them). */ ''}
             ${after}
             ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
+            <${ActiveLine} date=${person.lastActive} />
         </div>
     `;
 };

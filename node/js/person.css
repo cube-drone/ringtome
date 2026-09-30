@@ -287,6 +287,13 @@
 
 /* Their own words about themselves, in a frame of their own - so the bio reads as something
    they wrote rather than as more of the page's chrome. */
+/* When they last used the app, as a date (heartbeat.rs, 2026-09-29): a quiet line, never a time. */
+.person-card-active {
+    margin: 0.6rem 0 0;
+    color: var(--faint);
+    font-size: 0.8rem;
+}
+
 .person-card-bio {
     white-space: pre-wrap;
     color: var(--ink-soft);

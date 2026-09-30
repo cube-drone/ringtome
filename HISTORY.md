@@ -12818,3 +12818,64 @@ goes dark, and eve enters and reads bea's and cal's lines off their own nodes. I
 empty floor, until the reach pair carried the endpoints. The proto unit test pins the pair's round
 trip, a full answer within one frame, and both caps. CHAT.md, ruling 4 carries a note of what was
 built.
+
+## 2026-09-29: Horse-Based Currencies, on paper
+
+HORSE_BASED_CURRENCIES.md is a design draft for HorseBucks and the currencies after them. Nothing is
+built. Curtis settled:
+- **No transfers,** so nothing needs consensus.
+- **Mantissa-and-exponent numbers,** for the economies that will be broken.
+- **Wealth gates travel with the plaintext** and are honoured by the reader's own node. No proof of
+  wealth: a forged ledger is as easy as a forged number.
+- **A public heartbeat once per day per computer,** instead of a 15-minute private ledger. That one
+  would have shown readers a whole activity history and cost tens of thousands of entries a year.
+- **Other people's reactions count as earnings** ("all of this stuff is easy to farm").
+- **Currencies beyond HorseBucks** that obey the same rules but never convert implicitly.
+
+The rest is proposal, and marked so:
+- A balance is a fold over the persona's own chain that may go negative and is never rolled back.
+- Interest is measured in HorseTicks, the chain's own deterministic order, since there's no shared
+  clock.
+- Exchanges are single entries with two legs.
+- Two roads to a best-guess DAU: a visible-heartbeat floor, and an opt-in aggregate ceiling.
+
+README lists the document; NEXT_STEPS points at it.
+
+The same day, Curtis set the economy's numbers, and HORSE_BASED_CURRENCIES.md records them:
+- **Earning rates:** words, images, strokes, follows, chat, reactions given and received, and
+  heartbeats.
+- **A publication bonus:** the private amounts again, plus a size-scaled bonus from 100 words up.
+  The doc proposes a formula: a quadratic ramp meeting a line at 300.
+- **hrseBank™:** the ledger app, which shows where every amount came from.
+- **HorseBonds:** at least 2,000 H$, 1% per heartbeat day, returning the price after 100 days.
+  Days are heartbeat days, since there's no clock.
+- **Sketches:** tag stocks and hay futures, which need prices every node derives alike.
+
+Open in the doc: guards against follow/unfollow loops, takedown-and-republish, and many-computer
+heartbeats; what the bond's 1% compounds on; and debt's rate.
+Settled the same day: a HorseBond pays **simple** interest, 1% of the purchase price per heartbeat
+day into the bank, because paying out means it never grows. Compounding is the player's job:
+sweeping the payouts into the next bond.
+Also settled: the three anti-farming guards (once per follow pair, once per note, once per day per
+persona). The doc proposes measuring a work by what's new in it (distinct three-word shingles,
+distinct picture hashes, distinct stroke shapes) rather than by compression ratio, whose output can
+shift between library versions.
+Then the numbers changed: balances are exact **bigints** (in horsepennies, proposed), and the
+mantissa-and-exponent notation is display only. At 18 significant digits, a squidjillionaire's
+2,000 H$ bond cost and paid nothing, lost below the precision floor. The one-tick-per-day guard
+bounds compounding (a century of daily doubling is a 4.5 KB integer), so exact is affordable and
+the same on every machine.
+Also settled: debt compounds at 2% per heartbeat day. Proposed: the magnitudes past the real
+number names are "jillions", named from the pinned 1,296-word list by stepping through it with a
+stride coprime with its length (`WORDS[(799 × n) mod 1296]`), so every magnitude gets its own
+word: acidjillion, poutjillion, deskjillion, and so on. Open: whether the jillions start after
+decillion or after centillion. HorseBankruptcy is noted for later.
+Settled: the jillions start after centillion. Curtis turned down the report-to-Prime DAU road as
+against decentralized policy, in favour of every node estimating DAU from the nodes it talks to,
+shown as a hit counter under the sign-in. The doc proposes a gossiped daily HyperLogLog sketch
+(1 KB, merged by per-register maximum, a persona on two computers counted once, no lists of who
+was active) over a new fragment pair.
+Heartbeat rulings: a persona's card shows the date of their last heartbeat, never a time, and
+heartbeats are always on. The build order is heartbeats, then network DAU (with a graph over time),
+then HorseBucks. And the balance goes in the quickbar's bottom-right corner, right of the clock,
+counting up in real time off the live stream, with typing counted ahead between saves.

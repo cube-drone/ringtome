@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1199 phrases across 76 files.
+// 1203 phrases across 76 files.
 export default {
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
@@ -258,6 +258,7 @@ export default {
     // --- node/js/apps/people.js ---
     'apps.people.sort-by-trust': 'by trust',
     'apps.people.sort-by-interest': 'by interest',
+    'apps.people.sort-by-recent-activity': 'by recent activity',
     'apps.people.filter-or-paste-an-address': 'filter, or paste an address…',
     'apps.people.type-to-narrow-the-shelf': 'search or paste an address',
     'apps.people.people-who-are-also-me': 'people who are also me',
@@ -749,6 +750,9 @@ export default {
     'panes.no-tags-yet': 'no tags yet',
 
     // --- node/js/person.js ---
+    'person.active-today': 'active today',
+    'person.active-yesterday': 'active yesterday',
+    'person.active-days-ago': 'active {n} days ago',
     'person.chat-with-them-privately': 'chat with them, privately',
     'person.opening': 'opening…',
     'person.chat': 'chat',

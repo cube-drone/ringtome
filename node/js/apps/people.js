@@ -19,10 +19,11 @@ import { tagCounts, rowsTagged } from '../pure/contacttags.js';
 
 const html = htm.bind(h);
 
-/// The shelf's two orderings (pure/people.js keeps the keys), translatable.
+/// The shelf's orderings (pure/people.js keeps the keys), translatable.
 const SORT_WORDS = {
     trust: () => t('apps.people.sort-by-trust', 'by trust'),
     interest: () => t('apps.people.sort-by-interest', 'by interest'),
+    recent: () => t('apps.people.sort-by-recent-activity', 'by recent activity'),
 };
 
 /// People's answer to the search bar, riding the same header slot as every other app's -

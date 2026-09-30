@@ -64,6 +64,11 @@ federated, unapologetically Old Internet.
   its strokes, undo is a recorded removal, and two histories merge by putting both sets of strokes
   together (on the node, held to the browser by shared test vectors); copies and publications are
   pictures of it.
+- [`HORSE_BASED_CURRENCIES.md`](HORSE_BASED_CURRENCIES.md) — HorseBucks and the other currencies:
+  never transferable, a balance is a fold over the persona's own ledger that may go negative and is
+  never rolled back, interest measured in HorseTicks rather than time, exact bigint balances shown in broken-number notation,
+  wealth-gated posts honoured by the reader's own node, and a daily public heartbeat. A design draft
+  (2026-09-29); nothing built.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
   surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
   canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match

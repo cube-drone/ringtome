@@ -39,6 +39,7 @@ pub mod builtin;
 pub mod chat;
 pub mod files;
 pub mod fold;
+pub mod heartbeat;
 pub mod identity;
 pub mod inbox;
 pub mod ingest;
