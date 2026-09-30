@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1294 phrases across 82 files.
+// 1296 phrases across 83 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -842,6 +842,7 @@ export default {
     'person.chat-with-them-privately': 'chat with them, privately',
     'person.opening': 'opening…',
     'person.chat': 'chat',
+    'person.rss-title': 'follow their posts in a feed reader (RSS)',
     'person.address': 'address',
     'person.see-this-personas-page': "see this persona's page",
     'person.copied': 'copied!',
@@ -1445,6 +1446,9 @@ export default {
 
     // --- node/src/registration/routes.rs ---
     'registration.routes.unknown-mode': 'sign-ups are open, password, or closed',
+
+    // --- node/src/rss.rs ---
+    'rss.no-such-persona-here': 'no such persona here',
 
     // --- node/src/shell.rs ---
     'shell.only-the-desktop-app-saves-files': 'only the desktop app saves files this way',

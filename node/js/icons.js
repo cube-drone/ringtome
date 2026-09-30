@@ -8,6 +8,7 @@ import {
     Archive,
     PiggyBank,
     CrownSimple,
+    Rss,
     Bank,
     ChartLine,
     ChatsCircle,
@@ -222,6 +223,8 @@ export const Icons = {
     bank: PiggyBank,
     // a node administrator's pin to the server's front page (frontdoor.js, 2026-09-30)
     superPin: CrownSimple,
+    // a person's RSS, in their page's top right corner (rss.rs, 2026-09-30)
+    rss: Rss,
     // a hrseBond in the market: the treasury's columns (2026-09-30)
     bond: Bank,
     people: UsersThree,

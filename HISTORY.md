@@ -13140,3 +13140,28 @@ no other personas the tile keeps its name as before.
 Then: a click on your own tile left it focused, and `:focus-within` held the stack open for good
 (the dock never goes away to take the focus with it). Only a keyboard focus opens it now
 (`:has(:focus-visible)`), which a mouse click doesn't set.
+
+### A person's RSS (2026-09-30)
+
+Curtis: "for each user page, can we create a rss endpoint? We can link it with the phosphor RSS
+symbol in the top-right corner of their user page, and it can contain… all the stuff they've posted."
+
+- **`GET /ringtome/user/{seg}/rss.xml`** (`rss.rs`), beside the page it describes: RSS 2.0 of the
+  newest 50 posts - notes, drawings, pictures, books, rooms, replies; not their shares, which are
+  other people's words - each with its title, its post page as link and guid, its date (RFC 822,
+  by hand: the node has no date crate), and a description of escaped HTML: the picture it carries
+  (its own thumb, else the first its words embed) over the author's description label, else its
+  words, up to 4,000 characters. Only for a persona this node hosts, as the page's own head is;
+  never a sealed post. Links use `public_url`, else the Host the reader asked.
+- `post_page`'s title / description / words / picture reading moved into `idface::post_words`, so
+  the head and the feed say a post the same way.
+- **Autodiscovery**: a hosted persona's page head carries `<link rel="alternate"
+  type="application/rss+xml">`.
+- **The button**: Phosphor's Rss on a quiet jagged pill in the person card's top right corner, after
+  your reach on your own page (`.person-card-corner` now holds both, and is what the banner pins).
+- `tests/conventions.rs`: `rss.rs` opens one user db, once per request.
+
+Pinned in rss.cjs: two open posts newest first and the sealed one absent (title and words); the
+channel's name escaped; each item linked to its post; an ampersand in the words escaped once for
+the HTML and again for the XML; an RFC 822 date; the page's head pointing at the feed; a 404 for a
+persona not hosted here.

@@ -69,6 +69,7 @@ pub mod publish;
 pub mod rate_limit;
 pub mod rebroadcast;
 pub mod registration;
+pub mod rss;
 pub mod shell;
 pub mod annotations;
 pub mod attention;
@@ -735,6 +736,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/ringtome/user/{seg}/doc/{doc}/body", get(idface::public_body_route))
         .route("/ringtome/user/{seg}/doc/{doc}/body/{filename}", get(idface::public_body_named_route))
         .route("/ringtome/user/{seg}/doc/{doc}/thumb", get(idface::public_thumb_route))
+        .route("/ringtome/user/{seg}/rss.xml", get(rss::rss_handler))
         .route("/ringtome/user/{seg}", get(idface::idface))
         .route("/ringtome/user/{seg}/{*rest}", get(idface::idface_deep))
         .route("/ringtome", get(ui::homepage))

@@ -249,6 +249,8 @@ fn user_db_opens_are_deliberate() {
         ("identity/routes.rs", 11), // 9: the feed asks the one gate (2026-09-10 pm); 10: the mention gate on a sealed publish reads the seal holder's edges once (2026-09-10); 10 again: a drawing's publish door opens its own persona once per request, as the avatar door does (DRAWING.md, 2026-09-26); 11: the banner door does the same, once per upload (2026-09-28)
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 4),
+        // A person's RSS (2026-09-30): the one persona whose feed was asked for, once per request.
+        ("rss.rs", 1),
         // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request
         // budget, never per candidate; currency is the listing's own stamp.
         ("search.rs", 1),

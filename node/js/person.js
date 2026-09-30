@@ -359,6 +359,14 @@ export const PersonCard = ({ root, current, profile, you, children, beside = nul
                 html`<${ChatWithButton} myRoot=${current.root} root=${root} name=${person.primary} />`}
             </h1>`;
     const others = person.others.length > 0 && html`<p class="person-card-others">${person.others.join(' · ')}</p>`;
+    // Their RSS (rss.rs, 2026-09-30), wherever this node keeps their shelf: in the top right
+    // corner, after whatever else sits there.
+    const rss =
+        person.hosted &&
+        html`<a class="person-rss" href=${`${personHref(root)}/rss.xml`} target="_blank" rel="noopener" title=${t('person.rss-title', 'follow their posts in a feed reader (RSS)')}
+            ><${Icons.rss}
+        /></a>`;
+    const corner = (beside || rss) && html`<span class="person-card-corner">${beside}${rss}</span>`;
     // A person's homepage (Curtis, 2026-09-28): their banner, and over it the picture at twice its
     // size, their name and their other names - on plates, so a black or busy banner cannot swallow
     // them - resting on its bottom edge; whatever follows starts flush beneath it.
@@ -366,7 +374,7 @@ export const PersonCard = ({ root, current, profile, you, children, beside = nul
         ? html`<div class="person-card-hero" style=${banner}>
               <div class="person-card-top">
                   <${PersonHex} person=${person} size="hero" />
-                  ${beside}
+                  ${corner}
               </div>
               ${name}
               ${others}
@@ -374,7 +382,7 @@ export const PersonCard = ({ root, current, profile, you, children, beside = nul
         : html`${/* What sits beside the picture, in the space to its right (2026-09-28: your own reach). */ ''}
               <div class="person-card-top">
                   <${PersonHex} person=${person} size="card" />
-                  ${beside}
+                  ${corner}
               </div>
               ${name}
               ${others}`;

@@ -97,20 +97,20 @@ fn page(title: &str, card: String) -> String {
 /// Is this root hosted by any account on this node? (The shelf, v1: hosting is the only
 /// demand edge that exists - member follows join it when follows do.) The identities table
 /// belongs to identity.rs; this is its question, asked through its door.
-async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool, AppError> {
+pub(crate) async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool, AppError> {
     crate::identity::is_hosted(&state.node_db, root_hex).await
 }
 
 /// The public profile straight off the identity's own db - the public lane, no account in
 /// the question. Absent fields render as absent; a profile-less persona is still a page.
-async fn public_profile(state: &AppState, root_hex: &str) -> Result<Vec<imaol::ProfileField>, AppError> {
+pub(crate) async fn public_profile(state: &AppState, root_hex: &str) -> Result<Vec<imaol::ProfileField>, AppError> {
     let Some(db) = state.user_dbs.get(root_hex).await.map_err(AppError::Internal)? else {
         return Err(AppError::NotFound(crate::msg!("idface.nothing-of-theirs-is-held", "nothing of theirs is held here")));
     };
     imaol::get_profile(&db).await
 }
 
-fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -> Option<&'a str> {
+pub(crate) fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -> Option<&'a str> {
     fields
         .iter()
         .find(|f| f.field == name)
@@ -185,34 +185,10 @@ async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result
     let words_of_name = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
     let fields = public_profile(state, &root_hex).await.unwrap_or_default();
     let author = profile_value(&fields, "name").unwrap_or(&words_of_name).to_string();
-
-    // What it says: the author's own description label, else the start of the words.
-    let labels = crate::annotations::for_posts(state, &[(root_hex.clone(), doc_hex.clone())], None)
-        .await
-        .unwrap_or_default();
-    let described = labels
-        .get(&(root_hex.clone(), doc_hex.clone()))
-        .and_then(|ls| ls.iter().find(|a| a.annotator == root_hex && a.key == "description").map(|a| a.value.clone()));
-    let marquee = crate::record::documents::Format::from_wire(post.format) == crate::record::documents::Format::Marquee;
-    let text = match crate::record::documents::public_head(&db, &doc_id).await? {
-        Some(head) => match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
-            Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
-            _ => String::new(),
-        },
-        None => String::new(),
-    };
-    // A post's picture is the first picture its words embed (Curtis, 2026-09-28): a text post has
-    // no thumbnail of its own - only a picture does.
-    let first_picture = if marquee { first_picture_thumb(&text) } else { None };
-    let words = if marquee { crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text) } else { String::new() };
-    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
-    let excerpt = described.unwrap_or_else(|| clip(&words, HEAD_EXCERPT_CHARS));
-    let title = if post.title.trim().is_empty() {
-        let first: String = words.split(' ').take(9).collect::<Vec<_>>().join(" ");
-        if first.is_empty() { author.clone() } else { first }
-    } else {
-        post.title.clone()
-    };
+    let said = post_words(state, &db, &root_hex, &post, &author).await?;
+    let first_picture = said.picture;
+    let excerpt = said.described.unwrap_or_else(|| clip(&said.words, HEAD_EXCERPT_CHARS));
+    let title = said.title;
 
     let base = state.config.public_url.clone().unwrap_or_default();
     let url = format!("{base}/ringtome/user/{short}/post/{doc_hex}");
@@ -248,6 +224,54 @@ async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result
     ))
 }
 
+/// What a public post says, for the surfaces that describe it from outside - its page's head, its
+/// author's RSS (rss.rs).
+pub(crate) struct PostWords {
+    /// Its title, else its first nine words, else its author's name.
+    pub title: String,
+    /// The author's own description label, when they wrote one.
+    pub described: Option<String>,
+    /// Its words, plain, on one line - empty for anything but a note.
+    pub words: String,
+    /// The first picture its words embed, as a path (Curtis, 2026-09-28: a text post has no
+    /// thumbnail of its own - only a picture does).
+    pub picture: Option<String>,
+}
+
+pub(crate) async fn post_words(
+    state: &AppState,
+    db: &crate::db::Db,
+    root_hex: &str,
+    post: &crate::record::documents::PublicDoc,
+    author: &str,
+) -> Result<PostWords, AppError> {
+    let doc_hex = hex::encode(post.doc_id);
+    let labels = crate::annotations::for_posts(state, &[(root_hex.to_string(), doc_hex.clone())], None)
+        .await
+        .unwrap_or_default();
+    let described = labels
+        .get(&(root_hex.to_string(), doc_hex))
+        .and_then(|ls| ls.iter().find(|a| a.annotator == root_hex && a.key == "description").map(|a| a.value.clone()));
+    let marquee = crate::record::documents::Format::from_wire(post.format) == crate::record::documents::Format::Marquee;
+    let text = match crate::record::documents::public_head(db, &post.doc_id).await? {
+        Some(head) => match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
+            Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+            _ => String::new(),
+        },
+        None => String::new(),
+    };
+    let picture = if marquee { first_picture_thumb(&text) } else { None };
+    let words = if marquee { crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text) } else { String::new() };
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let title = if post.title.trim().is_empty() {
+        let first: String = words.split(' ').take(9).collect::<Vec<_>>().join(" ");
+        if first.is_empty() { author.to_string() } else { first }
+    } else {
+        post.title.clone()
+    };
+    Ok(PostWords { title, described, words, picture })
+}
+
 /// The thumbnail of the first public picture a post's words embed, as a path - whosever it is.
 fn first_picture_thumb(words: &str) -> Option<String> {
     let doc = marquee_parser::parse(words).ok()?;
@@ -266,7 +290,7 @@ fn first_picture_thumb(words: &str) -> Option<String> {
 }
 
 /// At most `max` characters of `s`, cut at a word and marked when cut.
-fn clip(s: &str, max: usize) -> String {
+pub(crate) fn clip(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
     }
@@ -416,6 +440,13 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
     );
     if !bio.is_empty() {
         head.push_str(&format!("\n<meta property=\"og:description\" content=\"{}\">\n<meta name=\"description\" content=\"{}\">", esc(&bio), esc(&bio)));
+    }
+    // Their RSS (rss.rs, 2026-09-30), for a reader that looks for it on the page.
+    if hosted {
+        head.push_str(&format!(
+            "\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"{}\" href=\"{base}/ringtome/user/{short}/rss.xml\">",
+            esc(&name)
+        ));
     }
     if let Some(doc) = profile_value(&fields, "avatar") {
         head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}/id/{}/docs/{}/thumb\">", esc(&base), esc(&speak), esc(doc)));

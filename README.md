@@ -69,6 +69,10 @@ federated, unapologetically Old Internet.
   never rolled back, interest measured in HorseTicks rather than time, exact bigint balances shown in broken-number notation,
   wealth-gated posts honoured by the reader's own node, and a daily public heartbeat. A design draft
   (2026-09-29); nothing built.
+- [`RSS.md`](RSS.md) — hrseRSS, a feed reader: subscriptions on the private chain, items fetched
+  once per node into a shared cache and translated to Marquee (never rendered as HTML), images
+  through the node, a merged newest-first view, and a rebroadcast that carries its source. A design
+  draft (2026-09-30); nothing built.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
   surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
   canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match

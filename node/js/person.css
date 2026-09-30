@@ -186,8 +186,8 @@
     align-self: stretch;
     align-items: flex-end;
 }
-/* Your reach, in the banner's top right corner. */
-.person-card-hero .person-reach {
+/* The top right corner (your reach, their RSS), pinned to the banner's. */
+.person-card-hero .person-card-corner {
     position: absolute;
     top: 0.8rem;
     right: 1rem;
@@ -210,6 +210,31 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
+}
+
+/* What sits in the card's top right corner, in a row: your reach, then their RSS. */
+.person-card-corner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Their RSS (2026-09-30): the glyph on a quiet jagged pill, like the reach beside it. */
+.person-rss {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    font-size: 1.1rem;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    --j: 0.3em;
+    clip-path: var(--jag-1);
+    text-decoration: none;
+}
+
+.person-rss:hover,
+.person-rss:focus-visible {
+    color: var(--ink);
 }
 
 /* Your reach - public follows / fetches - a quiet pill; each number explains itself on hover. */
