@@ -108,10 +108,27 @@ body {
     min-width: 0;
 }
 
-/* The stranger's shell (UNAUTHED.md, slice 2): the title is a link home, dressed as the title. */
-.app-header-link {
-    color: inherit;
-    text-decoration: none;
+/* The stranger's shell's title (2026-09-30): in the band on a wide window; under 900px it leaves the
+   band - where the search and the home button want the room - for the top of the scrolling page,
+   centred. */
+.outside-page-title {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .outside-band-title {
+        display: none;
+    }
+
+    .outside-page-title {
+        display: block;
+        margin: 0.4rem 0 1rem;
+        text-align: center;
+        font-family: "Press Start 2P", monospace;
+        font-size: 1.2rem;
+        line-height: 1.5;
+        color: var(--ink);
+    }
 }
 
 .app-header-title {
@@ -257,6 +274,22 @@ body {
     gap: 0.3rem;
     min-width: 0;
     position: relative;
+}
+
+/* A narrow window lays the search over the end of the title (the middle track grows to the box,
+   and the box is centred on it). The title fades into the band on the way under, rather than
+   stopping dead at the box's edge (Curtis, 2026-09-30: "what looks ugly is how harsh the cut-off
+   is"): a band-coloured fade on the box's left, the band's full height. With room to spare it lies
+   over empty band, ink on ink, and shows nothing. */
+.app-header-search-box::before {
+    content: '';
+    position: absolute;
+    right: 100%;
+    top: -0.35rem;
+    bottom: -0.45rem;
+    width: 2.5rem;
+    background: linear-gradient(to right, transparent, var(--ink) 85%);
+    pointer-events: none;
 }
 
 .app-header-search {

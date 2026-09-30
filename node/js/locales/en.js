@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1318 phrases across 85 files.
+// 1317 phrases across 85 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -828,10 +828,9 @@ export default {
     'index.loading': 'Loading…',
     'index.looking-that-up': 'looking that up…',
     'index.people': 'people',
+    'index.feed': 'feed',
     'index.search-this-node': 'search this node…',
     'index.home': 'home',
-    'index.feed': 'feed',
-    'index.sign-in': 'sign in',
     'index.loading-2': 'Loading…',
 
     // --- node/js/links.js ---

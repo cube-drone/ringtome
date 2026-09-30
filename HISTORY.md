@@ -13387,3 +13387,38 @@ Then (Curtis: "Can the pane heads also carry the pane icon?"): `PaneHead` takes 
 before the name, and every column passes the one its rail wears - tags, the list, the tree, publish,
 links, the bank's market and portfolio, chat's rooms, the feed's composer, a drawing's tools and
 layers - so a column and its tucked tab are visibly the same thing. Seen in headless Chrome.
+
+The app header's title fades under the search box instead of stopping dead at its edge (Curtis,
+2026-09-30: "when I ensmallen the window, the search bar sits overtop the title text: that's probably
+fine, but what looks ugly is how harsh the cut-off is"). In a narrow window the header's middle track
+grows to the box and the box, centred on it, overlaps the title; `.app-header-search-box::before` is
+now a 2.5rem fade to the band's ink on the box's left, the band's full height. With room to spare it
+lies over empty band and shows nothing; just before an overlap it softens the title's last letters.
+Seen in headless Chrome at 620 and 700px.
+
+The stranger's header, for phones (Curtis, 2026-09-30: on mobile "the home, feed, people, and sign in
+buttons ALSO overlap with the site title AND the search bar… the whole site works fine with just a
+home button up here"):
+
+- **One button**, home, and not on the front page, which is home. Feed and people are reached from
+  the front page's own "see more…" links, as they already were.
+- **No sign-in page**: the sign-in is the top of the front page, so the button that went to
+  `/ringtome` is gone. Those addresses (and `/home`, `/in`) still show the front page rather than
+  redirecting, so a deep link opened signed-out signs in there and goes on where it was going. The
+  empty feed's "sign in, or make a persona here" goes to `/`.
+- **Titles say the page**: "feed" on the feed (the site's name only on the front page), "people",
+  a person's name. The title is text now, no longer a link to the feed.
+- **Under 900px the title leaves the band** (`.outside-band-title`) for a centred Press Start `h1`
+  at the top of the scrolling page (`.outside-page-title`), leaving the band to the search and the
+  button.
+- While there: the sign-in box's four tabs wrap on a phone instead of running off its edge.
+
+Seen in headless Chrome at a true 400px (device emulation: a headless window won't go under 500)
+and at 1300px, the front page and the feed.
+Then (Curtis: "can we bring back the feed and people links on the homepage title bar? It immediately
+feels a little harder to navigate without them"): the front page's band carries the feed and people
+buttons - it has no search, and on a phone no title, so they fit - and every other page keeps the one
+home button. Seen at 400 and 1300px.
+The front page's shelf headings - "posted lately", "pinned here", "lately on this node" - are centred
+and a size up, 1rem to 1.3rem (Curtis, 2026-09-30); the pinned one's crown centres with its words.
+And the shelves' "see more..." links are centred under them and a size up, 0.9rem to 1.1rem.

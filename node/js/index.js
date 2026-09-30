@@ -691,7 +691,10 @@ const Outside = ({ session }) => {
     const loc = useLocation();
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
-    // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed.
+    // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed. The
+    // addresses that were the sign-in page are the front page too (2026-09-30: "the sign in page
+    // doesn't need to exist any more at all"), and not redirected: a deep link opened signed-out
+    // signs in there and goes on to where it was going.
     const signingIn =
         loc.path === '/' ||
         loc.path === '/home' ||
@@ -700,12 +703,26 @@ const Outside = ({ session }) => {
         loc.path === LAUNCHER ||
         (loc.path.startsWith(`${LAUNCHER}/`) && !loc.path.startsWith(`${LAUNCHER}/user/`));
     const onPeople = loc.path === '/people';
-    // The place's own name (2026-09-30: Horse Drawing Tycoon 2 unless its administrators chose one).
+    const onFeed = loc.path === '/feed';
+    // The place's own name on the front page (2026-09-30: Horse Drawing Tycoon 2 unless its
+    // administrators chose one); each other page says what it is.
     const front = useFront();
-    const title = loc.path.startsWith('/ringtome/user/') || loc.path.startsWith('/@') ? idTitle || '' : onPeople ? t('index.people', 'people') : frontName(front);
+    const title =
+        loc.path.startsWith('/ringtome/user/') || loc.path.startsWith('/@')
+            ? idTitle || ''
+            : onPeople
+              ? t('index.people', 'people')
+              : onFeed
+                ? t('index.feed', 'feed')
+                : frontName(front);
+    // One button, home (Curtis, 2026-09-30: on a phone the four overlapped the title and the search,
+    // and "the whole site works fine with just a home button"), and not on the front page, which is
+    // home - where the feed and people are instead (the same day: "it immediately feels a little
+    // harder to navigate without them"); the front page has no search, so the band has the room.
+    // Under 900px the title leaves the band for the top of the page (`.outside-page-title`).
     const header = html`<header class="app-header">
         <span class="app-header-lead">
-            <a class="app-header-title app-header-link" href="/feed">${title}</a>
+            <span class="app-header-title outside-band-title">${title}</span>
         </span>
         ${!signingIn &&
         html`<span class="app-header-search-box">
@@ -718,31 +735,28 @@ const Outside = ({ session }) => {
             />
         </span>`}
         <span class="app-header-actions">
-            <button
-                class="app-header-btn"
-                title=${t('index.home', 'home')}
-                onClick=${() => loc.route('/')}
-            ><${Icons.home} /></button>
-            <button
-                class="app-header-btn"
-                title=${t('index.feed', 'feed')}
-                onClick=${() => loc.route('/feed')}
-            ><${Icons.feed} /></button>
-            <button
-                class="app-header-btn"
-                title=${t('index.people', 'people')}
-                onClick=${() => loc.route('/people')}
-            ><${Icons.people} /></button>
-            <button
-                class="app-header-btn"
-                title=${t('index.sign-in', 'sign in')}
-                onClick=${() => loc.route(LAUNCHER)}
-            ><${Icons.signIn} /></button>
+            ${signingIn
+                ? html`<button
+                          class="app-header-btn"
+                          title=${t('index.feed', 'feed')}
+                          onClick=${() => loc.route('/feed')}
+                      ><${Icons.feed} /></button>
+                      <button
+                          class="app-header-btn"
+                          title=${t('index.people', 'people')}
+                          onClick=${() => loc.route('/people')}
+                      ><${Icons.people} /></button>`
+                : html`<button
+                      class="app-header-btn"
+                      title=${t('index.home', 'home')}
+                      onClick=${() => loc.route('/')}
+                  ><${Icons.home} /></button>`}
         </span>
     </header>`;
     return html`<div class="app-frame">
         ${header}
         <div class="app-frame-inner">
+            ${title && html`<h1 class="outside-page-title">${title}</h1>`}
             <${Router}>
                 <${FrontDoor} path="/" session=${session} />
                 <${NodeFeed} path="/feed" current=${null} searchQuery=${query} />

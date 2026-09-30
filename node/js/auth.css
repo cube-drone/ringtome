@@ -128,6 +128,7 @@
 
 .welcome-tabs {
     display: flex;
+    flex-wrap: wrap; /* four across don't fit a phone: they wrap rather than run off the box */
     gap: 0.5rem;
     justify-content: center;
     margin-bottom: 1.2rem;
@@ -403,17 +404,21 @@ a.download-version:focus-visible {
     margin-top: 2rem;
 }
 
+/* The shelves' headings - posted lately, pinned here, lately on this node - centred and a size up
+   (Curtis, 2026-09-30), so each shelf announces itself. */
 .front-shelf-title {
-    font-size: 1rem;
+    font-size: 1.3rem;
     color: var(--muted);
     font-weight: 600;
-    margin: 0 0 0.8rem;
+    text-align: center;
+    margin: 0 0 1rem;
 }
 
 /* Super-pinned posts (2026-09-30): the crown beside the words. */
 .front-pins-title {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.35rem;
 }
 
@@ -441,11 +446,15 @@ a.download-version:focus-visible {
     white-space: nowrap;
 }
 
+/* A shelf's "see more...", centred under it and a size up, like its heading (2026-09-30). Its own
+   width, centred as a block and as a flex item alike (the posts shelf is a flex column). */
 .front-more {
-    display: inline-block;
-    margin-top: 0.8rem;
+    display: block;
+    width: fit-content;
+    margin: 1rem auto 0;
+    align-self: center;
     color: var(--teal-deep);
-    font-size: 0.9rem;
+    font-size: 1.1rem;
 }
 
 .front-rule {
