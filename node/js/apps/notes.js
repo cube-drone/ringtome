@@ -383,7 +383,12 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
     // widths. `startsTucked` is the app's own opening posture (Writer begins as a plain list,
     // its tag column and tree waiting as rails); a stored preference always wins over it.
-    const { tucked, toggleTuck } = useColTucks(root, app.id, app.startsTucked);
+    // In a narrow window (panes.js) the list is the tab it opens on while no note is chosen, and
+    // choosing one closes the tab to show it.
+    const { tucked, toggleTuck, settle, tab } = useColTucks(root, app.id, app.startsTucked, { lead: selected ? null : 'list' });
+    useEffect(() => {
+        if (selected) settle();
+    }, [selected, settle]);
     const tagsTucked = tucked.has('tags');
     const treeTucked = tucked.has('tree');
     const publishTucked = tucked.has('publish');
@@ -461,11 +466,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
 
     return html`
         <div class="notes">
-            <div class="notes-columns" style=${colStyle}>
+            <div class="notes-columns panes" style=${colStyle}>
                 ${feat.tagColumn &&
                 (tagsTucked
                     ? html`<${Rail} icon=${Icons.tag} label=${t('apps.notes.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
-                    : html`<${TagColumn}
+                    : html`${tab('tags', Icons.tag, t('apps.notes.tags', 'tags'))}<${TagColumn}
                           cloud=${tagCloud}
                           active=${tagFilter}
                           onToggleTag=${toggleTag}
@@ -474,7 +479,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 ${tucked.has('list')
                     ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
                     : app.everything
-                    ? html`<aside class="notes-list notes-list-browser">
+                    ? html`${tab('list', Icons.list, nouns)}<aside class="notes-list notes-list-browser">
                     <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     <${FileBrowser}
                         root=${root}
@@ -490,7 +495,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                         empty=${!docs ? '' : hits === null ? t('apps.notes.nothing-here-yet', 'nothing here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
                     />
                 </aside>${resizer('list')}`
-                    : html`<aside class="notes-list">
+                    : html`${tab('list', Icons.list, nouns)}<aside class="notes-list">
                     <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     ${/* The everything-view is for finding, not making - new things are born
                         in their own apps, where they land in a real notebook. */ ''}
@@ -533,7 +538,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 ${feat.tree &&
                 (treeTucked
                     ? html`<${Rail} icon=${Icons.tree} label=${t('apps.notes.tree', 'tree')} onClick=${() => toggleTuck('tree')} />`
-                    : html`<${WikiTree}
+                    : html`${tab('tree', Icons.tree, t('apps.notes.tree', 'tree'))}<${WikiTree}
                           root=${root}
                           bucket=${bucket}
                           selected=${selected}
@@ -549,7 +554,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 ${feat.bookColumn &&
                 (publishTucked
                     ? html`<${Rail} icon=${Icons.book} label=${t('apps.notes.publish', 'publish')} onClick=${() => toggleTuck('publish')} />`
-                    : html`<${BookColumn}
+                    : html`${tab('publish', Icons.book, t('apps.notes.publish', 'publish'))}<${BookColumn}
                           root=${root}
                           bucket=${bucket}
                           docs=${(docs || []).filter((d) => bucketHolds(d, app, bucket))}
@@ -558,11 +563,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                           onTuck=${() => toggleTuck('publish')}
                           onSelect=${select}
                       />${resizer('publish')}`)}
-                ${/* What links to the open note, and what it links to (2026-10-01). */ ''}
+                ${/* What links to the open note, and what it links to (2026-09-30). */ ''}
                 ${feat.linkColumn &&
                 (linksTucked
                     ? html`<${Rail} icon=${Icons.link} label=${t('apps.notes.links', 'links')} onClick=${() => toggleTuck('links')} />`
-                    : html`<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)}
+                    : html`${tab('links', Icons.link, t('apps.notes.links', 'links'))}<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)}
                 <${RightColumn}
                     root=${root}
                     docId=${selected}

@@ -108,11 +108,63 @@
     border-color: var(--teal);
 }
 
+/* The open tab in a narrow window's strip (panes.js `tab`): still in its place, lifted to the page's
+   own surface and edged in the accent, the way the open divider stands out of a binder. A click
+   closes it. */
+.pane-rail.active {
+    color: var(--teal);
+    background: var(--surface);
+    border-color: var(--teal);
+}
+
 .pane-rail-label {
     writing-mode: vertical-rl;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+}
+
+/* A narrow window (panes.js, Curtis 2026-09-30): the columns become vertical tabs. Every row of
+   columns wears `.panes`; a column is whatever holds a PaneHead, and in a narrow window only the one
+   open tab renders as one - the rest are rails. The rails line up on the left as the tab strip,
+   the resize strips go (there is nothing to share the width with), and while a tab is open it
+   fills the row and everything else in it - the editor, the canvas, the statement, the room -
+   steps aside until it closes. */
+@media (max-width: 900px) {
+    /* The tabs share one strip down the left, each as tall as its name, like the dividers in a
+       binder (Curtis, 2026-09-30): the row runs downward and wraps, so the tabs stack in the first
+       column and whatever fills the page - the open tab, else the main surface - takes the whole
+       height beside them. */
+    .panes.panes {
+        flex-direction: column;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 0.3rem;
+    }
+
+    .panes > .col-resizer {
+        display: none;
+    }
+
+    .panes > .pane-rail {
+        order: -1;
+        align-self: flex-start;
+    }
+
+    .panes.panes > :not(.pane-rail) {
+        flex: 0 0 100%;
+        width: calc(100% - 1.9rem - 0.3rem);
+        max-width: none;
+        min-width: 0;
+        min-height: 0;
+    }
+
+    /* "The row holds an open column" is `> * > .pane-head`, not `> :has(> .pane-head)`: a :has()
+       inside a :has() is invalid CSS, and an invalid selector drops its whole rule, silently
+       (field-found 2026-09-30 - the main surface never stepped aside). */
+    .panes:has(> * > .pane-head) > :not(.pane-rail):not(.col-resizer):not(:has(> .pane-head)) {
+        display: none;
+    }
 }
 
 /* Adjustable column widths: the stylesheet defaults hold until a drag sets the CSS var (per
@@ -138,7 +190,7 @@
 .notes-columns .book-column {
     width: var(--w-publish, 260px);
 }
-/* The Links column (doc/linkcol.js, 2026-10-01): what links to the open note, then what it links
+/* The Links column (doc/linkcol.js, 2026-09-30): what links to the open note, then what it links
    to - one row each, the heading over each list. */
 .notes-columns .links-column {
     width: var(--w-links, 220px);
@@ -617,14 +669,22 @@
     overflow-y: auto;
 }
 
+/* The title on a row of its own, always, and the file chips below it (Curtis, 2026-09-30: "between
+   long titles and an ever-increasing file-chip list, I think that might just need to be how it
+   always works, with the title on top") - once only a narrow editor's arrangement. */
 .reader-head {
     position: relative; /* the metadata dropdown anchors to this */
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: baseline;
     gap: 0.6rem;
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.4rem;
+}
+
+.reader-head .editor-title {
+    flex: 1 1 100%;
 }
 
 /* Every editor surface measures its OWN width: the composer lives in a draggable column, so

@@ -5,7 +5,7 @@ before(async () => {
     ({ incomingTo, outgoingOf, linkLabel } = await import('../../../js/pure/doclinks.js'));
 });
 
-describe("a note's links, both ways (2026-10-01)", () => {
+describe("a note's links, both ways (2026-09-30)", () => {
     const rows = [
         { doc_id: 'a', links: [{ to: '/x/b', text: 'bee', doc: 'b' }, { to: 'https://example.com/', text: '' }] },
         { doc_id: 'b', links: [{ to: '/x/b', text: 'myself', doc: 'b' }] },

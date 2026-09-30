@@ -8,7 +8,7 @@
 // They apply as CSS vars (`--w-<col>`) on the columns row, so the stylesheet keeps its defaults
 // for anyone who never drags.
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { usePrefMap, flagsOf, setPref, setFlag, widthKey, widthPrefix, tuckKey, tuckPrefix }
@@ -28,18 +28,71 @@ export const PaneHead = ({ label, onTuck }) => html`<div class="pane-head">
 </div>`;
 
 /// What a tucked column leaves behind: a slim vertical strip, its icon above its name running
-/// downward, which brings the column back when clicked.
-export const Rail = ({ icon, label, onClick }) => html`<button
-    class="pane-rail"
-    title=${`show ${label}`}
+/// downward, which brings the column back when clicked. In a narrow window it is a tab, and the
+/// open column's own tab is `active` - still in the strip, where it was, marked as the one open.
+export const Rail = ({ icon, label, onClick, active = false }) => html`<button
+    class=${active ? 'pane-rail active' : 'pane-rail'}
+    title=${active ? `close ${label}` : `show ${label}`}
+    aria-pressed=${active}
     onClick=${onClick}
 >
     <${icon} />
     <span class="pane-rail-label">${label}</span>
 </button>`;
 
+// Narrow windows (Curtis, 2026-09-30: below about 900px "the huge number of vertical columns starts to
+// completely overtake the situation… can we replace the columns with a set of vertical tabs where
+// only one tab can be open at the same time?"). Under NARROW every column is a tab - its rail - and
+// at most one is open, across the whole page: a drawing's tools share the Writer's row, so "one"
+// can't be per app. The open column fills the row and the main surface steps aside until it closes
+// (notes.css, `.panes`); choosing something in it closes it (`settle`). This is the window's state,
+// not a preference: nothing is stored, and the wide arrangement is untouched underneath.
+const NARROW = '(max-width: 900px)';
+let openKey = null; // `${appId}/${col}`, or none
+const openers = new Set();
+const setOpen = (key) => {
+    openKey = key;
+    openers.forEach((tell) => tell(key));
+};
+
+/// Whether the window is narrow, live as it resizes.
+const narrowQuery = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(NARROW) : null);
+
+export function useNarrow() {
+    const [narrow, setNarrow] = useState(() => {
+        const query = narrowQuery();
+        return !!(query && query.matches);
+    });
+    useEffect(() => {
+        const query = narrowQuery();
+        if (!query) return undefined;
+        const on = (e) => setNarrow(e.matches);
+        query.addEventListener('change', on);
+        setNarrow(query.matches);
+        return () => query.removeEventListener('change', on);
+    }, []);
+    return narrow;
+}
+
+function useOpenKey() {
+    const [key, setKey] = useState(openKey);
+    useEffect(() => {
+        openers.add(setKey);
+        setKey(openKey);
+        return () => openers.delete(setKey);
+    }, []);
+    return key;
+}
+
 /// Which of an app's columns are tucked away (minimized to a rail), and the toggle. The main
 /// surface can't tuck; everything to its left can.
+///
+/// In a narrow window it answers differently (above): every column is tucked but the one open
+/// tab, the toggle opens one and closes the rest, and `settle()` - called when something is chosen
+/// in a column - closes it to show what was chosen. `lead` is the tab a narrow window opens on
+/// when nothing of this app's is open: the Writer's list while no note is chosen. `tab(col, icon,
+/// label)` is the open column's own tab, for the column to wear ahead of itself in a narrow window
+/// (a binder shows every divider, the open one too) - nothing in a wide one.
 ///
 /// `startsTucked` names the columns that are away until this device says otherwise - how
 /// Writer opens on a plain list with its tag column and tree as rails, rather than greeting a
@@ -47,14 +100,33 @@ export const Rail = ({ icon, label, onClick }) => html`<button
 /// column is opened, so a stored preference always outranks it, and the absence of a stored key is
 /// what "never touched this" looks like. (Hence the raw pref map here rather than `flagsOf` alone:
 /// that helper collapses '0' and never-set into the same nothing, and they are different.)
-export function useColTucks(root, appId, startsTucked = []) {
+export function useColTucks(root, appId, startsTucked = [], { lead = null } = {}) {
     const stored = usePrefMap(root, tuckPrefix(appId));
+    const narrow = useNarrow();
+    const open = useOpenKey();
+    const mine = (col) => open === `${appId}/${col}`;
+    const settle = useCallback(() => {
+        if ((openKey || '').startsWith(`${appId}/`)) setOpen(null);
+    }, [appId]);
+    useEffect(() => {
+        if (narrow && lead && !(openKey || '').startsWith(`${appId}/`)) setOpen(`${appId}/${lead}`);
+    }, [narrow, appId, lead]);
+    if (narrow) {
+        return {
+            tab: (col, icon, label) => html`<${Rail} icon=${icon} label=${label} active=${true} onClick=${() => setOpen(null)} />`,
+            tucked: { has: (col) => !mine(col) },
+            toggleTuck: (col) => setOpen(mine(col) ? null : `${appId}/${col}`),
+            settle,
+        };
+    }
     const tucked = flagsOf(stored);
     const known = new Set([...(stored || new Map())].map(([col]) => col));
     for (const col of startsTucked) if (!known.has(col)) tucked.add(col);
     return {
+        tab: () => null,
         tucked,
         toggleTuck: (col) => setFlag(root, tuckKey(appId, col), !tucked.has(col)),
+        settle,
     };
 }
 

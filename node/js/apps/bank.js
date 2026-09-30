@@ -220,7 +220,7 @@ export const BankApp = ({ current }) => {
     // Each month's lines, once fetched; the newest arrives with the first answer.
     const [lines, setLines] = useState({});
     const [open, setOpen] = useState(new Set());
-    const { tucked, toggleTuck } = useColTucks(root, 'bank');
+    const { tucked, toggleTuck, tab } = useColTucks(root, 'bank');
     const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio'], { market: 240, portfolio: 200 });
     const [asked, setAsked] = useState(0); // bumped after a purchase or a sale: ask the ledger again
     useEffect(() => {
@@ -257,16 +257,16 @@ export const BankApp = ({ current }) => {
     if (!bank) return html`<div class="bank-app"><div class="bank"><p class="null-sub">${t('apps.bank.counting', 'counting…')}</p></div></div>`;
     const kinds = Object.entries(bank.by_kind || {}).filter(([, p]) => p !== '0');
     const months = bank.months || [];
-    return html`<div class="bank-app"><div class="bank-columns" style=${colStyle}>
+    return html`<div class="bank-app"><div class="bank-columns panes" style=${colStyle}>
         ${tucked.has('market')
             ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
-            : html`<aside class="bank-market">
+            : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
                   <${PaneHead} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
                   <${Market} root=${root} balance=${bank.balance} onBought=${() => setAsked((n) => n + 1)} />
               </aside>${resizer('market')}`}
         ${tucked.has('portfolio')
             ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
-            : html`<aside class="bank-portfolio">
+            : html`${tab('portfolio', Icons.bank, t('apps.bank.portfolio', 'portfolio'))}<aside class="bank-portfolio">
                   <${PaneHead} label=${t('apps.bank.portfolio', 'portfolio')} onTuck=${() => toggleTuck('portfolio')} />
                   <${Portfolio}
                       root=${root}

@@ -1,4 +1,4 @@
-// A note's links, both ways (the Writer's Links column, 2026-10-01): read off the search rows the
+// A note's links, both ways (the Writer's Links column, 2026-09-30): read off the search rows the
 // node streams to the mirror, where each row carries the links its body makes (bake.rs
 // `doc_links`) - `doc` set on a link that is one of the persona's own documents.
 
@@ -7,7 +7,7 @@
 export const incomingTo = (rows, docId) =>
     docId ? (rows || []).filter((r) => r.doc_id !== docId && (r.links || []).some((l) => l.doc === docId)).map((r) => r.doc_id) : [];
 
-/// What `docId`'s own body links to, in its order, each place once (Curtis, 2026-10-01: "de-dupe
+/// What `docId`'s own body links to, in its order, each place once (Curtis, 2026-09-30: "de-dupe
 /// links in this list"): one of your notes is one row however many ways it was addressed (with a
 /// notebook hint, without, the old `/home/…` path), and anywhere else is one row per address, a
 /// trailing slash aside. The first link to a place wins, words and all.

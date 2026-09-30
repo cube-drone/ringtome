@@ -2604,7 +2604,7 @@ pub async fn heads_for(
 pub struct SearchRow {
     pub doc_id: String,
     pub tokens: String,
-    /// The links its body makes (2026-10-01, the Writer's Links column): what the column lists as
+    /// The links its body makes (2026-09-30, the Writer's Links column): what the column lists as
     /// outgoing, and - inverted across every row - as incoming.
     pub links: Vec<crate::record::bake::DocLink>,
 }
@@ -5708,7 +5708,7 @@ mod tests {
         assert_eq!(tokens.iter().filter(|t| *t == "quick").count(), 1);
     }
 
-    /// A Marquee note's row carries the links its body makes (2026-10-01, the Writer's Links
+    /// A Marquee note's row carries the links its body makes (2026-09-30, the Writer's Links
     /// column), the author's own documents marked; an edit that drops a link drops it from the row;
     /// and a plain page's brackets are only brackets.
     #[tokio::test]

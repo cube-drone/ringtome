@@ -1,4 +1,4 @@
-// The Writer's Links column (Curtis, 2026-10-01: "While I have a document open, Links displays first
+// The Writer's Links column (Curtis, 2026-09-30: "While I have a document open, Links displays first
 // the incoming links to and then outgoing links from that document"). Both lists come off the
 // mirror's search rows (pure/doclinks.js), which the node keeps current as bodies change, so the
 // column follows a save without asking anything.

@@ -168,7 +168,7 @@ fn each_directive(
     }
 }
 
-/// One link a body makes (2026-10-01, the Writer's Links column): where it goes, the words it wears,
+/// One link a body makes (2026-09-30, the Writer's Links column): where it goes, the words it wears,
 /// and - when it is one of the author's own documents - that document's id, hex.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DocLink {
@@ -1068,7 +1068,7 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
 #[cfg(test)]
 mod tests {
 
-    /// A body's links, for the Writer's Links column (2026-10-01): each target once, in order, its
+    /// A body's links, for the Writer's Links column (2026-09-30): each target once, in order, its
     /// words as plain text, and the author's own documents recognised in every spelling - the
     /// `/ringtome/` address at any origin with its hints, the cozy paths before it - while someone
     /// else's document, the web, a picture and a link inside code are not the author's.

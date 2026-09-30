@@ -13204,11 +13204,11 @@ triggering anything yet and it has a lot to offer."
   opening line, a layout's placeholder line (not the `nav` in `nav-footer` or `slot=nav` - the
   test caught the first), a table's heading inside its cell.
 
-The feed's "further back" button sits flush with the cards again (Curtis, 2026-10-01): it kept an
+The feed's "further back" button sits flush with the cards again (Curtis, 2026-09-30): it kept an
 `align-self: center` from before the feed column could grow past the post measure, so in a wide
 column its measure-wide bar centred itself in the spare room. It takes the stream's own left edge now.
 
-### The Writer's Links column (2026-10-01)
+### The Writer's Links column (2026-09-30)
 
 Curtis: "new column in the Writer app: Links - while I have a document open, Links displays first
 the incoming links to and then outgoing links from that document."
@@ -13237,3 +13237,48 @@ in order, a wordless link's label).
 Then (Curtis: "de-dupe links in this list"): "linked from here" shows each place once - one of your
 notes once however it was addressed (a notebook hint or not, the old `/home/…` path), anywhere else
 once per address, a trailing slash aside; the first link to a place keeps its words.
+
+### Narrow windows: columns become tabs (2026-09-30)
+
+Curtis: below about 900px "the huge number of vertical columns starts to completely overtake the
+situation, and this is true for anywhere we've used the columnar layout… can we replace the columns
+with a set of vertical tabs where only one tab can be open at the same time?"
+
+- **`panes.js`** answers differently under `(max-width: 900px)`: every column is a tab (its rail),
+  and at most one is open - one for the whole page, since a drawing's tools share the Writer's
+  row. Opening a tab closes the others; its own tuck button closes it. The state is the window's,
+  never stored, so the wide arrangement and its saved tucks and widths are untouched underneath.
+  `lead` is the tab a narrow window opens on (the Writer's list while no note is chosen, chat's
+  rooms while no room is open), and `settle()` closes the tab when something in it is chosen - a
+  note, a room - so what was chosen shows.
+- **The CSS** (`notes.css`, on a `panes` class every row of columns now wears): the rails line up
+  on the left as the tab strip, the resize strips go, and while a tab is open it fills the row and
+  everything else in the row steps aside. A column is recognised as whatever holds a `PaneHead`
+  (`:has(> .pane-head)`), so no app marks its main surface: the editor, the reader, the canvas,
+  the bank statement, the feed and the room are just "not a column".
+- Every columned place gets it: the Writer and its siblings (Files, Drawing, Lost & Found), a
+  drawing's tools and layers, hrseBank, the feed's composer, chat.
+Then (Curtis: "I refreshed the page a few times and I'm not seeing the new tabs" - at innerWidth 575,
+the media query true): the hiding rule was `.panes:has(> :has(> .pane-head))`, and a :has() inside a
+:has() is invalid CSS, which drops its whole rule without a word - so the main surface never stepped
+aside and the open tab only shared the row. Now `.panes:has(> * > .pane-head)`. Found by rendering
+the Writer at 575px in headless Chrome against a scratch node (the list open, then a note chosen):
+before, the list 206px beside an 84px reader; after, the list fills the row, and choosing a note
+closes it to the note. The narrow rows' gap went from 1rem to 0.3rem while there (the note had
+259px of 575; now 315). The day's entries above had wandered to 2026-10-01; the date is 2026-09-30
+(all but rung 28's own comment, left as climbed).
+Then (Curtis: "I was hoping for vertical tabs like… they all share the same vertical space, like a
+tab divider in a work binder"): the tabs stack down one strip on the left, each as tall as its name
+(the narrow row runs downward and wraps, so the tabs fill the first column and the open tab or the
+main surface takes the full height beside them - the note went from 315px of 575 to 456), and the
+open column wears its own tab ahead of itself (`useColTucks().tab`, a `Rail` marked `active`), so
+the strip always shows every tab, the open one lifted and edged in teal, a click closing it. Every
+columned place carries the tab line: Writer's five, a drawing's two, bank's two, chat's two, the
+feed's composer. Seen at 575px in headless Chrome, list open and a note chosen.
+
+The title always has its own row now, the file chips beneath it (Curtis, 2026-09-30: "between long
+titles and an ever-increasing file-chip list, I think that might just need to be how it always
+works, with the title on top"): `.reader-head` wraps and its `.editor-title` takes the whole first
+row in every editor, file reader and drawing - once only the narrow editor's arrangement (the
+400px container query keeps its other job, hiding the view-mode tabs; the drawing's `min-width`
+override went with it). Seen at 1300px in headless Chrome.

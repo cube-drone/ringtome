@@ -129,15 +129,9 @@
 }
 
 /* The title row is Writer's (.reader-head: the positioned parent the tags dropdown hangs from),
-   wrapping when the column is narrow. */
+   the title on a row of its own above the chips. */
 .drawing-head {
-    flex-wrap: wrap;
     align-items: center;
-}
-
-.drawing-head .editor-title {
-    flex: 1;
-    min-width: 8rem;
 }
 
 /* Transparency's floor (Curtis, 2026-09-26): the grey checkerboard under every drawing, layer

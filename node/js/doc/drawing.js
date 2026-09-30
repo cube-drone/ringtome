@@ -864,7 +864,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     if (opened) shownFor.current = docId;
     const shown = opened || shownFor.current === docId;
 
-    const { tucked, toggleTuck } = useColTucks(root, 'drawing', []);
+    const { tucked, toggleTuck, tab } = useColTucks(root, 'drawing', []);
     const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], { tools: 170, layers: 170 });
 
     // The layers (DRAWING.md, "Layers"): bottom of the stack first. The CURRENT layer is the one a
@@ -1509,7 +1509,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
 
     const toolsColumn = tucked.has('tools')
         ? html`<${Rail} icon=${Icons.drawing} label=${t('doc.drawing.tools', 'tools')} onClick=${() => toggleTuck('tools')} />`
-        : html`<aside class="drawing-tools" style=${colStyle}>
+        : html`${tab('tools', Icons.drawing, t('doc.drawing.tools', 'tools'))}<aside class="drawing-tools" style=${colStyle}>
               <${PaneHead} label=${t('doc.drawing.tools', 'tools')} onTuck=${() => toggleTuck('tools')} />
               ${/* The tools are icons, each named in its tooltip (Curtis, 2026-09-26). */ ''}
               <div class="drawing-toolset">
@@ -1722,7 +1722,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               : 'drawing-layer';
     const layersColumn = tucked.has('layers')
         ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
-        : html`<aside class="drawing-layers" style=${colStyle}>
+        : html`${tab('layers', Icons.layers, t('doc.drawing.layers-and-map', 'layers & map'))}<aside class="drawing-layers" style=${colStyle}>
               <${PaneHead} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
               ${shown &&
               html`<${Navigator}

@@ -610,7 +610,7 @@ export const FeedApp = ({ current, searchQuery }) => {
     const editingFor = useOwnPostEditing(current, (r) => overlayPosted(r, postedAs[r.doc_id]));
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
-    const { tucked, toggleTuck } = useColTucks(root, 'feed');
+    const { tucked, toggleTuck, tab } = useColTucks(root, 'feed');
     // The composer's floor is 260px: below that the editor's chrome crushes even in its
     // narrow mode (panes.js applies the floor to drags AND to previously-stored widths).
     // The composer's column has no ceiling (Curtis, 2026-09-29).
@@ -848,14 +848,14 @@ export const FeedApp = ({ current, searchQuery }) => {
     return html`
         <div class="feed-app">
             <${BakeModal} items=${baking} />
-            <div class="feed-columns" style=${colStyle}>
+            <div class="feed-columns panes" style=${colStyle}>
                 ${tucked.has('compose')
                     ? html`<${Rail}
                           icon=${Icons.notes}
                           label=${t('apps.feed.write', 'write')}
                           onClick=${() => toggleTuck('compose')}
                       />`
-                    : html`<aside class="feed-compose">
+                    : html`${tab('compose', Icons.notes, t('apps.feed.write', 'write'))}<aside class="feed-compose">
                               <${PaneHead} label=${t('apps.feed.write-2', 'write')} onTuck=${() => toggleTuck('compose')} />
                               ${draftId
                                   ? html`<${Composer}

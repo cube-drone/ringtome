@@ -1750,7 +1750,12 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     // view wear, clicking one into or out of the filter, and minimized to a rail until asked
     // for - a room's tags are its creator's word about it, and most rooms have none.
     const [tagFilter, setTagFilter] = useState([]);
-    const { tucked, toggleTuck } = useColTucks(root, APP_ID, ['tags']);
+    // In a narrow window (panes.js) the rooms are the tab it opens on while no room is open, and
+    // opening one closes the tab to show it.
+    const { tucked, toggleTuck, settle, tab } = useColTucks(root, APP_ID, ['tags'], { lead: author && doc ? null : 'rooms' });
+    useEffect(() => {
+        if (author && doc) settle();
+    }, [author, doc, settle]);
     const { resizer, colStyle } = useColWidths(root, APP_ID, ['tags', 'rooms'], { rooms: 180, tags: 150 });
     const load = () => {
         if (!root) return;
@@ -1796,10 +1801,10 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
         all && tagFilter.length > 0 ? all.filter((r) => tagFilter.every((tag) => (r.tags || []).includes(tag))) : all;
     const selected = author && doc ? { author, doc } : null;
     return html`<div class="chat">
-        <div class="chat-columns" style=${colStyle}>
+        <div class="chat-columns panes" style=${colStyle}>
             ${tucked.has('tags')
                 ? html`<${Rail} icon=${Icons.tag} label=${t('apps.chat.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
-                : html`<${TagColumn}
+                : html`${tab('tags', Icons.tag, t('apps.chat.tags', 'tags'))}<${TagColumn}
                       cloud=${cloud}
                       active=${tagFilter}
                       label=${t('apps.chat.tags', 'tags')}
@@ -1808,7 +1813,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                   />${resizer('tags')}`}
             ${tucked.has('rooms')
                 ? html`<${Rail} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onClick=${() => toggleTuck('rooms')} />`
-                : html`<${RoomsColumn}
+                : html`${tab('rooms', Icons.chat, t('apps.chat.chats', 'chats'))}<${RoomsColumn}
                       current=${current}
                       rooms=${rooms}
                       selected=${selected}
