@@ -9,4 +9,9 @@ module.exports = {
     spec: "test/**/*.cjs",
     require: "./roothooks.cjs",
     timeout: 5000 * scale,
+    // Exit when the last test ends, whatever it left open (2026-09-29): a claim that failed while
+    // holding a websocket kept mocha - and the rig and its five nodes - waiting for half an hour.
+    // The price is that a leaked connection no longer shows itself as a hang; the roothooks'
+    // replug and the recipe's teardown still run.
+    exit: true,
 };

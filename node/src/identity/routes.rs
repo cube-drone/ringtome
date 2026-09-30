@@ -7337,6 +7337,9 @@ impl StreamStamp {
 }
 
 async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp, AppError> {
+    // A contact's name, picture, banner or heartbeat changing moves no chain of this persona's:
+    // the byline cache's own change count stands in for it (profiles.rs `EPOCH`).
+    let bylines_epoch = crate::profiles::epoch();
     use ringtome_proto::registry::service;
     let mut frontiers = crate::net::sync::local_frontiers(db, true)
         .await
@@ -7374,6 +7377,7 @@ async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp
         }
     }
     parts[1].extend_from_slice(&view_epoch.to_be_bytes());
+    parts[3].extend_from_slice(&bylines_epoch.to_be_bytes());
     let stamp = |i: usize| *blake3::hash(&parts[i]).as_bytes();
     Ok(StreamStamp {
         profile: stamp(0),
@@ -7699,11 +7703,11 @@ async fn serve_stream(
     // a stamp over the whole entries table - per second, per open socket, that was most of
     // the stream's idle cost. Recorded BEFORE stamping, so a write landing mid-stamp moves
     // mtime past the guard and the next tick re-runs one round instead of skipping a change.
-    let mut guard: Option<(Option<i64>, u64)> = None;
+    let mut guard: Option<(Option<i64>, u64, u64)> = None;
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                let now_guard = (state.user_dbs.db_mtime_ms(&root), state.view_epochs.get(&root));
+                let now_guard = (state.user_dbs.db_mtime_ms(&root), state.view_epochs.get(&root), crate::profiles::epoch());
                 if guard == Some(now_guard) { continue; }
                 guard = Some(now_guard);
             }

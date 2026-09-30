@@ -297,3 +297,38 @@ describe("the live cache stream", function () {
         stream.ws.close();
     });
 });
+
+// Curtis, 2026-09-29: "in order to see someone's updated name, banner or profile pic, I'd need to
+// make some other arbitrary change to my people page?" The stream re-sent contact rows only when
+// the READER's own chains moved; a contact renaming themselves moved only theirs. The byline cache's
+// change count (profiles.rs `EPOCH`) now rides the contacts stamp.
+describe("a contact's new name reaches the reader's open stream", function () {
+    this.timeout(60000);
+
+    it("ada renames herself; bea's stream ships ada's row with the new name, bea having changed nothing", async () => {
+        const bea = await rawLogin(HOST);
+        const beaRoot = (await (await bea.authed("api/identity", { method: "POST" })).json()).root_pubkey;
+        const ada = await rawLogin(HOST);
+        const adaRoot = (await (await ada.authed("api/identity", { method: "POST" })).json()).root_pubkey;
+        await ada.authed(`api/identity/${adaRoot}/profile`, { method: "POST", body: JSON.stringify({ field: "name", value: "Ada Before" }) });
+        await bea.authed(`api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { method: "PUT", body: JSON.stringify({ value: "high" }) });
+
+        const stream = openStream(HOST, beaRoot, bea.cookie);
+        // Closed however the claim ends: an open socket keeps mocha - and the rig - alive forever.
+        try {
+            await stream.opened;
+            const rowOf = (msg) => [...(msg.contacts || []), ...(msg.contacts_changed || [])].find((c) => c.root === adaRoot);
+            // Drain until the roster shows ada as she was.
+            let before = null;
+            for (let i = 0; i < 20 && !(before && before.name === "Ada Before"); i++) before = rowOf(await stream.next()) || before;
+            assert.equal(before && before.name, "Ada Before", "bea's roster names ada");
+
+            await ada.authed(`api/identity/${adaRoot}/profile`, { method: "POST", body: JSON.stringify({ field: "name", value: "Ada After" }) });
+            let after = null;
+            for (let i = 0; i < 20 && !(after && after.name === "Ada After"); i++) after = rowOf(await stream.next()) || after;
+            assert.equal(after && after.name, "Ada After", "the new name arrived without bea touching her own ledger");
+        } finally {
+            stream.ws.close();
+        }
+    });
+});

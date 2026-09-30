@@ -12879,3 +12879,37 @@ Heartbeat rulings: a persona's card shows the date of their last heartbeat, neve
 heartbeats are always on. The build order is heartbeats, then network DAU (with a graph over time),
 then HorseBucks. And the balance goes in the quickbar's bottom-right corner, right of the clock,
 counting up in real time off the live stream, with typing counted ahead between saves.
+
+## 2026-09-29: heartbeats, and contacts that notice a rename
+
+**Heartbeats** (HORSE_BASED_CURRENCIES.md, step 1 of 3). One public mark per persona per day of use:
+- **The record:** the profile field `heartbeat`, a UTC date, never a time, and always on (Curtis's
+  rulings). It sits on the profile's own chain, not the identity chain and its 10,000-entry
+  ceiling. Nodes that predate it store it harmlessly, since received fields are checked for length,
+  not name. It isn't in `PROFILE_FIELDS`, so nobody backdates it through the form.
+- **When:** `store::open`, which every persona-scoped request passes, calls `heartbeat::note`. An
+  in-memory check keeps it to one a day, and the spawned write opens the persona with the node's
+  key and skips itself when the folded profile already says today.
+- **Where it shows:** the byline cache gains `last_active` (node migration step 0062), so contact
+  rows carry it; person cards say "active today", "yesterday" or "N days ago" (`pure/heartbeat.js`);
+  and People has a third order, "by recent activity".
+- **Fallout:** profile.cjs counted the profile chain's entries, and the heartbeat, written
+  asynchronously, raced its first write for seq 0. Its `makeIdentity` now brings the day's
+  heartbeat in and waits for it, and the counts start after it.
+
+**Contacts that notice a rename** (Curtis: "in order to see someone's updated name, banner or
+profile pic, I'd need to make some other arbitrary change to my people page?"). True, before
+heartbeats too. The stream re-sent contact rows only when the reader's own chains moved, and a
+reconnect whose cursor still matched was told nothing, so a contact's new name, picture or banner
+waited for the reader's ledger to change. `profiles::EPOCH` counts byline changes on the node, and
+the stream folds it into the contacts stamp and the tick's guard. Only rows that changed ship, and
+a restart resets the count, so a returning page gets a fresh snapshot. livecache.cjs pins it: ada
+renames herself, and bea's open stream ships the new name with bea's ledger untouched. Against the
+old stamp it fails with no frame at all.
+
+That failing run hung the rig for half an hour: the claim failed before closing its socket, and
+mocha without `--exit` waited on it forever. The claim now closes its socket in a `finally`. The
+recipe has the same hazard for any socket claim that fails midway.
+The main integration suite now exits when its last test ends (`exit: true` in
+integration/.mocharc.cjs), so a claim that fails while holding a socket can't hang the rig and CI.
+The root hooks and the recipe's teardown still run.

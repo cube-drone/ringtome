@@ -16,6 +16,25 @@ use crate::clock::now_ms;
 use crate::db::Db;
 use crate::AppState;
 
+/// How many times any byline on this node has changed since it started (2026-09-29, Curtis: "in
+/// order to see someone's updated name, banner or profile pic, I'd need to make some other arbitrary
+/// change to my people page?"). The live stream re-sends a persona's contact rows when THEIR OWN
+/// chains move; a contact renaming themselves moved nobody's chain here but their own, so the rows
+/// kept the old name until the reader's ledger happened to change. The stream folds this into its
+/// contacts stamp, so a changed byline re-gathers the roster, and only the rows that changed ship.
+/// In memory on purpose: a restart resets it, and a returning page's cursor then misses and gets a
+/// fresh snapshot, which is the honest answer after a restart anyway.
+static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The byline cache's change count (`EPOCH`).
+pub fn epoch() -> u64 {
+    EPOCH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn changed() {
+    EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// One persona's byline, as the cache holds it.
 #[derive(Debug, Clone, Default)]
 pub struct Byline {
@@ -76,6 +95,7 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
         )
         .await
         .context("storing a byline")?;
+    changed();
     Ok(())
 }
 
@@ -91,6 +111,7 @@ pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<(
         )
         .await
         .context("forgetting an evicted byline")?;
+    changed();
     Ok(())
 }
 

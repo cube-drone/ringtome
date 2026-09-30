@@ -12,11 +12,21 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 
+// A persona's first signed-in request sends the day's heartbeat, itself a profile-set on this
+// chain (heartbeat.rs, 2026-09-29) - asynchronously, so it would race a test's first write for
+// seq 0. Bring it in first and wait for it: then the chain's shape is known, heartbeat at seq 0.
 async function makeIdentity(fetch) {
     const resp = await fetch("api/identity", { method: "POST" });
     assert.equal(resp.status, 200);
-    return (await resp.json()).root_pubkey;
+    const root = (await resp.json()).root_pubkey;
+    for (let i = 0; i < 50; i++) {
+        const fields = await (await fetch(`api/identity/${root}/profile`)).json();
+        if (fields.some((f) => f.field === "heartbeat")) return root;
+        await new Promise((res) => setTimeout(res, 100));
+    }
+    throw new Error("the persona's heartbeat never landed");
 }
+const own = (profile) => profile.filter((f) => f.field !== "heartbeat");
 
 async function setField(fetch, root, field, value) {
     return fetch(`api/identity/${root}/profile`, {
@@ -33,12 +43,12 @@ describe("profile chains", function () {
         const resp = await setField(user, root, "name", "Hats Ahoy");
         assert.equal(resp.status, 200);
         const body = await resp.json();
-        assert.equal(body.seq, 0, "first entry on the chain is seq 0");
+        assert.equal(body.seq, 1, "the next entry after the day's heartbeat");
         assert.match(body.entry_hash, /^[0-9a-f]{64}$/);
 
         const profile = await (await user(`api/identity/${root}/profile`)).json();
         assert.deepEqual(
-            profile.map((f) => [f.field, f.value]),
+            own(profile).map((f) => [f.field, f.value]),
             [["name", "Hats Ahoy"]]
         );
     });
@@ -49,9 +59,9 @@ describe("profile chains", function () {
 
         await setField(user, root, "name", "Hats Ahoy");
         const second = await (await setField(user, root, "name", "Hat Fan")).json();
-        assert.equal(second.seq, 1, "same chain, next seq");
+        assert.equal(second.seq, 2, "same chain, next seq");
 
-        const profile = await (await user(`api/identity/${root}/profile`)).json();
+        const profile = own(await (await user(`api/identity/${root}/profile`)).json());
         assert.equal(profile.length, 1);
         assert.equal(profile[0].value, "Hat Fan");
     });
@@ -94,10 +104,10 @@ describe("profile chains", function () {
         await setField(user, root, "name", "c");
 
         const entries = (await (await user(`api/identity/${root}/entries?limit=500`)).json()).items;
-        // 6 entries: the identity chain's genesis (recovery-key authorization) and epoch-0
-        // key-epoch (both service 0), the founding device name (service 5), plus the three
-        // profile-sets (service 2).
-        assert.equal(entries.length, 6);
+        // 7 entries: the identity chain's genesis (recovery-key authorization) and epoch-0
+        // key-epoch (both service 0), the founding device name (service 5), plus four
+        // profile-sets (service 2): the day's heartbeat and the three written here.
+        assert.equal(entries.length, 7);
         assert.equal(
             entries.filter((e) => e.service === 5).length,
             1,
@@ -106,7 +116,7 @@ describe("profile chains", function () {
         const profileEntries = entries.filter((e) => e.service === 2);
         assert.deepEqual(
             profileEntries.map((e) => e.seq),
-            [0, 1, 2],
+            [0, 1, 2, 3],
             "dense sequence numbers per chain"
         );
         assert.equal(
@@ -134,9 +144,9 @@ describe("profile chains", function () {
         const rebuild = await (
             await user(`api/identity/${root}/rebuild`, { method: "POST" })
         ).json();
-        // 3 profile-sets + the identity chain's genesis authorize + epoch 0 + the founding
-        // device name = 6 replayed and re-validated.
-        assert.equal(rebuild.entries_replayed, 6, "every signed entry replays and re-validates");
+        // 3 profile-sets + the day's heartbeat + the identity chain's genesis authorize + epoch 0
+        // + the founding device name = 7 replayed and re-validated.
+        assert.equal(rebuild.entries_replayed, 7, "every signed entry replays and re-validates");
 
         const after = await (await user(`api/identity/${root}/profile`)).json();
         assert.deepEqual(after, before, "replaying the log reproduces the exact same view");
