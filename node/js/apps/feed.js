@@ -485,8 +485,16 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
           )
         : [...(scheduled || []), ...visible];
 
+    // The options have a box of their own (Curtis, 2026-09-30: the zone "feels a little inchoate
+    // because it's got so many options in it now"), drawn only when there is something to put in it
+    // - the public feed has no dial, and a place with nothing labelled has no lists.
+    const facetsShow = meChip || (!!labels && ((labels.kinds || []).length > 0 || (labels.buckets || []).length > 0 || (labels.tags || []).length > 0));
+    const optionsShow = stop !== null || (sortable && sort !== null) || facetsShow;
+
     return html`
         <main class="feed-stream" ref=${streamRef}>
+            ${optionsShow &&
+            html`<div class="feed-options jag-line">
             ${/* The dial first, above even the tag cloud (Curtis, 2026-09-27): how far the feed may
                 reach decides everything under it, the lists included. */ ''}
             <div class="feed-top">
@@ -520,6 +528,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                 onPicks=${setPicks}
                 meChip=${meChip}
             />
+            </div>`}
             ${/* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
                 the dial's corner it was hard to see): centred, and always the same height, so the
                 button appearing never moves your read position - the reason updates wait to be

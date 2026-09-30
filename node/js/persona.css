@@ -1849,10 +1849,39 @@ article:has(.label-emoji-strip) {
 }
 
 /* The feed's top row (apps/feed.js): the curiosity dial. */
+/* The feed's options in one box (Curtis, 2026-09-30): the dial and the order, then the lists -
+   bordered, so the page reads as controls, then the feed. */
+.feed-options {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    --line: var(--border);
+    --j: 4px;
+    padding: 0.6rem 0.8rem;
+}
+
+.feed-options .facets {
+    margin: 0;
+}
+
 .feed-top {
     flex-shrink: 0;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    row-gap: 0.4rem;
+    container-type: inline-size;
+}
+
+/* Narrow, the order lives below the curiosity dial, beginning where it does (Curtis, 2026-09-30),
+   rather than squeezing it or wrapping off to the right edge. The two want about 640px side by
+   side. */
+@container (max-width: 640px) {
+    .feed-top .feed-sort {
+        flex-basis: 100%;
+        margin-left: 0;
+    }
 }
 
 /* The reserved update slot, between the lists and the feed: always the same height, so the button

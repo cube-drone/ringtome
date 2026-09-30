@@ -16,6 +16,26 @@ export function facetSlice(items, picked, expanded, top = FACET_TOP) {
     return { shown, hidden: all.length - shown.length };
 }
 
+/// How many chips fit one line (Curtis, 2026-09-30: "if we have a lot of tags, but also the whole
+/// 800px of space, might as well display lots of them. If we have almost no space, we should only
+/// display one or two"): `widths` each chip's, in order; `room` the line's width once its label
+/// and fixed chips are placed; `more` the "more" button's width; `gap` the space between. All of
+/// them when they fit without the button, else as many as fit beside it - never fewer than one.
+export function fitCount(widths, room, more, gap) {
+    const all = widths.reduce((sum, w, i) => sum + w + (i ? gap : 0), 0);
+    if (all <= room) return widths.length;
+    const avail = room - more - gap;
+    let used = 0;
+    let n = 0;
+    for (const w of widths) {
+        const next = used + (n ? gap : 0) + w;
+        if (next > avail) break;
+        used = next;
+        n++;
+    }
+    return Math.max(1, n);
+}
+
 /// Toggle one value in a pick list, returning the new list.
 export function togglePick(picked, value) {
     const list = picked || [];

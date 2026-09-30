@@ -13446,3 +13446,23 @@ unnecessary hedging"); the best order's "counts cover this window", which says s
 - only what's in view is counted - stays.
 Then (Curtis: "please remove that too"): "counts cover this window" goes as well - the feed's tag
 lists carry no note at all.
+
+The feed's facet rows fit their space (Curtis, 2026-09-30, after weighing a column of their own and
+dropping it - the same options sit on a person's page and the public feed, neither with columns:
+"if we have a lot of tags, but also the whole 800px of space, might as well display lots of them. If
+we have almost no space, we should only display one or two, rather than expanding on to a new line:
+see more should add more options below the current line"). Each row (show / in / tagged) is one line
+of as many chips as its width holds, then "and n more…", which opens the rest onto the lines below
+("fewer" folds them back); a picked chip shows whatever the fit. The chips are measured once per list
+- every one on the line, unseen, before the first paint - and a resize only re-does the arithmetic:
+`fitCount` in `pure/facets.js`, with tests, feeding the fold `facetSlice` already had. Seen in headless
+Chrome with twenty tags: nine and "11 more" at 1300px, three and "17 more" at 560, and opened.
+And narrow, the feed's order lives below its curiosity dial (Curtis, 2026-09-30): `.feed-top` wraps
+and is a size container, and under 640px - about what the two want side by side - the order takes
+its own line, starting where the dial does, rather than wrapping off to the right edge. Seen at 1300
+and 560px.
+And the feed's options live in a bordered box (Curtis, 2026-09-30: the zone "feels a little inchoate
+because it's got so many options in it now"): `.feed-options`, a `jag-line` ring around the dial, the
+order and the facet rows, padded; the updates slot and "the feed" stay below it. Drawn only when it
+has something in it (the public feed has no dial; a place with nothing labelled has no lists). The
+rows' fit re-reckons to the box's inner width. Seen at 1300 and 560px.

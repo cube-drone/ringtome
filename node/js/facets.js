@@ -1,16 +1,16 @@
 // The facet strip on the feed and on a person's page (2026-09-07): the buckets and tags
 // across the WHOLE set, counted by the node (`/feed/labels`, `/id/<seg>/labels`), each
-// list folded to its top few with a "more" that opens the rest. Picking narrows the page
+// list one line of as many as fit, with a "more" that opens the rest (2026-09-30). Picking narrows the page
 // through the same door the search uses (postsearch.js): buckets widen among themselves,
 // tags each narrow, and the words narrow what survives. Hidden when there is nothing to
 // pick from.
 import { h } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
-import { facetSlice, togglePick } from './pure/facets.js';
+import { facetSlice, fitCount, togglePick } from './pure/facets.js';
 
 const html = htm.bind(h);
 
@@ -40,31 +40,77 @@ const KIND_NAMES = {
     room: () => t('facets.kind-rooms', 'rooms'),
 };
 
+/// One row of chips, one line of them (Curtis, 2026-09-30: the space "isn't really taken into
+/// account"): as many as its width holds, then "and n more…", which opens the rest onto the lines
+/// below. The chips are measured once per list - every one shown on the line, unseen, before the
+/// first paint - and a resize only re-does the arithmetic (pure/facets.js `fitCount`). A picked
+/// value shows whatever the fit (`facetSlice`), so what narrows the page is never folded away.
 const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null }) => {
     const [expanded, setExpanded] = useState(false);
+    const rowRef = useRef(null);
+    const measured = useRef(null); // { sig, widths, fixed, more, gap }
+    const [fit, setFit] = useState(null); // { n }: a fresh object, so every reckoning re-renders
     // A picked value always shows, even once nothing is left under it - so it can be unpicked.
     const have = new Set((counted || []).map((f) => f.value));
     const items = [...(counted || []), ...(picked || []).filter((v) => !have.has(v)).map((value) => ({ value, count: 0 }))];
-    if (items.length === 0 && !extra) return null;
-    const { shown, hidden } = facetSlice(items, picked, expanded);
     const word = (v) => (names && names[v] ? names[v]() : v);
-    return html`<div class="facet-row">
+    const sig = `${extra ? 'x' : ''}|${items.map((f) => `${f.value}:${f.count}`).join('|')}|${(picked || []).join('|')}`;
+    const measuring = !expanded && (!measured.current || measured.current.sig !== sig);
+    const reckon = () => {
+        const row = rowRef.current;
+        const m = measured.current;
+        if (!row || !m) return;
+        setFit({ n: fitCount(m.widths, row.clientWidth - m.fixed, m.more, m.gap) });
+    };
+    useLayoutEffect(() => {
+        const row = rowRef.current;
+        if (!measuring || !row) return;
+        const width = (e) => e.getBoundingClientRect().width;
+        const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+        const fixed = [...row.querySelectorAll(':scope > .facet-row-label, :scope > [data-facet-extra]')].reduce((sum, e) => sum + width(e) + gap, 0);
+        const moreButton = row.querySelector(':scope > [data-facet-more]');
+        measured.current = {
+            sig,
+            widths: [...row.querySelectorAll(':scope > [data-facet]')].map(width),
+            fixed,
+            more: moreButton ? width(moreButton) : 0,
+            gap,
+        };
+        reckon();
+    });
+    useEffect(() => {
+        const row = rowRef.current;
+        if (!row || typeof ResizeObserver === 'undefined') return undefined;
+        const watch = new ResizeObserver(() => reckon());
+        watch.observe(row);
+        return () => watch.disconnect();
+    }, []);
+    if (items.length === 0 && !extra) return null;
+    // Measuring: every chip, and the widest "more" the row could need, on the one line.
+    const top = expanded || measuring || !fit ? items.length : fit.n;
+    const { shown, hidden } = facetSlice(items, picked, expanded, top);
+    const folds = !!fit && fit.n < items.length;
+    return html`<div class=${expanded ? 'facet-row facet-row-open' : 'facet-row'} ref=${rowRef}>
         <span class="facet-row-label">${label}</span>
-        ${extra}
+        ${extra && html`<span class="facet-row-extra" data-facet-extra>${extra}</span>`}
         ${shown.map(
             (f) => html`<button
                 key=${f.value}
+                data-facet
                 class=${(picked || []).includes(f.value) ? 'facet-chip facet-chip-on' : 'facet-chip'}
                 onClick=${() => onToggle(f.value)}
             >${word(f.value)} <span class="facet-count">${f.count}</span></button>`
         )}
-        ${hidden > 0 &&
+        ${measuring &&
+        html`<button class="facet-more" data-facet-more tabindex="-1" aria-hidden="true">
+            ${t('facets.and-n-more', 'and {n} more…', { n: items.length })}
+        </button>`}
+        ${!measuring &&
+        hidden > 0 &&
         html`<button class="facet-more" onClick=${() => setExpanded(true)}>
             ${t('facets.and-n-more', 'and {n} more…', { n: hidden })}
         </button>`}
-        ${expanded &&
-        items.length > shown.length - hidden &&
-        html`<button class="facet-more" onClick=${() => setExpanded(false)}>${t('facets.fewer', 'fewer')}</button>`}
+        ${expanded && folds && html`<button class="facet-more" onClick=${() => setExpanded(false)}>${t('facets.fewer', 'fewer')}</button>`}
     </div>`;
 };
 

@@ -1,5 +1,5 @@
-/* The facet strip (facets.js): two rows of chips - buckets, then tags - each folded to its
-   top few with a "more" that opens the rest. Chips wear the shelf-toggle look. */
+/* The facet strip (facets.js): rows of chips - kinds, buckets, tags - each one line of as many as
+   fit, with a "more" that opens the rest. Chips wear the shelf-toggle look. */
 .facets {
     display: flex;
     flex-direction: column;
@@ -14,9 +14,20 @@
 }
 .facet-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap; /* one line: what fits it shows (facets.js), and "more" opens the rest */
     align-items: center;
     gap: 0.3rem;
+    overflow: hidden;
+}
+/* Opened: every chip, onto as many lines as they take. */
+.facet-row-open {
+    flex-wrap: wrap;
+}
+.facet-row > * {
+    flex-shrink: 0;
+}
+.facet-row-extra {
+    display: inline-flex;
 }
 .facet-row-label {
     color: var(--muted);
