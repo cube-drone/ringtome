@@ -1900,6 +1900,44 @@ pub async fn participants(node_db: &Db, author_hex: &str, doc_hex: &str) -> Resu
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// What a persona has said and been answered with in rooms, for their HorseBucks (bank.rs,
+/// 2026-09-29): their own lines (never a moderation notice) as `(entry hash hex, said_ms)`.
+pub async fn lines_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>> {
+    let rows: Vec<(Vec<u8>, i64)> = node_db
+        .fetch_all(
+            "SELECT entry_hash, said_ms FROM room_messages WHERE speaker_root = ?1 AND notice_kind IS NULL",
+            (root_hex,),
+        )
+        .await
+        .context("listing a persona's chat lines")?;
+    Ok(rows.into_iter().map(|(h, ms)| (hex::encode(h), ms)).collect())
+}
+
+/// The reactions a persona gave, as `(entry hash hex, said_ms)`, taken-back ones included: the
+/// saying earned it.
+pub async fn reactions_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>> {
+    let rows: Vec<(Vec<u8>, i64)> = node_db
+        .fetch_all("SELECT entry_hash, said_ms FROM room_reactions WHERE speaker_root = ?1", (root_hex,))
+        .await
+        .context("listing a persona's chat reactions")?;
+    Ok(rows.into_iter().map(|(h, ms)| (hex::encode(h), ms)).collect())
+}
+
+/// The reactions others gave to a persona's own lines, as `(reaction entry hash hex, said_ms,
+/// the reactor's root)`.
+pub async fn reactions_to(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64, String)>> {
+    let rows: Vec<(Vec<u8>, i64, String)> = node_db
+        .fetch_all(
+            "SELECT r.entry_hash, r.said_ms, r.speaker_root FROM room_reactions r
+             JOIN room_messages m ON m.entry_hash = r.target_hash AND m.room_doc = r.room_doc
+             WHERE m.speaker_root = ?1 AND r.speaker_root <> ?1",
+            (root_hex,),
+        )
+        .await
+        .context("listing reactions to a persona's lines")?;
+    Ok(rows.into_iter().map(|(h, ms, who)| (hex::encode(h), ms, who)).collect())
+}
+
 /// The fragment lane's directory answer (CHAT.md, ruling 4): who has spoken here, to a
 /// dialer the room admits - anyone for an open room; for a sealed one, a dialer serving
 /// `for_root` with `for_root` admitted by the seal. "Nobody" and "not for you" alike.

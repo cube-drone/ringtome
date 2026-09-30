@@ -44,6 +44,8 @@ function appBlurb(app, device) {
             return t('console.blurb-chat', 'rooms, and private conversations');
         case 'notifications':
             return t('console.blurb-notifications', 'notifications, pings, pokes, and other things that might be of interest');
+        case 'bank':
+            return t('console.blurb-bank', 'your horse capital: every HorseBuck, and where it came from');
         case 'lost-found':
             return t('console.blurb-lost-found', 'every private file from every notebook, where nothing gets lost');
         case 'device':

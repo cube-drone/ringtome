@@ -10,8 +10,44 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1209 phrases across 77 files.
+// 1245 phrases across 79 files.
 export default {
+    // --- node/js/apps/bank.js ---
+    'apps.bank.kind-words': 'words written',
+    'apps.bank.kind-strokes': 'strokes drawn',
+    'apps.bank.kind-image': 'pictures uploaded',
+    'apps.bank.kind-publication': 'publications',
+    'apps.bank.kind-heartbeat': 'days of use',
+    'apps.bank.kind-chat': 'chat lines',
+    'apps.bank.kind-reaction': 'reactions given in chat',
+    'apps.bank.kind-reacted': 'reactions received in chat',
+    'apps.bank.kind-post-reaction': 'reactions given to posts',
+    'apps.bank.kind-post-reacted': 'reactions received on posts',
+    'apps.bank.kind-follow': 'people followed',
+    'apps.bank.kind-followed': 'people following you',
+    'apps.bank.untitled': 'something untitled',
+    'apps.bank.wrote-n-words-in': 'wrote {n} new words in',
+    'apps.bank.over-n-saves': ' · {count} saves',
+    'apps.bank.drew-n-strokes-in': 'drew {n} new strokes in',
+    'apps.bank.uploaded-n-pictures': 'uploaded {count} pictures',
+    'apps.bank.uploaded': 'uploaded',
+    'apps.bank.published': 'published',
+    'apps.bank.used-the-app-on': 'used the app on {date}',
+    'apps.bank.said-n-things': 'said {count} things in rooms',
+    'apps.bank.said-something-in-a-room': 'said something in a room',
+    'apps.bank.reacted-to-n-lines': 'reacted to {count} lines in rooms',
+    'apps.bank.reacted-in-a-room': 'reacted to a line in a room',
+    'apps.bank.reacted-to-your-lines': 'reacted to your lines {count} times',
+    'apps.bank.reacted-to-your-line': 'reacted to your line',
+    'apps.bank.reacted-to-posts': 'reacted {emoji} to posts',
+    'apps.bank.reacted-to-a-post': 'reacted {emoji} to a post',
+    'apps.bank.reacted-to-your-posts': 'reacted {emoji} to your posts',
+    'apps.bank.followed': 'followed',
+    'apps.bank.followed-you': 'followed you',
+    'apps.bank.n-lines': '{n} lines',
+    'apps.bank.counting': 'counting…',
+    'apps.bank.nothing-yet': 'nothing earned yet - write something, draw something, say something.',
+
     // --- node/js/apps/chat.js ---
     'apps.chat.just-now': 'just now',
     'apps.chat.a-sealed-room': 'a sealed room',
@@ -366,6 +402,7 @@ export default {
     'console.blurb-feed': "horse-based social networking: check what's happening on the information superhorseway",
     'console.blurb-chat': 'rooms, and private conversations',
     'console.blurb-notifications': 'notifications, pings, pokes, and other things that might be of interest',
+    'console.blurb-bank': 'your horse capital: every HorseBuck, and where it came from',
     'console.blurb-lost-found': 'every private file from every notebook, where nothing gets lost',
     'console.blurb-device': "this computer's settings: who may sign up, and its backups",
     'console.blurb-server': "this server's settings: who may sign up, and its backups",
@@ -379,6 +416,9 @@ export default {
     'copyinto.plus-new-bucket': '+ new bucket',
     'copyinto.copy': 'copy',
     'copyinto.copy-this-into-your-private': 'copy this into your private notes',
+
+    // --- node/js/cornerbank.js ---
+    'cornerbank.open-hrsebank': 'your HorseBucks - open hrseBank',
 
     // --- node/js/doc/annotations.js ---
     'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",

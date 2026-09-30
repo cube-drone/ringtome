@@ -44,7 +44,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * HorseBucks and Other Currencies - designed in [HORSE_BASED_CURRENCIES.md](HORSE_BASED_CURRENCIES.md). In this order (Curtis, 2026-09-29), each needing the one before:
   1. ~~Heartbeats~~ - built 2026-09-29.
   2. ~~Network DAU~~ - built 2026-09-29.
-  3. **HorseBucks:** hrseBank, earning, HorseBonds - interest runs on heartbeat days.
+  3. **HorseBucks:** the ledger, hrseBank and the corner balance built 2026-09-29. Still to build: **HorseBonds and debt** (the first spending entries, on a private chain; interest per heartbeat day; 2% daily compounding below zero), the corner **counting typed words ahead** between saves, and publishing HorseBucks' post-sticker reactions once stickers on posts exist.
 
 ### Chat
 * Opus took a crack at fixing chat search losing visible context, but wasn't smart enough; revisit with Fable

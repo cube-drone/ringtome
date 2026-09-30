@@ -31,7 +31,10 @@ const DayPie = ({ fraction }) => html`<svg class="quickbar-clock-pie" viewBox="0
     />
 </svg>`;
 
-export const Clock = () => {
+/// `children` sit inside the clock's sunken box, after the time: the persona's HorseBucks
+/// (cornerbank.js; Curtis, 2026-09-29: "in the same box as the clock… with a little separator, but
+/// lined up with the time").
+export const Clock = ({ children }) => {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
         const id = setInterval(() => setNow(Date.now()), 1000);
@@ -43,5 +46,5 @@ export const Clock = () => {
     return html`<span
         class="quickbar-clock"
         title=${`your time: ${date.toLocaleTimeString()}`}
-    ><${DayPie} fraction=${b / 1000} />${beat}</span>`;
+    ><${DayPie} fraction=${b / 1000} />${beat}${children}</span>`;
 };

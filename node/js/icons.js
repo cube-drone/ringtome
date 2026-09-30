@@ -6,6 +6,7 @@
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
     Archive,
+    PiggyBank,
     ChartLine,
     ChatsCircle,
     Funnel,
@@ -215,6 +216,8 @@ export const Icons = {
     // Lost & Found: the app tile, and follow-me-home on each row. A lidded crate - the
     // lost-property box, not a filing cabinet, because you come here having mislaid something.
     lostFound: Archive,
+    // hrseBank™ (2026-09-29)
+    bank: PiggyBank,
     people: UsersThree,
     feed: Megaphone,
     notifications: Bell,

@@ -506,6 +506,19 @@ pub async fn posts_labelled(node_db: &Db, key: &str, value: &str, cap: usize) ->
 /// The post an author published from a document of theirs, if any (2026-09-28): their own
 /// `published_from = <doc>` label on one of their own posts (store.rs `PUBLISHED_FROM`). Only the
 /// author's word counts - a label anyone else put on anything never names the author's post.
+/// The emoji reactions others put on a persona's posts, as this node holds them, for their
+/// HorseBucks (bank.rs, 2026-09-29): `(annotator, post doc hex, emoji, noted_ms)`.
+pub async fn emoji_received(node_db: &Db, author_hex: &str) -> Result<Vec<(String, String, String, i64)>> {
+    node_db
+        .fetch_all(
+            "SELECT annotator, target_doc, value, noted_ms FROM doc_annotations
+             WHERE target_author = ?1 AND key = 'tag' AND emoji = 1 AND annotator <> ?1",
+            (author_hex,),
+        )
+        .await
+        .context("listing emoji reactions received")
+}
+
 pub async fn published_from(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<String>> {
     let row: Option<(String,)> = node_db
         .fetch_optional(

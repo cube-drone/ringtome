@@ -37,11 +37,13 @@ import { PeopleApp, PeopleLookup } from './apps/people.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
 import { DeviceApp } from './apps/device.js';
+import { BankApp } from './apps/bank.js';
 import { ChatApp } from './apps/chat.js';
 import { appsFor, appById, appLabel } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
+import { CornerBank } from './cornerbank.js';
 import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
@@ -299,7 +301,9 @@ const Inside = ({ session }) => {
                 })}
             </span>
             <${Version} />
-            <${Clock} />
+            ${/* HorseBucks in the clock's own box, after the time (Curtis, 2026-09-29): a click
+                opens hrseBank. */ ''}
+            <${Clock}><${CornerBank} root=${root} /><//>
         </footer>
     `;
 
@@ -450,6 +454,7 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/ringtome/people" current=${persona.current} searchQuery=${query} />
             <${FeedApp} path="/ringtome/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
+            <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
             <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />

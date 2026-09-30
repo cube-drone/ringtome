@@ -12964,3 +12964,65 @@ Then made readable (Curtis: "there's no way to read the values on that graph!"):
 and 0 down the left edge; the first, middle and last dates underneath; a readout line saying
 "today so far: N active", or the date and count of whichever day is hovered or tapped; and an
 invisible wider target around each dot so the hover lands.
+
+## 2026-09-29: HorseBucks, slices 1-3: the ledger, hrseBank and the corner
+
+**The ledger** (`bank.rs`, `bank_lines` in each persona's database, user migration step 0027).
+Each of a persona's computers folds its own from the records it holds, every line keyed by what
+earned it (`kind`, `source`), so nothing pays twice and two computers holding the same records
+hold the same lines. Lines are kept, never recomputed: old chat is pruned and withdrawn edges
+vanish from the node's memos, but what was earned stays earned. Amounts are horsepennies, and the
+balance is summed exactly. The sources, all read through their owning modules (new small reads in
+chat.rs and annotations.rs):
+- **Private work, per version, for what it added over its parents:** words are distinct
+  three-word shingles (25 horsepennies each, the 5 H$ per 20 words). Strokes are distinct shapes:
+  the stroke less its id, time, layer and starting point, so a stamp pressed twice is one shape.
+  Uploads pay once per document.
+- **Publications, once per note:** the words and pictures again, plus the size bonus. A sealed
+  post's words are read from its note.
+- **Heartbeat days,** chat lines, reactions given and received in chat, emoji given and received
+  on posts, and published edges either way.
+
+**hrseBank™** (`apps/bank.js`): the balance in the broken-number notation (`pure/horsebucks.js`:
+exact to the penny under a million, then a named magnitude, the short scale through centillion
+and word-list jillions past it); a total per kind; and the ledger, each line in words. **The
+corner** (`cornerbank.js`): the balance at the dock's far right, beside the clock. It asks
+`/bank?lines=0` every ten seconds while visible and whenever the newest document edit moves, and
+rolls up to the new figure in BigInt steps. A click opens hrseBank.
+
+Pinned: bank.rs's unit tests (shingles, stroke shapes, the bonus curve); the formatter's tests
+(names through centillion, 1,296 distinct jillions, 293 salsajillion); and bank.cjs. That one has
+exact amounts: 148 shingles then only a paste's two-shingle seam, an upload, a heartbeat, and a
+publication paying its words again plus a 12 H$ bonus, all summing to the balance, and asking twice
+pays nothing twice.
+
+**A published drawing paid 12,292 H$** (Curtis, the same day, reading his first ledger: "we might
+be overweighting large drawings"). It wasn't the stroke rate: strokes paid 0.5 H$ each as meant. A
+drawing publishes as a text post embedding its picture, and the ledger reads a publication's words
+from its note. For a drawing, that note's body is JSON stroke data, which read as words is
+thousands of distinct shingles. `publication_measure` now measures a published work by what its
+note is: a drawing in stroke shapes (0.5 H$ each again, and strokes ÷ 2 toward the size bonus, as
+the formula says), a text note in words, and any other kind in neither. Paid lines are never
+recomputed, so publication lines carry a rules version, and one minted under the old rule is dropped
+and recounted on the next pass. Posts are never pruned, so a recount is always possible. Pinned by a
+unit test on a real drawing body: 40 shapes, no words, where read as words it's hundreds.
+
+**The ledger, grouped and by the month** (Curtis: "the ledger is quite long… we might slam these
+together, displaying multiple emoji (or 'users followed'). Past that, we might consider how we want
+to display a list that, after years, is likely to extend to tens of thousands of lines.")
+- **Runs collapse** (`pure/ledger.js` `groupLedger`): consecutive lines of one kind on one UTC day
+  become one row with the run's total. Words and strokes group within one document ("wrote 38 new
+  words in untitled · 9 saves"); reactions gather every emoji ("reacted 🧌🐴❓🥶🤮🐴 to posts"); follows
+  and reactions received gather their people as chips. Publications and days of use stand alone.
+- **History by the month:** `/bank` returns every month's line count and total, and one month's
+  lines (the newest, or `?month=YYYY-MM`, UTC). hrseBank shows each month as a row with its size
+  and total; the newest opens with the page, and an older one is fetched when opened. Years of
+  ledger are a few dozen month rows.
+Pinned in ledger.cjs (runs, breaks at a new document/day/kind, emoji and people, loners), a unit
+test for month bounds, and bank.cjs (the months sum to the balance, and a month asked for by name).
+The corner balance moved into the clock's own sunken box (Curtis: "in the same box as the clock in
+the bottom right - with a little separator, but lined up with the time"). `Clock` renders its
+children after the time, and `CornerBank` brings a hairline divider and the balance in the time's
+own type on its line. The divider appears only once there's a balance to show, and a click still
+opens hrseBank.
+hrseBank lost its "the ledger" heading: a plain rule separates the summary from the months (Curtis).

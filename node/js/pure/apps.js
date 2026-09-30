@@ -167,6 +167,15 @@ export const APPS = [
         itemNoun: 'file',
     },
     {
+        id: 'bank',
+        name: 'hrseBank™',
+        icon: 'bank',
+        live: true,
+        // Horse capital (HORSE_BASED_CURRENCIES.md, 2026-09-29): the balance, what each kind of
+        // earning has paid, and the ledger that shows its working. Not a documents app.
+        itemNoun: 'line',
+    },
+    {
         id: 'device',
         // The place's own settings, for its administrators only (apps/device.js): who may sign
         // up, and backups (Curtis, 2026-09-25). Named for what the person is holding - "Device"

@@ -1,0 +1,119 @@
+/* hrseBank™ (apps/bank.js, 2026-09-29): the balance large, what each kind paid, and the ledger. */
+.bank {
+    max-width: var(--post-measure);
+    margin: 0 auto;
+    padding: 1.2rem 1rem 2rem;
+}
+
+.bank-balance {
+    margin: 0 0 1rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: center;
+}
+
+.bank-kinds {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.bank-kinds th {
+    text-align: left;
+    font-weight: normal;
+    color: var(--ink-soft);
+    padding: 0.2rem 0;
+}
+
+.bank-kinds td {
+    text-align: right;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    padding: 0.2rem 0;
+}
+
+/* Between the summary and the months (2026-09-29): a rule, no heading. */
+.bank-rule {
+    margin: 1.2rem 0;
+    border: none;
+    border-top: 1px solid var(--border);
+}
+
+.bank-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.bank-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--surface);
+    font-size: 0.9rem;
+}
+
+.bank-line-what {
+    flex: 1;
+    min-width: 0;
+}
+
+.bank-line-when {
+    color: var(--faint);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.bank-line-amount {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--sea);
+    white-space: nowrap;
+}
+
+/* The ledger by month (2026-09-29): a row per month, the newest open, each opening onto its
+   grouped lines. */
+.bank-months {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.bank-month-head {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.bank-month-head.open {
+    background: var(--surface);
+}
+
+.bank-month-name {
+    flex: 1;
+    font-weight: 600;
+}
+
+.bank-month-count {
+    color: var(--faint);
+    font-size: 0.8rem;
+}
+
+.bank-month .bank-lines {
+    margin-top: 0.3rem;
+}

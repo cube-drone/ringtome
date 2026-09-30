@@ -135,12 +135,20 @@ pub const NODE: &[Rung] = &[
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).
-pub const USER: &[Rung] = &[Rung {
-    version: 26,
-    name: "0026_baseline.sql",
-    sql: include_str!("../migrations/user/0026_baseline.sql"),
-    refold: &[],
-}];
+pub const USER: &[Rung] = &[
+    Rung {
+        version: 26,
+        name: "0026_baseline.sql",
+        sql: include_str!("../migrations/user/0026_baseline.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 27,
+        name: "0027_bank_lines.sql",
+        sql: include_str!("../migrations/user/0027_bank_lines.sql"),
+        refold: &[],
+    },
+];
 
 /// The ladder's own record, created by the climb rather than by any rung so that it exists
 /// the same way in every database, baseline included.

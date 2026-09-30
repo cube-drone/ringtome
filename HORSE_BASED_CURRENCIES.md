@@ -128,7 +128,9 @@ so none needs an entry of its own:
 - **Images:** ingest completions. **Strokes:** a drawing's stroke entries. **Messages:** the persona's
   own room chains. **Reactions given and received:** their room and annotation lanes.
 - **Heartbeats:** the daily heartbeat entries.
-- **Follows:** the published follow edges.
+- **Follows:** published relationship edges only, follow or trust, both ways. *Settled* (Curtis,
+  2026-09-29: "Any edge - follow or trust, but public only"): a private follow earns nothing,
+  either way, because nobody else can see it.
 
 **Farming that would break the numbers, not just inflate them.** *Settled* (Curtis, 2026-09-29: all
 three guards agreed):
@@ -139,6 +141,12 @@ three guards agreed):
   **Settled.**
 - **Many computers:** a heartbeat is per persona, per computer, per day. Proposed: the 10 H$ and the
   tick are per persona per day, whatever the number of computers. **Settled.**
+
+**How the ledger is kept.** *Settled* (Curtis, 2026-09-29): each of a persona's computers folds
+its own ledger from the records it holds. Every line is keyed by what earned it, so the same record
+never pays twice and two computers holding the same records hold the same lines. The fold reaches
+back into everything already on the record ("whatever is easiest": there's no ship-date cutoff to
+keep).
 
 ## hrseBank™
 

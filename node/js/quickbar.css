@@ -21,6 +21,32 @@
 
 /* The corner clock: Swatch .beats, ticking; the local time on hover. Centred in the band rather
    than bottom-aligned like the tiles. */
+/* The persona's HorseBucks inside the clock's box, after the time and a hairline divider, set in
+   the time's own type on its line (cornerbank.js, 2026-09-29): a click opens hrseBank. */
+.quickbar-clock-sep {
+    align-self: stretch;
+    width: 1px;
+    margin: 0.15em 0.15em;
+    background: currentColor;
+    opacity: 0.35;
+}
+
+.quickbar-bank {
+    padding: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.quickbar-bank:hover,
+.quickbar-bank:focus-visible {
+    text-decoration: underline;
+}
+
 .quickbar-clock {
     align-self: center;
     display: inline-flex;
