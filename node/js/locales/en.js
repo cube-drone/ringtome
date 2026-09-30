@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1315 phrases across 85 files.
+// 1317 phrases across 85 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -816,6 +816,7 @@ export default {
     'index.more-search-options': 'more search options',
     'index.show': 'show',
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',
+    'index.home': 'home',
     'index.filter-their-posts': 'filter their posts…',
     'index.back-to-people': 'back to hrsePeople™',
     'index.back-to-their-page': 'back to their page',
@@ -828,7 +829,6 @@ export default {
     'index.people': 'people',
     'index.feed': 'feed',
     'index.search-this-node': 'search this node…',
-    'index.home': 'home',
     'index.loading-2': 'Loading…',
 
     // --- node/js/links.js ---
@@ -959,6 +959,8 @@ export default {
     'persona.application-settings': 'application settings',
     'persona.disable-tooltips': 'disable tooltips',
     'persona.settings-this-browser': 'these settings are for this browser',
+    'persona.version': 'version',
+    'persona.every-release': 'every release',
     'persona.drawing-not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
     'persona.could-not-read-that-picture': 'could not read that picture',
     'persona.profile-2': 'profile',

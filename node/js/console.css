@@ -29,6 +29,20 @@
     gap: var(--hex-gap);
 }
 
+/* A narrow window: two to a row (console.js), and the tiles sized to the screen - two tiles and
+   the half-tile shift of every other row are two and a half tiles across - never past their own
+   size. */
+@media (max-width: 900px) {
+    .console {
+        padding: 1rem;
+    }
+
+    .hex-comb {
+        --hex-w: min(156px, calc((100vw - 4rem) / 2.6));
+        --hex-h: calc(var(--hex-w) * 0.9749);
+    }
+}
+
 .hex-row + .hex-row {
     /* A lower tile's point rises between two upper tiles' bottom corners: those corners sit
        46px either side of the point (half a cell less 22.3% of a width), and the heptagon's

@@ -9,14 +9,18 @@ import { tileLabel } from './pure/tilelabel.js';
 import { iconFor } from './icons.js';
 import { isDevice } from './net.js';
 import { t } from './i18n.js';
+import { useNarrow } from './panes.js';
 
 const html = htm.bind(h);
 
 // Hexagons pack into a honeycomb: fixed-width rows, every other row shifted half a cell so the
 // cells nestle. The rows are chunked here rather than left to wrap - a honeycomb over a
 // free-wrapping list is fragile, since the half-cell shift needs to know which cells share a
-// row. Fixed columns is the price; a launcher is a fine place to pay it.
+// row. Fixed columns is the price; a launcher is a fine place to pay it. Two in a narrow window
+// (under 900px, where the columns become tabs; Curtis, 2026-09-30: "it can only reasonably support
+// two apps per row"), the tiles sized to the screen (console.css).
 const COLUMNS = 4;
+const NARROW_COLUMNS = 2;
 
 function chunk(arr, n) {
     const rows = [];
@@ -88,7 +92,8 @@ function Hex(app, key, onLaunch, personaName, me) {
 }
 
 export const Console = ({ onLaunch, personaName, me, admin }) => {
-    const rows = chunk(consoleCellsFor(admin, COLUMNS), COLUMNS);
+    const columns = useNarrow() ? NARROW_COLUMNS : COLUMNS;
+    const rows = chunk(consoleCellsFor(admin, columns), columns);
     return html`
         <div class="console">
             <div class="hex-comb">
@@ -96,7 +101,7 @@ export const Console = ({ onLaunch, personaName, me, admin }) => {
                     (row, ri) => html`
                         <div class=${ri % 2 ? 'hex-row shift' : 'hex-row'} key=${ri}>
                             ${row.map((app, ci) =>
-                                Hex(app, ri * COLUMNS + ci, onLaunch, personaName, me)
+                                Hex(app, ri * columns + ci, onLaunch, personaName, me)
                             )}
                         </div>
                     `

@@ -215,3 +215,17 @@ a.quickbar-version:focus-visible {
     height: 0.95em;
     flex: none;
 }
+
+/* A narrow window (under 900px, where the columns become tabs too): three tiles, centred - home, the
+   larger, between hrseMsg and hrseChat, which keep their badges (index.js, Curtis 2026-09-30). */
+.quickbar-narrow {
+    justify-content: center;
+}
+
+.quickbar-hex-home {
+    --qh-w: 62px;
+}
+
+.quickbar-hex-home .quickbar-hex-face {
+    font-size: 1.8rem;
+}

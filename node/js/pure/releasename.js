@@ -63,4 +63,7 @@ export const releaseTag = (version) => `${version}-${releaseName(version)}`;
 
 /// Where a release's notes live: its GitHub release page, by the tag `just release-*` pushed
 /// (`v` + the full name - node/tools/release.mjs). The UI's version link opens it.
+/// Every release, listed.
+export const RELEASES_URL = 'https://github.com/cube-drone/ringtome/releases';
+
 export const releaseUrl = (version) => `https://github.com/cube-drone/ringtome/releases/tag/v${releaseTag(version)}`;

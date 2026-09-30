@@ -13466,3 +13466,29 @@ because it's got so many options in it now"): `.feed-options`, a `jag-line` ring
 order and the facet rows, padded; the updates slot and "the feed" stay below it. Drawn only when it
 has something in it (the public feed has no dial; a place with nothing labelled has no lists). The
 rows' fit re-reckons to the box's inner width. Seen at 1300 and 560px.
+
+The bar at the bottom, narrowed (Curtis, 2026-09-30: "when narrowed, hide the clock and horsebucks"):
+under 900px - the same line the columns turn to tabs at - the clock's box, with the HorseBucks inside
+it, leaves the bar.
+Then the whole bar goes (Curtis: "you're right that this does exactly the same thing as the close
+button: when narrowed can we just... hide the entire taskbar?", after a centred home button was
+weighed and dropped): under 900px `.quickbar` is `display: none`, replacing the clock-only rule; the
+app header's close button is the way back to the console.
+
+The launcher, narrowed (Curtis, 2026-09-30: "it can only reasonably support two apps per row"): under
+900px the honeycomb chunks two to a row (console.js, `useNarrow` from panes.js - the rows are chunked
+in JS because the half-cell shift needs to know which tiles share one), and the tiles size to the
+screen, two and a half across for the shifted rows, never past their own 156px. Seen at 400px (five
+rows of two, nothing overflowing) and 700.
+Then the bar comes back, narrowed (Curtis: "we need the taskbar back at small sizes… centered, home,
+with horseMsg to its left and horseChat to its right, with Home larger than the two others - without
+the taskbar's badges, we have no way of knowing that we have incoming messages"): under 900px
+(`useNarrow`, index.js) the bar is three tiles, centred - hrseMsg and hrseChat each with its live
+unread badge and its dock behaviour (the app you're in closes to the launcher), and between them home
+at 62px against their 46, lit on the launcher. The persona tile, the other apps, the version and the
+clock stay out. Seen in headless Chrome at 400px (no unread on the test account, so no badge shown).
+
+The application settings page carries the version (Curtis, 2026-09-30: with the narrow bar's version
+gone, a phone signed in had "no way to see this"): under the settings, "version" and the running
+build's name - the bar's own `Version`, linked to its release notes, or a dev build's branch - then
+"every release" (`RELEASES_URL`, now beside `releaseUrl` in pure/releasename.js). Seen at 400px.

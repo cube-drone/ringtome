@@ -24,6 +24,8 @@ import { personaHue, shortcode } from './pure/person.js';
 import { bannerStyle } from './person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
+import { Version } from './version.js';
+import { RELEASES_URL } from './pure/releasename.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
 import { personHref, personaPageHref, LAUNCHER } from './links.js';
@@ -724,6 +726,12 @@ const AppSettingsFor = ({ root }) => {
                 ${t('persona.disable-tooltips', 'disable tooltips')}
             </label>
             <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
+            ${/* The running build (Curtis, 2026-09-30: a narrow window's bar has no version, so a phone
+                had "no way to see this when you're logged in"): its name, linked to its notes as
+                the bar's is, and every release beside it. */ ''}
+            <p class="settings-version-line">
+                ${t('persona.version', 'version')}${' '}<${Version} className="settings-version" />${' '}·${' '}<a href=${RELEASES_URL} target="_blank" rel="noopener">${t('persona.every-release', 'every release')}</a>
+            </p>
         </div>
     `;
 };

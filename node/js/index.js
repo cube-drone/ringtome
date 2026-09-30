@@ -63,6 +63,7 @@ import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { usePerson, faceOf } from './person.js';
+import { useNarrow } from './panes.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
 
 const html = htm.bind(h);
@@ -292,7 +293,42 @@ const Inside = ({ session }) => {
         if (onMyPage) loc.route(personHref(next));
         else if (inDoc && appHere) loc.route(appHref(appHere.id));
     };
-    const bar = html`
+    // A narrow window (under 900px, where the columns become tabs): three tiles, centred - home, the
+    // larger, between hrseMsg and hrseChat (Curtis, 2026-09-30: "without the taskbar's badges, we have
+    // no way of knowing that we have incoming messages to deal with"). The two keep their badges and
+    // their dock behaviour - the app you're in closes to the launcher.
+    const narrow = useNarrow();
+    const narrowSlot = (id, badge) => {
+        const app = appById(id);
+        const isActive = !!(appHere && appHere.id === id);
+        return html`<span class="quickbar-slot" key=${id}>
+            <button
+                class=${isActive ? 'quickbar-hex active' : 'quickbar-hex'}
+                title=${appLabel(app, personaName, isDevice())}
+                aria-label=${appLabel(app, personaName, isDevice())}
+                onClick=${() => loc.route(isActive ? LAUNCHER : appHref(id))}
+            ><span class="quickbar-hex-face"><${iconFor(app, isDevice())} /></span></button>
+            ${badge > 0 && html`<span class="quickbar-badge">${badge > 99 ? '99+' : badge}</span>`}
+        </span>`;
+    };
+    const narrowBar = html`<footer class="quickbar quickbar-narrow">
+        <span class="quickbar-apps">
+            ${open &&
+            html`${narrowSlot(BELL_APP_ID, unread)}
+                <span class="quickbar-slot">
+                    <button
+                        class=${inApp ? 'quickbar-hex quickbar-hex-home' : 'quickbar-hex quickbar-hex-home active'}
+                        title=${t('index.home', 'home')}
+                        aria-label=${t('index.home', 'home')}
+                        onClick=${() => loc.route(LAUNCHER)}
+                    ><span class="quickbar-hex-face"><${Icons.home} /></span></button>
+                </span>
+                ${narrowSlot(CHAT_APP_ID, unreadChat)}`}
+        </span>
+    </footer>`;
+    const bar = narrow
+        ? narrowBar
+        : html`
         <footer class="quickbar">
             <span class="quickbar-apps">
                 ${open &&
