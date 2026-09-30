@@ -194,7 +194,7 @@ A few rules belong to this crate alone:
   `server-latest.json`, which `.github/workflows/release.yml` writes. Change one side of that
   contract and you change the other.
 - **Its release key is the desktop updater's key.** `RELEASE_PUBLIC_KEY` in `src/config.rs` must match
-  `desktop/tauri.conf.json`, and a unit test fails if they drift. See [`SIGNING.md`](../SIGNING.md).
+  `desktop/tauri.conf.json`, and a unit test fails if they drift. See [`SIGNING.md`](../plans/SIGNING.md).
 - **Backup names are shared.** `src/stamp.rs` copies the node's `utc_stamp` so that retention can sort
   both kinds of archive together.
 

@@ -89,7 +89,7 @@ Two corrections to the case as originally written here, both in Tauri's favour:
 
 ### The deciding experiment — run, and it came back yes (2026-08-11)
 
-[`spike-tauri/`](spike-tauri/README.md) was built to answer one question — **does the Dexie mirror
+[`spike-tauri/`](../spike-tauri/README.md) was built to answer one question — **does the Dexie mirror
 survive WKWebView and WebKitGTK?** — because for *this* codebase "webview skew" has a specific
 address: IndexedDB-on-WebKit is the most notorious compatibility surface on the web platform, and
 `js/mirror.js` is the whole read path. CodeMirror 6, Preact and WebSocket were never at risk.
@@ -328,7 +328,7 @@ on a loopback listener, page loaded from it. No signing, no updater, no installe
 running app on the developer's machine. Settles option (a) above in practice — including that the
 live-cache WebSocket is same-origin and needs nothing new.
 
-*What landed:* [`desktop/`](desktop/README.md) — its own workspace, by the spike's precedent, so the
+*What landed:* [`desktop/`](../desktop/README.md) — its own workspace, by the spike's precedent, so the
 gates never build Tauri; `just desktop` builds the UI bundle and runs it. The shell decides three
 things and no more: the data directory (the platform's app-data dir, `RINGTOME_DATA_DIRECTORY` still
 winning), the port, and that a window exists. Everything else is `ringtome_node::bind`.

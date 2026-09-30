@@ -4750,7 +4750,7 @@ calcifies - the moment hosted-first feels like it is working is the moment to sh
 **One binary.** A Tauri v2 window, and the node linked in as a library running axum on the same tokio runtime - no
 child process, no sidecar, no second executable. The window loads the UI from the node's own HTTP server, so `ui.rs`
 keeps its job and the hosted-browser path and the desktop path serve byte-identical UI from one source. The rollout,
-the packaging and the signing costs are [DESKTOP.md](DESKTOP.md); the evidence is
+the packaging and the signing costs are [DESKTOP.md](plans/DESKTOP.md); the evidence is
 [`spike-tauri/`](spike-tauri/README.md).
 
 This **reverses** this section's previous position ("local server + system browser, NOT Tauri"), and the reversal is
@@ -4810,13 +4810,13 @@ client-agnostic:** the web client is the reference client, never a privileged on
 web-UI-private endpoints, and the HTTP API is documented and versioned with the protocol's
 discipline, which is what keeps every future client possible, including ones we do not
 build. **A game-engine client is struck** - a social network is data-bound, text-heavy,
-accessible UI, exactly what game-engine toolkits are worst at; [GODOT.md](GODOT.md) carries
+accessible UI, exactly what game-engine toolkits are worst at; [GODOT.md](plans/GODOT.md) carries
 the costed argument and why the idea keeps returning. Desktop delivery is *Desktop mode:
 Tauri, with the node embedded*.
 
 ### Phones
 
-[MOBILE.md](MOBILE.md) is the shape for phones and corrects the premise this section once
+[MOBILE.md](plans/MOBILE.md) is the shape for phones and corrects the premise this section once
 carried (that a phone must be a remote client of always-on nodes). Two facts from here
 survive: the web client works in a phone browser from day one, and push notifications are
 the one structural gap - APNs and FCM need a server holding credentials, likely an optional

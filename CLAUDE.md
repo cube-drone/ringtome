@@ -12,6 +12,11 @@
   person installs, opens or reads on screen. New user-facing copy says Horse Drawing Tycoon 2; never rename a
   protocol string, and never rename the bundle identifier or a storage key (PROJECT_PLAN's *Two
   names* says why).
+- **New plans go in `plans/`** (2026-09-30): a design document for an app, a feature or a delivery
+  shape - the `RSS.md` kind - is written in `plans/` and listed in README's *The documents*. The
+  standing documents (README, PROJECT_PLAN, NEXT_STEPS, HISTORY, STYLE, GLOSSARY, REFACTOR) stay at
+  the root, and so does SERVER.md, which is the operators' manual and ships in the server tarball.
+  A link from a plan to anything outside `plans/` starts with `../`.
 - Do not add history to `NEXT_STEPS.md`: it's only for work that needs to get done, history goes in `HISTORY.md`.
 - **HISTORY rides the work, unprompted** (2026-08-08): when a piece of work wraps — gates
   green, NEXT_STEPS item struck — append its `HISTORY.md` entry in the same pass, don't wait

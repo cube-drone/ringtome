@@ -7,7 +7,7 @@ both of which work in Chromium today and neither of which is guaranteed in a pla
 2. **Browser-side video encode** — the laundering pipeline proved in [`../video-ingest`](../video-ingest),
    which is what lets a memory-safe Rust server never decode a hostile bitstream.
 
-[`../DESKTOP.md`](../DESKTOP.md) names the first as the deciding experiment between Electron and
+[`../DESKTOP.md`](../plans/DESKTOP.md) names the first as the deciding experiment between Electron and
 Tauri; the second is the half that document does not consider, and it is the one with a real
 chance of being fatal. Answers land in *Results*, below, and get carried into DESKTOP.md's
 *Electron and Tauri, compared*.
@@ -113,7 +113,7 @@ nothing, because the parts historically weakest on WebKit are the ones we lean o
 
 In rough order of preference — the first two are already designed, not inventions:
 
-1. **A memory-only mirror.** [`../MOBILE.md`](../MOBILE.md) works through what the mirror actually
+1. **A memory-only mirror.** [`../MOBILE.md`](../plans/MOBILE.md) works through what the mirror actually
    buys a client whose node is zero hops away, and the answer is mostly reactivity rather than
    storage. A pluggable backing store behind `mirror.js` — memory locally, Dexie for remote
    clients — is a contained change, because the conventions cop already enforces one owner for
@@ -376,7 +376,7 @@ this" (settled) and "video upload works" (not yet observed).
   not read a green result below as covering it.
 - **Whether the node should run in-process.** This harness spawns nothing and links nothing; it
   serves static files. The in-process question needs the `lib.rs` split and belongs to
-  [`../MOBILE.md`](../MOBILE.md).
+  [`../MOBILE.md`](../plans/MOBILE.md).
 - **Anything about the engine on a machine other than the one you ran it on.** One row of the
   matrix is one row.
 - **Performance under a real persona.** The probe's 2000 docs are a plausible load, not a measured

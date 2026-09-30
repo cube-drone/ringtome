@@ -4906,8 +4906,8 @@ still resolves serving records and still knows where its peers live. A test that
 ## 2026-08-11 — three documents about what kind of application this is
 
 A conversation stretch, no code. It started as "how hard would it be to run the node behind a Godot
-game?" and ended up reopening the packaging decision, so it produced [GODOT.md](GODOT.md),
-[DESKTOP.md](DESKTOP.md) and [MOBILE.md](MOBILE.md) rather than a commit. **Nothing is decided:**
+game?" and ended up reopening the packaging decision, so it produced [GODOT.md](plans/GODOT.md),
+[DESKTOP.md](plans/DESKTOP.md) and [MOBILE.md](plans/MOBILE.md) rather than a commit. **Nothing is decided:**
 PROJECT_PLAN's *Delivery and Packaging* is unamended and still canon, and each new document says at
 the top whether it proposes superseding a section or merely records why an idea keeps returning.
 Registered in README's document list, which is the map.
@@ -5007,7 +5007,7 @@ No gates run: nothing outside `*.md` moved.
 
 ## 2026-08-11 — spike-tauri: a harness for the two questions Tauri has to pass
 
-[DESKTOP.md](DESKTOP.md) names one experiment as the thing that decides Electron vs. Tauri, and
+[DESKTOP.md](plans/DESKTOP.md) names one experiment as the thing that decides Electron vs. Tauri, and
 Curtis named a second the document had missed. `spike-tauri/` is the harness for both:
 
 1. **Does the Dexie mirror work in a platform webview?** IndexedDB-on-WebKit is the highest-risk
@@ -5135,7 +5135,7 @@ three probe modules pass `node --check`.
 ## 2026-08-11 — DESKTOP flipped to Tauri, node embedded from the start
 
 The spike came back clean on both WebKit engines, so the shell decision was made and
-[DESKTOP.md](DESKTOP.md) was rewritten as a Tauri plan. Not the sidecar shape it costed earlier -
+[DESKTOP.md](plans/DESKTOP.md) was rewritten as a Tauri plan. Not the sidecar shape it costed earlier -
 **shape (3): the node linked in as a library, axum on Tauri's own tokio runtime, one process, one
 binary.** In-process from the start rather than as a later optimization, because the sidecar's
 problems are all problems it does not have.
@@ -10133,7 +10133,7 @@ CPU in a seeding run. No video required to find this.
 ## 2026-09-22 (cont.): SIGNING.md, and the Windows money examined
 
 Curtis: Apple and Azure look like the way forward, both look like weeks of real-world waiting, so
-write the guide and build unsigned meanwhile. [SIGNING.md](SIGNING.md) is that guide - the first
+write the guide and build unsigned meanwhile. [SIGNING.md](plans/SIGNING.md) is that guide - the first
 document in this repo addressed to the operator rather than to the code.
 
 It starts with the free thing, because it is the one that cannot be replaced: the updater keypair is
@@ -13165,3 +13165,18 @@ Pinned in rss.cjs: two open posts newest first and the sealed one absent (title 
 channel's name escaped; each item linked to its post; an ampersand in the words escaped once for
 the HTML and again for the XML; an RFC 822 date; the page's head pointing at the feed; a 404 for a
 persona not hosted here.
+
+### plans/ (2026-09-30)
+
+Curtis: "can we create a new directory, /plans, and stash API_OLD.md, DESKTOP.md, DRAWING.md, GODOT.md,
+HORSE_BASED_CURRENCIES.md, MOBILE.md, PUBLISH.md, RSS.md, SERVER.md and SIGNING.md in there? Maybe
+update instructions to indicate that new plans go in there?" Moved with `git mv`; every markdown link
+into them now says `plans/` (README, NEXT_STEPS, PROJECT_PLAN, HISTORY, and the desktop,
+spike-tauri and supervisor READMEs), and their own links out say `../`. The release workflow copies
+`plans/SERVER.md` into the server tarball, where it still lands as `SERVER.md`. Bare mentions in code
+comments stay as names, and the frozen migration rungs that mention them are untouched. CLAUDE.md
+and README now say new plans are written in `plans/`.
+Then (Curtis: SERVER.md is a document for operators, not a plan): SERVER.md is back at the root, and
+the release workflow copies it from there again; SIGNING.md stays in `plans/` ("more instructions for
+me than for anybody"). CHAT.md joined the plans; NOTES_APP.md was deleted in `4684ccd`, and README's
+link to it is still dead, as noted above.

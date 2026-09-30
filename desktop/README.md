@@ -3,7 +3,7 @@
 The consumer application, with the Ringtome node linked in (the protocol keeps its name; see the
 root README's *Two names*).
 
-One window, one process, the node inside it. [`../DESKTOP.md`](../DESKTOP.md) is the design and the
+One window, one process, the node inside it. [`../DESKTOP.md`](../plans/DESKTOP.md) is the design and the
 staging; this is how to run what exists.
 
 ```sh
@@ -24,7 +24,7 @@ cargo install tauri-cli --version "^2.0"
 ```
 
 That is what `cargo tauri build` and `cargo tauri signer generate` come from, so it is a Stage 4
-prerequisite and the thing to install before following [SIGNING.md](../SIGNING.md).
+prerequisite and the thing to install before following [SIGNING.md](../plans/SIGNING.md).
 
 ## What this crate is, and is not
 

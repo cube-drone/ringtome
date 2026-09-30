@@ -56,20 +56,22 @@ federated, unapologetically Old Internet.
   the pragmatism rules; the patterns every new file is expected to hold.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
-- [`CHAT.md`](CHAT.md) — real-time rooms: a room is a post, a message is an entry on its author's
+- [`plans/`](plans/) — the plans: one design document per app, feature or delivery shape, drafts and
+  built alike, plus the signing guide. **A new plan is written here.** So far:
+- [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is an entry on its author's
   own chain on the room's lane, live is gossip carrying the same entries, history is recent
   everywhere and whole at the creator's. Rulings settled 2026-09-18; the chain key's third
   element comes first as its own arc, then five slices.
-- [`DRAWING.md`](DRAWING.md) — the horse-drawing app: a drawing is a versioned document whose body is
+- [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a versioned document whose body is
   its strokes, undo is a recorded removal, and two histories merge by putting both sets of strokes
   together (on the node, held to the browser by shared test vectors); copies and publications are
   pictures of it.
-- [`HORSE_BASED_CURRENCIES.md`](HORSE_BASED_CURRENCIES.md) — HorseBucks and the other currencies:
+- [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks and the other currencies:
   never transferable, a balance is a fold over the persona's own ledger that may go negative and is
   never rolled back, interest measured in HorseTicks rather than time, exact bigint balances shown in broken-number notation,
   wealth-gated posts honoured by the reader's own node, and a daily public heartbeat. A design draft
   (2026-09-29); nothing built.
-- [`RSS.md`](RSS.md) — hrseRSS, a feed reader: subscriptions on the private chain, items fetched
+- [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the private chain, items fetched
   once per node into a shared cache and translated to Marquee (never rendered as HTML), images
   through the node, a merged newest-first view, and a rebroadcast that carries its source. A design
   draft (2026-09-30); nothing built.
@@ -79,22 +81,22 @@ federated, unapologetically Old Internet.
   it on 2026-08-11), while MOBILE and GODOT still **disagree with canon on purpose** — the first
   correcting a premise in *Phones: deferred, by design*, the second recording why an idea *The Client
   Story* struck keeps returning. Read them together; they constrain each other.
-  - [`DESKTOP.md`](DESKTOP.md) — a Tauri shell with the node **linked in-process**, one binary, plus
+  - [`DESKTOP.md`](plans/DESKTOP.md) — a Tauri shell with the node **linked in-process**, one binary, plus
     the rollout and the recurring signing costs. The decision itself is canon as of 2026-08-11
     (*Desktop mode: Tauri, with the node embedded*); this document is the execution plan, and it keeps
     the Electron comparison as the record of how the decision was made.
-  - [`SIGNING.md`](SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits on, and the only document
+  - [`SIGNING.md`](plans/SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits on, and the only document
     here addressed to the operator rather than the code: what to enrol in (Apple, Azure Artifact
     Signing), the eligibility traps, where each secret lands, and what proceeds unsigned meanwhile.
   - [`SERVER.md`](SERVER.md) — running a Ringtome node on a server: which release download is which,
     the container image, the settings, HTTPS (the operator's own proxy), the peer-to-peer port, the
     data directory that IS the node, and why every upgrade takes a backup first.
-  - [`MOBILE.md`](MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
+  - [`MOBILE.md`](plans/MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
     deliberately narrow UI. Corrects a factual premise in *Phones: deferred, by design* and
     carries the availability arithmetic for a network with no always-on infrastructure.
-  - [`GODOT.md`](GODOT.md) — the game-engine client, still struck from the roadmap by *The Client
+  - [`GODOT.md`](plans/GODOT.md) — the game-engine client, still struck from the roadmap by *The Client
     Story*, with the properly-costed argument for the day a gamey product layer asks for it.
-- [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
+- [`API_OLD.md`](plans/API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
 
 **Suggested first hour:** this file top to bottom; PROJECT_PLAN's *Vision* and *Doctrine*
@@ -145,9 +147,10 @@ PROJECT_PLAN section.
 | `node/` | **ringtome-node** — the connector node: HTTP server, accounts, storage, iroh sync, discovery, ingest, and the embedded Preact UI (`node/js`, `node/html`, baked into the binary). The one binary. See [`node/README.md`](node/README.md). |
 | `supervisor/` | **ringtome-supervisor** — the stable parent of a server node: runs it, installs signed releases, backs it up, rolls a failed update back (binary and data). Shares a wire contract with the node, not code. See [`supervisor/README.md`](supervisor/README.md). |
 | `node/integration/` | The JS integration suite: boots real nodes, drives real HTTP, proves multi-node scenarios (`just integration`). |
+| `plans/` | Design documents: one per app, feature or delivery shape (see *The documents*). New plans go here. |
 | `spec/` | Test vectors ("this logical value MUST produce exactly these bytes"). Prose specs land here too, eventually. |
 | `video-ingest/` | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README. |
-| `spike-tauri/` | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](DESKTOP.md). |
+| `spike-tauri/` | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](plans/DESKTOP.md). |
 | `sample_media/` | Fixture media for exercising the ingest pipeline. |
 | `default_media/` | The app's own pictures, compiled into the node (`node/build.rs`, `node/src/builtin.rs`). Every PNG here is in every persona's files, tagged by its folders (`sticker/bodies/body_1.png` is `body_1`, tagged `sticker` and `bodies`), and nobody can delete it. Add a file and rebuild to ship it; remove it and rebuild to take it away. |
 

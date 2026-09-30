@@ -138,7 +138,7 @@ otherwise.
 Tauri's backend is Rust, which is what makes it the right shell here — and **as of 2026-08-11 it is
 the desktop shell too**, with the node linked in-process, so this document no longer diverges from
 [DESKTOP.md](DESKTOP.md). It converges with it. That document carries the head-to-head against
-Electron, the evidence from [`spike-tauri/`](spike-tauri/README.md) that settled it, and the rollout
+Electron, the evidence from [`spike-tauri/`](../spike-tauri/README.md) that settled it, and the rollout
 whose Stage 1 is the `lib.rs` split this page needs.
 
 The consequence for phones is large: the desktop plan now pays for the split, the in-process node, and
