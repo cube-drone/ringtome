@@ -13203,3 +13203,7 @@ triggering anything yet and it has a lot to offer."
 - Where the fill's selection lands is `pure/placeholder.js`, tested: a value at the end of the
   opening line, a layout's placeholder line (not the `nav` in `nav-footer` or `slot=nav` - the
   test caught the first), a table's heading inside its cell.
+
+The feed's "further back" button sits flush with the cards again (Curtis, 2026-10-01): it kept an
+`align-self: center` from before the feed column could grow past the post measure, so in a wide
+column its measure-wide bar centred itself in the spare room. It takes the stream's own left edge now.

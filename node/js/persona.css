@@ -1785,8 +1785,9 @@ article:has(.label-emoji-strip) {
     text-decoration: underline;
 }
 
+/* On the post measure against the column's left edge, like every card above it (.feed-stream > *):
+   it was centred, which only looked flush while the column was capped at the measure. */
 .feed-more {
-    align-self: center;
     background: var(--surface-2);
     border: 1px solid transparent;
     --line: var(--border);
