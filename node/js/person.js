@@ -189,9 +189,15 @@ const rowBannerStyle = (person) => {
         : `background-image: ${fade}, url("${identiconUri(person.root)}"); background-size: auto, 64px 64px; background-repeat: no-repeat, repeat`;
 };
 
+/// `pictured`: a picture they chose, rather than the identicon standing in for one.
 export const faceOf = (person) =>
     person && person.root
-        ? { src: person.avatarUrl || identiconUri(person.root), ring: `hsl(${person.hue}, 60%, 55%)`, rim: `hsl(${person.hue}, 55%, 38%)` }
+        ? {
+              src: person.avatarUrl || identiconUri(person.root),
+              pictured: !!person.avatarUrl,
+              ring: `hsl(${person.hue}, 60%, 55%)`,
+              rim: `hsl(${person.hue}, 55%, 38%)`,
+          }
         : null;
 
 // The heptagon itself: their picture clipped to seven sides, ringed in their colour (a

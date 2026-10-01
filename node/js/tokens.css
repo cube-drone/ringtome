@@ -316,44 +316,46 @@
     --shadow-punch: rgba(16, 22, 47, 0.25);
 }
 
-/* terminal (2026-09-30): black and lime green - a black page, near-black green panes, the words in
-   phosphor green, the accent the brightest lime; amber for scheduled, a terminal red for danger. */
+/* terminal (2026-09-30): black and lime green - a black page, dark green panes, the words in phosphor
+   green, the accent the brightest lime; amber for scheduled, a terminal red for danger. The panes and
+   lines were lifted the same day (Curtis: "a lot of light black on black"): a card, a border and a faint
+   word each have to stand clear of the black, not merely differ from it. */
 :root[data-colorway='terminal'] {
     color-scheme: dark;
     --bg: #000000;
-    --surface: #070d07;
-    --surface-2: #0d1a0d;
-    --paper: #040904;
-    --field: #000000;
+    --surface: #0f2410;
+    --surface-2: #173a18;
+    --paper: #081608;
+    --field: #050f05;
     --ink: #9dff8a;
     --ink-soft: #7fe86b;
-    --muted: #57b246;
-    --faint: #3a7d2f;
-    --border: #1d4a18;
-    --border-strong: #2e7524;
-    --frame: #051a05;
+    --muted: #6fd35b;
+    --faint: #52a843;
+    --border: #2f8a27;
+    --border-strong: #4cc23d;
+    --frame: #0b2e0b;
 
     --teal: #39ff14;
-    --teal-deep: #062206;
+    --teal-deep: #0d3a0d;
     --sea: #39ff14;
     --pink: #b8ff5c;
     --peach: #ffc53d;
     --coral: #ff4d4d;
-    --react-good: #0f2a0f;
-    --react-bad: #2a0f0f;
+    --react-good: #1a4a1a;
+    --react-bad: #4a1a1a;
 
     --glow: rgba(57, 255, 20, 0.45);
     --dock-text: #39ff14;
     --sunk-shadow: rgba(0, 0, 0, 0.7);
     --sunk-light: rgba(57, 255, 20, 0.1);
-    --row-veil: rgba(7, 13, 7, 0.6);
+    --row-veil: rgba(15, 36, 16, 0.6);
     --banner-veil: rgba(0, 0, 0, 0.55);
     --plate: rgba(0, 0, 0, 0.8);
 
     --hex-border-dark: #39ff14;
-    --hex-border-light: #0a1f0a;
+    --hex-border-light: #173a18;
 
-    --marker: #1f5c1f;
+    --marker: #2f7a26;
     --scrim: rgba(0, 0, 0, 0.7);
     --shadow-drop: rgba(0, 0, 0, 0.7);
     --shadow-punch: rgba(0, 0, 0, 0.5);

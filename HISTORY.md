@@ -13544,3 +13544,14 @@ and one set of rules, not three rules each. Seen in headless Chrome: the feed in
 And **terminal** (Curtis: "black and lime green"): a black page, near-black green panes, phosphor-green
 words, the brightest lime for the accent and the frame's lettering, amber for scheduled, a terminal red
 for danger, `color-scheme: dark`. Seen in headless Chrome: the feed.
+
+The launcher's persona tile names you only when it has to (Curtis, 2026-09-30: "ONLY do that if you
+don't have a profile pic set"): `faceOf` says whether the face is a picture you chose (`pictured`) or
+the identicon standing in, and the tile drops its nameplate over a chosen picture; the tooltip still
+names you either way.
+Terminal's panes and lines lifted (Curtis: "a lot of light black on black which I can't see with my
+human eyes"): its surfaces were a few shades off black (#070d07, #0d1a0d) and its borders and faint
+words dim greens on them. Now the cards are a clear dark green (#0f2410, #173a18), borders bright
+(#2f8a27, #4cc23d), faint and muted words a step up, the frame and dock a visible green; the note
+paper stays darker than the cards, set apart by its line. Seen in headless Chrome: the feed, the
+launcher, the Writer.

@@ -70,16 +70,20 @@ function Hex(app, key, onLaunch, personaName, me) {
     const { text, scale } = tileLabel(label);
     const blurb = app.blank ? '' : appBlurb(app, isDevice());
     // The persona's own tile wears their face (Curtis, 2026-09-27): the picture fills it, under
-    // the nameplate, and the rings take their colour.
+    // the nameplate, and the rings take their colour. A picture of their own needs no name over it
+    // (2026-09-30) - the nameplate is for the identicon, which says nothing about who - and the
+    // tooltip names them either way.
     const face = app.id === 'persona' && me ? me : null;
+    const named = !face || !face.pictured;
     const content = app.blank
         ? ''
         : html`
               ${face ? html`<img class="app-tile-face" src=${face.src} alt="" />` : html`<span class="app-tile-icon"><${iconFor(app, isDevice())} /></span>`}
-              <span
+              ${named &&
+              html`<span
                   class="app-tile-name"
                   style=${scale === 1 ? undefined : `font-size: ${scale}rem`}
-              >${text}</span>
+              >${text}</span>`}
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
     // The whole tile's tooltip, not just the nameplate's: its name, and what it is for.
