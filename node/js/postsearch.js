@@ -10,8 +10,9 @@ import { sortParams } from './pure/feed.js';
 
 const DEBOUNCE_MS = 250;
 
-/// The query string the node's narrowing reads: `q=` for the words, `bucket=` and `tag=`
-/// repeated for the picks (facets.js).
+/// The query string the node's narrowing reads: `q=` for the words, `kind=`, `bucket=` and `tag=`
+/// repeated for the "only" picks, and `not_kind=`, `not_bucket=`, `not_tag=` for the left-out ones
+/// (facets.js).
 export function narrowParams(query, picks, extra = {}) {
     const parts = [];
     const q = (query || '').trim();
@@ -19,13 +20,17 @@ export function narrowParams(query, picks, extra = {}) {
     for (const b of (picks && picks.buckets) || []) parts.push(`bucket=${encodeURIComponent(b)}`);
     for (const g of (picks && picks.tags) || []) parts.push(`tag=${encodeURIComponent(g)}`);
     for (const k of (picks && picks.kinds) || []) parts.push(`kind=${encodeURIComponent(k)}`);
+    // The left-out chips (2026-10-01): what carries one is dropped.
+    for (const b of (picks && picks.notBuckets) || []) parts.push(`not_bucket=${encodeURIComponent(b)}`);
+    for (const g of (picks && picks.notTags) || []) parts.push(`not_tag=${encodeURIComponent(g)}`);
+    for (const k of (picks && picks.notKinds) || []) parts.push(`not_kind=${encodeURIComponent(k)}`);
     // The feed's selectivity dial rides along (2026-09-08) so the node narrows what the
     // dial shows; it never makes a search on its own.
     const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;
     if (stop && parts.length) parts.push(`stop=${encodeURIComponent(stop)}`);
-    // The feed's "me" left unpicked (apps/feed.js) rides along the same way: it narrows a search,
-    // and never makes one.
-    if (extra.ownOut && parts.length) parts.push('me=0');
+    // The feed's "me" (apps/feed.js), left out or alone, rides along the same way: it narrows a
+    // search, and never makes one.
+    if (extra.me && parts.length) parts.push(`me=${extra.me}`);
     // A best order (2026-09-27) ranks a search's results the same way, and never makes one.
     const sort = sortParams(extra.sort);
     if (sort && parts.length) parts.push(sort);

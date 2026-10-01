@@ -9,7 +9,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, stated } = require("./helpers.cjs");
 const { beat } = require("./beat.cjs");
 const { HOST, makeFetch } = require("./fetch.cjs");
 
@@ -71,7 +71,7 @@ describe("the node's public face: a stranger's doors", function () {
         const first = items.find((p) => p.doc_id === tagged);
         assert.equal(first.author_name, "Bea Face", "with the byline the node holds");
         assert.equal(first.mine, false);
-        assert.deepEqual((first.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort(), ["bikes", "bread"], "and its labels");
+        assert.deepEqual(stated((first.annotations || []).filter((a) => a.key === "tag").map((a) => a.value)).sort(), ["bikes", "bread"], "and its labels");
     });
 
     it("the labels count what the stranger may see, and the feed narrows by tag, kind and words", async () => {

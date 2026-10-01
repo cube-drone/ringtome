@@ -29,7 +29,7 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B, HOST_C, sql } = require("./fetch.cjs");
-const { makeUserFetch, decodeCode } = require("./helpers.cjs");
+const { makeUserFetch, decodeCode, stated } = require("./helpers.cjs");
 const { beat } = require("./beat.cjs");
 
 // --- world-building helpers -----------------------------------------------------------------
@@ -256,7 +256,7 @@ const listIds = async (fetch, root) =>
 
         eachNode("B's tags vanish, A's survive (on whatever survives)", async (node) => {
             const rows = (await (await node()(`api/identity/${root}/docs`)).json()).docs;
-            assert.deepEqual(rows.find((d) => d.doc_id === docA.id).tags, [], "btag is struck");
+            assert.deepEqual(stated(rows.find((d) => d.doc_id === docA.id).tags), [], "btag is struck");
         });
 
         eachNode("the tree: A's section stands, B's section and placements vanish", async (node) => {

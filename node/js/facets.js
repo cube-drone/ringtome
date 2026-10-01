@@ -10,7 +10,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
-import { facetSlice, fitCount, togglePick } from './pure/facets.js';
+import { cycleMe, cyclePick, facetSlice, fitCount, LEFT_OUT } from './pure/facets.js';
 
 const html = htm.bind(h);
 
@@ -40,21 +40,36 @@ const KIND_NAMES = {
     room: () => t('facets.kind-rooms', 'rooms'),
 };
 
+/// A chip's look and its words, by where it stands: left alone, "only", or left out - and what the
+/// next click does, since a chip that cycles should say where it goes.
+const CHIP_CLASS = { only: 'facet-chip facet-chip-on', out: 'facet-chip facet-chip-out' };
+const chipClass = (state) => CHIP_CLASS[state] || 'facet-chip';
+const chipTitle = (state) =>
+    state === 'only'
+        ? t('facets.chip-only', 'showing only these - click to leave them out instead')
+        : state === 'out'
+          ? t('facets.chip-out', 'left out - click to show them again')
+          : t('facets.chip-alone', 'click to show only these; click again to leave them out');
+
 /// One row of chips, one line of them (Curtis, 2026-09-30: the space "isn't really taken into
 /// account"): as many as its width holds, then "and n more…", which opens the rest onto the lines
 /// below. The chips are measured once per list - every one shown on the line, unseen, before the
 /// first paint - and a resize only re-does the arithmetic (pure/facets.js `fitCount`). A picked
 /// value shows whatever the fit (`facetSlice`), so what narrows the page is never folded away.
-const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null }) => {
+/// `picked` are the row's "only" values, `out` its left-out ones (2026-10-01, three-state chips).
+const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra = null }) => {
     const [expanded, setExpanded] = useState(false);
     const rowRef = useRef(null);
     const measured = useRef(null); // { sig, widths, fixed, more, gap }
     const [fit, setFit] = useState(null); // { n }: a fresh object, so every reckoning re-renders
-    // A picked value always shows, even once nothing is left under it - so it can be unpicked.
+    // A picked value always shows, either way, even once nothing is left under it - so it can be
+    // clicked on round.
+    const chosen = [...(picked || []), ...(out || [])];
     const have = new Set((counted || []).map((f) => f.value));
-    const items = [...(counted || []), ...(picked || []).filter((v) => !have.has(v)).map((value) => ({ value, count: 0 }))];
+    const items = [...(counted || []), ...chosen.filter((v) => !have.has(v)).map((value) => ({ value, count: 0 }))];
     const word = (v) => (names && names[v] ? names[v]() : v);
-    const sig = `${extra ? 'x' : ''}|${items.map((f) => `${f.value}:${f.count}`).join('|')}|${(picked || []).join('|')}`;
+    const stateIn = (v) => ((picked || []).includes(v) ? 'only' : (out || []).includes(v) ? 'out' : null);
+    const sig = `${extra ? 'x' : ''}|${items.map((f) => `${f.value}:${f.count}`).join('|')}|${(picked || []).join('|')}|${(out || []).join('|')}`;
     const measuring = !expanded && (!measured.current || measured.current.sig !== sig);
     const reckon = () => {
         const row = rowRef.current;
@@ -88,7 +103,7 @@ const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null
     if (items.length === 0 && !extra) return null;
     // Measuring: every chip, and the widest "more" the row could need, on the one line.
     const top = expanded || measuring || !fit ? items.length : fit.n;
-    const { shown, hidden } = facetSlice(items, picked, expanded, top);
+    const { shown, hidden } = facetSlice(items, chosen, expanded, top);
     const folds = !!fit && fit.n < items.length;
     return html`<div class=${expanded ? 'facet-row facet-row-open' : 'facet-row'} ref=${rowRef}>
         <span class="facet-row-label">${label}</span>
@@ -97,7 +112,8 @@ const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null
             (f) => html`<button
                 key=${f.value}
                 data-facet
-                class=${(picked || []).includes(f.value) ? 'facet-chip facet-chip-on' : 'facet-chip'}
+                class=${chipClass(stateIn(f.value))}
+                title=${chipTitle(stateIn(f.value))}
                 onClick=${() => onToggle(f.value)}
             >${word(f.value)} <span class="facet-count">${f.count}</span></button>`
         )}
@@ -114,33 +130,35 @@ const FacetRow = ({ label, items: counted, picked, onToggle, names, extra = null
     </div>`;
 };
 
-/// The strip: `labels` from `useLabels`, `picks` as `{ buckets: [], tags: [] }`, and
-/// `onPicks` with the next picks.
+/// The strip: `labels` from `useLabels`, `picks` as `{ kinds, buckets, tags }` (each row's "only"
+/// values) with `notKinds`, `notBuckets`, `notTags` (its left-out ones) and `me`, and `onPicks`
+/// with the next picks. Every chip cycles the same way (Curtis, 2026-10-01): left alone, only,
+/// left out - "only" picks in one row widen to either, the rows narrow together.
 export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = null }) => {
     if (!meChip && (!labels || ((labels.kinds || []).length === 0 && (labels.buckets || []).length === 0 && (labels.tags || []).length === 0))) return null;
-    const toggle = (kind) => (value) => onPicks({ ...picks, [kind]: togglePick(picks[kind], value) });
-    // "me" (Curtis, 2026-09-27), the reader's own feed only: picked until you unpick it, and
-    // unpicked it LEAVES something out - your own posts. Only the unpick is kept (`me: false`).
-    const meOn = picks.me !== false;
+    const toggle = (row) => (value) => onPicks(cyclePick(picks, row, value));
+    // "me" (Curtis, 2026-09-27), the reader's own feed only: your own posts, cycling like every
+    // other chip - among the rest, only yours, or left out (`picks.me`: undefined, 'only', false).
+    const meState = picks.me === 'only' ? 'only' : picks.me === false ? 'out' : null;
     const me = meChip
         ? html`<button
-              class=${meOn ? 'facet-chip facet-chip-on' : 'facet-chip'}
-              title=${t('facets.me-title', 'your own posts: unpick to leave them out of the feed')}
-              onClick=${() => onPicks({ ...picks, me: meOn ? false : undefined })}
+              class=${chipClass(meState)}
+              title=${chipTitle(meState)}
+              onClick=${() => onPicks({ ...picks, me: cycleMe(picks.me) })}
           >${t('facets.me', 'me')}</button>`
         : null;
     return html`<div class="facets">
         ${/* The kind row (Curtis, 2026-09-08): posts, replies, rebroadcasts, books - the
             same semantics as the rows below it: nothing picked shows everything, a pick
             narrows to just those. "posts" is what is none of the other kinds. */ ''}
-        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
-        <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} onToggle=${toggle('buckets')} />
-        <${FacetRow} label=${t('facets.tags', 'tagged')} items=${labels && labels.tags} picked=${picks.tags} onToggle=${toggle('tags')} />
+        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
+        <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} out=${picks[LEFT_OUT.buckets]} onToggle=${toggle('buckets')} />
+        <${FacetRow} label=${t('facets.tags', 'tagged')} items=${labels && labels.tags} picked=${picks.tags} out=${picks[LEFT_OUT.tags]} onToggle=${toggle('tags')} />
         ${note && html`<p class="facets-note">${note}</p>`}
     </div>`;
 };
 
-export const NO_PICKS = { kinds: [], buckets: [], tags: [] };
+export const NO_PICKS = { kinds: [], buckets: [], tags: [], notKinds: [], notBuckets: [], notTags: [] };
 
 /// The picks, kept for the browser session (Curtis, 2026-09-08): a refresh of the feed
 /// or of a person's page finds the same kinds, buckets and tags picked. Keyed by the
@@ -177,4 +195,9 @@ export function usePicks(key) {
     return [picks, setPicks];
 }
 export const anyPicks = (picks) =>
-    !!(picks && (picks.me === false || (picks.kinds || []).length || (picks.buckets || []).length || (picks.tags || []).length));
+    !!(
+        picks &&
+        (picks.me === false ||
+            picks.me === 'only' ||
+            ['kinds', 'buckets', 'tags'].some((row) => (picks[row] || []).length || (picks[LEFT_OUT[row]] || []).length))
+    );

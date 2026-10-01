@@ -65,6 +65,9 @@ export const Annotations = ({ root, docId, features }) => {
     const showDesc = !features || features.description !== false;
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const mirrorTags = (row && row.tags) || [];
+    // "image", "video", "audio": the doc carries them for what it holds, not because anyone
+    // said so (Curtis, 2026-10-01) - shown with the others, with nothing to remove.
+    const implicitTags = (row && row.implicit) || [];
     const mirrorDesc = (row && row.fields && row.fields.description) || '';
     const mirrorDate = (row && row.fields && row.fields[DISPLAY_DATE_FIELD]) || '';
 
@@ -175,8 +178,14 @@ export const Annotations = ({ root, docId, features }) => {
                     panel threw the moment a tag existed - a new tag never "confirmed"
                     (Curtis, 2026-08-29; the strings migration wrapped the literal without
                     seeing the shadow). */ ''}
-                ${shownTags.map(
-                    (tag) => html`<span class="annot-tag jag-line" key=${tag}>
+                ${shownTags.map((tag) =>
+                    implicitTags.includes(tag)
+                        ? html`<span
+                              class="annot-tag annot-tag-implicit jag-line"
+                              key=${tag}
+                              title=${t('doc.annotations.tagged-for-what-it-holds', 'tagged for what it holds - it comes and goes with the media')}
+                          >${tag}</span>`
+                        : html`<span class="annot-tag jag-line" key=${tag}>
                         ${tag}
                         <button
                             class="annot-tag-x"

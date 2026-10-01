@@ -11,7 +11,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, stated } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
 const { HOST, HOST_B, HOST_C } = require("./fetch.cjs");
 
@@ -60,7 +60,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
     const tagsUntil = async (who, root, viewer, want, tries = 30) => {
         let got = [];
         for (let i = 0; i < tries; i++) {
-            got = await tagsFor(who, root, viewer);
+            got = stated(await tagsFor(who, root, viewer));
             if (want.every((w) => got.includes(w))) return got;
             await wait(400);
         }
@@ -121,7 +121,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             if ((await tagsFor(ada, adaRoot, adaRoot)).includes("custody")) break;
             await wait(400);
         }
-        assert.deepEqual((await tagsFor(ada, adaRoot, adaRoot)).sort(), ["custody", "divorce"], "the author reads the trusted reader's tag");
+        assert.deepEqual(stated(await tagsFor(ada, adaRoot, adaRoot)).sort(), ["custody", "divorce"], "the author reads the trusted reader's tag");
         const no = await j(cal, `api/identity/${calRoot}/public-annotations/${adaRoot}/${post}`, { key: "tag", value: "gossip" }, "PUT");
         assert.equal(no.status, 403, await no.clone().text());
         assert.match(await no.text(), /can't label words you can't read/);

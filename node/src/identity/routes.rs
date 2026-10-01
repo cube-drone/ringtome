@@ -680,8 +680,8 @@ struct FeedQuery {
 }
 
 /// Whether a feed or facets request wants the reader's own posts: yes, unless it says `me=0`.
-fn wants_own(me: &Option<String>) -> bool {
-    !matches!(me.as_deref(), Some("0") | Some("false") | Some("no"))
+fn wants_own(me: &Option<String>) -> crate::fanout::Own {
+    crate::fanout::Own::from_param(me.as_deref())
 }
 
 #[derive(Deserialize, Default)]
@@ -2097,7 +2097,7 @@ async fn feed_labels_handler(
         None => Default::default(),
     };
     let filter = crate::fanout::JournalFilter {
-        include_own: wants_own(&q.me),
+        own: wants_own(&q.me),
         since_ms: Some(since),
         stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
         ..crate::fanout::JournalFilter::feed(&root)
@@ -2143,7 +2143,7 @@ async fn feed_labels_handler(
     // before any work: a tag's count, the smallest among tags picked together, the sum among
     // either-of buckets or kinds. The posts themselves still narrow.
     let picked_size = picked_size(&whole, &narrow);
-    let facets = if picked_size.is_some_and(|n| n > THINNING_CAP) || (narrow.buckets.is_empty() && narrow.tags.is_empty() && narrow.kinds.is_empty()) {
+    let facets = if picked_size.is_some_and(|n| n > THINNING_CAP) || !narrow.picks_any() {
         whole
     } else {
         crate::search::facets_json_with(&state, &candidates, &narrow, Some(&root), 0, Some(&known))
@@ -2157,9 +2157,9 @@ async fn feed_labels_handler(
 /// Past this many posts, a pick leaves the tag cloud's lists unthinned (Curtis, 2026-09-27).
 const THINNING_CAP: i64 = 1000;
 
-/// How many posts the picks narrow to at most, read off the unpicked counts: among tags (all of
-/// them must hold) the smallest count; among buckets, or kinds (any of them), the sum; across the
-/// rows, the smallest of those. `None` when nothing is picked.
+/// How many posts the picks narrow to at most, read off the unpicked counts: within a row the sum
+/// of its "only" picks (any of them, 2026-10-01); across the rows, the smallest of those. A chip
+/// left out only takes away, so it bounds nothing. `None` when nothing is picked "only".
 fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Option<i64> {
     let count = |row: &str, value: &str| -> i64 {
         whole[row]
@@ -2170,7 +2170,7 @@ fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Opt
     };
     let mut sizes: Vec<i64> = Vec::new();
     if !narrow.tags.is_empty() {
-        sizes.push(narrow.tags.iter().map(|t| count("tags", t)).min().unwrap_or(0));
+        sizes.push(narrow.tags.iter().map(|t| count("tags", t)).sum());
     }
     if !narrow.buckets.is_empty() {
         sizes.push(narrow.buckets.iter().map(|b| count("buckets", b)).sum());
@@ -2274,7 +2274,7 @@ async fn feed_handler(
                 None => Default::default(),
             };
             let filter = crate::fanout::JournalFilter {
-                include_own: own,
+                own,
                 since_ms: Some(since),
                 stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
                 ..crate::fanout::JournalFilter::feed(&root)
@@ -2550,7 +2550,7 @@ async fn feed_filter<'a>(
     state: &AppState,
     facts: &crate::selectivity::Facts,
     root: &'a str,
-    include_own: bool,
+    own: crate::fanout::Own,
     since_ms: Option<i64>,
     stop: Option<&str>,
 ) -> Result<crate::fanout::JournalFilter<'a>, AppError> {
@@ -2560,7 +2560,7 @@ async fn feed_filter<'a>(
         None => Default::default(),
     };
     Ok(crate::fanout::JournalFilter {
-        include_own,
+        own,
         since_ms,
         stop: stop.and_then(|s| crate::selectivity::stop_rule(s, facts, &levels)),
         ..crate::fanout::JournalFilter::feed(root)
@@ -2589,16 +2589,15 @@ async fn narrowed(
     if let Some(found) = crate::search::posts_with_terms(db, &narrow.terms, SET_CAP).await.map_err(AppError::Internal)? {
         sets.push(found);
     }
-    for tag in &narrow.tags {
-        if let Some(found) = crate::annotations::posts_labelled(db, "tag", tag, SET_CAP).await.map_err(AppError::Internal)? {
-            sets.push(found.into_iter().collect());
+    // Any of a row's "only" picks (2026-10-01, OR within every row): a set only if every one of
+    // them is small. A chip left out narrows nothing here - the judgment drops what carries it.
+    for (key, picks) in [("tag", &narrow.tags), ("bucket", &narrow.buckets)] {
+        if picks.is_empty() {
+            continue;
         }
-    }
-    if !narrow.buckets.is_empty() {
-        // Any of the buckets: a set only if every one of them is small.
         let mut any: Option<std::collections::HashSet<(String, String)>> = Some(Default::default());
-        for bucket in &narrow.buckets {
-            match crate::annotations::posts_labelled(db, "bucket", bucket, SET_CAP).await.map_err(AppError::Internal)? {
+        for value in picks {
+            match crate::annotations::posts_labelled(db, key, value, SET_CAP).await.map_err(AppError::Internal)? {
                 Some(found) => {
                     if let Some(set) = any.as_mut() {
                         set.extend(found);
@@ -4750,6 +4749,12 @@ async fn replicate_annotations(
             desired.insert(("tag".into(), tag.clone()));
         }
     }
+    // The implicit tags (`documents::IMPLICIT_TAGS`): what the post carries, said as ordinary
+    // tags - outside the cap, so a draft's own thirty-two never crowd them out. A republish that
+    // drops the last picture retracts "image" like any tag the draft stopped carrying.
+    for tag in crate::record::documents::public_implicit_tags(data.db(), post_id).await? {
+        desired.insert(("tag".into(), tag.into()));
+    }
     let fields = data.annotations().fields(draft_id).await?;
     // A sealed post's labels seal under its key (ruling 7): the mint left the key on the
     // draft, the parent's for a reply under the parent's seal.
@@ -4807,6 +4812,7 @@ async fn replicate_annotations(
     // `mention=<root>` statement about the post - the label lane carrying "this post
     // names you", diffed like every other label so an edit that drops the card takes the
     // statement back. A card naming the author says nothing: you cannot mention yourself.
+    // The same words give the post its length tag (`documents::length_tag`).
     {
         let docs = data.documents();
         let view = docs.all().await?;
@@ -4815,9 +4821,16 @@ async fn replicate_annotations(
                 .display_head()
                 .map(|h| crate::record::documents::Format::from_wire(h.header.format))
                 .unwrap_or(crate::record::documents::Format::Plaintext);
-            if format == crate::record::documents::Format::Marquee {
+            if format.is_mergeable_text() {
                 if let Some(body) = docs.resolved(doc).await?.body {
-                    for named in crate::record::bake::mentions(&body) {
+                    // A post's length; a room is a place to talk, not a read, so it has none.
+                    let post_format = crate::record::documents::public_head(data.db(), post_id).await?.map(|h| crate::record::documents::Format::from_wire(h.format));
+                    let reads = matches!(post_format, Some(crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext));
+                    if let Some(length) = crate::record::documents::length_tag(crate::record::documents::word_count(&body)).filter(|_| reads) {
+                        desired.insert(("tag".into(), length.into()));
+                    }
+                    let cards = if format == crate::record::documents::Format::Marquee { crate::record::bake::mentions(&body) } else { Vec::new() };
+                    for named in cards {
                         if &named != self_root {
                             desired.insert((
                                 ringtome_proto::PublicAnnotation::MENTION_KEY.into(),
@@ -6280,6 +6293,11 @@ struct DocSummary {
     /// baked into `doc_heads`). Tags drive list filtering; `fields` carries `description` and
     /// any other named annotation. Empty when the doc has none.
     tags: Vec<String>,
+    /// Which of `tags` the document carries for what it holds - "image", "video", "audio"
+    /// (`documents::IMPLICIT_TAGS`) - rather than because anyone said so: listed in `tags` too,
+    /// so every filter sees them, and here so the tag editor offers no remove on them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    implicit: Vec<&'static str>,
     fields: std::collections::BTreeMap<String, String>,
     /// The document's bucket memberships (its projects/notebooks) - the axis the client scopes
     /// search and tag-filters to. Joined here like tags, from a separate namespace. Empty when
@@ -6308,13 +6326,16 @@ fn summarize(
     annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
     buckets: &std::collections::BTreeMap<String, Vec<String>>,
     pinned: &std::collections::BTreeSet<[u8; 16]>,
+    implicit: &std::collections::BTreeMap<[u8; 16], Vec<&'static str>>,
 ) -> DocSummary {
     let is_pinned = pinned.contains(&row.doc_id);
+    let implicit = implicit.get(&row.doc_id).cloned().unwrap_or_default();
     let doc_id = hex::encode(row.doc_id);
-    let (tags, fields) = annots
+    let (mut tags, fields) = annots
         .get(&doc_id)
         .map(|a| (a.tags.clone(), a.fields.clone()))
         .unwrap_or_default();
+    tags.extend(implicit.iter().filter(|t| !tags.iter().any(|o| o == *t)).map(|t| t.to_string()).collect::<Vec<_>>());
     let buckets = buckets.get(&doc_id).cloned().unwrap_or_default();
     DocSummary {
         media: MediaInfo::of_row(&row),
@@ -6327,6 +6348,7 @@ fn summarize(
         created_ms: row.genesis_ms,
         doc_id,
         tags,
+        implicit,
         fields,
         buckets,
         pinned: is_pinned,
@@ -6359,6 +6381,9 @@ fn builtin_row(
     let (own_tags, fields) = annots.get(&doc_id).map(|a| (a.tags.clone(), a.fields.clone())).unwrap_or_default();
     let mut tags = b.tags.clone();
     tags.extend(own_tags.into_iter().filter(|t| !b.tags.contains(t)));
+    // A built-in is a picture like any other (`documents::media_tag`).
+    let implicit = crate::record::documents::media_tag(crate::record::documents::Format::Apng.to_wire(), b.animation).into_iter().collect::<Vec<_>>();
+    tags.extend(implicit.iter().filter(|t| !tags.iter().any(|o| o == *t)).map(|t| t.to_string()).collect::<Vec<_>>());
     DocSummary {
         title: b.title.clone(),
         head: hex::encode(b.head),
@@ -6370,6 +6395,7 @@ fn builtin_row(
         updated_ms: 0,
         created_ms: 0,
         tags,
+        implicit,
         fields,
         buckets: buckets.get(&doc_id).cloned().unwrap_or_default(),
         pinned: pinned.contains(&b.id),
@@ -6434,7 +6460,8 @@ async fn docs_list_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect();
+    let implicit = data.documents().implicit_tags().await?;
+    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
     Ok(Json(DocListResponse {
         docs: with_builtins(docs, &annots, &buckets, &pinned),
         undecryptable,
@@ -6686,7 +6713,11 @@ async fn docs_by_tag_handler(
         }
     };
     let data = store::open(&state, &session.account.id, &root).await?;
-    let doc_ids = data.annotations().own_docs_tagged(&tag).await?;
+    let mut doc_ids = data.annotations().own_docs_tagged(&tag).await?;
+    // An implicit tag is nobody's statement, so no annotation index holds it: its documents are
+    // the ones whose media says so.
+    let implicit = data.documents().implicit_tags().await?;
+    doc_ids.extend(implicit.iter().filter(|(id, tags)| tags.contains(&tag.as_str()) && !doc_ids.contains(id)).map(|(id, _)| *id).collect::<Vec<_>>());
     let mut rows = data.documents().summaries_for(&doc_ids).await?;
     rows.sort_by_key(|r| {
         (
@@ -6700,7 +6731,7 @@ async fn docs_by_tag_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect();
+    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
     let mut docs = with_builtins(docs, &annots, &buckets, &pinned);
     docs.retain(|d| !d.builtin || d.tags.contains(&tag));
     Ok(Json(TaggedDocsResponse { docs }))
@@ -6840,8 +6871,9 @@ async fn docs_by_bucket_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
+    let implicit = data.documents().implicit_tags().await?;
     Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect(),
     }))
 }
 
@@ -6948,12 +6980,13 @@ async fn taxonomy_get_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
+    let implicit = data.documents().implicit_tags().await?;
     let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
         .documents()
         .summaries_for(&own_ids)
         .await?
         .into_iter()
-        .map(|r| (r.doc_id, summarize(r, &annots, &buckets, &pinned)))
+        .map(|r| (r.doc_id, summarize(r, &annots, &buckets, &pinned, &implicit)))
         .collect();
 
     Ok(Json(render_tree(tree, &rows)))
@@ -7570,9 +7603,10 @@ async fn gather(
         let annots = annotation_map(data).await?;
         let buckets = bucket_map(data).await?;
         let pinned = data.documents().pinned().await?;
+        let implicit = data.documents().implicit_tags().await?;
         let docs: Vec<DocSummary> = rows
             .into_iter()
-            .map(|r| summarize(r, &annots, &buckets, &pinned))
+            .map(|r| summarize(r, &annots, &buckets, &pinned, &implicit))
             .collect();
         let docs = with_builtins(docs, &annots, &buckets, &pinned);
         match ship_kind(&mut baselines.docs, docs, |d| d.doc_id.clone())? {

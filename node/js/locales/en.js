@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1344 phrases across 86 files.
+// 1347 phrases across 86 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -451,6 +451,7 @@ export default {
     'doc.annotations.date': 'date',
     'doc.annotations.time-optional': 'time (optional)',
     'doc.annotations.set-a-date-first': 'set a date first',
+    'doc.annotations.tagged-for-what-it-holds': 'tagged for what it holds - it comes and goes with the media',
     'doc.annotations.remove-tag': 'remove tag',
     'doc.annotations.tag': '+ tag',
     'doc.annotations.a-short-description-optional': 'a short description (optional)',
@@ -764,9 +765,11 @@ export default {
     'facets.kind-rebroadcasts': 'rebroadcasts',
     'facets.kind-books': 'books',
     'facets.kind-rooms': 'rooms',
+    'facets.chip-only': 'showing only these - click to leave them out instead',
+    'facets.chip-out': 'left out - click to show them again',
+    'facets.chip-alone': 'click to show only these; click again to leave them out',
     'facets.and-n-more': 'and {n} more…',
     'facets.fewer': 'fewer',
-    'facets.me-title': 'your own posts: unpick to leave them out of the feed',
     'facets.me': 'me',
     'facets.kinds': 'show',
     'facets.buckets': 'in',

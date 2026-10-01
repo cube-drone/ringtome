@@ -41,3 +41,36 @@ export function togglePick(picked, value) {
     const list = picked || [];
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
+
+/// Every chip on the strip is three-state (Curtis, 2026-10-01): left alone, "only", "leave out".
+/// A row's "only" picks live in its own list (`kinds`, `buckets`, `tags` - kept as they were, so
+/// picks remembered from before still read) and its left-out ones beside it, here.
+export const LEFT_OUT = { kinds: 'notKinds', buckets: 'notBuckets', tags: 'notTags' };
+
+/// Where one value of a row stands: 'only', 'out', or null for left alone.
+export function pickState(picks, row, value) {
+    if (((picks && picks[row]) || []).includes(value)) return 'only';
+    if (((picks && picks[LEFT_OUT[row]]) || []).includes(value)) return 'out';
+    return null;
+}
+
+/// One click on a chip: left alone -> only -> leave out -> left alone. Returns the next picks.
+export function cyclePick(picks, row, value) {
+    const only = (picks[row] || []).filter((v) => v !== value);
+    const out = (picks[LEFT_OUT[row]] || []).filter((v) => v !== value);
+    const state = pickState(picks, row, value);
+    if (state === null) only.push(value);
+    if (state === 'only') out.push(value);
+    return { ...picks, [row]: only, [LEFT_OUT[row]]: out };
+}
+
+/// The "me" chip's same three states, as `picks.me`: undefined (your posts among the rest),
+/// 'only' (nothing else), false (left out - and what earlier picks remembered as unpicked).
+export function cycleMe(me) {
+    if (me === 'only') return false;
+    if (me === false) return undefined;
+    return 'only';
+}
+
+/// The `me=` the node reads for `picks.me` (fanout.rs `Own`), or null for the default.
+export const meParam = (me) => (me === 'only' ? 'only' : me === false ? '0' : null);

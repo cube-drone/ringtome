@@ -27,8 +27,11 @@ describe("the app's own pictures", function () {
         ada = await makeUserFetch({ prefix: "builtin" });
         root = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
         const docs = (await (await ada(`api/identity/${root}/docs`)).json()).docs;
-        body1 = docs.find((d) => d.builtin && d.tags.length >= 2);
-        FILE = body1 && path.join(MEDIA, ...body1.tags, `${body1.title}.png`);
+        // Its folders: its tags less the implicit ones ("image", 2026-10-01), which it carries
+        // for being a picture rather than for where it lives.
+        const folders = (d) => d.tags.filter((t) => !(d.implicit || []).includes(t));
+        body1 = docs.find((d) => d.builtin && folders(d).length >= 2);
+        FILE = body1 && path.join(MEDIA, ...folders(body1), `${body1.title}.png`);
     });
 
     it("a new persona's files hold every one, tagged by its folders", async () => {

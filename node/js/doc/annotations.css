@@ -63,6 +63,11 @@
     padding: 0.08rem 0.5rem;
 }
 
+/* A tag the doc carries for its media (image, video, audio): unfilled, and nothing to remove. */
+.annot-tag-implicit {
+    background: none;
+}
+
 .annot-tag-active {
     cursor: pointer;
     background: var(--pink);

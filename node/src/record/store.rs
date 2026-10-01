@@ -1004,6 +1004,16 @@ impl Documents<'_> {
         Ok((rows, undecryptable))
     }
 
+    /// Every private document's implicit tags (`documents::IMPLICIT_TAGS`), keyed by doc id;
+    /// a deleted document is no picture for anything to hold. Refreshes the search rows first:
+    /// their refresh is what counts a changed note's words, and a list read without it would
+    /// tag the note by its last count (a clean refresh is one query and some hashing).
+    pub async fn implicit_tags(&self) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
+        self.search_rows().await?;
+        let deleted: std::collections::HashSet<[u8; 16]> = self.deleted().await?.into_iter().collect();
+        crate::record::documents::private_implicit_tags(&self.store.db, &self.store.authorship.epoch_keys, &deleted).await
+    }
+
     /// Memoized display rows for a specific set of documents (the docs-by-tag read). Doc ids
     /// with no local row (annotated but never held) are simply absent, as are deleted ones;
     /// ordering is the caller's.

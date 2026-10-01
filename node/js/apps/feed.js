@@ -62,6 +62,7 @@ import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, narrowParams } from '../postsearch.js';
 import { LabelFacets, useLabels, usePicks } from '../facets.js';
+import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { t } from '../i18n.js';
 import {
@@ -259,12 +260,13 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
     // The facet picks, kept per road for the tab (facets.js). Up here: the pages below read them.
     const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null));
-    // "me" (Curtis, 2026-09-27): on the reader's own feed only, your own posts show while it is
-    // picked - which it is until you unpick it - and unpicked, the feed is other people's, every ask
-    // saying so to the node (`me=0`). Only the unpick is remembered (`me: false`).
+    // "me" (Curtis, 2026-09-27; three-state 2026-10-01): on the reader's own feed only, your own
+    // posts among the rest, alone (`me=only`), or left out (`me=0`) - every ask saying so to the
+    // node (`picks.me`: undefined, 'only', false).
     const meChip = !!root && !feedUrl;
-    const ownOut = meChip && picks.me === false;
-    const withOwn = (qs) => (ownOut ? (qs ? `${qs}&me=0` : '?me=0') : qs);
+    const me = meChip ? meParam(picks.me) : null;
+    const ownOut = me === '0';
+    const withOwn = (qs) => (me ? (qs ? `${qs}&me=${me}` : `?me=${me}`) : qs);
     const edit = editingFor || (() => null);
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
@@ -319,7 +321,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     useEffect(() => {
         if (feedDoor && sort !== null) loadPage(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [feedDoor, ownOut, sort, ranked ? stopKey : null]);
+    }, [feedDoor, me, sort, ranked ? stopKey : null]);
 
     // Notice new arrivals without showing them: poll the head page on a slow beat (and on
     // window focus - coming back to the tab is when "anything new?" is the live question),
@@ -330,7 +332,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         let live = true;
         const look = async () => {
             try {
-                const page = await api(`${feedDoor}${ownOut ? '?me=0' : ''}`);
+                const page = await api(`${feedDoor}${me ? `?me=${me}` : ''}`);
                 if (!live) return;
                 setPending((cur) => {
                     const shown = new Set(items.map(feedKey));
@@ -348,7 +350,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
             clearInterval(timer);
             window.removeEventListener('focus', look);
         };
-    }, [root, items, feedDoor, ownOut, ranked]);
+    }, [root, items, feedDoor, me, ranked]);
 
     // A fresh post of your own joins the stream immediately - your attention is already at
     // the top, so the popping-in objection doesn't apply to the thing you just did. The
@@ -471,14 +473,14 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const labelQuery = [
         narrowParams('', picks),
         stopKey && stopKey !== 'explorer' ? `stop=${encodeURIComponent(stopKey)}` : '',
-        ownOut ? 'me=0' : '',
+        me ? `me=${me}` : '',
         // A best window counts only what it shows.
         best ? `window=${sort}` : '',
     ]
         .filter(Boolean)
         .join('&');
     const labels = useLabels(labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null, items.length);
-    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, ownOut, sort });
+    const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, me, sort });
     const shown = search.active
         ? (ranked ? mergeRanked([], search.results || []) : mergeFeed([], search.results || [])).filter(
               (item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot)

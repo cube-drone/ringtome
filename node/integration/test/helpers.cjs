@@ -147,4 +147,13 @@ function assertIsAvif(buf, why) {
 // Poll the owner's ingest queue until the job finishes. Transcode is async (quarantine -> queue
 // -> AV1 encode), so callers wait for `done` before the document has a version.
 
-module.exports = { makeUserFetch, uniqueUsername, decodeCode, settleWith, makePng, assertIsAvif };
+/*
+    The implicit tags (2026-10-01): "image", "video", "audio" for what a thing holds, and "micro",
+    "short", "medium", "long" for how many words it is - on every document and published post, beside
+    the tags people stated (record/documents.rs IMPLICIT_TAGS; implicit_tags.cjs says them). A claim
+    about the tags somebody said takes `stated()` of a list - of strings, or of `{ value }` rows.
+*/
+const IMPLICIT_TAGS = ["image", "video", "audio", "micro", "short", "medium", "long"];
+const stated = (tags) => (tags || []).filter((t) => !IMPLICIT_TAGS.includes(typeof t === "string" ? t : t.value));
+
+module.exports = { makeUserFetch, uniqueUsername, decodeCode, settleWith, makePng, assertIsAvif, IMPLICIT_TAGS, stated };

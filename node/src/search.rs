@@ -60,19 +60,24 @@ pub fn hits(tokens: &str, terms: &[String]) -> bool {
         .all(|t| tokens.split(' ').any(|tok| tok.starts_with(t.as_str())))
 }
 
-/// What a listing narrows by (2026-09-07): the words, the buckets, the tags - together.
-/// Buckets are OR (a post lives in one bucket, so picking two widens to either) and the
-/// author's own; tags are AND (each tag narrows) and anyone's, as the cards show them; the
-/// words narrow what survives. Parsed off the raw query string, since `bucket=` and `tag=`
-/// repeat.
+/// What a listing narrows by (2026-09-07): the words, the buckets, the tags, the kinds.
+/// Every row works the same way (Curtis, 2026-10-01: a chip is three-state - left alone, "only",
+/// "leave out"): within a row the "only" picks widen to EITHER (OR - a post is any of the kinds
+/// picked, in any of the buckets, under any of the tags), the "leave out" picks drop whatever
+/// carries one, and the rows narrow together. Buckets are the author's own; tags are anyone's,
+/// as the cards show them; the words narrow what survives. Parsed off the raw query string,
+/// since every key repeats: `kind=`, `bucket=`, `tag=` for "only", and `not_kind=`,
+/// `not_bucket=`, `not_tag=` for "leave out".
 #[derive(Default, Debug, Clone)]
 pub struct Narrow {
     pub terms: Vec<String>,
     pub buckets: Vec<String>,
     pub tags: Vec<String>,
-    /// The kind row (2026-09-08): `post`, `reply`, `rebroadcast`, `book`, `room` - nothing
-    /// picked shows everything, picks narrow to just those kinds (OR), like the other rows.
+    /// The kind row (2026-09-08): `post`, `reply`, `rebroadcast`, `book`, `room`.
     pub kinds: Vec<String>,
+    pub not_buckets: Vec<String>,
+    pub not_tags: Vec<String>,
+    pub not_kinds: Vec<String>,
 }
 
 /// The kinds a row can be, in the row's fixed order; a post is what is none of the others.
@@ -101,6 +106,9 @@ impl Narrow {
                 "bucket" => n.buckets.push(v.to_string()),
                 "tag" => n.tags.push(v.to_string()),
                 "kind" if KINDS.contains(&v) => n.kinds.push(v.to_string()),
+                "not_bucket" => n.not_buckets.push(v.to_string()),
+                "not_tag" => n.not_tags.push(v.to_string()),
+                "not_kind" if KINDS.contains(&v) => n.not_kinds.push(v.to_string()),
                 _ => {}
             }
         }
@@ -108,16 +116,26 @@ impl Narrow {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.terms.is_empty() && self.buckets.is_empty() && self.tags.is_empty() && self.kinds.is_empty()
+        self.terms.is_empty() && !self.picks_any()
+    }
+
+    /// Whether any chip is picked, either way.
+    pub fn picks_any(&self) -> bool {
+        self.picks_labels() || !self.kinds.is_empty() || !self.not_kinds.is_empty()
+    }
+
+    /// Whether the judgment needs the posts' labels: a bucket or tag picked, either way.
+    pub fn picks_labels(&self) -> bool {
+        !(self.buckets.is_empty() && self.tags.is_empty() && self.not_buckets.is_empty() && self.not_tags.is_empty())
     }
 
     /// The kind half of the judgment.
     pub fn kinds_admit(&self, kind: &str) -> bool {
-        self.kinds.is_empty() || self.kinds.iter().any(|k| k == kind)
+        (self.kinds.is_empty() || self.kinds.iter().any(|k| k == kind)) && !self.not_kinds.iter().any(|k| k == kind)
     }
 
     /// Words and labels judge posts only; a share has neither, so it answers the kind
-    /// row alone.
+    /// row alone - and a label left out is one a share doesn't carry, so it stays.
     pub fn only_kinds(&self) -> bool {
         self.terms.is_empty() && self.buckets.is_empty() && self.tags.is_empty()
     }
@@ -125,7 +143,9 @@ impl Narrow {
     /// The label half of the judgment, given the author's own buckets and tags on a post.
     pub fn labels_admit(&self, buckets: &[String], tags: &[String]) -> bool {
         (self.buckets.is_empty() || self.buckets.iter().any(|b| buckets.contains(b)))
-            && self.tags.iter().all(|t| tags.contains(t))
+            && (self.tags.is_empty() || self.tags.iter().any(|t| tags.contains(t)))
+            && !self.not_buckets.iter().any(|b| buckets.contains(b))
+            && !self.not_tags.iter().any(|t| tags.contains(t))
     }
 }
 
@@ -346,7 +366,7 @@ async fn admitted(
     known: Option<&Labels>,
 ) -> Result<Vec<usize>> {
     let fetched;
-    let labelled: Option<&Labels> = if narrow.buckets.is_empty() && narrow.tags.is_empty() {
+    let labelled: Option<&Labels> = if !narrow.picks_labels() {
         None
     } else if known.is_some() {
         known
@@ -393,15 +413,22 @@ async fn admitted(
 }
 
 /// Which candidates each facet row counts over, in a narrowed listing (Curtis, 2026-09-27: picking
-/// a label thins the lists to what is still there). A row counts the candidates every OTHER pick
-/// admits - and the tag row its own picks too, since tags narrow together: a tag sharing no post
-/// with the picked ones drops out. The bucket and kind rows' own picks WIDEN (either bucket, any
-/// of the kinds), so those rows are counted without them and keep every sibling that could still
-/// be added. Unnarrowed, every row counts everything.
+/// a label thins the lists to what is still there). A row counts the candidates every other row's
+/// picks admit, less what its OWN "leave out" picks drop - but never thinned by its own "only"
+/// picks, which widen (2026-10-01, OR within every row): each sibling counts what picking it too
+/// would add, and leaving out #nsfw takes its posts out of #art's count. Unnarrowed, every row
+/// counts everything.
+///
+/// A chip left out would count nothing that way, and a chip with no posts isn't listed - so it
+/// would vanish with no way to click it back. `*_out` is the row's set before its own exclusions,
+/// read only when it has some, and the left-out chips are counted there: how much they leave out.
 pub struct FacetSets {
     pub kinds: Vec<usize>,
     pub buckets: Vec<usize>,
     pub tags: Vec<usize>,
+    pub kinds_out: Option<Vec<usize>>,
+    pub buckets_out: Option<Vec<usize>>,
+    pub tags_out: Option<Vec<usize>>,
 }
 
 pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>, known: Option<&Labels>) -> Result<FacetSets> {
@@ -414,13 +441,39 @@ pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Nar
         }
     };
     if narrow.is_empty() {
-        return Ok(FacetSets { kinds: all.clone(), buckets: all.clone(), tags: all });
+        return Ok(FacetSets { kinds: all.clone(), buckets: all.clone(), tags: all, kinds_out: None, buckets_out: None, tags_out: None });
     }
+    let kinds_out = match narrow.not_kinds.is_empty() {
+        true => None,
+        false => Some(judge(Narrow { kinds: Vec::new(), not_kinds: Vec::new(), ..narrow.clone() }).await?),
+    };
+    let buckets_out = match narrow.not_buckets.is_empty() {
+        true => None,
+        false => Some(judge(Narrow { buckets: Vec::new(), not_buckets: Vec::new(), ..narrow.clone() }).await?),
+    };
+    let tags_out = match narrow.not_tags.is_empty() {
+        true => None,
+        false => Some(judge(Narrow { tags: Vec::new(), not_tags: Vec::new(), ..narrow.clone() }).await?),
+    };
     Ok(FacetSets {
         kinds: judge(Narrow { kinds: Vec::new(), ..narrow.clone() }).await?,
         buckets: judge(Narrow { buckets: Vec::new(), ..narrow.clone() }).await?,
-        tags: judge(narrow.clone()).await?,
+        tags: judge(Narrow { tags: Vec::new(), ..narrow.clone() }).await?,
+        kinds_out,
+        buckets_out,
+        tags_out,
     })
+}
+
+/// Each left-out chip's count, from the row before its own exclusions (`FacetSets`): how many it
+/// leaves out, in its place by count, so the chip stays on the strip to be clicked back.
+fn restore_left_out(row: &mut Vec<(String, i64)>, before: &[(String, i64)], left_out: &[String]) {
+    for value in left_out {
+        let Some((_, n)) = before.iter().find(|(v, _)| v == value) else { continue };
+        row.retain(|(v, _)| v != value);
+        row.push((value.clone(), *n));
+    }
+    row.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 }
 
 /// A listing's facets as the labels doors answer them - `{ kinds, buckets, tags }`, each a list of
@@ -452,17 +505,28 @@ pub async fn facets_json_with(
     let pairs = |set: &[usize]| -> Vec<(String, String)> {
         set.iter().map(|&i| (candidates[i].author_root.clone(), candidates[i].doc_hex.clone())).collect()
     };
-    let shares_here = if (Narrow { kinds: Vec::new(), ..narrow.clone() }).only_kinds() { shares } else { 0 };
-    let kinds = kind_counts(
-        sets.kinds.iter().map(|&i| candidates[i].kind).chain(std::iter::repeat_n("rebroadcast", shares_here)),
-    );
-    let ((buckets, _), (_, tags)) = match known {
-        Some(k) => (count_labels(&pairs(&sets.buckets), k), count_labels(&pairs(&sets.tags), k)),
-        None => (
-            crate::annotations::label_counts(state, &pairs(&sets.buckets), viewer).await?,
-            crate::annotations::label_counts(state, &pairs(&sets.tags), viewer).await?,
-        ),
+    let shares_here = if (Narrow { kinds: Vec::new(), not_kinds: Vec::new(), ..narrow.clone() }).only_kinds() { shares } else { 0 };
+    let kinds_of = |set: &[usize]| kind_counts(set.iter().map(|&i| candidates[i].kind).chain(std::iter::repeat_n("rebroadcast", shares_here)));
+    let mut kinds = kinds_of(&sets.kinds);
+    if let Some(out) = &sets.kinds_out {
+        restore_left_out(&mut kinds, &kinds_of(out), &narrow.not_kinds);
+        // The kind row keeps its fixed order, not a count order.
+        kinds.sort_by_key(|(k, _)| KINDS.iter().position(|x| x == k));
+    }
+    let labels_of = async |set: &[usize]| -> Result<(Counts, Counts)> {
+        Ok(match known {
+            Some(k) => count_labels(&pairs(set), k),
+            None => crate::annotations::label_counts(state, &pairs(set), viewer).await?,
+        })
     };
+    let (mut buckets, _) = labels_of(&sets.buckets).await?;
+    let (_, mut tags) = labels_of(&sets.tags).await?;
+    if let Some(out) = &sets.buckets_out {
+        restore_left_out(&mut buckets, &labels_of(out).await?.0, &narrow.not_buckets);
+    }
+    if let Some(out) = &sets.tags_out {
+        restore_left_out(&mut tags, &labels_of(out).await?.1, &narrow.not_tags);
+    }
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
         v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
     };
@@ -711,7 +775,8 @@ mod tests {
         assert!(terms("x").is_empty(), "a one-letter term is not a term - the box shows everything until a word");
     }
 
-    /// Buckets widen (OR), tags narrow (AND), and the raw query string carries both.
+    /// Every row's "only" picks widen (OR), its "leave out" picks drop, and the raw query string
+    /// carries both (2026-10-01).
     #[test]
     fn narrowing_parses_repeats_and_judges_labels() {
         let n = Narrow::parse(Some("bucket=feed&bucket=recipes&tag=bread&tag=slow&kind=book&kind=nonsense&q=ignored%20here"), Some("Sour"));
@@ -723,10 +788,20 @@ mod tests {
         assert_eq!(n.tags, vec!["bread", "slow"]);
         assert_eq!(n.terms, vec!["sour"]);
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-        assert!(n.labels_admit(&s(&["recipes"]), &s(&["bread", "slow", "extra"])), "either bucket, every tag");
-        assert!(!n.labels_admit(&s(&["recipes"]), &s(&["bread"])), "a missing tag refuses");
+        assert!(n.labels_admit(&s(&["recipes"]), &s(&["bread", "extra"])), "either bucket, either tag");
+        assert!(!n.labels_admit(&s(&["recipes"]), &s(&["cake"])), "none of the tags refuses");
         assert!(!n.labels_admit(&s(&["photos"]), &s(&["bread", "slow"])), "neither bucket refuses");
         assert!(Narrow::parse(None, None).is_empty());
         assert!(Narrow::default().labels_admit(&[], &[]), "nothing picked admits everything");
+
+        let out = Narrow::parse(Some("not_tag=nsfw&not_bucket=drafts&not_kind=reply&not_kind=nonsense"), None);
+        assert!(!out.is_empty() && out.only_kinds(), "leaving out is a pick, and needs no labels of a share");
+        assert_eq!(out.not_kinds, vec!["reply"]);
+        assert!(out.kinds_admit("post") && !out.kinds_admit("reply"), "a kind left out, the rest stay");
+        assert!(out.labels_admit(&s(&["feed"]), &s(&["bread"])), "nothing left out on it: it stays");
+        assert!(!out.labels_admit(&s(&["feed"]), &s(&["bread", "nsfw"])), "one tag left out drops it");
+        assert!(!out.labels_admit(&s(&["drafts"]), &[]), "a bucket left out drops it");
+        let both = Narrow::parse(Some("tag=bread&not_tag=slow"), None);
+        assert!(both.labels_admit(&[], &s(&["bread"])) && !both.labels_admit(&[], &s(&["bread", "slow"])), "only, less what's left out");
     }
 }

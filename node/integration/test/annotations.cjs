@@ -14,7 +14,7 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { makeFetch, HOST_B } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, stated } = require("./helpers.cjs");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -130,14 +130,14 @@ describe("annotations: private facts about documents", function () {
         const list = await listDocs(user, root);
         const row = list.docs.find((d) => d.doc_id === doc.doc_id);
         assert.ok(row, "the doc is listed");
-        assert.deepEqual(row.tags, ["beach", "sunset"], "tags joined onto the row");
+        assert.deepEqual(stated(row.tags), ["beach", "sunset"], "tags joined onto the row");
         assert.equal(row.fields.description, "a calm evening", "description joined onto the row");
         assert.equal(row.fields.display_date, "2015-07-31", "claimed date joined onto the row");
 
         // A doc with no annotations carries empty structures, never undefined.
         const bare = await createDoc(user, root, "bare", "nothing here");
         const bareRow = (await listDocs(user, root)).docs.find((d) => d.doc_id === bare.doc_id);
-        assert.deepEqual(bareRow.tags, []);
+        assert.deepEqual(stated(bareRow.tags), []);
         assert.deepEqual(bareRow.fields, {});
     });
 

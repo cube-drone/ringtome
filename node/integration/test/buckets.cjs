@@ -5,7 +5,7 @@
     concurrent add); the roster is the distinct names in use.
 */
 const assert = require("node:assert");
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, stated } = require("./helpers.cjs");
 
 async function makeIdentity(prefix) {
     const user = await makeUserFetch({ prefix });
@@ -142,7 +142,7 @@ describe("buckets: which notebook a document lives in", function () {
         const list = await listDocs(user, root);
         const row = list.docs.find((d) => d.doc_id === doc.doc_id);
         assert.deepEqual(row.buckets, ["recipes"], "bucket axis");
-        assert.deepEqual(row.tags, ["recipes"], "tag axis, kept separate");
+        assert.deepEqual(stated(row.tags), ["recipes"], "tag axis, kept separate");
 
         // docs_by_bucket resolves to the bucket namespace only, never the like-named tag.
         const inBucket = await bucketed(user, root, "recipes");

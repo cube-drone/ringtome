@@ -1,14 +1,15 @@
 /*
     Facets (2026-09-07): every bucket and every tag across the whole journal and the whole
     held shelf, counted by the node, buckets first, most frequent first; picking narrows the
-    listing - buckets widen among themselves, tags each narrow - and the words narrow what
-    survives. A sealed post's labels stay out of a viewer's counts when they may not see it.
+    listing - every chip three-state since 2026-10-01: "only" picks in a row widen to either,
+    "leave out" picks drop what carries them, the rows narrow together - and the words narrow
+    what survives. A sealed post's labels stay out of a viewer's counts when they may not see it.
 */
 const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, stated } = require("./helpers.cjs");
 const { pullAndFold } = require("./beat.cjs");
 const { HOST, HOST_B, sql } = require("./fetch.cjs");
 
@@ -22,8 +23,10 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 (HOST_B ? describe : describe.skip)("facets: buckets and tags over the whole set, and the narrowing", function () {
     this.timeout(600000);
 
-    let ada, adaRoot, bea, beaRoot, a1, a2, a3, sealed;
+    let ada, adaRoot, bea, beaRoot, a1, a2, a3, sealed, plain;
     const ids = (page) => (page.items || page.posts || []).map((p) => p.doc_id).sort();
+    // The tags people stated (helpers.cjs `stated`): these claims are about picking, and every post
+    // here is also "micro" for being short.
     const post = async (title, body, bucket, tags, flags = {}) => {
         const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title, body, format: "marquee" })).json();
         await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/${bucket}`, { method: "PUT" });
@@ -42,7 +45,7 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         a2 = await post("Ride", "a canal ride", "outings", ["bikes"]);
         a3 = await post("Bagels", "boiled then baked", "recipes", ["bread"]);
         sealed = await post("Secret", "the sealed pudding", "recipes", ["pudding"], { trusted_only: true });
-        await post("Plain", "filed nowhere in particular", "feed", []); // the automatic bucket
+        plain = await post("Plain", "filed nowhere in particular", "feed", []); // the automatic bucket
         bea = await makeUserFetch({ prefix: "facetbea", host: HOST_B });
         beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
         await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
@@ -54,8 +57,8 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
     it("the author's own feed counts every bucket and tag, buckets first, most frequent first - and never the automatic bucket", async () => {
         const f = await (await ada(`api/identity/${adaRoot}/feed/labels`)).json();
         assert.deepEqual(f.buckets, [{ value: "recipes", count: 3 }, { value: "outings", count: 1 }], "'feed' says nothing and is not listed");
-        assert.deepEqual(f.tags.slice(0, 1), [{ value: "bread", count: 2 }], "the most frequent tag leads");
-        assert.deepEqual(f.tags.slice(1).map((x) => x.value), ["bikes", "pudding", "slow"], "then by name");
+        assert.deepEqual(stated(f.tags).slice(0, 1), [{ value: "bread", count: 2 }], "the most frequent tag leads");
+        assert.deepEqual(stated(f.tags).slice(1).map((x) => x.value), ["bikes", "pudding", "slow"], "then by name");
     });
 
     it("the kind row counts posts, replies, rebroadcasts and books, and narrows like the other rows", async () => {
@@ -70,30 +73,44 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual(shelf.kinds, [{ value: "post", count: 5 }], "the shelf counts the same");
     });
 
-    it("picking narrows: a bucket, a tag, two buckets widen, two tags narrow, and the words narrow the rest", async () => {
+    it("picking narrows: a bucket, a tag, two of either widen, and the words narrow the rest", async () => {
         const feed = (qs) => ada(`api/identity/${adaRoot}/feed?${qs}`).then((r) => r.json());
         assert.deepEqual(ids(await feed("bucket=outings")), [a2]);
         assert.deepEqual(ids(await feed("tag=bread")), [a1, a3].sort());
         assert.deepEqual(ids(await feed("bucket=outings&bucket=recipes")), [a1, a2, a3, sealed].sort(), "either bucket");
-        assert.deepEqual(ids(await feed("tag=bread&tag=slow")), [a1], "every tag");
+        assert.deepEqual(ids(await feed("tag=slow&tag=bikes")), [a1, a2].sort(), "either tag, like every row (2026-10-01)");
         assert.deepEqual(ids(await feed("tag=bread&q=boiled")), [a3], "the words narrow the tagged");
         assert.deepEqual(ids(await feed("bucket=recipes&tag=bikes")), [], "a bucket and a tag that never meet");
     });
 
-    it("picking thins the lists too: a tag with nothing left beside the picked ones drops out, while notebooks and kinds keep what could still widen", async () => {
-        // Curtis, 2026-09-27: pick "heph", and a "peff" no post shares with it disappears.
+    it("leaving out drops what carries it, in every row, and an only less what's left out is both", async () => {
+        // Curtis, 2026-10-01: a chip clicked twice "excludes items thusly tagged".
+        const feed = (qs) => ada(`api/identity/${adaRoot}/feed?${qs}`).then((r) => r.json());
+        assert.deepEqual(ids(await feed("not_tag=bread")), [a2, sealed, plain].sort(), "no bread");
+        assert.deepEqual(ids(await feed("not_bucket=recipes")), [a2, plain].sort(), "no recipes");
+        assert.deepEqual(ids(await feed("tag=bread&not_tag=slow")), [a3], "bread, but not slow bread");
+        assert.deepEqual(ids(await feed("not_kind=post")), [], "every post here is a post");
+        assert.deepEqual(ids(await feed("not_tag=bread&not_tag=bikes&bucket=recipes")), [sealed], "and the rows still combine");
+    });
+
+    it("picking thins the other rows; a row is never thinned by its own onlys, and its left-out chips keep their counts", async () => {
+        // Curtis, 2026-09-27: pick "heph", and the other rows count what is left. 2026-10-01: a
+        // second tag picked WIDENS, so the tag row counts as if it weren't - but leaving #slow out
+        // takes its posts out of every other tag's count, and slow still shows how much it hides.
         const labels = (qs) => ada(`api/identity/${adaRoot}/feed/labels?${qs}`).then((r) => r.json());
-        const byName = (row) => Object.fromEntries(row.map((x) => [x.value, x.count]));
+        const byName = (row) => Object.fromEntries(stated(row).map((x) => [x.value, x.count]));
         const bread = await labels("tag=bread");
-        assert.deepEqual(byName(bread.tags), { bread: 2, slow: 1 }, "only the tags sharing a post with bread; bikes and pudding gone");
+        assert.deepEqual(byName(bread.tags), { bread: 2, bikes: 1, pudding: 1, slow: 1 }, "every tag still: another would widen");
         assert.deepEqual(byName(bread.buckets), { recipes: 2 }, "only the notebooks holding bread");
         assert.deepEqual(byName(bread.kinds), { post: 2 });
-        assert.deepEqual(byName((await labels("tag=bread&tag=slow")).tags), { bread: 1, slow: 1 }, "two tags narrow together");
+        const noSlow = await labels("not_tag=slow");
+        assert.deepEqual(byName(noSlow.tags), { bread: 1, bikes: 1, pudding: 1, slow: 1 }, "the loaf is out of bread's count; slow says what it leaves out");
+        assert.deepEqual(byName(noSlow.buckets), { recipes: 2, outings: 1 }, "and out of the notebooks'");
         const outings = await labels("bucket=outings");
         assert.deepEqual(byName(outings.buckets), { recipes: 3, outings: 1 }, "a picked notebook keeps its siblings: another would widen");
         assert.deepEqual(byName(outings.tags), { bikes: 1 }, "but the tags are those in the picked notebook");
         const shelf = await (await ada(`api/id/${adaRoot}/labels?as=${adaRoot}&tag=bikes`)).json();
-        assert.deepEqual([byName(shelf.tags), byName(shelf.buckets)], [{ bikes: 1 }, { outings: 1 }], "a person's page thins alike");
+        assert.deepEqual([byName(shelf.tags).bikes, byName(shelf.buckets)], [1, { outings: 1 }], "a person's page thins alike");
     });
 
     it("me=0 leaves the reader's own posts out of the feed, a narrowed feed and the counts - and without it nothing changes", async () => {
@@ -111,6 +128,20 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual(ids(await get(`api/identity/${adaRoot}/feed?tag=bread`)), [a1, a3].sort(), "and narrowed without it, hers");
         const counts = await get(`api/identity/${adaRoot}/feed/labels?me=0`);
         assert.deepEqual([counts.kinds, counts.buckets, counts.tags], [[], [], []], "nothing to count");
+    });
+
+    it("me=only is the reader's own posts and nothing else - the third state of the \"me\" chip (2026-10-01)", async () => {
+        const get = (path) => ada(path).then((r) => r.json());
+        assert.deepEqual(ids(await get(`api/identity/${adaRoot}/feed?me=only`)), [a1, a2, a3, sealed, plain].sort(), "all hers");
+        assert.deepEqual(ids(await get(`api/identity/${adaRoot}/feed?tag=bread&me=only`)), [a1, a3].sort(), "narrowed, still hers");
+        let theirs = null;
+        for (let i = 0; i < 20; i++) {
+            theirs = await bea(`api/identity/${beaRoot}/feed`).then((r) => r.json());
+            if ((theirs.items || []).length) break;
+            await wait(400);
+        }
+        assert.ok(theirs.items.length > 0, "bea's feed holds ada's posts");
+        assert.deepEqual((await bea(`api/identity/${beaRoot}/feed?me=only`).then((r) => r.json())).items, [], "and only bea's own: none");
     });
 
     it("a person's page counts and narrows the whole held shelf, and a viewer they do not trust never sees the sealed post's labels", async () => {
@@ -197,11 +228,12 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             assert.equal(tagCount(f, "fresh"), 1, "the label just said is counted at once");
             assert.equal(tagCount(f, "planted"), 8192, "the planted tag, on every planted post");
             assert.equal(tagCount(f, "bread"), 2, "and bread still counts, from under 8192 newer posts");
-            // A pick past 1000 posts leaves the lists as they are; a small pick still thins them.
+            // A pick past 1000 posts leaves the lists as they are; a small pick still thins them -
+            // the OTHER rows, since a row's own picks only widen it (2026-10-01).
             const big = await labels("tag=planted");
-            assert.ok((big.tags || []).some((x) => x.value === "bikes"), `picking a tag on 8192 posts leaves bikes listed: ${JSON.stringify(big.tags)}`);
+            assert.ok((big.buckets || []).some((x) => x.value === "outings"), `picking a tag on 8192 posts leaves outings listed: ${JSON.stringify(big.buckets)}`);
             const small = await labels("tag=bread");
-            assert.ok(!(small.tags || []).some((x) => x.value === "bikes"), "picking bread still thins bikes away");
+            assert.ok(!(small.buckets || []).some((x) => x.value === "outings"), "picking bread still thins outings away");
             // The posts themselves (2026-09-28): a pick and a search find what lies under 8192
             // newer posts - off the labels' value index and the inverted index, not the newest 5000.
             const feed = (qs) => ada(`api/identity/${adaRoot}/feed?${qs}`).then((r) => r.json());

@@ -51,6 +51,14 @@
     border-style: solid;
     color: var(--ink);
 }
+/* Left out (2026-10-01, the third state): struck through, the line in the danger colour - what
+   carries it is gone from the page. The count stays, saying how much. */
+.facet-chip-out {
+    border-style: solid;
+    border-color: var(--coral);
+    color: var(--muted);
+    text-decoration: line-through;
+}
 .facet-count {
     color: var(--muted);
     font-size: 0.7rem;

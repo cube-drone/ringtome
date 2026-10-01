@@ -43,3 +43,33 @@ describe('how many facet chips fit one line (2026-09-30)', () => {
         assert.equal(fitCount([], 100, 80, 5), 0);
     });
 });
+
+describe('every chip cycles the same three ways (2026-10-01)', () => {
+    let cyclePick, pickState, cycleMe, meParam;
+    before(async () => {
+        ({ cyclePick, pickState, cycleMe, meParam } = await import('../../../js/pure/facets.js'));
+    });
+    it('left alone, then only, then left out, then left alone again', () => {
+        const none = { tags: [], notTags: [] };
+        const once = cyclePick(none, 'tags', 'art');
+        assert.deepEqual([once.tags, once.notTags], [['art'], []]);
+        assert.equal(pickState(once, 'tags', 'art'), 'only');
+        const twice = cyclePick(once, 'tags', 'art');
+        assert.deepEqual([twice.tags, twice.notTags], [[], ['art']]);
+        assert.equal(pickState(twice, 'tags', 'art'), 'out');
+        const thrice = cyclePick(twice, 'tags', 'art');
+        assert.deepEqual([thrice.tags, thrice.notTags], [[], []]);
+        assert.equal(pickState(thrice, 'tags', 'art'), null);
+    });
+    it('a chip cycles alone - its row-mates keep where they stand', () => {
+        const picks = cyclePick(cyclePick({ kinds: ['book'] }, 'kinds', 'reply'), 'kinds', 'reply');
+        assert.deepEqual(picks.kinds, ['book']);
+        assert.deepEqual(picks.notKinds, ['reply']);
+    });
+    it('"me" too: among the rest, only mine, left out - and an old unpick still reads as left out', () => {
+        assert.equal(cycleMe(undefined), 'only');
+        assert.equal(cycleMe('only'), false);
+        assert.equal(cycleMe(false), undefined);
+        assert.deepEqual([meParam(undefined), meParam('only'), meParam(false)], [null, 'only', '0']);
+    });
+});

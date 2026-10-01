@@ -1986,6 +1986,127 @@ pub async fn retract_public(
     .await
 }
 
+/// The implicit tags (Curtis, 2026-10-01): "image", "video" and "audio", on whatever holds that
+/// kind of media - a picture is an image, a note embedding one is too, a post publishing one says
+/// so in public - and one length tag on whatever is words ([`length_tag`]). Never written to the
+/// private chain: a private document's are worked out each time its list row is built (the
+/// built-in pictures' folder tags are the precedent), so they come and go with what the document
+/// holds, on their own. Publish states them as ordinary tags, because a reader on another node
+/// knows nothing of how they were derived and needs none of it - and a republish that no longer
+/// earns one retracts it like any tag the draft stopped carrying. In this order wherever listed.
+pub const IMPLICIT_TAGS: [&str; 7] = ["image", "video", "audio", "micro", "short", "medium", "long"];
+
+/// How many words a body holds: whitespace-separated runs with a letter or digit in them, so
+/// punctuation alone isn't a word and a link counts as one.
+pub fn word_count(body: &str) -> i64 {
+    body.split_whitespace().filter(|w| w.chars().any(char::is_alphanumeric)).count() as i64
+}
+
+/// The length tag for so many words: under 75 micro, to 500 short, to 2,000 medium, and long
+/// past that (Curtis, 2026-10-01). Nothing at all for no words - an empty note is no length.
+pub fn length_tag(words: i64) -> Option<&'static str> {
+    match words {
+        ..=0 => None,
+        1..75 => Some("micro"),
+        75..500 => Some("short"),
+        500..2000 => Some("medium"),
+        _ => Some("long"),
+    }
+}
+
+/// The implicit tag a document of this format carries itself, if any. A silent loop is a
+/// moving picture, so it is an image, however it is stored.
+pub fn media_tag(format: Option<u64>, animation: bool) -> Option<&'static str> {
+    match Format::from_wire(format) {
+        Format::Avif | Format::Apng => Some("image"),
+        Format::WebmAv1 if animation => Some("image"),
+        Format::WebmAv1 => Some("video"),
+        Format::OggOpus => Some("audio"),
+        _ => None,
+    }
+}
+
+/// A document's own tags joined with the kinds of what it names, in [`IMPLICIT_TAGS`] order.
+fn implicit_of(own: &[Option<&'static str>], named: impl Iterator<Item = Option<&'static str>>) -> Vec<&'static str> {
+    let have: HashSet<&'static str> = own.iter().copied().flatten().chain(named.flatten()).collect();
+    IMPLICIT_TAGS.into_iter().filter(|t| have.contains(t)).collect()
+}
+
+/// Every private document's implicit tags, off the memoized heads, each head's `refs`, and the
+/// search rows' word counts - three reads, no body opened. The counts are as fresh as the search
+/// index's last refresh ([`search_rows`]; the stream refreshes it before it builds the list).
+/// `gone` are documents to count as absent (the deleted). Only documents that have any appear.
+pub async fn private_implicit_tags(db: &Db, keys: &EpochKeys, gone: &HashSet<[u8; 16]>) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
+    catch_up(db, keys).await?;
+    let heads: Vec<(Vec<u8>, Option<i64>, i64)> = db
+        .fetch_all("SELECT doc_id, format, animation FROM doc_heads WHERE lane = 'private'", ())
+        .await
+        .context("reading private formats for implicit tags")
+        .map_err(AppError::Internal)?;
+    let kind: BTreeMap<[u8; 16], Option<&'static str>> = heads
+        .into_iter()
+        .filter_map(|(id, format, animation)| {
+            let id = <[u8; 16]>::try_from(id.as_slice()).ok()?;
+            (!gone.contains(&id)).then(|| (id, media_tag(format.map(|f| f as u64), animation != 0)))
+        })
+        .collect();
+    let refs: Vec<(Vec<u8>, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT h.doc_id, v.refs FROM doc_heads h
+             JOIN doc_versions v ON v.entry_hash = h.entry_hash AND v.doc_id = h.doc_id
+             WHERE h.lane = 'private' AND length(v.refs) > 0",
+            (),
+        )
+        .await
+        .context("reading private refs for implicit tags")
+        .map_err(AppError::Internal)?;
+    let refs: BTreeMap<[u8; 16], Vec<[u8; 16]>> = refs
+        .into_iter()
+        .filter_map(|(id, r)| Some((<[u8; 16]>::try_from(id.as_slice()).ok()?, decode_refs(&r))))
+        .collect();
+    let words: BTreeMap<Vec<u8>, i64> = db
+        .fetch_all::<(Vec<u8>, i64)>("SELECT doc_id, words FROM doc_search WHERE words IS NOT NULL", ())
+        .await
+        .context("reading word counts for implicit tags")
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .collect();
+    Ok(kind
+        .iter()
+        .map(|(id, own)| {
+            let named = refs.get(id).into_iter().flatten().map(|r| kind.get(r).copied().flatten());
+            let length = words.get(id.as_slice()).copied().and_then(length_tag);
+            (*id, implicit_of(&[*own, length], named))
+        })
+        .filter(|(_, tags)| !tags.is_empty())
+        .collect())
+}
+
+/// A public post's implicit tags: what its header's refs - the pictures, films and sounds it
+/// publishes, as public twins - are. Read off the post as minted, so it says what the post
+/// carries, foreign pictures copied in included.
+pub async fn public_implicit_tags(db: &Db, post_id: &[u8; 16]) -> Result<Vec<&'static str>, AppError> {
+    let Some(entry) = public_header_entry(db, post_id).await? else {
+        return Ok(Vec::new());
+    };
+    let Payload::Inline(payload) = &entry.entry().payload else {
+        return Ok(Vec::new());
+    };
+    let Ok(header) = DocHeaderPlain::decode(payload) else {
+        return Ok(Vec::new());
+    };
+    let mut named = Vec::new();
+    for r in &header.refs {
+        let row: Option<(Option<i64>, i64)> = db
+            .fetch_optional("SELECT format, animation FROM doc_heads WHERE doc_id = ?1 AND lane = 'public'", (r.to_vec(),))
+            .await
+            .context("reading a twin's format for implicit tags")
+            .map_err(AppError::Internal)?;
+        named.push(row.and_then(|(format, animation)| media_tag(format.map(|f| f as u64), animation != 0)));
+    }
+    Ok(implicit_of(&[], named.into_iter()))
+}
+
 /// Whether every picture a public post names still stands - `false` when any of its header's refs
 /// has been retracted. A book's rollout republishes such a page even though its words are
 /// unchanged (Curtis, 2026-09-29): its pictures were retracted out from under it, and republishing
@@ -2698,6 +2819,7 @@ pub async fn search_rows(
                 tokenize_into(annot_text, &mut tokens);
             }
             let mut links = Vec::new();
+            let mut words: Option<i64> = None;
             let doc = load_doc(db, &id).await?;
             if !doc.versions.is_empty() {
                 // Empty device-name map: conflict labels' device names are presentation,
@@ -2705,9 +2827,10 @@ pub async fn search_rows(
                 let resolved = resolve(files, keys, &doc, &BTreeMap::new()).await?;
                 // Words only: a drawing's body is strokes (DRAWING.md) - ids and colours are not
                 // anything a person searches for - so a drawing is found by its title and tags.
-                let words = Format::from_wire(doc.display_head().and_then(|v| v.header.format)).is_mergeable_text();
-                if let Some(body) = resolved.body.as_ref().filter(|_| words) {
+                let is_words = Format::from_wire(doc.display_head().and_then(|v| v.header.format)).is_mergeable_text();
+                if let Some(body) = resolved.body.as_ref().filter(|_| is_words) {
                     tokenize_into(body, &mut tokens);
+                    words = Some(word_count(body));
                 }
                 // Links are Marquee's: a plain page's brackets are only brackets.
                 let marquee = Format::from_wire(doc.display_head().and_then(|v| v.header.format)) == Format::Marquee;
@@ -2718,9 +2841,9 @@ pub async fn search_rows(
             let tokens = tokens.into_iter().collect::<Vec<_>>().join(" ");
             let links_json = serde_json::to_string(&links).unwrap_or_else(|_| "[]".to_string());
             db.execute(
-                "INSERT INTO doc_search (doc_id, fp, tokens, links) VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(doc_id) DO UPDATE SET fp = excluded.fp, tokens = excluded.tokens, links = excluded.links",
-                (id.to_vec(), fp, tokens.clone(), links_json),
+                "INSERT INTO doc_search (doc_id, fp, tokens, links, words) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(doc_id) DO UPDATE SET fp = excluded.fp, tokens = excluded.tokens, links = excluded.links, words = excluded.words",
+                (id.to_vec(), fp, tokens.clone(), links_json, words),
             )
             .await
             .context("writing search row")
@@ -3486,6 +3609,38 @@ pub async fn read_body(
 
 #[cfg(test)]
 mod tests {
+
+    /// The implicit tags' rule: a picture is an image, a silent loop is too however it's stored,
+    /// a film is a video, a sound is audio, and words are none; a note names them in one order.
+    #[test]
+    fn media_is_tagged_by_what_it_is() {
+        use super::{implicit_of, media_tag, Format};
+        assert_eq!(media_tag(Format::Avif.to_wire(), false), Some("image"));
+        assert_eq!(media_tag(Format::Apng.to_wire(), true), Some("image"));
+        assert_eq!(media_tag(Format::WebmAv1.to_wire(), true), Some("image"));
+        assert_eq!(media_tag(Format::WebmAv1.to_wire(), false), Some("video"));
+        assert_eq!(media_tag(Format::OggOpus.to_wire(), false), Some("audio"));
+        assert_eq!(media_tag(Format::Marquee.to_wire(), false), None);
+        assert_eq!(media_tag(Format::Drawing.to_wire(), false), None);
+        assert_eq!(implicit_of(&[], [Some("audio"), None, Some("image"), Some("image")].into_iter()), vec!["image", "audio"]);
+        assert_eq!(implicit_of(&[Some("short")], [Some("image")].into_iter()), vec!["image", "short"]);
+    }
+
+    /// The length tags' bounds (Curtis, 2026-10-01): under 75 micro, 75 to 500 short, 500 to 2,000
+    /// medium, 2,000 and past long - and an empty note none.
+    #[test]
+    fn words_are_tagged_by_how_many() {
+        use super::{length_tag, word_count};
+        assert_eq!(length_tag(0), None);
+        assert_eq!(length_tag(1), Some("micro"));
+        assert_eq!(length_tag(74), Some("micro"));
+        assert_eq!(length_tag(75), Some("short"));
+        assert_eq!(length_tag(499), Some("short"));
+        assert_eq!(length_tag(500), Some("medium"));
+        assert_eq!(length_tag(1999), Some("medium"));
+        assert_eq!(length_tag(2000), Some("long"));
+        assert_eq!(word_count("two words - and   a link https://x.y/z !"), 6);
+    }
 
     /// PUBLISH.md: a date-time claim is the author's local wall-clock; a bare date is that
     /// day at the publication's own local time-of-day; anything else is no claim.

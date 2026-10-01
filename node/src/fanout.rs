@@ -1732,16 +1732,38 @@ pub async fn feed_page(
     reader_root: &str,
     before: Option<(i64, String)>,
     limit: i64,
-    // The reader's own posts, or not (Curtis, 2026-09-27: the feed page's "me" chip).
-    // Filtered here, in the query, so a page is still a full page when the reader has been busy.
-    include_own: bool,
+    // The reader's own posts, or not, or only them (Curtis, 2026-09-27: the feed page's "me"
+    // chip; three-state 2026-10-01). Filtered here, in the query, so a page is still a full page
+    // when the reader has been busy.
+    own: Own,
 ) -> Result<Vec<FeedRow>> {
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
     // makes journals written BEFORE that filter harmless rather than a page of raw bytes
     // rendered as text.
-    let filter = JournalFilter { include_own, ..JournalFilter::feed(reader_root) };
+    let filter = JournalFilter { own, ..JournalFilter::feed(reader_root) };
     journal_page(node_db, &filter, before, limit).await
+}
+
+/// The reader's own posts in a journal read: among the rest (the default), left out, or alone -
+/// the feed's "me" chip, three-state like every chip on the strip (2026-10-01).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Own {
+    In,
+    Out,
+    Only,
+}
+
+impl Own {
+    /// From the feed's `me=` parameter: `0` (or `false`, `no`) leaves them out, `only` keeps
+    /// nothing else, anything else - or nothing - is the default.
+    pub fn from_param(me: Option<&str>) -> Self {
+        match me {
+            Some("0" | "false" | "no") => Own::Out,
+            Some("only") => Own::Only,
+            _ => Own::In,
+        }
+    }
 }
 
 /// The kinds of post a feed shows: text, books and rooms - never media, which are ingredients.
@@ -1753,8 +1775,8 @@ pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room"];
 /// newest 5000 rows and filter in memory, and silently lost everything older.
 pub struct JournalFilter<'a> {
     pub reader: &'a str,
-    /// The reader's own posts too ("me").
-    pub include_own: bool,
+    /// The reader's own posts: among the rest, left out, or alone ("me").
+    pub own: Own,
     /// Only these formats (a feed's text kinds, or `room` alone); empty for any.
     pub formats: &'a [&'a str],
     /// Only rows published at or after this - a best order's window.
@@ -1767,7 +1789,7 @@ pub struct JournalFilter<'a> {
 impl<'a> JournalFilter<'a> {
     /// What the feed shows: the text kinds, the reader's own included, the whole of time.
     pub fn feed(reader: &'a str) -> Self {
-        JournalFilter { reader, include_own: true, formats: FEED_FORMATS, since_ms: None, stop: None }
+        JournalFilter { reader, own: Own::In, formats: FEED_FORMATS, since_ms: None, stop: None }
     }
 
     /// The WHERE clause over journal columns spelled `{t}column` (`t` empty, or an alias and a
@@ -1784,8 +1806,10 @@ impl<'a> JournalFilter<'a> {
                 .collect();
             parts.push(format!("{t}format IN ({})", known.join(",")));
         }
-        if !self.include_own {
-            parts.push(format!("{t}author_root <> {t}reader_root"));
+        match self.own {
+            Own::In => {}
+            Own::Out => parts.push(format!("{t}author_root <> {t}reader_root")),
+            Own::Only => parts.push(format!("{t}author_root = {t}reader_root")),
         }
         if let Some(since) = self.since_ms {
             parts.push(format!("{t}published_ms >= {since}"));
@@ -2432,7 +2456,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(oldest.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-mine", "d-room"], "paged to the very end");
-        let not_mine = journal_page(&db, &JournalFilter { include_own: false, ..JournalFilter::feed(&reader) }, Some((10, "d-00000".into())), 5)
+        let not_mine = journal_page(&db, &JournalFilter { own: Own::Out, ..JournalFilter::feed(&reader) }, Some((10, "d-00000".into())), 5)
             .await
             .unwrap();
         assert_eq!(not_mine.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-room"]);
