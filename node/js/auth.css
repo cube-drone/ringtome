@@ -218,7 +218,7 @@
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
-    color: var(--bg);
+    color: var(--on-accent);
     padding: 0.6rem;
     font: inherit;
     font-weight: 600;
@@ -359,7 +359,7 @@
     gap: 0.45rem;
     padding: 0.6rem 1rem;
     background: var(--teal);
-    color: var(--bg);
+    color: var(--on-accent);
     --j: 3px;
     clip-path: var(--jag-1);
     font-weight: 600;
@@ -373,7 +373,7 @@
 .download-button:hover,
 .download-button:focus-visible {
     background: var(--teal-deep);
-    color: var(--bg);
+    color: var(--dock-text); /* light words on the deeper fill */
 }
 
 /* Understated, as the quickbar's own version label is. */

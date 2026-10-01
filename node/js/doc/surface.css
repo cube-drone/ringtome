@@ -34,11 +34,11 @@
 }
 .publish-bar-public {
     background: var(--teal);
-    color: var(--dock-text);
+    color: var(--on-accent);
 }
 .publish-bar-scheduled {
     background: var(--peach);
-    color: var(--ink);
+    color: var(--on-peach);
 }
 .publish-bar-standing {
     display: inline-flex;

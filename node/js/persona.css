@@ -523,7 +523,7 @@
     margin-top: 0.4rem;
     padding: 0.5rem 0.8rem;
     background: var(--coral);
-    color: var(--paper);
+    color: var(--on-danger);
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
@@ -609,7 +609,7 @@
     position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
-    color: var(--surface);
+    color: var(--on-accent);
     font: inherit;
     padding: 0.4rem 1.4rem;
     cursor: pointer;
@@ -748,7 +748,7 @@
 
 .ledger-blocked {
     background: var(--coral);
-    color: var(--surface);
+    color: var(--on-danger);
     border-color: var(--coral);
 }
 
@@ -1662,7 +1662,7 @@ article:has(.label-emoji-strip) {
  * above it once and the light gray won (Curtis, 2026-09-02). */
 .feed-entry-scheduled {
     background: var(--peach);
-    color: var(--ink);
+    color: var(--on-peach);
     --j: 0.25em;
     clip-path: var(--jag-1);
     padding: 0.1rem 0.55rem;

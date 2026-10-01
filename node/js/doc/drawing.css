@@ -611,7 +611,7 @@
     padding: 0.35rem 0.7rem;
     font: inherit;
     font-weight: 600;
-    color: var(--dock-text);
+    color: var(--on-accent);
     background: var(--teal);
     border: none;
     --j: 3px;
@@ -651,7 +651,7 @@
 }
 
 .imagepick-bucket.active {
-    color: var(--dock-text);
+    color: var(--on-accent);
     background: var(--sea);
     border-color: var(--sea);
 }
@@ -673,7 +673,7 @@
 }
 
 .imagepick-tag.active {
-    color: var(--paper);
+    color: var(--on-accent);
     background: var(--teal);
     border-color: var(--teal);
 }

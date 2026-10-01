@@ -100,6 +100,12 @@
 
     --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
     --dock-text: #fbf6ec;    /* light text that sits on the teal dock */
+    /* The words on a SOLID fill (Curtis, 2026-10-01: witchlight's yellow with white words on it "isn't
+       terribly readable"): one token per kind of fill, per colourway, so no rule guesses - light on
+       teal here, dark on a yellow or a lime. */
+    --on-accent: #fbf6ec;    /* on --teal, and --sea */
+    --on-danger: #fbf6ec;    /* on --coral */
+    --on-peach: #3a2a14;     /* on --peach: dark in every colourway */
     /* A panel sunk into the dock (the corner clock, 2026-09-17): the shadow its top edge
        casts, and the hairline of light its bottom edge catches. */
     --sunk-shadow: rgba(0, 0, 0, 0.45);
@@ -175,6 +181,8 @@
 
     --glow: rgba(242, 193, 78, 0.5);
     --dock-text: #f4eefb;
+    --on-accent: #120d18;
+    --on-danger: #120d18;
     --sunk-shadow: rgba(0, 0, 0, 0.6);
     --sunk-light: rgba(255, 255, 255, 0.08);
     --row-veil: rgba(26, 22, 32, 0.6);
@@ -217,6 +225,8 @@
 
     --glow: rgba(49, 106, 197, 0.5);
     --dock-text: #ffffff;
+    --on-accent: #ffffff;
+    --on-danger: #ffffff;
     --sunk-shadow: rgba(0, 20, 60, 0.45);
     --sunk-light: rgba(255, 255, 255, 0.2);
     --row-veil: rgba(236, 233, 216, 0.55);
@@ -259,6 +269,8 @@
 
     --glow: rgba(10, 122, 255, 0.45);
     --dock-text: #f5f5f7;
+    --on-accent: #ffffff;
+    --on-danger: #ffffff;
     --sunk-shadow: rgba(0, 0, 0, 0.45);
     --sunk-light: rgba(255, 255, 255, 0.1);
     --row-veil: rgba(245, 245, 247, 0.55);
@@ -301,6 +313,8 @@
 
     --glow: rgba(210, 4, 45, 0.4);
     --dock-text: #ffffff;
+    --on-accent: #ffffff;
+    --on-danger: #ffffff;
     --sunk-shadow: rgba(10, 20, 70, 0.45);
     --sunk-light: rgba(255, 255, 255, 0.15);
     --row-veil: rgba(246, 247, 252, 0.6);
@@ -346,6 +360,8 @@
 
     --glow: rgba(57, 255, 20, 0.45);
     --dock-text: #39ff14;
+    --on-accent: #000000;
+    --on-danger: #000000;
     --sunk-shadow: rgba(0, 0, 0, 0.7);
     --sunk-light: rgba(57, 255, 20, 0.1);
     --row-veil: rgba(15, 36, 16, 0.6);

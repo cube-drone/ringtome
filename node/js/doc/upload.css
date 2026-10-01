@@ -104,6 +104,7 @@
 
 .modal-ok:hover {
     background: var(--teal);
+    color: var(--on-accent);
 }
 
 /* hrseFiles's empty page (doc/upload.js FileDropper): a big dotted drop frame, the upload button in
@@ -147,7 +148,7 @@
     font: inherit;
     font-size: 1rem;
     padding: 0.5rem 1.1rem;
-    color: var(--dock-text);
+    color: var(--on-accent);
     background: var(--teal);
     border: none;
     --j: 3px;
@@ -157,5 +158,6 @@
 
 .file-dropper-upload:hover {
     background: var(--teal-deep);
+    color: var(--dock-text); /* light words on the deeper fill */
 }
 

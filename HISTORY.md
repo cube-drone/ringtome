@@ -13612,3 +13612,13 @@ key), detaching, rebuilding, adopting (begin and complete), authorizing another 
 its tree. Reading its keys, syncing, serving and every content door stay a key's. Pinned in
 api_keys.cjs with well-formed bodies at each door (a malformed one is refused earlier, by the body's own
 decoding, which would prove nothing about the key), and a note still written by the same key after.
+
+The words on a solid fill have tokens now (Curtis, 2026-10-01: in witchlight "the bright yellow, if
+displayed with white text over it, isn't terribly readable"). Each solid-fill rule had picked its own words
+- `--dock-text`, `--paper`, `--surface`, `--bg`, `--ink` - and each was right in horse-relax by luck:
+witchlight's yellow got white words in six places (an open chip, a pinned one, the public badge, the
+picker's selection, two upload buttons), terminal's lime got lime, and two hovers that deepened the fill to
+plum kept the page's near-black. Now `--on-accent` (on `--teal` and `--sea`: light, but dark on witchlight's
+yellow and terminal's lime), `--on-danger` (on `--coral`) and `--on-peach` (dark everywhere) are set per
+colourway in tokens.css, every solid fill names the one for its fill, and a hover onto a deeper fill takes
+`--dock-text`. Seen in headless Chrome: the settings page's fills in witchlight and terminal.

@@ -225,7 +225,7 @@
     padding: 0.4rem 1rem;
     font: inherit;
     font-weight: 600;
-    color: var(--bg);
+    color: var(--on-accent);
     background: var(--teal);
     border: none;
     --j: 3px;

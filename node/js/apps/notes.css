@@ -755,7 +755,7 @@
    later in the bundle, colours every button chip's glyph sea) whatever order the files load in -
    one class, and the shared chip read teal on teal (Curtis, 2026-09-27). */
 .chip.chip-open {
-    color: var(--dock-text);
+    color: var(--on-accent);
     background: var(--teal);
     --line: var(--teal);
 }

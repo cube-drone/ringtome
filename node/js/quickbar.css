@@ -164,7 +164,7 @@ a.quickbar-version:focus-visible {
     --j: 4.5px;
     clip-path: var(--jag);
     background: var(--coral);
-    color: var(--dock-text);
+    color: var(--on-danger);
     font-size: 0.7rem;
     font-weight: 600;
     line-height: 18px;

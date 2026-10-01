@@ -649,7 +649,7 @@
 
 .chat-result-words mark {
     background: var(--teal);
-    color: var(--bg);
+    color: var(--on-accent);
 }
 
 /* A moderation act, said in the room (CHAT.md, ruling 8): quiet, centred, its own line. */
@@ -902,7 +902,7 @@
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
-    color: var(--bg);
+    color: var(--on-accent);
     padding: 0.45rem 0.7rem;
     font: inherit;
     font-size: 1.2em;
@@ -952,7 +952,7 @@
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
-    color: var(--bg);
+    color: var(--on-accent);
     padding: 0.4rem 0.8rem;
     font: inherit;
     font-weight: 600;

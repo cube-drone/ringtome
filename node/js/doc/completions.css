@@ -37,7 +37,7 @@
 
 .cm-tooltip-autocomplete > ul > li[aria-selected] {
     background: var(--teal);
-    color: var(--dock-text);
+    color: var(--on-accent);
 }
 
 .cm-completionDetail {
