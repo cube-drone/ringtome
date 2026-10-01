@@ -727,6 +727,7 @@ const AppSettingsFor = ({ root }) => {
                 ${t('persona.disable-tooltips', 'disable tooltips')}
             </label>
             <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
+            <${ApiKeys} />
             ${/* The running build (Curtis, 2026-09-30: a narrow window's bar has no version, so a phone
                 had "no way to see this when you're logged in"): its name, linked to its notes as
                 the bar's is, and every release beside it. */ ''}
@@ -735,6 +736,103 @@ const AppSettingsFor = ({ root }) => {
             </p>
         </div>
     `;
+};
+
+/// API keys (Curtis, 2026-09-30: "tokens that I can use to authenticate external clients as me"):
+/// the account's, every computer's - not this browser's like the settings above them. A key is shown
+/// once, when it is made; after that the node holds only its hash, so it can be revoked but never
+/// shown again (node/src/auth/keys.rs).
+const ApiKeys = () => {
+    const [keys, setKeys] = useState(null);
+    const [name, setName] = useState('');
+    const [made, setMade] = useState(null); // { name, key }: on screen until put away
+    const [copied, setCopied] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const load = () =>
+        api('/api/auth/keys')
+            .then((r) => setKeys(r.keys || []))
+            .catch((e) => setError(e.message || String(e)));
+    useEffect(() => {
+        load();
+    }, []);
+    const make = async (e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        setBusy(true);
+        setError(null);
+        try {
+            const k = await api('/api/auth/keys', { method: 'POST', body: JSON.stringify({ name }) });
+            setMade({ name: k.name, key: k.key });
+            setCopied(false);
+            setName('');
+            load();
+        } catch (err) {
+            setError(err.message || String(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+    const revoke = async (k) => {
+        if (!confirm(t('persona.revoke-key-confirm', 'Revoke "{name}"? Anything using it stops working at once.', { name: k.name }))) return;
+        try {
+            await api(`/api/auth/keys/${k.id}`, { method: 'DELETE' });
+            load();
+        } catch (err) {
+            setError(err.message || String(err));
+        }
+    };
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(made.key);
+            setCopied(true);
+        } catch {
+            /* select it by hand */
+        }
+    };
+    const when = (ms) => new Date(ms).toLocaleString();
+    return html`<section class="settings-keys">
+        <h2 class="settings-section-title">${t('persona.api-keys', 'API keys')}</h2>
+        <p class="null-sub">
+            ${t(
+                'persona.api-keys-explain',
+                "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account, on every computer."
+            )}
+        </p>
+        ${made &&
+        html`<div class="settings-key-made jag-line">
+            <p>${t('persona.new-key-copy-now', 'Your new key, "{name}". Copy it now - it won\'t be shown again.', { name: made.name })}</p>
+            <code class="settings-key-value">${made.key}</code>
+            <div class="settings-key-acts">
+                <button class="profile-save" onClick=${copy}>${copied ? t('persona.copied', 'copied') : t('persona.copy', 'copy')}</button>
+                <button class="computer-remove" onClick=${() => setMade(null)}>${t('persona.ive-kept-it', "I've kept it")}</button>
+            </div>
+        </div>`}
+        ${keys &&
+        keys.length > 0 &&
+        html`<ul class="settings-keys-list">
+            ${keys.map(
+                (k) => html`<li class="settings-key-row" key=${k.id}>
+                    <button class="chip chip-button chip-delete" title=${t('persona.revoke-key', 'revoke this key')} onClick=${() => revoke(k)}><${Icons.trash} /></button>
+                    <span class="settings-key-name">${k.name}</span>
+                    <span class="settings-key-when">
+                        ${t('persona.key-made', 'made {when}', { when: when(k.created_ms) })}${' · '}${k.last_used_ms ? t('persona.key-last-used', 'last used {when}', { when: when(k.last_used_ms) }) : t('persona.key-never-used', 'never used')}
+                    </span>
+                </li>`
+            )}
+        </ul>`}
+        <form class="settings-key-new" onSubmit=${make}>
+            <input
+                class="settings-key-input jag-field"
+                maxlength="80"
+                value=${name}
+                placeholder=${t('persona.key-name-placeholder', "what it's for - my backup script")}
+                onInput=${(e) => setName(e.currentTarget.value)}
+            />
+            <button class="profile-save" disabled=${busy || !name.trim()}>${t('persona.make-a-key', 'make a key')}</button>
+        </form>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </section>`;
 };
 
 /// The longest side a profile picture is sent at: the node keeps an avatar small, and a phone

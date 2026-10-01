@@ -550,6 +550,7 @@ async fn picture_bytes(state: &AppState, root: &str, picture: &str) -> Option<ax
         .into_iter()
         .find(|(r, _)| r == root)?;
     let session = Some(crate::auth::Session {
+        key: None,
         account: crate::auth::Account { id: account, username: String::new() },
     });
     let response = crate::idface::public_doc_bytes(state, &session, seg, doc_hex, false, None, None).await.ok()?;

@@ -13555,3 +13555,32 @@ words dim greens on them. Now the cards are a clear dark green (#0f2410, #173a18
 (#2f8a27, #4cc23d), faint and muted words a step up, the frame and dock a visible green; the note
 paper stays darker than the cards, set apart by its line. Seen in headless Chrome: the feed, the
 launcher, the Writer.
+
+### API keys (2026-09-30)
+
+Curtis: "In my application settings, I'd like a new section, API Keys, which allows me to create tokens
+that I can use to authenticate external clients as me when connecting to this node."
+
+- **A key** (`auth/keys.rs`, node rung 65 `api_keys`) is `rtk_` and 64 hex - 256 random bits - shown
+  once when it's made. The node keeps only its blake3 hash (nothing to brute-force at that size, so a
+  fast hash is the right one), with a name, when it was made and when last used (written at most a
+  minute apart). Revoking deletes the row; an account's keys die with it. At most 25 an account.
+- **Signing in with one** (`auth/extractor.rs`): `Authorization: Bearer rtk_...` is the key's account -
+  `Session` now says which key (`key`, None for a browser). A key that doesn't open never falls back
+  to a cookie, and a script doesn't count as a human at the keyboard (no presence stamp, no window).
+- **What a key can't do**, so a stolen one can't dig in or climb: manage keys (list, make, revoke take a
+  signed-in browser), or administer the server - `NodeAdminSession` and `AdminSession` refuse a key,
+  even an administrator's.
+- **The doors**: `GET|POST /api/auth/keys`, `DELETE /api/auth/keys/{id}`; the account itself is read
+  through `auth::account_by_id` (the full gate caught a join into `accounts` from keys.rs - auth.rs
+  owns that table).
+- **The page**: "API keys" in application settings, under what a key is and isn't (and that keys are
+  the account's, every computer's, unlike the browser settings above): each key trash-first, its name,
+  made and last used; a field to make another; and a new key once, in its own box, with copy and
+  "I've kept it".
+
+Pinned in api_keys.cjs: made and shown once, the listing without it, only its hash in the table, a name
+required; a cookieless program with the key is the account (whoami, its personas, a note written)
+and the key notes its use; it may not list, make or revoke keys, nor reach an admin door the
+browser can; an unknown key and a revoked one are refused. Seen in headless Chrome: the section with
+a key just made.

@@ -30,6 +30,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/auth/login", post(login_handler))
         .route("/api/auth/logout", post(logout_handler))
         .route("/api/auth/whoami", get(whoami_handler))
+        .route("/api/auth/keys", get(super::keys::list_handler).post(super::keys::create_handler))
+        .route("/api/auth/keys/{id}", axum::routing::delete(super::keys::revoke_handler))
         .route("/api/auth/check-username", get(check_username_handler))
         .route("/api/auth/recover", post(recover_handler))
         // Tag administration.

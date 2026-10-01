@@ -20,6 +20,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("accounts", vec!["auth.rs"]),
         ("sessions", vec!["auth.rs"]),
         ("account_tags", vec!["auth.rs"]),
+        ("api_keys", vec!["auth/keys.rs"]),
         ("identities", vec!["identity.rs"]),
         ("pending_adoptions", vec!["identity/adoption.rs"]),
         // The frontier columns on identity_peers are frontier concepts; the peer bookkeeping

@@ -9,6 +9,7 @@
 //! module, keyed by `identities.account_id`; auth stays identity-agnostic.
 
 mod extractor;
+pub mod keys;
 mod routes;
 
 pub use extractor::{window_offered, NodeAdminSession, Session, WINDOW_HEADER};
@@ -369,6 +370,22 @@ pub async fn remove_tag(db: &Db, account_id: &Uuid, tag: &str) -> Result<()> {
 }
 
 /// Look up an account by (normalized) username.
+/// An account by its id, or None (an API key's owner, auth/keys.rs).
+pub async fn account_by_id(db: &Db, id: &str) -> Result<Option<Account>, AppError> {
+    let row: Option<(String, String)> = db
+        .fetch_optional("SELECT id, username FROM accounts WHERE id = ?1", (id,))
+        .await
+        .context("looking up account by id")
+        .map_err(AppError::Internal)?;
+    match row {
+        Some((id, username)) => {
+            let id = Uuid::parse_str(&id).map_err(|e| AppError::Internal(anyhow!("corrupt account id: {e}")))?;
+            Ok(Some(Account { id, username }))
+        }
+        None => Ok(None),
+    }
+}
+
 pub async fn account_by_username(db: &Db, username: &str) -> Result<Option<Account>, AppError> {
     let lookup = username.trim().to_ascii_lowercase();
     let row: Option<(String, String)> = db

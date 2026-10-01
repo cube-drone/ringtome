@@ -1,7 +1,10 @@
 //! The `Session` extractor: a handler that takes a `Session` parameter only runs for an
 //! authenticated caller; otherwise the request is rejected with 401.
 //!
-//! One way in, on every kind of node: a valid session cookie. The desktop app used to have a
+//! Two ways in. A browser: a valid session cookie. An outside program: an API key (keys.rs), sent as
+//! `Authorization: Bearer rtk_...` - the account, but never its keys or its administering.
+//!
+//! The cookie, on every kind of node. The desktop app used to have a
 //! second - its launch token was the session, and there was no login screen - and that is gone
 //! (Curtis, 2026-09-28): a desktop node is a localhost multi-user server with the ordinary sign-in,
 //! so its own window signs in like any browser. The launch token survives only as the window's
@@ -29,6 +32,15 @@ pub fn session_cookie_name(port: u16) -> String {
 #[derive(Debug, Clone)]
 pub struct Session {
     pub account: Account,
+    /// The API key that signed this request in, by id - None for a browser's session (keys.rs).
+    pub key: Option<String>,
+}
+
+/// The API key a request carries, if it carries one: `Authorization: Bearer rtk_...`.
+fn bearer_key(headers: &axum::http::HeaderMap) -> Option<String> {
+    let value = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let key = value.strip_prefix("Bearer ")?.trim();
+    key.starts_with(super::keys::KEY_PREFIX).then(|| key.to_string())
 }
 
 impl FromRequestParts<AppState> for Session {
@@ -68,6 +80,16 @@ impl FromRequestParts<AppState> for Session {
             )));
         }
 
+        // An outside program's key (keys.rs): the account it belongs to, or nobody - a key that
+        // doesn't open never falls back to a cookie. No window, no presence: a script is not a
+        // human at the keyboard.
+        if let Some(key) = bearer_key(&parts.headers) {
+            return match super::keys::account_for_key(&state.node_db, &key).await? {
+                Some((account, key_id)) => Ok(Session { account, key: Some(key_id) }),
+                None => Err(AppError::Unauthorized(crate::msg!("auth.extractor.key-not-valid", "that API key isn't valid here"))),
+            };
+        }
+
         let signed_in = async {
             let jar = CookieJar::from_request_parts(parts, &state)
                 .await
@@ -94,7 +116,7 @@ impl FromRequestParts<AppState> for Session {
         // follow-refresh sweep spends its budget on present humans first.
         state.activity.stamp(&account.id.to_string());
 
-        Ok(Session { account })
+        Ok(Session { account, key: None })
     }
 }
 
@@ -132,6 +154,15 @@ impl axum::extract::OptionalFromRequestParts<AppState> for Session {
     }
 }
 
+/// The server is administered from a signed-in browser only: an API key never carries an account's
+/// administering, whatever its tags (keys.rs).
+fn refuse_key(session: &Session) -> Result<(), AppError> {
+    if session.key.is_some() {
+        return Err(AppError::Forbidden(crate::msg!("auth.extractor.no-administering-by-key", "the server is administered from a signed-in browser, not with an API key")));
+    }
+    Ok(())
+}
+
 /// A session belonging to a `node_admin`. Handlers taking this only run for the node's full
 /// administrator(s); everyone else gets 403.
 #[derive(Debug, Clone)]
@@ -150,6 +181,7 @@ impl FromRequestParts<AppState> for NodeAdminSession {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let session = Session::from_request_parts(parts, state).await?;
+        refuse_key(&session)?;
         let db = &state.node_db;
         if has_tag(db, &session.account.id, TAG_NODE_ADMIN).await? {
             Ok(NodeAdminSession {
@@ -176,6 +208,7 @@ impl FromRequestParts<AppState> for AdminSession {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let session = Session::from_request_parts(parts, state).await?;
+        refuse_key(&session)?;
         let db = &state.node_db;
         let id = &session.account.id;
         if has_tag(db, id, TAG_ADMIN).await? || has_tag(db, id, TAG_NODE_ADMIN).await? {

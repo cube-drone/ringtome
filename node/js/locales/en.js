@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1324 phrases across 85 files.
+// 1342 phrases across 86 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -961,6 +961,19 @@ export default {
     'persona.settings-this-browser': 'these settings are for this browser',
     'persona.version': 'version',
     'persona.every-release': 'every release',
+    'persona.revoke-key-confirm': 'Revoke "{name}"? Anything using it stops working at once.',
+    'persona.api-keys': 'API keys',
+    'persona.api-keys-explain': "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account, on every computer.",
+    'persona.new-key-copy-now': "Your new key, \"{name}\". Copy it now - it won't be shown again.",
+    'persona.copied': 'copied',
+    'persona.copy': 'copy',
+    'persona.ive-kept-it': "I've kept it",
+    'persona.revoke-key': 'revoke this key',
+    'persona.key-made': 'made {when}',
+    'persona.key-last-used': 'last used {when}',
+    'persona.key-never-used': 'never used',
+    'persona.key-name-placeholder': "what it's for - my backup script",
+    'persona.make-a-key': 'make a key',
     'persona.drawing-not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
     'persona.could-not-read-that-picture': 'could not read that picture',
     'persona.profile-2': 'profile',
@@ -1201,11 +1214,18 @@ export default {
 
     // --- node/src/auth/extractor.rs ---
     'auth.extractor.that-came-from-another-site': 'that request came from another site',
+    'auth.extractor.key-not-valid': "that API key isn't valid here",
     'auth.extractor.no-cookies': 'no cookies',
     'auth.extractor.not-logged-in': 'please sign in again',
     'auth.extractor.session-invalid-or-expired': 'please sign in again',
+    'auth.extractor.no-administering-by-key': 'the server is administered from a signed-in browser, not with an API key',
     'auth.extractor.nodeadmin-required': 'node_admin required',
     'auth.extractor.admin-required': 'admin required',
+
+    // --- node/src/auth/keys.rs ---
+    'auth.keys.manage-keys-from-a-browser': 'API keys are managed from a signed-in browser, not with a key',
+    'auth.keys.name-the-key': 'give the key a name, up to 80 characters',
+    'auth.keys.too-many-keys': "that's 25 keys already - revoke one first",
 
     // --- node/src/auth/routes.rs ---
     'auth.routes.no-account': 'no account "{username}"',

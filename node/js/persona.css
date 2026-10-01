@@ -2284,3 +2284,89 @@ article:has(.label-emoji-strip) {
     --s2: var(--swatch-terminal-2);
     --s3: var(--swatch-terminal-3);
 }
+
+/* API keys (persona.js, 2026-09-30): a heading, what a key is, the keys - trash first, the name, when -
+   and a field to make another. A new key shows once, in a box of its own. */
+.settings-keys {
+    margin-top: 1.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.settings-section-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--ink);
+}
+
+.settings-keys-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.settings-key-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.settings-key-name {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.settings-key-when {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.settings-key-new {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.settings-key-input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: var(--ink);
+    background-color: var(--field);
+    --line: var(--border-strong);
+    --j: 3px;
+    padding: 0.45rem 0.6rem;
+}
+
+.settings-key-made {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.8rem;
+    background: var(--surface);
+    --line: var(--teal);
+    --j: 4px;
+}
+
+.settings-key-made p {
+    margin: 0;
+    color: var(--ink);
+}
+
+.settings-key-value {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    user-select: all;
+    color: var(--ink);
+}
+
+.settings-key-acts {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
