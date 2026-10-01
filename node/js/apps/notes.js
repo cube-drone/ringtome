@@ -355,7 +355,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // The shared documents-app spine (doc/docapp.js): the live documents, the open document and how
     // to change it (it lives in the URL, so back/forward and deep links just work), the resume-where
     // -you-left-off jump, and the tree-reload bump a delete needs.
-    const { docs, selected, select, treeReload, bumpTree } = useDocApp(root, app, docId, bucket);
+    const { docs, selected, select, forget, treeReload, bumpTree } = useDocApp(root, app, docId, bucket);
     // The notebook switcher heads the list column (2026-09-30; it was in the app header). A switcher
     // over one notebook offers a choice that isn't one.
     const shelf = useContext(BucketShelf);
@@ -594,6 +594,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     book=${book}
                     features=${feat}
                     onDeleted=${() => {
+                        forget(selected);
                         select(null);
                         bumpTree();
                     }}

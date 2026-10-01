@@ -13575,7 +13575,7 @@ that I can use to authenticate external clients as me when connecting to this no
   through `auth::account_by_id` (the full gate caught a join into `accounts` from keys.rs - auth.rs
   owns that table).
 - **The page**: "API keys" in application settings, under what a key is and isn't (and that keys are
-  the account's, every computer's, unlike the browser settings above): each key trash-first, its name,
+  the account's on this server - not this browser's like the settings above, and no other node's): each key trash-first, its name,
   made and last used; a field to make another; and a new key once, in its own box, with copy and
   "I've kept it".
 
@@ -13584,3 +13584,31 @@ required; a cookieless program with the key is the account (whoami, its personas
 and the key notes its use; it may not list, make or revoke keys, nor reach an admin door the
 browser can; an unknown key and a revoked one are refused. Seen in headless Chrome: the section with
 a key just made.
+
+### Deleting the open document (2026-10-01)
+
+Curtis: on the live node "I deleted a drawing I had open. It didn't navigate away from the page, instead
+it swapped in looking for that - which, obviously it won't find the drawing, we just deleted it!"
+
+Two faults made one bug. The delete did navigate - to the app's list - but the list restores the last
+document you had open (`lastDocMemory`, docapp.js), and the mirror still held the deleted row for a
+moment, so it routed straight back to it; then the row went, and a document's address (index.js
+`DocRoute`) read a missing row the way it reads a loading one: `undefined`, "looking that up…", forever.
+
+- **A deleted document is forgotten** as the app's last: `useDocApp` gives `forget(id)`, and the
+  Writer's (and Drawing's, Files') `onDeleted` calls it before going to the list.
+- **Missing isn't loading**: the address's mirror read answers null once the mirror holds documents
+  and this one isn't among them - "that isn't here - it was deleted, or hasn't reached this computer
+  yet." An empty mirror is still filling, so there it keeps looking.
+
+Seen in headless Chrome on a scratch node: a drawing opened at its address, trashed (the confirm
+accepted), the page on the drawing list and staying there; then its address visited directly, saying
+it isn't here. (The race itself didn't reproduce on a fast local node; the new path is what's checked.)
+Then (2026-10-01, Curtis: "yes, that seems wise", after asking whether a synced key could break
+parent-always-wins - it can't: keys live in the node's own `api_keys`, on no chain, so a child has
+nothing to carry upward): a key may not reshape a persona either. `keys::identity_by_browser` heads the
+seven doors that change what a persona IS rather than what it says - creating one (which mints its spare
+key), detaching, rebuilding, adopting (begin and complete), authorizing another node, revoking a key in
+its tree. Reading its keys, syncing, serving and every content door stay a key's. Pinned in
+api_keys.cjs with well-formed bodies at each door (a malformed one is refused earlier, by the body's own
+decoding, which would prove nothing about the key), and a note still written by the same key after.

@@ -739,7 +739,8 @@ const AppSettingsFor = ({ root }) => {
 };
 
 /// API keys (Curtis, 2026-09-30: "tokens that I can use to authenticate external clients as me"):
-/// the account's, every computer's - not this browser's like the settings above them. A key is shown
+/// the account's on this node - not this browser's like the settings above them, and not any other
+/// node's (accounts are per node; a key made here opens nothing elsewhere). A key is shown
 /// once, when it is made; after that the node holds only its hash, so it can be revoked but never
 /// shown again (node/src/auth/keys.rs).
 const ApiKeys = () => {
@@ -796,7 +797,7 @@ const ApiKeys = () => {
         <p class="null-sub">
             ${t(
                 'persona.api-keys-explain',
-                "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account, on every computer."
+                "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account on this server, not to this browser, and work only here."
             )}
         </p>
         ${made &&

@@ -2,7 +2,8 @@
     API keys (auth/keys.rs; Curtis, 2026-09-30: "tokens that I can use to authenticate external
     clients as me when connecting to this node"). A key is made from a signed-in browser and shown
     once; an outside program sends it as `Authorization: Bearer rtk_...` and is that account - but it
-    may not manage keys, nor administer the server, whatever the account's tags. The node keeps only
+    may not manage keys, nor administer the server, whatever the account's tags, nor reshape a
+    persona (its keys, its nodes, whether it lives here). The node keeps only
     the key's hash, and a revoked key stops at once.
 */
 const assert = require("node:assert");
@@ -68,6 +69,26 @@ describe("API keys: an outside program, as you", function () {
         assert.equal((await prog(`api/auth/keys/${keyId}`, { method: "DELETE" })).status, 403, "no revoking");
         assert.equal((await me("api/admin/registration")).status, 200, "the browser administers");
         assert.equal((await prog("api/admin/registration")).status, 403, "the key does not");
+    });
+
+    it("may not reshape a persona: no making, detaching, rebuilding, adopting, adding a node, revoking (2026-10-01)", async () => {
+        const prog = program(key);
+        const doors = [
+            ["api/identity", {}],
+            [`api/identity/${root}/detach`, {}],
+            [`api/identity/${root}/rebuild`, {}],
+            ["api/identity/adopt/begin", {}],
+            ["api/identity/adopt/complete", { code: "nope" }],
+            [`api/identity/${root}/nodes`, { code: "nope" }], // a well-formed body, so the key is what's refused
+            [`api/identity/${root}/keys/${"ab".repeat(32)}/revoke`, { disposition: "retirement" }],
+        ];
+        for (const [door, body] of doors) {
+            const r = await j(prog, door, body);
+            assert.equal(r.status, 403, `${door}: ${await r.text()}`);
+        }
+        // Still the account for what it makes: a note, after all that.
+        const doc = await j(prog, `api/identity/${root}/docs`, { title: "still writing", body: "words", format: "marquee" });
+        assert.equal(doc.status, 200, await doc.clone().text());
     });
 
     it("refuses a key it doesn't know, and stops one revoked", async () => {

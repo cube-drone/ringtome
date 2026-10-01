@@ -7,6 +7,10 @@
 //!   key can't mint itself company, or hide by revoking the others.
 //! - **No administering.** `NodeAdminSession` and `AdminSession` refuse a key, even an
 //!   administrator's: the server's controls stay behind its sign-in.
+//! - **No reshaping a persona** (2026-10-01): creating one, detaching, rebuilding, adopting, authorizing
+//!   another node, revoking a key in its tree ([`identity_by_browser`], identity/routes.rs). A key acts
+//!   as you for what you make and say, never for what your identity is - a stolen one can't add itself
+//!   a node, or cut your devices away.
 //!
 //! The node keeps only each key's blake3 hash (a key is 256 random bits - nothing to brute-force,
 //! so a fast hash is the right one), so its table leaking leaks no working key. Owns the `api_keys`
@@ -73,6 +77,18 @@ fn by_browser(session: &Session) -> Result<(), AppError> {
         return Err(AppError::Forbidden(crate::msg!(
             "auth.keys.manage-keys-from-a-browser",
             "API keys are managed from a signed-in browser, not with a key"
+        )));
+    }
+    Ok(())
+}
+
+/// A persona's structure - its keys, its nodes, whether it lives here at all - is changed from a
+/// signed-in browser only (module doc).
+pub fn identity_by_browser(session: &Session) -> Result<(), AppError> {
+    if session.key.is_some() {
+        return Err(AppError::Forbidden(crate::msg!(
+            "auth.keys.identity-by-browser",
+            "a persona's keys and homes are changed from a signed-in browser, not with an API key"
         )));
     }
     Ok(())

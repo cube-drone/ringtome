@@ -69,8 +69,16 @@ export function useDocApp(root, app, docId, bucket) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [docs, selected]);
 
+    // A deleted document is nobody's last one (Curtis, 2026-10-01: a drawing deleted while open
+    // went back to "looking that up…" - the list it landed on restored the document it had just
+    // deleted, which the mirror still held for a moment, and then lost it for good).
+    const forget = (id) => {
+        const key = `${root}:${app.id}`;
+        if (lastDocMemory.get(key) === id) lastDocMemory.delete(key);
+    };
+
     const [treeReload, setTreeReload] = useState(0);
-    return { docs, selected, select, treeReload, bumpTree: () => setTreeReload((k) => k + 1) };
+    return { docs, selected, select, forget, treeReload, bumpTree: () => setTreeReload((k) => k + 1) };
 }
 
 /**

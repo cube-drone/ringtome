@@ -339,6 +339,7 @@ async fn create_handler(
     session: Session,
     State(state): State<AppState>,
 ) -> Result<Json<CreatedIdentityInfo>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     let created = super::create(
         &state.node_db,
         &state.keystore,
@@ -395,6 +396,7 @@ async fn detach_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<DetachResponse>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     super::detach(&state.node_db, &session.account.id, &root).await?;
     Ok(Json(DetachResponse { detached: true }))
 }
@@ -460,6 +462,7 @@ async fn rebuild_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<RebuildResponse>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     if !state.config.local_test {
         // Uniform 404: on a production node this endpoint does not exist.
         return Err(AppError::NotFound(crate::msg!("identity.routes.not-found", "not found")));
@@ -549,6 +552,7 @@ async fn adopt_begin_handler(
     session: Session,
     State(state): State<AppState>,
 ) -> Result<Json<CodeResponse>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     let request = super::adoption::begin(&state, &session.account.id).await?;
     let code = super::adoption::pack(&request)?;
     Ok(Json(CodeResponse { code }))
@@ -562,6 +566,7 @@ async fn authorize_node_handler(
     Path(root): Path<String>,
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<GrantResponse>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     let request: super::adoption::RequestCode =
         super::adoption::unpack(&req.code, "request code")?;
     let (requester_endpoint, requester_addrs) =
@@ -614,6 +619,7 @@ async fn adopt_complete_handler(
     State(state): State<AppState>,
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<IdentityInfo>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     let grant: super::adoption::GrantCode = super::adoption::unpack(&req.code, "grant code")?;
     let identity = super::adoption::complete(&state, &session.account.id, grant).await?;
     // The newborn device is locatable from its first breath (discoverability doctrine), and
@@ -3125,6 +3131,7 @@ async fn revoke_key_handler(
     Path((root, target)): Path<(String, String)>,
     Json(req): Json<RevokeRequest>,
 ) -> Result<Json<RevokeResponse>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
     let disposition = match req.disposition.as_str() {
         "retirement" => ringtome_proto::Disposition::Retirement,
         "repudiation" => ringtome_proto::Disposition::Repudiation,

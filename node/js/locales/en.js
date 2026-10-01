@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1342 phrases across 86 files.
+// 1344 phrases across 86 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -826,6 +826,7 @@ export default {
     'index.close-this-app': 'close this app',
     'index.loading': 'Loading…',
     'index.looking-that-up': 'looking that up…',
+    'index.not-here': "that isn't here - it was deleted, or hasn't reached this computer yet.",
     'index.people': 'people',
     'index.feed': 'feed',
     'index.search-this-node': 'search this node…',
@@ -963,7 +964,7 @@ export default {
     'persona.every-release': 'every release',
     'persona.revoke-key-confirm': 'Revoke "{name}"? Anything using it stops working at once.',
     'persona.api-keys': 'API keys',
-    'persona.api-keys-explain': "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account, on every computer.",
+    'persona.api-keys-explain': "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account on this server, not to this browser, and work only here.",
     'persona.new-key-copy-now': "Your new key, \"{name}\". Copy it now - it won't be shown again.",
     'persona.copied': 'copied',
     'persona.copy': 'copy',
@@ -1224,6 +1225,7 @@ export default {
 
     // --- node/src/auth/keys.rs ---
     'auth.keys.manage-keys-from-a-browser': 'API keys are managed from a signed-in browser, not with a key',
+    'auth.keys.identity-by-browser': "a persona's keys and homes are changed from a signed-in browser, not with an API key",
     'auth.keys.name-the-key': 'give the key a name, up to 80 characters',
     'auth.keys.too-many-keys': "that's 25 keys already - revoke one first",
 

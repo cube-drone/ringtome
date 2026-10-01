@@ -645,9 +645,23 @@ const AppRoute = ({ app: appId, doc, current, searchQuery, searchKind, bucket })
 const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket }) => {
     const parsed = parseSpeakable(seg);
     const mine = !!(current && parsed && parsed.ok && parsed.root === current.root);
-    const row = useLive(() => (mine ? openMirror(current.root).docs.get(doc) : null), [mine, current && current.root, doc]);
+    // The row, null once the mirror holds documents and this isn't among them (deleted, or not on
+    // this computer yet) - a missing row used to read as still loading, forever (2026-10-01).
+    // An empty mirror is still filling, so there it keeps looking.
+    const row = useLive(
+        () => {
+            if (!mine) return null;
+            const docs = openMirror(current.root).docs;
+            return Promise.all([docs.get(doc), docs.count()]).then(([r, held]) => r || (held > 0 ? null : undefined));
+        },
+        [mine, current && current.root, doc]
+    );
     if (!mine) return html`<${DocResolve} seg=${seg} doc=${doc} current=${current} />`;
     if (row === undefined) return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
+    if (row === null)
+        return html`<div class="null-state">
+            <p class="null-title">${t('index.not-here', "that isn't here - it was deleted, or hasn't reached this computer yet.")}</p>
+        </div>`;
     if (!row || !appHere) return html`<${PrivateDoc} />`;
     return html`<${DocsApp}
         key=${appHere.id}
