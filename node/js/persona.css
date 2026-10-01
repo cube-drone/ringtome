@@ -2196,3 +2196,67 @@ article:has(.label-emoji-strip) {
 .settings-version-line a {
     color: var(--teal-deep);
 }
+
+/* The colourway picker (persona.js, 2026-09-30): each option its three colours and its name; the
+   worn one lifted in the accent. The swatches are fixed colours (tokens.css), whatever is worn. */
+.colorway-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.colorway-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.7rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: var(--surface);
+    --line: var(--border);
+    --j: 3px;
+    cursor: pointer;
+}
+
+.colorway-option:hover {
+    --line: var(--border-strong);
+}
+
+.colorway-option.picked {
+    --line: var(--teal);
+    font-weight: 600;
+}
+
+.colorway-swatch {
+    display: inline-flex;
+}
+
+.colorway-swatch span {
+    width: 0.8rem;
+    height: 1rem;
+}
+
+.colorway-horse-relax span:nth-child(1) {
+    background: var(--swatch-horse-relax-1);
+}
+
+.colorway-horse-relax span:nth-child(2) {
+    background: var(--swatch-horse-relax-2);
+}
+
+.colorway-horse-relax span:nth-child(3) {
+    background: var(--swatch-horse-relax-3);
+}
+
+.colorway-witchlight span:nth-child(1) {
+    background: var(--swatch-witchlight-1);
+}
+
+.colorway-witchlight span:nth-child(2) {
+    background: var(--swatch-witchlight-2);
+}
+
+.colorway-witchlight span:nth-child(3) {
+    background: var(--swatch-witchlight-3);
+}

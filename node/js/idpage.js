@@ -17,6 +17,7 @@ import { personaHue } from './pure/person.js';
 import { agoUnit } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { PersonCard, PersonChip } from './person.js';
+import { usePageColorway } from './colorway.js';
 import { PersonaMenu, bannerStyle } from './persona.js';
 import { PublicPosts } from './posts.js';
 import { t, tNodes } from './i18n.js';
@@ -168,6 +169,10 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             if (timer) clearTimeout(timer);
         };
     }, [root, via, viewer]);
+
+    // Their page wears their colourway (Curtis, 2026-09-30), a public field of their profile.
+    const theirColorway = ((profile && profile.fields) || []).find((f) => f.field === 'colorway');
+    usePageColorway(theirColorway ? theirColorway.value : null);
 
     // Your nickname for them, live off the contacts mirror - first of the three names a
     // person wears (nickname / self-name / speakable words).

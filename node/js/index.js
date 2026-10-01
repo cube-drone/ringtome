@@ -64,6 +64,7 @@ import { SlugPage } from './slugpage.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
+import { useOwnColorway } from './colorway.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
 
 const html = htm.bind(h);
@@ -232,6 +233,9 @@ const Inside = ({ session }) => {
     // The persona's own face (Curtis, 2026-09-27): its tile in the dock and the launcher wears
     // their picture and colour rather than a generic person glyph.
     const me = faceOf(usePerson(root, { current: persona.current }));
+    // Your colourway (colorway.js), live off your profile: the app wears it, but on another person's page.
+    const colorwayRow = useLive(() => (root ? openMirror(root).profile.get('colorway') : null), [root]);
+    useOwnColorway(colorwayRow && colorwayRow.value);
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
@@ -725,6 +729,8 @@ const FrontDoor = ({ session }) => html`<div class="front-door">
 /// viewer and answer as they do for anyone.
 const Outside = ({ session }) => {
     const loc = useLocation();
+    // Nobody's in: the house colourway, but on a person's page, theirs (colorway.js).
+    useOwnColorway(null);
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
     // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed. The

@@ -13501,3 +13501,34 @@ nodeface.cjs: two past heartbeats a day apart, the later above, and every heartb
 recent first. The full gate also caught a string of today's: the book tree's hidden section passed
 `'hidden'` to its tooltip inside a template, which reads to the strings check as copy bypassing
 `t()`; it's a constant now, out of the template.
+
+### Colourways: horse-relax and witchlight (2026-09-30)
+
+Curtis: "the ability for the user to select a new colorway for the entire application: currently we
+have our beige-and-teal color scheme, horse-relax, but we'll start with our new color-scheme,
+witchlight, which is a dark-mode scheme: black, charcoal, shades of purple, and yellow as an accent
+color… when you visit a user's personal page, it should use their colorway, the rest of the time we
+use your own."
+
+The CSS was already most of the way there: every colour is a token on `:root` in tokens.css, and the
+conventions test fails a colour literal anywhere else. So a colourway is one block of tokens:
+
+- **`:root[data-colorway='witchlight']`** redefines them all - near-black page, charcoal-purple
+  cards, lilac-white ink, deep purple frame and plum dock, yellow accent (`--teal` is the accent's
+  name, whatever its colour), lavender for "good" - and sets `color-scheme: dark` so the browser's
+  own widgets follow. One new token, `--frame`: the frame and the header band were painted `--ink`,
+  which in a dark colourway is the pale text colour; they're `--frame` now (ink in horse-relax, deep
+  purple in witchlight), as is the header's search fade. Ink-filled chips (tooltips, counts) stay on
+  `--ink` - inverted in either colourway, which is right for them.
+- **`colorway` is a profile field** (store.rs `PROFILE_FIELDS`), public, so a visitor reads it.
+- **js/colorway.js** wears it on the page root: your own (the shell reads your profile live), but a
+  person's page (idpage.js) wears theirs while it's open, signed in or out; signed out elsewhere,
+  horse-relax. The last one worn is kept in this browser and put on before anything draws, so a
+  witchlight reload doesn't flash beige.
+- **The picker** is on your Profile page: each colourway's three swatches (fixed tokens, the same in
+  either) and its name; picking saves at once - trying one on is picking it - and the page repaints.
+
+The marquee stylesheet and the editor theme take their colours from the page, so notes follow (the
+editor keeps its blue caret and links, readable on either). Seen in headless Chrome: the launcher,
+the Writer, the feed and the Profile page in witchlight; signed out, the front page horse-relax, a
+witchlight persona's page witchlight, and back to horse-relax on leaving it.

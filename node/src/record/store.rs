@@ -97,7 +97,9 @@ pub const SEAL_WISH: &str = "seal";
 pub const AUDIENCE: &str = "audience";
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
-pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar", "banner"];
+/// `colorway` (2026-09-30) is the persona's colourway for the app - public, so a visitor to their
+/// page sees it in it (js/colorway.js).
+pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar", "banner", "colorway"];
 
 /// Write credentials for one identity on this node: the leaf signing key and the private-chain
 /// epoch keys it can open.

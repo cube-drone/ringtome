@@ -26,6 +26,7 @@ import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { Version } from './version.js';
 import { RELEASES_URL } from './pure/releasename.js';
+import { COLORWAYS, DEFAULT_COLORWAY } from './colorway.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
 import { personHref, personaPageHref, LAUNCHER } from './links.js';
@@ -971,6 +972,7 @@ export const Profile = ({ current }) => {
                     placeholder=${t('persona.a-line-or-two-about', 'a line or two about you (optional)')}
                 ></textarea>
             </label>
+            <${ColorwayPicker} root=${root} />
             <div class="profile-save-row">
                 <button
                     class="profile-save"
@@ -981,6 +983,48 @@ export const Profile = ({ current }) => {
             </div>
         </div>
     `;
+};
+
+/// Your colourway for the whole app (Curtis, 2026-09-30), a profile field like your name - but saved
+/// the moment you pick it, since trying one on IS picking it. Public: your page wears it for anyone
+/// who visits (colorway.js).
+const COLORWAY_WORDS = {
+    'horse-relax': () => t('persona.colorway-horse-relax', 'horse-relax'),
+    witchlight: () => t('persona.colorway-witchlight', 'witchlight'),
+};
+const COLORWAY_CLASS = {
+    'horse-relax': 'colorway-swatch colorway-horse-relax',
+    witchlight: 'colorway-swatch colorway-witchlight',
+};
+
+const ColorwayPicker = ({ root }) => {
+    const row = useLive(() => openMirror(root).profile.get('colorway'), [root]);
+    const current = (row && COLORWAYS.includes(row.value) && row.value) || DEFAULT_COLORWAY;
+    const [error, setError] = useState(null);
+    const pick = async (colorway) => {
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/profile`, { method: 'POST', body: JSON.stringify({ field: 'colorway', value: colorway }) });
+        } catch (e) {
+            setError(e.message || String(e));
+        }
+    };
+    return html`<div class="profile-field">
+        <span class="profile-field-label">${t('persona.colorway', 'colorway')}</span>
+        <div class="colorway-options" role="radiogroup">
+            ${COLORWAYS.map(
+                (c) => html`<button
+                    key=${c}
+                    type="button"
+                    role="radio"
+                    aria-checked=${c === current}
+                    class=${c === current ? 'colorway-option jag-line picked' : 'colorway-option jag-line'}
+                    onClick=${() => pick(c)}
+                ><span class=${COLORWAY_CLASS[c]}><span></span><span></span><span></span></span>${COLORWAY_WORDS[c]()}</button>`
+            )}
+        </div>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
 };
 
 /// Your short name on this node (PROJECT_PLAN's The node's public face, rulings 6 and 7): `@cube-drone`, first come

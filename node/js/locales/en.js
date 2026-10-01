@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1317 phrases across 85 files.
+// 1320 phrases across 85 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -979,6 +979,9 @@ export default {
     'persona.bio': 'bio',
     'persona.a-line-or-two-about': 'a line or two about you (optional)',
     'persona.save': 'Save',
+    'persona.colorway-horse-relax': 'horse-relax',
+    'persona.colorway-witchlight': 'witchlight',
+    'persona.colorway': 'colorway',
     'persona.this-node-knows-you-as': 'this node knows you as @{slug}',
     'persona.name-given-up': 'name given up',
     'persona.that-name-did-not-take': 'that name did not take',

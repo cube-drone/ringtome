@@ -82,6 +82,7 @@
     --field: #fcf8f0;        /* a text field (Curtis, 2026-09-27): a hair lighter than the cream panels and the
                                 sand, a hair darker than paper - so it reads as a box to type in on any of them */
     --ink: #40382c;          /* primary text: warm dark brown */
+    --frame: #40382c;        /* the app's frame and its header band: ink, in this colourway */
     --ink-soft: #574d3d;     /* softer body text */
     --muted: #8a7a5f;        /* secondary text, labels */
     --faint: #a89777;        /* placeholders, tertiary */
@@ -119,6 +120,62 @@
     --floor-dark: #a3a3a3;    /* ...and its darker one - the universal sign for "nothing is here" */
     --crop-shade: rgba(0, 0, 0, 0.4); /* the crop tool's shade over what is about to be cut away (Drawing) */
     --viewport: #e0302a;      /* the navigator's red square (Drawing): where the stage is looking, on the minimap */
+}
+
+/* The colourways (Curtis, 2026-09-30): the palette above is horse-relax, beige and teal; witchlight is
+   the dark one - black, charcoal, shades of purple, and yellow as the accent. A colourway is only the
+   tokens: every colour in the app is one (the conventions test holds that), so this block is the whole
+   of it. `--teal` is the accent's name whatever colour it is. js/colorway.js sets `data-colorway` on
+   the page root - your own, or on a person's page, theirs. The swatches are the picker's (persona.js),
+   the same in every colourway, since they show the others. */
+:root {
+    --swatch-horse-relax-1: #e7dbc3;
+    --swatch-horse-relax-2: #f6efe0;
+    --swatch-horse-relax-3: #1f9e90;
+    --swatch-witchlight-1: #0d0b10;
+    --swatch-witchlight-2: #3b2654;
+    --swatch-witchlight-3: #f2c14e;
+}
+
+:root[data-colorway='witchlight'] {
+    color-scheme: dark;       /* the browser's own widgets - scrollbars, selects, pickers - go dark too */
+    --bg: #0d0b10;            /* page: near-black */
+    --surface: #1a1620;       /* cards, inputs, tiles: charcoal, a breath of purple */
+    --surface-2: #241d2e;     /* chips, secondary fills */
+    --paper: #211a2b;         /* the note itself: lighter than the backdrop, as paper is */
+    --field: #161219;         /* a text field: a hair darker than the cards */
+    --ink: #eee7f7;           /* primary text: lilac-white */
+    --ink-soft: #d2c6e4;
+    --muted: #a393be;
+    --faint: #7b6d94;
+    --border: #3a2f4a;
+    --border-strong: #574670;
+    --frame: #2a1b3f;         /* the frame and the header band: deep purple */
+
+    --teal: #f2c14e;          /* the accent: witchlight yellow */
+    --teal-deep: #3b2654;     /* the bottom dock band: plum */
+    --sea: #b48cf2;           /* good / friendly: lavender */
+    --pink: #e489d8;          /* tags */
+    --peach: #f0a45c;         /* scheduled */
+    --coral: #ef6f6c;         /* danger */
+    --react-good: #2b3a33;
+    --react-bad: #3d2628;
+
+    --glow: rgba(242, 193, 78, 0.5);
+    --dock-text: #f4eefb;
+    --sunk-shadow: rgba(0, 0, 0, 0.6);
+    --sunk-light: rgba(255, 255, 255, 0.08);
+    --row-veil: rgba(26, 22, 32, 0.6);
+    --banner-veil: rgba(13, 11, 16, 0.55);
+    --plate: rgba(20, 16, 26, 0.8);
+
+    --hex-border-dark: #6b4aa3;
+    --hex-border-light: #2a1f38;
+
+    --marker: #6b5616;        /* search hits: a highlighter dark enough to read light words through */
+    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-drop: rgba(0, 0, 0, 0.6);
+    --shadow-punch: rgba(0, 0, 0, 0.45);
 }
 
 /* The jagged line, as a class (Curtis, 2026-09-30: "this has proven to be kind of a reliable pain").

@@ -54,7 +54,7 @@ body {
     /* No top border: the ink app header IS the top edge, so a border there would just be
        redundant ink stealing height. Sides and bottom keep the chunky frame. */
     padding: 0 10px 10px;
-    background: var(--ink);
+    background: var(--frame);
     clip-path: var(--panel-clip);
     display: flex;
     flex-direction: column;
@@ -94,7 +94,7 @@ body {
     gap: 0.8rem;
     /* No right padding: the close button sits flush against the frame's right border. */
     padding: 0.35rem 0 0.45rem 0.5rem;
-    background: var(--ink);
+    background: var(--frame);
     color: var(--dock-text);
 }
 
@@ -288,7 +288,7 @@ body {
     top: -0.35rem;
     bottom: -0.45rem;
     width: 2.5rem;
-    background: linear-gradient(to right, transparent, var(--ink) 85%);
+    background: linear-gradient(to right, transparent, var(--frame) 85%);
     pointer-events: none;
 }
 
