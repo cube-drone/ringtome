@@ -1,5 +1,6 @@
 // The colourways (Curtis, 2026-09-30): the whole app in horse-relax, the beige and teal it was born
-// in, or witchlight, black and purple with a yellow accent. A colourway is only a `data-colorway` on
+// in; witchlight, black and purple with a yellow accent; doors-xp, something windowsy; bosc,
+// something mac-ossy; micross, white, royal blue and cherry red; or terminal, black and lime green. A colourway is only a `data-colorway` on
 // the page root - tokens.css redefines every colour under it. Yours is a profile field, `colorway`,
 // public on purpose: on a person's page the app wears THEIRS, and everywhere else your own. Signed
 // out, horse-relax, but on a person's page theirs all the same.
@@ -8,7 +9,7 @@
 // persona's reload doesn't flash beige before their profile arrives.
 import { useEffect } from 'preact/hooks';
 
-export const COLORWAYS = ['horse-relax', 'witchlight'];
+export const COLORWAYS = ['horse-relax', 'witchlight', 'doors-xp', 'bosc', 'micross', 'terminal'];
 export const DEFAULT_COLORWAY = 'horse-relax';
 const KEPT = 'colorway';
 

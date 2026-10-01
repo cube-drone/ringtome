@@ -13532,3 +13532,15 @@ The marquee stylesheet and the editor theme take their colours from the page, so
 editor keeps its blue caret and links, readable on either). Seen in headless Chrome: the launcher,
 the Writer, the feed and the Profile page in witchlight; signed out, the front page horse-relax, a
 witchlight persona's page witchlight, and back to horse-relax on leaving it.
+Then three more (Curtis: "doors-xp (something windowsy), bosc (something mac-ossy), and micross
+(white, royal blue, cherry red)"), each one token block in tokens.css: **doors-xp**, Luna - a pale sky
+behind beige window faces, a bright blue frame and taskbar, the selection blue for the accent, the
+Start button's green for good, the close button's orange-red for danger; **bosc**, light greys and
+white windows, a graphite frame and dock, the system blue, green, orange and red; **micross**, a
+white page, royal blue frame and dock, navy words, cherry red for the accent and a darker red for
+danger so the two never blur. Each page is light enough that an accent fill's words (the page colour,
+by the house rule) stay readable on it. The picker's swatches are three variables per colourway now
+and one set of rules, not three rules each. Seen in headless Chrome: the feed in all three.
+And **terminal** (Curtis: "black and lime green"): a black page, near-black green panes, phosphor-green
+words, the brightest lime for the accent and the frame's lettering, amber for scheduled, a terminal red
+for danger, `color-scheme: dark`. Seen in headless Chrome: the feed.

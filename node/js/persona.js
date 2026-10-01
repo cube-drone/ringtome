@@ -991,10 +991,18 @@ export const Profile = ({ current }) => {
 const COLORWAY_WORDS = {
     'horse-relax': () => t('persona.colorway-horse-relax', 'horse-relax'),
     witchlight: () => t('persona.colorway-witchlight', 'witchlight'),
+    'doors-xp': () => t('persona.colorway-doors-xp', 'doors-xp'),
+    bosc: () => t('persona.colorway-bosc', 'bosc'),
+    micross: () => t('persona.colorway-micross', 'micross'),
+    terminal: () => t('persona.colorway-terminal', 'terminal'),
 };
 const COLORWAY_CLASS = {
     'horse-relax': 'colorway-swatch colorway-horse-relax',
     witchlight: 'colorway-swatch colorway-witchlight',
+    'doors-xp': 'colorway-swatch colorway-doors-xp',
+    bosc: 'colorway-swatch colorway-bosc',
+    micross: 'colorway-swatch colorway-micross',
+    terminal: 'colorway-swatch colorway-terminal',
 };
 
 const ColorwayPicker = ({ root }) => {
