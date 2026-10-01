@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
-import { openMirror, useLive } from '../mirror.js';
+import { openMirror, useLive, holdNewDoc } from '../mirror.js';
 import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/prefs.js';
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
 import { useSearch } from '../search.js';
@@ -481,6 +481,9 @@ export const WikiTree = ({
                 method: 'POST',
                 body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
             });
+            // Open it now, the row stated ahead of the stream (pure/optimistic.js).
+            await holdNewDoc(root, made, { title: 'untitled', format: 'marquee', bucket });
+            onSelect(made.doc_id);
             await api(
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
                 { method: 'PUT' }
@@ -490,7 +493,6 @@ export const WikiTree = ({
                 body: JSON.stringify({}),
             });
             refetch();
-            onSelect(made.doc_id);
         } catch (e) {
             alert(t('doc.tree.couldnt-start-the', "couldn't start the {itemNoun}: {message}", { itemNoun, message: e.message }));
         }

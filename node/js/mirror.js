@@ -2,8 +2,11 @@
 // it current (PROJECT_PLAN, The Browser Is a View) - fed by a read-only WebSocket. The mirror is
 // DISPOSABLE by design - a pure function of the node's stream, never a source of truth: any doubt
 // about the cursor and the server sends a full snapshot, which we apply by clear-and-replace.
-// Writes never touch this file; they are HTTP POSTs elsewhere (net.js), and their effects arrive
-// back down the stream like anyone else's.
+// Writes are HTTP requests elsewhere (net.js), and their effects arrive back down the stream like
+// anyone else's - but since 2026-10-01 a write may also state its effect on a doc row AHEAD of the
+// stream (pure/optimistic.js: Curtis, "updating the local state and then reconciling it when the
+// server catches up"), and `apply` settles those overlays as each frame lands. The server still
+// wins: an overlay the stream never confirms is withdrawn.
 //
 // This file owns the handle and the stream; `mirror/` holds the tables the stream does NOT feed.
 // Four are exceptions that way, all local-only: `prefs` (UI preferences - mirror/prefs.js owns
@@ -14,6 +17,8 @@
 // which is the right privacy posture for tables that record which documents you touch.
 import Dexie, { liveQuery } from 'dexie';
 import { useState, useEffect } from 'preact/hooks';
+
+import * as optimistic from './pure/optimistic.js';
 
 // One Dexie handle per persona per page - the mirror is per-identity ("nothing is ever cached
 // for an identity the session doesn't own" starts with them not sharing a database).
@@ -50,6 +55,14 @@ export function openMirror(root) {
     return db;
 }
 
+/// A write's effect on a doc row, stated ahead of the stream (pure/optimistic.js, which says how
+/// it settles): `holdDoc(root, docId, make, settled)` -> `{ revert }`; `optimisticDoc(root, docId,
+/// make, settled, request)` around a request; `holdNewDoc(root, made, { title, format, bucket })`
+/// for a document just created.
+export const holdDoc = (root, ...rest) => optimistic.holdDoc(openMirror(root), root, ...rest);
+export const optimisticDoc = (root, ...rest) => optimistic.optimisticDoc(openMirror(root), root, ...rest);
+export const holdNewDoc = (root, ...rest) => optimistic.holdNewDoc(openMirror(root), root, ...rest);
+
 /// The "forget this browser" obligation: drop the mirror wholesale. Called on logout.
 export async function forgetMirror(root) {
     const db = mirrors.get(root);
@@ -65,7 +78,7 @@ export async function forgetMirror(root) {
 // chains moved); the contacts roster additionally arrives as deltas on the update path.
 // Everything lands inside one transaction with the cursor, so the mirror is always a
 // consistent frame, never a half-applied one.
-async function apply(db, msg) {
+async function apply(db, msg, root) {
     await db.transaction(
         'rw',
         db.kv,
@@ -118,6 +131,21 @@ async function apply(db, msg) {
             if (msg.docs_removed) {
                 await db.docs.bulkDelete(msg.docs_removed);
             }
+            // The doc rows a write stated ahead of the stream (pure/optimistic.js): settled by
+            // what this frame carried, or laid again over it - inside the transaction, so no
+            // reader ever sees the server's older row between.
+            if (msg.docs || msg.docs_changed || msg.docs_removed) {
+                const whole = msg.docs ? new Map(msg.docs.map((r) => [r.doc_id, r])) : null;
+                const sent = new Map();
+                for (const r of msg.docs_changed || []) sent.set(r.doc_id, r);
+                for (const id of msg.docs_removed || []) sent.set(id, undefined);
+                await optimistic.reassertHeld(
+                    root,
+                    db.docs,
+                    (id) => !!whole || sent.has(id),
+                    (id) => (whole ? whole.get(id) : sent.get(id))
+                );
+            }
             if (msg.search_changed) {
                 await db.search.bulkPut(msg.search_changed);
             }
@@ -138,6 +166,8 @@ export function startLiveCache(root) {
 
     const connect = async () => {
         if (state.stopped) return;
+        // A row a closed page left stated ahead of the stream goes back to the server's first.
+        await optimistic.healOptimistic(db, root).catch(() => {});
         let cursor = null;
         try {
             cursor = (await db.kv.get('cursor'))?.value || null;
@@ -156,7 +186,7 @@ export function startLiveCache(root) {
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'snapshot' || msg.type === 'update') {
-                    await apply(db, msg);
+                    await apply(db, msg, root);
                 } else if (msg.type === 'live') {
                     await db.kv.put({ key: 'cursor', value: msg.cursor });
                 }

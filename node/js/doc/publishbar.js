@@ -18,8 +18,21 @@ import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
 import { t } from '../i18n.js';
+import { holdDoc, optimisticDoc } from '../mirror.js';
 import { BakeModal } from './publish.js';
-import { docStatus, isScheduled, publishedState } from '../pure/feed.js';
+import {
+    docStatus,
+    isScheduled,
+    publishedState,
+    publishedSettled,
+    scheduledSettled,
+    unpublishedSettled,
+    unscheduledSettled,
+    withoutPublication,
+    withoutSchedule,
+    withPublished,
+    withScheduled,
+} from '../pure/feed.js';
 import { Modal } from '../modal.js';
 import { api } from '../net.js';
 import { Icons } from '../icons.js';
@@ -81,6 +94,13 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                       }
                     : undefined;
             const made = await publish(extra, setBaking);
+            // The bar turns at once (2026-10-01): the answer said what the mirror will, so the row
+            // wears it now and the stream settles it (pure/optimistic.js).
+            if (made && made.scheduled_for) {
+                await holdDoc(root, docId, (r) => withScheduled(r, made.scheduled_for), scheduledSettled);
+            } else if (made && made.post_id) {
+                await holdDoc(root, docId, (r) => withPublished(r, made.post_id), publishedSettled(made.post_id));
+            }
             setPublishNote(made && made.scheduled_for ? { kind: 'scheduled', at: made.scheduled_for } : { kind: 'published' });
             setPublished((n) => n + 1);
             if (onPublished) onPublished();
@@ -94,7 +114,9 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         setPublishing(true);
         setPublishError(null);
         try {
-            await api(`/api/identity/${root}/posts/${postId}`, { method: 'DELETE' });
+            await optimisticDoc(root, docId, withoutPublication, unpublishedSettled, () =>
+                api(`/api/identity/${root}/posts/${postId}`, { method: 'DELETE' })
+            );
             setPublishNote({ kind: 'unpublished' });
         } catch (e) {
             setPublishError(e.message);
@@ -107,7 +129,9 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         setPublishing(true);
         setPublishError(null);
         try {
-            await api(`/api/identity/${root}/docs/${docId}/annotations/fields/publish_plan`, { method: 'DELETE' });
+            await optimisticDoc(root, docId, withoutSchedule, unscheduledSettled, () =>
+                api(`/api/identity/${root}/docs/${docId}/annotations/fields/publish_plan`, { method: 'DELETE' })
+            );
             setPublishNote({ kind: 'unscheduled' });
         } catch (e) {
             setPublishError(e.message);

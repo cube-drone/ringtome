@@ -13650,3 +13650,26 @@ Measured by rebooting the scratch persona on its own data: the open 1978 ms -> 1
 `/api/identity` 2.9 s -> 5 ms. The open now logs its legs at debug ("open legs", beside "fold legs"),
 and `just scratch N keep=1` boots a scratch slot on its existing data, for timing a reboot. `just ci`
 green.
+
+**2026-10-01 - implicit tags: image, video, audio, and a length.** Curtis: tags "automatically applied
+to content that contain audio, video, or image content, both for private media and during publishing",
+then "micro" (under 75 words), "short" (to 500), "medium" (to 2,000) and "long" - and "it's also
+important that we automatically remove these tags when they stop applying". A private document's
+are never written to the chain: they're worked out each time its list row is built - its own format
+(a silent loop is an image), the formats its head's `refs` name, and its word count, which the search
+index's refresh now keeps (user rung 0029 adds `doc_search.words`) - so they come and go with what the
+note holds. The row lists them in `tags`, so every filter sees them, and in `implicit`, so the tag
+editor offers no remove; the tagged read finds them too. Publish states them as ordinary tags, outside
+the 32-tag cap, read off the post as minted (its twins' formats; the draft's words); a republish that
+no longer earns one retracts it like any tag the draft dropped. A room earns no length. Signed, and
+new publishes only - no backfill (Curtis's choices). Eleven acceptance claims about stated tags take
+`stated()` (helpers.cjs) now that every short document is also "micro".
+
+**2026-10-01 - every facet chip is three-state.** Curtis: "include", "only", "do not include" - a click
+shows only those, a second leaves them out. Every row works the same way: "only" picks within a row
+widen to either (tags were AND - his ruling: either), "leave out" picks (`not_kind=`, `not_bucket=`,
+`not_tag=`) drop whatever carries one, the rows narrow together. The "me" chip joined them: among the
+rest, `me=only`, or `me=0` (fanout.rs `Own`; an old unpick still reads as left out). A row is counted
+over what the other rows admit less its own exclusions - never thinned by its own onlys, which widen -
+and a left-out chip keeps its count from before, so it says what it hides and stays on the strip to
+click back. Left out reads struck through, outlined in coral.

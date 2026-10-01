@@ -50,6 +50,37 @@ export function overlayPosted(row, postId) {
     return { ...row, fields: { ...((row && row.fields) || {}), [PUBLISHED_AS]: postId } };
 }
 
+/// The doc row a write leaves, stated ahead of the stream (pure/optimistic.js, 2026-10-01): each
+/// `with*` makes the row, its `*Settled` says when the server's row has caught up. A row the
+/// mirror doesn't hold yet stays absent - there's nothing to wear the fact.
+const withFields = (row, change) => row && { ...row, fields: change({ ...((row && row.fields) || {}) }) };
+
+/// Published as `postId`, the public version this row's head.
+export const withPublished = (row, postId) =>
+    withFields(row, (f) => ({ ...f, [PUBLISHED_AS]: postId, published_head: row.head }));
+export const publishedSettled = (postId) => (row) =>
+    !!row && (row.fields || {})[PUBLISHED_AS] === postId && (row.fields || {}).published_head === row.head;
+
+/// Waiting on a plan to publish at `at`.
+export const withScheduled = (row, at) => withFields(row, (f) => ({ ...f, publish_plan: JSON.stringify({ at }) }));
+export const scheduledSettled = (row) => isScheduled(row);
+
+/// Taken down: no post, no public version.
+export const withoutPublication = (row) =>
+    withFields(row, (f) => {
+        const { [PUBLISHED_AS]: _p, published_head: _h, ...rest } = f;
+        return rest;
+    });
+export const unpublishedSettled = (row) => !publishedState(row).published;
+
+/// The plan cancelled.
+export const withoutSchedule = (row) =>
+    withFields(row, (f) => {
+        const { publish_plan: _, ...rest } = f;
+        return rest;
+    });
+export const unscheduledSettled = (row) => !isScheduled(row);
+
 /// THE open draft, out of this app's documents (newest claim first): the newest one that has
 /// not been posted. One at a time, deliberately - the composer is a place, not a list, and
 /// an app that can only ever have one open draft cannot be made to mint a pile of them.

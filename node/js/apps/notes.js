@@ -32,6 +32,7 @@ import { Icons, formatIcon } from '../icons.js';
 import { DrawingThumb } from '../doc/drawing.js';
 import { blankDrawing, writeBody } from '../pure/drawing.js';
 import { t } from '../i18n.js';
+import { holdNewDoc } from '../mirror.js';
 import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
@@ -449,6 +450,10 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 method: 'POST',
                 body: JSON.stringify({ title: 'untitled', body: format === 'drawing' ? writeBody(blankDrawing()) : '', format }),
             });
+            // Open it now (2026-10-01: "that isn't here" until the stream brought the row): the
+            // row is stated ahead of the stream, filed where it's going, and the filing follows.
+            await holdNewDoc(root, made, { title: 'untitled', format, bucket });
+            select(made.doc_id);
             // File it into the CURRENT bucket - the notebook you're looking at is the notebook
             // a new page lands in.
             await api(
@@ -466,7 +471,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 });
                 bumpTree(); // don't wait for the roster tick
             }
-            select(made.doc_id); // the mirror row follows within a second or two
+        } catch (e) {
+            alert(t('apps.notes.couldnt-make-a-new-one', "couldn't make a new one: {message}", { message: e.message }));
         } finally {
             setBusy(false);
         }

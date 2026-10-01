@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
-import { openMirror, useLive } from '../mirror.js';
+import { openMirror, useLive, optimisticDoc } from '../mirror.js';
 import { useDocDetail } from './detail.js';
 import { Chip, NavChips } from './chips.js';
 import { MarqueeBody } from './marqueebody.js';
@@ -68,10 +68,18 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const saveTitle = async () => {
         if (!doc || doc.builtin || title === (doc.title || '')) return;
         try {
-            await api(`/api/identity/${root}/docs/${docId}/title`, {
-                method: 'PATCH',
-                body: JSON.stringify({ title }),
-            });
+            // Every list says the new title at once (pure/optimistic.js).
+            await optimisticDoc(
+                root,
+                docId,
+                (r) => r && { ...r, title },
+                (r) => !!r && r.title === title,
+                () =>
+                    api(`/api/identity/${root}/docs/${docId}/title`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ title }),
+                    })
+            );
         } catch (e) {
             setWriteError(e.message);
         }
@@ -89,9 +97,13 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
 
     const togglePin = async () => {
         try {
-            await api(`/api/identity/${root}/docs/${docId}/pin`, {
-                method: pinned ? 'DELETE' : 'PUT',
-            });
+            await optimisticDoc(
+                root,
+                docId,
+                (r) => r && { ...r, pinned: !pinned },
+                (r) => !!r && !!r.pinned === !pinned,
+                () => api(`/api/identity/${root}/docs/${docId}/pin`, { method: pinned ? 'DELETE' : 'PUT' })
+            );
         } catch (e) {
             setWriteError(e.message);
         }
@@ -100,7 +112,9 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const remove = async () => {
         if (!confirm('Delete this document? It leaves the list right away.')) return;
         try {
-            await api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' });
+            await optimisticDoc(root, docId, () => null, (r) => !r, () =>
+                api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' })
+            );
             onDeleted && onDeleted();
         } catch (e) {
             setWriteError(e.message);

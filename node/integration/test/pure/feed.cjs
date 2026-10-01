@@ -464,3 +464,28 @@ describe('the thread orders', () => {
         assert.equal(replySortParams('nonsense', 'me'), '');
     });
 });
+
+describe('the publish bar states its rows ahead of the stream (2026-10-01)', () => {
+    let f;
+    before(async () => {
+        f = await import('../../../js/pure/feed.js');
+    });
+    const row = { doc_id: 'd', head: 'h2', fields: { description: 'x' } };
+    it('published: the post, and this head as its public version - settled only when the server says both', () => {
+        const p = f.withPublished(row, 'post1');
+        assert.deepEqual(p.fields, { description: 'x', published_as: 'post1', published_head: 'h2' });
+        assert.equal(f.docStatus(p), 'public');
+        const settled = f.publishedSettled('post1');
+        assert.equal(settled(row), false);
+        assert.equal(settled({ ...row, fields: { published_as: 'post1', published_head: 'h1' } }), false, 'an older public version');
+        assert.equal(settled(p), true);
+    });
+    it('scheduled, taken down, unscheduled - and no row, nothing to wear it', () => {
+        assert.equal(f.docStatus(f.withScheduled(row, 123)), 'scheduled');
+        const down = f.withoutPublication(f.withPublished(row, 'post1'));
+        assert.deepEqual(down.fields, { description: 'x' });
+        assert.equal(f.unpublishedSettled(down), true);
+        assert.equal(f.unscheduledSettled(f.withoutSchedule(f.withScheduled(row, 5))), true);
+        assert.equal(f.withPublished(undefined, 'p'), undefined);
+    });
+});

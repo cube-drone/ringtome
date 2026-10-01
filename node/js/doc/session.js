@@ -9,7 +9,7 @@
 // moved verbatim from the old Editor; keep it faithful.
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { api } from '../net.js';
-import { openMirror, useLive } from '../mirror.js';
+import { openMirror, useLive, optimisticDoc } from '../mirror.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
 import { needsReload } from '../pure/lookout.js';
 import { keepaliveOk } from '../pure/keepalive.js';
@@ -198,9 +198,14 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     // current state comes from the live row at click time, so the button always toggles right.
     const togglePin = async (isPinned) => {
         try {
-            await api(`/api/identity/${root}/docs/${docId}/pin`, {
-                method: isPinned ? 'DELETE' : 'PUT',
-            });
+            // The pin shows at once; the stream settles it (pure/optimistic.js).
+            await optimisticDoc(
+                root,
+                docId,
+                (r) => r && { ...r, pinned: !isPinned },
+                (r) => !!r && !!r.pinned === !isPinned,
+                () => api(`/api/identity/${root}/docs/${docId}/pin`, { method: isPinned ? 'DELETE' : 'PUT' })
+            );
         } catch (e) {
             setError(e.message);
             setStatus('error');
@@ -216,7 +221,10 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         m.dirty = false;
         if (m.timer) clearTimeout(m.timer);
         try {
-            await api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' });
+            // Gone from every list at once, back if the delete fails (pure/optimistic.js).
+            await optimisticDoc(root, docId, () => null, (r) => !r, () =>
+                api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' })
+            );
             onDeleted && onDeleted();
         } catch (e) {
             setError(e.message);
