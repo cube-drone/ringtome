@@ -456,7 +456,9 @@ test-data personas="15" actions="15" seed="":
 # differ per checkout, so two checkouts' scratch fixtures can never collide.
 #
 # Boot a throwaway probe node on this checkout's scratch slot N (1-3).
-scratch n="3":
+# `keep=1` boots on the slot's existing data instead of wiping it - a reboot, for timing what a
+# node does at boot over a persona it already holds.
+scratch n="3" keep="":
     #!/usr/bin/env bash
     set -uo pipefail
     case "{{n}}" in
@@ -472,7 +474,7 @@ scratch n="3":
         echo "scratch node already up on :$port (pid $(cat "$pidfile"))"
         exit 0
     fi
-    rm -rf "$dir"
+    [ -n "{{keep}}" ] || rm -rf "$dir"
     RINGTOME_PORT=$port RINGTOME_DATA_DIRECTORY="$dir" RINGTOME_LOCAL_TEST=1         RINGTOME_DISCOVERY="local:$dht" RINGTOME_SYNC_DEBOUNCE_MS=250         cargo run --bin ringtome > "$dir.log" 2>&1 &
     echo $! > "$pidfile"
     for i in $(seq 1 120); do

@@ -958,10 +958,13 @@ impl UserDbManager {
     /// cache exactly when its open completed whole.
     async fn open(&self, root_pubkey: &str) -> Result<Db> {
         let path = self.path_for(root_pubkey);
+        let t0 = std::time::Instant::now();
         let db = open_database(&path, &self.keystore).await?;
+        let t_file = t0.elapsed();
         crate::migrations::climb(&db, crate::migrations::USER, "user")
             .await
             .with_context(|| format!("running user migrations for {root_pubkey}"))?;
+        let t_climb = t0.elapsed();
 
         // Open (torn-tail-validating) the journal, and initialize the journal ⊇ database
         // invariant: an empty journal over a non-empty entries table gets every stored entry
@@ -1037,6 +1040,7 @@ impl UserDbManager {
                 );
             }
         }
+        let t_journal = t0.elapsed();
         let heads = crate::record::heads::EphemeralHeads::open(&self.heads_path_for(root_pubkey))
             .with_context(|| format!("opening the ephemeral-heads checkpoint for {root_pubkey}"))?;
         let mut db = db
@@ -1065,6 +1069,16 @@ impl UserDbManager {
                 }
             }
         }
+        // Each leg's end, from the start (a 700-post persona's open took 86 s at boot, 2026-10-01).
+        tracing::debug!(
+            root = %root_pubkey,
+            total_ms = t0.elapsed().as_millis() as u64,
+            file_ms = t_file.as_millis() as u64,
+            climb_ms = t_climb.as_millis() as u64,
+            journal_ms = t_journal.as_millis() as u64,
+            first_look,
+            "open legs"
+        );
 
         Ok(db)
     }

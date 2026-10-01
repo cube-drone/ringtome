@@ -163,27 +163,36 @@ pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Front
 /// table; the memo is fed at write time and this is the recovery path that re-derives it
 /// after a crash between the dual writes.
 pub async fn chain_ranges(db: &Db) -> Result<Vec<crate::net::frontier::MemoChain>> {
-    type Row = (String, i64, Vec<u8>, i64, i64, Vec<u8>);
-    let rows: Vec<Row> = db
+    // Two reads, never the correlated subquery: `(SELECT entry_hash ... ORDER BY seq DESC LIMIT
+    // 1)` inside the GROUP BY ran once per ENTRY rather than once per chain - quadratic in the
+    // log, 1.9 s for 7 chains on a 700-post persona and the whole of an 86-second first load
+    // after a reboot, since this runs at every database's first open (2026-10-01; the same
+    // query as the 2026-08-10 profile above). The ranges are one scan; each head's hash is a
+    // primary-key read, and a persona has a handful of chains.
+    type Range = (String, i64, Vec<u8>, i64, i64);
+    let ranges: Vec<Range> = db
         .fetch_all(
-            "SELECT e.author_pubkey, e.service, e.instance, MIN(e.seq), MAX(e.seq),
-                    (SELECT entry_hash FROM entries
-                      WHERE author_pubkey = e.author_pubkey AND service = e.service
-                        AND instance = e.instance
-                      ORDER BY seq DESC LIMIT 1)
-             FROM entries e GROUP BY e.author_pubkey, e.service, e.instance",
+            "SELECT author_pubkey, service, instance, MIN(seq), MAX(seq)
+             FROM entries GROUP BY author_pubkey, service, instance",
             (),
         )
         .await
         .context("reading chain ranges")?;
-    rows.into_iter()
-        .map(|(author_hex, svc, instance, floor, head, hash)| {
-            let hash: [u8; 32] = hash
-                .try_into()
-                .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
-            Ok((author_hex, svc as u32, crate::db::instance_of(&instance), floor as u64, head as u64, hash))
-        })
-        .collect()
+    let mut out = Vec::with_capacity(ranges.len());
+    for (author_hex, svc, instance, floor, head) in ranges {
+        let (hash,): (Vec<u8>,) = db
+            .fetch_one(
+                "SELECT entry_hash FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
+                (author_hex.as_str(), svc, instance.clone(), head),
+            )
+            .await
+            .context("reading a chain's head hash")?;
+        let hash: [u8; 32] = hash
+            .try_into()
+            .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
+        out.push((author_hex, svc as u32, crate::db::instance_of(&instance), floor as u64, head as u64, hash));
+    }
+    Ok(out)
 }
 
 /// Entries read (and held) at once while streaming one chain to a peer. The send path used to

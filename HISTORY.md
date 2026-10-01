@@ -13637,3 +13637,16 @@ persona's database (one statement lock) made every other request queue behind it
 catch-up reads it once, and a per-persona lane runs one catch-up at a time (a second poll waits, then
 finds its work banked). A 700-post scratch reproduction: a poll 3.6-4.7 s -> 40 ms, three concurrent
 9.7 s -> 117 ms, same balance. `just ci` green.
+
+**2026-10-01 - a reboot's first load stops waiting on a quadratic query.** Curtis, after the bank fix:
+the front page still took a minute and a half after a reboot - `/api/identity` 82.9 s idle, 3.4 ms
+busy. A persona database's first open reconciles the chain-heads memo against its log, and
+`sync::chain_ranges` found each chain's head hash with a correlated subquery inside the GROUP BY, which
+ran once per entry rather than once per chain: 1.9 s for 7 chains on a 700-post scratch persona,
+minutes on the real one, and every request touching that persona parked behind the open. (It is the
+query the 2026-08-10 profile caught on the sync hot path; that path moved to the memo, and the
+reconcile kept the scan.) Now one grouped scan for the ranges and a primary-key read per chain's head.
+Measured by rebooting the scratch persona on its own data: the open 1978 ms -> 17 ms, the first
+`/api/identity` 2.9 s -> 5 ms. The open now logs its legs at debug ("open legs", beside "fold legs"),
+and `just scratch N keep=1` boots a scratch slot on its existing data, for timing a reboot. `just ci`
+green.
