@@ -106,6 +106,9 @@
     --on-accent: #fbf6ec;    /* on --teal, and --sea */
     --on-danger: #fbf6ec;    /* on --coral */
     --on-peach: #3a2a14;     /* on --peach: dark in every colourway */
+    /* A chosen facet chip's fill (facets.css): the secondary fill here; a colourway whose secondary
+       fill sits too near its cards lifts it (witchlight, 2026-10-01). */
+    --chip-on: var(--surface-2);
     /* A panel sunk into the dock (the corner clock, 2026-09-17): the shadow its top edge
        casts, and the hairline of light its bottom edge catches. */
     --sunk-shadow: rgba(0, 0, 0, 0.45);
@@ -160,6 +163,7 @@
     --bg: #0d0b10;            /* page: near-black */
     --surface: #1a1620;       /* cards, inputs, tiles: charcoal, a breath of purple */
     --surface-2: #241d2e;     /* chips, secondary fills */
+    --chip-on: #4b3470;       /* a chosen facet chip: plum, plainly apart from the charcoal (2026-10-01) */
     --paper: #211a2b;         /* the note itself: lighter than the backdrop, as paper is */
     --field: #161219;         /* a text field: a hair darker than the cards */
     --ink: #eee7f7;           /* primary text: lilac-white */

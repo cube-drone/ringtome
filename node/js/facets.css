@@ -47,7 +47,7 @@
     cursor: pointer;
 }
 .facet-chip-on {
-    background: var(--surface-2);
+    background: var(--chip-on);
     border-style: solid;
     color: var(--ink);
 }

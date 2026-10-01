@@ -13622,3 +13622,18 @@ plum kept the page's near-black. Now `--on-accent` (on `--teal` and `--sea`: lig
 yellow and terminal's lime), `--on-danger` (on `--coral`) and `--on-peach` (dark everywhere) are set per
 colourway in tokens.css, every solid fill names the one for its fill, and a hover onto a deeper fill takes
 `--dock-text`. Seen in headless Chrome: the settings page's fills in witchlight and terminal.
+
+**2026-10-01 - a chosen tag reads as chosen in witchlight.** Curtis: the contrast between selected and
+unselected tags was "a little bit too light". A chosen facet chip filled with `--surface-2`, which in
+witchlight sits a breath from the charcoal cards. The fill is now its own token, `--chip-on`: the
+secondary fill everywhere, and a lifted plum (#4b3470) in witchlight (tokens.css, facets.css).
+
+**2026-10-01 - the balance poll stops folding the doc-meta chain once per post.** Curtis, with ~700
+imported toots: opening a post took minutes, and the feed wouldn't load while it did; the log showed
+`/bank?lines=0` at 144-153 s a call, three stacked. The bank's catch-up asked `note_claiming` for every
+public post, and each ask decrypted and folded the whole doc-meta chain - O(n²), every poll, while the
+persona's database (one statement lock) made every other request queue behind it. Now
+`Annotations::notes_claiming` returns post -> note off one fold (`note_claiming` delegates to it), the
+catch-up reads it once, and a per-persona lane runs one catch-up at a time (a second poll waits, then
+finds its work banked). A 700-post scratch reproduction: a poll 3.6-4.7 s -> 40 ms, three concurrent
+9.7 s -> 117 ms, same balance. `just ci` green.

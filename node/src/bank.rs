@@ -18,6 +18,7 @@
 //! paragraph fifty times, or pressing one stamp five hundred times, pays once.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use anyhow::Result;
 use serde_json::json;
@@ -163,8 +164,20 @@ async fn recount_stale_publications(data: &Store) -> Result<()> {
     Ok(())
 }
 
+/// One catch-up at a time per persona. The corner polls its balance, and a slow pass used to
+/// meet the next poll's pass, and the next: three walks of the same shelf at once, each holding
+/// the persona's database (2026-10-01). A second caller waits for the first, then finds its work
+/// already banked.
+static CATCHING_UP: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Bring the ledger up to date with what this computer holds.
 pub async fn catch_up(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
+    let lane = CATCHING_UP.lock().expect("bank lanes poisoned").entry(root_hex.to_string()).or_default().clone();
+    let _turn = lane.lock().await;
+    catch_up_now(state, data, root_hex).await
+}
+
+async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
     recount_stale_publications(data).await?;
     let have = banked(data).await?;
     let is_new = |kind: &str, source: &str| !have.contains(&(kind.to_string(), source.to_string()));
@@ -226,7 +239,9 @@ pub async fn catch_up(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
-    // Publications: once per note, the private amounts again plus the size bonus.
+    // Publications: once per note, the private amounts again plus the size bonus. Who claims
+    // each post, read once for them all (a fold per post was minutes at 700 posts, 2026-10-01).
+    let claimed = data.annotations().notes_claiming().await.unwrap_or_default();
     for (post_id, doc) in &view.docs {
         if doc.lane != "public" {
             continue;
@@ -235,7 +250,7 @@ pub async fn catch_up(state: &AppState, data: &Store, root_hex: &str) -> Result<
         if !matches!(Format::from_wire(v.header.format), Format::Marquee | Format::Plaintext) {
             continue;
         }
-        let note = data.annotations().note_claiming(post_id).await.ok().flatten();
+        let note = claimed.get(post_id).copied();
         let source = hex::encode(note.unwrap_or(*post_id));
         if !is_new("publication", &source) {
             continue;

@@ -46,7 +46,7 @@
 // allow comes off when the first 4S route lands.
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::db::Db;
 use ringtome_proto::registry::{entry_type, service};
@@ -1457,10 +1457,18 @@ impl Annotations<'_> {
     /// The private note claiming this public post - the reverse of the `published_as` write
     /// `publish` makes. A walk over the doc-meta view rather than an index, because it runs
     /// once per unpublish, a human gesture; minting a lookup table for it would be a second
-    /// source of truth nothing else needs.
+    /// source of truth nothing else needs. A caller asking about many posts takes
+    /// [`Self::notes_claiming`] instead: each call here folds the whole doc-meta chain.
     pub async fn note_claiming(&self, post_id: &[u8; 16]) -> Result<Option<[u8; 16]>, AppError> {
-        let want = hex::encode(post_id);
+        Ok(self.notes_claiming().await?.get(post_id).copied())
+    }
+
+    /// Every public post's claiming note, post -> note, off ONE fold of the doc-meta view (the
+    /// bank's catch-up, 2026-10-01: a fold per post was 700 folds a balance poll, minutes of
+    /// them, and the persona's database queued behind it).
+    pub async fn notes_claiming(&self) -> Result<HashMap<[u8; 16], [u8; 16]>, AppError> {
         let view = self.store.doc_meta_view().await?;
+        let mut claimed = HashMap::new();
         for collection in view.collections() {
             let Some((root, doc_id)) = parse_annot_collection(collection) else {
                 continue;
@@ -1468,15 +1476,16 @@ impl Annotations<'_> {
             if root != self.store.root {
                 continue;
             }
-            if view
-                .registers_in(collection)
-                .iter()
-                .any(|r| r.key == PUBLISHED_AS && r.value == want)
-            {
-                return Ok(Some(doc_id));
+            for r in view.registers_in(collection) {
+                if r.key != PUBLISHED_AS {
+                    continue;
+                }
+                if let Some(post) = hex::decode(&r.value).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+                    claimed.entry(post).or_insert(doc_id);
+                }
             }
         }
-        Ok(None)
+        Ok(claimed)
     }
 
     /// Read one annotation field, or None. Reads the DOC-META view, not the general-private
