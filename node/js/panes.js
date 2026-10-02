@@ -21,9 +21,16 @@ const html = htm.bind(h);
 /// A column's little header: its icon and name, and the button that tucks it away. Two files drew
 /// this by hand - the documents app for each of its three columns, the tree pane for itself. The
 /// icon is the one its rail wears (2026-09-30), so a column and its tucked tab are the same thing.
-export const PaneHead = ({ icon = null, label, onTuck }) => html`<div class="pane-head jag-line">
+/// The whole header tucks its column (Curtis, 2026-10-02: "a click anywhere in the column header
+/// folds the column, rather than just the tiny <| target"). The button stays, for the keyboard: its
+/// click bubbles here, so it carries no handler of its own - two would tuck and untuck at once.
+export const PaneHead = ({ icon = null, label, onTuck }) => html`<div
+    class="pane-head jag-line"
+    title=${`tuck the ${label} column away`}
+    onClick=${onTuck}
+>
     <span class="pane-head-label">${icon && html`<${icon} />`}${label}</span>
-    <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${onTuck}>
+    <button class="pane-min" title=${`tuck the ${label} column away`}>
         <${Icons.back} />
     </button>
 </div>`;

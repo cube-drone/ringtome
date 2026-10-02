@@ -60,7 +60,12 @@
 /* A pane's little header: its name and the tuck-away button - the rail it tucks to, turned on its
    side (Curtis, 2026-09-30: headers "a little more visually distinct from the column contents"): the
    rail's fill and jagged line, the name in ink, and a little air before what it heads. */
+/* Held at the top of its column however far the column scrolls (Curtis, 2026-10-02: the header is
+   how you close the column, and it scrolled away) - above what scrolls under it. */
 .pane-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -73,8 +78,19 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+    /* The right side clears an overlay scrollbar: on a column just scrolled, it lies over the
+       last ~15px, and the tuck button sat under it - the click went to the scrollbar. */
+    padding: 0.3rem 1rem 0.3rem 0.6rem;
     margin-bottom: 0.4rem;
+}
+
+/* The whole header is the tuck target: it says so under the pointer. */
+.pane-head {
+    cursor: pointer;
+}
+
+.pane-head:hover {
+    color: var(--ink);
 }
 
 /* The column's icon beside its name, the rail's own. */

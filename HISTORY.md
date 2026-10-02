@@ -13983,3 +13983,13 @@ evicted. `/api/identity/{root}/storage` is the persona's own; `/api/node/storage
 Seen in headless Chrome: "pic1 — 1.5 KB" on hover, the reader's "avif · 1.5 KB · read-only", "427 KB in
 all" pinned at the column's foot, and the admin's "move 307 KB · evict 307 KB" beside "also you".
 Claims in storage.cjs. `just ci` green.
+
+**2026-10-02 - a column's header stays put, and all of it tucks.** Curtis: an open column's header -
+the way you close it - scrolled off with the column; and a click anywhere on it should fold the column,
+not just the small arrow. `.pane-head` is sticky at the column's top, above what scrolls under it, and
+`PaneHead` takes the click on the whole header (the arrow stays for the keyboard, its click bubbling up -
+a handler of its own would tuck and untuck at once). Found in the checking: on a column just scrolled,
+an overlay scrollbar lies over its last ~15px, where the arrow sat - a click there went to the
+scrollbar - so the header keeps clear of that edge. Seen in headless Chrome: the header at the column's
+top through 1400px of scroll; a click on its name tucks the column, a click on the arrow tucks it once.
+`just ci` green.
