@@ -9,9 +9,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* "see more" should give you an idea HOW MUCH more there is to see
-    * +238 words, +39 images, +3 audio tracks, +4 videos
-    * we might be trimming a little TOO aggressively?
+* feed cards: we might be trimming a little TOO aggressively? (a card now draws ~240 characters past its cut, faded - the cut points themselves are unchanged)
 * the huge tag list in feed is unwieldy, in files it's completely broken
 * report storage use per account
 * on mobile People, folks' gigantic IDs are flattening their names

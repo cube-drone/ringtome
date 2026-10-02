@@ -1848,6 +1848,25 @@ article:has(.label-emoji-strip) {
     text-decoration: underline;
 }
 
+/* What "see more" would show, under it in small italics: "+1833 words, +3 images". */
+.feed-entry-held {
+    color: var(--muted);
+    font-size: 0.8em;
+    font-style: italic;
+    margin-top: -0.2em;
+}
+
+/* A held-back card draws a little past its lead and fades it away (Curtis, 2026-10-02) - the
+   words fade, never the paper they sit on: the mask is on the content inside the paper. */
+/* `.mq-doc`, not the renderer's root: the root lays out as `display: contents`, a box a mask cannot
+   paint on - the first try faded nothing at all. */
+.feed-entry-body-fading .reader-marquee .mq-doc,
+.feed-entry-fade-words {
+    display: block;
+    -webkit-mask-image: var(--fade-away);
+    mask-image: var(--fade-away);
+}
+
 /* On the post measure against the column's left edge, like every card above it (.feed-stream > *):
    it was centred, which only looked flush while the column was capped at the measure. */
 .feed-more {

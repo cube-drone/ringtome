@@ -35,6 +35,8 @@ import {
     publishedState,
     emphasisOf,
     leadOf,
+    overrunOf,
+    heldBack,
     postScale,
     postImageCap,
     POST_IMAGE_MAX,
@@ -742,8 +744,11 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     const { lead, cut: leadCut } = leadOf(shownBody || '', emphasis);
     // A book's card always draws its whole table (below), so nothing is ever held back from it.
     const cut = item.format !== 'book' && leadCut;
+    // Held back, the card draws a little past its lead and fades it away (Curtis, 2026-10-02:
+    // "there's more but you just can't see it"). A room draws its floor, not its words.
+    const fading = cut && !wholeThing && item.format !== 'room';
     // A book's body is its tree, never prose: no lead cut, the card draws the whole table.
-    const shown = item.format === 'book' || wholeThing ? shownBody : lead;
+    const shown = item.format === 'book' || wholeThing ? shownBody : fading ? overrunOf(shownBody || '', emphasis) : lead;
     // Whose labels this reader sees: the register and their ledger, both live. The
     // description key is the author's alone here (one description per post); anyone
     // else's description is shown only at 'everyone', as a label.
@@ -772,6 +777,25 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // The foot's parts (see the foot, below): each only where the words are on screen to act on.
     const bodyShown = !!shownBody && !veiled;
     const seeMore = bodyShown && cut && !wholeThing;
+    // What "see more" would show, said under it in small italics (Curtis, 2026-10-02): "+1833
+    // words, +3 images, +2 audio files, +4 videos" - only the kinds there are.
+    const held = seeMore ? heldBack(shownBody, shown) : null;
+    const heldNote =
+        held &&
+        [
+            held.words > 0 &&
+                (held.words === 1 ? t('postentry.held-a-word', '+1 word') : t('postentry.held-words', '+{n} words', { n: held.words })),
+            held.images > 0 &&
+                (held.images === 1 ? t('postentry.held-an-image', '+1 image') : t('postentry.held-images', '+{n} images', { n: held.images })),
+            held.audio > 0 &&
+                (held.audio === 1
+                    ? t('postentry.held-an-audio-file', '+1 audio file')
+                    : t('postentry.held-audio-files', '+{n} audio files', { n: held.audio })),
+            held.videos > 0 &&
+                (held.videos === 1 ? t('postentry.held-a-video', '+1 video') : t('postentry.held-videos', '+{n} videos', { n: held.videos })),
+        ]
+            .filter(Boolean)
+            .join(', ');
     const roomDoor = bodyShown && item.format === 'room';
     // Whether this reader could answer (Curtis, 2026-09-29): not with replies turned off (the settled
     // wish), and not signed out - the front page's visitors. Where they cannot, the foot is just the
@@ -1287,7 +1311,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                       </div>`}
                       ${!!shownBody &&
                       !veiled &&
-                      html`<div class="feed-entry-body">
+                      html`<div class=${fading ? 'feed-entry-body feed-entry-body-fading' : 'feed-entry-body'}>
                           ${item.format === 'book'
                               ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
                               : item.format === 'room'
@@ -1301,7 +1325,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                         profile=${tlProfile}
                                         onUnparsable=${bareSource}
                                     />`
-                                  : html`<pre class="reader-plain jag-line">${shown}</pre>`}
+                                  : html`<pre class="reader-plain jag-line">${fading ? html`<span class="feed-entry-fade-words">${shown}</span>` : shown}</pre>`}
                       </div>`}`}
             ${/* The card's foot (Curtis, 2026-09-27): centred under the post, large and bold, stacking
                 whichever apply - "see more…" when something was held back; "enter the room" on a
@@ -1313,7 +1337,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
             ${!open &&
             html`<div class="feed-entry-acts">
                 ${seeMore &&
-                html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>`}
+                html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>
+                    ${heldNote && html`<small class="feed-entry-held">${heldNote}</small>`}`}
                 ${roomDoor &&
                 html`<a class="feed-entry-act" href=${roomHref(item.author, item.doc_id)}
                     ><${Icons.room} /> ${t('postentry.enter-the-room', 'enter the room')}</a

@@ -129,6 +129,9 @@
     --floor-dark: #a3a3a3;    /* ...and its darker one - the universal sign for "nothing is here" */
     --crop-shade: rgba(0, 0, 0, 0.4); /* the crop tool's shade over what is about to be cut away (Drawing) */
     --viewport: #e0302a;      /* the navigator's red square (Drawing): where the stage is looking, on the minimap */
+    /* A held-back card's words fading away (postentry.js): a mask reads only alpha, so this is the
+       same in every colourway - solid down to the last few lines, then gone. */
+    --fade-away: linear-gradient(to bottom, #000 calc(100% - 4.5em), transparent);
 }
 
 /* The colourways (Curtis, 2026-09-30): the palette above is horse-relax, beige and teal; witchlight is

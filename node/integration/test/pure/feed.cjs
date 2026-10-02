@@ -2,11 +2,11 @@
 const assert = require('node:assert');
 
 let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated, docStatus,
-    emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
+    emphasisOf, leadOf, overrunOf, heldBack, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
     postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked, REPLY_SORTS, replySortParams;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated, docStatus,
-        postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
+        postCursor, emphasisOf, leadOf, overrunOf, heldBack, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
         postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked, REPLY_SORTS, replySortParams } = await import(
         '../../../js/pure/feed.js'
     ));
@@ -199,6 +199,30 @@ describe('feed emphasis and truncation', () => {
         const { lead, cut } = leadOf('the lead.\n\nthe rest, at length.', 'low');
         assert.equal(lead, 'the lead.');
         assert.equal(cut, true);
+    });
+
+    it('draws a held-back card a little past its lead, for the fade to fall across (2026-10-02)', () => {
+        const body = 'the lead.\n\nthe second paragraph goes on for a while.\n\n![p](/a.avif)\n\nafter the picture.';
+        const over = overrunOf(body, 'low');
+        assert.ok(over.startsWith('the lead.\n\nthe second paragraph'), over);
+        assert.ok(!over.includes('![p]') && !over.includes('after the picture'), 'never into the next picture');
+        assert.ok(!over.endsWith('\u2026'), 'the fade says "more", not an ellipsis');
+        assert.equal(overrunOf('brief.', 'low'), 'brief.', 'nothing held back: just the lead');
+        const wall = ('word '.repeat(400)).trim();
+        const lead = leadOf(wall, 'low').lead.replace(/\u2026$/, '');
+        const longer = overrunOf(wall, 'low');
+        assert.ok(longer.startsWith(lead) && longer.length > lead.length && longer.length < wall.length, 'a little past, not all');
+        assert.ok(/word$/.test(longer), 'and on a word boundary');
+        const linked = 'a'.repeat(10) + '\n\n' + 'see [a link with words](https://example.com/x) '.repeat(20);
+        const cut = overrunOf(linked, 'low');
+        assert.equal((cut.match(/\[/g) || []).length, (cut.match(/\)/g) || []).length, `never inside a link: ${cut}`);
+    });
+
+    it('says what a card holds back, by kind (2026-10-02)', () => {
+        const body = 'one two three.\n\n![a](/x/body/a.avif) ![b](https://e.com/b.png) ![s](/x/body/s.opus) ![v](/x/body/v-loop.webm) ![m](https://e.com/m.mp3)\n\nfour five.';
+        assert.deepEqual(heldBack(body, 'one two three.'), { words: 2, images: 2, audio: 2, videos: 1 });
+        assert.deepEqual(heldBack(body, body), { words: 0, images: 0, audio: 0, videos: 0 });
+        assert.deepEqual(heldBack('short', 'short and longer than the body'), { words: 0, images: 0, audio: 0, videos: 0 }, 'never negative');
     });
 
     it('leaves a short item whole whatever the interest', () => {

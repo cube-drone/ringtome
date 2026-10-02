@@ -4,6 +4,8 @@
 // since 2026-10-02, so publication is the whole of it.)
 
 import { bandOrdinal } from './contact.js';
+import { plainWords } from './excerpt.js';
+import { ownMediaKind } from './mediakind.js';
 
 /// Feed's home bucket. One notebook, deliberately: public posting has no buckets yet,
 /// because a bucket is a private annotation and a public post has nowhere to keep one.
@@ -266,18 +268,25 @@ function budgetEnd(text, spans, budget) {
  * held back - the item's "see more" appears exactly when it is true.
  */
 export function leadOf(body, emphasis) {
+    const { lead, cut } = leadAt(body, emphasis);
+    return { lead, cut };
+}
+
+/// `leadOf`, and `end`: where in the body the lead stops (before its ellipsis) - what the
+/// over-render continues from.
+function leadAt(body, emphasis) {
     const full = body || '';
     const pictures = [...full.matchAll(EMBED)];
     const second = pictures.length > 1 ? pictures[1].index : -1;
     const text = second >= 0 ? full.slice(0, second).replace(/\s+$/, '') : full;
     const atSecond = second >= 0;
-    if (emphasis === 'high') return { lead: text, cut: atSecond };
+    if (emphasis === 'high') return { lead: text, cut: atSecond, end: text.length };
     const budget = CUT_BUDGET[emphasis] ?? CUT_BUDGET.normal;
     const spans = spansOf(text);
     const over = readLength(text, spans) > budget;
     const paras = text.split(/\n[ \t]*\n/);
     if (paras.length > 1 && (emphasis === 'low' || over)) {
-        return { lead: paras[0], cut: true };
+        return { lead: paras[0], cut: true, end: paras[0].length };
     }
     if (over) {
         const end = budgetEnd(text, spans, budget);
@@ -286,9 +295,70 @@ export function leadOf(body, emphasis) {
         const inside = spans.find((s) => at > s.from && at < s.to);
         if (inside) at = inside.from;
         if (at <= end / 2) at = end;
-        return { lead: text.slice(0, at).replace(/\s+$/, '') + '\u2026', cut: true };
+        return { lead: text.slice(0, at).replace(/\s+$/, '') + '\u2026', cut: true, end: at };
     }
-    return { lead: text, cut: atSecond };
+    return { lead: text, cut: atSecond, end: text.length };
+}
+
+/// How far past the lead a held-back card draws, in read characters: a few lines for the fade
+/// to fall across (Curtis, 2026-10-02: "over-render the words a little bit and use a gradient
+/// fade-away to indicate there's more").
+export const OVERRUN = 240;
+
+/**
+ * What a held-back card draws: its lead and a little past it - up to `OVERRUN` more read
+ * characters, never into the next picture and never inside a link - for the card's fade to
+ * fall across. No ellipsis: the fade says it. A card with nothing held back draws its lead.
+ */
+export function overrunOf(body, emphasis) {
+    const full = body || '';
+    const { lead, cut, end } = leadAt(full, emphasis);
+    if (!cut) return lead;
+    let rest = full.slice(end);
+    const picture = rest.search(/!\[[^\]\n]*\]\([^)\s]*\)/);
+    if (picture >= 0) rest = rest.slice(0, picture);
+    const spans = spansOf(rest);
+    let at = budgetEnd(rest, spans, OVERRUN);
+    if (at < rest.length) {
+        const space = rest.lastIndexOf(' ', at);
+        if (space > 0) at = space;
+        const inside = spans.find((s) => at > s.from && at < s.to);
+        if (inside) at = inside.from;
+    }
+    return (full.slice(0, end) + rest.slice(0, at)).replace(/\s+$/, '');
+}
+
+/// An embed's kind from its address: ringtome's own spellings first, then the web's usual
+/// extensions; anything else drawn with `![...]` is a picture.
+const WEB_MEDIA_KINDS = { mp3: 'audio', ogg: 'audio', oga: 'audio', m4a: 'audio', wav: 'audio', flac: 'audio', mp4: 'video', mov: 'video', m4v: 'video' };
+function embedKind(target) {
+    const own = ownMediaKind(target);
+    if (own) return own;
+    const path = String(target || '').split(/[?#]/, 1)[0];
+    return WEB_MEDIA_KINDS[path.slice(path.lastIndexOf('.') + 1).toLowerCase()] || 'image';
+}
+
+function counted(body) {
+    const out = { words: plainWords(body).length, images: 0, audio: 0, videos: 0 };
+    for (const m of (body || '').matchAll(/!\[[^\]\n]*\]\(([^)\s]*)\)/g)) {
+        const kind = embedKind(m[1]);
+        if (kind === 'audio') out.audio += 1;
+        else if (kind === 'video') out.videos += 1;
+        else out.images += 1;
+    }
+    return out;
+}
+
+/**
+ * What a card holds back - the body against what it `shown`: words, pictures, sounds and
+ * videos still to see, for the "see more" button's summary ("+1833 words, +3 images", Curtis
+ * 2026-10-02). Never negative.
+ */
+export function heldBack(body, shown) {
+    const all = counted(body);
+    const seen = counted(shown);
+    const less = (k) => Math.max(0, all[k] - seen[k]);
+    return { words: less('words'), images: less('images'), audio: less('audio'), videos: less('videos') };
 }
 
 /// A feed item's identity: the same post can reach one reader through one author only, but two

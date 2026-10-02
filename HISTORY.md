@@ -13914,3 +13914,15 @@ of a persona a dialed node doesn't carry cost five seconds** - requester and res
 and waited for the other to close the connection until the responder's guard timed out; the responder
 now closes on the requester's own Done (`sync::serve_on`). Integration 8 -> 6 min, the >=1 s claims 286
 -> 167 s, `just ci` 539 s wall. `just ci` green.
+
+**2026-10-02 - "see more" says how much, and the words fade into it.** Curtis: the button should say
+what's left - "+1833 words, +3 images, +2 audio files, +4 videos" - and the card should draw a little
+past its cut and fade away. `pure/feed.js` gained `heldBack(body, shown)` (words by `plainWords`, embeds
+by kind - ringtome's own spellings, then the web's extensions, a bare `![]` a picture) and
+`overrunOf(body, emphasis)`: the lead plus up to `OVERRUN` (240) read characters past it, never into the
+next picture, never inside a link, no ellipsis - the fade says it (`leadOf` keeps its shape; the cut's
+position comes from a private `leadAt`). The card renders the overrun under a `--fade-away` mask on
+the words only - `.mq-doc`, since the renderer's root lays out as `display: contents` and the first try
+faded nothing - and the summary in small italics under "see more…", nonzero kinds only. Seen in headless
+Chrome: "+326 words, +2 images" under a paragraph dissolving into the paper. Pure claims for both.
+`just ui-check` green (JS and CSS only - the batch's `just ci` still owes).
