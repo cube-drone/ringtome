@@ -395,15 +395,30 @@ describe("the avatar (public documents, tenant zero)", function () {
         const thumb = await anon(`id/${root2}/docs/${avatarDoc}/thumb`);
         assert.equal(thumb.status, 200);
         assert.equal(thumb.headers.get("content-type"), "image/avif");
-        // Revalidation, not immutability (2026-08-06): the URL names the DOCUMENT, and a
-        // re-uploaded avatar changes these bytes under the same address. The blob hash rides
-        // as the ETag, so an unchanged thumb costs a 304 and never a year of staleness.
-        assert.ok(!/immutable/.test(thumb.headers.get("cache-control") || ""));
+        // Kept, not revalidated (2026-10-02; it was revalidation from 2026-08-06, when a re-upload
+        // changed the bytes under the same address): an avatar is a media document minted fresh at
+        // every upload, so its address never names new bytes - the re-upload claim below. The blob
+        // hash still rides as the ETag, for whoever asks anyway.
+        assert.equal(thumb.headers.get("cache-control"), "public, max-age=31536000, s-maxage=2592000, immutable");
         assert.ok(thumb.headers.get("etag"), "the blob hash rides as the ETag");
         const body = await anon(`id/${root2}/docs/${avatarDoc}/body`);
         assert.equal(body.status, 200);
         assert.equal(body.headers.get("content-type"), "image/avif");
         assert.ok((await body.arrayBuffer()).byteLength > 0, "real bytes");
+    });
+
+    it("a re-uploaded avatar is a NEW address - which is what makes keeping the old one safe", async () => {
+        const fs = require("node:fs");
+        const img = fs.readFileSync(`${__dirname}/../../../sample_media/polaroid.jpg`);
+        const form = new FormData();
+        form.append("image", new Blob([img], { type: "image/jpeg" }), "polaroid.jpg");
+        const again = await owner2(`api/identity/${root2}/avatar`, { method: "POST", body: form, file: true });
+        assert.equal(again.status, 200, await again.clone().text());
+        const next = (await again.json()).doc_id;
+        assert.notEqual(next, avatarDoc, "a fresh document, never new bytes under the old one");
+        const prof = await (await anon(`api/id/${root2}/profile`)).json();
+        assert.ok(prof.fields.some((f) => f.field === "avatar" && f.value === next), "and the profile points at it");
+        avatarDoc = next; // the claims below speak of the avatar the profile wears
     });
 
     it("the face wears it", async () => {
