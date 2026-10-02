@@ -9,7 +9,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* Clicking on things in the mobile mode sometimes don't dismiss the tab, leaving the user feeling stranded
+* "automatic-node-friendship" mode
+ * only available with password-based registration
 * A demo server (free registration, but it deletes all of its users after 7 days )
 * An article on Managing Operator Liability
 

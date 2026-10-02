@@ -68,15 +68,47 @@ describe("edge publication and its notification", () => {
         assert.equal(rows[0].interest, "medium");
     });
 
-    it("a dial turned while consented updates the row in place", async () => {
+    it("a dial turned while consented updates the row in place - quietly, its moment kept (2026-10-02)", async () => {
+        // Curtis: a follower turning their interest DOWN rang his bell, "follows and vouches for you".
+        // Only a first follow or a first trust is news; a level moving is not.
+        const before = Number((await notificationRows(readerRoot))[0].updated_ms);
         await dial(author, authorRoot, readerRoot, "trust", "high");
         await beat(undefined, "mint", authorRoot);
         await beat(undefined, "fold", authorRoot);
-        const rows = await notificationRows(readerRoot);
+        let rows = await notificationRows(readerRoot);
         assert.ok(
             rows.length === 1 && rows[0].trust === "high",
             "the statement was re-published and the row updated, never stacked"
         );
+        assert.equal(Number(rows[0].updated_ms), before, "trust turned down: not news");
+        await dial(author, authorRoot, readerRoot, "interest", "low");
+        await beat(undefined, "mint", authorRoot);
+        await beat(undefined, "fold", authorRoot);
+        rows = await notificationRows(readerRoot);
+        assert.equal(rows[0].interest, "low", "the words stay true");
+        assert.equal(Number(rows[0].updated_ms), before, "interest turned down: not news either");
+    });
+
+    it("a first trust after a follow IS news: the row comes back to the top (2026-10-02)", async () => {
+        // A pair of its own, so the shared reader's single row stays single for the claims below.
+        const fan = await makeUserFetch({ prefix: "pubfan" });
+        const fanRoot = (await (await fan("api/identity", { method: "POST" })).json()).root_pubkey;
+        const watcher = await makeUserFetch({ prefix: "pubwatcher" });
+        const watcherRoot = (await (await watcher("api/identity", { method: "POST" })).json()).root_pubkey;
+        await dial(watcher, watcherRoot, fanRoot, "interest", "high"); // the watcher follows the fan, so it folds
+        await dial(fan, fanRoot, watcherRoot, "interest", "medium");
+        await beat(undefined, "mint", fanRoot);
+        await beat(undefined, "fold", fanRoot);
+        const row = async () => (await notificationRows(watcherRoot)).find((r) => r.author_root === fanRoot);
+        const followed = await row();
+        assert.ok(followed && !followed.trust, `a follow, no trust yet: ${JSON.stringify(followed)}`);
+        await new Promise((r) => setTimeout(r, 20));
+        await dial(fan, fanRoot, watcherRoot, "trust", "max");
+        await beat(undefined, "mint", fanRoot);
+        await beat(undefined, "fold", fanRoot);
+        const trusted = await row();
+        assert.equal(trusted.trust, "max");
+        assert.ok(Number(trusted.updated_ms) > Number(followed.updated_ms), "the first trust stamps it anew");
     });
 
     it("the endpoint dresses the row, and the watermark makes it seen everywhere", async () => {

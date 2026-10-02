@@ -280,15 +280,12 @@ async fn refresh_from_inner(
         if row.edge.is_empty() {
             delete_row(&state.node_db, &subject_hex, author_root, KIND_PUBLIC_EDGE, "").await?;
         } else {
-            upsert_row(
+            upsert_edge_row(
                 &state.node_db,
                 &subject_hex,
                 author_root,
-                KIND_PUBLIC_EDGE,
-                "",
                 row.edge.trust.as_deref(),
                 row.edge.interest.as_deref(),
-                None,
                 row.received_at_ms,
             )
             .await?;
@@ -515,6 +512,42 @@ async fn upsert_row(
         )
         .await
         .context("storing a notification")?;
+    Ok(())
+}
+
+/// Upsert one person's public-edge row - which is news only when it says something new: the FIRST
+/// follow, or the FIRST trust (Curtis, 2026-10-02: a follower turning their interest down rang his
+/// bell with "follows and vouches for you"; "the only thing that's worth a notification is the
+/// first 'User X follows you' and 'User X trusts you'"). A level moving within a fact already said,
+/// interest or trust turned up or down, updates the row's words in place and leaves its stamp, so it
+/// neither climbs the list nor reads unread nor alerts. An edge withdrawn deletes the row (above), so
+/// a later follow is a first one again.
+async fn upsert_edge_row(
+    node_db: &Db,
+    reader_root: &str,
+    author_root: &str,
+    trust: Option<&str>,
+    interest: Option<&str>,
+    updated_ms: i64,
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO notifications
+               (reader_root, author_root, kind, doc_id, trust, interest, detail, updated_ms)
+             VALUES (?1, ?2, ?3, '', ?4, ?5, NULL, ?6)
+             ON CONFLICT (reader_root, author_root, kind, doc_id) DO UPDATE SET
+                 updated_ms = CASE
+                     WHEN (notifications.interest IS NULL AND excluded.interest IS NOT NULL)
+                       OR (notifications.trust IS NULL AND excluded.trust IS NOT NULL)
+                     THEN excluded.updated_ms
+                     ELSE notifications.updated_ms
+                 END,
+                 trust = excluded.trust,
+                 interest = excluded.interest",
+            (reader_root, author_root, KIND_PUBLIC_EDGE, trust, interest, updated_ms),
+        )
+        .await
+        .context("storing an edge notification")?;
     Ok(())
 }
 

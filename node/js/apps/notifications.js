@@ -120,7 +120,7 @@ const sentence = (r) => {
     if (follows && vouches)
         return t(
             'apps.notifications.follows-you-publicly-and-vouches',
-            'follows and vouches for you'
+            'follows and trusts you'
         );
     if (follows && r.trust)
         return t(
@@ -131,7 +131,7 @@ const sentence = (r) => {
     if (vouches)
         return t(
             'apps.notifications.vouches-for-you-publicly',
-            'vouches for you, publicly - they say you two have met'
+            'trusts you, publicly - they say you two have met'
         );
     return t('apps.notifications.publishes-their-trust-in', 'publishes their trust in you');
 };

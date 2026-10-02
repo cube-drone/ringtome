@@ -13782,3 +13782,15 @@ so one left on from earlier counts), a best or hot order, a search. Now a succes
 post's own page (`postHref`); it's minted on this node, so the page answers at once, and the card still
 waits in the stream for the way back. Seen in headless Chrome with a remembered "books" pick that would
 have hidden it: the post's page, its words on it.
+
+**2026-10-02 - only a first follow or a first trust is news; "trusts you".** Curtis, as B, turned his
+interest in A down, and A was told "User B follows and vouches for you": "the only thing that's worth a
+notification is the first 'User X follows you' and 'User X trusts you'". Two roads carried it. The
+derived one (A follows B) re-stamped A's one edge row on every re-published edge; `upsert_edge_row` now
+moves the stamp only when interest or trust appears where there was none, and otherwise updates the
+words in place - no climb, no unread, no alert. The delivered one (A doesn't follow B) knocked with a
+fresh notice on every dial change; `publish::reconcile` now knocks only for news, still publishing every
+statement. An edge withdrawn deletes the row, so a later follow is a first one again. And "vouches for
+you" reads "trusts you" (with "trusts this author" and "trusted by people you trust" beside it). Claims:
+notifications.cjs (down twice, stamp kept; a first trust after a follow, stamp moved) and inbox.cjs (a
+stranger turning their interest down delivers nothing - failing without the fix). `just ci` green.

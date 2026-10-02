@@ -78,6 +78,20 @@ const bell = async (fetcher, root) =>
         );
     });
 
+    it("turning that interest down knocks on nobody's door: only a first follow or trust is news (2026-10-02)", async () => {
+        // Curtis: a follower turning their interest DOWN rang his bell. The edge is published like
+        // any statement; the knock is for news only.
+        const before = (await bell(host, hostRoot)).find((i) => i.author === strangerRoot);
+        await dial(stranger, strangerRoot, hostRoot, "interest", "low");
+        await beat(HOST_B, "mint", strangerRoot);
+        await new Promise((r) => setTimeout(r, 1500));
+        const after = (await bell(host, hostRoot)).find((i) => i.author === strangerRoot);
+        assert.equal(after.interest, "high", "no new notice arrived: the bell still holds the first one");
+        assert.deepEqual(after, before, "the row did not move");
+        await dial(stranger, strangerRoot, hostRoot, "interest", "high"); // as it was, for the claims below
+        await beat(HOST_B, "mint", strangerRoot);
+    });
+
     /*
         Note there is deliberately no "the row appears in the outbox" test. Delivery is EAGER -
         the knock goes out in the same breath as the mint - so a queued row is a state that

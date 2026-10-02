@@ -462,10 +462,10 @@ async fn bell_alert(
             let follows = item.interest.is_some();
             let vouches = item.trust.as_deref() == Some("max");
             match (follows, vouches, item.trust.is_some()) {
-                (true, true, _) => crate::msg!("attention.follows-and-vouches", "follows and vouches for you").english,
+                (true, true, _) => crate::msg!("attention.follows-and-vouches", "follows and trusts you").english,
                 (true, false, true) => crate::msg!("attention.follows-and-trusts", "follows you publicly, and publishes their trust in you").english,
                 (true, false, false) => crate::msg!("attention.follows-you", "follows you, publicly").english,
-                (false, true, _) => crate::msg!("attention.vouches-for-you", "vouches for you, publicly").english,
+                (false, true, _) => crate::msg!("attention.vouches-for-you", "trusts you, publicly").english,
                 _ => crate::msg!("attention.trusts-you", "publishes their trust in you").english,
             }
         }

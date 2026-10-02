@@ -83,15 +83,25 @@ pub async fn reconcile(
             continue; // unconsented (or nothing to say): handled by the retraction pass below
         };
         desired_subjects.insert(subject_hex.as_str());
-        if published.get(subject_hex).map(|r| &r.edge) == Some(&desired) {
+        let before = published.get(subject_hex).map(|r| &r.edge);
+        if before == Some(&desired) {
             continue;
         }
+        // Whether this statement is NEWS to its subject (Curtis, 2026-10-02: a follower turning
+        // their interest down rang his bell): a first follow, or a first trust. A level moving
+        // within a fact already said is published like any statement, and knocks on nobody's door.
+        let first = |was: Option<&Option<String>>, now: &Option<String>| was.is_none_or(|w| w.is_none()) && now.is_some();
+        let news = first(before.map(|e| &e.interest), &desired.interest) || first(before.map(|e| &e.trust), &desired.trust);
         let evidence = edges
             .publish(&subject, desired.trust.clone(), desired.interest.clone())
             .await
             .map_err(|e| anyhow::anyhow!("publishing edge for {subject_hex}: {e}"))?;
+        if !news {
+            changed.push(subject_hex.clone());
+            continue;
+        }
 
-        // Queue the knock. ALWAYS, even though most subjects will turn out to already sync us
+        // Queue the knock - for news, always, even though most subjects will turn out to already sync us
         // and discard it: whether they do is a fact only their node holds, and a sender that
         // guesses either misses people silently or interrogates strangers about their follow
         // lists (see the outbox's module doc). Best-effort - a statement that fails to queue

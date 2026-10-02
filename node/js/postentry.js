@@ -1007,7 +1007,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         via: [],
                     }}
                 />
-                ${t('postentry.vouches-for-this-author', 'vouches for this author')}
+                ${t('postentry.vouches-for-this-author', 'trusts this author')}
             </p>`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini heptagon made you
