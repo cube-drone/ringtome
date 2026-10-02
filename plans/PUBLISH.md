@@ -10,7 +10,8 @@ until the date.
 
 1. **The date rides the signed header** (key 17, `dated_ms`), so every surface sorts alike -
    the shelf, every feed journal, fragments carried by strangers. `genesis_ms` stays "when it
-   was minted": the edit window's anchor. Display and sort use `dated_ms ?? genesis_ms`.
+   was minted": the post's age, which says how long its copies are kept current. Display and
+   sort use `dated_ms ?? genesis_ms`.
 2. **A past date sorts into the past.** The post is still NEW to a node that just learned it
    (fresh-arrivals bar, notifications): "my friend published an old diary entry" is news.
 3. **A future date is a SCHEDULE, not a sealed entry.** Nothing touches the public chain
@@ -19,7 +20,8 @@ until the date.
    and title; a scheduled one does not exist yet.
 4. **Editing a past-dated post** anchors on mint time, never the claimed date - otherwise a
    post dated 2019 could never be corrected. Changing the date after publishing is allowed
-   within the edit window (it re-sorts everywhere) and frozen after, like the words.
+   (it re-sorts everywhere) - forever, like the words, since 2026-10-02 (until then, only within
+   the day's edit window).
 5. **Scheduled posts show to their AUTHOR** - in their own feed and on their own persona card,
    sorted to the top (a future time is later than everything that exists), marked
    "scheduled". Other users see nothing until the mint.
@@ -50,7 +52,7 @@ until the date.
    dated_posts.cjs; the header resolves the local claim with the browser's offset, a bare
    day at the publication's own hour). Header key 17; doc memos and the feed journal carry `dated_ms`;
    the publish door reads the draft's `date` field into it; every sort surface (shelf keyset,
-   feed journal stamp, fragment-journaled rows) uses the dated stamp; the edit window keeps
+   feed journal stamp, fragment-journaled rows) uses the dated stamp; a post's age keeps
    genesis. Acceptance: a past-dated post lands in the past on a follower's feed and on the
    author's shelf.
 2. ~~**Scheduling.**~~ Built 2026-09-02 (the plan on the draft's private meta as
@@ -65,8 +67,8 @@ until the date.
 3. ~~**The Writer button and the status icons.**~~ Built 2026-09-03 - first as a header
    chip with a popover, then (Curtis, the same day: "publication should occupy its own row")
    as a PUBLISH BAR between the title and the editor, in the standing's colour: private gray
-   with the two wishes and "publish"; live teal with "update" (while the post's edit window
-   is open - the permalink now says `edit_window_open`; "settled" after) and "unpublish"
+   with the two wishes and "publish"; live teal with "update" (whenever the words differ - the
+   day's window that once withdrew it went on 2026-10-02) and "unpublish"
    (the takedown, through the house modal); scheduled peach with "update" (re-reads the date
    and the words) and "cancel" (drops the plan). The trash chip hides while a document is
    live - a public post with no private analogue would only confuse. A "view" link opens

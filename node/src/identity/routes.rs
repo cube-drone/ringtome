@@ -3818,8 +3818,8 @@ async fn publish_handler(
     // the header carries it so every node's share door and key lane know.
     let onward = trusted_only && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
     // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
-    // the request's timezone offset - re-read at every publish, so a date changed inside the
-    // edit window re-sorts the post everywhere.
+    // the request's timezone offset - re-read at every publish, so a changed date re-sorts the
+    // post everywhere.
     let tz_offset_min = req.as_ref().and_then(|b| b.tz_offset_min).unwrap_or(0);
     let dated_ms = data
         .annotations()

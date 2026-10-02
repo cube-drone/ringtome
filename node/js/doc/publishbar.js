@@ -1,6 +1,6 @@
 // The publish bar (PUBLISH.md slice 3; Curtis, 2026-09-03: "its own row, a whole bar between title
 // and editor"): wears the document's standing - gray private, teal live, peach scheduled - and holds
-// the verbs: publish, update (while the post's edit window is open), unpublish (a takedown; for a
+// the verbs: publish, update (whenever the words differ - posts edit forever), unpublish (a takedown; for a
 // schedule, cancelling the plan). The same door the feed uses, with the same two wishes at first
 // publish.
 //
@@ -64,23 +64,8 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             return null;
         }
     })();
-    // The post's edit window, asked of the permalink (the server is the one who knows): "update" is
-    // offered only while a re-publication would still be honoured.
-    const [windowOpen, setWindowOpen] = useState(null);
-    const [published, setPublished] = useState(0);
-    useEffect(() => {
-        if (standing !== 'public' || !postId) {
-            setWindowOpen(null);
-            return undefined;
-        }
-        let live = true;
-        api(`/api/id/${root}/posts/${postId}`)
-            .then((head) => live && setWindowOpen(head.edit_window_open !== false))
-            .catch(() => live && setWindowOpen(true)); // unknown: offer it, the door refuses honestly
-        return () => {
-            live = false;
-        };
-    }, [root, postId, standing, published]);
+    // "update" whenever the words differ from the public version: posts edit forever (2026-10-02;
+    // it was offered only for a day after publication).
 
     const publishNow = async () => {
         setPublishing(true);
@@ -103,7 +88,6 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 await holdDoc(root, docId, (r) => withPublished(r, made.post_id), publishedSettled(made.post_id));
             }
             setPublishNote(made && made.scheduled_for ? { kind: 'scheduled', at: made.scheduled_for } : { kind: 'published' });
-            setPublished((n) => n + 1);
             if (onPublished) onPublished();
         } catch (e) {
             setPublishError(e.message);
@@ -212,21 +196,12 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             ><${Icons.conflict} /> ${t('doc.editor.diff', 'diff')}</a>`}
             ${standing === 'public' &&
             differs &&
-            windowOpen !== false &&
             html`<button
                 class="publish-bar-update jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.make-your-changes-public', 'make your changes public')}
                 onClick=${publishNow}
             ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>`}
-            ${standing === 'public' &&
-            differs &&
-            windowOpen === false &&
-            html`<button
-                class="publish-bar-update jag-line"
-                disabled=${true}
-                title=${t('doc.editor.this-document-was-published-over', 'posts can only be edited for a day')}
-            ><${Icons.update} /> ${t('doc.editor.update', 'update')}</button>`}
             ${standing === 'public' &&
             html`<button
                 class="publish-bar-unpublish jag-line"

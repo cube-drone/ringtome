@@ -34,7 +34,7 @@ pub struct Fragment {
 
 /// Remember a verified fragment, or refresh what we already knew of it.
 ///
-/// The version is allowed to move: an author editing inside the edit window re-signs the header,
+/// The version is allowed to move: an author editing (at any age - posts edit forever) re-signs the header,
 /// and the origin will hand over the newer one. What may never move without a re-verification is
 /// the entry itself, which is why the caller passes bytes that `verify_fragment` has already
 /// approved rather than anything this function trusts on its own.
@@ -62,23 +62,10 @@ pub async fn remember(
         );
         return Ok(());
     }
-    // The edit window, shelf side (2026-08-15): a version claiming to postdate its own
-    // genesis by more than the window is admitted and ignored - the fold's posture, on the
-    // one node that has no chain to fold. Both stamps are the author's own claims. And a
-    // genesis that MOVES between fetches is refused as malformed: an honest author's genesis
-    // never changes, so drift is corruption or nonsense, not a case to honor (carries no
-    // security weight - the freeze itself contains the forger, whose rewrite the established
-    // network simply never asks about; Curtis, 2026-08-15).
-    if let Some(genesis) = verified.header.genesis_ms {
-        if verified.timestamp_ms
-            > genesis.saturating_add(crate::record::documents::edit_window_ms())
-        {
-            tracing::debug!(
-                author = %author_root, doc = %hex::encode(verified.doc_id),
-                "ignored an edit past the window");
-            return Ok(());
-        }
-    }
+    // A version is taken whenever it is newer, however long after its genesis (2026-10-02: posts
+    // edit forever; a version past the day was "admitted and ignored" here from 2026-08-15). What
+    // stays refused is a genesis that MOVES between fetches: an honest author's genesis never
+    // changes, so drift is corruption or nonsense, not a case to honour.
     let held_row: Option<(Option<i64>, Vec<u8>, String)> = node_db
         .fetch_optional(
             "SELECT genesis_ms, entry, version FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
@@ -1678,17 +1665,18 @@ async fn revalidate_due_fragments(state: &crate::AppState) -> Result<()> {
     let rows: Vec<(String, String, String)> = state
         .node_db
         .fetch_all(
-            // Frozen documents are excluded outright (2026-08-15): past the window there is
-            // no edit to check for, ever, and deletion travels by cursor - so the sweep's
-            // population is the young end of the shelf, O(posting-rate x window), a rolling
-            // buffer that never grows with history. NULL genesis is frozen-from-birth (media,
-            // and anything predating the anchor). Local clock, scheduling only - the HONOR
-            // rule compares the author's own two stamps and lives in `remember`.
+            // Only FRESH documents (2026-10-02; frozen ones were excluded from 2026-08-15): a post
+            // edits forever, but keeping every copy of it current forever is the cost this
+            // network won't pay - so the sweep's population stays the young end of the shelf,
+            // O(posting-rate x window), a rolling buffer that never grows with history. Past the
+            // window a copy may go stale, and is refreshed when someone opens the post
+            // (`refresh_on_visit`). Deletion travels by cursor either way. NULL genesis is media
+            // (and anything predating the anchor): one version per address, nothing to recheck.
             "SELECT author_root, doc_id, origin_root FROM fragments
              WHERE checked_ms <= ?1
                AND genesis_ms IS NOT NULL AND genesis_ms > ?3
              ORDER BY checked_ms LIMIT ?2",
-            (due, SWEEP_CAP, now_ms() - crate::record::documents::edit_window_ms()),
+            (due, SWEEP_CAP, now_ms() - crate::record::documents::fresh_window_ms()),
         )
         .await
         .context("listing fragments due for revalidation")?;
@@ -1697,91 +1685,135 @@ async fn revalidate_due_fragments(state: &crate::AppState) -> Result<()> {
         tracing::debug!(due = rows.len(), "fragment sweep: revalidating");
     }
     for (author_hex, doc_hex, origin_root) in rows {
-        let (Some(author), Some(doc_id)) = (
-            crate::pubkey::decode(&author_hex),
-            hex::decode(&doc_hex)
-                .ok()
-                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
-        ) else {
-            continue;
-        };
-        // The due list is a snapshot, and rows die mid-pass: a post's `Gone` cascades its
-        // covered media out from under the very same sweep that queued them, and re-storing
-        // from the stale snapshot resurrected an uncovered media fragment FOREVER - the
-        // author retracts the post, never the twin, so the origin answers `Have` on every
-        // later beat and the row self-perpetuates (caught 2026-08-14, first run of the
-        // image-rides test: Cleo re-held "cat" seconds after dropping it with its post). A
-        // sweep REVALIDATES what is held; what is no longer held is no longer its business.
-        if held(&state.node_db, &author_hex, &doc_hex).await?.is_none() {
-            continue;
-        }
-        match crate::net::fragment::revalidate(state, &origin_root, &author, &doc_id).await {
-            crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
-                tracing::debug!(
-                    author = %author_hex, doc = %doc_hex, origin = %origin_root,
-                    title = %verified.header.title,
-                    "fragment sweep: still served"
-                );
-                // Re-stored wholesale, so an EDIT lands the same way a first fetch did: new
-                // version, new title, new body hash. The feed row's title is refreshed from the
-                // same write, and the new body is noted as wanted - an edited post whose words
-                // have not arrived renders as "still arriving", which the feed already knows.
-                remember(
-                    &state.node_db,
-                    &origin_root,
-                    &author_hex,
-                    &verified,
-                    &entry,
-                    &auth_path,
-                )
-                .await?;
-                crate::fanout::retitle_shared(
-                    &state.node_db,
-                    &author_hex,
-                    &doc_hex,
-                    &verified.header.title,
-                )
-                .await?;
-                let _ = crate::net::bodies::want(
-                    &state.node_db,
-                    &author_hex,
-                    &verified.header.file_hash,
-                )
+        revalidate_one(state, &author_hex, &doc_hex, &origin_root).await?;
+    }
+    Ok(())
+}
+
+/// Ask the origin about ONE held copy, and take what it says: a newer version re-stored wholesale,
+/// a withdrawal entombed, silence only stamped. The sweep's per-copy work, and the visit's.
+async fn revalidate_one(state: &crate::AppState, author_hex: &str, doc_hex: &str, origin_root: &str) -> Result<()> {
+    let (Some(author), Some(doc_id)) = (
+        crate::pubkey::decode(author_hex),
+        hex::decode(doc_hex)
+            .ok()
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
+    ) else {
+        return Ok(());
+    };
+    // The due list is a snapshot, and rows die mid-pass: a post's `Gone` cascades its
+    // covered media out from under the very same sweep that queued them, and re-storing
+    // from the stale snapshot resurrected an uncovered media fragment FOREVER - the
+    // author retracts the post, never the twin, so the origin answers `Have` on every
+    // later beat and the row self-perpetuates (caught 2026-08-14, first run of the
+    // image-rides test: Cleo re-held "cat" seconds after dropping it with its post). A
+    // sweep REVALIDATES what is held; what is no longer held is no longer its business.
+    if held(&state.node_db, author_hex, doc_hex).await?.is_none() {
+        return Ok(());
+    }
+    match crate::net::fragment::revalidate(state, origin_root, &author, &doc_id).await {
+        crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
+            tracing::debug!(
+                author = %author_hex, doc = %doc_hex, origin = %origin_root,
+                title = %verified.header.title,
+                "fragment sweep: still served"
+            );
+            // Re-stored wholesale, so an EDIT lands the same way a first fetch did: new
+            // version, new title, new body hash. The feed row's title is refreshed from the
+            // same write, and the new body is noted as wanted - an edited post whose words
+            // have not arrived renders as "still arriving", which the feed already knows.
+            remember(
+                &state.node_db,
+                origin_root,
+                author_hex,
+                &verified,
+                &entry,
+                &auth_path,
+            )
+            .await?;
+            crate::fanout::retitle_shared(
+                &state.node_db,
+                author_hex,
+                doc_hex,
+                &verified.header.title,
+            )
+            .await?;
+            let _ = crate::net::bodies::want(
+                &state.node_db,
+                author_hex,
+                &verified.header.file_hash,
+            )
+            .await;
+            if let Some(ep) = &served_by {
+                let _ = note_deliverer(&state.node_db, author_hex, ep).await;
+            }
+            heal_soon(state, author_hex, origin_root);
+            // An edit can change what a post embeds; the reconcile inside drops covers
+            // the new refs no longer name and releases orphaned media.
+            cover_refs(state, origin_root, author_hex, doc_hex, &verified.header.refs)
                 .await;
-                if let Some(ep) = &served_by {
-                    let _ = note_deliverer(&state.node_db, &author_hex, ep).await;
-                }
-                heal_soon(state, &author_hex, &origin_root);
-                // An edit can change what a post embeds; the reconcile inside drops covers
-                // the new refs no longer name and releases orphaned media.
-                cover_refs(state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
-                    .await;
-            }
-            crate::net::fragment::Fetched::Gone { entry, auth_path } => {
-                tracing::info!(
-                    author = %author_hex, doc = %doc_hex,
-                    "a shared document was withdrawn by its author - dropping the copy"
-                );
-                // The memo FIRST: a crash between these two leaves a tombstone and a stale
-                // fragment, which the next sweep resolves. The other order leaves a node that
-                // has forgotten both the words and the reason, and lies to everyone downstream.
-                entomb(&state.node_db, &author_hex, &doc_hex, &entry, &auth_path).await?;
-                forget(&state.node_db, &author_hex, &doc_hex).await?;
-            }
-            crate::net::fragment::Fetched::Unknown => {
-                tracing::debug!(
-                    author = %author_hex, origin = %origin_root, doc = %doc_hex,
-                    "fragment sweep: nobody could answer"
-                );
-                // Nothing learned about the DOCUMENT - only that this origin could not answer.
-                // Holding on is correct: "silence preserves, speech deletes", and an origin
-                // being asleep is silence. The stamp still moves so one unreachable origin does
-                // not sit at the head of the queue starving every other fragment.
-                touch(&state.node_db, &author_hex, &doc_hex).await?;
-            }
+        }
+        crate::net::fragment::Fetched::Gone { entry, auth_path } => {
+            tracing::info!(
+                author = %author_hex, doc = %doc_hex,
+                "a shared document was withdrawn by its author - dropping the copy"
+            );
+            // The memo FIRST: a crash between these two leaves a tombstone and a stale
+            // fragment, which the next sweep resolves. The other order leaves a node that
+            // has forgotten both the words and the reason, and lies to everyone downstream.
+            entomb(&state.node_db, author_hex, doc_hex, &entry, &auth_path).await?;
+            forget(&state.node_db, author_hex, doc_hex).await?;
+        }
+        crate::net::fragment::Fetched::Unknown => {
+            tracing::debug!(
+                author = %author_hex, origin = %origin_root, doc = %doc_hex,
+                "fragment sweep: nobody could answer"
+            );
+            // Nothing learned about the DOCUMENT - only that this origin could not answer.
+            // Holding on is correct: "silence preserves, speech deletes", and an origin
+            // being asleep is silence. The stamp still moves so one unreachable origin does
+            // not sit at the head of the queue starving every other fragment.
+            touch(&state.node_db, author_hex, doc_hex).await?;
         }
     }
     Ok(())
+}
+
+/// Copies being refreshed for a visit right now, so a page opened ten times asks once.
+static REFRESHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Someone opened a post this node holds only a copy of (Curtis, 2026-10-02): past its fresh day the
+/// sweep no longer keeps it current - "maybe if you visit the post directly, the server could then
+/// take an opportunity to (in a non-blocking fashion) check with the original poster". So a visit
+/// to a copy not asked about in the sweep's own interval asks the origin, in the background; this
+/// visit sees the copy it has, and the next sees whatever the author says now.
+pub fn refresh_on_visit(state: &crate::AppState, author_hex: &str, doc_hex: &str) {
+    let key = (author_hex.to_string(), doc_hex.to_string());
+    if !REFRESHING.lock().expect("refreshing set poisoned").insert(key.clone()) {
+        return;
+    }
+    let state = state.clone();
+    tokio::spawn(async move {
+        let (author_hex, doc_hex) = (&key.0, &key.1);
+        let row: Option<(String, i64)> = state
+            .node_db
+            .fetch_optional(
+                "SELECT origin_root, checked_ms FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+                (author_hex.as_str(), doc_hex.as_str()),
+            )
+            .await
+            .ok()
+            .flatten();
+        if let Some((origin_root, checked_ms)) = row {
+            if now_ms() - checked_ms >= revalidate_after_ms() {
+                if let Err(e) = revalidate_one(&state, author_hex, doc_hex, &origin_root).await {
+                    tracing::debug!(author = %author_hex, doc = %doc_hex, error = ?e, "refreshing a visited copy failed");
+                }
+            }
+        }
+        REFRESHING.lock().expect("refreshing set poisoned").remove(&key);
+    });
 }
 
 /// Make every fragment (and unmet want) due NOW - the test beat's lever
@@ -2227,12 +2259,11 @@ mod tests {
         );
     }
 
-    /// The shelf side of the edit window: a version whose claimed stamp postdates its own
-    /// genesis claim by more than the window is admitted and ignored - and a genesis that
-    /// MOVES between fetches is refused as malformed (an honest author's never does; the
-    /// check carries no security weight, the freeze itself contains the forger).
+    /// A held copy takes an edit of any age (2026-10-02: posts edit forever; one past the day was
+    /// admitted and ignored from 2026-08-15) - and a genesis that MOVES between fetches is still
+    /// refused as malformed, since an honest author's never does.
     #[tokio::test]
-    async fn the_shelf_ignores_late_edits_and_moving_geneses() {
+    async fn the_shelf_takes_late_edits_and_refuses_moving_geneses() {
         let day = 24 * 60 * 60 * 1000;
         let db = crate::db::test_node_db().await;
         let alice = "a".repeat(64);
@@ -2250,23 +2281,19 @@ mod tests {
         remember(&db, &bob, &alice, &edit, &[2], &[]).await.unwrap();
         assert_eq!(held(&db, &alice, &doc_hex).await.unwrap().unwrap().title, "revised");
 
-        // A late edit is ignored: the row stands as it was.
-        let mut late = verified_at(doc, 1_000 + day + 1, Some(1_000));
-        late.header.title = "rug".into();
+        // So does one four hundred days on.
+        let mut late = verified_at(doc, 1_000 + day * 400, Some(1_000));
+        late.header.title = "years later".into();
         remember(&db, &bob, &alice, &late, &[3], &[]).await.unwrap();
-        assert_eq!(
-            held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
-            "revised",
-            "past the window, what was said is what was said"
-        );
+        assert_eq!(held(&db, &alice, &doc_hex).await.unwrap().unwrap().title, "years later", "a post edits forever");
 
-        // A moved genesis is refused even in-window-by-its-own-lights.
-        let mut drifted = verified_at(doc, day + 3_000, Some(day + 2_000));
+        // A moved genesis is refused.
+        let mut drifted = verified_at(doc, day * 401, Some(day + 2_000));
         drifted.header.title = "relaunched".into();
         remember(&db, &bob, &alice, &drifted, &[4], &[]).await.unwrap();
         assert_eq!(
             held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
-            "revised",
+            "years later",
             "a genesis that moves between fetches is nonsense, not a case to honor"
         );
     }

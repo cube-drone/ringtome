@@ -982,18 +982,28 @@ async function setLane(mode) {
     });
 
     /*
-        The edit window: a day to fix your words, after which what you said is what you said
-        (width settled 2026-08-15). Runtime-overridable per node (/test/edit-window) because a
-        suite cannot wait a day - and set per test, never boot-wide, or every other test's
-        posts would freeze mid-flight.
+        Posts edit forever (Curtis, 2026-10-02; they froze a day after genesis from 2026-08-15). What
+        the day still bounds is keeping COPIES current: a node holding only a rebroadcast copy re-asks
+        for a fresh post on the sweep's beat, and stops once it is a day old - then the copy may go
+        stale until someone opens the post, which asks the author in the background. The window is
+        runtime-overridable per node (/test/fresh-window), set per test, never boot-wide.
     */
-    describe("the edit window: the words settle", function () {
+    describe("posts edit forever; copies are kept current for a day, then on a visit", function () {
         const setWindowOn = async (host, ms) => {
-            const res = await makeFetch(host)("test/edit-window", {
+            const res = await makeFetch(host)("test/fresh-window", {
                 method: "POST",
                 body: JSON.stringify({ ms }),
             });
-            assert.equal(res.status, 200, `setting the edit window on ${host || "A"}`);
+            assert.equal(res.status, 200, `setting the fresh window on ${host || "A"}`);
+        };
+        const revise = async (draft, version, words) => {
+            const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+                method: "PUT",
+                body: JSON.stringify({ title: words, body: `${words}: the words`, parents: [version], format: "plaintext" }),
+            });
+            assert.equal(put.status, 200, await put.clone().text());
+            const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, { method: "POST" });
+            assert.equal(rep.status, 200, `past the day, the author's door takes the edit: ${await rep.clone().text()}`);
         };
 
         afterEach(async () => {
@@ -1001,68 +1011,28 @@ async function setLane(mode) {
             await setWindowOn(HOST_C, 0);
         });
 
-        it("the shelf and the permalink both say when a post can no longer be edited", async () => {
-            // What the feed reads to stop offering the unlock past the window (editwindow.js,
-            // Curtis 2026-09-27): every post the node serves carries `edit_window_open`.
-            const made = await (
-                await alice(`api/identity/${aliceRoot}/docs`, {
-                    method: "POST",
-                    body: JSON.stringify({ title: "window", body: "window: the words", format: "plaintext" }),
-                })
-            ).json();
-            const published = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, { method: "POST" });
-            const pubBody = await published.text();
-            assert.equal(published.status, 200, pubBody);
-            const post = JSON.parse(pubBody).post_id;
-            const read = async () => {
-                const head = await (await alice(`api/id/${aliceRoot}/posts/${post}?as=${aliceRoot}`)).json();
-                const shelf = ((await (await alice(`api/id/${aliceRoot}/posts?as=${aliceRoot}`)).json()).posts || []).find(
-                    (p) => p.doc_id === post
-                );
-                assert.ok(shelf, "the post is on its author's shelf");
-                return [head.edit_window_open, shelf.edit_window_open];
-            };
-            assert.deepEqual(await read(), [true, true], "young: editable, said in both places");
-            await setWindowOn(undefined, 2000);
-            await new Promise((r) => setTimeout(r, 2600));
-            assert.deepEqual(await read(), [false, false], "past the window: not, in both places");
+        it("past the day the edit is taken, the post says it was edited, and its history holds both", async () => {
+            const { post, draft, version } = await seedToCleo("forever");
+            await setWindowOn(undefined, 1000);
+            await new Promise((r) => setTimeout(r, 1600));
+            await revise(draft, version, "forever, revised");
+
+            const body = await servedBody(aliceRoot, post);
+            assert.ok(body && body.includes("forever, revised: the words"), `the new words, served: ${body}`);
+            const head = await (await alice(`api/id/${aliceRoot}/posts/${post}?as=${aliceRoot}`)).json();
+            assert.ok(head.updated_ms > head.minted_ms, "edited after it went out - what the card's mark reads");
+            assert.equal(head.edit_window_open, undefined, "and no window to report");
+
+            const history = await (await alice(`api/id/${aliceRoot}/posts/${post}/versions`)).json();
+            const versions = history.versions || [];
+            assert.equal(versions.length, 2, JSON.stringify(versions));
+            assert.ok(versions[0].words.includes("forever, revised"), "newest first");
+            assert.ok(versions[1].words.includes("forever: the words"), "and what it said before, kept");
+            assert.ok(versions.every((v) => v.held), "every version's words held");
         });
 
-        it("a settled post refuses the edit at the author's own door", async () => {
-            const { post, draft, version } = await seedToCleo("settles");
-            await setWindowOn(undefined, 2000);
-            await new Promise((r) => setTimeout(r, 2600));
-
-            // The private draft edits fine - the window is a PUBLIC posture...
-            const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                    title: "settles, too late",
-                    body: "settles, too late: the words",
-                    parents: [version],
-                    format: "plaintext",
-                }),
-            });
-            assert.equal(put.status, 200, await put.text());
-
-            // ...and re-publication is where the freeze speaks, with words, not a shrug.
-            const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, {
-                method: "POST",
-            });
-            assert.equal(rep.status, 400, "past the window, the publish refuses");
-            assert.match(
-                await rep.text(),
-                /settled/,
-                "and says the post has settled rather than failing mutely"
-            );
-
-            // The published words never moved.
-            const body = await servedBody(aliceRoot, post, HOST_C);
-            assert.ok(body && body.includes("settles: the words"), "what was said is what was said");
-        });
-
-        it("a frozen fragment leaves the sweep forever", async () => {
-            const { post } = await seedToCleo("freezes");
+        it("a copy past its day leaves the sweep - and opening the post brings the edit to it", async () => {
+            const { post, draft, version } = await seedToCleo("visited");
             const checkedOf = async () => {
                 const { rows } = await sql(
                     `SELECT checked_ms FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${post}'`,
@@ -1070,29 +1040,29 @@ async function setLane(mode) {
                 );
                 return rows.length ? rows[0].checked_ms : null;
             };
-
-            // First, prove the sweep is alive FOR THIS ROW: its stamp advances while young.
-            const first = await checkedOf();
-            assert.ok(first, "the fragment is on Cleo's shelf");
-            assert.ok(
-                await settle(async () => {
-                    const now = await checkedOf();
-                    return now > first ? true : null;
-                }),
-                "in-window, the sweep revalidates the fragment"
-            );
-
-            // Freeze it (the post's genesis is already seconds old; a 1s window is past), and
-            // the stamp stops forever - the sweep no longer visits, which is the whole
-            // archive-costs-nothing claim in one column.
             await setWindowOn(HOST_C, 1000);
-            const frozen = await checkedOf();
-            await new Promise((r) => setTimeout(r, 5000));
-            assert.equal(
-                await checkedOf(),
-                frozen,
-                "past the window, the sweep never visits the fragment again"
-            );
+            await setWindowOn(undefined, 1000);
+            await new Promise((r) => setTimeout(r, 1600));
+            const stale = await checkedOf();
+            await new Promise((r) => setTimeout(r, 3000));
+            assert.equal(await checkedOf(), stale, "past its day, the sweep no longer visits the copy");
+
+            await revise(draft, version, "visited, revised");
+            await beat(HOST_C, "fragment-sweep", aliceRoot);
+            const before = await servedBody(aliceRoot, post, HOST_C);
+            assert.ok(before && before.includes("visited: the words"), `the copy is stale, as allowed: ${before}`);
+
+            // Cleo opens the post: the page's read of it is the visit. (What the page shows may come
+            // by another road - a look at Alice can fetch her whole chain - but the COPY, which
+            // Cleo's feed cards read, is what the visit has to freshen.)
+            await cleo(`api/id/${aliceRoot}/posts/${post}`);
+            const fresh = await settle(async () => {
+                await beat(HOST_C, "body-heal", aliceRoot);
+                await beat(HOST_C, "bodies-sweep");
+                const words = await servedBody(aliceRoot, post, HOST_C);
+                return words && words.includes("visited, revised") ? words : null;
+            });
+            assert.ok(fresh, "the visit asked the author, and the copy took the edit");
         });
     });
 

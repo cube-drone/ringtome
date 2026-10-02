@@ -567,12 +567,11 @@ pub struct DocHeaderPlain {
     /// `preview_hash` - the file-layer hash of a silent AV1-in-WebM hover-preview clip, stored as
     /// its OWN sibling blob exactly like `thumb_hash` (video only, `None` for everything else).
     pub preview_hash: Option<[u8; 32]>,
-    /// The post's FIRST publication, as its author claims it - the edit window's anchor
-    /// (2026-08-15), carried so a fragment holder with no chain knows when the words freeze.
-    /// Public posts only; absent elsewhere. Advisory like every claimed stamp, and
-    /// self-defeating to forge: chain holders derive the true genesis from the chain and
-    /// ignore this claim, frozen holders never re-ask, so a forward-dated rewrite is a repost
-    /// the established network declines to carry (Curtis, 2026-08-15).
+    /// The post's FIRST publication, as its author claims it (2026-08-15) - carried so a holder of
+    /// only a copy knows how old the post is: a copy is kept current while the post is a day old,
+    /// and freshened on a visit after (posts edit forever since 2026-10-02; this anchored a day's
+    /// freeze until then). Public posts only; absent elsewhere. Advisory like every claimed stamp:
+    /// chain holders derive the true genesis from the chain and ignore this claim.
     pub genesis_ms: Option<i64>,
     /// The documents this body embeds, derived at authoring time by the SAME parse that bakes
     /// media - the reserved additive key, realized 2026-08-14. In the header so the set is
@@ -587,8 +586,8 @@ pub struct DocHeaderPlain {
     /// doc id, the author's own signed claim - no relay can mint, alter, or re-parent a
     /// reply. On the header rather than the rebroadcast pointer because the link must
     /// travel with every fragment and share, resolvable offline (the `refs` precedent),
-    /// and because the comment stays an ordinary post - tombstones, the edit window and
-    /// freezing apply with zero new cases. Carried forward verbatim on re-publication,
+    /// and because the comment stays an ordinary post - tombstones and editing apply with zero
+    /// new cases. Carried forward verbatim on re-publication,
     /// like `genesis_ms`.
     pub reply_to: Option<([u8; 32], [u8; 16])>,
     /// The thread's root - equal to `reply_to` when replying to a top-level post, copied
@@ -629,8 +628,8 @@ pub struct DocHeaderPlain {
     pub onward: bool,
     /// The author's PREFERRED date (PUBLISH.md, 2026-09-02): what the post sorts and reads
     /// by everywhere - a diary entry written up years later files under its own day. Never
-    /// the edit window's anchor; that stays `genesis_ms`, when it was minted. Absent = "the
-    /// day it was said". Re-read from the draft at every publish inside the edit window.
+    /// the mint's moment; that stays `genesis_ms`, when it was minted. Absent = "the day it was
+    /// said". Re-read from the draft at every publish.
     pub dated_ms: Option<i64>,
     /// The bytes were an ANIMATED IMAGE before the ingest crushed them (a gif, an animated
     /// PNG or WebP - 2026-09-03): a silent loop, which a reader draws looping, muted, with no

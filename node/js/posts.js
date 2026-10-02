@@ -105,7 +105,8 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
         published_ms: p.published_ms,
         dated_ms: p.dated_ms,
         minted_ms: p.minted_ms,
-        edit_window_open: p.edit_window_open,
+        // When its words last changed - beside `minted_ms`, the "edited" mark's two moments.
+        updated_ms: p.updated_ms,
         replies: p.replies,
         reply_to: p.reply_to,
         thread_root: p.thread_root,

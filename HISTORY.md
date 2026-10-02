@@ -13794,3 +13794,36 @@ statement. An edge withdrawn deletes the row, so a later follow is a first one a
 you" reads "trusts you" (with "trusts this author" and "trusted by people you trust" beside it). Claims:
 notifications.cjs (down twice, stamp kept; a first trust after a follow, stamp moved) and inbox.cjs (a
 stranger turning their interest down delivers nothing - failing without the fix). `just ci` green.
+
+**2026-10-02 - the feed lives under a post; media is kept.** Curtis: deep in a filtered feed, open a
+post, press back - "which takes me back... to the top of my feed, losing my scroll position and all of
+my progress. All of the images slowly reload". The feed was a route, unmounted on the way out; now it is
+mounted beside the router (index.js `Inside`) from when you open it until you go anywhere that is not a
+post, and under a post it stays laid out, unseen and inert (`.feed-kept-under` - out of layout, a
+scroller forgets its place). Seen in headless Chrome over forty posts: 1800px down and twenty cards
+before the post, the same after back, and no media request at all. And the images themselves: every
+public media document is minted fresh, one version per address (`save_public_media` - twins, published
+drawings, avatars, banners), so its bytes are kept - `public, max-age=31536000, s-maxage=2592000,
+immutable` for an open one (a CDN a month, the bound on how long it can outlive a takedown), `private`
+for a sealed one; a post's words still revalidate, edits reusing their address (`idface::cache_policy`,
+caching.cjs). The avatar claim that forbade `immutable` dated from when a re-upload changed bytes in
+place; it says the new rule now, and a new claim pins the premise - a re-upload is a new address.
+`just ci` green.
+
+**2026-10-02 - posts edit forever; an edit says so.** Curtis: the day's window and the fifteen-second
+unlock were "starting to chafe" - "sometimes I do, in fact, want to go back and edit a post I made years
+and years ago", and a friend fixing a recent post was confused by the lock. The window guarded a cost
+that was never the edit (a follower syncs an edit as one more chain entry) but keeping every rebroadcast
+copy current forever. So the day bounds only that now: the fold threads a version of any age, a held
+copy takes one, the author's door publishes one, and superseded bodies are kept rather than reaped a day
+after genesis; the sweep still keeps only fresh copies current (`documents::fresh_window_ms`, renamed
+from the edit window, `/test/fresh-window`), and a stale copy is freshened when its post is opened -
+the post read asks the author in the background (`fragments::refresh_on_visit`, the sweep's per-copy
+work lifted into `revalidate_one`). An edited post's card wears "edited {date}" (head past mint), which
+opens `{post}/history` - every version newest first, each with what it changed
+(`/api/id/{seg}/posts/{doc}/versions`, a sealed post's to its readers; posthistory.js). The lock, the
+seal prefs, `editwindow.js` and `edit_window_open` are gone: edit opens the editor at once. Amended in
+PROJECT_PLAN (with the rug-pull and the stolen key, what the freeze also did and what answers them now)
+and plans/PUBLISH.md. A diff's lines now each take a line (`.words-diff > span`) - the drafts' diff page
+ran them together too. Claims in cascade.cjs: past the day the edit is taken and its history holds both;
+a stale copy leaves the sweep and a visit brings the edit (failing with the hook removed). `just ci` green.

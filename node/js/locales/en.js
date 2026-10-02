@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1349 phrases across 86 files.
+// 1357 phrases across 87 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -689,7 +689,6 @@ export default {
     'doc.editor.diff': 'diff',
     'doc.editor.make-your-changes-public': 'make your changes public',
     'doc.editor.update': 'update',
-    'doc.editor.this-document-was-published-over': 'posts can only be edited for a day',
     'doc.editor.take-this-post-back-off': 'take this post back off the network',
     'doc.editor.unpublish': 'unpublish',
     'doc.editor.re-read-the-date-and': 'publish, or reschedule',
@@ -1034,7 +1033,6 @@ export default {
     'persondemo.sizes-the-chip-offers': 'sizes the chip offers: {p0}',
 
     // --- node/js/postentry.js ---
-    'postentry.posted---click-then-wait': 'edit (unlocks in 15 seconds)',
     'postentry.posting-is-public---anyone': 'posting is public - anyone with your address can read it',
     'postentry.write-something-first': 'write something first',
     'postentry.publish-these-words': 'publish these words',
@@ -1075,6 +1073,8 @@ export default {
     'postentry.scheduled-for': 'scheduled for {when}',
     'postentry.dated-by-its-author': 'dated by the author, written {minted}',
     'postentry.internet-time': 'internet time',
+    'postentry.see-every-version': 'see every version of this post',
+    'postentry.edited-when': 'edited {when}',
     'postentry.edit-this-drawing-in-drawing': 'edit this drawing in hrseDrawing™',
     'postentry.edit-this-note-in-writer': 'edit this note in hrseWriter™',
     'postentry.open-this-for-editing': 'open this for editing',
@@ -1108,6 +1108,15 @@ export default {
     'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
     'postentry.see-more': 'see more…',
     'postentry.enter-the-room': 'enter the room',
+
+    // --- node/js/posthistory.js ---
+    'posthistory.untitled': 'untitled',
+    'posthistory.every-version': 'every version of this post, newest first',
+    'posthistory.back-to-the-post': 'back to the post',
+    'posthistory.looking': 'looking…',
+    'posthistory.now': 'now - {when}',
+    'posthistory.first-published': 'first published',
+    'posthistory.not-held': 'this computer no longer has these words',
 
     // --- node/js/postpage.js ---
     'postpage.other-authors-in-the-copy-chain': 'Other Authors in the Copy Chain',
@@ -1416,6 +1425,8 @@ export default {
     'idface.no-such-persona-here-3': 'no such persona here',
     'idface.that-cursor-isnt-a-document': "that cursor isn't a document id",
     'idface.that-document-is-private': 'that document is private',
+    'idface.no-such-post-here-3': 'no such post here',
+    'idface.for-trusted-readers-only-2': 'the author shares these words only with people they trust',
     'idface.no-such-persona-here-8': 'no such persona here',
     'idface.no-such-persona-here-9': 'no such persona here',
     'idface.that-isnt-a-document-id': "that isn't a document id",
@@ -1487,7 +1498,6 @@ export default {
     'record.store.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
     'record.store.a-drawing-publishes-as-a-picture': 'a drawing publishes as a picture, by its own door',
     'record.store.media-publishes-by-its-own': 'media publishes by its own door, not this one',
-    'record.store.this-post-has-settled': 'posts can only be edited for a day. Delete it and post again.',
     'record.store.an-embedded-media-document-is': 'an embedded media document is missing',
     'record.store.embedded-media-has-no-readable': 'embedded media has no readable head',
     'record.store.an-embedded-target-is-not': 'an embedded target is not a media document',

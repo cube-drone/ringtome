@@ -1,11 +1,7 @@
 // Feed's rules, pure: which bucket its drafts live in, and what a document's publication
-// state is - has it been said in public, and is it open for writing right now?
-//
-// Publication state has two independent halves, which is the whole subtlety: whether a
-// document HAS a public form (a durable fact, synced, recorded by the publish act as the
-// `published_as` annotation) and whether it is open for EDITING (a local, per-device
-// gesture - the same seal pref Journal uses, never synced, because "I'm working on this
-// again" is a personal act, not a document fact).
+// state is - has it been said in public? (Whether it was open for EDITING was once a second,
+// per-device half - a seal that cost a fifteen-second unlock; posts edit forever and at once
+// since 2026-10-02, so publication is the whole of it.)
 
 import { bandOrdinal } from './contact.js';
 
@@ -20,20 +16,13 @@ export const PUBLISHED_AS = 'published_as';
  * How this document stands with the public, for one row of the stack.
  *
  * @param row   the mirror's docs row (its `fields` carry annotations)
- * @param seal  this device's override for this doc: 'open' | 'locked' | undefined
  */
-export function publishedState(row, seal) {
+export function publishedState(row) {
     const postId = ((row && row.fields) || {})[PUBLISHED_AS] || '';
     const published = !!postId;
-    // Published means sealed by default; an explicit 'open' (the unlock) beats it, and an
-    // explicit 'locked' can seal a draft the author considers finished.
-    const locked = seal === 'open' ? false : seal === 'locked' ? true : published;
-    return {
-        postId,
-        published,
-        locked,
-        label: published ? (locked ? 'posted' : 'posted - editing') : 'draft',
-    };
+    // No lock (2026-10-02): a posted item opens for editing at once, as a draft does. It once wore a
+    // seal that cost a fifteen-second unlock, against a day after which it froze; posts edit forever.
+    return { postId, published, label: published ? 'posted' : 'draft' };
 }
 
 /**

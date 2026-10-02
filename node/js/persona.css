@@ -1615,6 +1615,15 @@ article:has(.label-emoji-strip) {
     color: var(--faint);
     font-size: 0.75em;
 }
+/* "edited {date}", beside the date (2026-10-02): quiet like it, a way to the post's history. */
+.feed-entry-edited {
+    color: var(--faint);
+    font-size: 0.75em;
+    font-style: italic;
+}
+.feed-entry-edited:hover {
+    color: var(--ink-soft);
+}
 /* A book on the feed (PROJECT_PLAN's Books): the table of contents as nested lists, pages as links. */
 .book-card-cover {
     margin-bottom: 0.8rem;
@@ -2025,41 +2034,6 @@ article:has(.label-emoji-strip) {
     padding: 0.1rem 0.3rem;
 }
 
-/* The seal-and-unlock ceremony on a published post s card (moved from the retired Journal s
-   stylesheet, 2026-09-02; the lock was always the card s, not the day book s). */
-/* It wears Writer's chip (Curtis, 2026-09-27: one chip standard); this is only what the fill
-   bar needs of it - a box to fill, and to clip the fill to. */
-.seal-lock {
-    position: relative;
-    overflow: hidden;
-}
-
-.seal-lock-face {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-}
-
-.seal-unlock-bar {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 0;
-    z-index: 0;
-    background: var(--teal);
-    opacity: 0.4;
-    animation: seal-unlock 15s linear forwards;
-}
-
-@keyframes seal-unlock {
-    from {
-        width: 0;
-    }
-    to {
-        width: 100%;
-    }
-}
 
 /* Managing yourself (persona.js PersonaMenu): the disclosure on your own /id page, where "this
    is you" sits. The summary wears the ledger's head; open, it lists the three items. */

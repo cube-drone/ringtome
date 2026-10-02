@@ -9,58 +9,42 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
+* post titles should probably be a lot bigger
+* post descriptions should be display'd in italics under the title?
+* on mobile People, folks' gigantic IDs are flattening their names
 * "automatic-node-friendship" mode
  * only available with password-based registration
+* limit registrations to N (100)
 * A demo server (free registration, but it deletes all of its users after 7 days )
 * An article on Managing Operator Liability
+* every button in the entire mobile app is a little too small and delicate for human fingies, and some of the drawing tools are WAY too small
+* "micro", "small", "medium", "long", and "image" "audio" "video" in separate rows
+* I did a deep search for "hot dog" in my humungous (about 1000 notes) private "toots" folder, and clicked on a few things, and now the server has slowed to an absolute CRAWL (when Turso gets slow does it kill the whole server? does it kill the whole user?)
+    * same thing with a click on a tag
+    * make sure search isn't decrypting anything?
+    * is this hurting performance for other users or just me?
+* <- and -> arrows to navigate through books
+* check if HorseBucks are actually using a bigint
+* when I tag stuff in my personal feed (which is huge) it doesn't update right away
 
 ### Launch to Website
-* Actually Deploy the Thing (Registration Off)
-* API Keys for automated autopost?
 * Logging & graphs
 * "Attract Mode"
- * Select a user as the "primary display user"
- * Let them choose a front page document or use their top pin or something.
- * An automatically generated "get started with HDT" page that contains links to the HDT deliverables?
-   OR special marquee tags for HDT deliverables
-* RSS for website users
 * Migrate yer content
-* Visual identity
 * report flow (and full-node blocks?)
 * apparently the Posts page only deals with the last 5000 things, and we might need to deal with that the same way we dealt with Feeds... eventually.
+* the Posts page can lose it's place while the Feeds page can't?
 * a library of fun templates
 
-### `/ringtome/` links (PROJECT_PLAN's *`/ringtome/` replaces `/home`, `/in` and `/id`*)
-* Copied post and document addresses carry no `?via=` hints yet (a person's does).
-* Posts published before 2026-09-28 carry no `published_from` until their note is published again.
-
-### Scores and sort orders (PROJECT_PLAN's *Scores and sort orders*)
-* A person's page has the feed's old shape: its search, picks and counts read that person's newest
-  5000 posts (idface.rs `shelf_of(.., 5000)`, `public_docs(.., 5000)`) - the same treatment as the
-  feed's when someone has more
-* Pruning scores older than a year (the plan says they go; nothing prunes them yet)
-* If best-this-year's ~175 ms a page bites: a cached ranking per reader and window
-* A thread level past 500 replies says `more` and nothing asks for the rest - a "more replies"
-  control when a post gets that busy; and hot's lift (a card's emphasis) is the feed's only, not
-  a thread's
 
 ### Actual Horse Drawing & Tycooning
-* Drawing app
 * Multiplayer Drawing App (use chat as the heart)
-* HorseBucks and Other Currencies - designed in [HORSE_BASED_CURRENCIES.md](plans/HORSE_BASED_CURRENCIES.md). In this order (Curtis, 2026-09-29), each needing the one before:
-  1. ~~Heartbeats~~ - built 2026-09-29.
-  2. ~~Network DAU~~ - built 2026-09-29.
-  3. **HorseBucks:** the ledger, hrseBank, the corner balance, and HorseBonds and debt built 2026-09-29. Still to build: the corner **counting typed words ahead** between saves; **true bigint line amounts** (a line is an `i64` today, so debt compounding at 2% a day saturates past 9.2 × 10^16 H$ after years of neglect); post-sticker reactions once stickers on posts exist; more instruments (tag stocks, hay futures) and HorseBankruptcy.
 
 ### Chat
 * Opus took a crack at fixing chat search losing visible context, but wasn't smart enough; revisit with Fable
-* A newcomer to a **sealed** room with its creator's node dark can be given the room's key only by the creator's node (or, for an onward room, by the person who passed it to them); participants who hold the key keep it, and keys are now asked for at arrival (keyprefetch.rs).
 
 ### Notifications
 * Change the favicon when stuff happens
-
-### Look and feel
-* Move the two old ring lists in `tokens.css` onto the `jag-line` classes (the ~40 boxes that still get their jagged line by being named there), then retire the lists - the conventions gate keeps both honest meanwhile.
 
 ### Localization
 * An in-ui way to cheat your presented language, for testing

@@ -34,6 +34,7 @@ import { IdPage } from './idpage.js';
 import { PostPage } from './postpage.js';
 import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
+import { PostHistory } from './posthistory.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
 import { DeviceApp } from './apps/device.js';
@@ -550,6 +551,7 @@ const Inside = ({ session }) => {
             <${DiffPage} path="/ringtome/user/:seg/doc/:doc/diff" current=${persona.current} />
             <${PostPage} path="/ringtome/user/:seg/post/:doc/page/:page" current=${persona.current} onTitle=${setIdTitle} />
             <${PostPage} path="/ringtome/user/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
+            <${PostHistory} path="/ringtome/user/:seg/post/:doc/history" />
             <${DocRoute} path="/ringtome/user/:seg/doc/:doc" current=${persona.current} appHere=${appHere} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${IdPage} path="/ringtome/user/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
             <${IdPage} path="/ringtome/user/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
@@ -847,6 +849,7 @@ const Outside = ({ session }) => {
                 <${NodePeople} path="/people" current=${null} searchQuery=${query} />
                 <${PostPage} path="/ringtome/user/:seg/post/:doc/page/:page" current=${null} onTitle=${setIdTitle} />
                 <${PostPage} path="/ringtome/user/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />
+                <${PostHistory} path="/ringtome/user/:seg/post/:doc/history" />
                 <${DocResolve} path="/ringtome/user/:seg/doc/:doc" current=${null} />
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc" />
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc/line/:line" />

@@ -128,6 +128,12 @@
     white-space: pre-wrap;
     margin: 0;
 }
+/* One line of a diff, one line on screen: the lines are spans, and a newline written inside the
+   template is collapsed by htm, so the drafts' diff and a post's history both ran their lines
+   together (found 2026-10-02, the history page's first look). */
+.words-diff > span {
+    display: block;
+}
 .words-diff-title {
     display: flex;
     gap: 0.6rem;
@@ -143,8 +149,7 @@
 .words-diff-same {
     opacity: 0.75;
 }
-/* Past the edit window the update button stays, greyed, and says why on hover (Curtis,
- * 2026-09-03). */
+/* The update button, greyed while a publish is under way. */
 .publish-bar-update:disabled {
     opacity: 0.55;
     cursor: default;
@@ -434,4 +439,20 @@ a.rt-card:hover {
     color: var(--muted);
     font-style: italic;
     letter-spacing: 0.02em;
+}
+
+/* A post's history (posthistory.js, 2026-10-02): each version under its moment, its change from the
+   one before drawn as the diff page draws a change. */
+.post-history-version {
+    margin: 0 0 1.2rem;
+}
+.post-history-when {
+    margin: 0 0 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+.post-history-first {
+    font-weight: 400;
+    color: var(--muted);
 }

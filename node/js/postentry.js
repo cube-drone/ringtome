@@ -19,9 +19,7 @@ import { createContext } from 'preact';
 import htm from 'htm';
 
 import { api, apiText, apiTextTitled } from './net.js';
-import { useEditWindowOpen } from './editwindow.js';
 import { openMirror, useLive } from './mirror.js';
-import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { SuperPinChip } from './frontdoor.js';
 import { Modal } from './modal.js';
@@ -64,24 +62,6 @@ const html = htm.bind(h);
 
 export const StatusDot = ({ status }) =>
     html`<span class=${`status-dot status-${status}`} title=${status}></span>`;
-
-// The unlock: a click starts a fifteen-second fill, and the item opens when it completes.
-// Journal's gesture exactly (shared CSS) - the same promise, for the same reason.
-export const LockButton = ({ onUnlocked }) => {
-    const [unlocking, setUnlocking] = useState(false);
-    return html`
-        <button
-            class=${unlocking ? 'chip chip-button seal-lock unlocking' : 'chip chip-button seal-lock'}
-            title=${t('postentry.posted---click-then-wait', 'edit (unlocks in 15 seconds)')}
-            onClick=${() => setUnlocking(true)}
-            disabled=${unlocking}
-        >
-            <span class="seal-lock-face"><${Icons.lock} /></span>
-            ${unlocking &&
-            html`<span class="seal-unlock-bar" onAnimationEnd=${onUnlocked}></span>`}
-        </button>
-    `;
-};
 
 // The composer: the REAL notes editor, wearing Feed's clothes (Curtis's ruling, 2026-08-06:
 // both point at a private document, so the features come over whole rather than being
@@ -137,7 +117,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 // surfaces that always found them here.
 import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
-import { postHref, docHref, roomHref, CopyLinkChip } from './links.js';
+import { postHref, docHref, roomHref, CopyLinkChip, postHistoryHref } from './links.js';
 import { RoomTitle, BookTitle } from './roomtitle.js';
 import { formatWhen } from './pure/when.js';
 export { publishWithBaking, BakeModal };
@@ -153,7 +133,6 @@ export { publishWithBaking, BakeModal };
 export function useOwnPostEditing(current, decorate = (row) => row) {
     const myRoot = current && current.root;
     const rows = useLive(() => (myRoot ? openMirror(myRoot).docs.toArray() : []), [myRoot]);
-    const seals = usePrefMap(myRoot, SEAL_PREFIX) || new Map();
     const [posting, setPosting] = useState(false);
     // The bake modal's items while an edit's media prepares; null when quiet.
     const [baking, setBaking] = useState(null);
@@ -162,8 +141,6 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
         setPosting(true);
         try {
             await publishWithBaking(myRoot, privDocId, setBaking);
-            // Said again in public: seal it again, so the next edit costs the unlock again.
-            setPref(myRoot, sealKey(privDocId), 'locked');
         } finally {
             setPosting(false);
         }
@@ -175,12 +152,9 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
             .map(decorate)
             .find((r) => publishedState(r).postId === publicDocId);
         if (!row) return null;
-        const seal = seals.get(sealKey(row.doc_id));
         return {
             root: myRoot,
             row,
-            locked: publishedState(row, seal).locked,
-            unseal: () => setPref(myRoot, sealKey(row.doc_id), 'open'),
             post: () => post(row.doc_id),
             posting,
             baking,
@@ -246,7 +220,7 @@ const PinButton = ({ item, current, pinned, onPinned }) => {
     ><${Icons.pin} /></button>`;
 };
 
-const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
+const UnpublishButton = ({ item, current, onTakenDown }) => {
     const [asking, setAsking] = useState(false);
     const [going, setGoing] = useState(false);
 
@@ -283,10 +257,7 @@ const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
                                 method: 'DELETE',
                             });
                             // The server released the note (published_as cleared - it is a
-                            // draft again, and re-posting mints a NEW post); this device's
-                            // seal pref goes with it, so the draft doesn't sit locked over a
-                            // publication that no longer exists.
-                            if (editing) editing.unseal();
+                            // draft again, and re-posting mints a NEW post).
                             // And the card retires NOW. This used to wait for the next feed
                             // read ("nothing is faked here"), and nothing is faked here
                             // either: the 200 IS the tombstone on the chain, and a post the
@@ -741,10 +712,6 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
               ? 'feed-entry feed-entry-high'
               : 'feed-entry';
 
-    // Past its edit window (Curtis, 2026-09-27), your own post offers no unlock and no edit: an
-    // edit could no longer be published. Asked only of your own posts; unknown counts as open.
-    const windowOpen = useEditWindowOpen(editing ? item.author : null, editing ? item.doc_id : null, item.edit_window_open);
-    const editable = windowOpen !== false;
     // Today the time, another year the year (pure/when.js) - the cards used to drop the year
     // always, so five years of imported posts all read as this year's.
     const when = formatWhen(item.published_ms);
@@ -752,6 +719,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // on hover when it was actually written down.
     const backdated = isBackdated(item);
     const minted = backdated ? formatWhen(item.minted_ms) : null;
+    // Its words changed after it went out: the head's stamp past the mint's.
+    const edited = !item.scheduled && item.updated_ms && item.minted_ms && item.updated_ms > item.minted_ms;
     // The item's link: the title when there is one, a quiet line at the foot when not. It
     // goes to the post's OWN page (postpage.js) - the per-item page this comment spent
     // months promising took the href over on 2026-08-26, the day after it was built. The
@@ -1028,9 +997,13 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         : backdated
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by the author, written {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`
                           : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`}
+                    ${/* Edited after it went out (Curtis, 2026-10-02: posts edit forever, so an edit says
+                        so): when, and the way to every version it has been. */ ''}
+                    ${edited &&
+                    html`<a class="feed-entry-edited" href=${postHistoryHref(item.author, item.doc_id)} title=${t('postentry.see-every-version', 'see every version of this post')}>${t('postentry.edited-when', 'edited {when}', { when: formatWhen(item.updated_ms) })}</a>`}
                     ${/* The takedown first, after the date: trash is always the leftmost chip, on every
                         row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''}
-                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}
+                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} onTakenDown=${() => setGone(true)} />`}
                     ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
                         never the key, and that is not what the button promises - unless the
                         author asked for the hop (Contact tags, ruling 7). */ ''}
@@ -1038,9 +1011,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
                         that note in Writer - or, for a posted drawing, the brush to Drawing (Curtis,
-                        2026-09-27) - and the publish bar there says the changes again.
-                        The slowly-unlocking lock stays for posts composed in the feed (Curtis,
-                        2026-09-03). */ ''}
+                        2026-09-27) - and the publish bar there says the changes again. A post
+                        composed in the feed opens for editing in place, at once: no lock, no
+                        wait, and no day after which it can't (Curtis, 2026-10-02 - the lock was
+                        confusing, and posts edit forever). */ ''}
                     ${editing &&
                     !open &&
                     (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
@@ -1056,21 +1030,13 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                   title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
                               ><${Icons.notes} /></a>`
                         : editing &&
-                    !open &&
-                    editable &&
-                    (editing.locked
-                        ? html`<${LockButton}
-                              onUnlocked=${() => {
-                                  editing.unseal();
-                                  setOpen(true);
-                              }}
-                          />`
-                        : html`<button
+                          !open &&
+                          html`<button
                               class="chip chip-button"
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
-                          ><${Icons.rename} /></button>`)}
+                          ><${Icons.rename} /></button>`}
                     ${/* Any post of yours - a book and a room too, which have no in-place editor
                         - and any post you pass along (2026-09-29). */ ''}
                     ${!open && !item.private_doc && !!current && !!current.root && pinner(item) === current.root &&
@@ -1275,8 +1241,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           // The publish's 200 IS the confirmation; on failure the editor
                           // stays open with the buffer intact, and nothing pretends - but the
                           // REASON shows (2026-08-15): a swallowed refusal reads as a broken
-                          // button, and the edit window's "this post has settled" is a
-                          // refusal the author needs the words of.
+                          // button, and a refusal is something the author needs the words of.
                           try {
                               await editing.post();
                           } catch (e) {

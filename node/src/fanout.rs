@@ -213,17 +213,12 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let t = std::time::Instant::now();
     let mark = journal_mark(&state.node_db, author_root).await?;
     let t_mark = t.elapsed();
-    // Where the walk may stop paging. A missing mark (first move ever for this author) means
-    // the newest page alone - `i64::MAX` stops the walk after one page. Otherwise the walk
-    // owes every row whose updated_ms could pass the filter below, and pages are keyed by
-    // GENESIS - but the edit window bounds how far updated_ms can outrun genesis_ms, so
-    // `mark - edit_window` is the genesis depth that provably covers them all. The horizon
-    // floors both cases.
-    let floor = mark
-        .map_or(i64::MAX, |m| {
-            m.saturating_sub(crate::record::documents::edit_window_ms())
-        })
-        .max(now_ms() - FILL_HORIZON_MS);
+    // Where the delta may reach. A missing mark (first move ever for this author) means the
+    // newest page alone - `i64::MAX` stops the walk after one page. Otherwise the delta reads by
+    // `updated_ms` from the mark, so an edit to a post of any age is caught by its own fresh stamp
+    // (posts edit forever since 2026-10-02; this once also reached back an edit window by
+    // genesis, which the delta-by-stamp had already made moot). The horizon floors both cases.
+    let floor = mark.unwrap_or(i64::MAX).max(now_ms() - FILL_HORIZON_MS);
     // `fresh` is what the real readers get; `first_page` is the newest page whole, for the
     // speculative readers below - their rows are the burst-to-bound with no year dig (the
     // history courtesy belongs to chosen relationships, PROJECT_PLAN's Discovery stage 3),
@@ -232,7 +227,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let (fresh, first_page): (Vec<JournalRow>, Vec<JournalRow>) = match mark {
         // The DELTA, by its own stamp (2026-08-28): everything whose head moved at or past
         // the mark, one indexed read. This replaced a keyset walk back to `mark -
-        // edit_window` - correct, but a day's worth of posts re-paged per move, which under
+        // edit_window` (the day posts once froze after) - correct, but a day's worth of posts re-paged per move, which under
         // test-data's cadence was the author's whole history every time. The horizon still
         // floors it, and `>=` at the boundary keeps the same-millisecond sibling.
         Some(m) => {

@@ -20,28 +20,19 @@ describe('feed publication state', () => {
         assert.equal(FEED_STYLE, 'feed');
     });
 
-    it('a draft is open and says so', () => {
+    it('a draft says so', () => {
         const s = publishedState(draft);
         assert.equal(s.published, false);
-        assert.equal(s.locked, false);
         assert.equal(s.label, 'draft');
         assert.equal(s.postId, '');
     });
 
-    it('posting seals it by default - editing the past costs a moment', () => {
+    it('a post says so, and wears no lock (2026-10-02: posts edit forever, at once)', () => {
         const s = publishedState(posted);
         assert.equal(s.published, true);
-        assert.equal(s.locked, true);
         assert.equal(s.label, 'posted');
         assert.equal(s.postId, 'ab'.repeat(8));
-    });
-
-    it('the unlock is a LOCAL override that beats the default, both ways', () => {
-        assert.equal(publishedState(posted, 'open').locked, false, 'unlocked for repairs');
-        assert.equal(publishedState(posted, 'open').label, 'posted - editing');
-        assert.equal(publishedState(draft, 'locked').locked, true, 'a draft you consider done');
-        // And publication itself never stops being true, whatever the local gesture says.
-        assert.equal(publishedState(posted, 'open').published, true);
+        assert.equal(s.locked, undefined, 'no seal, no unlock');
     });
 
     it('survives a row with no fields at all', () => {

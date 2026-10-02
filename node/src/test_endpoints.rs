@@ -150,8 +150,8 @@ pub async fn beat(
             // (`checked_ms`/`last_tried_ms` older than the revalidation interval), so ringing
             // it right after an act would revalidate nothing and the beat would be a shrug.
             // A test ringing this pass means "revalidate NOW" - zero the stamps, then sweep.
-            // Scoped to the author when given, fleet-wide otherwise. The frozen-fragment
-            // exclusion (edit window) is untouched: it is a property, not a schedule.
+            // Scoped to the author when given, fleet-wide otherwise. The fresh window's bound
+            // (only young posts are swept) is untouched: it is a property, not a schedule.
             crate::fragments::force_due(&state.node_db, scope).await?;
             crate::fragments::sweep(state.clone()).await
         }
@@ -493,18 +493,18 @@ pub async fn reap_pass(State(state): State<AppState>) -> Result<Json<Value>, App
 }
 
 #[derive(Deserialize)]
-pub struct EditWindowRequest {
+pub struct FreshWindowRequest {
     /// Milliseconds; 0 restores the boot default.
     pub ms: i64,
 }
 
-/// Override the edit window at runtime - the `/test/revalidation` idiom, for the same reason:
-/// a suite cannot wait a day to watch a post freeze, and a boot-wide tiny window would freeze
-/// every OTHER test's posts mid-flight.
-pub async fn edit_window(Json(req): Json<EditWindowRequest>) -> Result<Json<Value>, AppError> {
-    crate::record::documents::EDIT_WINDOW_OVERRIDE
+/// Override the fresh window at runtime - the `/test/revalidation` idiom, for the same reason:
+/// a suite cannot wait a day to watch a post leave the sweep, and a boot-wide tiny window would
+/// age every OTHER test's posts mid-flight.
+pub async fn fresh_window(Json(req): Json<FreshWindowRequest>) -> Result<Json<Value>, AppError> {
+    crate::record::documents::FRESH_WINDOW_OVERRIDE
         .store(req.ms.max(0), std::sync::atomic::Ordering::Relaxed);
-    tracing::warn!(ms = req.ms, "LOCAL_TEST edit window override");
+    tracing::warn!(ms = req.ms, "LOCAL_TEST fresh window override");
     Ok(Json(serde_json::json!({ "ms": req.ms })))
 }
 

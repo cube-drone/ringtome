@@ -700,8 +700,8 @@ pub struct VerifiedFragment {
     pub doc_id: [u8; 16],
     /// The version's identity - this entry's hash, which is what a rebroadcast pointer endorses.
     pub version: [u8; 32],
-    /// The version's claimed stamp, off the verified entry - what the edit window's honor rule
-    /// compares against the header's `genesis_ms` (both the author's own numbers).
+    /// The version's claimed stamp, off the verified entry - the author's own number, beside the
+    /// header's `genesis_ms`.
     pub timestamp_ms: i64,
     /// The decoded header: title, format, and the blob hashes the body lives at.
     pub header: DocHeaderPlain,

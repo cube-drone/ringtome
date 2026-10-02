@@ -1,7 +1,7 @@
 /*
     PUBLISH.md slice 1: the preferred date on the wire. A post whose draft claims a date files
     under that date everywhere - the author's shelf and a follower's feed alike - while the
-    mint moment stays what it is (the edit window's anchor, the dossier's honest "when").
+    mint moment stays what it is (how old the post is, the dossier's honest "when").
 */
 const assert = require("node:assert");
 const dns = require("node:dns");

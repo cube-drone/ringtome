@@ -3264,29 +3264,43 @@ X been edited?" answered about arbitrarily old documents means either deep searc
 every edit and delete forever. The trim (Curtis, 2026-08-10) splits the problem by the same move the inbox ring
 made - a bounded rolling window plus a one-bit-forever fact, which have completely different storage laws:
 
-- **Edits are allowed only within a fixed timespan of publishing.** After the window a document's content is
-  frozen; only deletion remains. Edit-tracking state becomes O(posting-rate × window) - a rolling buffer that
-  never grows with history - and a fragment fetched on a doc older than the window needs *no edit revalidation,
-  ever*. Side effect, nearly free: **the rug-pull dies.** The window anchors at publish, not at share, so
-  "post something benign, wait for it to go viral, rewrite it" fails - by the time it is viral, it is frozen.
-  The drift badge becomes a "recently published, still settling" indicator instead of a permanent vigilance
-  mechanism. **Width: one day** (pinned 2026-08-15 - "a day to fix your words, after which what you said is
-  what you said"), and built the same day: the anchor rides the signed header (`genesis_ms`, carried forward
-  verbatim on every re-publication, never re-derived - the mint's claim and the entry's stamp differ by
-  milliseconds, and a re-derivation would trip the shelf's own drift check), the resolver drops late versions
-  before threading (chain genesis, never the header claim), the author's own publish refuses with words, and
-  a frozen fragment leaves the revalidation sweep forever. The forged-genesis worry answered itself in review
-  (Curtis): frozen holders never re-ask, chain holders derive, so a forward-dated rewrite is a repost the
-  established network declines to carry - newcomer-only, wearing the drift badge.
-- **The window is judged by the author's own claimed delta** - honor an edit iff its claimed timestamp is within
-  the window of the original's - NOT by local receipt time. Receipt time diverges: a fresh node syncing an old
-  chain receives original and late edit in one exchange, finds everything "in window" by its own clock, and
-  honors an edit every established node refused - divergent heads by join date. The claimed delta is
-  deterministic on every node forever. Still clock-free where doctrine cares: no network time, no cross-author
-  comparison, both stamps signed by the same author on the same chain. The loophole - an author backdating an
-  edit to sneak inside their own window - is self-scoped (their doc, their lie about their own two numbers) and
-  the version-seen badge shows the drift regardless. Enforced in the FOLD, never at chain admission: the sync
-  gate stays signatures-and-hashes-only, and a late edit is an entry that is admitted and ignored.
+- **Posts edit forever; COPIES are kept current for a day** (amended 2026-10-02; from 2026-08-10 to then,
+  edits themselves were allowed only within the window). Curtis, going back over his own history: "sometimes
+  I do, in fact, want to go back and edit a post I made years and years ago" - and a friend fixing a recent
+  post was baffled by the lock that guarded it. The window was built to bound a cost, and the cost was never
+  the edit: **a follower holding the author's chain pays nothing for an edit at any age** - it is one more
+  entry on a chain it syncs anyway. The expensive thing is keeping every *rebroadcast copy* current forever,
+  "checking for invalidations on every post you ever receive, forever: bad". So the day now bounds exactly
+  that: a node holding only a copy re-asks the author on the sweep's beat while the post is a day old, and
+  stops (`documents::fresh_window_ms`, the old `genesis_ms` anchor) - edit-tracking state is still
+  O(posting-rate × window), a rolling buffer that never grows with history. Past the day a copy **may go
+  stale, and stale copies may proliferate** - Curtis: "I mostly don't care if old rebroadcast versions of that
+  post are stale". A copy is freshened when someone opens the post: the post read asks the author in the
+  background (`fragments::refresh_on_visit`), so the page's reader sees the copy held, and the next look sees
+  what is current. Everything else the window did goes: the resolver threads a version of any age, a held
+  copy takes one, the author's door publishes one, and superseded versions' bytes are kept (they were
+  reaped a day after genesis), because **an edit says so**: a post whose head postdates its mint wears
+  "edited {date}" on its card, and that opens `{post}/history` - every version, newest first, each with what
+  it changed (`/api/id/{seg}/posts/{doc}/versions`; a sealed post's to its readers only, every version under
+  the post's one key). The UI's seal - a lock costing a fifteen-second unlock - is gone with the window: edit
+  opens the editor, at once.
+  *What the freeze also did, and what answers it now.* (1) **The rug-pull** - "post something benign, wait
+  for it to go viral, rewrite it" - is possible again in the narrow sense, and is answered by visibility
+  rather than impossibility: the rewrite wears "edited", its history shows what changed, and the copies it
+  went viral on keep the version they were shared at until someone opens the post. (2) **A stolen device
+  key** could only rewrite recent posts; now it could rewrite any, and the answer is the one that already
+  covers everything else it could do - revoke the key, and repudiation's genesis cut takes back what it
+  signed. (3) Nodes running an older build still ignore late edits; they show what they show until they
+  update, which is the stale copy the design already accepts. *The superseded mechanics, for the record:*
+  the 2026-08-15 build carried the anchor in the signed header (`genesis_ms`, still carried, still never
+  re-derived), dropped late versions in the fold before threading, refused them at the author's door and on
+  the fragment shelf, and took frozen copies out of the sweep - only the last survives, renamed for what it
+  bounds.
+- **The anchor is the author's own claimed delta** - a version's claimed timestamp against the original's, NOT
+  local receipt time. Receipt time diverges: a fresh node syncing an old chain receives original and edit in
+  one exchange and would judge "freshness" by its own clock. It now governs only which copies the sweep keeps
+  current - a scheduling question, so a node's clock deciding when to stop asking is harmless - but the anchor
+  stays the signed claim, deterministic on every node.
 - **Deletes are memoized forever, because they are the cheap half**: sixteen bytes, no content, and "is X
   deleted?" is the only question that must stay answerable for all time. And the set is far smaller than
   "forever" suggests, which the first draft of this section got wrong: **the delete-set scales with regret,
@@ -3327,7 +3341,7 @@ ever-growing edit index.
 A public reply carries the soft promise of rebroadcasting the thing it responds to - without it, "well,
 @rando, I disagree" is context-free noise to everyone but the two of you. So structurally a reply is a quote:
 **rebroadcast + your own comment doc, linked.** Your words are yours forever, an ordinary public post in every
-mechanical respect (tombstones, the edit window, freezing, media, the full composer) - any new special case is a
+mechanical respect (tombstones, editing forever with its "edited" mark and history, media, the full composer) - any new special case is a
 design smell. The context is a replica that honors its author's control: delete the post someone was dunking on
 and their reply stands over "in reply to a retracted post" - the hollow rendering composes, no new case.
 
@@ -3445,8 +3459,8 @@ Every honest door honours it - a reply publish naming a settled parent refuses w
 the author's thread door serves nothing, and the card drops the thread section for one quiet
 line, the chip riding a share card so the reader knows the post will not take their reply.
 Tags stay allowed: a label is the labeller's speech about the post, not participation inside
-it. The user-facing language is "turn off comments"; "settled" is internal, and also the
-store's word for a post whose edit window has closed.
+it. The user-facing language is "turn off comments"; "settled" is internal. (It was also the
+store's word for a post whose edit window had closed - there is no such post since 2026-10-02.)
 
 **"Trusted only" - the words go to readers the author admits.** The body is CIPHERTEXT
 wherever it travels: sealed at mint under a fresh per-post key, the private lane's own blob
@@ -3502,8 +3516,8 @@ the moment-by-moment record is HISTORY's.
 2. **Publishing replicates the draft's annotations, all of them, bucket included** - as a
    DIFF against what the chain already says, so an untouched re-post mints nothing and a
    tag removed from the draft is retracted in public on the next post.
-3. **Later edits are statements, not versions.** Posts freeze after the edit window; the
-   chain keeps labels mutable for life.
+3. **Labels are statements, not versions.** A post's words edit forever (2026-10-02; they froze
+   after a day until then) and its labels stay mutable for life alongside them.
 4. **Two roads to a reader.** By subscription, a node folds an annotator's chain into the
    node-level `doc_annotations` memo. Virally, a post's fragment (`Have`) carries every
    proof the relaying node knows - `(annotator, signed entry, auth path)`, byte-budgeted
@@ -3558,7 +3572,8 @@ later "GRIMOIRE updated: …". Folded here from BOOKS.md when the arc closed (20
    Writer's rows wear changed / new / hidden, and the column tracks the DIFF against the
    last rollout through `published_version` beside `published_as`.
 7. **A page under a living book is updatable while the book lives** - a book's update is a
-   distinct new event, so the edit window that bounds ordinary posts does not apply.
+   distinct new event. (It once had to be excepted from the edit window that froze ordinary posts;
+   since 2026-10-02 every post edits forever, so the exception is the rule.)
 8. **A rollout is a plan executed in the background** (`book_rollout` on the private kv,
    naming the minting device; `POST /books/{bucket}/rollout`; the book-rollout sweep mints
    pages, then the book, then the update - the update last so nothing half-lands).

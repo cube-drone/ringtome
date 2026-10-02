@@ -1162,25 +1162,11 @@ impl Documents<'_> {
                 return Ok(existing.expect("a head implies a post"));
             }
         }
-        // The edit window, at the author's own door (Curtis, 2026-08-15: one day). Refused
-        // HERE with honest words, because everywhere else the same edit would be silently
-        // admitted-and-ignored - the fold's posture for the network is the wrong voice for
-        // the author's own composer. The recourse is the canon's: delete and repost, which
-        // mints a fresh id (and the unpublish route releases the draft to do exactly that).
-        if let Some(post) = existing {
-            if let Some(genesis) =
-                crate::record::documents::public_genesis(&self.store.db, &post).await?
-            {
-                if crate::clock::now_ms()
-                    > genesis.saturating_add(crate::record::documents::edit_window_ms())
-                {
-                    return Err(AppError::BadRequest(crate::msg!(
-                        "record.store.this-post-has-settled",
-                        "posts can only be edited for a day. Delete it and post again."
-                    )));
-                }
-            }
-        }
+        // No window at the author's door (2026-10-02): a post edits forever. It refused a day after
+        // genesis from 2026-08-15 ("a day to fix your words"); Curtis, going back over his history,
+        // found it chafing - "sometimes I do, in fact, want to go back and edit a post I made years
+        // and years ago" - and the cost it guarded is now bounded where it lives, in how long
+        // rebroadcast copies are kept current (`documents::fresh_window_ms`).
         // A claim on a post with no public head is stale: the post was retracted (or a
         // repudiation's genesis cut took it), and `public_head` now answers absence for both.
         // The tombstone is final for that id - parenting onto it would mint versions into a

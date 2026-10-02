@@ -2678,17 +2678,14 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
         // When it was first said - what it is dated by and sorted by. A re-publication
         // improves a post; it does not make a new one, and does not move it.
         "published_ms": p.display_ms(),
-        // The preferred date when one was claimed, and the mint moment beside it - the edit
-        // window's anchor, and the dossier's honest "when it was actually said".
+        // The preferred date when one was claimed, and the mint moment beside it - the dossier's
+        // honest "when it was actually said", and what `updated_ms` is compared with to say
+        // "edited" (2026-10-02).
         "dated_ms": p.dated_ms,
         "minted_ms": p.genesis_ms,
         // The book this is a page of (PROJECT_PLAN's Books), when it is one.
         "part_of": p.part_of.map(hex::encode),
         "updated_ms": p.head_ms,
-        // Whether a re-publication would still be honoured (PROJECT_PLAN: the edit window
-        // anchors on the mint) - Writer's publish bar offers "update" only while it is.
-        "edit_window_open": crate::clock::now_ms()
-            < p.genesis_ms + crate::record::documents::edit_window_ms(),
         "thumb": p.thumb_hash.map(hex::encode),
     })
 }
@@ -2722,6 +2719,78 @@ pub async fn id_from(
 /// GET `/api/id/{root}/posts/{doc}` - one post, by id: the permalink's read (2026-08-25).
 /// The same shelf rule as the page, and the same honest 404 for never-was, private, and
 /// taken-down alike - a post that is not on the public shelf is not a post here.
+/// GET `/api/id/{seg}/posts/{doc}/versions` - a post's history (Curtis, 2026-10-02: posts edit
+/// forever, and an edited one says so - "edited {date}" - and opens to every version it has been).
+/// Newest first: each version's moment, title and words, or `held: false` where this node no longer
+/// has the words. A sealed post answers its reader as the body door does - every version wears the
+/// post's one key - and nobody else. Answered where the author's chain is held; a node holding only
+/// a copy has one version, and says not found rather than a history of one.
+pub async fn id_post_versions(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, doc)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<IdQuery>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let missing = || AppError::NotFound(crate::msg!("idface.no-such-post-here-3", "no such post here"));
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else { return Err(missing()) };
+    let root_hex = hex::encode(root);
+    if !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(missing());
+    }
+    let doc_id: [u8; 16] = hex::decode(&doc).ok().and_then(|b| b.try_into().ok()).ok_or_else(missing)?;
+    let Ok(Some(db)) = state.user_dbs.get(&root_hex).await else { return Err(missing()) };
+    let Some(versions) = crate::record::documents::public_versions(&db, &doc_id).await? else { return Err(missing()) };
+    let Some(head) = versions.first() else { return Err(missing()) };
+    // The seal: one key for every version, judged on the newest header as the body door judges it.
+    let key = if head.header.trusted_only {
+        let (holder, key_doc) = seal_holder(&root, &doc_id, head.header.seal_of);
+        let holder_hex = hex::encode(holder);
+        let viewer = trusted_viewer(&state, &session, &holder_hex, &hex::encode(key_doc), false, query.via.as_deref()).await?;
+        let key = match viewer.as_deref() {
+            Some(v) => key_for(&state, &holder_hex, &key_doc, v, query.via.as_deref()).await,
+            None => None,
+        };
+        let Some(key) = key else {
+            return Err(AppError::Forbidden(crate::msg!(
+                "idface.for-trusted-readers-only-2",
+                "the author shares these words only with people they trust"
+            )));
+        };
+        Some(key)
+    } else {
+        None
+    };
+    let mut out = Vec::with_capacity(versions.len());
+    for v in versions.iter().take(200) {
+        let words = if crate::record::documents::Format::from_wire(v.header.format).is_mergeable_text() {
+            let bytes = state.files.get_public(iroh_blobs::Hash::from_bytes(v.header.file_hash)).await.ok().flatten();
+            let plain = match (bytes, key) {
+                (Some(b), Some(k)) => crate::record::private::open_post_body(&b, &k),
+                (Some(b), None) => Some(b),
+                (None, _) => None,
+            };
+            plain.map(|b| String::from_utf8_lossy(&b).into_owned())
+        } else {
+            None
+        };
+        let title = match (&v.header.sealed_title, key) {
+            (Some(sealed), Some(k)) => crate::record::private::open_post_body(sealed, &k)
+                .map(|t| String::from_utf8_lossy(&t).into_owned())
+                .unwrap_or_default(),
+            _ => v.header.title.clone(),
+        };
+        out.push(serde_json::json!({
+            "version": hex::encode(v.hash),
+            "at_ms": v.timestamp_ms,
+            "title": title,
+            "format": crate::record::documents::Format::from_wire(v.header.format).as_str(),
+            "held": words.is_some(),
+            "words": words,
+        }));
+    }
+    Ok(axum::Json(serde_json::json!({ "versions": out })))
+}
+
 pub async fn id_post(
     session: Option<Session>,
     State(state): State<AppState>,
@@ -2741,6 +2810,12 @@ pub async fn id_post(
         .ok_or_else(|| {
             AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id", "that isn't a document id"))
         })?;
+    // A post this node holds a COPY of, opened (2026-10-02): past its fresh day nothing keeps the
+    // copy current, so the visit asks the author - in the background, whichever road answers this
+    // read below; the feed's cards read the copy, and the next look at them sees what is current.
+    if crate::fragments::held(&state.node_db, &root_hex, &doc).await.ok().flatten().is_some() {
+        crate::fragments::refresh_on_visit(&state, &root_hex, &doc);
+    }
     let db_for_labels = match state.user_dbs.get(&root_hex).await {
         Ok(Some(db)) => db,
         _ => {

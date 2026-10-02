@@ -34,11 +34,6 @@ export const widthPrefix = (appId) => `colw:${appId}:`;
 export const foldKey = (taxonomyId) => `wikifold:${taxonomyId}`;
 export const FOLD_PREFIX = 'wikifold:';
 
-/// Journal seal overrides, by doc id. Domain: 'open' | 'locked'; ABSENT means "follow the day",
-/// which is why this family is read as a map of what's present, never as a set of flags.
-export const sealKey = (docId) => `seal:${docId}`;
-export const SEAL_PREFIX = 'seal:';
-
 /// A document's remembered editor view mode. Domain: a key of doc/editor.js's `MODES`.
 export const viewModeKey = (docId) => `mode:${docId}`;
 

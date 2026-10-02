@@ -33,7 +33,6 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { openMirror, useLive } from '../mirror.js';
-import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from '../mirror/prefs.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { createdMs, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
@@ -56,7 +55,6 @@ import {
     PUBLISHED_AS,
 } from '../pure/feed.js';
 import { api } from '../net.js';
-import { useEditWindowOpen } from '../editwindow.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
@@ -70,7 +68,6 @@ import { t } from '../i18n.js';
 import {
     PostEntry,
     Composer,
-    LockButton,
     useOwnPostEditing,
     publishWithBaking,
     BakeModal,
@@ -101,7 +98,6 @@ const SORT_WORDS = {
     year: () => t('apps.feed.sort-year', 'best this year'),
 };
 
-const EMPTY = new Map();
 
 // A stack item's words, rendered. Journal's reader exactly (doc/detail.js, cache-first and
 // patient about a body still in flight), and the BARE fallback for an unparsable document
@@ -138,13 +134,9 @@ const PostBody = ({ doc }) => {
 //
 // The editor mounts on demand rather than whenever an item is unlocked: a stack of leftover
 // drafts would otherwise raise a live CodeMirror each on first paint.
-const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
+const StackItem = ({ root, row, onPost, posting }) => {
     const [open, setOpen] = useState(false);
-    const state = publishedState(row, seal);
-    // A posted item past its edit window (Curtis, 2026-09-27) offers no unlock: an edit could no
-    // longer be published. Unknown counts as open.
-    const windowOpen = useEditWindowOpen(state.published ? root : null, state.postId || null);
-    const editable = !state.published || windowOpen !== false;
+    const state = publishedState(row);
     // The body read, hoisted from PostBody so the stack can judge emptiness (Curtis,
     // 2026-08-28): an unposted draft with no title and no words is a blank page - most
     // often a reply box opened and walked away from - and listing it is noise. Hidden
@@ -174,33 +166,26 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
     const when = formatWhen(createdMs(row));
     if (blank) return null;
     return html`
-        <article class=${state.locked ? 'feed-item feed-item-posted' : 'feed-item'}>
+        <article class=${state.published ? 'feed-item feed-item-posted' : 'feed-item'}>
             <header class="feed-item-head">
                 <span class="feed-item-when">${when}</span>
                 <span class="feed-item-state">${open ? t('apps.feed.editing', 'editing') : state.label}</span>
                 ${!open &&
-                editable &&
-                (state.locked
-                    ? html`<${LockButton}
-                          onUnlocked=${() => {
-                              onSeal();
-                              setOpen(true);
-                          }}
-                      />`
-                    : html`${/* Writer's chips (Curtis, 2026-09-27), trash leftmost: discard, then edit. */ ''}
-                          ${!state.published &&
-                          html`<button
-                              class="chip chip-button chip-delete"
-                              title=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
-                              aria-label=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
-                              onClick=${discard}
-                          ><${Icons.trash} /></button>`}
-                          <button
-                              class="chip chip-button"
-                              title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
-                              aria-label=${t('apps.feed.open-this-for-editing', 'open this for editing')}
-                              onClick=${() => setOpen(true)}
-                          ><${Icons.rename} /></button>`)}
+                html`${/* Writer's chips (Curtis, 2026-09-27), trash leftmost: discard, then edit -
+                    at once, posted or not (2026-10-02: no lock, no window). */ ''}
+                    ${!state.published &&
+                    html`<button
+                        class="chip chip-button chip-delete"
+                        title=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
+                        aria-label=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
+                        onClick=${discard}
+                    ><${Icons.trash} /></button>`}
+                    <button
+                        class="chip chip-button"
+                        title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
+                        aria-label=${t('apps.feed.open-this-for-editing', 'open this for editing')}
+                        onClick=${() => setOpen(true)}
+                    ><${Icons.rename} /></button>`}
             </header>
             ${/* No title, no heading. A post that was never given one is untitled in the
                 ordinary sense of the word - the app inventing the LABEL "untitled" and
@@ -608,7 +593,6 @@ export const FeedApp = ({ current, searchQuery }) => {
     // `overlayPosted` yields once the mirror carries the annotation, so these go inert rather
     // than needing to be cleared).
     const [postedAs, setPostedAs] = useState({});
-    const seals = usePrefMap(root, SEAL_PREFIX) || EMPTY;
     // The shared edit wiring (postentry.js): resolves a public post to your private twin so
     // the stream's own items carry the unlock-and-edit ceremony. Decorated with the local
     // publication overlay, so a post made seconds ago is editable before the stream echoes.
@@ -811,8 +795,6 @@ export const FeedApp = ({ current, searchQuery }) => {
                 annotations: overlayLabels,
                 mine: true,
             });
-            // Said in public: seal it, so editing again costs the unlock.
-            setPref(root, sealKey(posted), 'locked');
             // And go to it (Curtis, 2026-10-02): the post's own page is the one place it is sure to
             // be. The stream's top is only where it lands when nothing narrows the feed - a chip
             // picked, a best or hot order, the dial - and a post that vanished on "post" read as one
@@ -876,8 +858,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                         root=${root}
                                         docId=${draftId}
                                         published=${!!onDraft &&
-                                        publishedState(onDraft, seals.get(sealKey(draftId)))
-                                            .published}
+                                        publishedState(onDraft).published}
                                         onPost=${() => post()}
                                         posting=${posting}
                                         onDeleted=${() => {
@@ -928,8 +909,6 @@ export const FeedApp = ({ current, searchQuery }) => {
                                           key=${row.doc_id}
                                           root=${root}
                                           row=${overlayPosted(row, postedAs[row.doc_id])}
-                                          seal=${seals.get(sealKey(row.doc_id))}
-                                          onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
                                           onPost=${post}
                                           posting=${posting}
                                       />`
