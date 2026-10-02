@@ -139,6 +139,11 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
         title: post.title,
         format: post.format,
         published_ms: post.published_ms,
+        // The stamps the card reads for its marks: "written {date}" on a backdated post, "edited {date}"
+        // when its words changed after it went out (2026-10-02 - the page dropped both).
+        dated_ms: post.dated_ms,
+        minted_ms: post.minted_ms,
+        updated_ms: post.updated_ms,
         replies: post.replies,
         annotations: post.annotations,
         settled: !!post.settled,
@@ -438,6 +443,11 @@ const HeldReplyBody = ({ author, doc }) => {
         title: post.title,
         format: post.format,
         published_ms: post.published_ms,
+        // The stamps the card reads for its marks: "written {date}" on a backdated post, "edited {date}"
+        // when its words changed after it went out (2026-10-02 - the page dropped both).
+        dated_ms: post.dated_ms,
+        minted_ms: post.minted_ms,
+        updated_ms: post.updated_ms,
         mine: false,
     };
     return html`<${PostEntry} key=${post.doc_id} item=${item} current=${null} editing=${null} quote=${false} />`;
@@ -641,6 +651,11 @@ const ThreadReply = ({ author, doc, byline, current, depth, order }) => {
         title: post.title,
         format: post.format,
         published_ms: post.published_ms,
+        // The stamps the card reads for its marks: "written {date}" on a backdated post, "edited {date}"
+        // when its words changed after it went out (2026-10-02 - the page dropped both).
+        dated_ms: post.dated_ms,
+        minted_ms: post.minted_ms,
+        updated_ms: post.updated_ms,
         replies: post.replies,
         annotations: post.annotations,
         // The door's byline for the replier: what this node knows of them, whoever the

@@ -13826,4 +13826,8 @@ seal prefs, `editwindow.js` and `edit_window_open` are gone: edit opens the edit
 PROJECT_PLAN (with the rug-pull and the stolen key, what the freeze also did and what answers them now)
 and plans/PUBLISH.md. A diff's lines now each take a line (`.words-diff > span`) - the drafts' diff page
 ran them together too. Claims in cascade.cjs: past the day the edit is taken and its history holds both;
-a stale copy leaves the sweep and a visit brings the edit (failing with the hook removed). `just ci` green.
+a stale copy leaves the sweep and a visit brings the edit (failing with the hook removed). `just ci` green. The post
+page built its card from hand-picked fields and dropped the stamps (Curtis: no "edited" there), which
+also hid a backdated post's "written {date}" - all three of its item builders carry `dated_ms`,
+`minted_ms` and `updated_ms` now; an unedited post's two stamps are equal on every surface, so nothing
+reads "edited" that wasn't.
