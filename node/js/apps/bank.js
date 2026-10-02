@@ -12,6 +12,7 @@ import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
+import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
 
@@ -102,7 +103,7 @@ const Month = ({ month, lines, open, onToggle, current }) => html`<li class="ban
               ${groupLedger(lines).map(
                   (row) => html`<li class="bank-line" key=${row.key + row.at_ms}>
                       <span class="bank-line-what"><${RowWords} row=${row} current=${current} /></span>
-                      <span class="bank-line-when">${new Date(row.at_ms).toLocaleDateString()}</span>
+                      <span class="bank-line-when">${formatWhen(row.at_ms, undefined, { time: false })}</span>
                       <span class="bank-line-amount">${signed(row.pennies)}</span>
                   </li>`
               )}

@@ -37,10 +37,11 @@ import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
 import { docHref } from '../links.js';
+import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
 
-const when = (ms) => new Date(ms).toLocaleString();
+const when = (ms) => formatWhen(ms);
 
 /// Left/right ARROW KEYS walk the prev/next order - but only while the keyboard is FREE: no
 /// input, textarea, select, or editor focused, no modifier held. While typing, arrows move the

@@ -13762,3 +13762,14 @@ still unread. 6.43.13 checks the timer is its own key's (and waits 50 ms) and sk
 records are pending. The upgrade dedupes (marquee-codemirror shares the one copy); the minified bundle
 carries both guards. Not seen on a device - the user's next post is the test. (An Android lead came first
 and was wrong: CodeMirror's EditContext path is Android-only, and iOS Chrome is WebKit.)
+
+**2026-10-02 - one rule for dates: today the time, another year the year.** Curtis: "if they are on the
+same day as today, we don't need to display the date - just the time. If they're NOT in the same year as
+today, we definitely have to display the year." Thirteen places formatted dates their own way; the
+visible ones go through `pure/when.js` now (`formatWhen`, vectors in test/pure/when.cjs): the reader's
+own day decides, in the reader's locale. The feed's cards, a person's page's posts, a post's backdated
+"written" date, the minipost, the composer's draft stack, the notes list, chat lines (a room has no day
+breaks, so yesterday's line said only its time), schedules, API keys, backups, the bank ledger, and a
+claimed date (`formatClaimed`). The cards had always dropped the year, so five years of imported toots
+read as this year's. A day-stamp (ledger, date-only claim) never grows a time; hover titles that give the
+exact moment keep all of it.

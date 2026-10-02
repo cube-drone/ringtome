@@ -60,6 +60,7 @@ import { stickersOf } from '../pure/imagepick.js';
 import { togglePick } from '../pure/facets.js';
 import { personHref, postHref, roomHref, copyLink, appHref } from '../links.js';
 import { RoomTitle } from '../roomtitle.js';
+import { formatWhen } from '../pure/when.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
@@ -553,7 +554,8 @@ const Line = ({ m, current, cont, onReact, untrusted, veil, onEdit, onDelete, on
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const [stickering, setStickering] = useState(false);
-    const when = new Date(m.said_ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    // Today the time, an older line its day too (pure/when.js) - a room has no day breaks.
+    const when = formatWhen(m.said_ms);
     const mine = !!current && current.root === m.speaker;
     const whoSaid = (r) => r.who.map((w) => w.name || speakable(w.root)).join(', ');
     // A speaker this reader has not placed reads small and gray: present, unimportant. Their

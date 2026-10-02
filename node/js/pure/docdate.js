@@ -8,6 +8,8 @@
 // docs mirror row inside `fields`. These are the pure read helpers the list uses; kept
 // separate so the ordering rule is testable without a browser.
 
+import { formatWhen } from './when.js';
+
 export const DISPLAY_DATE_FIELD = 'display_date';
 
 /** The ms a document sorts and reads by: its claimed `display_date` if set and parseable,
@@ -60,15 +62,11 @@ export function parseClaimed(iso) {
 
 /** A claimed value as a short human label - "Jul 31, 2015" for a date, "Jul 31, 2015, 3:35 PM"
  *  when it carries a time. */
-export function formatClaimed(iso) {
+export function formatClaimed(iso, now = Date.now()) {
     const ms = parseClaimed(iso);
     if (ms === null) return iso;
-    const opts = { year: 'numeric', month: 'short', day: 'numeric' };
-    if (typeof iso === 'string' && iso.includes('T')) {
-        opts.hour = 'numeric';
-        opts.minute = '2-digit';
-    }
-    return new Date(ms).toLocaleString(undefined, opts);
+    // The reader's rule (pure/when.js): a claimed day this year needs no year.
+    return formatWhen(ms, now, { time: typeof iso === 'string' && iso.includes('T') });
 }
 
 /** Split a stored claimed value into the two form controls: { date: "YYYY-MM-DD", time:

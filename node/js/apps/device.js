@@ -21,6 +21,7 @@ import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
 import { appHref } from '../links.js';
 import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
+import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
 
@@ -242,7 +243,7 @@ const Backups = () => {
                           const when = backupTime(a.name);
                           return html`<li class="computer-row" key=${a.name}>
                               <span class="computer-name">
-                                  ${when ? new Date(when).toLocaleString() : a.name}
+                                  ${when ? formatWhen(when) : a.name}
                                   <span class="computer-detail"> — ${sizeLabel(a.bytes)}</span>
                               </span>
                               ${isDevice()

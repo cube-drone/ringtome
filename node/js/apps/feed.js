@@ -74,6 +74,7 @@ import {
     BakeModal,
 } from '../postentry.js';
 import { tagCounts } from '../pure/contacttags.js';
+import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
 
@@ -168,12 +169,7 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
             alert(t('apps.feed.couldnt-discard-it', "couldn't discard it: {message}", { message: e.message }));
         }
     };
-    const when = new Date(createdMs(row)).toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    });
+    const when = formatWhen(createdMs(row));
     if (blank) return null;
     return html`
         <article class=${state.locked ? 'feed-item feed-item-posted' : 'feed-item'}>

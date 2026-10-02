@@ -30,6 +30,7 @@ import { COLORWAYS, DEFAULT_COLORWAY } from './colorway.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
 import { personHref, personaPageHref, LAUNCHER } from './links.js';
+import { formatWhen } from './pure/when.js';
 
 const html = htm.bind(h);
 
@@ -791,7 +792,7 @@ const ApiKeys = () => {
             /* select it by hand */
         }
     };
-    const when = (ms) => new Date(ms).toLocaleString();
+    const when = (ms) => formatWhen(ms);
     return html`<section class="settings-keys">
         <h2 class="settings-section-title">${t('persona.api-keys', 'API keys')}</h2>
         <p class="null-sub">

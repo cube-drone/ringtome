@@ -139,6 +139,7 @@ import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
 import { postHref, docHref, roomHref, CopyLinkChip } from './links.js';
 import { RoomTitle, BookTitle } from './roomtitle.js';
+import { formatWhen } from './pure/when.js';
 export { publishWithBaking, BakeModal };
 
 /**
@@ -468,13 +469,7 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
             live = false;
         };
     }, [author, doc_id, title]);
-    const when =
-        published_ms &&
-        new Date(published_ms).toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
+    const when = published_ms && formatWhen(published_ms, undefined, { time: false });
     return html`<a class="minipost" href=${postHref(author, doc_id)}>
         <span class="minipost-who" title=${person.primary}><${PersonHex} person=${person} size="mini" /></span>
         <span class=${title ? 'minipost-title' : 'minipost-words'}>${title || words || t('postentry.link', 'link')}</span>
@@ -746,16 +741,17 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
               ? 'feed-entry feed-entry-high'
               : 'feed-entry';
 
-    const whenOpts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
     // Past its edit window (Curtis, 2026-09-27), your own post offers no unlock and no edit: an
     // edit could no longer be published. Asked only of your own posts; unknown counts as open.
     const windowOpen = useEditWindowOpen(editing ? item.author : null, editing ? item.doc_id : null, item.edit_window_open);
     const editable = windowOpen !== false;
-    const when = new Date(item.published_ms).toLocaleString(undefined, whenOpts);
+    // Today the time, another year the year (pure/when.js) - the cards used to drop the year
+    // always, so five years of imported posts all read as this year's.
+    const when = formatWhen(item.published_ms);
     // A backdated post wears its date a little differently (Curtis, 2026-09-02), and says
     // on hover when it was actually written down.
     const backdated = isBackdated(item);
-    const minted = backdated ? new Date(item.minted_ms).toLocaleString(undefined, whenOpts) : null;
+    const minted = backdated ? formatWhen(item.minted_ms) : null;
     // The item's link: the title when there is one, a quiet line at the foot when not. It
     // goes to the post's OWN page (postpage.js) - the per-item page this comment spent
     // months promising took the href over on 2026-08-26, the day after it was built. The

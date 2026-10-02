@@ -37,6 +37,7 @@ import { Modal } from '../modal.js';
 import { api } from '../net.js';
 import { Icons } from '../icons.js';
 import { postHref } from '../links.js';
+import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
 
@@ -145,14 +146,14 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
     const standingWords = () =>
         standing === 'scheduled'
             ? t('doc.editor.scheduled-for', 'scheduled for {when}', {
-                  when: scheduledAt ? new Date(scheduledAt).toLocaleString() : '…',
+                  when: scheduledAt ? formatWhen(scheduledAt) : '…',
               })
             : standing === 'public'
               ? t('doc.editor.live-on-your-public-feed', 'live on your public feed')
               : t('doc.editor.private', 'private');
     const noteWords = (note) =>
         note.kind === 'scheduled'
-            ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', { when: new Date(note.at).toLocaleString() })
+            ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', { when: formatWhen(note.at) })
             : note.kind === 'unpublished'
               ? t('doc.editor.taken-down---it-leaves', 'taken down')
               : note.kind === 'unscheduled'
