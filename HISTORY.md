@@ -13750,3 +13750,15 @@ from the hidden column's), and the press of crop, set as profile and set as bann
 "working on it" / "set" note in its place once pressed. The buttons are one element shared with the tools
 column. Seen in headless Chrome at 420px: the hint, a tap placing the text with the cursor in the hung
 box, typing landing on the drawing, the crop button under its box.
+
+**2026-10-01 - backspace on an iPhone: CodeMirror 6.43.6 -> 6.43.13.** A new user's post: "if i use
+backspace several letters do not get deleted, the cursor jumps over them and remains to the right,
+preventing auto complete" - on an iPhone, in Chrome (WebKit, as every iOS browser is). Not ours: the
+session's reload is gated on a clean buffer, and the live preview's decorations touch only markup. On
+iOS CodeMirror lets Backspace through to the browser and dispatches its own after a timer, in case the
+browser did nothing; 6.43.6 armed a 250 ms timer per press that flushed whichever key was pending - so
+quick backspaces fired stale timers onto later presses - and flushed even with the browser's own change
+still unread. 6.43.13 checks the timer is its own key's (and waits 50 ms) and skips the flush while DOM
+records are pending. The upgrade dedupes (marquee-codemirror shares the one copy); the minified bundle
+carries both guards. Not seen on a device - the user's next post is the test. (An Android lead came first
+and was wrong: CodeMirror's EditContext path is Android-only, and iOS Chrome is WebKit.)
