@@ -13953,3 +13953,13 @@ are left as they are - a column of their own, which scrolls (Curtis). The drawin
 pickers keep theirs: only stickers' tags, a short list. Seen in headless Chrome: 120 feed tags to a
 search that "topic1" narrowed to 31; the files browser's 159 to one line of four, a pick staying on the
 row while the search stays open; twelve tags opening in place at a phone's width. `just ci` green.
+
+**2026-10-02 - the files browser asks what kind of file.** Curtis: a type filter above the notebooks
+and tags - "just get me images" - in the browser of every file, not the picture selector (which only
+ever offers pictures). `pure/filebrowse.js` names each file's kind (`fileKind`: posts - the words -
+drawings, images, audio, videos; a silent loop an image, as the node's media tags have it) and
+`browseFiles` takes the picks: either of them, as the feed's kind row; the kind row counted under the
+notebook and tags, the tags counted under the notebook and kinds - each row with its own picks set
+aside. A "show" `FacetRow` heads the browser, only where the files are of more than one kind. Seen in
+headless Chrome: posts 2, images 52 (the app's own pictures among them); posts picked, the 54 tiles
+down to the two notes and the tag row recounted to theirs. Pure claims for both. `just ci` green.

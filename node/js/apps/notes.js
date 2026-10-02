@@ -39,6 +39,7 @@ import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
 import { docHref } from '../links.js';
 import { FacetRow, narrowTitle } from '../facets.js';
+import { togglePick } from '../pure/facets.js';
 import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
@@ -335,9 +336,30 @@ const FileTile = ({ doc, root, bucket, selected, onSelect, onFollowHome }) => {
     </li>`;
 };
 
-const FileBrowser = ({ root, bucket, browse, notebook, onNotebook, tags, onToggleTag, selected, onSelect, onFollowHome, empty }) => html`<div
+/// The kind row's words (pure/filebrowse.js `FILE_KINDS`).
+const FILE_KIND_NAMES = {
+    post: () => t('apps.notes.kind-posts', 'posts'),
+    drawing: () => t('apps.notes.kind-drawings', 'drawings'),
+    image: () => t('apps.notes.kind-images', 'images'),
+    audio: () => t('apps.notes.kind-audio', 'audio'),
+    video: () => t('apps.notes.kind-videos', 'videos'),
+};
+
+const FileBrowser = ({ root, bucket, browse, notebook, onNotebook, kinds, onToggleKind, tags, onToggleTag, selected, onSelect, onFollowHome, empty }) => html`<div
     class="files-browser"
 >
+    ${/* What kind of file, above everything (Curtis, 2026-10-02: "just get me images"): either of
+        those picked. Only where there is a choice - files all of one kind offer none. */ ''}
+    ${(browse.kinds.length > 1 || kinds.length > 0) &&
+    html`<${FacetRow}
+        label=${t('apps.notes.show', 'show')}
+        items=${browse.kinds}
+        picked=${kinds}
+        out=${[]}
+        onToggle=${onToggleKind}
+        names=${FILE_KIND_NAMES}
+        titleOf=${narrowTitle}
+    />`}
     <div class="imagepick-buckets" role="group" aria-label=${t('doc.imagepick.notebook', 'notebook')}>
         <button class=${notebook ? 'imagepick-bucket' : 'imagepick-bucket active'} onClick=${() => onNotebook('')}>
             <${Icons.notebook} /> ${t('doc.imagepick.every-notebook', 'every notebook')}
@@ -397,6 +419,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const [busy, setBusy] = useState(false);
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
     const [notebook, setNotebook] = useState(''); // hrseFiles's notebook pick: '' is every one
+    const [kindFilter, setKindFilter] = useState([]); // hrseFiles's kind picks: either of them
 
     // The shared documents-app spine (doc/docapp.js): the live documents, the open document and how
     // to change it (it lives in the URL, so back/forward and deep links just work), the resume-where
@@ -417,7 +440,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // hrseFiles browses as the picture picker does (2026-09-29): its notebook pick and tags narrow
     // after the search, and the tiles are the list prev/next walks.
     const ordered = orderDocs(docs, { app, bucket, hits, tags: app.everything ? [] : tagFilter, kind: searchKind });
-    const browse = app.everything ? browseFiles(ordered, { notebook, tags: tagFilter }) : null;
+    const browse = app.everything ? browseFiles(ordered, { notebook, tags: tagFilter, kinds: kindFilter }) : null;
     const list = browse ? browse.files : ordered;
 
     // Lost & Found's follow-me-home: the document's own address, which opens it in its first
@@ -547,6 +570,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                         browse=${browse}
                         notebook=${notebook}
                         onNotebook=${setNotebook}
+                        kinds=${kindFilter}
+                        onToggleKind=${(k) => setKindFilter(togglePick(kindFilter, k))}
                         tags=${tagFilter}
                         onToggleTag=${toggleTag}
                         selected=${selected}

@@ -9,7 +9,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* feed cards: we might be trimming a little TOO aggressively? (a card now draws ~240 characters past its cut, faded - the cut points themselves are unchanged)
 * report storage use per account
 * on mobile People, folks' gigantic IDs are flattening their names
 * "automatic-node-friendship" mode
@@ -27,6 +26,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * when I tag stuff in my personal feed (which is huge) it doesn't update right away
 * everything I've posted to the public internet in the past 6 years clocks in at about 110 MB all-in
     * so following 10 of me would entail a solid gigabyte of load?
+* feed/user search result highlighting
 
 ### Launch to Website
 * Logging & graphs
