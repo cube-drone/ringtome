@@ -13993,3 +13993,10 @@ an overlay scrollbar lies over its last ~15px, where the arrow sat - a click the
 scrollbar - so the header keeps clear of that edge. Seen in headless Chrome: the header at the column's
 top through 1400px of scroll; a click on its name tucks the column, a click on the arrow tucks it once.
 `just ci` green.
+
+**2026-10-02 - a narrow People list stacks its rows.** Curtis: on a phone, a person's name was the part
+of the row that gave way - squeezed by a long address, the tags, and now an admin's storage figures and
+the relationship glance, none of which shrink. Under 900px `.person-row` is a two-column grid: the
+heptagon on the left, and beside it the names, then each of the rest on a row of its own, left-aligned
+(person.css). Wide, the row is the one line it was. Seen in headless Chrome at 575 and 1300px.
+`just ci` green.

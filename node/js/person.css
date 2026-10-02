@@ -450,3 +450,33 @@
     color: var(--faint);
     font-size: 0.78rem;
 }
+
+/* Narrow (Curtis, 2026-10-02): on one line the name was the part that gave way - squeezed by a long
+   address, the tags, the admin's storage figures and the glance, none of which shrink. Under 900px
+   the row stacks: the heptagon on the left, and beside it the names, then each of the rest on a row
+   of its own, all left-aligned. */
+@media (max-width: 900px) {
+    .person-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 0.7rem;
+        row-gap: 0.3rem;
+        align-items: center;
+    }
+
+    .person-row > :first-child {
+        grid-row: 1;
+        align-self: start;
+    }
+
+    .person-row > :not(:first-child) {
+        grid-column: 2;
+        justify-self: start;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .person-row .ledger-glance {
+        margin-left: 0;
+    }
+}
