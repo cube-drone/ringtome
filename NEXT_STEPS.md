@@ -9,9 +9,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* "automatic-node-friendship" mode
- * only available with password-based registration
-* limit registrations to N (100)
 * A demo server (free registration, but it deletes all of its users after 7 days )
 * An article on Managing Operator Liability
 * every button in the entire mobile app is a little too small and delicate for human fingies, and some of the drawing tools are WAY too small

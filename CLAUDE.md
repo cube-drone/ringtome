@@ -42,7 +42,11 @@
   a file without its setup claims fails for that reason alone). Run full `just ci` once per
   batch — before handing work over for review, and before anything lands near sync, storage
   or the HTTP surface — in the background, carrying on with other work rather than waiting;
-  never edit source while it runs, or its verdict covers neither version. At session start,
+  never edit source while it runs, or its verdict covers neither version. **A change that is only
+  copy, CSS or locale wording** (no Rust, no server behaviour, nothing the integration rig can
+  see) needs only `just strings-check` and `just ui-check` - they run eslint, every pure test and
+  the CSS conventions (dead classes, colour literals), which is everything such a change can
+  break; the full gate is not owed for it (Curtis, 2026-10-02). At session start,
   check `gh run list`: a red run on `main` is a finding under the rule above, settled before
   new work.
 - **`just ci` and `just integration` are safe beside a running dev network** (2026-08-08).

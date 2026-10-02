@@ -68,3 +68,61 @@
     align-items: center;
     gap: 0.8rem;
 }
+
+/* The operator's auto-follow list (2026-10-02): whom, their dials, and the way off the list. */
+.device-follows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.device-follows li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    background: var(--surface);
+    padding: 0.4rem 0.6rem;
+}
+
+.device-follow-who {
+    color: var(--ink);
+}
+
+.device-follow-dials {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-left: auto;
+}
+
+.device-follow-x {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+}
+
+.device-dials {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.device-dial select {
+    font: inherit;
+    color: var(--ink);
+    background: var(--field);
+    border: 1px solid var(--border);
+    padding: 0.3rem 0.4rem;
+}
+
+/* Between the Registration page's settings (2026-10-02): the mode, the limits, the group and the
+   auto-follow list each stand apart. */
+.device-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1.4rem 0 0.2rem;
+}

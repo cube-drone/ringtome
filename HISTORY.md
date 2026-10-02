@@ -14000,3 +14000,36 @@ the relationship glance, none of which shrink. Under 900px `.person-row` is a tw
 heptagon on the left, and beside it the names, then each of the rest on a row of its own, left-aligned
 (person.css). Wide, the row is the one line it was. Seen in headless Chrome at 575 and 1300px.
 `just ci` green.
+
+**2026-10-02 - the operator's sign-up tools: limits, a group server, and an auto-follow list.** Curtis:
+an optional limit on accounts; a storage barrier - past X% of the disk used, no new accounts; and a
+"group server" - "I set up a group server for my friends": while sign-ups take a password, whoever has
+it was invited, so their first persona joins the group, low trust and low interest both ways with every
+other member, tagged with the group's name in everybody's People list. Then, on reflection: the node's
+administrators are always in the group (they set it up), accounts from before it never are; and an
+admin who wants less than the whole "everyone here is a friend" should still be able to choose whom
+every newcomer starts out following. Node rung 67. `registration.rs` keeps the limits beside the mode
+and checks them in `admit` - the one door that makes accounts - the disk by `fs4::statvfs` on the data
+directory (already in the build beneath another crate; a sensor that can't read never closes the door).
+`groups.rs`: a password sign-up while a group is named is remembered at the door and enrolled when the
+account's first persona is made - the starters' road, the node signing each persona's own private
+entries with its leaf key, detached so a sign-up never waits on a big group; dials only where unset,
+the tag added once, published like any dial (Curtis's choice). Nothing is ever written except at a
+join. `starters.rs` gains the operator's `auto_follow` list (an address or a page's link, its via
+hints, the three dials), seeded beside the built-in starters - the operator's word winning for a person
+on both. All of it on the Server app's Registration page, and in SERVER.md. Claims in operator.cjs:
+the limit and the disk refuse and relent; a group's joiners and its administrator paired both ways and
+tagged, an earlier account and a second persona left out, an open sign-up joining nothing; the list
+reaching a newcomer with its dials. `just ci` green.
+
+**2026-10-02 - the Registration page's settings stand apart.** Curtis: rules and margins between the
+new sections; the Group section only while "password-protected" is the mode picked (saved or not - the
+mode lives in `Registration` now, shared by the picker and the limits), its description shorn of "while
+sign-ups take a password"; and the Limits section its own save (both saves send the three together).
+A group name set and then hidden by another pick is kept, not cleared. Then Curtis's words: "Everyone
+begins knowing" is **Starter Friends**, and the limits say what they count ("currently we have 11 accounts
+on this server", "currently the disk is 92% full") - changed in the catalog, which the call sites follow.
+And with sign-ups closed the Limits section stands down too - there's nothing to limit - the limits kept
+for a mode that has sign-ups; Starter Friends stays, since an existing account's new persona still
+begins with them. Copy and UI only: `just strings-check` and `just ui-check` green (CLAUDE.md's tiering,
+amended the same day: a copy-, CSS- or locale-only change owes no full `just ci`).

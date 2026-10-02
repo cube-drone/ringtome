@@ -155,6 +155,20 @@ its apps. It has two pages:
 - **Registration**: who may make an account here. `open` (anyone who reaches the node, rate-limited
   per address - a fresh server's default), `password` (sign-up asks for a password you choose and
   share by hand), or `closed`.
+  Below it, on the same page:
+  - **Limits** - the most accounts this node holds, and a disk-use percentage (of the disk under
+    the data directory) past which it takes no more sign-ups. Each is empty for no limit; the page
+    shows where the node stands against both.
+  - **Group** - a name, for a group server: while sign-ups take a password, whoever signs up with it
+    joins the group. Their first persona, every other member, and every node administrator begin
+    knowing each other - low trust and low interest, both ways, published like any dial - tagged
+    with the group's name in each other's People list. Accounts that were here before are not
+    added, and nothing is written to anyone except when somebody joins: renaming or clearing the
+    group changes no one's settings.
+  - **Starter Friends** - people every persona made here starts out knowing, with the dials
+    you choose (low trust, medium interest, low shares unless you say otherwise), beside the app's
+    own starters. Paste a page's link or an address. Taking somebody off the list changes nobody
+    who already began with them.
 - **Backups**: make a backup and watch it go, and download the ones already made (below). Restoring
   is not in the app yet.
 

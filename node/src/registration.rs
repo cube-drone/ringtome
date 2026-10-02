@@ -141,8 +141,106 @@ pub async fn policy(state: &AppState) -> Result<Policy, AppError> {
     })
 }
 
+// ---------------------------------------------------------------------------------------------
+// The limits (2026-10-02): beside the mode, set in the same Server app page.
+
+/// The operator's limits on sign-ups, and the group a password sign-up joins - each `None` for
+/// "no limit" or "no group".
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct Limits {
+    /// The most accounts this node may hold; a sign-up past it is refused.
+    pub max_accounts: Option<i64>,
+    /// The disk-use percentage (of the disk holding the node's data) past which sign-ups stop.
+    pub disk_max_pct: Option<i64>,
+    /// While sign-ups take a password, the group a newcomer's first persona joins (groups.rs).
+    pub group_name: Option<String>,
+}
+
+pub async fn limits(state: &AppState) -> Result<Limits, AppError> {
+    let row: Option<(Option<i64>, Option<i64>, Option<String>)> = state
+        .node_db
+        .fetch_optional("SELECT max_accounts, disk_max_pct, group_name FROM registration_limits WHERE id = 1", ())
+        .await
+        .context("reading the registration limits")
+        .map_err(AppError::Internal)?;
+    Ok(match row {
+        Some((max_accounts, disk_max_pct, group_name)) => Limits {
+            max_accounts,
+            disk_max_pct,
+            group_name: group_name.filter(|g| !g.trim().is_empty()),
+        },
+        None => Limits::default(),
+    })
+}
+
+/// The group a sign-up offering the right password joins right now: the group name, only while
+/// the mode is `password` (Curtis, 2026-10-02: having the password means you were invited).
+pub async fn group_now(state: &AppState) -> Result<Option<String>, AppError> {
+    if policy(state).await?.mode != Mode::Password {
+        return Ok(None);
+    }
+    Ok(limits(state).await?.group_name)
+}
+
+pub async fn set_limits(state: &AppState, limits: &Limits) -> Result<(), AppError> {
+    if limits.max_accounts.is_some_and(|n| n < 1) {
+        return Err(AppError::BadRequest(crate::msg!("registration.max-accounts-at-least-one", "a limit on accounts is at least one")));
+    }
+    if limits.disk_max_pct.is_some_and(|p| !(1..=100).contains(&p)) {
+        return Err(AppError::BadRequest(crate::msg!("registration.disk-pct-range", "a disk limit is a percentage, 1 to 100")));
+    }
+    let group = limits.group_name.as_deref().map(str::trim).filter(|g| !g.is_empty());
+    // A group's name is the tag it wears in everyone's People list, so it is a tag's length.
+    if group.is_some_and(|g| g.chars().count() > crate::groups::TAG_MAX) {
+        return Err(AppError::BadRequest(crate::msg!("registration.group-name-too-long", "a group's name is at most 32 letters")));
+    }
+    state
+        .node_db
+        .execute(
+            "INSERT INTO registration_limits (id, max_accounts, disk_max_pct, group_name, updated_ms) VALUES (1, ?1, ?2, ?3, ?4)
+             ON CONFLICT (id) DO UPDATE SET max_accounts = excluded.max_accounts, disk_max_pct = excluded.disk_max_pct,
+                 group_name = excluded.group_name, updated_ms = excluded.updated_ms",
+            (limits.max_accounts, limits.disk_max_pct, group, crate::clock::now_ms()),
+        )
+        .await
+        .context("writing the registration limits")
+        .map_err(AppError::Internal)?;
+    tracing::info!(?limits, "registration limits changed");
+    Ok(())
+}
+
+/// How full the disk holding the node's data is, as a whole percentage - `None` when it can't be
+/// read (then no disk limit refuses anyone: a sensor failing must not close the door).
+pub fn disk_used_pct(state: &AppState) -> Option<i64> {
+    let stats = fs4::statvfs(&state.config.data_directory).ok()?;
+    let total = stats.total_space();
+    if total == 0 {
+        return None;
+    }
+    Some(((total - stats.available_space().min(total)) * 100 / total) as i64)
+}
+
 /// May somebody make an account right now, offering this sign-up password (if any)?
 pub async fn admit(state: &AppState, offered: Option<&str>) -> Result<(), AppError> {
+    admit_mode(state, offered).await?;
+    let limits = limits(state).await?;
+    if let Some(max) = limits.max_accounts {
+        if crate::auth::account_count(&state.node_db).await? >= max {
+            return Err(AppError::Forbidden(crate::msg!("registration.this-place-is-full", "this place is full - it isn't taking new sign-ups")));
+        }
+    }
+    if let (Some(max), Some(used)) = (limits.disk_max_pct, disk_used_pct(state)) {
+        if used > max {
+            return Err(AppError::Forbidden(crate::msg!(
+                "registration.out-of-room",
+                "this place is running out of room - it isn't taking new sign-ups"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn admit_mode(state: &AppState, offered: Option<&str>) -> Result<(), AppError> {
     let policy = policy(state).await?;
     match policy.mode {
         Mode::Open => Ok(()),

@@ -5426,6 +5426,7 @@ dependencies = [
  "dryoc",
  "ed25519-dalek 2.2.0",
  "flate2",
+ "fs4",
  "gethostname",
  "hex",
  "hkdf",

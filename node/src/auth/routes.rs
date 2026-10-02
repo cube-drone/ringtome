@@ -109,6 +109,13 @@ async fn register_handler(
         state.config.admin_persona.is_none()
     )
     .await?;
+    // Signed up with the password while a group is set: the account's first persona joins it, once
+    // made (groups.rs).
+    if creds.registration_password.is_some() {
+        if let Some(group) = crate::registration::group_now(&state).await? {
+            crate::groups::note_joiner(&state.node_db, &account.id, &group).await?;
+        }
+    }
     Ok(Json(AccountInfo {
         id: account.id.to_string(),
         username: account.username,

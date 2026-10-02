@@ -469,6 +469,26 @@ pub async fn promote_intended_admin(
     Ok(true)
 }
 
+/// How many accounts this node holds (registration.rs's limit).
+pub async fn account_count(db: &Db) -> Result<i64, AppError> {
+    let (n,): (i64,) = db
+        .fetch_one("SELECT COUNT(*) FROM accounts", ())
+        .await
+        .context("counting accounts")
+        .map_err(AppError::Internal)?;
+    Ok(n)
+}
+
+/// Every account wearing `tag` (groups.rs: the node's administrators are in every group).
+pub async fn accounts_tagged(db: &Db, tag: &str) -> Result<Vec<Uuid>, AppError> {
+    let rows: Vec<(String,)> = db
+        .fetch_all("SELECT account_id FROM account_tags WHERE tag = ?1", (tag,))
+        .await
+        .context("listing accounts by tag")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().filter_map(|(id,)| Uuid::parse_str(&id).ok()).collect())
+}
+
 pub async fn tags_for(db: &Db, account_id: &Uuid) -> Result<Vec<String>, AppError> {
     let rows: Vec<(String,)> = db
         .fetch_all(

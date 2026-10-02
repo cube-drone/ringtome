@@ -27,6 +27,10 @@ cube-drone-marquee-parser = "=0.8.0"
 cube-drone-marquee-markup = "=0.8.0"
 # the protocol layer: canonical bytes, hashing, signing, chain validation
 ringtome-proto = { path = "../proto" }
+# How full the disk under the data directory is (registration.rs: a sign-up limit an operator can
+# set). Already in the build beneath another crate; named here for its `statvfs`, every platform.
+fs4 = "0.13"
+
 
 # web service
 axum = { version = "0.8", features = ["macros", "multipart", "ws"] }

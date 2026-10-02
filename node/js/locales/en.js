@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1386 phrases across 87 files.
+// 1409 phrases across 88 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -204,6 +204,22 @@ export default {
     'device.only-this-computer': 'This app only answers this computer, so "anyone" means anyone who uses it.',
     'device.saved': 'saved',
     'device.save': 'save',
+    'device.limits': 'Limits',
+    'device.most-accounts': 'the number of accounts that can exist before we stop accepting registrations (currently we have {n} accounts on this server) - leave empty for no limit',
+    'device.disk-limit-unknown': "stop accepting sign-ups once the disk is fuller than this percentage (we can't read how full it is right now); leave empty for no limit",
+    'device.disk-limit': "currently the disk is {pct}% full, stop accepting sign-ups once we've gone past this percentage; leave empty for no limit",
+    'device.group': 'Group',
+    'device.group-explained': "A group server: whoever signs up with the password joins the group. Their first persona and every other member - and you, and every administrator - begin knowing each other, low trust and low interest, tagged with the group's name. Nobody who was already here is added, and nobody's settings change later.",
+    'device.group-name': "the group's name - empty for none",
+    'device.auto-follow': 'Starter Friends',
+    'device.auto-follow-explained': 'Every persona made here starts out knowing these people, with these dials - as if they had set them.',
+    'device.dials': 'trust {trust} · interest {interest} · shares {rebroadcasts}',
+    'device.take-off-the-list': 'take them off the list',
+    'device.their-address': "their address - a page's link, or the address words",
+    'device.dial-trust': 'trust',
+    'device.dial-interest': 'interest',
+    'device.dial-shares': 'their shares',
+    'device.add': 'add',
     'device.a-backup-holds-everything': 'A backup is a copy of everything here - every account, and the keys that unlock them. Whoever has one has all of it, so keep it as safe as this place itself.',
     'device.backing-up': 'backing up…',
     'device.make-a-backup-now': 'make a backup now',
@@ -1539,6 +1555,11 @@ export default {
 
     // --- node/src/registration.rs ---
     'registration.choose-a-sign-up-password': 'choose a sign-up password to share with the people you invite',
+    'registration.max-accounts-at-least-one': 'a limit on accounts is at least one',
+    'registration.disk-pct-range': 'a disk limit is a percentage, 1 to 100',
+    'registration.group-name-too-long': "a group's name is at most 32 letters",
+    'registration.this-place-is-full': "this place is full - it isn't taking new sign-ups",
+    'registration.out-of-room': "this place is running out of room - it isn't taking new sign-ups",
     'registration.sign-ups-are-closed': "this place isn't taking new sign-ups",
     'registration.that-sign-up-password-isnt-right': "that sign-up password isn't right",
 
@@ -1551,6 +1572,10 @@ export default {
     // --- node/src/shell.rs ---
     'shell.only-the-desktop-app-saves-files': 'only the desktop app saves files this way',
     'shell.only-the-desktop-app-opens-a-browser': "only the desktop app's own window can ask for that",
+
+    // --- node/src/starters.rs ---
+    'starters.not-an-address': "that isn't a person's address",
+    'starters.not-a-dial': "not a dial's word: {band}",
 
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',

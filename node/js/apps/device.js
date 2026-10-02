@@ -22,6 +22,8 @@ import { backupTime, sizeLabel } from '../pure/backups.js';
 import { appHref } from '../links.js';
 import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
 import { formatWhen } from '../pure/when.js';
+import { BANDS } from '../pure/contact.js';
+import { speakable, wordsFor } from '../speakable.js';
 
 const html = htm.bind(h);
 
@@ -105,9 +107,15 @@ const ModePicker = ({ modes, mode, setMode, password, setPassword, hasPassword }
 const Registration = () => {
     const [status, setStatus] = useState(null);
     const [error, setError] = useState('');
+    // The mode as picked, saved or not: the group's section shows only while it is `password`
+    // (Curtis, 2026-10-02) - a group exists only behind a password.
+    const [mode, setMode] = useState(null);
     const load = useCallback(() => {
         api('/api/admin/registration')
-            .then(setStatus)
+            .then((s) => {
+                setStatus(s);
+                setMode((m) => m || s.mode);
+            })
             .catch((e) => setError(e.message));
     }, []);
     useEffect(load, [load]);
@@ -118,14 +126,15 @@ const Registration = () => {
     return html`
         <div class="device">
             <h2 class="computers-title">${t('device.registration', 'Registration')}</h2>
-            <${Policy} status=${status} onSaved=${load} />
+            <${Policy} status=${status} mode=${mode || status.mode} setMode=${setMode} onSaved=${load} />
+            <${Limits} status=${status} mode=${mode || status.mode} onSaved=${load} />
+            <${AutoFollowList} status=${status} onSaved=${load} />
         </div>
     `;
 };
 
 /// A server's sign-up policy.
-const Policy = ({ status, onSaved }) => {
-    const [mode, setMode] = useState(status.mode);
+const Policy = ({ status, mode, setMode, onSaved }) => {
     const [password, setPassword] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
@@ -160,6 +169,133 @@ const Policy = ({ status, onSaved }) => {
         ${error && html`<p class="form-error">${error}</p>`}
         ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
         <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>
+    `;
+};
+
+/// The limits on sign-ups, and the group (registration.rs, groups.rs; Curtis, 2026-10-02): each
+/// empty for none. Saved together - the node keeps them as one.
+const Limits = ({ status, mode, onSaved }) => {
+    const l = status.limits || {};
+    const [maxAccounts, setMaxAccounts] = useState(l.max_accounts == null ? '' : String(l.max_accounts));
+    const [diskPct, setDiskPct] = useState(l.disk_max_pct == null ? '' : String(l.disk_max_pct));
+    const [group, setGroup] = useState(l.group_name || '');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [saved, setSaved] = useState(false);
+    const number = (v) => (v.trim() === '' ? null : Number(v));
+    const save = async () => {
+        setBusy(true);
+        setError('');
+        setSaved(false);
+        try {
+            await api('/api/admin/registration/limits', {
+                method: 'PUT',
+                body: JSON.stringify({ max_accounts: number(maxAccounts), disk_max_pct: number(diskPct), group_name: group.trim() || null }),
+            });
+            setSaved(true);
+            onSaved();
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    // Closed, there are no sign-ups to limit (Curtis, 2026-10-02): the limits wait, kept, for a mode
+    // that has some. (The group shows only under `password`, below.)
+    return html`
+        ${mode !== 'closed' &&
+        html`<hr class="device-rule" />
+        <h3 class="computers-title">${t('device.limits', 'Limits')}</h3>
+        <label class="device-field">
+            <span>${t('device.most-accounts', 'the number of accounts that can exist before we stop accepting registrations (currently we have {n} accounts on this server) - leave empty for no limit', { n: status.accounts })}</span>
+            <input type="number" min="1" value=${maxAccounts} onInput=${(e) => setMaxAccounts(e.currentTarget.value)} />
+        </label>
+        <label class="device-field">
+            <span>
+                ${status.disk_used_pct == null
+                    ? t('device.disk-limit-unknown', "stop accepting sign-ups once the disk is fuller than this percentage (we can't read how full it is right now); leave empty for no limit")
+                    : t('device.disk-limit', "currently the disk is {pct}% full, stop accepting sign-ups once we've gone past this percentage; leave empty for no limit", { pct: status.disk_used_pct })}
+            </span>
+            <input type="number" min="1" max="100" value=${diskPct} onInput=${(e) => setDiskPct(e.currentTarget.value)} />
+        </label>
+        ${/* Each section its own save, though both send the three together (the node keeps them as one). */ ''}
+        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`}
+        ${mode === 'password' &&
+        html`<hr class="device-rule" />
+        <h3 class="computers-title">${t('device.group', 'Group')}</h3>
+        <p class="null-sub">
+            ${t(
+                'device.group-explained',
+                "A group server: whoever signs up with the password joins the group. Their first persona and every other member - and you, and every administrator - begin knowing each other, low trust and low interest, tagged with the group's name. Nobody who was already here is added, and nobody's settings change later."
+            )}
+        </p>
+        <label class="device-field">
+            <span>${t('device.group-name', "the group's name - empty for none")}</span>
+            <input maxlength="32" value=${group} onInput=${(e) => setGroup(e.currentTarget.value)} />
+        </label>
+        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`}
+        ${error && html`<p class="form-error">${error}</p>`}
+        ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
+    `;
+};
+
+/// Whom every persona made here begins knowing (starters.rs, 2026-10-02): an address, and the
+/// dials to begin on. Taking somebody off changes nobody who already began with them.
+const AutoFollowList = ({ status, onSaved }) => {
+    const [address, setAddress] = useState('');
+    const [dials, setDials] = useState({ trust: 'low', interest: 'medium', rebroadcasts: 'low' });
+    const [error, setError] = useState('');
+    const add = async () => {
+        setError('');
+        try {
+            await api('/api/admin/auto-follow', { method: 'POST', body: JSON.stringify({ address, ...dials }) });
+            setAddress('');
+            onSaved();
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    const remove = async (root) => {
+        setError('');
+        try {
+            await api(`/api/admin/auto-follow/${root}`, { method: 'DELETE' });
+            onSaved();
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    const dialPick = (key, label) => html`<label class="device-field device-dial">
+        <span>${label}</span>
+        <select value=${dials[key]} onChange=${(e) => setDials({ ...dials, [key]: e.currentTarget.value })}>
+            ${BANDS.map((b) => html`<option key=${b} value=${b}>${b}</option>`)}
+        </select>
+    </label>`;
+    const list = status.auto_follow || [];
+    return html`
+        <hr class="device-rule" />
+        <h3 class="computers-title">${t('device.auto-follow', 'Starter Friends')}</h3>
+        <p class="null-sub">${t('device.auto-follow-explained', 'Every persona made here starts out knowing these people, with these dials - as if they had set them.')}</p>
+        ${list.length > 0 &&
+        html`<ul class="device-follows">
+            ${list.map(
+                (a) => html`<li key=${a.root}>
+                    <span class="device-follow-who" title=${speakable(a.root)}>${a.name || wordsFor(a.root).join('-')}</span>
+                    <span class="device-follow-dials">${t('device.dials', 'trust {trust} · interest {interest} · shares {rebroadcasts}', a)}</span>
+                    <button class="device-follow-x" title=${t('device.take-off-the-list', 'take them off the list')} onClick=${() => remove(a.root)}>×</button>
+                </li>`
+            )}
+        </ul>`}
+        <label class="device-field">
+            <span>${t('device.their-address', "their address - a page's link, or the address words")}</span>
+            <input value=${address} onInput=${(e) => setAddress(e.currentTarget.value)} />
+        </label>
+        <div class="device-dials">
+            ${dialPick('trust', t('device.dial-trust', 'trust'))}
+            ${dialPick('interest', t('device.dial-interest', 'interest'))}
+            ${dialPick('rebroadcasts', t('device.dial-shares', 'their shares'))}
+        </div>
+        ${error && html`<p class="form-error">${error}</p>`}
+        <button class="removal-go" disabled=${!address.trim()} onClick=${add}>${t('device.add', 'add')}</button>
     `;
 };
 

@@ -33,6 +33,7 @@ pub mod edgegraph;
 pub mod error;
 pub mod fanout;
 pub mod fragments;
+pub mod groups;
 pub mod postkeys;
 pub mod scheduled;
 pub mod bank;
