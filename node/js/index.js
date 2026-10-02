@@ -178,6 +178,21 @@ const Inside = ({ session }) => {
     const loc = useLocation();
     const open = persona.state === 'open';
     const inApp = loc.path !== LAUNCHER;
+    // The feed stays alive under a post opened from it (Curtis, 2026-10-02: deep in a filtered
+    // feed, open a post, come back - "which takes me back... to the top of my feed, losing my
+    // scroll position and all of my progress. All of the images slowly reload"). A route is
+    // unmounted when you leave it, and the feed's pages, picks' results and scroll went with it;
+    // so the feed is mounted out here, beside the router, from the moment you open it until you go
+    // anywhere that is not a post. Under a post it is there but unseen and inert (`.feed-kept`);
+    // back is the post going away and the feed exactly as you left it, images and all.
+    const onFeed = loc.path === FEED_PATH;
+    const onPost = POST_PATH.test(loc.path);
+    const [feedKept, setFeedKept] = useState(false);
+    useEffect(() => {
+        if (onFeed) setFeedKept(true);
+        else if (!onPost) setFeedKept(false);
+    }, [onFeed, onPost]);
+    const keepFeed = onFeed || (feedKept && onPost);
     // The /id lens page: not an app off the registry - People (/home/people) is the app,
     // and id pages are the shareable places it navigates out to - but the frame looks wrong
     // headless, so it gets the band with the viewed persona's name, reported upward by the
@@ -499,7 +514,12 @@ const Inside = ({ session }) => {
     // why the notes about ordering live out here (field-found 2026-08-03).
     // Once open, the URL is honored (a deep link survives the flow). The console lives at `/home`
     // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
-    const routed = html`
+    const keptFeed =
+        keepFeed &&
+        html`<div class=${onFeed ? 'feed-kept' : 'feed-kept feed-kept-under'} inert=${!onFeed} aria-hidden=${onFeed ? undefined : 'true'}>
+            <${FeedApp} current=${persona.current} searchQuery=${query} />
+        </div>`;
+    const routed = html`${keptFeed}
         <${Router}>
             <${HomeBounce} path="/" />
             <${HomeBounce} path="/feed" />
@@ -517,7 +537,7 @@ const Inside = ({ session }) => {
             <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
             <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} searchQuery=${query} />
-            <${FeedApp} path="/ringtome/feed" current=${persona.current} searchQuery=${query} />
+            <${KeptFeedRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
@@ -551,6 +571,14 @@ const Inside = ({ session }) => {
         >${inApp ? shell(routed) : stage(routed)}</${BucketShelf.Provider}
     ></${SuperPinner.Provider}>`;
 };
+
+/// The feed's address, and a post's page - the one place the feed stays alive under (`Inside`).
+const FEED_PATH = '/ringtome/feed';
+const POST_PATH = /^\/ringtome\/user\/[^/]+\/post\//;
+
+/// The feed's route draws nothing: the feed itself is mounted beside the router (`Inside`), so a
+/// post opened from it can leave it standing underneath.
+const KeptFeedRoute = () => null;
 
 /// The address before `/ringtome/` (2026-09-28): `/id/<seg>[/…]` goes on to its `/ringtome/user/`
 /// form, the hints kept - what the node's own redirect does for a page load, done here for a link

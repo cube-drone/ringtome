@@ -1727,12 +1727,13 @@ pub(crate) async fn public_doc_bytes(
     // hash IS content-addressed, so it makes a perfect ETag - an unchanged body costs a
     // 304 and no bytes, an edited one arrives the moment the card asks.
     let etag = format!("\"{}\"", hex::encode(hash));
+    let cache = cache_policy(format, trusted_only);
     if if_none_match.is_some_and(|inm| inm == etag) {
         return Ok((
             StatusCode::NOT_MODIFIED,
             [
                 (header::ETAG, etag.as_str()),
-                (header::CACHE_CONTROL, "no-cache"),
+                (header::CACHE_CONTROL, cache),
             ],
         )
             .into_response());
@@ -1805,9 +1806,9 @@ pub(crate) async fn public_doc_bytes(
         [
             (header::CONTENT_TYPE, mime),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-            // no-cache = "keep a copy, ask before using it": every use revalidates against
-            // the ETag, so staleness is bounded by one conditional request, not a year.
-            (header::CACHE_CONTROL, "no-cache"),
+            // Words: no-cache, "keep a copy, ask before using it" - every use revalidates against
+            // the ETag, so an edit's staleness is one conditional request. Media: kept (below).
+            (header::CACHE_CONTROL, cache),
             (header::ETAG, etag.as_str()),
         ],
         bytes,
@@ -1994,6 +1995,25 @@ pub(crate) async fn seal_key_for(
             "idface.cant-label-words-you-cant-read",
             "you can't label words you can't read"
         ))),
+    }
+}
+
+/// How long a public document's bytes may be kept (Curtis, 2026-10-02: back from a post, "all of the
+/// images slowly reload" - and the node sits behind a CDN). A post's WORDS live at a mutable address:
+/// editing re-publishes new words under the same doc, so they revalidate every use (`no-cache` and
+/// the content-hash ETag). Its MEDIA never does: every twin, drawing, avatar and banner is minted as
+/// a fresh document of one version (`documents::save_public_media`) - a changed picture is a new
+/// address, never new bytes at the old one - so media is kept, browsers for a year. A CDN keeps an
+/// open one thirty days, not a year, because a takedown cannot reach into a CDN: what it holds it
+/// serves until it expires, and thirty days is the bound on that. A SEALED one is `private` - opened
+/// for one admitted reader, it is theirs to keep and never a shared cache's.
+fn cache_policy(format: Option<u64>, sealed: bool) -> &'static str {
+    use crate::record::documents::Format;
+    let media = matches!(Format::from_wire(format), Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus);
+    match (media, sealed) {
+        (true, false) => "public, max-age=31536000, s-maxage=2592000, immutable",
+        (true, true) => "private, max-age=31536000, immutable",
+        (false, _) => "no-cache",
     }
 }
 
