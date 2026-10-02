@@ -47,19 +47,29 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                 continue;
             }
         };
-        let view = match data.documents().all().await {
-            Ok(v) => v,
+        // The drafts with a plan, in one read - and only those still held as documents (what
+        // walking the whole view used to guarantee).
+        let planned = match data.annotations().docs_with_field(store::PUBLISH_PLAN).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::debug!(root = %root, error = ?e, "scheduled pass: could not read plans");
+                continue;
+            }
+        };
+        if planned.is_empty() {
+            continue;
+        }
+        let ids: Vec<[u8; 16]> = planned.iter().map(|(id, _)| *id).collect();
+        let held = match data.documents().held(&ids).await {
+            Ok(h) => h,
             Err(e) => {
                 tracing::debug!(root = %root, error = ?e, "scheduled pass: could not list");
                 continue;
             }
         };
         let my_leaf = data.leaf_hex();
-        for doc_id in view.docs.keys().copied().collect::<Vec<_>>() {
-            let Ok(Some(raw)) = data.annotations().field(&doc_id, store::PUBLISH_PLAN).await else {
-                continue;
-            };
-            if raw.trim().is_empty() {
+        for (doc_id, raw) in planned {
+            if !held.contains(&doc_id) {
                 continue;
             }
             let Ok(plan) = serde_json::from_str::<Plan>(&raw) else {

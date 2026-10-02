@@ -10,6 +10,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Demo Output
 * post titles should probably be a lot bigger
+* "see more" should give you an idea HOW MUCH more there is to see
+    * +238 words, +39 images, +3 audio tracks, +4 videos
+    * we might be trimming a little TOO aggressively?
+* the huge tag list in feed is unwieldy, in files it's completely broken
+* report storage use per account
 * post descriptions should be display'd in italics under the title?
 * on mobile People, folks' gigantic IDs are flattening their names
 * "automatic-node-friendship" mode
@@ -19,13 +24,15 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * An article on Managing Operator Liability
 * every button in the entire mobile app is a little too small and delicate for human fingies, and some of the drawing tools are WAY too small
 * "micro", "small", "medium", "long", and "image" "audio" "video" in separate rows
-* I did a deep search for "hot dog" in my humungous (about 1000 notes) private "toots" folder, and clicked on a few things, and now the server has slowed to an absolute CRAWL (when Turso gets slow does it kill the whole server? does it kill the whole user?)
-    * same thing with a click on a tag
-    * make sure search isn't decrypting anything?
-    * is this hurting performance for other users or just me?
+* the big-search crawl's residuals (HISTORY 2026-10-02 has what was found and cut):
+    * the server's fold costs a median 851 ms with nothing else in flight; a laptop does a comparable persona in ~50 ms. Which leg, and is it the box (disk fsync? cores?) or the data (node.db's size)? A fresh 30 minutes of log after this deploy says whether the crawl is gone
+    * one connection per persona: every read queues behind every write and fold statement, in arrival order. A read-only second connection would stop that - but the 2026-08 stale-read dig named cross-connection WAL visibility as a suspect, so it wants its own design
+    * a turso statement runs inside one poll and holds its tokio worker while it runs: a heavy read can stall the runtime on a small box. Worth checking the server's core count; `spawn_blocking` for the heavy readers if it's low
 * <- and -> arrows to navigate through books
 * check if HorseBucks are actually using a bigint
 * when I tag stuff in my personal feed (which is huge) it doesn't update right away
+* everything I've posted to the public internet in the past 6 years clocks in at about 110 MB all-in
+    * so following 10 of me would entail a solid gigabyte of load?
 
 ### Launch to Website
 * Logging & graphs

@@ -1011,11 +1011,18 @@ async fn bake_words(
     // A picture that names nothing - not the speaker's, not in this build (a built-in whose file
     // moved, a picture since deleted) - is left out and the rest is said (Curtis, 2026-09-29:
     // better than refusing the whole line).
-    let held = docs.all().await?;
+    let named: Vec<[u8; 16]> = refs
+        .iter()
+        .filter_map(|r| match r {
+            MediaRef::PrivateDoc { doc_id, .. } => Some(*doc_id),
+            _ => None,
+        })
+        .collect();
+    let held = docs.held(&named).await?;
     let mut missing: Vec<String> = Vec::new();
     for r in &refs {
         let MediaRef::PrivateDoc { target, doc_id: media } = r else { continue };
-        if crate::builtin::get(media).is_none() && !held.docs.contains_key(media) {
+        if crate::builtin::get(media).is_none() && !held.contains(media) {
             missing.push(target.clone());
             continue;
         }

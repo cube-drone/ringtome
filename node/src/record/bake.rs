@@ -552,10 +552,9 @@ pub async fn publish(
 ) -> Result<Outcome, AppError> {
     let trusted_only = flags.trusted_only;
     let docs = data.documents();
-    let view = docs.all().await?;
-    let doc = view
-        .docs
-        .get(doc_id)
+    let doc = docs
+        .one(doc_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(crate::msg!("record.bake.no-such-document", "no such document")))?;
     let format = doc
         .display_head()
@@ -565,7 +564,7 @@ pub async fn publish(
         // Plaintext (and the media-format refusal inside) take the plain path: no embeds.
         return Ok(Outcome::Posted(docs.publish(doc_id, None, Vec::new(), reply, flags).await?));
     }
-    let resolved = docs.resolved(doc).await?;
+    let resolved = docs.resolved(&doc).await?;
     let body = resolved.body.ok_or_else(|| {
         AppError::BadRequest(crate::msg!("record.bake.this-notes-words-havent-arrived", "this note's words haven't arrived on this computer yet"))
     })?;
@@ -611,11 +610,18 @@ pub async fn publish(
     // A picture that names nothing - not the author's, not in this build (a built-in whose file
     // moved, a picture since deleted) - is left out and the rest is published, as a chat line
     // does (Curtis, 2026-09-29).
-    let held = docs.all().await?;
+    let named: Vec<[u8; 16]> = refs
+        .iter()
+        .filter_map(|r| match r {
+            MediaRef::PrivateDoc { doc_id, .. } => Some(*doc_id),
+            _ => None,
+        })
+        .collect();
+    let held = docs.held(&named).await?;
     let mut missing: Vec<String> = Vec::new();
     for r in &refs {
         match r {
-            MediaRef::PrivateDoc { target, doc_id: media } if crate::builtin::get(media).is_none() && !held.docs.contains_key(media) => {
+            MediaRef::PrivateDoc { target, doc_id: media } if crate::builtin::get(media).is_none() && !held.contains(media) => {
                 missing.push(target.clone());
             }
             MediaRef::PrivateDoc { target, doc_id: media } => {

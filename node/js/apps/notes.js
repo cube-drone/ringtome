@@ -11,11 +11,12 @@
 // what let Recipes and Wikibook wear the same skeleton before they were folded back into
 // Writer (2026-08-08), and what lets Lost & Found wear it now without importing a line.
 import { h } from 'preact';
-import { useState, useEffect, useContext } from 'preact/hooks';
+import { useState, useEffect, useContext, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from '../net.js';
+import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
@@ -104,29 +105,65 @@ function highlight(line, words) {
         .map((part, i) => (i % 2 === 1 ? html`<mark class="snippet-hit" key=${i}>${part}</mark>` : part));
 }
 
+// A row reads its note only once it is on (or near) the screen, from the remembered copy when the
+// mirror still vouches for one, and a row that leaves before the read lands calls it off. Every
+// result used to read at once: a search over a 1500-note persona sent 128 note reads in one
+// breath, each queued on the persona's one database connection, and the whole persona - every
+// page, every poll - waited ten seconds behind them (2026-10-02).
 const Snippet = ({ root, docId, query }) => {
     const [body, setBody] = useState(() =>
         snippetBodyCache.has(docId) ? snippetBodyCache.get(docId) : null
     );
+    const [seen, setSeen] = useState(false);
+    const spot = useRef(null);
+    useEffect(() => {
+        if (seen || body != null) return undefined;
+        const el = spot.current;
+        if (!el || typeof IntersectionObserver === 'undefined') {
+            setSeen(true);
+            return undefined;
+        }
+        const watch = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    setSeen(true);
+                    watch.disconnect();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        watch.observe(el);
+        return () => watch.disconnect();
+    }, [seen, body]);
     useEffect(() => {
         if (snippetBodyCache.has(docId)) {
             setBody(snippetBodyCache.get(docId));
-            return;
+            return undefined;
         }
+        if (!seen) return undefined;
         let alive = true;
-        api(`/api/identity/${root}/docs/${docId}`)
-            .then((d) => {
-                const b = d && typeof d.body === 'string' ? d.body : '';
-                snippetBodyCache.set(docId, b);
-                if (alive) setBody(b);
+        const stop = new AbortController();
+        const keep = (b) => {
+            snippetBodyCache.set(docId, b);
+            if (alive) setBody(b);
+        };
+        cachedDoc(root, docId)
+            .then((hit) => {
+                if (!alive) return undefined;
+                if (hit) return keep(typeof hit.body === 'string' ? hit.body : '');
+                return api(`/api/identity/${root}/docs/${docId}`, { signal: stop.signal }).then((d) => {
+                    rememberDoc(root, docId, d);
+                    keep(d && typeof d.body === 'string' ? d.body : '');
+                });
             })
             .catch(() => alive && setBody(''));
         return () => {
             alive = false;
+            stop.abort();
         };
-    }, [root, docId]);
+    }, [root, docId, seen]);
 
-    if (body == null) return null; // still loading
+    if (body == null) return html`<span ref=${spot} class="note-row-snippet-wait"></span>`; // not read yet
     const words = queryWords(query);
     const lines = snippetLines(body, words, 3);
     if (!lines.length) return null;
@@ -526,13 +563,17 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     </button>`}
                     ${tagFilter.length > 0 &&
                     html`<div class="notes-tagfilter">
+                        ${/* `tag`, never `t`: a parameter named `t` shadows the i18n t(), and the
+                            title below then called a TAG STRING as a function - the first chip
+                            threw, the render died, and every tag click looked like nothing
+                            (2026-10-02; doc/annotations.js carries the same scar from 2026-08-29). */ ''}
                         ${tagFilter.map(
-                            (t) => html`<button
+                            (tag) => html`<button
                                 class="annot-tag annot-tag-active jag-line"
-                                key=${t}
+                                key=${tag}
                                 title=${t('apps.notes.remove-filter', 'remove filter')}
-                                onClick=${() => toggleTag(t)}
-                            >${t} ×</button>`
+                                onClick=${() => toggleTag(tag)}
+                            >${tag} ×</button>`
                         )}
                     </div>`}
                     ${list.map(

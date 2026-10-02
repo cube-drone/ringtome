@@ -2,6 +2,7 @@
 **/js/target/
 **/*.rs.bk
 *.pdb
+*.log
 
 # local node data (per-user databases, key files, materialized views)
 # data-b + data-dht: `just start-two`'s second node and shared local discovery folder

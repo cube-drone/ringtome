@@ -1026,6 +1026,34 @@ pub async fn collection_registers(
     ))
 }
 
+/// Every collection of `service_id` whose register `key` holds a non-empty value, as
+/// `(collection, value)` - one query across the service, for the sweeps that look for the few
+/// documents carrying a field (the scheduled-publish pass's plans) rather than asking each of
+/// thousands in turn.
+pub async fn registers_keyed(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+    key: &str,
+) -> Result<Vec<(String, String)>, AppError> {
+    catch_up(db, keys, service_id).await?;
+    let rows: Vec<(String, Option<Vec<u8>>)> = db
+        .fetch_all(
+            "SELECT collection, value FROM private_registers WHERE service = ?1 AND key = ?2",
+            (i64::from(service_id), key),
+        )
+        .await
+        .context("reading one key across collections")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(collection, value)| {
+            let value = String::from_utf8_lossy(&value?).into_owned();
+            (!value.trim().is_empty()).then_some((collection, value))
+        })
+        .collect())
+}
+
 /// One collection's present set elements (element order), plus the undecryptable count.
 pub async fn collection_set_elements(
     db: &Db,

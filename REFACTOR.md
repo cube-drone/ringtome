@@ -94,5 +94,7 @@ after every write by construction. The mint-window evidence (a refresh 1ms behin
 committed dial reading the pre-write ledger, subscriptions.rs gate doc) says something
 real was there. Standing ask: if any "read the past" line ever shows again - a fold
 narration's stale pointer count against its own claimed head, a beat that read pre-write
-state - capture the window; the drain-then-fail rules and the CANCELLATION hole ("don't
-wrap `fetch_*` in timeouts") remain the constraints on any storage-layer dig.
+state - capture the window; the drain-then-fail rules remain the constraint on any storage-layer
+dig. (The CANCELLATION hole that stood beside them is settled, 2026-10-02: turso 0.7 runs a
+statement inside one poll and resets a dropped one cleanly - `db.rs`'s
+`a_statement_dropped_mid_stream_leaves_the_connection_clean` - so timeouts are safe.)

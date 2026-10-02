@@ -812,6 +812,19 @@ impl Documents<'_> {
             .await
     }
 
+    /// One document of the view, without building the rest of it (`materialize_one`): what
+    /// every single-document read asks for. None when nothing of it is stored.
+    pub async fn one(&self, doc_id: &[u8; 16]) -> Result<Option<crate::record::documents::Doc>, AppError> {
+        crate::record::documents::materialize_one(&self.store.db, &self.store.authorship.epoch_keys, doc_id)
+            .await
+    }
+
+    /// Which of `ids` the view holds (`held_of`): the embed checks, without the view.
+    pub async fn held(&self, ids: &[[u8; 16]]) -> Result<BTreeSet<[u8; 16]>, AppError> {
+        crate::record::documents::held_of(&self.store.db, &self.store.authorship.epoch_keys, ids)
+            .await
+    }
+
     /// The search index, current: one token-bag row per document over title, resolved body,
     /// and annotation text (field values and tags, so a long description is exactly as
     /// findable as body prose). Stale rows refresh on this read, the same catch-up-on-read
@@ -1482,6 +1495,28 @@ impl Annotations<'_> {
             }
         }
         Ok(claimed)
+    }
+
+    /// Every one of this persona's documents carrying a non-empty `field`, with its value - one
+    /// query (`private::registers_keyed`) where asking [`Self::field`] of each document was a
+    /// catch-up and a read per document: the scheduled-publish sweep did exactly that, every
+    /// minute, across a 1500-note persona, to find the drafts with a plan - usually none
+    /// (2026-10-02).
+    pub async fn docs_with_field(&self, field: &str) -> Result<Vec<([u8; 16], String)>, AppError> {
+        let rows = private::registers_keyed(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            field,
+        )
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(collection, value)| {
+                let (root, doc_id) = parse_annot_collection(&collection)?;
+                (root == self.store.root).then_some((doc_id, value))
+            })
+            .collect())
     }
 
     /// Read one annotation field, or None. Reads the DOC-META view, not the general-private

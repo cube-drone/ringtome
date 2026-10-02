@@ -3675,10 +3675,9 @@ async fn publish_drawing_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let docs = data.documents();
-    let view = docs.all().await?;
-    let doc = view
-        .docs
-        .get(&doc_id)
+    let doc = docs
+        .one(&doc_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing")))?;
     if doc.display_head().map(|h| Format::from_wire(h.header.format)) != Some(Format::Drawing) {
         return Err(AppError::BadRequest(crate::msg!(
@@ -3686,7 +3685,7 @@ async fn publish_drawing_handler(
             "only a drawing publishes by this door"
         )));
     }
-    let title = docs.resolved(doc).await?.title;
+    let title = docs.resolved(&doc).await?.title;
     let head = doc.display_head().map(|v| hex::encode(v.hash));
 
     // The date, resolved as Writer's publish resolves it (PUBLISH.md): a claim in the past dates
@@ -3720,6 +3719,8 @@ async fn publish_drawing_handler(
     }
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    // Held still while the twin, the post and its labels land - one fold for the lot (fold::hold).
+    let held = crate::fold::hold(&root);
     let twin = crate::record::documents::save_public_media(&db, &signer, &state.files, &title, ingested, post_key, None, false).await?;
 
     // The alt text is the title, kept to what Marquee's `![...]` holds without a question.
@@ -3741,6 +3742,7 @@ async fn publish_drawing_handler(
     if let Some(head) = head {
         data.annotations().set_field(&doc_id, store::PUBLISHED_HEAD, &head).await?;
     }
+    drop(held);
     crate::fold::fold_now(&state, &root).await;
     Ok(Json(PublishResponse {
         post_id: Some(hex::encode(post_id)),
@@ -3888,9 +3890,13 @@ async fn publish_handler(
             .into_response());
         }
     }
+    // The fold lane holds still while the publish writes (fold::hold): every twin, the post and
+    // its labels land first, and the drain below folds them as one run instead of one each.
+    let held = crate::fold::hold(&root);
     match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, flags).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
             after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
+            drop(held); // before the drain - a holder that drains its own root waits forever
             // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
             // user card still listed the mention on the very next read): the restated
             // statements reach the memo through the fold lane, which nothing else rings
@@ -4632,8 +4638,7 @@ const REPLICATED_TAGS_CAP: usize = 32;
 /// mentioned (Contact tags, ruling 5). Marquee only: plain text has no cards.
 async fn draft_mentions(data: &store::Store, draft_id: &[u8; 16]) -> Result<Vec<[u8; 32]>, AppError> {
     let docs = data.documents();
-    let view = docs.all().await?;
-    let Some(doc) = view.docs.get(draft_id) else { return Ok(Vec::new()) };
+    let Some(doc) = docs.one(draft_id).await? else { return Ok(Vec::new()) };
     let format = doc
         .display_head()
         .map(|h| crate::record::documents::Format::from_wire(h.header.format))
@@ -4641,7 +4646,7 @@ async fn draft_mentions(data: &store::Store, draft_id: &[u8; 16]) -> Result<Vec<
     if format != crate::record::documents::Format::Marquee {
         return Ok(Vec::new());
     }
-    Ok(match docs.resolved(doc).await?.body {
+    Ok(match docs.resolved(&doc).await?.body {
         Some(body) => crate::record::bake::mentions(&body),
         None => Vec::new(),
     })
@@ -4815,14 +4820,13 @@ async fn replicate_annotations(
     // The same words give the post its length tag (`documents::length_tag`).
     {
         let docs = data.documents();
-        let view = docs.all().await?;
-        if let Some(doc) = view.docs.get(draft_id) {
+        if let Some(doc) = docs.one(draft_id).await? {
             let format = doc
                 .display_head()
                 .map(|h| crate::record::documents::Format::from_wire(h.header.format))
                 .unwrap_or(crate::record::documents::Format::Plaintext);
             if format.is_mergeable_text() {
-                if let Some(body) = docs.resolved(doc).await?.body {
+                if let Some(body) = docs.resolved(&doc).await?.body {
                     // A post's length; a room is a place to talk, not a read, so it has none.
                     let post_format = crate::record::documents::public_head(data.db(), post_id).await?.map(|h| crate::record::documents::Format::from_wire(h.format));
                     let reads = matches!(post_format, Some(crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext));
@@ -5483,10 +5487,9 @@ async fn docs_copy_handler(
             return Err(AppError::BadRequest(crate::msg!("identity.routes.a-private-note-is-your-own", "a private note to copy must be one of your own")));
         }
         let docs = data.documents();
-        let view = docs.all().await?;
-        let doc = view
-            .docs
-            .get(&doc_id)
+        let doc = docs
+            .one(&doc_id)
+            .await?
             .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-note-to-copy", "no such note to copy")))?;
         let format = doc
             .display_head()
@@ -5502,7 +5505,7 @@ async fn docs_copy_handler(
         ) {
             return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
         }
-        let resolved = docs.resolved(doc).await?;
+        let resolved = docs.resolved(&doc).await?;
         let body = resolved
             .body
             .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.those-words-havent-arrived", "those words haven't arrived on this computer yet")))?;
@@ -6071,10 +6074,8 @@ async fn docs_body_impl(
     if let Some(b) = crate::builtin::get(&doc_id) {
         return Ok(builtin_bytes(b));
     }
-    let view = data.documents().all().await?;
-
     // Version-less: not a real document (yet, or ever). Let the ingest queue explain why.
-    let Some(doc) = view.docs.get(&doc_id) else {
+    let Some(doc) = data.documents().one(&doc_id).await? else {
         return version_less_body_status(&state, &session.account.id.to_string(), doc_id).await;
     };
 
@@ -6142,10 +6143,9 @@ async fn docs_thumb_handler(
     if let Some(b) = crate::builtin::get(&doc_id) {
         return Ok(builtin_bytes(b));
     }
-    let view = data.documents().all().await?;
-    let doc = view
-        .docs
-        .get(&doc_id)
+    let doc = data.documents()
+        .one(&doc_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-2", "document not found")))?;
     let head = doc
         .display_head()
@@ -6185,10 +6185,9 @@ async fn docs_preview_handler(
 ) -> Result<impl IntoResponse, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let view = data.documents().all().await?;
-    let doc = view
-        .docs
-        .get(&doc_id)
+    let doc = data.documents()
+        .one(&doc_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-3", "document not found")))?;
     let head = doc
         .display_head()
@@ -6527,10 +6526,9 @@ async fn docs_get_handler(
             builtin: true,
         }));
     }
-    let view = data.documents().all().await?;
-    let doc = view
-        .docs
-        .get(&doc_id)
+    let doc = data.documents()
+        .one(&doc_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-4", "document not found")))?;
 
     // Media facts for the display head. Its presence also decides body inlining: a media body is
@@ -6562,7 +6560,7 @@ async fn docs_get_handler(
     let mut save_parents: Vec<String> = doc.heads.iter().map(hex::encode).collect();
     save_parents.sort();
 
-    let resolved = data.documents().resolved(doc).await?;
+    let resolved = data.documents().resolved(&doc).await?;
     let format = doc
         .display_head()
         .map(|v| crate::record::documents::Format::from_wire(v.header.format).as_str())
@@ -7179,10 +7177,9 @@ async fn docs_debug_handler(
 ) -> Result<Json<DebugDump>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let view = data.documents().all().await?;
-    let doc = view
-        .docs
-        .get(&doc_id)
+    let doc = data.documents()
+        .one(&doc_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-5", "document not found")))?;
     let names = data.devices().all().await.unwrap_or_default();
 
@@ -7220,7 +7217,7 @@ async fn docs_debug_handler(
     } else {
         Vec::new()
     };
-    let resolved = data.documents().resolved(doc).await?;
+    let resolved = data.documents().resolved(&doc).await?;
 
     Ok(Json(DebugDump {
         node_name: state.config.node_name.clone(),

@@ -13831,3 +13831,45 @@ page built its card from hand-picked fields and dropped the stamps (Curtis: no "
 also hid a backdated post's "written {date}" - all three of its item builders carry `dated_ms`,
 `minted_ms` and `updated_ms` now; an unedited post's two stamps are equal on every surface, so nothing
 reads "edited" that wasn't.
+
+**2026-10-02 - a tag click in the notes list works again.** Curtis: "clicking on tags in that huge list
+don't seem to work at all". The active-filter chips mapped the filter with a parameter named `t`, shadowing
+the i18n `t()`, so the first chip's title called a tag string as a function: the render threw, and every
+tag click looked like nothing happened - the very bug doc/annotations.js fixed on 2026-08-29, alive in a
+second copy. Renamed `tag`. Seen in headless Chrome over a 1500-note persona: the chip, and no error.
+(The same probe timed the suspicion it was sent for: a doc list 138 ms and a tagged read 123 ms over 1550
+documents, the index's first full build 0.74 s - not the slowness Curtis saw.)
+
+**2026-10-02 - the crawl after a big search, found and mostly removed.** Curtis: a deep search over a
+1000-note private folder, a few clicks, and the server slowed to a crawl. Thirty minutes of his server's
+journal (17k lines; a triage filter boiled it to the parts worth reading) showed nearly every request on
+his persona waiting, not working: `time.idle` in seconds beside `time.busy` in milliseconds. The shape
+is the persona's ONE database connection, every statement queued on `stmt_lock` in arrival order - so
+anything bursty multiplies the wait of everything else, and a burst of N reads all finish together at
+the end. Four sources of the burst, each cut:
+- **A single-note read built the whole notes view.** The doc GET, its body, thumb and preview, copy,
+  the drawing publish, `draft_mentions`, the label restatement, publish's own lookups and the embed
+  checks all called `documents().all()` - fetch and thread every version of every document - to read
+  one. `Documents::one` (`materialize_one`: the same catch-up, then `load_doc`, whose test already pinned
+  it equal to the view's slice) and `Documents::held` (one indexed probe per id) replace them. On a
+  1500-note scratch persona: one read 21 -> 7 ms, a body 27 -> 5 ms, 128 reads at once 2.4 -> 0.43 s.
+- **The search page read every result's note at once** for its snippets - 128 in one breath on his
+  server, ten seconds each. `Snippet` now reads only rows on (or near) the screen, from the remembered
+  copy when the mirror vouches for one, and aborts the read when the row goes away. Seen in headless
+  Chrome over 60 results: 8 reads, then 10 more on scrolling.
+- **A publish folded once per picture.** Each public twin is its own POSTS move, the fold lane ran the
+  whole chain after each, and the publish drains the lane - so a fifteen-picture post at his server's
+  ~3 s fold answered after 45-55 s. `fold::hold` keeps the lane still while a publish (and a drawing's,
+  a book rollout, a takedown) writes; the drain then folds the lot once. Locally: nine folds -> one.
+- **Background sweeps walked the whole persona every few seconds.** The corner balance's
+  `bank?lines=0` (every 10 s and on every autosave) ran the bank's full catch-up each time; it now
+  answers the balance alone and catches up only when the persona's files moved or a minute has passed
+  (the bank page still catches up in full; a warm corner poll: 4 ms). The scheduled-publish pass built the whole view and read
+  `publish_plan` of each of ~1500 documents, every minute; one query now finds the drafts with a plan.
+Also settled: turso cancellation, the `Db` doc's open hole. On a local file turso 0.7 runs a statement
+inside a single poll (measured), and its `Drop` resets a statement abandoned mid-stream - pinned on a
+disk database by `a_statement_dropped_mid_stream_leaves_the_connection_clean`; timeouts are safe. The
+same measurement means a statement holds its tokio worker for as long as it runs. Answered for
+NEXT_STEPS: other personas barely felt it (their requests averaged 15-43 ms through the window); search
+re-decrypts only notes whose fingerprint changed. Not explained from here: his server's fold costs a
+median 851 ms with nothing else in flight, against ~50 ms on a laptop over a comparable persona. `just ci` green.

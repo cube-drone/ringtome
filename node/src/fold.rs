@@ -45,6 +45,10 @@ struct RootFold {
     folded: tokio::sync::watch::Sender<u64>,
     /// A worker task is alive for this root.
     running: bool,
+    /// Live [`Hold`]s: while any stands, the worker starts no new run (see [`hold`]).
+    holds: u32,
+    /// Rung when the last hold drops, so a parked worker resumes without polling.
+    released: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl Default for RootFold {
@@ -55,7 +59,58 @@ impl Default for RootFold {
             ledger_pending: false,
             folded,
             running: false,
+            holds: 0,
+            released: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
+    }
+}
+
+/// Hold this root's fold lane still while a burst of writes lands: the run in progress
+/// finishes, but no new one starts until the guard drops - then ONE run covers the burst.
+/// Nudges during the hold are kept (the generation still climbs), only deferred.
+///
+/// Why (2026-10-02): a publish mints a public twin per embedded picture, then the post, then
+/// its labels - each its own append, each a frontier move - and the lane, faithfully, ran the
+/// whole chain after every one. A post with fifteen pictures folded sixteen times, and on a
+/// persona whose fold costs three seconds the publish answered after fifty. Every run but the
+/// last re-derived state the next append immediately made stale.
+///
+/// The one rule, the same as the chain's own: a holder must NEVER `drain`/`fold_now` the root
+/// it holds - the run it waits for cannot start until it lets go. Drop the guard first.
+#[must_use = "the hold lasts only as long as the guard"]
+pub struct Hold {
+    root: String,
+}
+
+pub fn hold(root: &str) -> Hold {
+    with_root(root, |s| s.holds += 1);
+    Hold { root: root.to_string() }
+}
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        let released = with_root(&self.root, |s| {
+            s.holds = s.holds.saturating_sub(1);
+            (s.holds == 0).then(|| s.released.clone())
+        });
+        if let Some(released) = released {
+            released.notify_waiters();
+        }
+    }
+}
+
+/// Park until no hold stands on `root`. Registered for the wake BEFORE looking, so a release
+/// landing between the look and the wait is never missed.
+async fn until_unheld(root: &str) {
+    loop {
+        let released = with_root(root, |s| s.released.clone());
+        let woken = released.notified();
+        tokio::pin!(woken);
+        woken.as_mut().enable();
+        if with_root(root, |s| s.holds == 0) {
+            return;
+        }
+        woken.await;
     }
 }
 
@@ -150,6 +205,7 @@ where
         armed: true,
     };
     loop {
+        until_unheld(&root).await;
         let (target, ledger) = snapshot(&root);
         chain(ledger).await;
         if complete(&root, target) {
@@ -390,6 +446,56 @@ mod tests {
                 "drain returned before any run had covered generation {g}"
             );
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_hold_defers_every_run_and_its_release_folds_the_burst_once() {
+        let root = "fold-test-hold";
+        let runs = Arc::new(AtomicU64::new(0));
+        let make = {
+            let runs = runs.clone();
+            move |_ledger: bool| {
+                let runs = runs.clone();
+                async move {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        };
+        let held = hold(root);
+        let mut last = 0;
+        for _ in 0..10 {
+            last = test_nudge(root, false, make.clone());
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 0, "nothing folds while the hold stands");
+        drop(held);
+        drain(root, last).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "the whole burst folds in one run");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn holds_nest_and_the_lane_waits_for_the_last() {
+        let root = "fold-test-hold-nested";
+        let runs = Arc::new(AtomicU64::new(0));
+        let make = {
+            let runs = runs.clone();
+            move |_ledger: bool| {
+                let runs = runs.clone();
+                async move {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        };
+        let outer = hold(root);
+        let inner = hold(root);
+        let g = test_nudge(root, false, make.clone());
+        drop(inner);
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 0, "one hold still stands");
+        drop(outer);
+        drain(root, g).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

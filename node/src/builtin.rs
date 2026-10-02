@@ -131,7 +131,7 @@ pub async fn adopt(
         return Err(AppError::NotFound(crate::msg!("builtin.not-in-this-build", "that picture no longer comes with the app")));
     };
     let docs = data.documents();
-    if docs.all().await?.docs.contains_key(id) {
+    if docs.held(&[*id]).await?.contains(id) {
         return docs.media_bytes_present(id).await;
     }
     let account = crate::identity::account_of(&state.node_db, root_hex)

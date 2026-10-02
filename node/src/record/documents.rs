@@ -2542,6 +2542,42 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
     Ok(view)
 }
 
+/// ONE document, caught up and threaded: exactly `materialize(..).docs.get(doc_id)`
+/// (`load_doc`'s own test pins the equivalence), without fetching and threading every other
+/// document to find it. None when no version of it is stored - the view's own absence.
+///
+/// The single-document reads (a note's detail, body, thumb) used the whole view, and the cost
+/// was only seen at scale (2026-10-02): a search page opens a snippet read per result, so 128
+/// reads at once each folded a 1500-note persona, queued on its one connection, and every page
+/// of that persona waited ten seconds.
+pub async fn materialize_one(db: &Db, keys: &EpochKeys, doc_id: &[u8; 16]) -> Result<Option<Doc>, AppError> {
+    catch_up(db, keys).await?;
+    let doc = load_doc(db, doc_id).await?;
+    Ok((!doc.versions.is_empty()).then_some(doc))
+}
+
+/// Which of `ids` this persona holds any version of - `materialize(..).docs.contains_key`, per
+/// id, one indexed probe each instead of the whole view (the embed checks of a publish or a
+/// chat line, which name a handful of documents among thousands).
+pub async fn held_of(db: &Db, keys: &EpochKeys, ids: &[[u8; 16]]) -> Result<BTreeSet<[u8; 16]>, AppError> {
+    catch_up(db, keys).await?;
+    let mut held = BTreeSet::new();
+    for id in ids {
+        if held.contains(id) {
+            continue;
+        }
+        let found: Option<(i64,)> = db
+            .fetch_optional("SELECT 1 FROM doc_versions WHERE doc_id = ?1 LIMIT 1", (id.to_vec(),))
+            .await
+            .context("probing one document")
+            .map_err(AppError::Internal)?;
+        if found.is_some() {
+            held.insert(*id);
+        }
+    }
+    Ok(held)
+}
+
 // ---------------------------------------------------------------------------------------------
 // The memoized list read (doc_heads). One row per document, written by refresh_doc_heads above;
 // these readers catch the fold up (which re-memoizes whatever changed) and then read rows back -

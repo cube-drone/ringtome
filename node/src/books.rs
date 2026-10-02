@@ -188,6 +188,9 @@ async fn rollout(
     bucket: &str,
     plan: &mut Plan,
 ) -> Result<()> {
+    // Every page, the book and its update land before anything folds: one run for the rollout,
+    // not one per page (fold::hold). Dropped before the drain at the end.
+    let held = crate::fold::hold(root);
     // The facts: which pages, which hidden, which book.
     let view = data.documents().all().await?;
     let buckets = data.buckets().all().await?;
@@ -529,6 +532,7 @@ async fn rollout(
     }
     // The public lane moved: reconcile every reader's journal against the shelf now, so the
     // author's own feed read after the 200 already shows the truth (the takedown's idiom).
+    drop(held);
     let generation = crate::fold::nudge(state, root);
     crate::fold::drain(root, generation).await;
     plan.status = "done".into();
@@ -736,6 +740,7 @@ pub struct Takedown {
 /// mints a fresh book) and the pending plan, if any, is dropped. The fold is drained so the
 /// author's next read is already true - the takedown's own idiom.
 pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket: &str) -> Result<Takedown> {
+    let held = crate::fold::hold(root); // every retraction lands, then one fold (fold::hold)
     let (facts_json, _) = data.private_registers(BOOKS_KV).all().await?;
     let mut facts: BookFacts = facts_json
         .iter()
@@ -786,6 +791,7 @@ pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket
         .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
         .await?;
     data.private_registers(ROLLOUT_KV).set(bucket, "").await?;
+    drop(held);
     let generation = crate::fold::nudge(state, root);
     crate::fold::drain(root, generation).await;
     tracing::info!(root = %root, bucket = %bucket, pages = took.pages, updates = took.updates, "book taken down");

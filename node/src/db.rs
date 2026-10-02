@@ -143,11 +143,17 @@ impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 
 /// 2026-08-24 stale-serve bug) - because an open statement (a half-read RETURNING above all)
 /// blocks further writes on the connection and pins a read snapshot every later read repeats.
 ///
-/// **The remaining hole is CANCELLATION** (REFACTOR: the storage dig): a `fetch_*` future
-/// dropped mid-iteration - a caller timeout, an aborted HTTP handler - exits without the
-/// drain, and whether the statement is finalized then depends on turso's `Rows` Drop. Until
-/// that is verified-or-fixed, do not wrap `fetch_*` calls in timeouts, and treat "reads on
-/// one persona went stale until the next write" as this hazard's signature.
+/// **Cancellation, settled (2026-10-02; it was this doc's open hole).** A `fetch_*` future
+/// dropped by a caller timeout or an aborted HTTP handler cannot leave a statement open: on a
+/// local file turso 0.7 runs each statement to completion inside a single poll, so the only
+/// place such a future can be dropped is the wait for `stmt_lock`, before its statement
+/// exists. And a statement that IS dropped mid-stream is reset by turso's own `Drop` - the
+/// read ended, unfinished DML rolled back, a yielded RETURNING committed - leaving the
+/// connection writable and its next read current. Both are pinned on a disk database by
+/// `a_statement_dropped_mid_stream_leaves_the_connection_clean`; timeouts are safe.
+///
+/// The same fact has a cost worth knowing: a statement holds its tokio worker thread for as
+/// long as it runs. A heavy one stalls that thread, not merely this persona.
 /// Statements between volume-triggered WAL truncations (see `Db::execute`). Sized so a
 /// storm's log stays around a megabyte: ~1MB/s of frames was ~250 statements/s.
 const CHECKPOINT_EVERY: u64 = 256;
@@ -1494,5 +1500,78 @@ mod tests {
         let journal_path = dir.join("journals").join(format!("{root_hex}.jnl"));
         let frames = crate::record::journal::read_journal(&journal_path).unwrap();
         assert_eq!(frames.len(), 2, "both appends are in the journal, across the eviction");
+    }
+
+    /// The CANCELLATION hole the open-statement rule left open (the `Db` doc; REFACTOR's storage
+    /// dig): does a statement abandoned mid-iteration - a dropped future, an aborted handler -
+    /// leave the shared connection writable, and its next read current? Asked on a DISK database
+    /// under encryption, the shape that once wedged (the in-memory db never reproduced it, see
+    /// `a_decode_error_still_drains_the_statement`). turso 0.7's answer, read from its source
+    /// (2026-10-02): dropping `Rows` drops the core statement, whose `Drop` resets it - draining
+    /// pending IO, then `abort`, which ends a read and rolls back unfinished DML, or `halt`s a
+    /// write whose RETURNING already yielded (its DML is complete by then: buffered RETURNING).
+    /// This pins that answer, so a turso bump that changes it fails here and not in the field.
+    #[tokio::test]
+    async fn a_statement_dropped_mid_stream_leaves_the_connection_clean() {
+        let dir = temp_dir().await;
+        let mgr = UserDbManager::new(&dir, temp_keystore(&dir), 8);
+        let db = mgr.create("cancel_pubkey").await.unwrap();
+        db.execute("CREATE TABLE probe (v INTEGER)", ()).await.unwrap();
+        for chunk in 0..20 {
+            let values: Vec<String> = (0..100).map(|i| format!("({})", chunk * 100 + i)).collect();
+            db.execute(&format!("INSERT INTO probe (v) VALUES {}", values.join(",")), ())
+                .await
+                .unwrap();
+        }
+        let count = |db: Db| async move { db.fetch_one::<(i64,)>("SELECT COUNT(*) FROM probe", ()).await.unwrap().0 };
+
+        // A READ, three rows into two thousand, abandoned.
+        {
+            let _guard = db.stmt_lock.lock().await;
+            let mut rows = db.conn.query("SELECT v FROM probe ORDER BY v", ()).await.unwrap();
+            for _ in 0..3 {
+                rows.next().await.unwrap().unwrap();
+            }
+        }
+        db.execute("INSERT INTO probe (v) VALUES (-1)", ())
+            .await
+            .expect("the connection takes a write after an abandoned read");
+        assert_eq!(count(db.clone()).await, 2001, "and the next read sees it - no pinned snapshot");
+
+        // A WRITE with RETURNING, one row read and abandoned - the historic wedge's shape.
+        {
+            let _guard = db.stmt_lock.lock().await;
+            let mut rows = db
+                .conn
+                .query("INSERT INTO probe (v) SELECT v + 10000 FROM probe WHERE v < 10 RETURNING v", ())
+                .await
+                .unwrap();
+            rows.next().await.unwrap().unwrap();
+        }
+        let after = count(db.clone()).await;
+        assert!(after == 2001 || after == 2012, "the half-read insert landed whole or not at all, never partly: {after}");
+        db.execute("INSERT INTO probe (v) VALUES (-2)", ())
+            .await
+            .expect("the connection takes a write after an abandoned RETURNING");
+        assert_eq!(count(db.clone()).await, after + 1, "and reads stay current");
+
+        // The helper itself, dropped wherever a poll leaves it. On a local file turso 0.7 runs a
+        // whole statement inside ONE poll (measured 2026-10-02: every fetch here was Ready on
+        // its first poll), so a `fetch_*` can only be dropped while waiting for `stmt_lock`,
+        // before its statement exists - and should a later turso start yielding mid-statement,
+        // the two drops above are what that would meet. Either way: clean afterwards.
+        for polls in 1..6 {
+            let mut fut = Box::pin(db.fetch_all::<(i64,)>("SELECT v FROM probe ORDER BY v", ()));
+            let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+            for _ in 0..polls {
+                if std::future::Future::poll(fut.as_mut(), &mut cx).is_ready() {
+                    break;
+                }
+            }
+            drop(fut);
+            db.execute("INSERT INTO probe (v) VALUES (-3)", ()).await.expect("writable after a dropped fetch");
+        }
+        assert_eq!(count(db.clone()).await, after + 6);
+        tokio::fs::remove_dir_all(&dir).await.ok();
     }
 }

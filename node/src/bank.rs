@@ -177,6 +177,36 @@ pub async fn catch_up(state: &AppState, data: &Store, root_hex: &str) -> Result<
     catch_up_now(state, data, root_hex).await
 }
 
+/// How long the corner may go without a catch-up while the persona's own files sit still: the
+/// earnings those files don't record (a chat line, a reaction - node.db's) show within this.
+const CORNER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Per persona: when the corner last caught up, and the database files' mtime just BEFORE it
+/// ran - so a write landing during the run reads as a change, and the next poll runs again.
+static CORNER_SEEN: LazyLock<Mutex<HashMap<String, (std::time::Instant, i64)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The corner balance's catch-up: skipped while the persona's files haven't moved since the
+/// last one and it was under a minute ago. The corner asks every ten seconds and on every
+/// autosave, and each catch-up walks the persona's whole history - its documents, its chats,
+/// its heartbeats - to find, nearly always, nothing new; on a large persona that was seconds
+/// of its one database connection per ask, queued in front of everything the person was
+/// actually doing (2026-10-02). The bank page itself always catches up in full.
+async fn catch_up_for_corner(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
+    let files = state.user_dbs.db_mtime_ms(root_hex);
+    let started = std::time::Instant::now();
+    if let Some(files) = files {
+        let seen = CORNER_SEEN.lock().expect("corner marks poisoned").get(root_hex).copied();
+        if seen.is_some_and(|(at, mtime)| mtime == files && at.elapsed() < CORNER_RECHECK) {
+            return Ok(());
+        }
+    }
+    catch_up(state, data, root_hex).await?;
+    if let Some(files) = files {
+        CORNER_SEEN.lock().expect("corner marks poisoned").insert(root_hex.to_string(), (started, files));
+    }
+    Ok(())
+}
+
 async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
     recount_stale_publications(data).await?;
     let have = banked(data).await?;
@@ -558,7 +588,8 @@ fn month_bounds(month: &str) -> Option<(i64, i64)> {
 /// on the page), a total per kind, every month's line count and total (newest first), and ONE
 /// month's lines that paid something, newest first, with what each was for (Curtis, 2026-09-29:
 /// after years the ledger is tens of thousands of lines - the page opens a month at a time).
-/// `?lines=0` skips the ledger (the corner balance's poll).
+/// `?lines=0` is the corner balance's poll: the balance alone, caught up only when something
+/// moved (`catch_up_for_corner`).
 pub async fn bank_handler(
     session: crate::auth::Session,
     axum::extract::State(state): axum::extract::State<AppState>,
@@ -566,6 +597,11 @@ pub async fn bank_handler(
     axum::extract::Query(q): axum::extract::Query<BankQuery>,
 ) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    if q.lines == Some(0) {
+        catch_up_for_corner(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
+        let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
+        return Ok(axum::Json(json!({ "balance": total.to_string() })));
+    }
     catch_up(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
     let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
     // Every month's count and total, off the lines' own times.
