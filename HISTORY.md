@@ -13673,3 +13673,32 @@ rest, `me=only`, or `me=0` (fanout.rs `Own`; an old unpick still reads as left o
 over what the other rows admit less its own exclusions - never thinned by its own onlys, which widen -
 and a left-out chip keeps its count from before, so it says what it hides and stays on the strip to
 click back. Left out reads struck through, outlined in coral.
+
+**2026-10-01 - writes show at once: optimistic doc rows.** Curtis: "new note" opened on "that isn't
+here" until the row arrived, and a published drawing stayed private for seconds - "the model of 'do
+something, then wait for the server to respond to show it' is going to be a worse UI experience than
+updating the local state and then reconciling it when the server catches up". A write now states its
+effect on the mirror's doc row at once (js/pure/optimistic.js, bound to the handle by mirror.js as
+`holdDoc` / `optimisticDoc` / `holdNewDoc`), marked with the server row it covers, and the stream
+settles it: each frame carrying the doc either agrees - the overlay goes - or predates the write, and
+the overlay is laid back over the newer row, inside apply()'s transaction; a failed request puts the
+server's row back for the caller to say why; two minutes unconfirmed and the server's row stands; a
+page closed mid-write leaves marked rows the next start restores. Wired in: a new note (notes app and
+tree - open at once, filed, settled only once the server's row is filed too), publish / schedule / take
+down / cancel in the publish bar (Writer and Drawing alike), delete, pin, and the reader's retitle. The
+mirror's header no longer says writes never touch it. Seen in headless Chrome on a 300-note scratch
+persona: the row in the mirror, optimistic and filed, 31 ms after the click; the page clean, never "not
+here"; the server's own row 8 s on. The lag itself isn't found - the scratch stream echoed in ~30 ms and
+a 750-doc list builds in ~90 ms - so somewhere between the write, the stream's wake and the browser's
+apply on a big real persona. `just ci` green.
+
+**2026-10-01 - the desktop app keeps you signed in: a lasting cookie, and sessions that slide.**
+Curtis: "every time the desktop application reboots ... it logs me out" - and it rebooted with every
+release. The server kept a session thirty days, but its cookie had no Max-Age: a session cookie, which
+a browser restoring its tabs may forgive and the desktop app's webview never does. The cookie now lives
+as long as the session (`Max-Age` from `SESSION_TTL_MS`). And at his yes, a session in use slides: the
+`Session` extractor pushes its expiry out to thirty days from now, at most once a day
+(`account_for_token_renewing`), and a middleware (`auth::renew_cookie`) sends the cookie again with a
+fresh Max-Age - never over a response that already speaks for it, so a logout's clearing stands. Only
+thirty days unused signs you out now; the update that ships this signs the desktop app out one last
+time, its session cookie being of the old kind. Two claims in auth.cjs; `just ci` green.

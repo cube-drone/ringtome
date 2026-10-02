@@ -15,7 +15,7 @@ use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
 
-use super::{account_for_token, has_tag, secret_eq, Account, TAG_ADMIN, TAG_NODE_ADMIN};
+use super::{account_for_token_renewing, has_tag, secret_eq, Account, TAG_ADMIN, TAG_NODE_ADMIN};
 use crate::error::AppError;
 use crate::AppState;
 
@@ -98,9 +98,16 @@ impl FromRequestParts<AppState> for Session {
                 .get(&session_cookie_name(state.config.port))
                 .map(|c| c.value().to_string())
                 .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "please sign in again")))?;
-            account_for_token(&state.node_db, &token)
+            let (account, renewed) = account_for_token_renewing(&state.node_db, &token)
                 .await?
-                .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "please sign in again")))
+                .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "please sign in again")))?;
+            // Renewed: the response carries the cookie again, with its Max-Age fresh (`renew_cookie`).
+            if renewed {
+                if let Some(slot) = parts.extensions.get::<RenewedSession>() {
+                    *slot.0.lock().expect("renewal slot poisoned") = Some(token);
+                }
+            }
+            Ok(account)
         }
         .await;
         if window {
@@ -118,6 +125,41 @@ impl FromRequestParts<AppState> for Session {
 
         Ok(Session { account, key: None })
     }
+}
+
+/// Room on a request for "this session just renewed" (2026-10-01, sliding sessions): an extractor
+/// can't touch the response, so `renew_cookie` puts this on the request, the `Session` extractor
+/// fills it when `account_for_token_renewing` pushed the expiry out, and `renew_cookie` sends the
+/// cookie again on the way out.
+#[derive(Clone, Default)]
+pub struct RenewedSession(std::sync::Arc<std::sync::Mutex<Option<String>>>);
+
+/// The middleware half of a session's renewal: re-send the session cookie, Max-Age and all, when
+/// the request's session renewed - unless the response already says something about that cookie
+/// (a logout clearing it), which stands.
+pub async fn renew_cookie(
+    State(state): State<AppState>,
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let slot = RenewedSession::default();
+    req.extensions_mut().insert(slot.clone());
+    let mut res = next.run(req).await;
+    let Some(token) = slot.0.lock().expect("renewal slot poisoned").take() else {
+        return res;
+    };
+    let name = session_cookie_name(state.config.port);
+    let said = res
+        .headers()
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .any(|v| v.to_str().is_ok_and(|v| v.starts_with(&format!("{name}="))));
+    if !said {
+        if let Ok(value) = axum::http::HeaderValue::from_str(&super::routes::session_cookie(token, state.config.port).to_string()) {
+            res.headers_mut().append(axum::http::header::SET_COOKIE, value);
+        }
+    }
+    res
 }
 
 /// The header the desktop app's window names itself by, on every request it makes: the launch

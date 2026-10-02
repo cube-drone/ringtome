@@ -5455,6 +5455,7 @@ dependencies = [
  "symphonia",
  "tar",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tokio-util",
  "tower-http",

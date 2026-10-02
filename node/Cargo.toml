@@ -31,6 +31,9 @@ ringtome-proto = { path = "../proto" }
 # web service
 axum = { version = "0.8", features = ["macros", "multipart", "ws"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
+# The session cookie's Max-Age (auth/routes.rs): the duration type the cookie crate takes; already in
+# the tree through it.
+time = "0.3"
 tower-http = { version = "0.6", features = ["trace"] }
 tokio = { version = "1", features = ["full"] }
 

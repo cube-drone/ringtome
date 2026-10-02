@@ -69,6 +69,12 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Document: list attached files (informs GC)
   * Produce a list of media files that aren't linked anywhere
 * mp3 tags -> annotations (keep things like album artist)
+* Find the write-to-echo lag on a big persona: a new note or a publish took seconds to reach the
+  mirror on Curtis's node, where a 300-note scratch persona echoes in ~30 ms and a 750-doc list
+  builds in ~90 ms. Time each leg on the real node - the write, the stream's wake (`gather`), the
+  frame's size, the browser's `apply` - before guessing.
+* Optimistic rows (js/pure/optimistic.js) for the writes still waiting on the stream: a new
+  notebook (buckets.js), emptying a notebook, and the post-side surfaces outside the publish bar.
 
 ### Public posts and fan-out
 

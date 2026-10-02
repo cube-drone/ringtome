@@ -2,7 +2,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch, sql, HOST } = require("./fetch.cjs");
 
 // Unique username per run so repeated test runs against a persistent node don't collide.
 function uniqueUsername() {
@@ -56,6 +56,48 @@ describe("auth", function () {
         // whoami is unauthorized again (session revoked server-side).
         resp = await fetch("api/auth/whoami");
         assert.equal(resp.status, 401, "whoami should be 401 after logout");
+    });
+
+    it("keeps the session cookie as long as the session - it outlives the app that set it (2026-10-01)", async function () {
+        // A cookie with no Max-Age dies with the browser process; the desktop app's webview drops it
+        // at every relaunch, and every update relaunches it (Curtis: "it logs me out").
+        const fetch = makeFetch();
+        const username = uniqueUsername();
+        await register(fetch, username, "correct horse battery staple");
+        const resp = await login(fetch, username, "correct horse battery staple");
+        assert.equal(resp.status, 200);
+        const cookie = resp.headers.get("set-cookie") || "";
+        assert.match(cookie, /ringtome_session_\d+=/, cookie);
+        assert.match(cookie, /Max-Age=2592000/, `thirty days, the server's own: ${cookie}`);
+    });
+
+    it("slides a session in use out to thirty days again, at most once a day, and sends the cookie anew", async function () {
+        // Curtis, 2026-10-01: logged out every thirty days however much the app was used.
+        const fetch = makeFetch();
+        const username = uniqueUsername();
+        await register(fetch, username, "correct horse battery staple");
+        const cookie = (await login(fetch, username, "correct horse battery staple")).headers.get("set-cookie") || "";
+        const token = (cookie.match(/ringtome_session_\d+=([0-9a-f]+)/) || [])[1];
+        assert.ok(token, cookie);
+        const DAY = 24 * 3600 * 1000;
+        const expiry = async () => Number((await sql(`SELECT expires_at_ms FROM sessions WHERE token = '${token}'`, HOST)).rows[0].expires_at_ms);
+
+        let resp = await fetch("api/auth/whoami");
+        assert.equal(resp.headers.get("set-cookie"), null, "a session just made is fresh: nothing to renew");
+
+        // Five days left, as if it were made twenty-five days ago.
+        await sql(`UPDATE sessions SET expires_at_ms = ${Date.now() + 5 * DAY} WHERE token = '${token}'`, HOST);
+        resp = await fetch("api/auth/whoami");
+        assert.equal(resp.status, 200);
+        assert.match(resp.headers.get("set-cookie") || "", /Max-Age=2592000/, "used, it renews - and says so to the browser");
+        assert.ok((await expiry()) > Date.now() + 29 * DAY, "thirty days from now again");
+
+        resp = await fetch("api/auth/whoami");
+        assert.equal(resp.headers.get("set-cookie"), null, "and not again the same day");
+
+        resp = await fetch("api/auth/logout", { method: "POST" });
+        assert.equal(resp.status, 200);
+        assert.equal((await fetch("api/auth/whoami")).status, 401, "a logout still ends it");
     });
 
     it("rejects wrong passwords and duplicate usernames", async function () {

@@ -871,6 +871,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let attention = state.attention.clone();
     let shell = state.shell.clone();
     let app = app
+        // Sliding sessions (2026-10-01): a renewed session's cookie goes out again on the response.
+        .layer(axum::middleware::from_fn_with_state(state.clone(), auth::renew_cookie))
         .with_state(state)
         .layer(
             TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {

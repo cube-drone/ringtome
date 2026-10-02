@@ -12,7 +12,7 @@ mod extractor;
 pub mod keys;
 mod routes;
 
-pub use extractor::{window_offered, NodeAdminSession, Session, WINDOW_HEADER};
+pub use extractor::{renew_cookie, window_offered, NodeAdminSession, Session, WINDOW_HEADER};
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};
@@ -33,8 +33,8 @@ pub const TAG_NODE_ADMIN: &str = "node_admin";
 /// Administrator: may grant/revoke any tag *except* `node_admin`.
 pub const TAG_ADMIN: &str = "admin";
 
-/// How long a freshly-created session is valid.
-const SESSION_TTL_MS: i64 = 1000 * 60 * 60 * 24 * 30; // 30 days
+/// How long a freshly-created session is valid - and how long its cookie lives (auth/routes.rs).
+pub(crate) const SESSION_TTL_MS: i64 = 1000 * 60 * 60 * 24 * 30; // 30 days
 /// Session token entropy.
 const TOKEN_BYTES: usize = 32;
 
@@ -258,6 +258,33 @@ pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, Ap
 
 /// Resolve a session token to its account, if the token exists and has not expired.
 pub async fn account_for_token(db: &Db, token: &str) -> Result<Option<Account>, AppError> {
+    Ok(session_row(db, token).await?.map(|(account, _)| account))
+}
+
+/// A session in use slides (Curtis, 2026-10-01: logged out every 30 days whatever you did): its
+/// expiry moves to a full `SESSION_TTL_MS` from now - but at most this often, so a busy session
+/// costs one write a day rather than one a request.
+const SESSION_RENEW_EVERY_MS: i64 = 1000 * 60 * 60 * 24;
+
+/// `account_for_token` for a request: the account, and whether the session was just renewed - in
+/// which case the caller re-sends the cookie, whose Max-Age the renewal has outgrown.
+pub async fn account_for_token_renewing(db: &Db, token: &str) -> Result<Option<(Account, bool)>, AppError> {
+    let Some((account, expires_at_ms)) = session_row(db, token).await? else {
+        return Ok(None);
+    };
+    let now = now_ms();
+    let due = expires_at_ms - now < SESSION_TTL_MS - SESSION_RENEW_EVERY_MS;
+    if due {
+        db.execute("UPDATE sessions SET expires_at_ms = ?1 WHERE token = ?2", (now + SESSION_TTL_MS, token))
+            .await
+            .context("renewing session")
+            .map_err(AppError::Internal)?;
+    }
+    Ok(Some((account, due)))
+}
+
+/// A live session's account and expiry; an expired one is cleaned up and answers None.
+async fn session_row(db: &Db, token: &str) -> Result<Option<(Account, i64)>, AppError> {
     let row: Option<(String, String, i64)> = db
         .fetch_optional(
             "SELECT a.id, a.username, s.expires_at_ms
@@ -273,7 +300,7 @@ pub async fn account_for_token(db: &Db, token: &str) -> Result<Option<Account>, 
         Some((id, username, expires_at_ms)) if expires_at_ms > now_ms() => {
             let id = Uuid::parse_str(&id)
                 .map_err(|e| AppError::Internal(anyhow!("corrupt account id: {e}")))?;
-            Ok(Some(Account { id, username }))
+            Ok(Some((Account { id, username }, expires_at_ms)))
         }
         // Expired: opportunistically clean it up.
         Some(_) => {
