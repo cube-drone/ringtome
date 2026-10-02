@@ -509,6 +509,20 @@ pub async fn fresh_window(Json(req): Json<FreshWindowRequest>) -> Result<Json<Va
 }
 
 #[derive(Deserialize)]
+pub struct ForeignRevalidateRequest {
+    /// Milliseconds; 0 restores the thirty-second default.
+    pub ms: i64,
+}
+
+/// Override how long a fetched foreign profile is served before a visit revalidates it - a
+/// suite cannot sit out the real thirty seconds to watch it happen (the fresh-window idiom).
+pub async fn foreign_revalidate(Json(req): Json<ForeignRevalidateRequest>) -> Result<Json<Value>, AppError> {
+    crate::idface::FOREIGN_REVALIDATE_OVERRIDE.store(req.ms.max(0), std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(ms = req.ms, "LOCAL_TEST foreign revalidate override");
+    Ok(Json(serde_json::json!({ "ms": req.ms })))
+}
+
+#[derive(Deserialize)]
 pub struct PublishInlineRequest {
     /// Milliseconds the publish door waits before answering 202; negative restores the default.
     pub ms: i64,

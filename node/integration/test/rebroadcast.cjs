@@ -152,9 +152,10 @@ const base58 = async (host) => {
         const doc = await createDoc(bob, bobRoot, "bobs own musings", "not a recommendation");
         await bob(`api/identity/${bobRoot}/docs/${doc.id}/publish`, { method: "POST" });
 
-        // Give it as long as the assertion above needed to succeed, so this is a real absence
-        // rather than a race won by asserting early.
-        await new Promise((r) => setTimeout(r, 8000));
+        // Run the very road that delivered Bob's share above - pull Bob to Cleo's node, fold,
+        // drain - so this is a real absence rather than a race won by asserting early. (It
+        // was an 8 s sleep, the road's worst case guessed at; the beats ARE the road.)
+        await shareArrives(HOST_C, bobRoot, bobRoot);
         const rows = await feedOf(cleoRoot, HOST_C);
         assert.ok(
             !rows.some((r) => r.title === "bobs own musings"),

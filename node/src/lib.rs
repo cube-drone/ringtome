@@ -845,6 +845,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
                 axum::routing::post(test_endpoints::fresh_window),
             )
             .route(
+                "/test/foreign-revalidate",
+                axum::routing::post(test_endpoints::foreign_revalidate),
+            )
+            .route(
                 "/test/publish-inline",
                 axum::routing::post(test_endpoints::publish_inline),
             )

@@ -470,6 +470,18 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
 /// swap transfers nothing; only a persona that actually moved costs more than a kilobyte).
 const FOREIGN_REVALIDATE_MS: i64 = 30 * 1000;
 
+/// A test node's runtime override of [`FOREIGN_REVALIDATE_MS`] (`/test/foreign-revalidate`); 0
+/// means none. Per test, never boot-wide: the claim that watches a visit revalidate behind its
+/// answer slept the real thirty seconds, the slowest wait in the suite (2026-10-02).
+pub static FOREIGN_REVALIDATE_OVERRIDE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+fn foreign_revalidate_ms() -> i64 {
+    match FOREIGN_REVALIDATE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        ms if ms > 0 => ms,
+        _ => FOREIGN_REVALIDATE_MS,
+    }
+}
+
 /// Record a successful foreign fetch - ON DISK (amended 2026-08-02 from an in-memory map):
 /// once an identity's own nodes go permanently dark, it survives exactly in the nodes that
 /// fetched it and their memory of having done so; a fleet of friendly nodes rebooting must
@@ -3255,7 +3267,7 @@ pub async fn id_profile(
             // reader should not wait on a stranger's node to find that out.
             Some((at, _)) => {
                 synced_ms = Some(*at);
-                if now - at >= FOREIGN_REVALIDATE_MS {
+                if now - at >= foreign_revalidate_ms() {
                     refreshing = spawn_revalidate(&state, root_hex.clone(), via);
                 }
                 refreshing = refreshing || state.refreshing.lock().unwrap().contains(&root_hex);

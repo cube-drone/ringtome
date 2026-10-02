@@ -61,6 +61,10 @@ const TOPIC_DOMAIN: &[u8] = b"ringtome-chat/";
 const FRAME_ENTRY: u8 = 0;
 const FRAME_PRESENCE: u8 = 1;
 
+/// How recently a socket on this node must have beaconed to be announced to a new neighbor: a
+/// live socket beacons every ten seconds, so anyone quieter than this has left.
+const LOCAL_BEACON_FRESH_MS: i64 = 12_000;
+
 /// How long a presence beacon counts as "here", and a typing beacon as typing.
 const PRESENCE_TTL_MS: i64 = 30_000;
 const TYPING_TTL_MS: i64 = 6_000;
@@ -88,6 +92,9 @@ pub struct RoomLive {
     sender: tokio::sync::Mutex<iroh_gossip::api::GossipSender>,
     events: tokio::sync::broadcast::Sender<LiveEvent>,
     presence: Mutex<HashMap<String, Presence>>,
+    /// The personas on THIS node beaconing into the room, and when each last did - who to
+    /// announce again when a neighbor arrives (see `run_topic`).
+    local: Mutex<HashMap<String, i64>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
@@ -188,6 +195,7 @@ pub async fn join(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u
         sender: tokio::sync::Mutex::new(sender),
         events,
         presence: Mutex::new(HashMap::new()),
+        local: Mutex::new(HashMap::new()),
         task: Mutex::new(None),
     });
     let task = tokio::spawn(run_topic(state.clone(), *doc, receiver, live.clone()));
@@ -215,6 +223,28 @@ async fn run_topic(state: AppState, doc: [u8; 16], mut receiver: iroh_gossip::ap
     while let Some(event) = receiver.next().await {
         match event {
             Ok(iroh_gossip::api::Event::Received(msg)) => on_frame(&state, &doc, &msg.content, &live).await,
+            // A new neighbor heard nothing said before it arrived - including the "here" each
+            // socket beacons as it opens, which goes out while the topic has nobody to carry
+            // it. Say it again for everyone here who is still beaconing (a socket does every
+            // ten seconds), or the other side learns of them only at the next heartbeat: ten
+            // seconds of an empty room with somebody in it (2026-10-02).
+            Ok(iroh_gossip::api::Event::NeighborUp(_)) => {
+                let now = crate::clock::now_ms();
+                let here: Vec<String> = live
+                    .local
+                    .lock()
+                    .expect("local presence poisoned")
+                    .iter()
+                    .filter(|(_, at)| now - **at < LOCAL_BEACON_FRESH_MS)
+                    .map(|(root, _)| root.clone())
+                    .collect();
+                let state = state.clone();
+                tokio::spawn(async move {
+                    for root in here {
+                        beacon(&state, &doc, &root, None).await;
+                    }
+                });
+            }
             Ok(iroh_gossip::api::Event::Lagged) => {
                 // Dropped frames are the sync lane's to heal: pull the room now.
                 let (viewer, author) = (live.viewer_root.clone(), live.room_author.clone());
@@ -330,6 +360,7 @@ pub async fn broadcast_entry(state: &AppState, doc: &[u8; 16], root_hex: &str, b
 pub async fn beacon(state: &AppState, doc: &[u8; 16], root_hex: &str, typing: Option<bool>) {
     let Some(live) = state.live.get(doc) else { return };
     live.note_presence(root_hex, typing);
+    live.local.lock().expect("local presence poisoned").insert(root_hex.to_string(), crate::clock::now_ms());
     let _ = live.events.send(LiveEvent::Presence);
     let Some(root) = crate::pubkey::decode(root_hex) else { return };
     let mut frame = Vec::with_capacity(34);

@@ -35,6 +35,16 @@
   fine". Run it freely: since 2026-08-08 it no longer disturbs a running dev network (below).
   To iterate on one acceptance file, `RINGTOME_TEST_GREP=<title pattern> just integration`
   runs only the matching claims against the full rig (2026-09-05).
+- **Gate by tier** (2026-10-02, when ten-to-twenty-minute waits were slowing everything down):
+  while iterating, run the gate that covers what moved — `just ui-check` for JS, `cargo test
+  -p ringtome-node` for Rust, `RINGTOME_TEST_GREP=<area> just integration` for one acceptance
+  area (match every top-level `describe` of the files touched: a grep that catches one claim of
+  a file without its setup claims fails for that reason alone). Run full `just ci` once per
+  batch — before handing work over for review, and before anything lands near sync, storage
+  or the HTTP surface — in the background, carrying on with other work rather than waiting;
+  never edit source while it runs, or its verdict covers neither version. At session start,
+  check `gh run list`: a red run on `main` is a finding under the rule above, settled before
+  new work.
 - **`just ci` and `just integration` are safe beside a running dev network** (2026-08-08).
   They used to bind the same ports `just start*` did, so integration began by killing every
   ringtome on the machine — which is why this file used to demand a warning first. Now each
@@ -46,7 +56,8 @@
 - **Testing beside a running dev network** (2026-08-05, after a broad pkill killed it):
   throwaway nodes come from `just scratch 1|2|3` (an index into the scratch lane, not a port)
   and die by `just scratch-kill` — PID-file scoped, and scoped to this checkout, so it can
-  touch neither `just start*` nor another checkout. Never bind a port by hand; never pkill by
+  touch neither `just start*` nor another checkout. It also deletes the scratch data; to
+  reboot one onto the data it holds, stop it by its PID file and `just scratch N 1`. Never bind a port by hand; never pkill by
   pattern; point the generator at scratch nodes with `RINGTOME_TESTDATA_PORTS=<the ports
   `just scratch` printed>`.
 - **The two recipes that are still machine-wide** — warn before running either while anything

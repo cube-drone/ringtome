@@ -14,7 +14,7 @@ const path = require("node:path");
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat } = require("./beat.cjs");
 
-const SQUIRREL = path.join(__dirname, "..", "..", "..", "sample_media", "animated_color_squirrel.gif");
+const SQUIRREL = path.join(__dirname, "..", "..", "..", "sample_media", "animated_color_squirrel_small.gif");
 
 describe("video posts: an already-crushed video bakes a public twin", function () {
     this.timeout(600000);

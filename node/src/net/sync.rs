@@ -2027,13 +2027,24 @@ async fn serve_on(
         .await?;
         write_frame(&mut send, &SyncMessage::Done).await?;
         send.finish().ok();
-        // Wait for the requester to read its polite nothing and go - but not forever: this
-        // seat is UNPROVEN, and a requester that lingers (or was detached and forgotten)
-        // held it for the whole wall clock, which is how the rig drained the pool
-        // (2026-09-05). A few seconds is plenty for two frames; then we close.
-        if tokio::time::timeout(std::time::Duration::from_secs(5), conn.closed()).await.is_err() {
-            conn.close(0u8.into(), b"not served here");
-        }
+        // Close as soon as the requester has said its last - its own Done, or its stream's end.
+        // Waiting for the CONNECTION to close instead was a standoff: a requester holding
+        // nothing writes its Done and waits for us to close, as it does with any responder
+        // (`exchange_on`), so every look-up of a persona this node doesn't carry cost the
+        // whole timeout - five seconds of a page waiting on a node that had already said
+        // "nothing here" (2026-10-02). The timeout stays the bound on a requester that never
+        // finishes: this seat is UNPROVEN, and one that lingered (or was detached and
+        // forgotten) held it for the whole wall clock, which is how the rig drained the pool
+        // (2026-09-05).
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Ok(Some(frame)) = read_frame(&mut recv).await {
+                if matches!(frame, SyncMessage::Done) {
+                    break;
+                }
+            }
+        })
+        .await;
+        conn.close(0u8.into(), b"not served here");
         return Ok(());
     }
 

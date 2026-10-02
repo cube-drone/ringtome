@@ -11,7 +11,7 @@
     fingerprint is "ahead" of another is deliberately not asserted, because a hash cannot say.
 */
 const assert = require("node:assert");
-const { sql } = require("./fetch.cjs");
+const { sql, makeFetch } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat } = require("./beat.cjs");
 
@@ -253,14 +253,21 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         await setName("After");
 
         // Past the anti-hammer floor, a visit answers from what we hold - possibly the OLD
-        // name - and starts a refresh behind it.
-        await new Promise((r) => setTimeout(r, 31000));
-        const stale = await (await us(`api/id/${far}/profile${via}`)).json();
-        assert.equal(stale.refreshing, true, "a revalidation is running behind this answer");
-        assert.ok(
-            stale.synced_ms <= Date.now() - 30000,
-            "and it reports the older sync it is serving from, not this moment"
-        );
+        // name - and starts a refresh behind it. The floor is thirty seconds; this node's is two
+        // for the claim (`/test/foreign-revalidate`), rather than sitting out the real one.
+        const floor = (ms) => makeFetch()("test/foreign-revalidate", { method: "POST", body: JSON.stringify({ ms }) });
+        await floor(2000);
+        try {
+            await new Promise((r) => setTimeout(r, 2500));
+            const stale = await (await us(`api/id/${far}/profile${via}`)).json();
+            assert.equal(stale.refreshing, true, "a revalidation is running behind this answer");
+            assert.ok(
+                stale.synced_ms <= Date.now() - 2000,
+                "and it reports the older sync it is serving from, not this moment"
+            );
+        } finally {
+            await floor(0);
+        }
 
         // And asking again shortly gets the new name, with nobody dialing by hand.
         const fresh = await settle(async () => {

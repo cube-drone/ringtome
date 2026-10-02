@@ -28,7 +28,7 @@ const { makeUserFetch, makePng } = require("./helpers.cjs");
 const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 const { sql, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 
-const SQUIRREL = path.join(__dirname, "..", "..", "..", "sample_media", "animated_color_squirrel.gif");
+const SQUIRREL = path.join(__dirname, "..", "..", "..", "sample_media", "animated_color_squirrel_small.gif");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");

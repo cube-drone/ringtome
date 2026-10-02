@@ -13899,3 +13899,18 @@ big; Curtis settled 1.6x in the dev console), the featured card's in step. The a
 (`excerpt::descriptionOf`) is `.feed-entry-subtitle` under the title and leaves the chip row; anyone
 else's description stays a label, as theirs. Seen in headless Chrome wide and narrow - on the stacked
 card the subtitle keeps with its title, above the buttons. `just ci` green.
+
+**2026-10-02 - the suite's slowest waits, cut: two of them were the product's.** Curtis: ten-to-twenty
+minute CI waits slow everything down. Where the time went (one green run): integration 8 min, and 78
+claims of 1342 held 286 s of it. Cut, slowest first: the foreign-profile revalidation claim slept the
+real 30 s anti-hammer floor (31.5 -> 3 s: `/test/foreign-revalidate`, the fresh-window idiom); the two
+animation claims transcoded an 800x600, 72-frame GIF (21.6 -> 4.5 s and 24.1 -> 7.8 s on
+`animated_color_squirrel_small.gif`, 160x120, 24 frames, still opaque); a rebroadcast absence slept 8 s
+where running the delivery road itself proves more (8.1 -> 0.1 s). And two were real delays users had:
+**a room's presence took ten seconds to cross** - a socket's opening "here" beacon went out while the
+gossip topic had no neighbor to carry it, so the far side heard of you at the next heartbeat; a
+`NeighborUp` now re-announces everyone on this node still beaconing (`chat::run_topic`). And **a look-up
+of a persona a dialed node doesn't carry cost five seconds** - requester and responder each sent Done
+and waited for the other to close the connection until the responder's guard timed out; the responder
+now closes on the requester's own Done (`sync::serve_on`). Integration 8 -> 6 min, the >=1 s claims 286
+-> 167 s, `just ci` 539 s wall. `just ci` green.

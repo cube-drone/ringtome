@@ -587,7 +587,7 @@ describe("somebody else's picture, posted", function () {
             throw new Error(`${title} never finished ingesting`);
         };
         const sound = await uploaded("buck", sample("buck-audio.ogg"));
-        const loop = await uploaded("squirrel", sample("animated_color_squirrel.gif"));
+        const loop = await uploaded("squirrel", sample("animated_color_squirrel_small.gif"));
         const theirNote = (await (await theirs(`api/identity/${theirRoot}/docs`, {
             method: "POST",
             body: JSON.stringify({
