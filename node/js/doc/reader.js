@@ -26,6 +26,8 @@ import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { DrawingSurface } from './drawing.js';
+import { useStorage } from '../storage.js';
+import { sizeLabel } from '../pure/backups.js';
 
 const html = htm.bind(h);
 
@@ -37,6 +39,10 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     // The shared read-only loader (doc/detail.js). Write failures below get their own state; the
     // header shows whichever error is live.
     const { doc, error: loadError } = useDocDetail(root, docId);
+    // What this file takes, beside its format (Curtis, 2026-10-02): the persona's storage answer,
+    // shared with the files browser (storage.js).
+    const storage = useStorage(root);
+    const bytes = storage && storage.docs ? storage.docs[docId] : 0;
     const [writeError, setWriteError] = useState(null);
     const error = loadError || writeError;
     // The record around a read-only BODY is still editable: the title (via the media-safe
@@ -197,6 +203,8 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited on two computers at once. Both versions are below.')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
                         : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'merged from two computers')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)}
                     <${Chip}>${doc.format}</${Chip}>
+                    ${bytes > 0 &&
+                    html`<${Chip} title=${t('doc.reader.size-title', 'what this file takes: every version of it')}>${sizeLabel(bytes)}</${Chip}>`}
                     ${/* The app's own pictures (builtin.rs, 2026-09-29): nobody's to delete or rename. */ ''}
                     ${doc.builtin && html`<${Chip} title=${t('doc.reader.builtin-title', 'this picture comes with the app: anyone can use it, nobody can delete it')}>${t('doc.reader.builtin', 'comes with the app')}</${Chip}>`}
                     <${Chip}>${t('doc.reader.read-only', 'read-only')}</${Chip}>

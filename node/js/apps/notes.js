@@ -40,6 +40,8 @@ import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
 import { docHref } from '../links.js';
 import { FacetRow, narrowTitle } from '../facets.js';
 import { togglePick } from '../pure/facets.js';
+import { useStorage } from '../storage.js';
+import { sizeLabel } from '../pure/backups.js';
 import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
@@ -294,13 +296,13 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
 // hrseFiles™ laid out as the picture picker is (Curtis, 2026-09-29): the notebooks, then the tags,
 // then every file as a square tile - a picture or a drawing as itself, words as their icon and
 // title. The same chips as the picker, so the two read as one design.
-const FileTile = ({ doc, root, bucket, selected, onSelect, onFollowHome }) => {
+const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome }) => {
     const picture = doc.format === 'drawing' || (doc.media && doc.media.has_thumb);
     const Kind = formatIcon(doc.format) || Icons.page;
     return html`<li class="files-tile-slot">
         <button
             class=${doc.doc_id === selected ? 'files-tile selected' : 'files-tile'}
-            title=${doc.title || ''}
+            title=${bytes > 0 ? `${doc.title || t('apps.notes.untitled', 'untitled')} — ${sizeLabel(bytes)}` : doc.title || ''}
             data-settles
             onClick=${() => onSelect(doc.doc_id)}
             draggable=${true}
@@ -345,7 +347,7 @@ const FILE_KIND_NAMES = {
     video: () => t('apps.notes.kind-videos', 'videos'),
 };
 
-const FileBrowser = ({ root, bucket, browse, notebook, onNotebook, kinds, onToggleKind, tags, onToggleTag, selected, onSelect, onFollowHome, empty }) => html`<div
+const FileBrowser = ({ root, bucket, browse, sizes, notebook, onNotebook, kinds, onToggleKind, tags, onToggleTag, selected, onSelect, onFollowHome, empty }) => html`<div
     class="files-browser"
 >
     ${/* What kind of file, above everything (Curtis, 2026-10-02: "just get me images"): either of
@@ -397,6 +399,7 @@ const FileBrowser = ({ root, bucket, browse, notebook, onNotebook, kinds, onTogg
                       doc=${d}
                       root=${root}
                       bucket=${bucket}
+                      bytes=${sizes && sizes[d.doc_id]}
                       selected=${selected}
                       onSelect=${onSelect}
                       onFollowHome=${onFollowHome}
@@ -441,6 +444,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // after the search, and the tiles are the list prev/next walks.
     const ordered = orderDocs(docs, { app, bucket, hits, tags: app.everything ? [] : tagFilter, kind: searchKind });
     const browse = app.everything ? browseFiles(ordered, { notebook, tags: tagFilter, kinds: kindFilter }) : null;
+    // What the files take (storage.js): asked only in the browser, and again when the documents move.
+    const storage = useStorage(
+        app.everything ? root : null,
+        docs ? `${docs.length}:${docs.reduce((m, d) => Math.max(m, d.updated_ms || 0), 0)}` : undefined
+    );
     const list = browse ? browse.files : ordered;
 
     // Lost & Found's follow-me-home: the document's own address, which opens it in its first
@@ -568,6 +576,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                         root=${root}
                         bucket=${bucket}
                         browse=${browse}
+                        sizes=${storage && storage.docs}
                         notebook=${notebook}
                         onNotebook=${setNotebook}
                         kinds=${kindFilter}
@@ -579,6 +588,12 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                         onFollowHome=${followHome}
                         empty=${!docs ? '' : hits === null ? t('apps.notes.nothing-here-yet', 'nothing here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
                     />
+                    ${/* The persona in all, held at the column's foot (Curtis, 2026-10-02). */ ''}
+                    ${storage &&
+                    html`<p
+                        class="files-foot"
+                        title=${t('apps.notes.storage-foot-title', 'what moving this persona to another computer carries: every file, each version, and its own records')}
+                    >${t('apps.notes.storage-foot', '{size} in all', { size: sizeLabel(storage.move_bytes) })}</p>`}
                 </aside>${resizer('list')}`
                     : html`${tab('list', Icons.list, nouns)}<aside class="notes-list">
                     <${PaneHead} icon=${Icons.list} label=${nouns} onTuck=${() => toggleTuck('list')} />

@@ -13963,3 +13963,23 @@ notebook and tags, the tags counted under the notebook and kinds - each row with
 aside. A "show" `FacetRow` heads the browser, only where the files are of more than one kind. Seen in
 headless Chrome: posts 2, images 52 (the app's own pictures among them); posts picked, the 54 tiles
 down to the two notes and the tag row recounted to theirs. Pure claims for both. `just ci` green.
+
+**2026-10-02 - what a persona's files take, kept as memos.** Curtis: each file's size in the files
+browser (on hover, and a "238 KB" chip beside "avif" and "read-only" on the open file), the persona's
+total in a row held at the foot of the browser column, and - for node admins only - each persona's cost
+to move and value to evict in the People list. With a warning: HorseBucks rolled across whole chains too
+often and snapshotted too little, and this must stay fast for many users with long histories.
+`storage.rs` and node rung 66 keep it as memos. **A blob's size is measured once, ever** (`blob_sizes`:
+a hash names its bytes; the blob store's metadata, never the bytes). **A persona's tally is retaken only
+when its files moved** since the last, and never within 15 s of it - one plain read of the persisted fold
+(`documents::version_blobs`: no decrypt, no view) and sums - with per-file sizes held in memory against
+the mtime they were taken at; inside the window an answer says `stale`, and the browser asks once more
+when it may (a picture still ingesting at the last tally gets its size). **What each persona names is
+rows** (`persona_blobs`), rewritten by difference, so the value to evict - the blobs no other persona
+here names, plus its own database files - is one indexed query, for one persona or all; the cost to move
+is every blob its versions name, each once, plus the same files. A five-minute beat retallies personas
+whose files moved, eight at most; a persona at rest is never opened for it; eviction forgets the
+evicted. `/api/identity/{root}/storage` is the persona's own; `/api/node/storage` is `NodeAdminSession`.
+Seen in headless Chrome: "pic1 — 1.5 KB" on hover, the reader's "avif · 1.5 KB · read-only", "427 KB in
+all" pinned at the column's foot, and the admin's "move 307 KB · evict 307 KB" beside "also you".
+Claims in storage.cjs. `just ci` green.

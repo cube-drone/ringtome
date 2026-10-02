@@ -812,6 +812,15 @@ impl UserDbManager {
         vec![db, wal]
     }
 
+    /// What a persona's own files take on disk - its database, log, journal and heads checkpoint -
+    /// by stat alone (the storage tally's database share, storage.rs).
+    pub fn disk_bytes(&self, root_pubkey: &str) -> i64 {
+        let mut files = self.files_of(root_pubkey);
+        files.push(self.journal_path_for(root_pubkey));
+        files.push(self.heads_path_for(root_pubkey));
+        files.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len() as i64).sum()
+    }
+
     fn path_for(&self, root_pubkey: &str) -> PathBuf {
         self.users_directory.join(format!("{root_pubkey}.db"))
     }

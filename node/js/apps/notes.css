@@ -197,6 +197,20 @@
     width: var(--w-list, 240px);
 }
 
+/* hrseFiles's footing row: the persona in all, held at the bottom of the column however far the
+   tiles scroll (2026-10-02). */
+.files-foot {
+    position: sticky;
+    bottom: 0;
+    margin: 0;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-align: right;
+}
+
 /* hrseFiles's tile browser opens wide: a grid wants room, and it may take as much as it's given. */
 .notes-columns .notes-list-browser {
     width: var(--w-list, 480px);

@@ -9,7 +9,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* report storage use per account
+* storage use is reported per persona (storage.rs: the files browser, the admin's People list); an account's personas summed together isn't shown anywhere yet
 * on mobile People, folks' gigantic IDs are flattening their names
 * "automatic-node-friendship" mode
  * only available with password-based registration

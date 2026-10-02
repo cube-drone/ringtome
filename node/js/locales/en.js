@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1381 phrases across 87 files.
+// 1386 phrases across 87 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -295,6 +295,8 @@ export default {
     'apps.notes.tags': 'tags',
     'apps.notes.nothing-here-yet': 'nothing here yet.',
     'apps.notes.nothing-matches': 'nothing matches.',
+    'apps.notes.storage-foot-title': 'what moving this persona to another computer carries: every file, each version, and its own records',
+    'apps.notes.storage-foot': '{size} in all',
     'apps.notes.remove-filter': 'remove filter',
     'apps.notes.tree': 'tree',
     'apps.notes.publish': 'publish',
@@ -724,6 +726,7 @@ export default {
     'doc.reader.conflict': 'conflict',
     'doc.reader.changes-from-two-computers-woven': 'merged from two computers',
     'doc.reader.merged': 'merged',
+    'doc.reader.size-title': 'what this file takes: every version of it',
     'doc.reader.builtin-title': 'this picture comes with the app: anyone can use it, nobody can delete it',
     'doc.reader.builtin': 'comes with the app',
     'doc.reader.read-only': 'read-only',
@@ -883,6 +886,8 @@ export default {
     'person.active-today': 'active today',
     'person.active-yesterday': 'active yesterday',
     'person.active-days-ago': 'active {n} days ago',
+    'person.storage-title': 'on this node: moving them carries {move}; evicting them would free {evict}',
+    'person.storage': 'move {move} · evict {evict}',
     'person.chat-with-them-privately': 'chat with them, privately',
     'person.opening': 'opening…',
     'person.chat': 'chat',

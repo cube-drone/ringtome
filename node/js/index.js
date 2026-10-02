@@ -537,7 +537,7 @@ const Inside = ({ session }) => {
             <${ContentControl} path="/ringtome/persona/content" current=${persona.current} />
             <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
             <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
-            <${PeopleApp} path="/ringtome/people" current=${persona.current} searchQuery=${query} />
+            <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
             <${KeptFeedRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />

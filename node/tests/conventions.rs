@@ -21,6 +21,9 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("sessions", vec!["auth.rs"]),
         ("account_tags", vec!["auth.rs"]),
         ("api_keys", vec!["auth/keys.rs"]),
+        ("blob_sizes", vec!["storage.rs"]),
+        ("persona_blobs", vec!["storage.rs"]),
+        ("persona_storage", vec!["storage.rs"]),
         ("identities", vec!["identity.rs"]),
         ("pending_adoptions", vec!["identity/adoption.rs"]),
         // The frontier columns on identity_peers are frontier concepts; the peer bookkeeping
@@ -255,6 +258,7 @@ fn user_db_opens_are_deliberate() {
         // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request
         // budget, never per candidate; currency is the listing's own stamp.
         ("search.rs", 1),
+        ("storage.rs", 1),         // tally: ONE persona whose files moved, on its own files browser's ask or the beat's (a few per beat)
         ("annotations.rs", 2), // 2: `holder_admits` asks the one gate now (2026-09-10 pm); 3: `holder_admits` - once per DISTINCT seal holder among a page's sealed labels, memoised per request (2026-09-10),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
                                   // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
                                   // root being folded - serialized per root, never a persona loop (2026-08-26)

@@ -435,6 +435,15 @@
     font-size: 0.8em;
 }
 
+/* A node admin's figures for the persona (storage.rs): quiet, beside the relationship glance. */
+.person-row-storage {
+    margin-left: auto;
+    color: var(--faint);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    margin-right: 0.5rem;
+}
+
 .person-row-via {
     margin-left: auto;
     flex-shrink: 0;

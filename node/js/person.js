@@ -33,6 +33,7 @@ import { identiconUri } from './pure/identicon.js';
 import { daysSince } from './pure/heartbeat.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { sizeLabel } from './pure/backups.js';
 import {
     contactCollection,
     bandOf,
@@ -288,7 +289,7 @@ export const PersonBanner = ({ root, current, profile, actions }) => {
 /// The banner's roster form: the same face and names, plus your relationship at a glance,
 /// and the WHOLE row is the link (a list is a place you click, not a place you aim). What
 /// People is made of - one component instead of a table's worth of columns.
-export const PersonRow = ({ root, current, profile, aside }) => {
+export const PersonRow = ({ root, current, profile, aside, storage }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
     return html`
@@ -309,6 +310,16 @@ export const PersonRow = ({ root, current, profile, aside }) => {
                 better claim to the slot (the suggested shelf's "via ..." byline: a stranger
                 has no relationship to glance at, and "nothing recorded yet" would bury the
                 one fact that explains why they're on screen). */ ''}
+            ${/* A node admin's figures (storage.rs, 2026-10-02): what this persona would cost to
+                move, and what evicting it from this node would free - nobody else's business. */ ''}
+            ${storage &&
+            html`<span
+                class="person-row-storage"
+                title=${t('person.storage-title', 'on this node: moving them carries {move}; evicting them would free {evict}', {
+                    move: sizeLabel(storage.move_bytes),
+                    evict: sizeLabel(storage.evict_bytes),
+                })}
+            >${t('person.storage', 'move {move} · evict {evict}', { move: sizeLabel(storage.move_bytes), evict: sizeLabel(storage.evict_bytes) })}</span>`}
             ${aside
                 ? html`<span class="person-row-via">${aside}</span>`
                 : html`<${RelationshipGlance} facts=${person.facts} />`}

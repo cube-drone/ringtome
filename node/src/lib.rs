@@ -86,6 +86,7 @@ pub mod eviction;
 pub mod speculative;
 pub mod idface;
 pub mod speakable;
+pub mod storage;
 pub mod test_endpoints;
 pub mod ui;
 
@@ -662,6 +663,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     // second, and an index walk every second beside the fill pass loaded the dig's claim
     // into the red; the test door rings the index directly when a claim wants it.
     loops::periodic("search-index", std::time::Duration::from_secs(60), state.clone(), search::index_pass);
+    // Storage accounting (storage.rs): retally the personas whose files moved, a few per beat - the
+    // admin's People figures; a person's own files browser retallies their persona on ask.
+    loops::periodic("storage-tally", std::time::Duration::from_secs(300), state.clone(), storage::pass);
     // Scheduled publishes (PUBLISH.md slice 2): drafts whose preferred date lay in the
     // future mint when their moment comes. A minute is plenty - the date is a day at an
     // hour, never a deadline - and LOCAL_TEST may shorten it.
@@ -779,6 +783,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/downloads", get(downloads::downloads))
         .route("/api/node/census", get(census::census_handler))
         .route("/api/identity/{root}/bank", get(bank::bank_handler))
+        .route("/api/identity/{root}/storage", get(storage::persona_handler))
+        .route("/api/node/storage", get(storage::node_handler))
         .route("/api/identity/{root}/bank/instruments", axum::routing::post(bank::buy_handler))
         .route("/api/identity/{root}/bank/instruments/{id}/sell", axum::routing::post(bank::sell_handler))
         .route("/api/node/feed", get(nodeface::node_feed))

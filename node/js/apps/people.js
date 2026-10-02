@@ -99,8 +99,22 @@ const useDirectory = () => {
     return rows;
 };
 
-export const PeopleApp = ({ current, searchQuery }) => {
+export const PeopleApp = ({ current, admin = false, searchQuery }) => {
     const root = current && current.root;
+    // A node admin sees what each persona held here costs to move and would free to evict
+    // (storage.rs, 2026-10-02) - off the node's memos, one ask per visit; nobody else asks.
+    const [standings, setStandings] = useState(null);
+    useEffect(() => {
+        if (!admin) return undefined;
+        let live = true;
+        api('/api/node/storage')
+            .then((r) => live && setStandings((r && r.personas) || {}))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [admin]);
+    const standingOf = (r) => (standings ? standings[r] : null);
     const [sortBy, setSortBy] = useState('trust');
     // Search-first (settled 2026-08-08): the header bar's query filters the shelf, and the
     // shelf shows a SLICE. The DOM holds at most PEOPLE_SHELF_SLICE rows however many
@@ -205,6 +219,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
                             key=${p.root_pubkey}
                             root=${p.root_pubkey}
                             current=${current}
+                            storage=${standingOf(p.root_pubkey)}
                             aside=${t('apps.people.also-you', 'also you')}
                         />`
                     )}
@@ -231,7 +246,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
             </p>`}
             <div class="people-list">
                 ${visible.map(
-                    (row) => html`<${PersonRow} key=${row.root} root=${row.root} current=${current} />`
+                    (row) => html`<${PersonRow} key=${row.root} root=${row.root} current=${current} storage=${standingOf(row.root)} />`
                 )}
             </div>
             ${sorted.length > visible.length &&
