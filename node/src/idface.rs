@@ -2037,6 +2037,16 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
         if crate::postkeys::granted(&state.node_db, holder_hex, key_doc_hex, subject_hex).await.unwrap_or(false) {
             return true;
         }
+        // A chat for two (CHAT.md, ruling 12) is sealed to one person, whom only the author's
+        // node can name - and trust is no stand-in for them (Curtis's first live demo,
+        // 2026-10-01: a third person he trusted, on their own node, saw his chat with someone
+        // else listed and could open it). Away from the author's node, only the grant the lane
+        // gives the one it names admits anybody; the signed header says what kind of room it is.
+        if let Some(doc) = hex::decode(key_doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+            if crate::chat::is_im(state, holder_hex, &doc).await {
+                return false;
+            }
+        }
         return match state.user_dbs.get(holder_hex).await {
             Ok(Some(db)) => crate::record::imaol::published_edges(&db)
                 .await
@@ -2072,15 +2082,28 @@ pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: 
     seal_admits(state, holder_hex, key_doc_hex, subject_hex, via).await
 }
 
-/// The key for `viewer` to open `(holder, key_doc)`, or None: on the holder's own node the
-/// memo (the gate already judged the viewer); elsewhere the memo only on a grant to this
-/// persona, else the lane is asked FOR this persona and grants or refuses (2026-09-14: a
+/// The key for `viewer` to open `(holder, key_doc)`, or None: the holder's own, always; on the
+/// holder's own node the memo, for whoever the seal admits; elsewhere the memo only on a grant
+/// to this persona, else the lane is asked FOR this persona and grants or refuses (2026-09-14: a
 /// node hosts many personas, and a key one fetched is not the others' to use).
+///
+/// The holder's node used to hand the memo to ANY viewer, on the word that "the gate already
+/// judged the viewer" - but callers ask this AS the gate: a room's door falls back to it when the
+/// seal says no, and the chats list lists whatever it opens. So at Curtis's first live demo
+/// (2026-10-01) a private chat between him and one person, on a node hosting a third he also
+/// trusted, was listed for the third, opened, read and spoken in. The seal's own question is
+/// asked here now, so no caller can skip it.
 pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 16], viewer_hex: &str, via: Option<&str>) -> Option<[u8; 32]> {
     let key_doc_hex = hex::encode(key_doc);
     let held = crate::postkeys::lookup(&state.node_db, holder_hex, &key_doc_hex).await.ok().flatten();
-    if viewer_hex == holder_hex || hosted_here(state, holder_hex).await.unwrap_or(false) {
+    if viewer_hex == holder_hex {
         return held;
+    }
+    if hosted_here(state, holder_hex).await.unwrap_or(false) {
+        return match seal_admits(state, holder_hex, &key_doc_hex, viewer_hex, via).await {
+            true => held,
+            false => None,
+        };
     }
     if held.is_some() && crate::postkeys::granted(&state.node_db, holder_hex, &key_doc_hex, viewer_hex).await.unwrap_or(false) {
         return held;

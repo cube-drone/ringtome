@@ -13702,3 +13702,19 @@ as long as the session (`Max-Age` from `SESSION_TTL_MS`). And at his yes, a sess
 fresh Max-Age - never over a response that already speaks for it, so a logout's clearing stands. Only
 thirty days unused signs you out now; the update that ships this signs the desktop app out one last
 time, its session cookie being of the old kind. Two claims in auth.cjs; `just ci` green.
+
+**2026-10-01 - a private chat is private: two holes in the seal, closed.** Curtis's first live demo: he
+trusted both new users, opened a chat with one, and the other "could see that chat, and even popped
+in to say 'hi'". Two holes. (1) On the author's own node `idface::key_for` handed the key to ANY
+viewer, on the word that "the gate already judged the viewer" - but the room door falls back to it
+exactly when the seal says no (`room_seal_admits`), and the chats list lists what it opens: so every
+persona hosted beside the author passed every sealed room's door, IMs and trusted-only rooms alike -
+listed, opened, read through the server, spoken in. `key_for` now asks `seal_admits` itself on the
+holder's node, so no caller can skip it. (2) Away from the author's node `seal_admits` fell back to the
+author's published trust (the audience is known only at home): a trusted third person's own node listed
+the chat and opened it, though without the key it could read and say nothing. For a chat for two (the
+signed header's `im`) only the lane's grant to the one it names admits anybody now. The room key never
+reached a browser - the server decrypts - and the key lane itself was right, so existing chats need no
+new key: what a third person read before the fix is what leaked. Claims: housemates.cjs (three on one
+node, every door at once - five leaks before, none after) and ims.cjs (a trusted third on their own
+node - two before, none after). `just ci` green.

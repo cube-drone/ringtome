@@ -82,3 +82,77 @@ describe("housemates: two people on one node", function () {
         assert.ok(alert, `bea was alerted: ${JSON.stringify(await alertsFor(beaRoot))}`);
     });
 });
+
+/*
+    Three on one node (Curtis, 2026-10-01, the first live demo): A trusts both B and C, opens a
+    private chat with B - and C, trusted, saw it and said hi in it. A chat for two is sealed to the
+    one person it names; trust is not the audience.
+*/
+describe("housemates: a private chat stays between the two, whoever else is trusted", function () {
+    this.timeout(600000);
+
+    let ada, adaRoot, bea, beaRoot, cal, calRoot, speakable, chat;
+    const rooms = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
+
+    before(async function () {
+        ({ speakable } = await import("../../js/speakable.js"));
+        const person = async (prefix) => {
+            const who = await makeUserFetch({ prefix });
+            const root = (await (await who("api/identity", { method: "POST" })).json()).root_pubkey;
+            await who(`api/identity/${root}/serve`, { method: "POST" });
+            return [who, root];
+        };
+        [ada, adaRoot] = await person("trioada");
+        [bea, beaRoot] = await person("triobea");
+        [cal, calRoot] = await person("triocal");
+        // Ada trusts them both; they're interested in her, as a new account is in its first follows.
+        for (const r of [beaRoot, calRoot]) {
+            await j(ada, `api/identity/${adaRoot}/private/kv/contact:${r}/trust`, { value: "high" }, "PUT");
+        }
+        for (const [who, root] of [[bea, beaRoot], [cal, calRoot]]) {
+            await j(who, `api/identity/${root}/private/kv/contact:${adaRoot}/interest`, { value: "high" }, "PUT");
+        }
+        await beat(HOST, "mint", adaRoot);
+        const body = `:::user id=/id/${speakable(beaRoot)}:::`;
+        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "bea", body, format: "marquee" })).json();
+        await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
+        const pub = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {
+            room: true, im: true, trusted_only: true, audience: "@mentioned",
+        });
+        assert.equal(pub.status, 200, await pub.clone().text());
+        chat = (await pub.json()).post_id;
+        const said = await j(ada, `api/identity/${adaRoot}/rooms/${adaRoot}/${chat}/messages`, { words: "just for bea" });
+        assert.equal(said.status, 200, await said.text());
+        for (let i = 0; i < 10; i++) {
+            await beat(HOST, "outbox");
+            await beat(HOST, "fold", beaRoot);
+            await beat(HOST, "fold", calRoot);
+            if ((await rooms(bea, beaRoot)).some((r) => r.doc_id === chat)) break;
+            await wait(300);
+        }
+    });
+
+    it("bea has it", async () => {
+        assert.ok((await rooms(bea, beaRoot)).some((r) => r.doc_id === chat), "the one it names");
+        assert.equal((await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${chat}`)).status, 200);
+    });
+
+    it("cal, trusted too, never sees it: not listed, not opened, not read, not spoken in", async () => {
+        // Every door at once, so a failure names all the leaks rather than the first.
+        const leaks = [];
+        const listed = await rooms(cal, calRoot);
+        if (listed.some((r) => r.doc_id === chat)) leaks.push("listed in cal's chats");
+        const open = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${chat}`);
+        if (open.status === 200) leaks.push(`opened: ${(await open.text()).slice(0, 200)}`);
+        const body = await cal(`id/${adaRoot}/docs/${chat}/body`);
+        if (body.status === 200) leaks.push(`its words read: ${(await body.text()).slice(0, 80)}`);
+        const said = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${chat}/messages`);
+        if (said.status === 200 && (await said.text()).includes("just for bea")) leaks.push("ada's line read");
+        const hi = await j(cal, `api/identity/${calRoot}/rooms/${adaRoot}/${chat}/messages`, { words: "hi from cal" });
+        if (hi.status === 200) leaks.push("cal said hi");
+        await beat(HOST, "outbox");
+        const heard = await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${chat}/messages`)).text();
+        if (heard.includes("hi from cal")) leaks.push("ada heard cal");
+        assert.deepEqual(leaks, []);
+    });
+});

@@ -298,6 +298,26 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         }
     });
 
+    it("nor once ada trusts them, from their own node: trust is not the audience (2026-10-01)", async () => {
+        // Curtis's first live demo: a chat with one person, and a third he trusted could see it.
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${calRoot}/trust`, { value: "high" }, "PUT");
+        await beat(HOST, "mint", adaRoot);
+        await pullAndFold(HOST_C, adaRoot);
+        const leaks = [];
+        for (let i = 0; i < 3; i++) {
+            if ((await rooms(cal, calRoot)).some((r) => r.doc_id === chat)) leaks.push(`listed (try ${i})`);
+            const open = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${chat}`);
+            if (open.status === 200) leaks.push(`opened (try ${i}): ${(await open.text()).slice(0, 160)}`);
+            const hi = await j(cal, `api/identity/${calRoot}/rooms/${adaRoot}/${chat}/messages`, { words: "hi from a trusted third" });
+            if (hi.status === 200) leaks.push(`spoke (try ${i})`);
+            await wait(400);
+        }
+        await beat(HOST, "outbox");
+        const heard = await (await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${chat}/messages`)).text();
+        if (heard.includes("hi from a trusted third")) leaks.push("ada heard them");
+        assert.deepEqual(leaks, []);
+    });
+
     it("nobody mutes, deputizes, closes or deletes a private chat", async () => {
         const muted = await ada(`api/identity/${adaRoot}/rooms/${adaRoot}/${chat}/mutes/${beaRoot}`, { method: "POST" });
         assert.equal(muted.status, 400, await muted.text());
