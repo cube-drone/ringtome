@@ -628,3 +628,59 @@ describe("somebody else's picture, posted", function () {
         }
     });
 });
+
+describe("a post with many pictures publishes as a job, never against the clock", function () {
+    // An importer's old blog posts died at the CDN's 60 s timeout around fifteen pictures
+    // (2026-10-02): the publish now runs on its own task, the POST hands back a 202 with each
+    // picture's standing once it has waited a while, and every re-POST asks after the SAME job.
+    // The wait is set to nothing here, so six pictures are enough to watch the poll road.
+    const { makePng } = require("./helpers.cjs");
+    const inline = (ms) => anon("test/publish-inline", { method: "POST", body: JSON.stringify({ ms }) });
+    after(() => inline(-1));
+
+    it("answers 202 with every picture listed, then the post - minted once", async function () {
+        this.timeout(60000);
+        const pics = [];
+        for (let i = 0; i < 6; i++) {
+            const up = await owner(`api/identity/${root}/docs/binary?title=plate-${i}`, { method: "POST", body: makePng(20 + i, 20), file: true });
+            pics.push((await up.json()).doc_id);
+        }
+        for (const pic of pics) {
+            for (let i = 0; i < 60; i++) {
+                if ((await owner(`api/identity/${root}/docs/${pic}/body`)).status === 200) break;
+                await new Promise((r) => setTimeout(r, 300));
+            }
+        }
+        const body = pics.map((p, i) => `![plate ${i}](/api/identity/${root}/docs/${p}/body/plate-${i}.png)`).join("\n\n");
+        const note = await (
+            await owner(`api/identity/${root}/docs`, { method: "POST", body: JSON.stringify({ title: "Many plates", body, format: "marquee" }) })
+        ).json();
+        await inline(0);
+        const publish = () => owner(`api/identity/${root}/docs/${note.doc_id}/publish`, { method: "POST" });
+
+        const first = await publish();
+        const firstBody = await first.json();
+        assert.equal(first.status, 202, JSON.stringify(firstBody));
+        assert.equal(firstBody.publishing, true, "a running job, not media still ingesting");
+
+        // Until the job has read the note it knows no pictures; once it does, it lists them all.
+        let posted = null;
+        for (let i = 0; i < 200 && !posted; i++) {
+            const r = await publish();
+            const b = await r.json();
+            if (r.status === 200) posted = b;
+            else {
+                assert.equal(r.status, 202, JSON.stringify(b));
+                assert.ok([0, 6].includes(b.baking.length), `the whole list or none: ${JSON.stringify(b.baking)}`);
+                await new Promise((res) => setTimeout(res, 50));
+            }
+        }
+        assert.ok(posted && posted.post_id, "the job's answer reaches a later ask");
+        await inline(-1);
+
+        const words = await (await anon(`id/${root}/docs/${posted.post_id}/body`)).text();
+        assert.equal(words.split("/ringtome/").length - 1, 6, `every picture public in the post: ${words}`);
+        const prof = await (await anon(`api/id/${root}/profile`)).json();
+        assert.equal(prof.posts.filter((p) => p.title === "Many plates").length, 1, "the polls started no second publish");
+    });
+});

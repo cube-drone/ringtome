@@ -912,6 +912,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         // a sealed label so the people in the room see why they are there - it dresses
         // the wish chip below, never a chip of its own.
         .filter((a) => a.key !== 'audience');
+    // The author's own description is the post's subtitle (Curtis, 2026-10-02): small italics under
+    // the title, not an "about" chip among the tags. Anyone else's description stays a label.
+    const subtitle = descriptionOf(shownLabels, item.author);
+    const chipLabels = subtitle
+        ? shownLabels.filter((a) => !(a.key === 'description' && a.annotator === item.author))
+        : shownLabels;
     // The list a sealed post is for: the server says it for your own posts; for a post
     // sealed to the people mentioned, the author's own sealed label says it to the room.
     const saidAudience = ((item.annotations || []).find((a) => a.key === 'audience' && a.annotator === item.author) || {}).value;
@@ -1059,6 +1065,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 : item.format === 'book'
                   ? html`<${BookTitle}>${title}</${BookTitle}>`
                   : title}</a></h2>`}
+            ${!open && !!subtitle && html`<p class="feed-entry-subtitle">${subtitle}</p>`}
             </div>
             ${/* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
                 mini-card names what it answers - which is the whole reason context-free
@@ -1098,7 +1105,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     published_ms=${item.reply_to.published_ms}
                 />
             </p>`}
-            ${!open && (shownLabels.length > 0 || !!current || item.trusted_only || item.settled || pinned) &&
+            ${!open && (chipLabels.length > 0 || !!current || item.trusted_only || item.settled || pinned) &&
             html`<div class="feed-entry-labels">
                 ${pinned &&
                 html`<span class="label-chip label-chip-flag" title=${item.kind === 'share'
@@ -1126,7 +1133,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         : t('postentry.trusted-only', 'trusted only')}</span>`}
                 ${item.settled &&
                 html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`}
-                ${groupLabels(shownLabels, { author: item.author }).map((g) => {
+                ${groupLabels(chipLabels, { author: item.author }).map((g) => {
                     // One chip per (key, value), worn by everyone who said it: most-agreed
                     // first, names smashed ("Jeff Dorp and 3 others"), and the chip itself
                     // is the agree button when you have not said it yet.

@@ -1488,7 +1488,7 @@ article:has(.label-emoji-strip) {
 }
 
 .feed-entry-high .feed-entry-title {
-    font-size: 1.15em;
+    font-size: 1.84em;
 }
 
 /* "Passed this along": who shared this into your feed. Above the banner and quieter than it,
@@ -1710,10 +1710,22 @@ article:has(.label-emoji-strip) {
     font-size: 0.78em;
 }
 
+/* 1.6x the size it was, and heavier (Curtis, 2026-10-02 - twice was too big): the title is
+   what a reader scans. */
 .feed-entry-title {
-    font-size: 1.05em;
-    font-weight: 600;
+    font-size: 1.68em;
+    font-weight: 800;
+    line-height: 1.15;
     margin: 0.3em 0 0;
+}
+
+/* The author's description, under the title in small italics - the post's subtitle, no longer
+   an "about" chip among the tags. */
+.feed-entry-subtitle {
+    font-size: 0.9em;
+    font-style: italic;
+    color: var(--muted);
+    margin: 0.15em 0 0;
 }
 
 /* The card's head: the author's banner and the title as one grid (the banner flattened into it), so
@@ -1744,12 +1756,17 @@ article:has(.label-emoji-strip) {
     margin-top: 0.6em;
 }
 
+.feed-entry-head .feed-entry-subtitle {
+    grid-column: 1 / -1;
+}
+
 @container (max-width: 760px) {
     .feed-entry-head {
         grid-template-columns: auto minmax(0, 1fr);
     }
 
-    .feed-entry-head .feed-entry-title {
+    .feed-entry-head .feed-entry-title,
+    .feed-entry-head .feed-entry-subtitle {
         order: 1;
     }
 

@@ -541,6 +541,23 @@ pub enum Outcome {
     Baking(Vec<BakeItem>),
 }
 
+/// A publish's media, item by item, as it goes - what the publish job (`crate::publishing`)
+/// answers a 202 with while a post with many pictures is still minting them.
+#[derive(Default)]
+pub struct Progress {
+    items: std::sync::Mutex<Vec<BakeItem>>,
+}
+
+impl Progress {
+    pub fn items(&self) -> Vec<BakeItem> {
+        self.items.lock().expect("bake progress poisoned").clone()
+    }
+
+    fn show(&self, done: &[BakeItem], pending: &[BakeItem]) {
+        *self.items.lock().expect("bake progress poisoned") = done.iter().chain(pending).cloned().collect();
+    }
+}
+
 /// Publication, with the media pre-pass: THE door the publish route calls.
 pub async fn publish(
     state: &AppState,
@@ -549,6 +566,19 @@ pub async fn publish(
     doc_id: &[u8; 16],
     reply: Option<crate::record::documents::ReplyLinks>,
     flags: crate::record::documents::PublishFlags,
+) -> Result<Outcome, AppError> {
+    publish_reporting(state, data, root_hex, doc_id, reply, flags, None).await
+}
+
+/// [`publish`], reporting each media item's standing to `progress` as the pre-pass goes.
+pub async fn publish_reporting(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    root_hex: &str,
+    doc_id: &[u8; 16],
+    reply: Option<crate::record::documents::ReplyLinks>,
+    flags: crate::record::documents::PublishFlags,
+    progress: Option<&Progress>,
 ) -> Result<Outcome, AppError> {
     let trusted_only = flags.trusted_only;
     let docs = data.documents();
@@ -619,7 +649,22 @@ pub async fn publish(
         .collect();
     let held = docs.held(&named).await?;
     let mut missing: Vec<String> = Vec::new();
-    for r in &refs {
+    // Every item as "pending" until the loop reaches it - the modal's whole list from the start.
+    let pending: Vec<BakeItem> = refs
+        .iter()
+        .map(|r| {
+            let (source, kind) = match r {
+                MediaRef::PrivateDoc { target, .. } => (target, "private"),
+                MediaRef::External { target } => (target, "external"),
+                MediaRef::Foreign { target, .. } => (target, "copied"),
+            };
+            BakeItem { source: source.clone(), kind, status: "pending".into(), progress: None, error: None }
+        })
+        .collect();
+    for (at, r) in refs.iter().enumerate() {
+        if let Some(progress) = progress {
+            progress.show(&items, &pending[at..]);
+        }
         match r {
             MediaRef::PrivateDoc { target, doc_id: media } if crate::builtin::get(media).is_none() && !held.contains(media) => {
                 missing.push(target.clone());
@@ -731,6 +776,9 @@ pub async fn publish(
                 }
             }
         }
+    }
+    if let Some(progress) = progress {
+        progress.show(&items, &[]);
     }
     if blocked {
         return Ok(Outcome::Baking(items));

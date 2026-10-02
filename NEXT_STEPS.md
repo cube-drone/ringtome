@@ -9,13 +9,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* post titles should probably be a lot bigger
 * "see more" should give you an idea HOW MUCH more there is to see
     * +238 words, +39 images, +3 audio tracks, +4 videos
     * we might be trimming a little TOO aggressively?
 * the huge tag list in feed is unwieldy, in files it's completely broken
 * report storage use per account
-* post descriptions should be display'd in italics under the title?
 * on mobile People, folks' gigantic IDs are flattening their names
 * "automatic-node-friendship" mode
  * only available with password-based registration

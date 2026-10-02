@@ -3760,7 +3760,11 @@ async fn publish_handler(
     body: Option<Json<PublishRequest>>,
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    // A publish already under way for this note (crate::publishing): this POST is the poll.
     let data = store::open(&state, &session.account.id, &root).await?;
+    if let Some(answer) = crate::publishing::ask(&root, &doc_id) {
+        return answer;
+    }
     let req = body.map(|Json(b)| b);
     let reply = match req.as_ref().and_then(|b| b.reply_to.as_ref()) {
         Some(parent) => Some(resolve_reply_link(&state, parent).await?),
@@ -3890,41 +3894,51 @@ async fn publish_handler(
             .into_response());
         }
     }
-    // The fold lane holds still while the publish writes (fold::hold): every twin, the post and
-    // its labels land first, and the drain below folds them as one run instead of one each.
-    let held = crate::fold::hold(&root);
-    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, flags).await? {
-        crate::record::bake::Outcome::Posted(post_id) => {
-            after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
-            drop(held); // before the drain - a holder that drains its own root waits forever
-            // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
-            // user card still listed the mention on the very next read): the restated
-            // statements reach the memo through the fold lane, which nothing else rings
-            // for this append. Drain it here - the label doors' read-your-writes idiom.
-            // The sweeps that also mint (books, schedules) answer nobody and leave it to
-            // the beat.
-            crate::fold::fold_now(&state, &root).await;
-            Ok(Json(PublishResponse {
-                post_id: Some(hex::encode(post_id)),
-                scheduled_for: None,
-                published_ms: Some(flags.dated_ms.unwrap_or_else(crate::clock::now_ms)),
-                dated_ms: flags.dated_ms,
-                baking: None,
-            })
-            .into_response())
+    // The publication itself runs as a job (crate::publishing): a post with many pictures can
+    // outlast what a proxy will hold a request open for, so past a few seconds this answers
+    // 202 with each picture's standing and the job carries on; the client's re-POST polls it.
+    drop(data);
+    let (job_state, account, job_root) = (state.clone(), session.account.id, root.clone());
+    crate::publishing::run(&root, &doc_id, move |progress| async move {
+        let (state, root) = (job_state, job_root);
+        let data = store::open(&state, &account, &root).await?;
+        // The fold lane holds still while the publish writes (fold::hold): every twin, the post and
+        // its labels land first, and the drain below folds them as one run instead of one each.
+        let held = crate::fold::hold(&root);
+        match crate::record::bake::publish_reporting(&state, &data, &root, &doc_id, reply, flags, Some(&progress)).await? {
+            crate::record::bake::Outcome::Posted(post_id) => {
+                after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
+                drop(held); // before the drain - a holder that drains its own root waits forever
+                // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
+                // user card still listed the mention on the very next read): the restated
+                // statements reach the memo through the fold lane, which nothing else rings
+                // for this append. Drain it here - the label doors' read-your-writes idiom.
+                // The sweeps that also mint (books, schedules) answer nobody and leave it to
+                // the beat.
+                crate::fold::fold_now(&state, &root).await;
+                Ok(Json(PublishResponse {
+                    post_id: Some(hex::encode(post_id)),
+                    scheduled_for: None,
+                    published_ms: Some(flags.dated_ms.unwrap_or_else(crate::clock::now_ms)),
+                    dated_ms: flags.dated_ms,
+                    baking: None,
+                })
+                .into_response())
+            }
+            crate::record::bake::Outcome::Baking(items) => Ok((
+                axum::http::StatusCode::ACCEPTED,
+                Json(PublishResponse {
+                    post_id: None,
+                    scheduled_for: None,
+                    published_ms: None,
+                    dated_ms: None,
+                    baking: Some(items),
+                }),
+            )
+                .into_response()),
         }
-        crate::record::bake::Outcome::Baking(items) => Ok((
-            axum::http::StatusCode::ACCEPTED,
-            Json(PublishResponse {
-                post_id: None,
-                scheduled_for: None,
-                published_ms: None,
-                dated_ms: None,
-                baking: Some(items),
-            }),
-        )
-            .into_response()),
-    }
+    })
+    .await
 }
 
 /// GET `/api/identity/{root}/posts/{post_id}/replies` - the AUTHOR's view of their own

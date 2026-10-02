@@ -508,6 +508,20 @@ pub async fn fresh_window(Json(req): Json<FreshWindowRequest>) -> Result<Json<Va
     Ok(Json(serde_json::json!({ "ms": req.ms })))
 }
 
+#[derive(Deserialize)]
+pub struct PublishInlineRequest {
+    /// Milliseconds the publish door waits before answering 202; negative restores the default.
+    pub ms: i64,
+}
+
+/// Override how long a publish waits inline before handing back a poll (`publishing`): a suite
+/// watches the 202 road without minting enough pictures to outlast the real eight seconds.
+pub async fn publish_inline(Json(req): Json<PublishInlineRequest>) -> Result<Json<Value>, AppError> {
+    crate::publishing::INLINE_OVERRIDE.store(req.ms.max(-1), std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(ms = req.ms, "LOCAL_TEST publish inline-wait override");
+    Ok(Json(serde_json::json!({ "ms": req.ms })))
+}
+
 /// Does the blob store hold these bytes right now? The reaper's observability: a takedown's
 /// serving stops when the fragment dies, and THIS is how a test watches the bytes themselves
 /// go on the next GC round.

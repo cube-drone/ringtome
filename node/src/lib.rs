@@ -66,6 +66,7 @@ pub mod selectivity;
 pub mod profiles;
 pub mod pubkey;
 pub mod publish;
+pub mod publishing;
 pub mod rate_limit;
 pub mod rebroadcast;
 pub mod registration;
@@ -842,6 +843,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route(
                 "/test/fresh-window",
                 axum::routing::post(test_endpoints::fresh_window),
+            )
+            .route(
+                "/test/publish-inline",
+                axum::routing::post(test_endpoints::publish_inline),
             )
             .route(
                 "/test/blob/{hash}",

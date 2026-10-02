@@ -1276,8 +1276,7 @@ impl Documents<'_> {
     /// after ingest, took). Unknown documents and non-media read as present: their refusal
     /// belongs to the bake's own words.
     pub async fn media_bytes_present(&self, media_doc: &[u8; 16]) -> Result<bool, AppError> {
-        let view = self.all().await?;
-        let Some(doc) = view.docs.get(media_doc) else { return Ok(true) };
+        let Some(doc) = self.one(media_doc).await? else { return Ok(true) };
         let Some(head) = doc.display_head() else { return Ok(true) };
         Ok(self.body(head).await?.is_some())
     }
@@ -1296,10 +1295,12 @@ impl Documents<'_> {
         seal_of: Option<([u8; 32], [u8; 16])>,
         onward: bool,
     ) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
-        let view = self.all().await?;
-        let doc = view
-            .docs
-            .get(media_doc)
+        // The one document, not the view (2026-10-02): a post's every picture asked twice -
+        // here and in `media_bytes_present` - so a fifteen-picture publish built a 1500-note
+        // persona's whole view thirty times.
+        let doc = self
+            .one(media_doc)
+            .await?
             .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.an-embedded-media-document-is", "an embedded media document is missing")))?;
         let head = doc
             .display_head()

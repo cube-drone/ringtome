@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1357 phrases across 87 files.
+// 1359 phrases across 87 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -661,7 +661,9 @@ export default {
     'doc.navigator.percent': '{percent}%',
 
     // --- node/js/doc/publish.js ---
+    'postentry.publishing': 'publishing…',
     'postentry.preparing-media-for-the-network': 'preparing media for the network…',
+    'postentry.ready-of': '{ready} of {total} ready',
     'postentry.fetching': 'fetching',
     'postentry.yours': 'yours',
     'postentry.ready': 'ready',

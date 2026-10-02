@@ -52,13 +52,26 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
 }
 
 /// The "preparing media for the network" modal: every media item a post embeds, with its bake
-/// status - the upload progress view's shape, for potentially many files at once.
+/// status - the upload progress view's shape, for potentially many files at once. A long publish
+/// runs as a job on the node (publishing.rs, 2026-10-02) and answers with this same list as it
+/// goes, so the bar fills a picture at a time; with every picture ready (or none to prepare) what
+/// is left is the post itself.
 export const BakeModal = ({ items }) => {
     if (!items) return null;
+    const ready = items.filter((i) => i.status === 'ready').length;
+    const minting = ready === items.length;
     return html`
         <div class="bake-modal-backdrop">
             <div class="bake-modal">
-                <p class="bake-modal-head">${t('postentry.preparing-media-for-the-network', 'preparing media for the network…')}</p>
+                <p class="bake-modal-head">
+                    ${minting
+                        ? t('postentry.publishing', 'publishing…')
+                        : t('postentry.preparing-media-for-the-network', 'preparing media for the network…')}
+                </p>
+                ${items.length > 0 &&
+                html`<div class="upload-bar jag-line-2" title=${t('postentry.ready-of', '{ready} of {total} ready', { ready, total: items.length })}>
+                    <div class="upload-bar-fill" style=${`width: ${Math.round((ready / items.length) * 100)}%`}></div>
+                </div>`}
                 ${items.map(
                     (i) => html`<div class="bake-item" key=${i.source}>
                         <span class="bake-item-kind">${i.kind === 'external' ? t('postentry.fetching', 'fetching') : t('postentry.yours', 'yours')}</span>

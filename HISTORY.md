@@ -13873,3 +13873,29 @@ same measurement means a statement holds its tokio worker for as long as it runs
 NEXT_STEPS: other personas barely felt it (their requests averaged 15-43 ms through the window); search
 re-decrypts only notes whose fingerprint changed. Not explained from here: his server's fold costs a
 median 851 ms with nothing else in flight, against ~50 ms on a laptop over a comparable persona. `just ci` green.
+
+**2026-10-02 - a publish outlives the request that asked for it.** Curtis: an importer bringing old
+blog posts to horsedrawingtycoon.com could not publish past about fifteen pictures - the CDN's 60 s
+timeout cut the request while the publish was still minting, inline. No picture was being re-packed (a
+twin is decrypt-and-remint of the bytes ingest already crushed, and an open post reuses a twin an
+earlier post baked), but each picture built the persona's whole notes view twice (`media_bytes_present`
+and `bake_private_media`); both read the one document now. On top of the morning's one-fold-per-publish,
+twelve pictures publish in ~0.3 s on a laptop. And a publish no longer has to finish inside the request:
+`publishing.rs` runs it as a job on its own task (a dropped connection cannot stop it half-minted). The
+first POST waits up to 8 s, so an ordinary publish still answers 200 at once; past that it answers 202
+with `publishing: true` and each picture's standing (`bake::Progress`, fed by the bake loop), every
+re-POST asks after the SAME job - answered before the route's checks, which write - and the ask after
+it ends receives its answer, post or refusal; an answer nobody collects is swept after ten minutes.
+That is the door's existing contract (202 + item list = "ask again", the external bake's), so every
+client's `publishWithBaking` already polls it; `BakeModal` gained a bar filling a picture at a time and
+says "publishing…" once the pictures are ready. Seen over twelve pictures with the wait at zero:
+0/0, 1/12, 3/12 ... 12/12, then the post. Claim in publish.cjs (`/test/publish-inline` sets the wait per
+test, the fresh-window idiom). An importer calling the API directly must treat 202 as "POST again". `just ci` green.
+
+**2026-10-02 - a post's title reads as one, and its description sits under it.** Curtis: titles
+bigger and bolder, and a description in small italics under the title rather than an "about" chip
+among the tags. `.feed-entry-title` is 1.6x what it was, at 800 (twice was tried first and proved too
+big; Curtis settled 1.6x in the dev console), the featured card's in step. The author's own description
+(`excerpt::descriptionOf`) is `.feed-entry-subtitle` under the title and leaves the chip row; anyone
+else's description stays a label, as theirs. Seen in headless Chrome wide and narrow - on the stacked
+card the subtitle keeps with its title, above the buttons. `just ci` green.
