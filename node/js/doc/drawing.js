@@ -28,7 +28,7 @@ import { api, xhrUpload, saveFile } from '../net.js';
 import { docHref } from '../links.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { ColourPicker } from './colourpicker.js';
-import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { useColWidths, useColTucks, useNarrow, PaneHead, Rail } from '../panes.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import {
@@ -626,6 +626,7 @@ const StickerShelf = ({ root, chosen, onChoose }) => {
                               title=${doc.title || ''}
                               aria-label=${doc.title || t('doc.drawing.a-sticker', 'a sticker')}
                               disabled=${busy === doc.doc_id}
+                              data-settles
                               onClick=${() => choose(doc)}
                           >
                               <span class="drawing-sticker-thumb drawing-floor">
@@ -865,6 +866,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const shown = opened || shownFor.current === docId;
 
     const { tucked, toggleTuck, tab } = useColTucks(root, 'drawing', []);
+    // On a phone the tools column covers the canvas, so a tool whose next step is a press or the words
+    // hangs that part over the canvas instead (below, `.drawing-hang`).
+    const narrow = useNarrow();
     const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], { tools: 170, layers: 170 });
 
     // The layers (DRAWING.md, "Layers"): bottom of the stack first. The CURRENT layer is the one a
@@ -1263,6 +1267,29 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         session.setBody(writeBody(addStroke(drawing, entry)));
         session.touched();
     };
+    // The box tools' presses, shared by the tools column and - on a phone - the bar hung over the
+    // canvas (below): one button, wherever it is.
+    const cropButton = html`<button class="drawing-tool drawing-crop-go" data-settles disabled=${!cropReady} onClick=${cropNow}>
+        <${Icons.crop} /> ${t('doc.drawing.crop', 'crop')}
+    </button>`;
+    const frameButton =
+        framing &&
+        html`<button class="drawing-tool drawing-crop-go" data-settles disabled=${!cropBox || framed === 'working'} onClick=${frameNow}>
+            ${tools.tool === 'profile'
+                ? html`<${Icons.asProfile} /> ${t('doc.drawing.set-as-profile', 'Set as Profile')}`
+                : html`<${Icons.asBanner} /> ${t('doc.drawing.set-as-banner', 'Set as Banner')}`}
+        </button>`;
+    const framedNote =
+        framed &&
+        html`<p class=${framed === 'working' || framed === 'done' ? 'drawing-framed' : 'drawing-framed error'}>
+            ${framed === 'working'
+                ? t('doc.drawing.working-on-it', 'working on it…')
+                : framed === 'done'
+                  ? tools.tool === 'profile'
+                      ? t('doc.drawing.profile-is-set', 'your profile picture is set')
+                      : t('doc.drawing.banner-is-set', 'your banner is set')
+                  : framed}
+        </p>`;
 
     // The text tool's options: the current text layer's own, or - with none current - what the next
     // text will be. A change goes to both: the text, and the tool's memory for the next one.
@@ -1520,6 +1547,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           title=${name}
                           aria-label=${name}
                           disabled=${!toolAllowed(tool)}
+                          data-settles=${tool === 'sticker' ? undefined : ''}
                           onClick=${() => setTools({ tool })}
                       ><${icon} /></button>`
                   )}
@@ -1529,6 +1557,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       title=${t('doc.drawing.add-an-image', 'add an image')}
                       aria-label=${t('doc.drawing.add-an-image', 'add an image')}
                       disabled=${!opened}
+                      data-settles
                       onClick=${() => setPickingImage(true)}
                   ><${Icons.addImage} /></button>
                   <button
@@ -1536,6 +1565,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       title=${t('doc.drawing.undo', 'undo')}
                       aria-label=${t('doc.drawing.undo', 'undo')}
                       disabled=${!drawing.strokes.length}
+                      data-settles
                       onClick=${undoStroke}
                   ><${Icons.unpublish} /></button>
               </div>
@@ -1567,7 +1597,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               html`<div class="drawing-text-options">
                   ${currentText
                       ? html`<textarea
-                            ref=${wordsRef}
+                            ref=${narrow ? null : wordsRef}
                             class="drawing-text-words"
                             rows="4"
                             maxlength=${MAX_TEXT_BYTES}
@@ -1608,26 +1638,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                   </div>
               </div>`}
               ${stickerTool && html`<${StickerShelf} root=${root} chosen=${tools.sticker} onChoose=${(sticker) => setTools({ sticker })} />`}
-              ${cropTool &&
-              html`<button class="drawing-tool drawing-crop-go" disabled=${!cropReady} onClick=${cropNow}>
-                  <${Icons.crop} /> ${t('doc.drawing.crop', 'crop')}
-              </button>`}
-              ${framing &&
-              html`<button class="drawing-tool drawing-crop-go" disabled=${!cropBox || framed === 'working'} onClick=${frameNow}>
-                      ${tools.tool === 'profile'
-                          ? html`<${Icons.asProfile} /> ${t('doc.drawing.set-as-profile', 'Set as Profile')}`
-                          : html`<${Icons.asBanner} /> ${t('doc.drawing.set-as-banner', 'Set as Banner')}`}
-                  </button>
-                  ${framed &&
-                  html`<p class=${framed === 'working' || framed === 'done' ? 'drawing-framed' : 'drawing-framed error'}>
-                      ${framed === 'working'
-                          ? t('doc.drawing.working-on-it', 'working on it…')
-                          : framed === 'done'
-                            ? tools.tool === 'profile'
-                                ? t('doc.drawing.profile-is-set', 'your profile picture is set')
-                                : t('doc.drawing.banner-is-set', 'your banner is set')
-                            : framed}
-                  </p>`}`}
+              ${cropTool && cropButton}
+              ${framing && html`${frameButton}${framedNote}`}
               ${COLOURED_TOOLS.includes(tools.tool) &&
               html`<${ColourPicker} value=${textTool ? textStyle.color : tools.color} onChange=${pickColour} />
                   <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
@@ -1956,5 +1968,28 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           </svg>`}
                       </div>`}
             </div>
+            ${/* What a tool still needs once the column has closed onto the canvas (Curtis, 2026-10-01): on
+                a phone the text tool's words hang over the drawing while it's the tool in hand, and the
+                box tools' press - crop, set as profile, set as banner - hangs there until it is pressed. */ ''}
+            ${narrow &&
+            shown &&
+            (textTool || cropTool || framing) &&
+            html`<div class="drawing-hang jag-line">
+                ${textTool &&
+                (currentText
+                    ? html`<textarea
+                          ref=${wordsRef}
+                          class="drawing-text-words"
+                          rows="2"
+                          maxlength=${MAX_TEXT_BYTES}
+                          value=${currentText.text}
+                          placeholder=${t('doc.drawing.type-here', 'type here')}
+                          aria-label=${t('doc.drawing.words', 'words')}
+                          onInput=${(e) => changeText({ text: e.currentTarget.value })}
+                      ></textarea>`
+                    : html`<p class="null-sub">${t('doc.drawing.tap-to-place-text', 'tap the drawing to place text')}</p>`)}
+                ${cropTool && cropButton}
+                ${framing && (framed && framed !== 'working' && framed !== 'done' ? html`${framedNote}${frameButton}` : framed ? framedNote : frameButton)}
+            </div>`}
         </div>`;
 };

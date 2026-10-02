@@ -150,7 +150,7 @@ const RoomRow = ({ room, current, selected }) => {
     // Bold where something was said since this persona last looked (the `rooms_seen`
     // register, synced to every computer); the newest word's time beneath every room.
     const cls = ['chat-row', selected ? 'chat-row-selected' : '', room.unread ? 'chat-row-unread' : ''].filter(Boolean).join(' ');
-    return html`<li class=${cls} onClick=${() => loc.route(roomHref(room.author, room.doc_id))}>
+    return html`<li class=${cls} data-settles onClick=${() => loc.route(roomHref(room.author, room.doc_id))}>
         <span class="chat-row-face" title=${person.primary || speakable(room.author)}>
             <${PersonHex} person=${person} size="small" />
         </span>
@@ -191,7 +191,7 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     />`;
     return html`<aside class="chat-rooms">
         <${PaneHead} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onTuck=${onTuck} />
-        <button class="chat-new-btn" onClick=${() => loc.route(`${appHref('chat')}/new`)}>
+        <button class="chat-new-btn" data-settles onClick=${() => loc.route(`${appHref('chat')}/new`)}>
             ${t('apps.chat.new-chat', '+ new chat')}
         </button>
         ${rooms && rooms.length === 0

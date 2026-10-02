@@ -56,6 +56,33 @@ const setOpen = (key) => {
     openers.forEach((tell) => tell(key));
 };
 
+// An action taken in an open column closes it (Curtis, 2026-10-01: "new chat", "new picture", "new
+// note", a drawing tool - "this didn't cause the column to close, leaving the user feeling like
+// nothing had happened"). Choosing a document settles by its own road (`settle`, on the selection);
+// an action that changes no selection says so on itself with `data-settles`, and this closes the
+// column. It listens on the way DOWN (capture), so no `stopPropagation` in a row of actions can hide
+// the click from it; the button's own handler still runs, against the column as it was, since the
+// close is a state change that renders afterwards. A disabled button fires no click at all. Opt-in,
+// because most of a column's clicks (a fold, a filter, a field) want it to stay - and `data-stays`
+// marks what keeps the column open INSIDE something that closes it: a note row closes, the tag
+// chips on it filter the list and stay.
+if (typeof document !== 'undefined') {
+    document.addEventListener(
+        'click',
+        (e) => {
+            if (!openKey) return;
+            const query = narrowQuery();
+            if (!query || !query.matches) return;
+            const settles = e.target && e.target.closest ? e.target.closest('[data-settles]') : null;
+            if (!settles) return;
+            const stays = e.target.closest('[data-stays]');
+            if (stays && settles.contains(stays)) return;
+            setOpen(null);
+        },
+        { capture: true }
+    );
+}
+
 /// Whether the window is narrow, live as it resizes.
 const narrowQuery = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(NARROW) : null);
 

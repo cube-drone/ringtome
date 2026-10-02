@@ -132,6 +132,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         class=${cls}
         ref=${rowRef}
         style=${`padding-left: ${0.4 + depth * 0.9}rem`}
+        data-settles
         onClick=${() => ops.select(id)}
         draggable=${true}
         onDragStart=${(e) => {
@@ -264,6 +265,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 <button
                     class="tree-act"
                     title=${`a new ${ops.itemNoun} in this section`}
+                    data-settles
                     onClick=${() => ops.newPage(node.taxonomy_id)}
                 ><${Icons.pageNew} /></button>
                 <button
@@ -675,7 +677,7 @@ export const WikiTree = ({
         >
             ${onMinimize && html`<${PaneHead} icon=${Icons.tree} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
             <div class="tree-toolbar">
-                <button class="tree-tool jag-line" onClick=${() => newPage(null)}>
+                <button class="tree-tool jag-line" data-settles onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}
                 </button>
                 <button class="tree-tool jag-line" onClick=${() => newSection(null)}>

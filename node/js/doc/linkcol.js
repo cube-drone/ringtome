@@ -23,11 +23,11 @@ const Outgoing = ({ root, link, byId }) => {
     if (link.doc) {
         const d = byId.get(link.doc);
         return d
-            ? html`<a class="links-row" href=${docHref(root, d.doc_id, { row: d })}>${titleOf(d)}</a>`
+            ? html`<a class="links-row" data-settles href=${docHref(root, d.doc_id, { row: d })}>${titleOf(d)}</a>`
             : html`<span class="links-row links-row-gone">${link.text || link.doc.slice(0, 8)} · ${t('doc.linkcol.deleted', 'deleted')}</span>`;
     }
     if (parseRingtome(link.to)) {
-        return html`<a class="links-row" href=${link.to}>${linkLabel(link)}</a>`;
+        return html`<a class="links-row" data-settles href=${link.to}>${linkLabel(link)}</a>`;
     }
     return html`<a class="links-row links-row-web" href=${link.to} target="_blank" rel="noopener noreferrer" title=${link.to}>${linkLabel(link)}</a>`;
 };
@@ -48,7 +48,7 @@ export const LinksColumn = ({ root, docId, docs, onTuck }) => {
                   <h3 class="links-head">${t('doc.linkcol.linking-here', 'linking here')}</h3>
                   ${incoming.length === 0
                       ? html`<p class="null-sub">${t('doc.linkcol.nothing-links-here', 'nothing links here yet.')}</p>`
-                      : incoming.map((d) => html`<a class="links-row" key=${d.doc_id} href=${docHref(root, d.doc_id, { row: d })}>${titleOf(d)}</a>`)}
+                      : incoming.map((d) => html`<a class="links-row" key=${d.doc_id} data-settles href=${docHref(root, d.doc_id, { row: d })}>${titleOf(d)}</a>`)}
                   <h3 class="links-head">${t('doc.linkcol.linked-from-here', 'linked from here')}</h3>
                   ${outgoing.length === 0
                       ? html`<p class="null-sub">${t('doc.linkcol.links-nowhere', "this note doesn't link anywhere yet.")}</p>`

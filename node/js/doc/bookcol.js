@@ -222,7 +222,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
     const sections = sectionsOf(tree);
     const rowsOf = (list, cls) =>
         list.map(
-            (r) => html`<button class=${`book-page ${cls}`} key=${r.doc_id} onClick=${() => onSelect && onSelect(r.doc_id)}>
+            (r) => html`<button class=${`book-page ${cls}`} key=${r.doc_id} data-settles onClick=${() => onSelect && onSelect(r.doc_id)}>
                 ${r.title || t('doc.bookcol.untitled', 'untitled')}
             </button>`
         );
@@ -238,7 +238,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
             ? html`<div class="book-block">
                   <p class="book-title-line">
                       ${titleRow
-                          ? html`${t('doc.bookcol.titled', 'titled')} <a class="book-title-link" href=${docHref(root, titleRow.doc_id)} title=${t('doc.bookcol.the-first-page-names-the', 'the first page in reading order names the book and opens it')}>${titleRow.title || t('doc.bookcol.untitled', 'untitled')}</a>`
+                          ? html`${t('doc.bookcol.titled', 'titled')} <a class="book-title-link" data-settles href=${docHref(root, titleRow.doc_id)} title=${t('doc.bookcol.the-first-page-names-the', 'the first page in reading order names the book and opens it')}>${titleRow.title || t('doc.bookcol.untitled', 'untitled')}</a>`
                           : t('doc.bookcol.untitled---the-first-page', 'untitled - the first page in reading order will name the book')}
                   </p>
                   <p class="book-ledger-head">${t('doc.bookcol.since-the-last-rollout', 'since the last rollout')}</p>
@@ -302,7 +302,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   ${rolloutFailed && html`<p class="form-error">${plan.error || t('doc.bookcol.the-rollout-failed', 'the rollout failed')}</p>`}
                   ${askError && html`<p class="form-error">${askError}</p>`}
                   ${published &&
-                  html`<a class="book-view" href=${postHref(root, published)}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}
+                  html`<a class="book-view" data-settles href=${postHref(root, published)}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}
                   ${published && takedownUi}
                   </div>`
             : html`<div class="book-block">

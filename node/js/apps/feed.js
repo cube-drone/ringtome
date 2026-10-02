@@ -223,7 +223,7 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                 : html`<${PostBody} doc=${doc} />`}
             ${state.published &&
             html`<p class="feed-item-link">
-                <a href=${`/id/${root}/docs/${state.postId}/body`}>${t('apps.feed.the-public-copy', 'the public copy')}</a>
+                <a data-settles href=${`/id/${root}/docs/${state.postId}/body`}>${t('apps.feed.the-public-copy', 'the public copy')}</a>
             </p>`}
         </article>
     `;
@@ -616,7 +616,7 @@ export const FeedApp = ({ current, searchQuery }) => {
     const editingFor = useOwnPostEditing(current, (r) => overlayPosted(r, postedAs[r.doc_id]));
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
-    const { tucked, toggleTuck, tab } = useColTucks(root, 'feed');
+    const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'feed');
     // The composer's floor is 260px: below that the editor's chrome crushes even in its
     // narrow mode (panes.js applies the floor to drags AND to previously-stored widths).
     // The composer's column has no ceiling (Curtis, 2026-09-29).
@@ -788,6 +788,9 @@ export const FeedApp = ({ current, searchQuery }) => {
             for (const bucket of (row && row.buckets) || []) {
                 overlayLabels.push({ annotator: root, key: 'bucket', value: bucket });
             }
+            // Posted: on a phone the composer closes onto the stream, where the post now leads.
+            // Here rather than on the button, since a refusal is said inside the composer.
+            settle();
             setFresh({
                 author: root,
                 doc_id: made.post_id,

@@ -220,7 +220,7 @@ export const BankApp = ({ current }) => {
     // Each month's lines, once fetched; the newest arrives with the first answer.
     const [lines, setLines] = useState({});
     const [open, setOpen] = useState(new Set());
-    const { tucked, toggleTuck, tab } = useColTucks(root, 'bank');
+    const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'bank');
     const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio'], { market: 240, portfolio: 200 });
     const [asked, setAsked] = useState(0); // bumped after a purchase or a sale: ask the ledger again
     useEffect(() => {
@@ -262,7 +262,12 @@ export const BankApp = ({ current }) => {
             ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
             : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
                   <${PaneHead} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
-                  <${Market} root=${root} balance=${bank.balance} onBought=${() => setAsked((n) => n + 1)} />
+                  <${Market} root=${root} balance=${bank.balance} onBought=${() => {
+                      setAsked((n) => n + 1);
+                      // Bought: on a phone the market closes onto the balance it moved. On success
+                      // only - a refusal is said in the market column.
+                      settle();
+                  }} />
               </aside>${resizer('market')}`}
         ${tucked.has('portfolio')
             ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`

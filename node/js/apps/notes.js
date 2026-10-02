@@ -188,6 +188,7 @@ const StatusMark = ({ doc, book }) => {
 const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
                    onToggleTag, book }) => html`<button
     class=${doc.doc_id === selected ? 'note-row jag-line selected' : 'note-row jag-line'}
+    data-settles
     onClick=${() => onSelect(doc.doc_id)}
     draggable=${true}
     onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
@@ -240,6 +241,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
                 class=${tagFilter.includes(t) ? 'note-row-tag jag-line active' : 'note-row-tag jag-line'}
                 key=${t}
                 role="button"
+                data-stays
                 onClick=${(e) => {
                     e.stopPropagation();
                     onToggleTag(t);
@@ -259,6 +261,7 @@ const FileTile = ({ doc, root, bucket, selected, onSelect, onFollowHome }) => {
         <button
             class=${doc.doc_id === selected ? 'files-tile selected' : 'files-tile'}
             title=${doc.title || ''}
+            data-settles
             onClick=${() => onSelect(doc.doc_id)}
             draggable=${true}
             onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
@@ -286,6 +289,7 @@ const FileTile = ({ doc, root, bucket, selected, onSelect, onFollowHome }) => {
         </button>
         <button
             class="files-tile-home"
+            data-settles
             title=${t('apps.notes.follow-me-home-open-this', 'follow me home — open this in its own app')}
             onClick=${() => onFollowHome(doc)}
         ><${Icons.path} /></button>
@@ -516,7 +520,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     ${/* The everything-view is for finding, not making - new things are born
                         in their own apps, where they land in a real notebook. */ ''}
                     ${!app.everything &&
-                    html`<button class="notes-new" disabled=${busy} onClick=${createNew}>
+                    html`<button class="notes-new" data-settles disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : `+ new ${noun}`}
                     </button>`}
                     ${tagFilter.length > 0 &&

@@ -126,6 +126,25 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+    position: relative; /* what the phone's hanging bar (.drawing-hang) sits in */
+}
+
+/* On a phone, what a tool still needs once its column has closed onto the canvas (drawing.js): the
+   text tool's words, or the box tools' press - hung over the bottom of the drawing, off the stage, so
+   a tap on it never draws. */
+.drawing-hang {
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    background: var(--surface);
+    --line: var(--border-strong);
+    --j: 0.3em;
 }
 
 /* The title row is Writer's (.reader-head: the positioned parent the tags dropdown hangs from),

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1348 phrases across 86 files.
+// 1349 phrases across 86 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -551,6 +551,12 @@ export default {
     'doc.drawing.layer-n': 'layer {n}',
     'doc.drawing.layer-name': 'layer name',
     'doc.drawing.new-text': 'horse',
+    'doc.drawing.crop': 'crop',
+    'doc.drawing.set-as-profile': 'Set as Profile',
+    'doc.drawing.set-as-banner': 'Set as Banner',
+    'doc.drawing.working-on-it': 'working on it…',
+    'doc.drawing.profile-is-set': 'your profile picture is set',
+    'doc.drawing.banner-is-set': 'your banner is set',
     'doc.drawing.align-left': 'align left',
     'doc.drawing.align-center': 'centre',
     'doc.drawing.align-right': 'align right',
@@ -580,12 +586,6 @@ export default {
     'doc.drawing.font': 'font',
     'doc.drawing.text-size': 'text size',
     'doc.drawing.alignment': 'alignment',
-    'doc.drawing.crop': 'crop',
-    'doc.drawing.set-as-profile': 'Set as Profile',
-    'doc.drawing.set-as-banner': 'Set as Banner',
-    'doc.drawing.working-on-it': 'working on it…',
-    'doc.drawing.profile-is-set': 'your profile picture is set',
-    'doc.drawing.banner-is-set': 'your banner is set',
     'doc.drawing.colour': 'colour',
     'doc.drawing.strokes': '{count} strokes',
     'doc.drawing.layers-and-map': 'layers & map',
@@ -609,6 +609,7 @@ export default {
     'doc.drawing.saving': 'saving…',
     'doc.drawing.tags': 'tags, date & description',
     'doc.drawing.opening': 'opening…',
+    'doc.drawing.tap-to-place-text': 'tap the drawing to place text',
 
     // --- node/js/doc/editor.js ---
     'doc.editor.copy-into-private-notes': 'copy this note into another bucket',

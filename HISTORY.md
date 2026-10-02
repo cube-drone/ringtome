@@ -13718,3 +13718,35 @@ reached a browser - the server decrypts - and the key lane itself was right, so 
 new key: what a third person read before the fix is what leaked. Claims: housemates.cjs (three on one
 node, every door at once - five leaks before, none after) and ims.cjs (a trusted third on their own
 node - two before, none after). `just ci` green.
+
+**2026-10-01 - on a phone, an action in a column closes the column.** Curtis: "new chat", "new picture",
+"new note" and the drawing tools left their column open on a narrow screen, "leaving the user feeling
+like nothing had happened". A column already closed on a choice (`settle`, off the selection) - but an
+action changes no selection, or changes it into another app's page. Now anything marked `data-settles`
+closes the open column when clicked (panes.js: one document listener, on the capture phase so a row of
+actions that stops propagation can't hide the click; the button's own handler still runs). Marked:
+"+ new" (note, picture - every app's), "+ new chat", the tree's new-page buttons, the drawing tools,
+add-an-image, undo, and crop / frame. Seen in headless Chrome at 420px: each lands on what it made or
+on the canvas, the column gone.
+
+**2026-10-01 - the column audit: what else should close a phone's column.** At Curtis's ask, every
+control in every column was sorted into "its result shows elsewhere" and "its result shows here". Now
+closing the column too: a note row, a file tile, a chat row and a tree or book page re-tapped while
+already chosen (the selection didn't change, so nothing closed it); "follow me home", "view the book",
+the book's title, the links column's rows, and the feed's "the public copy" - each of which leaves the
+app and left its tab open to greet the return; a sticker chosen from the shelf. A post from the feed's
+composer and a bond bought in the bank close it on success only, from the handler, since their refusals
+are said inside the column. Picking the sticker tool no longer closes it - the shelf is there.
+`data-stays` (panes.js) keeps the column for what sits inside something that closes it: a note row's
+tag chips filter the list. Seen in headless Chrome at 420px: a re-tap closes, the sticker tool stays.
+
+**2026-10-01 - on a phone, a tool's next step hangs over the canvas.** The column audit's open question,
+Curtis's answer: "the button or the text-entry field - to hang over the canvas until pressed... or in the
+case of the text field, to hang over the canvas so long as the text-entry tool is open". In a narrow
+window (`useNarrow`) the drawing shows `.drawing-hang` over the bottom of the drawing - beside the stage,
+never on it, so a tap on it draws nothing: the text tool's words box while it's the tool in hand ("tap
+the drawing to place text" until a text is placed, then the words, focused - the focus ref moves to it
+from the hidden column's), and the press of crop, set as profile and set as banner, with the frame's
+"working on it" / "set" note in its place once pressed. The buttons are one element shared with the tools
+column. Seen in headless Chrome at 420px: the hint, a tap placing the text with the cursor in the hung
+box, typing landing on the drawing, the crop button under its box.
