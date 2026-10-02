@@ -13925,4 +13925,31 @@ position comes from a private `leadAt`). The card renders the overrun under a `-
 the words only - `.mq-doc`, since the renderer's root lays out as `display: contents` and the first try
 faded nothing - and the summary in small italics under "see more…", nonzero kinds only. Seen in headless
 Chrome: "+326 words, +2 images" under a paragraph dissolving into the paper. Pure claims for both.
-`just ui-check` green (JS and CSS only - the batch's `just ci` still owes).
+`just ci` green.
+
+**2026-10-02 - the tag strip's size and media rows.** Curtis: "micro/small/medium/large and
+audio/image/video" as rows of their own in the feed's tag selector, hidden when nothing matches. The
+size tags are `micro`, `short`, `medium` and `long` (`documents::length_tag` - chain values, so not
+renamed). The strip splits the counted tags three ways (`pure/facets.js` `tagRows`): **size** in its own
+order, smallest first; **media** a-z; and **tagged**, the rest - each row only when it has a chip to
+pick. Two rows have to mean two rows, so the node now widens picks within a tag family and narrows
+across them (`search::tag_family`, `labels_admit`): micro and image is a short picture post, not
+either - and each family's counts are judged with only its own picks set aside (`facet_sets`), so a
+size chip's count honours a picked medium, and `picked_size` takes the families as rows. Every pick is
+still a `tag=` underneath; nothing on the wire changed. Seen in headless Chrome: size and media rows
+over four posts, "tagged" absent, micro + image narrowing to the one tiny picture with every count in
+step. Claims: the families pinned to the implicit tags, the rule within and across, and the JS lists
+read against the Rust ones. `just ci` green.
+
+**2026-10-02 - a long tag list stays one line, and "more" searches it.** Curtis: a whole blog and its
+toots imported brought some 250 tags; the feed's "more" opened every one onto the page, and the files
+browser - which showed no partial list at all - became a wall of tags. `FacetRow` (facets.js) now opens
+the rest in place only while they wrap onto three lines or fewer (`pure/facets.js` `wrapLines`,
+`OPEN_LINES`, off the widths the row already measures); past that, "more" puts a search box on the row -
+the picked chips beside it - and its matches in a box about three lines tall that scrolls. The files
+browser and the picture picker trade their walls for the same row (`FacetRow` exported, with
+`narrowTitle` for tags that only narrow: on or off, never "left out"). Writer's and Chat's tag columns
+are left as they are - a column of their own, which scrolls (Curtis). The drawing's and chat's sticker
+pickers keep theirs: only stickers' tags, a short list. Seen in headless Chrome: 120 feed tags to a
+search that "topic1" narrowed to 31; the files browser's 159 to one line of four, a pick staying on the
+row while the search stays open; twelve tags opening in place at a phone's width. `just ci` green.

@@ -10,7 +10,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Demo Output
 * feed cards: we might be trimming a little TOO aggressively? (a card now draws ~240 characters past its cut, faded - the cut points themselves are unchanged)
-* the huge tag list in feed is unwieldy, in files it's completely broken
 * report storage use per account
 * on mobile People, folks' gigantic IDs are flattening their names
 * "automatic-node-friendship" mode
@@ -19,7 +18,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * A demo server (free registration, but it deletes all of its users after 7 days )
 * An article on Managing Operator Liability
 * every button in the entire mobile app is a little too small and delicate for human fingies, and some of the drawing tools are WAY too small
-* "micro", "small", "medium", "long", and "image" "audio" "video" in separate rows
 * the big-search crawl's residuals (HISTORY 2026-10-02 has what was found and cut):
     * the server's fold costs a median 851 ms with nothing else in flight; a laptop does a comparable persona in ~50 ms. Which leg, and is it the box (disk fsync? cores?) or the data (node.db's size)? A fresh 30 minutes of log after this deploy says whether the crawl is gone
     * one connection per persona: every read queues behind every write and fold statement, in arrival order. A read-only second connection would stop that - but the 2026-08 stale-read dig named cross-connection WAL visibility as a suspect, so it wants its own design

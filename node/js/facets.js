@@ -10,7 +10,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
-import { cycleMe, cyclePick, facetSlice, fitCount, LEFT_OUT } from './pure/facets.js';
+import { cycleMe, cyclePick, facetSlice, fitCount, LEFT_OUT, OPEN_LINES, tagFamily, tagRows, wrapLines } from './pure/facets.js';
 
 const html = htm.bind(h);
 
@@ -30,6 +30,20 @@ export function useLabels(url, refresh = 0) {
     }, [url, refresh]);
     return labels;
 }
+
+/// A chip's hover where the tags only narrow - the files browser, the picture picker: on or off,
+/// never the strip's third "left out" state.
+export const narrowTitle = (state) =>
+    state === 'only'
+        ? t('facets.narrow-on', 'showing only what is tagged this - click to let it go')
+        : t('facets.narrow-off', 'click to show only what is tagged this');
+
+/// The tag rows' labels, beside the kind row's "show" and the bucket row's "in".
+const TAG_ROW_LABELS = {
+    size: () => t('facets.size', 'size'),
+    media: () => t('facets.media', 'media'),
+    tags: () => t('facets.tags', 'tagged'),
+};
 
 /// The kind row's words (the node speaks in keys).
 const KIND_NAMES = {
@@ -57,8 +71,17 @@ const chipTitle = (state) =>
 /// first paint - and a resize only re-does the arithmetic (pure/facets.js `fitCount`). A picked
 /// value shows whatever the fit (`facetSlice`), so what narrows the page is never folded away.
 /// `picked` are the row's "only" values, `out` its left-out ones (2026-10-01, three-state chips).
-const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra = null }) => {
-    const [expanded, setExpanded] = useState(false);
+///
+/// "More" opens the rest in place only while they fit `OPEN_LINES` lines (Curtis, 2026-10-02: a
+/// blog and its toots imported came to some 250 tags); past that it opens a search box over them
+/// instead, its matches in a box that scrolls rather than a wall that takes the page. The picked
+/// values stay on the row either way. `titleOf(state)` words a chip's hover where the row is not
+/// three-state (the files browser's tags only narrow).
+export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra = null, titleOf = chipTitle }) => {
+    const [mode, setMode] = useState('line'); // 'line' | 'open' | 'search'
+    const expanded = mode === 'open';
+    const searching = mode === 'search';
+    const [query, setQuery] = useState('');
     const rowRef = useRef(null);
     const measured = useRef(null); // { sig, widths, fixed, more, gap }
     const [fit, setFit] = useState(null); // { n }: a fresh object, so every reckoning re-renders
@@ -70,7 +93,7 @@ const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra =
     const word = (v) => (names && names[v] ? names[v]() : v);
     const stateIn = (v) => ((picked || []).includes(v) ? 'only' : (out || []).includes(v) ? 'out' : null);
     const sig = `${extra ? 'x' : ''}|${items.map((f) => `${f.value}:${f.count}`).join('|')}|${(picked || []).join('|')}|${(out || []).join('|')}`;
-    const measuring = !expanded && (!measured.current || measured.current.sig !== sig);
+    const measuring = mode === 'line' && (!measured.current || measured.current.sig !== sig);
     const reckon = () => {
         const row = rowRef.current;
         const m = measured.current;
@@ -101,6 +124,46 @@ const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra =
         return () => watch.disconnect();
     }, []);
     if (items.length === 0 && !extra) return null;
+    // "More": in place when the rest wraps onto few enough lines, else the search box.
+    const more = () => {
+        const row = rowRef.current;
+        const m = measured.current;
+        const lines = row && m ? wrapLines(m.widths, row.clientWidth - m.fixed, row.clientWidth, m.gap) : 1;
+        setQuery('');
+        setMode(lines <= OPEN_LINES ? 'open' : 'search');
+    };
+    const chip = (f) => html`<button
+        key=${f.value}
+        data-facet
+        class=${chipClass(stateIn(f.value))}
+        title=${titleOf(stateIn(f.value))}
+        onClick=${() => onToggle(f.value)}
+    >${word(f.value)} <span class="facet-count">${f.count}</span></button>`;
+    if (searching) {
+        const q = query.trim().toLowerCase();
+        const matches = items.filter((f) => !chosen.includes(f.value) && (!q || word(f.value).toLowerCase().includes(q)));
+        return html`<div class="facet-search">
+            <div class="facet-row facet-row-open" ref=${rowRef}>
+                <span class="facet-row-label">${label}</span>
+                ${extra && html`<span class="facet-row-extra" data-facet-extra>${extra}</span>`}
+                ${items.filter((f) => chosen.includes(f.value)).map(chip)}
+                <input
+                    class="facet-search-box"
+                    type="search"
+                    placeholder=${t('facets.find-one-of-n', 'find one of {n}…', { n: items.length })}
+                    value=${query}
+                    onInput=${(e) => setQuery(e.currentTarget.value)}
+                    onKeyDown=${(e) => e.key === 'Escape' && setMode('line')}
+                    ref=${(el) => el && !el.dataset.focused && ((el.dataset.focused = '1'), el.focus())}
+                />
+                <button class="facet-more" onClick=${() => setMode('line')}>${t('facets.fewer', 'fewer')}</button>
+            </div>
+            <div class="facet-search-results">
+                ${matches.map(chip)}
+                ${matches.length === 0 && html`<span class="facet-search-none">${t('facets.none-match', 'nothing matches')}</span>`}
+            </div>
+        </div>`;
+    }
     // Measuring: every chip, and the widest "more" the row could need, on the one line.
     const top = expanded || measuring || !fit ? items.length : fit.n;
     const { shown, hidden } = facetSlice(items, chosen, expanded, top);
@@ -108,25 +171,17 @@ const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra =
     return html`<div class=${expanded ? 'facet-row facet-row-open' : 'facet-row'} ref=${rowRef}>
         <span class="facet-row-label">${label}</span>
         ${extra && html`<span class="facet-row-extra" data-facet-extra>${extra}</span>`}
-        ${shown.map(
-            (f) => html`<button
-                key=${f.value}
-                data-facet
-                class=${chipClass(stateIn(f.value))}
-                title=${chipTitle(stateIn(f.value))}
-                onClick=${() => onToggle(f.value)}
-            >${word(f.value)} <span class="facet-count">${f.count}</span></button>`
-        )}
+        ${shown.map(chip)}
         ${measuring &&
         html`<button class="facet-more" data-facet-more tabindex="-1" aria-hidden="true">
             ${t('facets.and-n-more', 'and {n} more…', { n: items.length })}
         </button>`}
         ${!measuring &&
         hidden > 0 &&
-        html`<button class="facet-more" onClick=${() => setExpanded(true)}>
+        html`<button class="facet-more" onClick=${more}>
             ${t('facets.and-n-more', 'and {n} more…', { n: hidden })}
         </button>`}
-        ${expanded && folds && html`<button class="facet-more" onClick=${() => setExpanded(false)}>${t('facets.fewer', 'fewer')}</button>`}
+        ${expanded && folds && html`<button class="facet-more" onClick=${() => setMode('line')}>${t('facets.fewer', 'fewer')}</button>`}
     </div>`;
 };
 
@@ -153,7 +208,16 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
             narrows to just those. "posts" is what is none of the other kinds. */ ''}
         <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
         <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} out=${picks[LEFT_OUT.buckets]} onToggle=${toggle('buckets')} />
-        <${FacetRow} label=${t('facets.tags', 'tagged')} items=${labels && labels.tags} picked=${picks.tags} out=${picks[LEFT_OUT.tags]} onToggle=${toggle('tags')} />
+        ${/* The tag row split three ways (Curtis, 2026-10-02): a post's size, its media, and every
+            other tag - each row only when it has something to pick, and each a row like the
+            others (the node narrows across them). All three are the `tags` picks underneath. */ ''}
+        ${['size', 'media', 'tags'].map((family) => {
+            const items = tagRows(labels && labels.tags)[family];
+            const picked = (picks.tags || []).filter((v) => tagFamily(v) === family);
+            const out = (picks[LEFT_OUT.tags] || []).filter((v) => tagFamily(v) === family);
+            if (!items.length && !picked.length && !out.length) return null;
+            return html`<${FacetRow} key=${family} label=${TAG_ROW_LABELS[family]()} items=${items} picked=${picked} out=${out} onToggle=${toggle('tags')} />`;
+        })}
         ${note && html`<p class="facets-note">${note}</p>`}
     </div>`;
 };

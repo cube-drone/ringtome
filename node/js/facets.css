@@ -67,3 +67,32 @@
     border-style: dotted;
     color: var(--muted);
 }
+/* "More" over a long list (2026-10-02): a search box on the row, its matches in a box a few lines
+   tall that scrolls, so 250 tags never take the page. */
+.facet-search {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.facet-search-box {
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    min-width: 10rem;
+}
+.facet-search-results {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    max-height: 5.4rem; /* about three lines of chips */
+    overflow-y: auto;
+    padding-left: 0.2rem;
+}
+.facet-search-none {
+    color: var(--faint);
+    font-size: 0.75rem;
+    font-style: italic;
+}

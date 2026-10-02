@@ -36,6 +36,47 @@ export function fitCount(widths, room, more, gap) {
     return Math.max(1, n);
 }
 
+/// The tag families, each its own row (Curtis, 2026-10-02): a post's size and its media, in their
+/// own orders, apart from the ordinary tags. The node's `search::SIZE_TAGS` and `MEDIA_TAGS` -
+/// it widens picks within a family and narrows across them, so the rows mean what they look like.
+export const SIZE_TAGS = ['micro', 'short', 'medium', 'long'];
+export const MEDIA_TAGS = ['audio', 'image', 'video'];
+
+/// Which family a tag is: 'size', 'media', or 'tags' for the ordinary ones.
+export const tagFamily = (tag) => (SIZE_TAGS.includes(tag) ? 'size' : MEDIA_TAGS.includes(tag) ? 'media' : 'tags');
+
+/// The tag row split three ways: `{ size, media, tags }`, sizes and media in their fixed order
+/// (smallest first, then a-z), the ordinary tags as the node counted them.
+export function tagRows(tags) {
+    const all = tags || [];
+    const inOrder = (order) => order.map((v) => all.find((f) => f.value === v)).filter(Boolean);
+    return { size: inOrder(SIZE_TAGS), media: inOrder(MEDIA_TAGS), tags: all.filter((f) => tagFamily(f.value) === 'tags') };
+}
+
+/// How many lines a row's chips would wrap onto if it opened (Curtis, 2026-10-02: "more" should open
+/// a search box only "if the next row would take up more than two or three lines, otherwise it
+/// isn't contributing much beyond what simply displaying the full list would"): `widths` each
+/// chip's, `firstRoom` the first line's room once its label is placed, `room` every later line's.
+export function wrapLines(widths, firstRoom, room, gap) {
+    let lines = 1;
+    let left = firstRoom;
+    let used = 0;
+    for (const w of widths) {
+        const need = (used ? gap : 0) + w;
+        if (used && need > left) {
+            lines += 1;
+            left = room;
+            used = 0;
+        }
+        left -= used ? gap + w : w;
+        used += 1;
+    }
+    return lines;
+}
+
+/// The most lines "more" opens in place; past it, it opens a search box over the list instead.
+export const OPEN_LINES = 3;
+
 /// Toggle one value in a pick list, returning the new list.
 export function togglePick(picked, value) {
     const list = picked || [];

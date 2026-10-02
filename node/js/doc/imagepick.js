@@ -13,6 +13,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { pickPictures, isPicture } from '../pure/imagepick.js';
 import { api } from '../net.js';
 import { togglePick } from '../pure/facets.js';
+import { FacetRow, narrowTitle } from '../facets.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { FILES_BUCKET, uploadBinary } from './upload.js';
@@ -136,16 +137,17 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                     ><${b === FILES_BUCKET ? Icons.filesBucket : Icons.notebook} /> ${b}</button>`
                 )}
             </div>`}
+            ${/* One line of the commonest, then "more" (facets.js, 2026-10-02): every tag at once
+                took the whole picker once an import brought some 250. */ ''}
             ${cloud.length > 0 &&
-            html`<div class="imagepick-tags">
-                ${cloud.map(
-                    ([tag, count]) => html`<button
-                        key=${tag}
-                        class=${tags.includes(tag) ? 'imagepick-tag active' : 'imagepick-tag'}
-                        onClick=${() => narrow(setTags)(togglePick(tags, tag))}
-                    >${tag} <span class="imagepick-tag-count">${count}</span></button>`
-                )}
-            </div>`}
+            html`<${FacetRow}
+                label=${t('doc.imagepick.tagged', 'tagged')}
+                items=${cloud.map(([value, count]) => ({ value, count }))}
+                picked=${tags}
+                out=${[]}
+                onToggle=${(tag) => narrow(setTags)(togglePick(tags, tag))}
+                titleOf=${narrowTitle}
+            />`}
             ${pictures.length === 0
                 ? html`<p class="null-sub">
                       ${docs && docs.length

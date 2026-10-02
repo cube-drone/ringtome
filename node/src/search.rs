@@ -80,6 +80,25 @@ pub struct Narrow {
     pub not_kinds: Vec<String>,
 }
 
+/// The tag families, each its own row on the strip (Curtis, 2026-10-02): a post's SIZE (`micro`
+/// through `long`), its MEDIA (`audio`, `image`, `video`), and every other tag. They are rows like
+/// any others: picks widen within a family and the families narrow together - "micro" and
+/// "image" is a short picture post, not either. Sizes and media are the implicit tags
+/// (`documents::IMPLICIT_TAGS`), every post wears at most one size, so they read best this way.
+pub const SIZE_TAGS: [&str; 4] = ["micro", "short", "medium", "long"];
+pub const MEDIA_TAGS: [&str; 3] = ["audio", "image", "video"];
+
+/// Which family a tag is: 0 for the ordinary tags, 1 a size, 2 a medium.
+pub fn tag_family(tag: &str) -> usize {
+    if SIZE_TAGS.contains(&tag) {
+        1
+    } else if MEDIA_TAGS.contains(&tag) {
+        2
+    } else {
+        0
+    }
+}
+
 /// The kinds a row can be, in the row's fixed order; a post is what is none of the others.
 pub const KINDS: [&str; 5] = ["post", "reply", "rebroadcast", "book", "room"];
 
@@ -143,7 +162,10 @@ impl Narrow {
     /// The label half of the judgment, given the author's own buckets and tags on a post.
     pub fn labels_admit(&self, buckets: &[String], tags: &[String]) -> bool {
         (self.buckets.is_empty() || self.buckets.iter().any(|b| buckets.contains(b)))
-            && (self.tags.is_empty() || self.tags.iter().any(|t| tags.contains(t)))
+            && (0..3).all(|family| {
+                let mut picked = self.tags.iter().filter(|t| tag_family(t) == family).peekable();
+                picked.peek().is_none() || picked.any(|t| tags.contains(t))
+            })
             && !self.not_buckets.iter().any(|b| buckets.contains(b))
             && !self.not_tags.iter().any(|t| tags.contains(t))
     }
@@ -425,10 +447,12 @@ async fn admitted(
 pub struct FacetSets {
     pub kinds: Vec<usize>,
     pub buckets: Vec<usize>,
-    pub tags: Vec<usize>,
+    /// Per tag family (`tag_family`): each judged with only its OWN family's picks set aside, so a
+    /// size chip's count honours a picked medium (2026-10-02).
+    pub tags: [Vec<usize>; 3],
     pub kinds_out: Option<Vec<usize>>,
     pub buckets_out: Option<Vec<usize>>,
-    pub tags_out: Option<Vec<usize>>,
+    pub tags_out: [Option<Vec<usize>>; 3],
 }
 
 pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>, known: Option<&Labels>) -> Result<FacetSets> {
@@ -441,7 +465,14 @@ pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Nar
         }
     };
     if narrow.is_empty() {
-        return Ok(FacetSets { kinds: all.clone(), buckets: all.clone(), tags: all, kinds_out: None, buckets_out: None, tags_out: None });
+        return Ok(FacetSets {
+            kinds: all.clone(),
+            buckets: all.clone(),
+            tags: [all.clone(), all.clone(), all],
+            kinds_out: None,
+            buckets_out: None,
+            tags_out: [None, None, None],
+        });
     }
     let kinds_out = match narrow.not_kinds.is_empty() {
         true => None,
@@ -451,14 +482,33 @@ pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Nar
         true => None,
         false => Some(judge(Narrow { buckets: Vec::new(), not_buckets: Vec::new(), ..narrow.clone() }).await?),
     };
-    let tags_out = match narrow.not_tags.is_empty() {
-        true => None,
-        false => Some(judge(Narrow { tags: Vec::new(), not_tags: Vec::new(), ..narrow.clone() }).await?),
+    // Each tag family set aside alone; families with nothing picked share the whole narrow's set.
+    let without = |family: usize, out_too: bool| Narrow {
+        tags: narrow.tags.iter().filter(|t| tag_family(t) != family).cloned().collect(),
+        not_tags: if out_too { narrow.not_tags.iter().filter(|t| tag_family(t) != family).cloned().collect() } else { narrow.not_tags.clone() },
+        ..narrow.clone()
     };
+    let mut whole: Option<Vec<usize>> = None;
+    let mut tags: [Vec<usize>; 3] = Default::default();
+    let mut tags_out: [Option<Vec<usize>>; 3] = Default::default();
+    for family in 0..3 {
+        let picked = narrow.tags.iter().any(|t| tag_family(t) == family);
+        tags[family] = if picked {
+            judge(without(family, false)).await?
+        } else {
+            if whole.is_none() {
+                whole = Some(judge(narrow.clone()).await?);
+            }
+            whole.clone().unwrap_or_default()
+        };
+        if narrow.not_tags.iter().any(|t| tag_family(t) == family) {
+            tags_out[family] = Some(judge(without(family, true)).await?);
+        }
+    }
     Ok(FacetSets {
         kinds: judge(Narrow { kinds: Vec::new(), ..narrow.clone() }).await?,
         buckets: judge(Narrow { buckets: Vec::new(), ..narrow.clone() }).await?,
-        tags: judge(Narrow { tags: Vec::new(), ..narrow.clone() }).await?,
+        tags,
         kinds_out,
         buckets_out,
         tags_out,
@@ -520,13 +570,23 @@ pub async fn facets_json_with(
         })
     };
     let (mut buckets, _) = labels_of(&sets.buckets).await?;
-    let (_, mut tags) = labels_of(&sets.tags).await?;
     if let Some(out) = &sets.buckets_out {
         restore_left_out(&mut buckets, &labels_of(out).await?.0, &narrow.not_buckets);
     }
-    if let Some(out) = &sets.tags_out {
-        restore_left_out(&mut tags, &labels_of(out).await?.1, &narrow.not_tags);
+    // Each family's chips counted over its own set, then one row again, most frequent first.
+    let mut tags: Counts = Vec::new();
+    for family in 0..3 {
+        let (_, mut counted) = labels_of(&sets.tags[family]).await?;
+        counted.retain(|(t, _)| tag_family(t) == family);
+        if let Some(out) = &sets.tags_out[family] {
+            let left: Vec<String> = narrow.not_tags.iter().filter(|t| tag_family(t) == family).cloned().collect();
+            let mut before = labels_of(out).await?.1;
+            before.retain(|(t, _)| tag_family(t) == family);
+            restore_left_out(&mut counted, &before, &left);
+        }
+        tags.extend(counted);
     }
+    tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
         v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
     };
@@ -761,6 +821,31 @@ mod tests {
             .unwrap();
         let p = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
         assert!(p.contains("post_terms_1 (term>=? AND term<?)"), "a range of the index: {p}");
+    }
+
+    /// The size and media rows (2026-10-02): either within a family, both across them.
+    #[test]
+    fn tag_families_widen_within_and_narrow_across() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let n = Narrow::parse(Some("tag=micro&tag=short&tag=image"), None);
+        assert!(n.labels_admit(&[], &s(&["micro", "image"])), "a size picked and a medium picked");
+        assert!(n.labels_admit(&[], &s(&["short", "image", "bread"])), "either size");
+        assert!(!n.labels_admit(&[], &s(&["micro"])), "a size alone is not the picked medium");
+        assert!(!n.labels_admit(&[], &s(&["image", "long"])), "the medium, at a size not picked");
+        let mixed = Narrow::parse(Some("tag=bread&tag=video"), None);
+        assert!(mixed.labels_admit(&[], &s(&["bread", "video"])) && !mixed.labels_admit(&[], &s(&["bread"])), "an ordinary tag and a medium narrow together too");
+    }
+
+    /// The two families are exactly the implicit tags - a new size or medium cannot land in the
+    /// ordinary row by accident.
+    #[test]
+    fn the_families_are_the_implicit_tags() {
+        let mut families: Vec<&str> = SIZE_TAGS.iter().chain(MEDIA_TAGS.iter()).copied().collect();
+        let mut implicit = crate::record::documents::IMPLICIT_TAGS.to_vec();
+        families.sort();
+        implicit.sort();
+        assert_eq!(families, implicit);
+        assert_eq!(tag_family("bread"), 0);
     }
 
     /// Prefix-by-token, every term required, case-blind, punctuation ignored.

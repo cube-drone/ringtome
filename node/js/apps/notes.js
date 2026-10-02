@@ -38,6 +38,7 @@ import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
 import { docHref } from '../links.js';
+import { FacetRow, narrowTitle } from '../facets.js';
 import { formatWhen } from '../pure/when.js';
 
 const html = htm.bind(h);
@@ -354,16 +355,18 @@ const FileBrowser = ({ root, bucket, browse, notebook, onNotebook, tags, onToggl
             onClick=${() => onNotebook(notebook === UNFILED ? '' : UNFILED)}
         ><${Icons.lostFound} /> ${t('apps.notes.unfiled', 'unfiled')}</button>`}
     </div>
+    ${/* The feed's facet row (Curtis, 2026-10-02: every tag at once took the whole browser once an
+        import brought some 250): one line of the commonest, then "more" - in place for a few
+        lines' worth, a search box past that. These tags only narrow, so a chip is on or off. */ ''}
     ${browse.cloud.length > 0 &&
-    html`<div class="imagepick-tags">
-        ${browse.cloud.map(
-            ([tag, count]) => html`<button
-                key=${tag}
-                class=${tags.includes(tag) ? 'imagepick-tag active' : 'imagepick-tag'}
-                onClick=${() => onToggleTag(tag)}
-            >${tag} <span class="imagepick-tag-count">${count}</span></button>`
-        )}
-    </div>`}
+    html`<${FacetRow}
+        label=${t('apps.notes.tagged', 'tagged')}
+        items=${browse.cloud.map(([value, count]) => ({ value, count }))}
+        picked=${tags}
+        out=${[]}
+        onToggle=${onToggleTag}
+        titleOf=${narrowTitle}
+    />`}
     ${browse.files.length > 0
         ? html`<ul class="files-grid">
               ${browse.files.map(

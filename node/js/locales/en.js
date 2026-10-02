@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1367 phrases across 87 files.
+// 1375 phrases across 87 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -284,6 +284,7 @@ export default {
     'doc.imagepick.notebook': 'notebook',
     'doc.imagepick.every-notebook': 'every notebook',
     'apps.notes.unfiled': 'unfiled',
+    'apps.notes.tagged': 'tagged',
     'apps.notes.couldnt-make-a-new-one': "couldn't make a new one: {message}",
     'apps.notes.tags': 'tags',
     'apps.notes.nothing-here-yet': 'nothing here yet.',
@@ -633,6 +634,7 @@ export default {
     'doc.imagepick.add-an-image': 'add an image',
     'doc.imagepick.upload-from-this-computer': 'upload from this computer',
     'doc.imagepick.search-titles': 'search titles',
+    'doc.imagepick.tagged': 'tagged',
     'doc.imagepick.no-pictures-match': 'no pictures match.',
     'doc.imagepick.no-pictures-yet': 'no pictures yet - upload one in any notebook and it will be here.',
     'doc.imagepick.untitled': 'untitled',
@@ -763,6 +765,11 @@ export default {
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
 
     // --- node/js/facets.js ---
+    'facets.narrow-on': 'showing only what is tagged this - click to let it go',
+    'facets.narrow-off': 'click to show only what is tagged this',
+    'facets.size': 'size',
+    'facets.media': 'media',
+    'facets.tags': 'tagged',
     'facets.kind-posts': 'posts',
     'facets.kind-replies': 'replies',
     'facets.kind-rebroadcasts': 'rebroadcasts',
@@ -771,12 +778,13 @@ export default {
     'facets.chip-only': 'showing only these - click to leave them out instead',
     'facets.chip-out': 'left out - click to show them again',
     'facets.chip-alone': 'click to show only these; click again to leave them out',
-    'facets.and-n-more': 'and {n} more…',
+    'facets.find-one-of-n': 'find one of {n}…',
     'facets.fewer': 'fewer',
+    'facets.none-match': 'nothing matches',
+    'facets.and-n-more': 'and {n} more…',
     'facets.me': 'me',
     'facets.kinds': 'show',
     'facets.buckets': 'in',
-    'facets.tags': 'tagged',
 
     // --- node/js/frontdoor.js ---
     'frontdoor.default-name': 'Horse Drawing Tycoon 2',

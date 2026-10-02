@@ -2158,7 +2158,8 @@ async fn feed_labels_handler(
 const THINNING_CAP: i64 = 1000;
 
 /// How many posts the picks narrow to at most, read off the unpicked counts: within a row the sum
-/// of its "only" picks (any of them, 2026-10-01); across the rows, the smallest of those. A chip
+/// of its "only" picks (any of them, 2026-10-01) - a tag family is a row - across the rows, the
+/// smallest of those. A chip
 /// left out only takes away, so it bounds nothing. `None` when nothing is picked "only".
 fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Option<i64> {
     let count = |row: &str, value: &str| -> i64 {
@@ -2169,8 +2170,12 @@ fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Opt
             .unwrap_or(0)
     };
     let mut sizes: Vec<i64> = Vec::new();
-    if !narrow.tags.is_empty() {
-        sizes.push(narrow.tags.iter().map(|t| count("tags", t)).sum());
+    // Each tag family is a row of its own (search::tag_family).
+    for family in 0..3 {
+        let picked: Vec<&String> = narrow.tags.iter().filter(|t| crate::search::tag_family(t) == family).collect();
+        if !picked.is_empty() {
+            sizes.push(picked.iter().map(|t| count("tags", t)).sum());
+        }
     }
     if !narrow.buckets.is_empty() {
         sizes.push(narrow.buckets.iter().map(|b| count("buckets", b)).sum());
