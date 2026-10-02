@@ -64,6 +64,8 @@ import { useSearch, narrowParams } from '../postsearch.js';
 import { LabelFacets, useLabels, usePicks } from '../facets.js';
 import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
+import { useLocation } from 'preact-iso';
+import { postHref } from '../links.js';
 import { t } from '../i18n.js';
 import {
     PostEntry,
@@ -590,6 +592,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
 };
 
 export const FeedApp = ({ current, searchQuery }) => {
+    const loc = useLocation();
     const root = current && current.root;
     const [posting, setPosting] = useState(false);
     const [error, setError] = useState(null);
@@ -810,6 +813,12 @@ export const FeedApp = ({ current, searchQuery }) => {
             });
             // Said in public: seal it, so editing again costs the unlock.
             setPref(root, sealKey(posted), 'locked');
+            // And go to it (Curtis, 2026-10-02): the post's own page is the one place it is sure to
+            // be. The stream's top is only where it lands when nothing narrows the feed - a chip
+            // picked, a best or hot order, the dial - and a post that vanished on "post" read as one
+            // that hadn't gone. Minted on this node, so its page answers at once; the card above
+            // still waits in the stream for the way back.
+            loc.route(postHref(root, made.post_id));
         } catch (e) {
             // The handover already happened, so a refused publish leaves the words in the
             // stream as what they still are - a draft - with the reason above them.

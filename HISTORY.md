@@ -13773,3 +13773,12 @@ breaks, so yesterday's line said only its time), schedules, API keys, backups, t
 claimed date (`formatClaimed`). The cards had always dropped the year, so five years of imported toots
 read as this year's. A day-stamp (ledger, date-only claim) never grows a time; hover titles that give the
 exact moment keep all of it.
+
+**2026-10-02 - "post" goes to the post.** Curtis: posting from the feed's composer, "my post isn't
+immediately bopped to the top of the visible feed" - "maybe when we click 'Post' it takes us to the
+optimistically 'guaranteed' location of the post object?" The fresh card only joins the feed's own
+list, and the feed shows something else whenever it's narrowed: a facet chip picked (kept for the tab,
+so one left on from earlier counts), a best or hot order, a search. Now a successful post routes to the
+post's own page (`postHref`); it's minted on this node, so the page answers at once, and the card still
+waits in the stream for the way back. Seen in headless Chrome with a remembered "books" pick that would
+have hidden it: the post's page, its words on it.
