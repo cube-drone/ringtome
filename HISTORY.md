@@ -16701,3 +16701,19 @@ Its ask is shared now, one per author per page per minute (`strangerProfile`),
 so a page of nameless rows cannot ask once per row.
 `harness/postpage-face-probe.mjs` reads a post signed out: the old bundle showed
 the speakable words, this one the name. `just ui-check` green.
+
+**2026-10-03 - a document's address waits rather than flashing "that isn't
+here".** Curtis, on his own document's `/ringtome/user/…/doc/…` address on
+horsedrawingtycoon.com: a brief "not found", then the whole page; he'd rather
+see the frame with a spinner, and "not found" only on a real 404. `DocRoute`
+read the mirror's silence as the answer: holding any documents but not this one
+meant "isn't here". But a mirror is not the node - one carried over from the
+last visit holds what it held then, and a document made on this very device can
+be missing for a moment too: a reload first sets aside optimistic rows a closed
+page left unconfirmed (`healOptimistic`), and on a live site the stream's own
+row may land a beat later. Now, while the mirror lacks the row, the address
+shows a spinner and "looking that up…" in the console's frame, and asks the node
+(`GET …/docs/{doc}`); only a 404 says "that isn't here", and anything else waits
+for the stream to bring the row. `harness/docroute-probe.mjs`: a real document
+never shows the words, and a missing one reaches them through the 404 rather
+than spinning. `just strings-check` and `just ui-check` green.

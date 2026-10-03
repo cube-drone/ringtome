@@ -760,13 +760,30 @@ const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket 
             ([r, held]) => r || (held > 0 ? null : undefined),
         );
     }, [mine, current && current.root, doc]);
+    // The mirror not holding it is not the document not existing (Curtis, 2026-10-03: a flash of
+    // "that isn't here", then the whole page): a mirror carried over from the last visit holds the
+    // documents it held then, and one made since arrives with the stream a moment later. So the node
+    // is asked, and only its 404 says "isn't here"; anything else waits for the row.
+    const [gone, setGone] = useState(false);
+    useEffect(() => {
+        setGone(false);
+        if (!mine || row !== null) return undefined;
+        let live = true;
+        api(`/api/identity/${current.root}/docs/${doc}`).catch(
+            (e) => live && e && e.status === 404 && setGone(true),
+        );
+        return () => {
+            live = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mine, current && current.root, doc, row === null]);
     if (!mine) return html`<${DocResolve} seg=${seg} doc=${doc} current=${current} />`;
-    if (row === undefined)
-        return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
-    if (row === null)
+    if (row === null && gone)
         return html`<div class="null-state">
             <p class="null-title">${t('index.not-here', "that isn't here - it was deleted, or hasn't reached this computer yet.")}</p>
         </div>`;
+    if (!row)
+        return html`<div class="console"><p class="null-sub"><span class="status-spin"><${Icons.spinner} /></span> ${t('index.looking-that-up', 'looking that up…')}</p></div>`;
     if (!row || !appHere) return html`<${PrivateDoc} />`;
     return html`<${DocsApp}
         key=${appHere.id}
