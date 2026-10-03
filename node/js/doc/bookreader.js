@@ -14,6 +14,7 @@ import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
 import { postHref } from '../links.js';
+import { useArrowNav } from './docapp.js';
 
 const html = htm.bind(h);
 
@@ -98,11 +99,21 @@ export const BookReader = ({ root, book, page: asked, title }) => {
         ro.observe(el);
         return () => ro.disconnect();
     }, [page, words]);
+    // The arrow keys turn the pages too (Curtis, 2026-10-02), as the buttons do - and as Writer's
+    // do (doc/docapp.js): only while the keyboard is free, and from the cover, right opens the
+    // first page. Here, before the early returns: a hook runs on every render.
+    const walk = payload ? (page ? neighbours(payload, page) : { prev: null, next: null, order: neighbours(payload, '').order }) : null;
+    const go = (post) => loc.route(postHref(root, book, post || null));
+    useArrowNav(
+        walk && { prev: walk.prev && walk.prev.post, next: walk.next && walk.next.post, go },
+        walk ? walk.order.map((p) => p.post) : [],
+        page || null,
+        go
+    );
     if (payload === undefined) return html`<p class="postpage-loading">${t('doc.bookreader.opening-the-book', 'opening the book…')}</p>`;
     if (payload === null) return html`<p class="postpage-missing">${t('doc.bookreader.this-book-cannot-be-read', 'this book cannot be read here yet')}</p>`;
     const nav = page ? neighbours(payload, page) : { index: -1, prev: null, next: null, order: neighbours(payload, '').order };
     const here = nav.index >= 0 ? nav.order[nav.index] : null;
-    const go = (post) => loc.route(postHref(root, book, post || null));
     const steps = html`<nav class="book-reader-nav">
         <button class="book-reader-step" disabled=${!nav.prev} title=${t('doc.bookreader.the-page-before', 'the page before')} onClick=${() => nav.prev && go(nav.prev.post)}>
             <${Icons.back} /> ${t('doc.bookreader.previous', 'previous')}

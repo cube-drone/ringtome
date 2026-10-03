@@ -9,23 +9,22 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
-* A demo server (free registration, but it deletes all of its users after 7 days )
-* An article on Managing Operator Liability
 * every button in the entire mobile app is a little too small and delicate for human fingies, and some of the drawing tools are WAY too small
 * the big-search crawl's residuals (HISTORY 2026-10-02 has what was found and cut):
     * the server's fold costs a median 851 ms with nothing else in flight; a laptop does a comparable persona in ~50 ms. Which leg, and is it the box (disk fsync? cores?) or the data (node.db's size)? A fresh 30 minutes of log after this deploy says whether the crawl is gone
     * one connection per persona: every read queues behind every write and fold statement, in arrival order. A read-only second connection would stop that - but the 2026-08 stale-read dig named cross-connection WAL visibility as a suspect, so it wants its own design
     * a turso statement runs inside one poll and holds its tokio worker while it runs: a heavy read can stall the runtime on a small box. Worth checking the server's core count; `spawn_blocking` for the heavy readers if it's low
-* <- and -> arrows to navigate through books
 * check if HorseBucks are actually using a bigint
 * when I tag stuff in my personal feed (which is huge) it doesn't update right away
 * everything I've posted to the public internet in the past 6 years clocks in at about 110 MB all-in
     * so following 10 of me would entail a solid gigabyte of load?
 * feed/user search result highlighting
+* An article on Managing Operator Liability
+* Probably a bad idea: An open demo server (free registration, but it deletes all of its users after N days ) (why not: we still are responsible for what we host for that 7 days)
+* stacked updates (3 updates are available...)
 
 ### Launch to Website
 * Logging & graphs
-* "Attract Mode"
 * Migrate yer content
 * report flow (and full-node blocks?)
 * apparently the Posts page only deals with the last 5000 things, and we might need to deal with that the same way we dealt with Feeds... eventually.

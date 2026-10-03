@@ -14033,3 +14033,11 @@ And with sign-ups closed the Limits section stands down too - there's nothing to
 for a mode that has sign-ups; Starter Friends stays, since an existing account's new persona still
 begins with them. Copy and UI only: `just strings-check` and `just ui-check` green (CLAUDE.md's tiering,
 amended the same day: a copy-, CSS- or locale-only change owes no full `just ci`).
+
+**2026-10-02 - a book's pages turn with the arrow keys.** Curtis: the book reader's "previous" and
+"next", on ← and →. `doc/bookreader.js` takes Writer's own walker (`doc/docapp.js` `useArrowNav`): only
+while the keyboard is free - no field or editor focused, no modifier held - and from the cover, → opens
+the first page. Called above the reader's early returns, as a hook must be. apps/notes.js carried an
+identical second copy of the walker that nothing called; it is gone. Seen in headless Chrome over a
+three-page book: 1/3, → 2/3, → 3/3, → stays, ← 2/3. Client only: `just strings-check` and
+`just ui-check` green.

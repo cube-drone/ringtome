@@ -48,37 +48,6 @@ const html = htm.bind(h);
 
 const when = (ms) => formatWhen(ms);
 
-/// Left/right ARROW KEYS walk the prev/next order - but only while the keyboard is FREE: no
-/// input, textarea, select, or editor focused, no modifier held. While typing, arrows move the
-/// caret, never the page. With no document selected, right opens the order's first document and
-/// left its last - the book falls open at either cover. Exported: other surfaces walk the same way.
-export function useArrowNav(nav, order, selected, select) {
-    useEffect(() => {
-        const onKey = (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-            const t = e.target;
-            const tag = t && t.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-            if (t && t.closest && t.closest('.cm-editor, [contenteditable="true"]')) return;
-            if (selected) {
-                if (!nav) return;
-                const to = e.key === 'ArrowLeft' ? nav.prev : nav.next;
-                if (to) {
-                    e.preventDefault();
-                    nav.go(to);
-                }
-            } else if (order && order.length) {
-                e.preventDefault();
-                select(e.key === 'ArrowRight' ? order[0] : order[order.length - 1]);
-            }
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [nav, order, selected, select]);
-}
-
-
 // --- search snippets: the first few body lines that contain the query, with hits highlighted.
 // The mirror only holds a token bag (no line structure), so the body is fetched per result and
 // cached - once per doc, not per keystroke, so matching stays local and instant.
