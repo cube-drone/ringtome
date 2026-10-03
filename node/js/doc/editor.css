@@ -122,6 +122,23 @@
     padding: 0.8rem;
 }
 
+/* In Writer's editor pane (not the Feed composer, whose box keeps its cap above the Post button), the editor fills what its chrome leaves and
+   is the one thing that scrolls (Curtis, 2026-10-03: a long note's last lines slid out of reach). It
+   was capped at 75vh wherever it began, so with the title, chips and tabs above it the box ran past
+   the column's bottom - measured in Chrome at 1280x800: box to 762px, column to 627px, last line at
+   739px, and the column itself not scrolling. Filling the column puts the box's end on screen. */
+:not(.feed-composer) > .reader > .editor-live {
+    flex: 1 1 auto;
+    min-height: 12rem;
+    display: flex;
+    flex-direction: column;
+}
+:not(.feed-composer) > .reader > .editor-live .cm-editor {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+}
+
 /* Make the editable content fill the box, not just wrap the text - so a click anywhere in the
    editor (below a short document) lands in the content area and drops the caret at the end of
    the document, instead of in dead space the editor ignores. */

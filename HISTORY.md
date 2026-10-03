@@ -16765,3 +16765,16 @@ pane and the Publish column - one read per load and one per filing either way in
 the harness, so nothing to show for it. Whether the live server's 30 s was the
 blob store queueing behind its other work is for its own `taxonomy tree steps`
 line to say, once deployed. `just ci` green.
+
+**2026-10-03 - a long note's last lines are reachable in the editor.** Curtis:
+in Writer, editing a long document with the CodeMirror editor, "the bottom 4
+lines or so end up scrolling behind something and become inaccessible." The live
+editor's box was capped at `max-height: 75vh` wherever it began, so with the
+title, chips and tabs above it the box ran past the bottom of its column - and
+the column, which can scroll, didn't, so scrolling inside the editor reached an
+end that sat off screen. Measured in a real headless Chrome at 1280x800 over the
+DevTools protocol (300 lines, the editor's own scroller run to its end): box to
+762px, column to 627px, the last line at 739px. Now, in Writer's editor pane,
+the editor fills what its chrome leaves (flex, a 12rem floor, no cap) and is the
+one thing that scrolls: box to 626px, last line at 602px, on screen. The Feed
+composer keeps its cap, above its Post button. `just ui-check` green.
