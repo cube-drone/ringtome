@@ -632,7 +632,7 @@ fn walk_tree(
                 let child_hidden =
                     here || hidden.contains(&format!("sec:{}", hex::encode(sub.taxonomy_id)));
                 let (ss, ps) = walk(sub, child_hidden, hidden, members, hidden_docs, filed, seen);
-                if !child_hidden && !(ps.is_empty() && ss.is_empty()) {
+                if !child_hidden && (!ps.is_empty() || !ss.is_empty()) {
                     sections.push(Section { title: sub.title.clone(), pages: ps, sections: ss });
                 }
             } else if members.contains(&m.doc_id) {

@@ -10,7 +10,7 @@
 // step, happens exactly when the change came from outside: a load, a lookout reload, a
 // conflict presenting itself.
 import { h } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import {
     EditorView,
@@ -67,7 +67,9 @@ export const LiveMarquee = ({
     const hooks = useRef({});
     hooks.current = { onInput, onBlur, onCursor };
 
-    useEffect(() => {
+    // Built at commit, like the body and caret effects below - which run in declaration order
+    // and so find the view already there.
+    useLayoutEffect(() => {
         // Land where the host remembers the caret sitting (clamped: the body may have
         // changed shape since), and scroll it home so "return to a doc" means returning.
         const at = initialSelection
@@ -144,7 +146,16 @@ export const LiveMarquee = ({
     // reload) goes in as the smallest change - the stretch between what the two share at the
     // start and at the end - so CodeMirror carries the caret, the scroll and the undo history
     // through it, rather than replacing everything and losing where you were.
-    useEffect(() => {
+    //
+    // A LAYOUT effect, judged at commit, never a passive one (Curtis, 2026-10-02, Firefox: the
+    // caret stopped behind letters just typed - "a blank page" came out "a lkan pageb"). A
+    // passive effect waits for the next frame, and a keystroke landing inside that wait
+    // re-renders the component, which first runs the waiting effect with ITS render's body -
+    // one keystroke behind the view. That stale body read as an outside edit and took the new
+    // letters out; the next render's effect put them back as an outside edit, which CodeMirror
+    // maps the caret in FRONT of. At commit the body is the newest state there is, because a
+    // keystroke's setBody re-renders in a microtask, before the next input event can arrive.
+    useLayoutEffect(() => {
         const v = view.current;
         if (!v) return;
         const was = v.state.doc.toString();
@@ -154,8 +165,8 @@ export const LiveMarquee = ({
         syncing.current = false;
     }, [body]);
 
-    // After the body, so the caret lands in the text it names.
-    useEffect(() => {
+    // After the body (and, like it, at commit), so the caret lands in the text it names.
+    useLayoutEffect(() => {
         const v = view.current;
         if (!v || !caret) return;
         const at = Math.min(caret.at, v.state.doc.length);

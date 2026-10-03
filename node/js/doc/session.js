@@ -38,12 +38,20 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         timer: null,
         waitTimer: null,
         inflight: false,
+        edits: 0, // real inputs so far - a reload compares it across its fetch
     });
     const buffer = useRef({});
     buffer.current = { title, body, format };
     const saveRef = useRef(() => {});
 
-    const load = async () => {
+    // `reload` marks the lookout's quiet fast-forward, the one load that happens under an open
+    // buffer: it fetched against a clean buffer, but typing can arrive while the fetch is out, and
+    // pouring the fetched body over it would delete those words. A reload that sees input arrive
+    // stands down instead - the words stay, save against the old parents, and the fork presents
+    // after that save lands, exactly as a change arriving mid-typing already does (the lookout's
+    // "change + dirty" rule).
+    const load = async ({ reload = false } = {}) => {
+        const editsAtStart = machine.current.edits;
         setStatus('opening');
         setError(null);
         // Cache-first (mirror/doccache.js): a doc the mirror row still vouches for opens straight from
@@ -55,6 +63,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
             doc = await api(`/api/identity/${root}/docs/${docId}`);
             rememberDoc(root, docId, doc); // fire-and-forget; a failed write is a miss later
         }
+        if (reload && machine.current.edits !== editsAtStart) return; // typed while fetching
         // A null body means blobs this resolution needs haven't reached this computer yet
         // (headers travel ahead of bodies). This is a WAITING ROOM, never an empty buffer:
         // pouring null into the textarea as "" is how a divergence once ate a paragraph -
@@ -193,6 +202,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     const touched = () => {
         const m = machine.current;
         m.dirty = true;
+        m.edits++;
         setStatus('dirty');
         if (m.timer) clearTimeout(m.timer);
         m.timer = setTimeout(() => saveRef.current(), AUTOSAVE_MS);
@@ -283,7 +293,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         if (!row || !loaded || m.dirty || m.inflight) return;
         const seen = m.seen || { diverged: false, heads: 1 };
         if (needsReload(row, m.parents, seen, m.replaced || [])) {
-            load().catch(() => {});
+            load({ reload: true }).catch(() => {});
         }
         // `status` is a dep so a row update skipped during an inflight save gets re-judged when
         // the save settles - the row may never change again to re-fire this effect.

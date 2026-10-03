@@ -16646,3 +16646,41 @@ this door and the public one now match `If-None-Match` the RFC's weak way
 response can hand the browser a weakened tag that an exact compare would miss
 every time. `docs.cjs` claims the headers and the 304 on both spellings of the
 address. `just ci` green.
+
+**2026-10-02 - the caret no longer stops behind what you just typed.** Typing in
+hrseWriter™ (Curtis, Firefox on Linux, against horsedrawingtycoon.com) sometimes
+left the caret behind letters just written: "a blank page" came out "a lkan
+pageb". The cause is a timing gap in the live editor (doc/livemarquee.js). Its
+body sync was a passive effect, so it ran a frame after the render. A keystroke
+inside that frame re-renders the component, and Preact runs the waiting effect
+first, with the body from its own render: one keystroke behind what the editor
+holds. That old body looked like an outside edit, so it took the new letters
+out. The next render's effect put them back as another outside edit, and
+CodeMirror maps a caret to the front of text inserted at it. The sync is now a
+layout effect, run at commit, when the body is the newest state there is (a
+keystroke's re-render happens in a microtask, before the next key can arrive).
+The view's creation and the asked-for caret moved with it, so they keep their
+order. Not yet tried in a browser, and there is no claim for it, because the
+gate has no DOM to type into.
+
+**2026-10-02 - a reload no longer pours over typing.** The second hole found
+during that investigation. When the editor's buffer is clean and the doc's row
+moves (another device's save, a sync), the lookout reloads the doc quietly. But
+it started that reload against a clean buffer and then waited on a fetch, and
+anything typed during the wait was overwritten by the fetched body: words
+deleted. A reload (`load({ reload: true })`, the lookout's call alone) now notes
+the session's count of real inputs (`touched` counts them) and stands down if
+the count moved while it was out. The typed words stay, they save against the
+old parents, and the fork presents after that save, the same "change + dirty"
+path the lookout already takes when a change arrives mid-typing. First loads and
+the waiting room's retries are unchanged. Drawings share the session and get the
+same guard. No claim, because the window is a fetch's length and the suites have
+no hand to type into it.
+
+The gate needed two settlings first, neither caused by this work. Rust 1.96's
+clippy flags `nonminimal_bool` on books.rs's section filter, which hasn't
+changed since 2026-09-20; it now reads
+`!child_hidden && (!ps.is_empty() || !ss.is_empty())`, the same meaning. And
+this checkout's `node/integration` was missing `ws` (declared and locked, never
+installed), so `npm ci` installed it there. `just ci` green (1186 passing),
+before the rebase onto 0.2.8.
