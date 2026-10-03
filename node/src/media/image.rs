@@ -6,7 +6,7 @@
 //! image plus a small AVIF thumbnail via `ravif`.
 //!
 //! Everything here is a pure function - no I/O, no shared state. It is CPU-bound; callers run
-//! [`crush`] under `tokio::task::spawn_blocking`.
+//! [`crush`] through `media::lane`.
 //!
 //! Scope for now is *stills only*. Animated inputs (multi-frame GIF, animated WebP, APNG) are
 //! rejected with [`CrushError::Animated`] rather than silently flattened to their first frame.
@@ -127,7 +127,7 @@ impl std::error::Error for CrushError {}
 
 /// Decode an arbitrary bitmap upload and re-encode to canonical AVIF + thumbnail.
 ///
-/// Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
+/// Pure function, no I/O. CPU-bound (callers run it through `media::lane`).
 pub fn crush(input: &[u8]) -> Result<Crushed, CrushError> {
     // Identify the format from magic bytes. An unrecognised blob is unsupported, not corrupt.
     // (`guess_format` recognises the AVIF magic even though the `image` crate has no AVIF decoder

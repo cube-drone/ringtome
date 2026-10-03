@@ -5,8 +5,8 @@
 //! written to the quarantine directory, a `pending` row goes into `ingest_job`, and the caller
 //! gets a `doc_id` back immediately - a version-less doc_id IS the pending state. A shared worker
 //! (see [`worker_pass`], registered as a background loop) drains the queue FIFO: it transcodes
-//! the upload to a canonical AV1-family codec (on `spawn_blocking`, since AV1 encode is
-//! CPU-bound), stores the encrypted body + a sibling thumbnail blob, and appends the first
+//! the upload to a canonical AV1-family codec (in its turn on the media pool, `media::lane`,
+//! since AV1 encode is CPU-bound), stores the encrypted body + a sibling thumbnail blob, and appends the first
 //! version. Only then does the document exist to the rest of the system.
 //!
 //! **Trust boundary.** The plaintext upload lives, briefly, in the clear on disk here - but only
@@ -202,13 +202,13 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     // The fallback lane's Ogg Opus sidecar, when the browser pre-encoder shipped one.
     let audio = tokio::fs::read(sidecar_path(&job.quarantine_path)).await.ok();
 
-    // The crush (AV1/AVIF/Opus encode) is CPU-bound: keep it off the async runtime. The
-    // sidecar-aware door sniffs the upload and routes it to the image, video, or audio lane.
+    // The crush (AV1/AVIF/Opus encode) is CPU-bound: off the async runtime, on the media pool,
+    // one background crush at a time (media::lane). The sidecar-aware door sniffs the upload and routes it to the image, video, or audio lane.
     // The progress callback feeds the shared meter the jobs endpoint reads (the UI's bar).
     let ingest_meter = state.ingest.clone();
     let meter_job_id = job.job_id.clone();
     ingest_meter.set_progress(&meter_job_id, 0);
-    let outcome = tokio::task::spawn_blocking(move || {
+    let outcome = crate::media::lane::background(move || {
         let report = |pct: u8| ingest_meter.set_progress(&meter_job_id, pct);
         crate::media::crush_with_sidecar(&bytes, audio.as_deref(), &report)
     })

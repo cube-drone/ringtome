@@ -31,7 +31,7 @@
 //! work.
 //!
 //! Everything here is a pure function - no I/O, no shared state. CPU-bound; callers run
-//! [`crush`] under `tokio::task::spawn_blocking`.
+//! [`crush`] through `media::lane`.
 
 // The public interface below is consumed by the ingest wiring, which lands separately; within this
 // binary crate on its own the items read as unused. Keep the lint quiet without hiding real dead
@@ -204,7 +204,7 @@ pub struct CrushOpts {
 
 /// Crush an audio upload to canonical Ogg Opus.
 ///
-/// Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
+/// Pure function, no I/O. CPU-bound (callers run it through `media::lane`).
 pub fn crush(input: &[u8], opts: CrushOpts) -> Result<Crushed, CrushError> {
     crush_with_progress(input, opts, &|_| {})
 }

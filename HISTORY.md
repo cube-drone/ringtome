@@ -14130,3 +14130,23 @@ before a hand-off. The pass itself: 455 files, +36k/-24k, format-only. Prettier 
 parses to, which surfaced one real bug - plans/CHAT.md's sub-bullets under rulings 11-14 were indented
 three spaces under a four-column item, so they had always rendered as a top-level list; re-nested.
 `just ci` green.
+
+**2026-10-02 - encoding leaves a core free, and takes turns.** Curtis, on whether Horse Drawing Tycoon 2
+could run on a one-CPU droplet: "can we do clever stuff like queuing to make sure we don't have fat
+encryption and media encoding calls eating all CPUs at once?" Uploads were already queued one at a
+time, but one video took the whole machine on purpose - a scoped OS thread per keyframe chunk, with no
+cap, each splitting its tiles on rayon's global pool - and the bake worker (media fetched from the web
+for a post) crushed beside it on its own loop. Now `media::lane` holds a rayon pool sized one short of
+the machine (at least one; `RINGTOME_MEDIA_THREADS` overrides), and every crush runs inside it, where
+rav1e and ravif find it as their current pool. Video's chunks are rayon tasks on that pool instead of
+threads, so chunks and tiles together never take more than it was given. The upload queue and the bake
+take turns through `lane::background`, one crush at a time between them, the turn held by the work
+itself so a caller that stops waiting cannot let a second start. Drawings, avatars and banners - a
+request waits on those - use `lane::crush`: the same pool, but never behind somebody's video. The cost,
+measured on the full-length intermediary (`video_routes_to_webm`, 8 cores, both on all of them): 73.5 s
+against 70 s, about 5% for chunks as tasks rather than threads; through the lane add one core's share.
+Encryption cannot be queued this way - pages decrypt inside each database statement - so that lever,
+if it is ever wanted, is running heavy statements on the blocking pool. SERVER.md gained _How much
+computer_: one CPU for a small words-and-pictures group, two or more if people upload video. Pinned by
+`background_crushes_take_turns`, `the_encoders_split_their_work_on_the_media_pool` and the pool-size
+table.

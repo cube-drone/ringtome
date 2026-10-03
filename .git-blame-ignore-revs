@@ -1,0 +1,6 @@
+# Commits `git blame` should look through: format-only passes, which changed every line they touched
+# and none of what the code does. GitHub's blame view reads this file by itself; locally, once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# 2026-10-02: rustfmt + prettier across the repo (`just format`'s first run)
+473404e3c4a26e134bfa9a89e2ae13b84fd05ffd

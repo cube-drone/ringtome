@@ -3828,7 +3828,7 @@ async fn publish_drawing_handler(
     // The same laundering every picture gets - decode, re-encode, never trust the bytes.
     let bytes = picture.to_vec();
     let ingested =
-        tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+        crate::media::lane::crush(move || crate::media::crush_with_progress(&bytes, &|_| {}))
             .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("drawing crush task: {e}")))?
             .map_err(|e| {
@@ -6270,7 +6270,7 @@ async fn set_avatar_handler(
     // The same laundering every upload gets - decode, re-encode, never trust the bytes.
     let bytes = image.to_vec();
     let ingested =
-        tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+        crate::media::lane::crush(move || crate::media::crush_with_progress(&bytes, &|_| {}))
             .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("avatar crush task: {e}")))?
             .map_err(|e| {
@@ -6346,7 +6346,7 @@ async fn set_banner_handler(
     })?;
     let bytes = image.to_vec();
     let ingested =
-        tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+        crate::media::lane::crush(move || crate::media::crush_with_progress(&bytes, &|_| {}))
             .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("banner crush task: {e}")))?
             .map_err(|e| {

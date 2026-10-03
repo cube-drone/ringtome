@@ -23,7 +23,7 @@
 //! decoders (`rav1d`, the `image` crate) behind hard limits.
 //!
 //! Everything here is a pure function - no I/O, no shared state. CPU-bound; callers run
-//! [`crush`] under `tokio::task::spawn_blocking`.
+//! [`crush`] through `media::lane`.
 
 // The public interface below is consumed by the ingest wiring, which lands separately; within this
 // binary crate on its own the items read as unused. Keep the lint quiet without hiding real dead
@@ -33,6 +33,8 @@
 use std::io::Cursor;
 use std::mem::MaybeUninit;
 use std::ptr::NonNull;
+
+use rayon::prelude::*;
 
 use image::codecs::gif::GifDecoder;
 use image::codecs::png::PngDecoder;
@@ -242,7 +244,7 @@ pub struct CrushOpts {
 ///
 /// `audio_ogg_opus` is the fallback lane's separate Ogg Opus blob; it is only meaningful for
 /// non-WebM inputs (a WebM carries its own audio track, and any extra blob riding beside one is
-/// ignored). Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
+/// ignored). Pure function, no I/O. CPU-bound (callers run it through `media::lane`).
 pub fn crush(
     video: &[u8],
     audio_ogg_opus: Option<&[u8]>,
@@ -1419,27 +1421,18 @@ fn encode_av1(
     on_frame: &(dyn Fn() + Sync),
 ) -> Result<EncodedVideo, CrushError> {
     let chunk_len = KEYFRAME_INTERVAL_FRAMES as usize;
-    // Scoped threads (chunks borrow `frames`); each chunk's rav1e context shares the global
-    // rayon pool for its tile work, so the box is saturated without oversubscription drama.
-    let chunk_results: Vec<Result<Vec<Av1Packet>, CrushError>> = std::thread::scope(|scope| {
-        let handles: Vec<_> = frames
-            .chunks(chunk_len)
-            .map(|chunk| {
-                scope.spawn(move || {
-                    encode_av1_chunk(chunk, width, height, flatten, quantizer, on_frame)
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .map(|handle| {
-                handle
-                    .join()
-                    .map_err(|_| CrushError::Decode("av1 encoder thread panicked".into()))
-                    .and_then(|result| result)
-            })
-            .collect()
-    });
+    // Chunks are rayon tasks, and each chunk's rav1e context splits its tiles on the same pool -
+    // the media pool, when the crush runs through media::lane - so chunks and tiles share its
+    // threads and the encode never takes more of the machine than the pool was given.
+    let chunk_results: Vec<Result<Vec<Av1Packet>, CrushError>> = frames
+        .par_chunks(chunk_len)
+        .map(|chunk| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                encode_av1_chunk(chunk, width, height, flatten, quantizer, on_frame)
+            }))
+            .unwrap_or_else(|_| Err(CrushError::Decode("av1 encoder thread panicked".into())))
+        })
+        .collect();
 
     let mut packets: Vec<Av1Packet> = Vec::with_capacity(frames.len());
     for result in chunk_results {

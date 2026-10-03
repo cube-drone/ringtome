@@ -976,7 +976,7 @@ async fn ensure_bake(node_db: &Db, root_hex: &str, url: &str) -> Result<BakeRow,
 }
 
 /// One worker pass: claim and bake pending external media. Registered beside the ingest
-/// worker; the download is IO, the crush is CPU (spawn_blocking), and a failure is a terminal
+/// worker; the download is IO, the crush is CPU (its turn on the media pool, media::lane), and a failure is a terminal
 /// tombstone the author sees in the modal - Post again to retry.
 pub async fn bake_pass(state: AppState) -> anyhow::Result<()> {
     loop {
@@ -1122,7 +1122,7 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
             let meter = state.ingest.clone();
             let key = bake_meter_key(root, url);
             meter.set_progress(&key, 0);
-            let crushed = tokio::task::spawn_blocking({
+            let crushed = crate::media::lane::background({
                 let meter = meter.clone();
                 let key = key.clone();
                 move || {

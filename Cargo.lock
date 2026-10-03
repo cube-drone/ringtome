@@ -5445,6 +5445,7 @@ dependencies = [
  "rav1d",
  "rav1e",
  "ravif",
+ "rayon",
  "regex",
  "reqwest",
  "rgb",

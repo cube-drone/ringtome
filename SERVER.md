@@ -203,6 +203,16 @@ the whole procedure. **There is no going back** - a node refuses to open databas
 has already upgraded, since nothing migrates down. So take a backup before each upgrade; it is your
 rollback.
 
+## How much computer
+
+One CPU runs a small group that posts words and pictures. Encoding is the heavy work: every upload
+is re-encoded on the server, and a video takes every thread it is given for as long as it takes. So
+the node gives encoding one thread fewer than the machine has, and encodes one upload at a time; on
+two or more CPUs that leaves a CPU free for everything else, and people can keep using the site
+while somebody's video encodes. On one CPU there is nothing spare: the site slows while a video
+encodes. If people will upload video, use two CPUs or more. `RINGTOME_MEDIA_THREADS` changes how many
+threads encode.
+
 ## Settings
 
 Everything is an environment variable. The ones an operator is likely to want:
@@ -222,6 +232,7 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_ADMIN_PERSONA_ID`     | unset                            | the address of the persona that administers the node (the first account otherwise)                                        |
 | `RINGTOME_MAX_UPLOAD_BYTES`     | 128 MiB (multi) / 1 GiB (single) | the largest raw upload the node will accept                                                                               |
 | `RINGTOME_QUARANTINE_DIRECTORY` | the system temp dir              | where uploads wait for processing; disposable                                                                             |
+| `RINGTOME_MEDIA_THREADS`        | the CPUs, less one (at least 1)  | how many threads encode pictures, sound and video - see _How much computer_                                               |
 | `RUST_LOG`                      | `info` for the node              | log filter, in the usual `tracing` syntax                                                                                 |
 
 The rest (sync and admission budgets, proof-of-work prices) have defaults sized for a small hosted

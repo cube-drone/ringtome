@@ -1,7 +1,7 @@
 //! The crush trilogy: every uploaded byte-blob becomes canonical, bounded, crushed media here.
 //!
 //! Three siblings with one grammar - [`image::crush`], [`video::crush`], [`audio::crush`] - each
-//! a pure, CPU-bound function (callers use `spawn_blocking`) taking hostile bytes to a `Crushed`
+//! a pure, CPU-bound function (callers run it through [`lane`]) taking hostile bytes to a `Crushed`
 //! output or a `CrushError`. The module name qualifies; the verb stays the same.
 //!
 //!   - [`image`]: stills -> AVIF (+ thumbnail). Decodes with the pure-rust `image` crate + rav1d.
@@ -15,6 +15,7 @@
 
 pub mod audio;
 pub mod image;
+pub mod lane;
 pub mod video;
 
 use crate::record::documents::Format;
