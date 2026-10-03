@@ -4,3 +4,6 @@
 
 # 2026-10-02: rustfmt + prettier across the repo (`just format`'s first run)
 473404e3c4a26e134bfa9a89e2ae13b84fd05ffd
+
+# 2026-10-02: Markdown rewrapped at 80 columns (prettier, proseWrap: always)
+a5ad8a21a08de5218d12047c844972b3fd4d0c1b
