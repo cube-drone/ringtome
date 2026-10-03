@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1419 phrases across 88 files.
+// 1418 phrases across 88 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1437,7 +1437,6 @@ export default {
     'identity.routes.an-avatar-should-be-a': 'an avatar should be a picture - a still image or a small animation',
     'identity.routes.that-doesnt-work-as-a-banner': "that doesn't work as a banner: {e}",
     'identity.routes.a-banner-is-a-still-picture': 'a banner is a still picture',
-    'identity.routes.document-has-no-readable-head': 'document has no readable head',
     'identity.routes.body-not-on-this-node': 'body not on this node yet',
     'identity.routes.upload-tombstone': '{reason}',
     'identity.routes.upload-could-not-be-processed': 'upload could not be processed',

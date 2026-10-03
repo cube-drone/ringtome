@@ -157,10 +157,75 @@ impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 
 /// storm's log stays around a megabyte: ~1MB/s of frames was ~250 statements/s.
 const CHECKPOINT_EVERY: u64 = 256;
 
+// ---- statement timing (2026-10-03) ----
+//
+// A slow page on a persona is almost always waiting, not working: its statements queue on one
+// connection (`stmt_lock`), so one heavy statement holds up every cheap one behind it - the 30 s
+// notebook tree that made a note's create take 3.9 s. Guessing which was which cost a day; these
+// two lines say it. A statement that RUNS long is logged where it runs (`slow statement`, with its
+// database and its SQL), whoever asked - background work included. A request that spends long in
+// the database says how much of that was WAITING for the lock and how much was its own statements
+// (`request db time`), through a tally the request middleware sets up (`DB_TALLY`).
+
+/// A statement running this long is named in the log.
+const SLOW_STATEMENT: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// One request's time in the database.
+#[derive(Default, Debug)]
+pub struct DbTally {
+    pub statements: u64,
+    pub wait: std::time::Duration,
+    pub exec: std::time::Duration,
+    pub slowest: std::time::Duration,
+    pub slowest_sql: String,
+}
+
+tokio::task_local! {
+    /// The running request's tally, when the request middleware ([`tally_requests`]) set one.
+    pub static DB_TALLY: std::sync::Arc<std::sync::Mutex<DbTally>>;
+}
+
+/// The SQL as a log line carries it: whitespace collapsed, cut short.
+fn sql_head(sql: &str) -> String {
+    let flat: String = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    flat.chars().take(120).collect()
+}
+
+/// The request middleware: tally the request's statements, and say so when it spent long enough
+/// in the database, or took long enough overall, to be worth reading.
+pub async fn tally_requests(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let tally = std::sync::Arc::new(std::sync::Mutex::new(DbTally::default()));
+    let started = std::time::Instant::now();
+    let response = DB_TALLY.scope(tally.clone(), next.run(req)).await;
+    let total = started.elapsed();
+    let t = tally.lock().map(|mut t| std::mem::take(&mut *t)).unwrap_or_default();
+    if total >= std::time::Duration::from_millis(500) || t.wait + t.exec >= SLOW_STATEMENT {
+        tracing::info!(
+            method = %method,
+            path = %path,
+            total_ms = total.as_millis() as u64,
+            db_wait_ms = t.wait.as_millis() as u64,
+            db_exec_ms = t.exec.as_millis() as u64,
+            statements = t.statements,
+            slowest_ms = t.slowest.as_millis() as u64,
+            slowest_sql = %t.slowest_sql,
+            "request db time"
+        );
+    }
+    response
+}
+
 #[derive(Clone)]
 pub struct Db {
     /// Kept so the database outlives any moment where no query is in flight.
     _database: turso::Database,
+    /// What the timing lines call this database: `node`, or a persona's root, shortened.
+    name: std::sync::Arc<str>,
     conn: turso::Connection,
     /// One statement at a time. Turso's `Connection` refuses overlapping statements
     /// ("concurrent use forbidden"), and every clone of a `Db` shares one connection - a race
@@ -255,11 +320,48 @@ pub async fn await_write_nudge(
 }
 
 impl Db {
+    /// Take the statement lock, noting how long the wait was.
+    async fn statement_lock(
+        &self,
+    ) -> (tokio::sync::MutexGuard<'_, ()>, std::time::Duration, std::time::Instant) {
+        let asked = std::time::Instant::now();
+        let guard = self.stmt_lock.lock().await;
+        let locked = std::time::Instant::now();
+        (guard, locked - asked, locked)
+    }
+
+    /// One statement done: into the request's tally, if there is one, and into the log if slow.
+    fn timed(&self, sql: &str, wait: std::time::Duration, locked: std::time::Instant) {
+        let exec = locked.elapsed();
+        let _ = DB_TALLY.try_with(|tally| {
+            if let Ok(mut t) = tally.lock() {
+                t.statements += 1;
+                t.wait += wait;
+                t.exec += exec;
+                if exec > t.slowest {
+                    t.slowest = exec;
+                    t.slowest_sql = sql_head(sql);
+                }
+            }
+        });
+        if exec >= SLOW_STATEMENT {
+            tracing::warn!(
+                db = %self.name,
+                exec_ms = exec.as_millis() as u64,
+                wait_ms = wait.as_millis() as u64,
+                sql = %sql_head(sql),
+                "slow statement"
+            );
+        }
+    }
+
     /// Execute one statement to completion; returns rows affected.
     pub async fn execute(&self, sql: &str, params: impl IntoParams) -> Result<u64> {
         let n = {
-            let _guard = self.stmt_lock.lock().await;
-            self.conn.execute(sql, params).await?
+            let (_guard, wait, locked) = self.statement_lock().await;
+            let n = self.conn.execute(sql, params).await;
+            self.timed(sql, wait, locked);
+            n?
         };
         // The volume trigger: every CHECKPOINT_EVERY statements, truncate the log - after
         // the guard is released, so the checkpoint takes the lock like any statement. A
@@ -277,8 +379,10 @@ impl Db {
 
     /// Run a script of semicolon-separated statements.
     pub async fn execute_batch(&self, sql: &str) -> Result<()> {
-        let _guard = self.stmt_lock.lock().await;
-        Ok(self.conn.execute_batch(sql).await?)
+        let (_guard, wait, locked) = self.statement_lock().await;
+        let done = self.conn.execute_batch(sql).await;
+        self.timed(sql, wait, locked);
+        Ok(done?)
     }
 
     /// A dynamic statement, drained WHOLE under the lock, for the callers that must inspect
@@ -293,18 +397,23 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<(Vec<String>, Vec<Vec<Value>>)> {
-        let _guard = self.stmt_lock.lock().await;
-        let mut rows = self.conn.query(sql, params).await?;
-        let names: Vec<String> = rows.column_names();
-        let mut out = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let mut values = Vec::with_capacity(names.len());
-            for idx in 0..names.len() {
-                values.push(row.get_value(idx).unwrap_or(Value::Null));
+        let (_guard, wait, locked) = self.statement_lock().await;
+        let drained = async {
+            let mut rows = self.conn.query(sql, params).await?;
+            let names: Vec<String> = rows.column_names();
+            let mut out = Vec::new();
+            while let Some(row) = rows.next().await? {
+                let mut values = Vec::with_capacity(names.len());
+                for idx in 0..names.len() {
+                    values.push(row.get_value(idx).unwrap_or(Value::Null));
+                }
+                out.push(values);
             }
-            out.push(values);
+            Ok((names, out))
         }
-        Ok((names, out))
+        .await;
+        self.timed(sql, wait, locked);
+        drained
     }
 
     /// Every row, extracted into `T`.
@@ -313,7 +422,18 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Vec<T>> {
-        let _guard = self.stmt_lock.lock().await;
+        let (_guard, wait, locked) = self.statement_lock().await;
+        let all = self.fetch_all_locked(sql, params).await;
+        self.timed(sql, wait, locked);
+        all
+    }
+
+    /// `fetch_all`'s body, run under the lock its caller holds.
+    async fn fetch_all_locked<T: FromRow>(
+        &self,
+        sql: &str,
+        params: impl IntoParams,
+    ) -> Result<Vec<T>> {
         let mut rows = self.conn.query(sql, params).await?;
         let mut out = Vec::new();
         // Drain FULLY even when a row refuses to decode - the open-statement rule's error
@@ -343,7 +463,18 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Option<T>> {
-        let _guard = self.stmt_lock.lock().await;
+        let (_guard, wait, locked) = self.statement_lock().await;
+        let first = self.fetch_optional_locked(sql, params).await;
+        self.timed(sql, wait, locked);
+        first
+    }
+
+    /// `fetch_optional`'s body, run under the lock its caller holds.
+    async fn fetch_optional_locked<T: FromRow>(
+        &self,
+        sql: &str,
+        params: impl IntoParams,
+    ) -> Result<Option<T>> {
         let mut rows = self.conn.query(sql, params).await?;
         // Decode AFTER the drain reaches the row, never `?` before it - same error-path
         // rule as `fetch_all` above.
@@ -606,17 +737,23 @@ pub async fn open_database(path: &Path, keystore: &Keystore) -> Result<Db> {
         .await
         .with_context(|| format!("opening database {}", path.display()))?;
 
-    let db = connect(database)?;
+    let db = connect(database, &short_name(&logical_name))?;
     db.execute("PRAGMA synchronous = NORMAL", ()).await.context("setting synchronous pragma")?;
     Ok(db)
 }
 
+/// What the timing lines call a database: `node`, or a persona's root, its first twelve.
+fn short_name(logical_name: &str) -> String {
+    logical_name.chars().take(12).collect()
+}
+
 /// Wrap a built database in a [`Db`]: connect and set the busy timeout.
-fn connect(database: turso::Database) -> Result<Db> {
+fn connect(database: turso::Database, name: &str) -> Result<Db> {
     let conn = database.connect().context("connecting to database")?;
     conn.busy_timeout(BUSY_TIMEOUT).context("setting busy timeout")?;
     Ok(Db {
         _database: database,
+        name: name.into(),
         conn,
         stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         writes: Default::default(),
@@ -668,7 +805,7 @@ pub async fn test_user_db_with_journal(journal: Journal) -> Db {
 #[cfg(test)]
 pub(crate) async fn test_memory_db() -> Db {
     let database = Builder::new_local(":memory:").build().await.unwrap();
-    connect(database).unwrap()
+    connect(database, "memory").unwrap()
 }
 
 /// Record a boot in `boot_timestamps` (a local-only diagnostic; never exposed over the network).
@@ -1091,6 +1228,27 @@ pub async fn checkpoint_pass(state: crate::AppState) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// A request's statements are tallied - how many, waiting vs working, and the slowest named -
+    /// and a statement outside any request is simply not (2026-10-03, the `request db time` line).
+    #[tokio::test]
+    async fn a_requests_statements_are_tallied_and_nothing_else_is() {
+        let db = test_memory_db().await;
+        db.execute("CREATE TABLE t (v INTEGER)", ()).await.unwrap(); // outside a request: no panic
+        let tally = std::sync::Arc::new(std::sync::Mutex::new(DbTally::default()));
+        DB_TALLY
+            .scope(tally.clone(), async {
+                db.execute("INSERT INTO t (v) VALUES (1)", ()).await.unwrap();
+                let _: Vec<(i64,)> = db.fetch_all("SELECT v FROM t", ()).await.unwrap();
+                let _: Option<(i64,)> =
+                    db.fetch_optional("SELECT v FROM t WHERE v = 1", ()).await.unwrap();
+            })
+            .await;
+        let t = tally.lock().unwrap();
+        assert_eq!(t.statements, 3);
+        assert!(!t.slowest_sql.is_empty(), "the slowest statement is named");
+        assert!(t.slowest <= t.exec, "the slowest is one of them");
+    }
+
     /// The open-statement rule's ERROR path (2026-08-24, the stale-serve dig): a fetch whose
     /// row refuses to decode must still drain rather than early-`?` out. Honesty note: the
     /// violation was planted and this cop stayed GREEN - on the in-memory test db, turso's

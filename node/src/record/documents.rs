@@ -2674,10 +2674,8 @@ pub struct DocHeadRow {
     pub title: String,
     /// Raw wire format id (`Format::from_wire` reads it).
     pub format: Option<u64>,
-    /// The display head's body blob hash in the file layer. No list endpoint serves it yet -
-    /// it rides the memo because the display head's serving needs are exactly these columns,
-    /// and the body-serving path is the next reader.
-    #[allow(dead_code)]
+    /// The display head's body blob hash in the file layer - what the private body door serves
+    /// and names its ETag after (2026-10-03), straight off this row.
     pub file_hash: [u8; 32],
     pub width: Option<u32>,
     pub height: Option<u32>,

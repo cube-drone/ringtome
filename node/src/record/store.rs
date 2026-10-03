@@ -1022,6 +1022,25 @@ impl Documents<'_> {
         .await
     }
 
+    /// One document's memoized display row - its display head's format, blob, media facts - with
+    /// no version history built (2026-10-03: serving a body, or answering "not modified", walked
+    /// every version the document ever had, so an autosaving drawing grew slower to open as it
+    /// lived). Deleted documents too: delete hides a document from lists, not its bytes from its
+    /// owner. None for a document with no version yet.
+    pub async fn head(
+        &self,
+        doc_id: &[u8; 16],
+    ) -> Result<Option<crate::record::documents::DocHeadRow>, AppError> {
+        Ok(crate::record::documents::heads_for(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            &[*doc_id],
+        )
+        .await?
+        .into_iter()
+        .next())
+    }
+
     /// Memoized display rows for a specific set of documents (the docs-by-tag read). Doc ids
     /// with no local row (annotated but never held) are simply absent, as are deleted ones;
     /// ordering is the caller's.

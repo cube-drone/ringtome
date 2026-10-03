@@ -16778,3 +16778,27 @@ DevTools protocol (300 lines, the editor's own scroller run to its end): box to
 the editor fills what its chrome leaves (flex, a 12rem floor, no cap) and is the
 one thing that scrolls: box to 626px, last line at 602px, on screen. The Feed
 composer keeps its cap, above its Post button. `just ui-check` green.
+
+**2026-10-03 - the database says what it waited on, the stream refreshes once,
+and a body read is one row.** After an outside audit of the slow web (ChatGPT's,
+of `be42ed4`; checked against the code before acting), its first three. (1)
+Measured, not guessed: every `Db` statement now times its wait for the
+connection's lock apart from its own execution. A statement that runs 250 ms or
+more says so where it runs (`slow statement`, with its database - `node` or a
+persona's root, shortened - and its SQL), whoever asked, background work
+included; and each HTTP request carries a task-local tally (`DB_TALLY`, set by
+the `tally_requests` middleware), logged as `request db time` - total, waiting,
+working, statements, the slowest and its SQL - when the request took 500 ms or
+spent 250 in the database. A slow page now names whether it worked or queued,
+and behind what. (2) The stream's `gather()` refreshed the search index twice
+per update, per open tab: `implicit_tags` refreshed it to read word counts, and
+the search rows refreshed it again. Now once, up front, and the implicit tags
+read that fresh index (`implicit_tags_as_indexed`); the documents part of a
+gather logs its cost past 250 ms, since no request owns it. (3) The private body
+door built the document's whole version history to serve a body, or even to
+answer "not modified" - an autosaving drawing grew slower to open as it lived.
+It serves straight off the display head's memo row now (`Documents::head`:
+format, blob, ETag), the blob read by hash. A note saved 1,500 times: body and
+304 in ~4.7 ms, the same as a fresh note's; its detail read, which still builds
+the history, 17 ms - saves and the detail are the next of that kind. `just ci`
+green.

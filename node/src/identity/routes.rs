@@ -6555,19 +6555,14 @@ async fn docs_body_impl(
     if let Some(b) = crate::builtin::get(&doc_id) {
         return Ok(builtin_bytes(b));
     }
-    // Version-less: not a real document (yet, or ever). Let the ingest queue explain why.
-    let Some(doc) = data.documents().one(&doc_id).await? else {
+    // The display head's row (`Documents::head`) - its format and its blob - and never the
+    // version history: a 304 is one memo read. Version-less: not a real document (yet, or
+    // ever) - the ingest queue explains why.
+    let Some(head) = data.documents().head(&doc_id).await? else {
         return version_less_body_status(&state, &session.account.id.to_string(), doc_id).await;
     };
-
-    let head = doc.display_head().ok_or_else(|| {
-        AppError::NotFound(crate::msg!(
-            "identity.routes.document-has-no-readable-head",
-            "document has no readable head"
-        ))
-    })?;
-    let format = crate::record::documents::Format::from_wire(head.header.format);
-    let etag = format!("\"{}\"", hex::encode(head.header.file_hash));
+    let format = crate::record::documents::Format::from_wire(head.format);
+    let etag = format!("\"{}\"", hex::encode(head.file_hash));
     if if_none_match.as_deref().is_some_and(|inm| crate::idface::etag_matches(inm, &etag)) {
         return Ok((
             StatusCode::NOT_MODIFIED,
@@ -6575,7 +6570,7 @@ async fn docs_body_impl(
         )
             .into_response());
     }
-    let bytes = data.documents().body(head).await?.ok_or_else(|| {
+    let bytes = data.documents().blob(head.file_hash).await?.ok_or_else(|| {
         AppError::NotFound(crate::msg!(
             "identity.routes.body-not-on-this-node",
             "body not on this node yet"
@@ -8163,11 +8158,17 @@ async fn gather(
         msg.profile = Some(data.profile().all().await?);
     }
     if moved.documents {
+        let started = std::time::Instant::now();
+        // The search index refreshed ONCE (2026-10-03): `implicit_tags` used to refresh it to
+        // read its word counts, and the search rows below refreshed it again - two passes over
+        // every document per update, per open tab. The rows refreshed here are the ones shipped.
+        let search = data.documents().search_rows().await?;
+        let search_ms = started.elapsed().as_millis() as u64;
         let (rows, _undecryptable) = data.documents().summaries().await?;
         let annots = annotation_map(data).await?;
         let buckets = bucket_map(data).await?;
         let pinned = data.documents().pinned().await?;
-        let implicit = data.documents().implicit_tags().await?;
+        let implicit = data.documents().implicit_tags_as_indexed().await?;
         let docs: Vec<DocSummary> =
             rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
         let docs = with_builtins(docs, &annots, &buckets, &pinned);
@@ -8178,13 +8179,18 @@ async fn gather(
                 msg.docs_removed = (!removed.is_empty()).then_some(removed);
             }
         }
-        let search = data.documents().search_rows().await?;
         match ship_kind(&mut baselines.search, search, |s| s.doc_id.clone())? {
             KindShip::Whole(rows) => msg.search = Some(rows),
             KindShip::Delta { changed, removed } => {
                 msg.search_changed = (!changed.is_empty()).then_some(changed);
                 msg.search_removed = (!removed.is_empty()).then_some(removed);
             }
+        }
+        // The stream runs outside any request, so the request tally never sees it: say its cost
+        // here when it is worth reading.
+        let total_ms = started.elapsed().as_millis() as u64;
+        if total_ms >= 250 {
+            tracing::info!(total_ms, search_ms, "stream documents gather");
         }
     }
     if moved.organizers {
