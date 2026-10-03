@@ -698,6 +698,19 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // Re-synced from the FACT, never the row object: the page rebuilds its rows on every
     // render, and keying on the object reset the toggle's own state from a row that did not
     // carry the pin yet (Curtis, 2026-09-05: "it darkened for a second, then went back").
+    // The author's face as the row names it - only when it does: an empty profile handed down told
+    // usePerson "here is their face" and stopped it asking, so a row without the names (a post's own
+    // page, signed out - 2026-10-03) wore the speakable words.
+    const authorProfile =
+        item.author_name || item.author_avatar
+            ? {
+                  fields: [
+                      item.author_name && { field: 'name', value: item.author_name },
+                      item.author_avatar && { field: 'avatar', value: item.author_avatar },
+                  ].filter(Boolean),
+                  via: [],
+              }
+            : undefined;
     const serverPinned = pinnedByAuthor(item);
     const [pinned, setPinned] = useState(serverPinned);
     useEffect(() => setPinned(serverPinned), [serverPinned]);
@@ -1095,13 +1108,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
             <${PersonBanner}
                 root=${item.author}
                 current=${current}
-                profile=${{
-                    fields: [
-                        item.author_name && { field: 'name', value: item.author_name },
-                        item.author_avatar && { field: 'avatar', value: item.author_avatar },
-                    ].filter(Boolean),
-                    via: [],
-                }}
+                profile=${authorProfile}
                 actions=${html`${
                     item.scheduled
                         ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`

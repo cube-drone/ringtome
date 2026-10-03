@@ -57,6 +57,19 @@ const html = htm.bind(h);
  * @param current  your open persona ({ root }), or null
  * @param profile  their already-fetched profile response, when the caller has one
  */
+/// One stranger's profile asked once per page per minute, however many rows name them (2026-10-03:
+/// a feed of nameless rows would otherwise ask for the same author's face once per row).
+const strangerProfiles = new Map(); // root -> { at, asked }
+const STRANGER_PROFILE_MS = 60_000;
+function strangerProfile(root) {
+    const kept = strangerProfiles.get(root);
+    if (kept && Date.now() - kept.at < STRANGER_PROFILE_MS) return kept.asked;
+    const asked = api(`/api/id/${root}/profile`);
+    strangerProfiles.set(root, { at: Date.now(), asked });
+    asked.catch(() => strangerProfiles.delete(root)); // a failure is asked again, not remembered
+    return asked;
+}
+
 export function usePerson(root, { current, profile: given } = {}) {
     const myRoot = current && current.root;
     const isYou = !!(myRoot && myRoot === root);
@@ -94,7 +107,7 @@ export function usePerson(root, { current, profile: given } = {}) {
     useEffect(() => {
         if (!needsFetch) return;
         let live = true;
-        api(`/api/id/${root}/profile`)
+        strangerProfile(root)
             .then((p) => live && setFetched(p))
             .catch(() => live && setFetched(null));
         return () => {

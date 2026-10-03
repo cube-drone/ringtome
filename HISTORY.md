@@ -16684,3 +16684,20 @@ changed since 2026-09-20; it now reads
 this checkout's `node/integration` was missing `ws` (declared and locked, never
 installed), so `npm ci` installed it there. `just ci` green (1186 passing),
 before the rebase onto 0.2.8.
+
+**2026-10-03 - a post's own page wears its author's face, signed out.** Curtis,
+on a horsedrawingtycoon.com permalink with no session: the card showed
+"squad-drama", the speakable words, for a persona the node hosts and serves a
+profile for (name, avatar, colourway - the profile door answered anonymously,
+checked live). `PostEntry` handed its nameplate a profile built from the row's
+`author_name` and `author_avatar` whether or not the row had them, and
+`usePerson` takes any profile handed down as the face and stops asking - so a
+row without the names wore none. Feed rows carry them from the server; a post's
+own page built its row without them, though it had just fetched the author's
+whole profile to warm the node, and dropped the answer. Now the post page keeps
+that profile and names the author on the row, and `PostEntry` hands a profile
+down only when the row names somebody, so `usePerson` can still ask for itself.
+Its ask is shared now, one per author per page per minute (`strangerProfile`),
+so a page of nameless rows cannot ask once per row.
+`harness/postpage-face-probe.mjs` reads a post signed out: the old bundle showed
+the speakable words, this one the name. `just ui-check` green.

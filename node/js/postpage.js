@@ -62,6 +62,8 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     const via = (loc.query && loc.query.via) || '';
     // undefined = loading, null = not held here, object = the post
     const [post, setPost] = useState(undefined);
+    // The author's profile, from the visit that warms the node anyway: the card's face (2026-10-03).
+    const [authorProfile, setAuthorProfile] = useState(null);
     // Replies said from THIS page, ahead of the fold: the memo notes a fresh reply on the
     // fold lane's next pass, so the thread read may not list it yet - the view runs ahead
     // of the stream without disagreeing with it (the feed's own overlay idiom).
@@ -102,11 +104,13 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     useEffect(() => {
         if (!root || !doc) return;
         let live = true;
+        setAuthorProfile(null); // another post's author is not this one's
         // The profile visit first, hints attached: it is what teaches this node the persona
         // when the permalink arrives cold (stale-while-revalidate behind it), and the post
         // read is then a shelf read. A held persona answers both immediately.
         const url = `/api/id/${root}/profile${via ? `?via=${encodeURIComponent(via)}` : ''}`;
         api(url)
+            .then((p) => live && setAuthorProfile(p))
             .catch(() => {}) // the shelf read below gives the honest answer either way
             .then(() => api(`/api/id/${root}/posts/${doc}${viewer ? `?as=${viewer}` : ''}`))
             .then((p) => live && setPost(p))
@@ -134,8 +138,15 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     // A book's comments live in one place (Curtis, 2026-09-04: a per-page thread is "a place
     // for comments to get very lost"): a page's page threads and replies on the BOOK.
     const threadDoc = partOf || doc;
+    const authorField = (key) => {
+        const f = ((authorProfile && authorProfile.fields) || []).find((x) => x.field === key);
+        return f && f.value ? f.value : undefined;
+    };
     const item = post && {
         author: root,
+        // Who said it, as a feed row names them - the card asks for nothing it is handed.
+        author_name: authorField('name'),
+        author_avatar: authorField('avatar'),
         doc_id: post.doc_id,
         title: post.title,
         format: post.format,
