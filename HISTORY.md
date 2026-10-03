@@ -14048,3 +14048,42 @@ chip - kinds, "me", notebooks, every tag row - back to unpicked at once (`NO_PIC
 the order beside it never jumps; idle while nothing is picked (`anyPicks`). Seen in headless Chrome:
 posts only, micro only and image left out narrowed four posts to one; clear all, all four back and the
 button idle. Client only: `just strings-check` and `just ui-check` green.
+
+**2026-10-02 - a tag shows the moment it is said.** Curtis: tagging sometimes took a while to show;
+updates should be optimistic. Two places waited on the node. A feed card added its chip only once the
+statement's PUT answered - and the node folds before it answers, seconds on a big persona; the card now
+shows the chip (or drops it, for a retraction) at once and takes it back if the node refuses. A note's
+tag panel was already optimistic, but only in the panel: the list, the tag column and the files
+browser's strip read the mirror, which waited for the stream. Tag edits now go through the mirror's
+optimistic rows (`optimisticDoc`), the doc's row carrying every edit in flight (`withTagOps`; settled by
+`tagOpsSettled` against the SERVER's row, so a second quick tag never lays its row without the first).
+Measured in headless Chrome with 1.5 s of latency on the write: the feed card's chip at 7 ms, the note's
+panel at 4 ms, the files browser's strip at 26 ms, the requests answering at 1.5-3 s. Client only:
+`just strings-check` and `just ui-check` green.
+
+**2026-10-02 - a republish no longer folds the whole notebook, and its overlay reads in witchlight.**
+Curtis published a small edit to a big old post with a handful of images: the overlay's text was black
+on black in witchlight, and the bar sat full at 1/1 for a long time with no sign of life. Three things:
+`Documents::publish` - the mint itself - still built the persona's whole document view to find the one
+note (the morning's sweep of single-document reads matched `documents().all()` and missed this
+`self.all()` inside the store); it reads the one note now. Whether that was the whole wait is not known
+from here: on Curtis's server a full view cost ~80 ms, and the publish also drains the fold lane, which
+there runs 0.85 s at the median and more when a pass is already going - the timing of one such publish
+says which. The overlay (`.bake-modal`) wears its own ink, so the colourway's light text sits on its
+dark panel; and once every item is ready the header's "publishing…" turns a spinner beside it.
+`just ci` green.
+
+**2026-10-02 - one publish no longer waits out another.** Curtis's server log of a small republish:
+its job ran ~40 s, ~33 of them before its fold ran - while a background importer published old blog
+posts beside it. "Should publish B wait on publish A?" No - and it did, through this morning's
+`fold::hold`: a publish holds the persona's fold lane through its burst, then drains it before
+answering, and the lane started no run while ANY hold stood. With the importer's jobs back to back
+(each tens of seconds on that server) a hold nearly always stood, so every publish's drain waited for
+a gap between someone else's. Now a drain overrides the holds (`until_unheld`: no holds, or somebody
+draining): whoever awaits a fold gets one, over whatever has landed, and a burst still in flight
+folds again at its end; a hold only spares folds nobody is waiting on. That also turned "a holder
+must never drain its own root" from a deadlock into a wasted run. Pinned by
+`a_drain_folds_through_somebody_elses_hold` (the drain answers within 2 s while another hold stands,
+and the hold holds again after). Locally the jobs are too quick to overlap - small republishes under
+an importer ran ~100 ms with the override and without - so the server says the rest: the publish job
+now logs `publish job steps` (open, mint, after, fold, total ms) beside "fold legs". `just ci` green.

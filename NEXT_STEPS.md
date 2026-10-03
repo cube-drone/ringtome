@@ -9,6 +9,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ## Near-Term Goals
 
 ### Demo Output
+* i published a small text edit to a large old blog post with a handful of images: the "publishing" dialog came up with a progress bar, but the bar had black-on-black text in witchlight, and waited, full, at "1" for a very long time before publishing, so, 3 things:
+    * why did it take so long to publish a small text change?
+    * can we fix the unreadable text in the publication overlay
+    * once 1/1 of the post media items are processed, keep a loading spinner so I know it hasn't frozen
+* every page, on load, has a "flash of default-colored content" before adopting my color scheme: can we load the color scheme _with the HTML_ ?
 * every button in the entire mobile app is a little too small and delicate for human fingies, and some of the drawing tools are WAY too small
 * the big-search crawl's residuals (HISTORY 2026-10-02 has what was found and cut):
     * the server's fold costs a median 851 ms with nothing else in flight; a laptop does a comparable persona in ~50 ms. Which leg, and is it the box (disk fsync? cores?) or the data (node.db's size)? A fresh 30 minutes of log after this deploy says whether the crawl is gone

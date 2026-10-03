@@ -3909,21 +3909,39 @@ async fn publish_handler(
     let (job_state, account, job_root) = (state.clone(), session.account.id, root.clone());
     crate::publishing::run(&root, &doc_id, move |progress| async move {
         let (state, root) = (job_state, job_root);
+        // Each step's time, at debug beside the fold's own "fold legs" (2026-10-02: a small edit
+        // took 30-40 s, and nothing said which step held it).
+        let t0 = std::time::Instant::now();
         let data = store::open(&state, &account, &root).await?;
         // The fold lane holds still while the publish writes (fold::hold): every twin, the post and
         // its labels land first, and the drain below folds them as one run instead of one each.
         let held = crate::fold::hold(&root);
+        let t_open = t0.elapsed();
+        let t = std::time::Instant::now();
         match crate::record::bake::publish_reporting(&state, &data, &root, &doc_id, reply, flags, Some(&progress)).await? {
             crate::record::bake::Outcome::Posted(post_id) => {
+                let t_mint = t.elapsed();
+                let t = std::time::Instant::now();
                 after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
-                drop(held); // before the drain - a holder that drains its own root waits forever
+                let t_after = t.elapsed();
+                drop(held); // before the drain: under its own hold it would fold the burst half-written
                 // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
                 // user card still listed the mention on the very next read): the restated
                 // statements reach the memo through the fold lane, which nothing else rings
                 // for this append. Drain it here - the label doors' read-your-writes idiom.
                 // The sweeps that also mint (books, schedules) answer nobody and leave it to
                 // the beat.
+                let t = std::time::Instant::now();
                 crate::fold::fold_now(&state, &root).await;
+                tracing::debug!(
+                    root = %root,
+                    total_ms = t0.elapsed().as_millis() as u64,
+                    open_ms = t_open.as_millis() as u64,
+                    mint_ms = t_mint.as_millis() as u64,
+                    after_ms = t_after.as_millis() as u64,
+                    fold_ms = t.elapsed().as_millis() as u64,
+                    "publish job steps"
+                );
                 Ok(Json(PublishResponse {
                     post_id: Some(hex::encode(post_id)),
                     scheduled_for: None,

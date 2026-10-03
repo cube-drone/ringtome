@@ -143,3 +143,18 @@ export function holdNewDoc(db, root, made, { title, format, bucket }) {
         (server) => !!server && (!bucket || (server.buckets || []).includes(bucket))
     );
 }
+
+/// A note's tags with the tag edits in flight laid over them (2026-10-02): `ops` is tag -> 'adding' |
+/// 'removing', every edit not yet echoed - so a second quick tag never hides the first while both
+/// wait. Added tags keep the order they were added, after the ones the server already lists.
+export function withTagOps(tags, ops) {
+    const list = (tags || []).filter((t) => ops[t] !== 'removing');
+    for (const [t, op] of Object.entries(ops || {})) if (op === 'adding' && !list.includes(t)) list.push(t);
+    return list;
+}
+
+/// Whether the server's tags already say every edit in flight.
+export function tagOpsSettled(tags, ops) {
+    const have = tags || [];
+    return Object.entries(ops || {}).every(([t, op]) => (op === 'adding' ? have.includes(t) : !have.includes(t)));
+}

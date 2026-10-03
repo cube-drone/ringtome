@@ -9,11 +9,12 @@
 // from lagging its own clicks. Text/date fields are shadow buffers over the mirror value
 // (local while dirty, adopt the mirror when clean); tags use an optimistic pending overlay.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { api } from '../net.js';
 import { useShadowValue } from '../shadow.js';
-import { openMirror, useLive } from '../mirror.js';
+import { openMirror, optimisticDoc, useLive } from '../mirror.js';
+import { withTagOps, tagOpsSettled } from '../pure/optimistic.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 import { t } from '../i18n.js';
 import { isEmojiTag } from '../pure/annotations.js';
@@ -114,6 +115,36 @@ export const Annotations = ({ root, docId, features }) => {
     const tagUrl = (tag) =>
         `/api/identity/${root}/docs/${docId}/annotations/tags/${encodeURIComponent(tag)}`;
 
+    // The mirror's row too, not only this panel (Curtis, 2026-10-02: a tag took a while to show in
+    // the list and the tag column): every edit in flight laid over the doc's row at once
+    // (pure/optimistic.js), so each reader of the mirror sees it. `ops` holds them all - a second
+    // quick tag must not lay its row without the first - and an op leaves only when the SERVER's
+    // row says it (in `settled`, which the stream calls with that row), never on the overlay's own
+    // echo.
+    const ops = useRef({});
+    const tagsHeld = (op, tag) => {
+        ops.current = { ...ops.current, [tag]: op };
+        return optimisticDoc(
+            root,
+            docId,
+            (server) => server && { ...server, tags: withTagOps(server.tags, ops.current) },
+            (server) => {
+                const have = (server && server.tags) || [];
+                const left = {};
+                for (const [t, o] of Object.entries(ops.current)) {
+                    if (!(o === 'adding' ? have.includes(t) : !have.includes(t))) left[t] = o;
+                }
+                ops.current = left;
+                return tagOpsSettled(have, left);
+            },
+            () => api(tagUrl(tag), { method: op === 'adding' ? 'PUT' : 'DELETE' })
+        ).catch((e) => {
+            const { [tag]: _, ...rest } = ops.current;
+            ops.current = rest;
+            throw e;
+        });
+    };
+
     const addTag = async (raw) => {
         // 32 characters, the public tag's cap (2026-08-31), so a draft never carries a
         // tag that publish would have to leave behind.
@@ -130,7 +161,7 @@ export const Annotations = ({ root, docId, features }) => {
         setTagRefused(null);
         setPending((p) => ({ ...p, [tag]: 'adding' }));
         try {
-            await api(tagUrl(tag), { method: 'PUT' });
+            await tagsHeld('adding', tag);
         } catch {
             setPending((p) => {
                 const { [tag]: _, ...rest } = p;
@@ -141,7 +172,7 @@ export const Annotations = ({ root, docId, features }) => {
     const removeTag = async (tag) => {
         setPending((p) => ({ ...p, [tag]: 'removing' }));
         try {
-            await api(tagUrl(tag), { method: 'DELETE' });
+            await tagsHeld('removing', tag);
         } catch {
             setPending((p) => {
                 const { [tag]: _, ...rest } = p;

@@ -6,6 +6,7 @@ import htm from 'htm';
 
 import { api } from '../net.js';
 import { t } from '../i18n.js';
+import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -64,6 +65,9 @@ export const BakeModal = ({ items }) => {
         <div class="bake-modal-backdrop">
             <div class="bake-modal">
                 <p class="bake-modal-head">
+                    ${/* With every item ready, what is left is the post itself - minted and folded, which
+                        can take a moment: a spinner says it hasn't frozen (Curtis, 2026-10-02). */ ''}
+                    ${minting && html`<span class="status-spin"><${Icons.spinner} /></span> `}
                     ${minting
                         ? t('postentry.publishing', 'publishing…')
                         : t('postentry.preparing-media-for-the-network', 'preparing media for the network…')}

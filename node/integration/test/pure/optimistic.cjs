@@ -106,3 +106,15 @@ describe('optimistic doc rows (2026-10-01)', () => {
         assert.deepEqual(db.m.get('q'), { doc_id: 'q', title: 'plain' });
     });
 });
+
+describe('tag edits laid over a note (2026-10-02)', () => {
+    it('shows every edit in flight, and settles only when the server says them all', () => {
+        const ops = { bread: 'adding', sour: 'removing', rye: 'adding' };
+        assert.deepEqual(o.withTagOps(['sour', 'rye', 'old'], ops), ['rye', 'old', 'bread'], 'added after, removed gone, no twice');
+        assert.deepEqual(o.withTagOps(undefined, { a: 'adding' }), ['a']);
+        assert.equal(o.tagOpsSettled(['rye', 'old'], ops), false, 'bread not yet there');
+        assert.equal(o.tagOpsSettled(['rye', 'bread'], ops), true);
+        assert.equal(o.tagOpsSettled(['rye', 'bread', 'sour'], ops), false, 'sour still there');
+        assert.equal(o.tagOpsSettled([], {}), true, 'nothing in flight');
+    });
+});

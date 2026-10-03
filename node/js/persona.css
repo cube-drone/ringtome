@@ -1972,6 +1972,9 @@ article:has(.label-emoji-strip) {
 
 .bake-modal {
     background: var(--surface);
+    /* Its own ink, not whatever the page around it wears: in witchlight the inherited dark text
+       sat black on the dark panel (2026-10-02). */
+    color: var(--ink);
     border: 1px solid transparent;
     --line: var(--border-strong);
     position: relative;
@@ -1986,6 +1989,9 @@ article:has(.label-emoji-strip) {
 }
 
 .bake-modal-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     font-weight: 600;
     margin: 0 0 0.3rem;
 }

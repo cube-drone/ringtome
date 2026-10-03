@@ -45,8 +45,12 @@ struct RootFold {
     folded: tokio::sync::watch::Sender<u64>,
     /// A worker task is alive for this root.
     running: bool,
-    /// Live [`Hold`]s: while any stands, the worker starts no new run (see [`hold`]).
+    /// Live [`Hold`]s: while any stands, the worker starts no new run (see [`hold`]) - unless
+    /// somebody is draining.
     holds: u32,
+    /// Callers awaiting a fold right now ([`drain`]). A wait overrides the holds: a publish
+    /// answering its author must not wait out every OTHER publish's burst (2026-10-02, below).
+    draining: u32,
     /// Rung when the last hold drops, so a parked worker resumes without polling.
     released: std::sync::Arc<tokio::sync::Notify>,
 }
@@ -60,6 +64,7 @@ impl Default for RootFold {
             folded,
             running: false,
             holds: 0,
+            draining: 0,
             released: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
     }
@@ -75,8 +80,9 @@ impl Default for RootFold {
 /// persona whose fold costs three seconds the publish answered after fifty. Every run but the
 /// last re-derived state the next append immediately made stale.
 ///
-/// The one rule, the same as the chain's own: a holder must NEVER `drain`/`fold_now` the root
-/// it holds - the run it waits for cannot start until it lets go. Drop the guard first.
+/// A hold yields to a drain (`until_unheld`): whoever awaits a fold gets one, holds or none. So
+/// drop the guard before draining anyway - a drain under your own hold folds your burst early,
+/// half-written - but doing otherwise is a wasted run, never a deadlock.
 #[must_use = "the hold lasts only as long as the guard"]
 pub struct Hold {
     root: String,
@@ -99,18 +105,37 @@ impl Drop for Hold {
     }
 }
 
-/// Park until no hold stands on `root`. Registered for the wake BEFORE looking, so a release
-/// landing between the look and the wait is never missed.
+/// Park until no hold stands on `root` - or until somebody is draining it. Registered for the wake
+/// BEFORE looking, so a release (or a drain's arrival) landing between the look and the wait is
+/// never missed.
+///
+/// The drain clause (2026-10-02): an importer publishing post after post kept a hold standing
+/// nearly all the time, and since every publish ends in a drain, each one waited for a gap
+/// between OTHER publishes' holds before its own fold could run - a small edit took 30-40 s to
+/// answer. A hold exists to spare a burst a fold per entry nobody is waiting on; once somebody
+/// waits, the fold runs, over whatever has landed, and a burst still in flight folds again when
+/// it ends. It also makes a holder that drains its own root merely early, never a deadlock.
 async fn until_unheld(root: &str) {
     loop {
         let released = with_root(root, |s| s.released.clone());
         let woken = released.notified();
         tokio::pin!(woken);
         woken.as_mut().enable();
-        if with_root(root, |s| s.holds == 0) {
+        if with_root(root, |s| s.holds == 0 || s.draining > 0) {
             return;
         }
         woken.await;
+    }
+}
+
+/// A drain in progress: counted for the hold's override, uncounted however the drain ends.
+struct Draining {
+    root: String,
+}
+
+impl Drop for Draining {
+    fn drop(&mut self) {
+        with_root(&self.root, |s| s.draining = s.draining.saturating_sub(1));
     }
 }
 
@@ -249,7 +274,13 @@ fn nudge_inner(state: &AppState, root: &str, ledger: bool) -> u64 {
 /// Await a completed run that began at or after `generation` (a [`nudge`]'s return). NEVER
 /// call from inside the chain for the worker's own root.
 pub async fn drain(root: &str, generation: u64) {
-    let mut rx = with_root(root, |s| s.folded.subscribe());
+    let (mut rx, released) = with_root(root, |s| {
+        s.draining += 1;
+        (s.folded.subscribe(), s.released.clone())
+    });
+    let _counted = Draining { root: root.to_string() };
+    // A worker parked behind somebody's hold wakes to see the drain.
+    released.notify_waiters();
     // The sender lives in the process-static registry, so wait_for can only err if the
     // registry itself is gone - shutdown, where an unfinished drain is moot.
     let _ = rx.wait_for(|folded| *folded >= generation).await;
@@ -472,6 +503,37 @@ mod tests {
         drop(held);
         drain(root, last).await;
         assert_eq!(runs.load(Ordering::SeqCst), 1, "the whole burst folds in one run");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_drain_folds_through_somebody_elses_hold() {
+        // Publish A holds the lane through its burst; publish B, done, drains - and gets its
+        // run without waiting out A (2026-10-02: an importer's holds starved every drain).
+        let root = "fold-test-drain-through";
+        let runs = Arc::new(AtomicU64::new(0));
+        let make = {
+            let runs = runs.clone();
+            move |_ledger: bool| {
+                let runs = runs.clone();
+                async move {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        };
+        let a = hold(root);
+        let g = test_nudge(root, false, make.clone());
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 0, "held, and nobody waiting: no run");
+        tokio::time::timeout(std::time::Duration::from_secs(2), drain(root, g))
+            .await
+            .expect("the drain did not wait out the other hold");
+        assert!(runs.load(Ordering::SeqCst) >= 1);
+        // And once nobody waits, the hold holds again.
+        let before = runs.load(Ordering::SeqCst);
+        let _ = test_nudge(root, false, make.clone());
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), before, "the hold stands again once the drain is over");
+        drop(a);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

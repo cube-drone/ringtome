@@ -1106,15 +1106,16 @@ impl Documents<'_> {
         flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
         let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of, onward, room, im } = flags;
-        let view = self.all().await?;
-        let doc = view
-            .docs
-            .get(doc_id)
+        // The one note, not the view (2026-10-02: a small edit to a big old post took ages to
+        // publish - every publish folded the persona's whole notebook to find the note it was).
+        let doc = self
+            .one(doc_id)
+            .await?
             .ok_or_else(|| AppError::NotFound(crate::msg!("record.store.no-such-document", "no such document")))?;
         if doc.diverged() {
             return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "save this note once more before publishing")));
         }
-        let resolved = self.resolved(doc).await?;
+        let resolved = self.resolved(&doc).await?;
         let post_key = self.post_key_if(doc_id, trusted_only).await?;
 
         let prepared = body_override.is_some();

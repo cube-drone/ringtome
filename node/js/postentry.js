@@ -840,13 +840,20 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         // Two tags to a person on somebody else's post, and no reaction to your own
         // (Curtis, 2026-09-27) - the node refuses the same, and every reader drops the rest.
         if (!mayTag(shownLabels, { author: item.author, me, value })) return;
+        // Shown at once (Curtis, 2026-10-02: tags took a while to appear) - the node folds the
+        // statement before it answers, seconds on a big persona - and taken back if refused.
+        const said = { annotator: me, annotator_name: myName, key: 'tag', value };
+        setRetractedLabels((have) => have.filter((k) => k !== labelKey(said)));
+        setSaidLabels((have) => (have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said]));
         try {
             await api(`/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}`, {
                 method: 'PUT',
                 body: JSON.stringify({ key: 'tag', value }),
             });
         } catch {
-            return; // a refused statement shows nothing - nothing was said
+            // A refused statement shows nothing - nothing was said.
+            setSaidLabels((have) => have.filter((a) => labelKey(a) !== labelKey(said)));
+            return;
         }
         // Tagging YOUR OWN post also files the tag on the private draft (found by its
         // published_as back-reference): the publish diff restates the DRAFT's annotations,
@@ -869,20 +876,19 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 // the public statement is the speech; the filing catch-up can wait
             }
         }
-        const said = { annotator: me, annotator_name: myName, key: 'tag', value };
-        setSaidLabels((have) =>
-            have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said]
-        );
     };
     const removeLabel = async (a) => {
         if (!current || a.annotator !== current.root) return;
         const me = current.root;
+        // Gone at once, back if the node refuses (2026-10-02), as a tag added is shown at once.
+        setRetractedLabels((have) => [...have, labelKey(a)]);
         try {
             await api(
                 `/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}/${encodeURIComponent(a.key)}/${encodeURIComponent(a.value)}`,
                 { method: 'DELETE' }
             );
         } catch {
+            setRetractedLabels((have) => have.filter((k) => k !== labelKey(a)));
             return;
         }
         if (me === item.author && a.key === 'tag') {
@@ -900,7 +906,6 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 // as above
             }
         }
-        setRetractedLabels((have) => [...have, labelKey(a)]);
     };
     const baseLabels = visibleAnnotations(item.annotations, {
         author: item.author,
