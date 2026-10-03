@@ -14041,3 +14041,10 @@ the first page. Called above the reader's early returns, as a hook must be. apps
 identical second copy of the walker that nothing called; it is gone. Seen in headless Chrome over a
 three-page book: 1/3, → 2/3, → 3/3, → stays, ← 2/3. Client only: `just strings-check` and
 `just ui-check` green.
+
+**2026-10-02 - "clear all" on the feed's strip.** Curtis, after a strip already set read a new click as
+"also show X" when it meant "only X": a button between the curiosity dial and the order that puts every
+chip - kinds, "me", notebooks, every tag row - back to unpicked at once (`NO_PICKS`). Always there, so
+the order beside it never jumps; idle while nothing is picked (`anyPicks`). Seen in headless Chrome:
+posts only, micro only and image left out narrowed four posts to one; clear all, all four back and the
+button idle. Client only: `just strings-check` and `just ui-check` green.

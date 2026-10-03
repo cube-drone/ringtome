@@ -2061,6 +2061,19 @@ article:has(.label-emoji-strip) {
     gap: 0.5rem;
     margin-left: auto;
 }
+/* Clear all, between the dial and the order: it takes the push to the right, and the order sits
+   just after it. */
+.feed-top .feed-clear {
+    margin-left: auto;
+    margin-right: 0.8rem;
+}
+.feed-top .feed-clear:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.feed-top .feed-clear + .feed-sort {
+    margin-left: 0;
+}
 .feed-sort select {
     font: inherit;
     font-size: 0.78rem;

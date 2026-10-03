@@ -59,7 +59,7 @@ import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '.
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, narrowParams } from '../postsearch.js';
-import { LabelFacets, useLabels, usePicks } from '../facets.js';
+import { LabelFacets, NO_PICKS, anyPicks, useLabels, usePicks } from '../facets.js';
 import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { useLocation } from 'preact-iso';
@@ -495,6 +495,16 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                     />
                     <span class="feed-selectivity-label">${STOP_WORDS[stopKey] ? STOP_WORDS[stopKey]() : ''}</span>
                 </label>`}
+                ${/* Clear all (Curtis, 2026-10-02): every chip on the strip back to "left alone" at once -
+                    with picks set, a click that read as "also show X" was "only X". Always there, so
+                    the order beside it never jumps; idle while nothing is picked. */ ''}
+                ${facetsShow &&
+                html`<button
+                    class="facet-more feed-clear"
+                    disabled=${!anyPicks(picks)}
+                    title=${t('apps.feed.clear-all-title', 'show everything again - every type and tag back to unpicked')}
+                    onClick=${() => setPicks(NO_PICKS)}
+                >${t('apps.feed.clear-all', 'clear all')}</button>`}
                 ${sortable &&
                 sort !== null &&
                 html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked')}>
