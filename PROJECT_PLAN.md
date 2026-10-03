@@ -4,96 +4,118 @@
 
 Ringtome has two primary goals:
 
-- To be a **social network** built on the [Iroh](https://iroh.computer/) peer-to-peer (p2p) network.
-- To be opinionated: this is not a _protocol_, or a _spec_, this is explicitly a product, and that product is
-  designed with an aesthetic and a point-of-view.
+- To be a **social network** built on the [Iroh](https://iroh.computer/)
+  peer-to-peer (p2p) network.
+- To be opinionated: this is not a _protocol_, or a _spec_, this is explicitly a
+  product, and that product is designed with an aesthetic and a point-of-view.
 
-That aesthetic and point-of-view is "retro", specifically: Ringtome is intended to loosely
-evoke the feeling of being on the world-wide-web, circa 1995-2005, without specifically binding to
-a point in time.
+That aesthetic and point-of-view is "retro", specifically: Ringtome is intended
+to loosely evoke the feeling of being on the world-wide-web, circa 1995-2005,
+without specifically binding to a point in time.
 
-Any pointed notes about the fundamental untrustworthiness of nostalgia-goggles or the difficulty of appealing
-to a nostalgic cycle that is constantly rolling forward in time can be forwarded respectfully to `/dev/null` for
-further consideration.
+Any pointed notes about the fundamental untrustworthiness of nostalgia-goggles
+or the difficulty of appealing to a nostalgic cycle that is constantly rolling
+forward in time can be forwarded respectfully to `/dev/null` for further
+consideration.
 
 ### Two names: the protocol and the game (settled 2026-09-25)
 
-**Ringtome** names the protocol and its reference node: the chains, identities, sync, trust web,
-the wire strings (`ringtome/sync/0`), the signature domains (`ringtome-v0/...`) and the conformance
-vectors. **Horse Drawing Tycoon 2** names the consumer application built on it - what a person installs, opens,
-and sees - at horsedrawingtycoon.com: the sequel to a tycoon game about drawing horses (Curtis,
-2011's bar bet), with the social network living inside the game. The two goals above belong to
-the product; the product's name is Horse Drawing Tycoon 2, and "Ringtome" in this document means the
-protocol and the node unless a passage predates the split and plainly means the app.
+**Ringtome** names the protocol and its reference node: the chains, identities,
+sync, trust web, the wire strings (`ringtome/sync/0`), the signature domains
+(`ringtome-v0/...`) and the conformance vectors. **Horse Drawing Tycoon 2**
+names the consumer application built on it - what a person installs, opens, and
+sees - at horsedrawingtycoon.com: the sequel to a tycoon game about drawing
+horses (Curtis, 2011's bar bet), with the social network living inside the game.
+The two goals above belong to the product; the product's name is Horse Drawing
+Tycoon 2, and "Ringtome" in this document means the protocol and the node unless
+a passage predates the split and plainly means the app.
 
 What keeps the old name even though a person can meet it: the bundle identifier
-(`net.lassam.ringtome` - it names the app's data directory, its OS permission grants and its login
-item, so changing it would make the renamed app a stranger to its own data), the release-name seed
-(`ringtome/<version>`, or every release name would change), and browser-storage keys (renaming them
-would orphan what they hold). The "gamey product layer" GODOT.md furnishes the argument for is this
-product's future, not a different one.
+(`net.lassam.ringtome` - it names the app's data directory, its OS permission
+grants and its login item, so changing it would make the renamed app a stranger
+to its own data), the release-name seed (`ringtome/<version>`, or every release
+name would change), and browser-storage keys (renaming them would orphan what
+they hold). The "gamey product layer" GODOT.md furnishes the argument for is
+this product's future, not a different one.
 
 ### Federation vs. P2P
 
-Both federation and P2P are rife with problems that we hope to present a compelling solution to.
+Both federation and P2P are rife with problems that we hope to present a
+compelling solution to.
 
 #### What Are We Hoping to Fix About P2P?
 
-Peer-to-peer protocols like Secure Scuttlebutt or RetroShare are, and I say this affectionately as a nerd,
-_nerd shit_. They tend to assume that their users are extremely willing to learn about nodes and
-certificates and network topologies and maintain complicated cryptographic concepts in their heads.
+Peer-to-peer protocols like Secure Scuttlebutt or RetroShare are, and I say this
+affectionately as a nerd, _nerd shit_. They tend to assume that their users are
+extremely willing to learn about nodes and certificates and network topologies
+and maintain complicated cryptographic concepts in their heads.
 
-I assert that public key cryptography, while common knowledge for technologists, is beyond the
-scope of most consumers' expected understanding of any given system.
+I assert that public key cryptography, while common knowledge for technologists,
+is beyond the scope of most consumers' expected understanding of any given
+system.
 
-Systems like SSB, Matrix, and Signal are object lessons in "the system is cryptographically pure enough to
-present at least a good challenge to a state level actor", but as a result they often have to present
-a user interface that is at least a little bit _cryptography shaped_.
+Systems like SSB, Matrix, and Signal are object lessons in "the system is
+cryptographically pure enough to present at least a good challenge to a state
+level actor", but as a result they often have to present a user interface that
+is at least a little bit _cryptography shaped_.
 
-One of the bigger problems about P2P is: phones. Phones tend to be terrible P2P citizens, spending most of their time
-offline and heavily restricting background operation. It is conceptually easier to have a phone connect to a node that
-does all of the complicated syncing than have the phone sync itself.
+One of the bigger problems about P2P is: phones. Phones tend to be terrible P2P
+citizens, spending most of their time offline and heavily restricting background
+operation. It is conceptually easier to have a phone connect to a node that does
+all of the complicated syncing than have the phone sync itself.
 
 #### What Are We Hoping to Fix About Federation?
 
-Federation - the "email" model - you pick a provider, `@google.com` or `@compuserve.dingus` - and trust them to
-do all of the hard parts of p2p networking _for_ you. Now, instead of having to learn about public key cryptography,
-you trust Google to learn it on your behalf.
+Federation - the "email" model - you pick a provider, `@google.com` or
+`@compuserve.dingus` - and trust them to do all of the hard parts of p2p
+networking _for_ you. Now, instead of having to learn about public key
+cryptography, you trust Google to learn it on your behalf.
 
 But:
 
-- Small nodes are not a safe place for your identity. `google.com` is unlikely to disappear in a puff of smoke, but
-  `greg.hobby.casual.email` absolutely is.
-- Medium-sized nodes have to deal with all of the collective legal and moderation burden of fronting a 100, 1000, or 10,000 person
-  community: expensive and difficult.
-- There's enormous incentive in federated networks for single nodes to _get enormous_: solving all of these problems are
-  easier with scale and financial resources.
-- So: on the web (federated), there are 10 big websites.
-  There are 5 big email providers. The bigger they get, the less they care to federate with small players: gmail could stop
-  carrying email from anyone that's not gmail, outlook, et al, and get a huge bump to their spam prevention while only excluding
-  an increasingly small percentage of the network.
-- The most prominent federated social network, Mastodon, places an enormous amount of moderation load on the shoulders of
-  network topology management: you can only see other nodes approved by your node operator,
-  and managing the set of nodes that you federate with is a
-  large job for node operators, who have to constantly perform difficult moderation operations against a large public network
-  on behalf of their users.
+- Small nodes are not a safe place for your identity. `google.com` is unlikely
+  to disappear in a puff of smoke, but `greg.hobby.casual.email` absolutely is.
+- Medium-sized nodes have to deal with all of the collective legal and
+  moderation burden of fronting a 100, 1000, or 10,000 person community:
+  expensive and difficult.
+- There's enormous incentive in federated networks for single nodes to _get
+  enormous_: solving all of these problems are easier with scale and financial
+  resources.
+- So: on the web (federated), there are 10 big websites. There are 5 big email
+  providers. The bigger they get, the less they care to federate with small
+  players: gmail could stop carrying email from anyone that's not gmail,
+  outlook, et al, and get a huge bump to their spam prevention while only
+  excluding an increasingly small percentage of the network.
+- The most prominent federated social network, Mastodon, places an enormous
+  amount of moderation load on the shoulders of network topology management: you
+  can only see other nodes approved by your node operator, and managing the set
+  of nodes that you federate with is a large job for node operators, who have to
+  constantly perform difficult moderation operations against a large public
+  network on behalf of their users.
 
 ### The Public Internet Is... A Lot
 
-One of the problems of P2P networks is that you never know if you're talking to _real people_, or 10,000 lightbulbs.
+One of the problems of P2P networks is that you never know if you're talking to
+_real people_, or 10,000 lightbulbs.
 
-Centralized networks used to be able to solve this somewhat: security, bot detection, and moderation comes at massive human cost,
-and they're willing to bear that cost, because it's profitable!
+Centralized networks used to be able to solve this somewhat: security, bot
+detection, and moderation comes at massive human cost, and they're willing to
+bear that cost, because it's profitable!
 
-But, increasingly, LLMs are driving the costs of attacks up _faster_ than centralized networks can keep up.
+But, increasingly, LLMs are driving the costs of attacks up _faster_ than
+centralized networks can keep up.
 
-Past that, public content on the internet is increasingly driven by an algorithmic discovery model that prioritizes
-attention-grabbing, low-context, low-friction, endlessly-consumable content and grows to consume all public spaces.
+Past that, public content on the internet is increasingly driven by an
+algorithmic discovery model that prioritizes attention-grabbing, low-context,
+low-friction, endlessly-consumable content and grows to consume all public
+spaces.
 
-So: any public space is going to be flooded with low-effort content until discovery becomes necessary, and discovery
-will almost certainly select for the lowest common denominator of attention optimization - as a result, public internet
-spaces trend towards cats with machine guns fighting bikini-clad ragebaiters while unboxing
-Pokemon cards (with Minecraft playing in the background to keep your attention).
+So: any public space is going to be flooded with low-effort content until
+discovery becomes necessary, and discovery will almost certainly select for the
+lowest common denominator of attention optimization - as a result, public
+internet spaces trend towards cats with machine guns fighting bikini-clad
+ragebaiters while unboxing Pokemon cards (with Minecraft playing in the
+background to keep your attention).
 
 ## Ringtome: Federated-ish, Private-ish
 
@@ -105,250 +127,327 @@ The reasons you can't trust small p2p nodes are:
 - Ops: you can't trust them not to lose your data.
 - Moderation: you can't trust their taste.
 
-So, our model is partially about making it possible to trust small nodes - even, if users _are_ willing to learn a little
-bit about public key cryptography, little self-hosted ones.
+So, our model is partially about making it possible to trust small nodes - even,
+if users _are_ willing to learn a little bit about public key cryptography,
+little self-hosted ones.
 
 ### Identity is a Tree
 
-Identity isn't just portable, it's _accumulative_. Your identity is the sum total of all of your identities in a network: each
-can participate _as you_. Joining a new federated node adds one more leaf to your identity, growing it, making it more permanent
-and harder to erase from the network.
+Identity isn't just portable, it's _accumulative_. Your identity is the sum
+total of all of your identities in a network: each can participate _as you_.
+Joining a new federated node adds one more leaf to your identity, growing it,
+making it more permanent and harder to erase from the network.
 
-Then, what about security? Well, these different identities are also _revocable_. If you trust a node with your identity and
-they turn out to be Bad Guys, you can simply take your ball and go home.
+Then, what about security? Well, these different identities are also
+_revocable_. If you trust a node with your identity and they turn out to be Bad
+Guys, you can simply take your ball and go home.
 
-The rules for this are _unbelievably complicated_, but users mostly don't have to think about them:
-as a broad "good enough" description of the rule, "senior"
-(via complicated rules explored later in the document, "senior" often means "older" but not always)
-nodes can always revoke "junior" nodes,
-so if a user starts their network with a node they trust a lot (like something running on their own computer),
-they'll retain the ability to take their ball so long as they have the recovery code from that node
-(which we recommend storing on their phone as a picture of a QR code, or in their personal email: not great security but high recoverability).
+The rules for this are _unbelievably complicated_, but users mostly don't have
+to think about them: as a broad "good enough" description of the rule, "senior"
+(via complicated rules explored later in the document, "senior" often means
+"older" but not always) nodes can always revoke "junior" nodes, so if a user
+starts their network with a node they trust a lot (like something running on
+their own computer), they'll retain the ability to take their ball so long as
+they have the recovery code from that node (which we recommend storing on their
+phone as a picture of a QR code, or in their personal email: not great security
+but high recoverability).
 
 ### Everything is Private, Social Networks are Closed Systems
 
-Finally, moderation? Well, we solve moderation as best as we can by simply taking as much of it as possible out of the node
-operator's hands - by making nodes smaller, by reducing the attack surface for legally dicey content, by taking "public posting"
-out of node operator's hands and instead forcing individual users to manage their own networks.
+Finally, moderation? Well, we solve moderation as best as we can by simply
+taking as much of it as possible out of the node operator's hands - by making
+nodes smaller, by reducing the attack surface for legally dicey content, by
+taking "public posting" out of node operator's hands and instead forcing
+individual users to manage their own networks.
 
-This is also a way of defending against the problem that _most of the network is likely to be bad actors_. Minting new identities
-is free, so all it takes is one person with a fast CPU and they have 100 million users - but there is no public commons for them
-to show up in.
+This is also a way of defending against the problem that _most of the network is
+likely to be bad actors_. Minting new identities is free, so all it takes is one
+person with a fast CPU and they have 100 million users - but there is no public
+commons for them to show up in.
 
-Trust starts at zero by default: it's earned, by meeting people in person, or having friends vouch for them, and is intensely
-user-configurable.
+Trust starts at zero by default: it's earned, by meeting people in person, or
+having friends vouch for them, and is intensely user-configurable.
 
-This may prove to kill the network effect: we may be building an empty online crypt. Let's hope not.
+This may prove to kill the network effect: we may be building an empty online
+crypt. Let's hope not.
 
-As identities are cheap, users are also encouraged to generate as many of them as they need: if you want a main identity and
-a pseudonym, go for it, champ! "This identity exists for real" is exactly the kind of unverifiable claim that modern social networks
-are no longer able to reliably police without draconian measures. (Measures they are considering as we speak.)
+As identities are cheap, users are also encouraged to generate as many of them
+as they need: if you want a main identity and a pseudonym, go for it, champ!
+"This identity exists for real" is exactly the kind of unverifiable claim that
+modern social networks are no longer able to reliably police without draconian
+measures. (Measures they are considering as we speak.)
 
 ### A Network That's Just Your Monkeysphere
 
-Large protocols like ATProto or Mastodon focus on scaling communities up to 100,000 members or more.
-Shared public spaces with discoverability, trending, search, recommendations.
+Large protocols like ATProto or Mastodon focus on scaling communities up to
+100,000 members or more. Shared public spaces with discoverability, trending,
+search, recommendations.
 
-They are for answering the question: "What is everybody looking at right now that I might also like?"
+They are for answering the question: "What is everybody looking at right now
+that I might also like?"
 
-Ringtome is for answering the question: "What are my friends doing? What are they interested in right now?".
-It's expected that most users will have personal networks in the 0-200 user range.
+Ringtome is for answering the question: "What are my friends doing? What are
+they interested in right now?". It's expected that most users will have personal
+networks in the 0-200 user range.
 
-Things can still travel widely through the network, but not by being aggregated to the top of a global feed -
-instead, the old fashioned way - by being passed from person to person. It's technically _one network_,
-but you only see _your network_. If people get popular for being great at curating things that you like?
-You can follow them, trust them, add them to your network, and if they _subsequently crash out_, unfollow them.
+Things can still travel widely through the network, but not by being aggregated
+to the top of a global feed - instead, the old fashioned way - by being passed
+from person to person. It's technically _one network_, but you only see _your
+network_. If people get popular for being great at curating things that you
+like? You can follow them, trust them, add them to your network, and if they
+_subsequently crash out_, unfollow them.
 
 ### Cozy Aesthetic // Hidden Internals
 
-Do you want a network full of crypto-nerds and distributed systems developers? Okay, then the vocabulary of that
-system can be filled with terms like "pubkey", "chain", "entry", "sync", "hash", "repudiate", "tree', and "node".
+Do you want a network full of crypto-nerds and distributed systems developers?
+Okay, then the vocabulary of that system can be filled with terms like "pubkey",
+"chain", "entry", "sync", "hash", "repudiate", "tree', and "node".
 
-Broadly our goal is to reduce the amount of _p2p detail_ we surface to users until it's all-but-invisible:
-we avoid direct protocol vocabulary and prefer to present easy-to-understand abstractions, like
-"recovery key", "invite", and "vouch".
+Broadly our goal is to reduce the amount of _p2p detail_ we surface to users
+until it's all-but-invisible: we avoid direct protocol vocabulary and prefer to
+present easy-to-understand abstractions, like "recovery key", "invite", and
+"vouch".
 
-This is also an aesthetic goal - the design is intended to evoke "sloppy", "amateur", "friendly", "chaotic",
-it invites collaboration by being unpretentious. We don't want purity or cleanliness,
-we want sticky friction and the idea that this place encourages contribution at all skill levels.
+This is also an aesthetic goal - the design is intended to evoke "sloppy",
+"amateur", "friendly", "chaotic", it invites collaboration by being
+unpretentious. We don't want purity or cleanliness, we want sticky friction and
+the idea that this place encourages contribution at all skill levels.
 
 ### The Client Is a Console of Applications
 
-The cozy aesthetic above is a feeling; here is how it becomes structure. The client is not "a notes app." It is a
-**console** - a launcher, in the spirit of the Wii System Menu - of small, warmly-branded applications: _Chef
-Robort's Recipe Time_, _JOURNALTIME_, _Personal Wiki_, _RPG PLANNER DELUXE_, _Blog_. In our hearts we know they are
-the same system underneath. To the user they are different applications, with their own names, themes, and - where
-it earns its keep - genuinely different layouts. Login opens the console, not a document; picking an application
-opens that world. (Today login still opens a single notes application directly; the console is the direction.)
+The cozy aesthetic above is a feeling; here is how it becomes structure. The
+client is not "a notes app." It is a **console** - a launcher, in the spirit of
+the Wii System Menu - of small, warmly-branded applications: _Chef Robort's
+Recipe Time_, _JOURNALTIME_, _Personal Wiki_, _RPG PLANNER DELUXE_, _Blog_. In
+our hearts we know they are the same system underneath. To the user they are
+different applications, with their own names, themes, and - where it earns its
+keep - genuinely different layouts. Login opens the console, not a document;
+picking an application opens that world. (Today login still opens a single notes
+application directly; the console is the direction.)
 
-**One machine, many faces.** Every application is a _remix of the same base primitives_ pointed at a use-case. A
-journal wants a date and a chronological river (the user's `display_date` claim, sorted). A recipe book wants tags
-and fast search and cares nothing for chronology. A wiki wants a tree and next/previous navigation. A blog wants
-document metadata and a way to cross into public. That the one substrate - signed chains, annotations, taxonomies,
-the version DAG, the visibility gradient - serves all of these is not a coincidence to paper over; it is the whole
-design, and the recurring evidence that the primitives are deep. The pattern is **fractal**: recipe-vs-journal is
-the notes substrate wearing two faces, and later DMs-vs-BBS-vs-GeoCities will be the _communications_ substrate
-wearing three - the same signed content at different points on the private → sealed-group → public gradient,
-addressed and browsed differently. The console is the face of faces.
+**One machine, many faces.** Every application is a _remix of the same base
+primitives_ pointed at a use-case. A journal wants a date and a chronological
+river (the user's `display_date` claim, sorted). A recipe book wants tags and
+fast search and cares nothing for chronology. A wiki wants a tree and
+next/previous navigation. A blog wants document metadata and a way to cross into
+public. That the one substrate - signed chains, annotations, taxonomies, the
+version DAG, the visibility gradient - serves all of these is not a coincidence
+to paper over; it is the whole design, and the recurring evidence that the
+primitives are deep. The pattern is **fractal**: recipe-vs-journal is the notes
+substrate wearing two faces, and later DMs-vs-BBS-vs-GeoCities will be the
+_communications_ substrate wearing three - the same signed content at different
+points on the private → sealed-group → public gradient, addressed and browsed
+differently. The console is the face of faces.
 
-**The kernel is layered; applications plug in at different depths.** sync → private document editing → the
-publication boundary → social membership. A recipe book plugs in shallow: it is a browse-face over private notes.
-_Blog_ and _Book_ plug into publication - you compose in private notes and publish across the boundary, and the
-public artifact is a _copy_ that cannot leak private edits back (copy-don't-flip; the notes editor already _is_ the
-post composer). "Roll out a whole-book update" is just re-publishing a composed taxonomy as a new
-public version. A future BBS plugs into membership. Publishing, in this model, stops being a mode hidden inside the
-notes app and becomes _what the Blog and Book applications are_.
+**The kernel is layered; applications plug in at different depths.** sync →
+private document editing → the publication boundary → social membership. A
+recipe book plugs in shallow: it is a browse-face over private notes. _Blog_ and
+_Book_ plug into publication - you compose in private notes and publish across
+the boundary, and the public artifact is a _copy_ that cannot leak private edits
+back (copy-don't-flip; the notes editor already _is_ the post composer). "Roll
+out a whole-book update" is just re-publishing a composed taxonomy as a new
+public version. A future BBS plugs into membership. Publishing, in this model,
+stops being a mode hidden inside the notes app and becomes _what the Blog and
+Book applications are_.
 
-**The application boundary is generic, on purpose.** The console knows an application only as a mounted surface with
-a name, a theme, an icon, and a lifecycle - never as "a list-view over the private notes collection." This keeps the
-seam wide enough to host a publish queue or a threaded board later, not only a document list. Applications that
-happen to be notes-faces share a browse skeleton among _themselves_ as an implementation detail; the contract does
-not force that thinness on anyone. So the cost of applications is **bimodal**: notes-family faces are cheap (theme,
-surfaced fields, sort, navigation affordances - much of it declarative), while a genuine social or publication
-application is a substantial build. The launcher's job is to make the cheap ones nearly free and give the expensive
-ones a home. Stated plainly: **the launcher is the top-level shell of the entire product, forever** - every future
-surface is its tenant - even though its first, humble job is to sit in front of a notes app.
+**The application boundary is generic, on purpose.** The console knows an
+application only as a mounted surface with a name, a theme, an icon, and a
+lifecycle - never as "a list-view over the private notes collection." This keeps
+the seam wide enough to host a publish queue or a threaded board later, not only
+a document list. Applications that happen to be notes-faces share a browse
+skeleton among _themselves_ as an implementation detail; the contract does not
+force that thinness on anyone. So the cost of applications is **bimodal**:
+notes-family faces are cheap (theme, surfaced fields, sort, navigation
+affordances - much of it declarative), while a genuine social or publication
+application is a substantial build. The launcher's job is to make the cheap ones
+nearly free and give the expensive ones a home. Stated plainly: **the launcher
+is the top-level shell of the entire product, forever** - every future surface
+is its tenant - even though its first, humble job is to sit in front of a notes
+app.
 
-**Projects (buckets) are the places documents live.** Within an application a user keeps one or more **projects** -
-"Grandma's Recipes", a work journal and a personal journal - and most users need only one. A document belongs to one
-or more projects; membership is unordered and multiple, tag-like rather than folder-like, so a D&D session recap can
-live in a campaign log and a worldbuilding wiki at once, viewed chronologically in one and tree-positioned in the
-other (the view belongs to the application, not the document). Search and tags are **scoped to the current
-project**: searching "braise" in the recipe book finds braised-pork recipes, never the journal entry about braising
-the roof in frustration. The project is therefore a distinct _axis_ - the thing every other tag is measured against -
-even if it is implemented as a reserved tag namespace, and it stays out of the ordinary tag cloud for cleanliness.
-Sending a document to another application is, mechanically, adding a second project; in the UI it can feel like "send
-to Blog." (Share-vs-copy semantics on that send are a real future decision - share suits notes-y apps, copy suits
-the publish boundary - deferred until we build sharing.)
+**Projects (buckets) are the places documents live.** Within an application a
+user keeps one or more **projects** - "Grandma's Recipes", a work journal and a
+personal journal - and most users need only one. A document belongs to one or
+more projects; membership is unordered and multiple, tag-like rather than
+folder-like, so a D&D session recap can live in a campaign log and a
+worldbuilding wiki at once, viewed chronologically in one and tree-positioned in
+the other (the view belongs to the application, not the document). Search and
+tags are **scoped to the current project**: searching "braise" in the recipe
+book finds braised-pork recipes, never the journal entry about braising the roof
+in frustration. The project is therefore a distinct _axis_ - the thing every
+other tag is measured against - even if it is implemented as a reserved tag
+namespace, and it stays out of the ordinary tag cloud for cleanliness. Sending a
+document to another application is, mechanically, adding a second project; in
+the UI it can feel like "send to Blog." (Share-vs-copy semantics on that send
+are a real future decision - share suits notes-y apps, copy suits the publish
+boundary - deferred until we build sharing.)
 
-**Curated, not composable.** The set of applications is a hand-made menu, like a console with good games - not an
-app-builder, which is precisely the oppressive, un-cozy thing this model exists to avoid. Keeping options _open all
-the time_ - every toggle and dial present because someone might want it - is how a friendly tool becomes an
-intimidating one. Instead each application is opinionated: it shows the few things its use-case needs and hides the
-rest, and its rigidity is what makes it calm. The escape valve for power is not a settings panel but the ethos
-already stated - _it is your node; you can add code._ A gentle on-ramp still matters, though: a new person should be
-able to jot a note without first choosing a notebook type, so an un-opinionated default has a place in the console
-too.
+**Curated, not composable.** The set of applications is a hand-made menu, like a
+console with good games - not an app-builder, which is precisely the oppressive,
+un-cozy thing this model exists to avoid. Keeping options _open all the time_ -
+every toggle and dial present because someone might want it - is how a friendly
+tool becomes an intimidating one. Instead each application is opinionated: it
+shows the few things its use-case needs and hides the rest, and its rigidity is
+what makes it calm. The escape valve for power is not a settings panel but the
+ethos already stated - _it is your node; you can add code._ A gentle on-ramp
+still matters, though: a new person should be able to jot a note without first
+choosing a notebook type, so an un-opinionated default has a place in the
+console too.
 
-**Routing: internal URLs are session-relative and identity-free** (console + routing landed 2026-07-25). The whole
-internal UI lives under `/home` - `/home` the console, `/home/notes[/<doc_id>]` an application, and so on - so
-back/forward, refresh, and deep links work, while `/` stays free for the API and a future public face (it bounces to
-`/home` for now). The load-bearing rule: an internal URL names _no identity_ - no node-username, no persona - because
-the moment an identity appears in a path it _looks_ shareable, and internal URLs are not. So **identity-in-the-URL is
-the signal that a thing is shareable**: private/internal carries none, public/addressable carries one, and the two
-can never be confused structurally rather than by a user's care. A corollary: a persona (or document) **slug is a
-_publishing_ prerequisite, not a routing one** - routing runs fine on the implicit active persona and raw doc-id hex
-(URLs only you can open), and a real registered handle is minted at the moment something becomes publicly
-addressable, the "claim your handle" moment. Sharing is therefore always an _explicit action_ that generates the
-public address, never "copy what's in the address bar."
+**Routing: internal URLs are session-relative and identity-free** (console +
+routing landed 2026-07-25). The whole internal UI lives under `/home` - `/home`
+the console, `/home/notes[/<doc_id>]` an application, and so on - so
+back/forward, refresh, and deep links work, while `/` stays free for the API and
+a future public face (it bounces to `/home` for now). The load-bearing rule: an
+internal URL names _no identity_ - no node-username, no persona - because the
+moment an identity appears in a path it _looks_ shareable, and internal URLs are
+not. So **identity-in-the-URL is the signal that a thing is shareable**:
+private/internal carries none, public/addressable carries one, and the two can
+never be confused structurally rather than by a user's care. A corollary: a
+persona (or document) **slug is a _publishing_ prerequisite, not a routing
+one** - routing runs fine on the implicit active persona and raw doc-id hex
+(URLs only you can open), and a real registered handle is minted at the moment
+something becomes publicly addressable, the "claim your handle" moment. Sharing
+is therefore always an _explicit action_ that generates the public address,
+never "copy what's in the address bar."
 
 ---
 
 ## Doctrine
 
-The load-bearing laws of the system, each stated once — here — and referenced by name everywhere else. If you
-catch yourself explaining one of these in full for the third time in three different sections, stop: it belongs
-here, and that section gets a pointer.
+The load-bearing laws of the system, each stated once — here — and referenced by
+name everywhere else. If you catch yourself explaining one of these in full for
+the third time in three different sections, stop: it belongs here, and that
+section gets a pointer.
 
-**No Central Authority** This feels like a given, but it is kind of the load-bearing assumption of any p2p system.
-There can't be any central trusted system holding the whole thing up because... that's...
-_what it means for a system to be decentralized_. Everything must always be computable from local, public data
-alone.
+**No Central Authority** This feels like a given, but it is kind of the
+load-bearing assumption of any p2p system. There can't be any central trusted
+system holding the whole thing up because... that's... _what it means for a
+system to be decentralized_. Everything must always be computable from local,
+public data alone.
 
-**No Clocks!** Time is a UI element — "when was this posted?" is a perfectly good thing to show a human — but we
-can never trust it to be correct, so it is never allowed to be load-bearing. Ordering, authority, and freshness are
-settled by _structure_ — hash chains, seniority, monotonic memory — never by a timestamp a stranger could lie about.
+**No Clocks!** Time is a UI element — "when was this posted?" is a perfectly
+good thing to show a human — but we can never trust it to be correct, so it is
+never allowed to be load-bearing. Ordering, authority, and freshness are settled
+by _structure_ — hash chains, seniority, monotonic memory — never by a timestamp
+a stranger could lie about.
 
-**The Law of Conservation of Trust** - everything that can be abused sits atop the strata of trust, which is its
-own, fully public network - (not just "the nodes you follow" but everyone you are personally willing to vouch for or against).
-Trust can not be manufactured by any process, ("I have 10,000 kids who say I'm great")
-it comes exclusively through vouches, is limited, is the system's most precious resource.
+**The Law of Conservation of Trust** - everything that can be abused sits atop
+the strata of trust, which is its own, fully public network - (not just "the
+nodes you follow" but everyone you are personally willing to vouch for or
+against). Trust can not be manufactured by any process, ("I have 10,000 kids who
+say I'm great") it comes exclusively through vouches, is limited, is the
+system's most precious resource.
 
-**Not Hermetically Sealed** Private doesn't mean "nobody can find you" - in fact, you can and should make quite a lot
-of your content public, and that content can be fetched, rebroadcast, and even surfaced to the broader web.
-Your output is publicly available, anybody can come along and look at it - what's private is what you pull, your input stream,
-where you choose who you trust and what you consume.
+**Not Hermetically Sealed** Private doesn't mean "nobody can find you" - in
+fact, you can and should make quite a lot of your content public, and that
+content can be fetched, rebroadcast, and even surfaced to the broader web. Your
+output is publicly available, anybody can come along and look at it - what's
+private is what you pull, your input stream, where you choose who you trust and
+what you consume.
 
-**You Can't Push Hosting Decisions On Others**, a.k.a. **Bounded Operator Liability** You can not say to another person,
-"rebroadcast this thing" - another person can decide "rebroadcast everything from this person I like",
-but the direction is always pull, never push. Any given node's operator's responsibility only extends so far as the
-public-facing taste and judgement of their users (who can be forcefully ejected), and no further.
+**You Can't Push Hosting Decisions On Others**, a.k.a. **Bounded Operator
+Liability** You can not say to another person, "rebroadcast this thing" -
+another person can decide "rebroadcast everything from this person I like", but
+the direction is always pull, never push. Any given node's operator's
+responsibility only extends so far as the public-facing taste and judgement of
+their users (who can be forcefully ejected), and no further.
 
-**Pseudonymity, Not Anonymity** Your separate identities don't link to each other unless _you_ link them — that is
-the whole promise. We do not promise anonymity from network observers, and against a state-level adversary we are a
+**Pseudonymity, Not Anonymity** Your separate identities don't link to each
+other unless _you_ link them — that is the whole promise. We do not promise
+anonymity from network observers, and against a state-level adversary we are a
 _terrible_ choice.
 
-**Recoverability Over Prevention** On a p2p network you cannot prevent every compromise, so we don't pretend to.
-Instead: make every cheat _undeniable_ and every failure _survivable_. When two honest parties disagree we converge
-on the same answer even when it isn't the "fair" one — a split-brain is unrecoverable; an arbitrary-but-agreed winner
-is not.
+**Recoverability Over Prevention** On a p2p network you cannot prevent every
+compromise, so we don't pretend to. Instead: make every cheat _undeniable_ and
+every failure _survivable_. When two honest parties disagree we converge on the
+same answer even when it isn't the "fair" one — a split-brain is unrecoverable;
+an arbitrary-but-agreed winner is not.
 
-**Allowlist Beats Blocklist** We never filter an adversary's content — no sanitizing their
-HTML, no LLM-guessing their spam. That's a losing game played on their turf. We enumerate what's allowed,
-rather than filtering out what we don't want to accept.
+**Allowlist Beats Blocklist** We never filter an adversary's content — no
+sanitizing their HTML, no LLM-guessing their spam. That's a losing game played
+on their turf. We enumerate what's allowed, rather than filtering out what we
+don't want to accept.
 
-**Names Are Pointers, Never Authority** Handles, slugs, contact names — all labels that resolve to a key. The _key_
-is the identity. A name can be wrong, stale, stolen, or reassigned; it never grants anything on its own.
+**Names Are Pointers, Never Authority** Handles, slugs, contact names — all
+labels that resolve to a key. The _key_ is the identity. A name can be wrong,
+stale, stolen, or reassigned; it never grants anything on its own.
 
-**Every Byte From The Network Is Hostile** Validation lives at the consumer — the renderer, the verifier — never at
-submission. Signed garbage arrives via sync from strangers, and nothing upstream can be trusted to have checked it.
-A responsible client validates everything itself. Even on data that looks like its own.
+**Every Byte From The Network Is Hostile** Validation lives at the consumer —
+the renderer, the verifier — never at submission. Signed garbage arrives via
+sync from strangers, and nothing upstream can be trusted to have checked it. A
+responsible client validates everything itself. Even on data that looks like its
+own.
 
-**Copy, Don't Flip** Crossing a membrane — draft to published, private to public — never toggles a bit; it mints a
-_new_ artifact. There is no "make public" switch that could be thrown by accident or by a bug, because the only way
-across is a deliberate act that re-signs the content into its new home.
+**Copy, Don't Flip** Crossing a membrane — draft to published, private to public
+— never toggles a bit; it mints a _new_ artifact. There is no "make public"
+switch that could be thrown by accident or by a bug, because the only way across
+is a deliberate act that re-signs the content into its new home.
 
-**Immutable Chains Doesn't Mean Immutable Content**: Just because signed entries are forever doesn't mean that
-content has to be: we can point to content that gets dropped or modified.
-Retention is enforced by policy, not _the chain_.
+**Immutable Chains Doesn't Mean Immutable Content**: Just because signed entries
+are forever doesn't mean that content has to be: we can point to content that
+gets dropped or modified. Retention is enforced by policy, not _the chain_.
 
 ---
 
 ## Architecture Overview
 
-- **Connector Nodes** are Rust servers running this protocol. They join the Iroh p2p network and serve a web UI.
-- **Users** authenticate to a node via the web UI. The node acts as their agent on the p2p network.
-- **Data replication** happens over Iroh between nodes. If a user connects to a second node, their data syncs to it.
+- **Connector Nodes** are Rust servers running this protocol. They join the Iroh
+  p2p network and serve a web UI.
+- **Users** authenticate to a node via the web UI. The node acts as their agent
+  on the p2p network.
+- **Data replication** happens over Iroh between nodes. If a user connects to a
+  second node, their data syncs to it.
 
 ### We Trust the Node Operator
 
-Like with an e-mail provider, the user _trusts_ that their node operator knows what they're doing and won't ruin their day.
+Like with an e-mail provider, the user _trusts_ that their node operator knows
+what they're doing and won't ruin their day.
 
-This is not a totally trustless protocol: there are lots of ways for a malicious node operator to get up to no-good
-with a user's identity - the idea here is not perfect security, just that **a user can recover from this**.
+This is not a totally trustless protocol: there are lots of ways for a malicious
+node operator to get up to no-good with a user's identity - the idea here is not
+perfect security, just that **a user can recover from this**.
 
-A malicious node operator becomes privy to all of a user's secrets and can act on that users' behalf up until the moment
-where their access to the identity is revoked. At that point, they _still have all of the users' old secrets_, there's a
-concrete privacy loss at play here: this, again, is _bad_, but what malicious node operator does not have is forward
-access to that users' secrets: once they're revoked, the damage is done but the day is not lost.
+A malicious node operator becomes privy to all of a user's secrets and can act
+on that users' behalf up until the moment where their access to the identity is
+revoked. At that point, they _still have all of the users' old secrets_, there's
+a concrete privacy loss at play here: this, again, is _bad_, but what malicious
+node operator does not have is forward access to that users' secrets: once
+they're revoked, the damage is done but the day is not lost.
 
-This is not end-to-end encryption: the "ends" of the encryption are the identity nodes, and those nodes are distributed:
-this is a prioritization of your identity's _resilience_ and _ease of operation_ over its _privacy and security_.
+This is not end-to-end encryption: the "ends" of the encryption are the identity
+nodes, and those nodes are distributed: this is a prioritization of your
+identity's _resilience_ and _ease of operation_ over its _privacy and security_.
 
-Ringtome is, intentionally and up-front, a terrible choice for folks who are looking to maintain perfect secrecy
-against state-level actors: the most obvious attack is for them to run or subvert a popular node and simply look
-at all of the user's secrets on that node without ever doing anything to seem suspicious.
+Ringtome is, intentionally and up-front, a terrible choice for folks who are
+looking to maintain perfect secrecy against state-level actors: the most obvious
+attack is for them to run or subvert a popular node and simply look at all of
+the user's secrets on that node without ever doing anything to seem suspicious.
 
-Mastodon stores all of your DMs in plain-text on the operator's box.
-Ringtome doesn't — private data is ciphertext at rest, so a stolen backup is useless without the node's keys. But
-against a malicious operator who actively _wants in_? We might as well be plaintext: it's their node, they hold the
-keys, they read it all.
+Mastodon stores all of your DMs in plain-text on the operator's box. Ringtome
+doesn't — private data is ciphertext at rest, so a stolen backup is useless
+without the node's keys. But against a malicious operator who actively _wants
+in_? We might as well be plaintext: it's their node, they hold the keys, they
+read it all.
 
 #### The Node Operator Can Serve UI
 
-Part of the reason for this compromise? The node operator can serve the Ringtome UI to the user - secure end to end encryption
-requires that the "end" be completely under the users' control, and this is not the case with an operator-controlled UI
-surface like _any web application_.
+Part of the reason for this compromise? The node operator can serve the Ringtome
+UI to the user - secure end to end encryption requires that the "end" be
+completely under the users' control, and this is not the case with an
+operator-controlled UI surface like _any web application_.
 
-The application, here, _is, in fact_ designed to be run locally as a single self-hosted trusted node, for users who are not
-willing to make this compromise. In fact, this is expected to be the _most common case_: we're a p2p network with federation-like
-qualities, not a federated network.
+The application, here, _is, in fact_ designed to be run locally as a single
+self-hosted trusted node, for users who are not willing to make this compromise.
+In fact, this is expected to be the _most common case_: we're a p2p network with
+federation-like qualities, not a federated network.
 
 ## The CROWN Identity
 
-"CROWN" is a backronym, a **Cryptographic Rank of Wandering Names**, describing a user's Identity: a
-**tree of ed25519 keypairs** with strict hierarchical authority, and succession and usurpation rules that make
-the British peerage look ill-defined.
+"CROWN" is a backronym, a **Cryptographic Rank of Wandering Names**, describing
+a user's Identity: a **tree of ed25519 keypairs** with strict hierarchical
+authority, and succession and usurpation rules that make the British peerage
+look ill-defined.
 
 ### CROWN Structure
 
@@ -360,298 +459,392 @@ Root Key (K0) — the user's identity IS this public key
     └── K4 (sub-key, created T4, signed by K2)
 ```
 
-Note that, in this order, even though K3 was born _after_ K2, K3 is the rightful heir to the throne.
+Note that, in this order, even though K3 was born _after_ K2, K3 is the rightful
+heir to the throne.
 
 ### Rules Of Succession
 
-The goal here is to have a **total order on key authority** that **any node can compute using only local, public data**.
-There's no synchronized clocks or coordinators to prevent a civil war (**No Central Authority**, Doctrine) - it has to be something the system can calculate
-on its own.
+The goal here is to have a **total order on key authority** that **any node can
+compute using only local, public data**. There's no synchronized clocks or
+coordinators to prevent a civil war (**No Central Authority**, Doctrine) - it
+has to be something the system can calculate on its own.
 
-1. **The Bloodline Must Continue! Babies! Babies! Babies!** - any key in the tree can authorize new child keys.
-   We encourage new devices and nodes.
-2. **Succession Order Is Meaningful** - K3 carries revocation rights to K2 and K4.
-3. **Simba Beats Scar** -
-   This isn't just "parent over child" or "earliest date wins" (because there is no date to win),
-   Any child that outranks another child carries revocation power over that child - in our example, K3 has
+1. **The Bloodline Must Continue! Babies! Babies! Babies!** - any key in the
+   tree can authorize new child keys. We encourage new devices and nodes.
+2. **Succession Order Is Meaningful** - K3 carries revocation rights to K2 and
+   K4.
+3. **Simba Beats Scar** - This isn't just "parent over child" or "earliest date
+   wins" (because there is no date to win), Any child that outranks another
+   child carries revocation power over that child - in our example, K3 has
    authority over K2, **even if K2 is _older_**.
    - Wall-clock time is meaningless in succession order.
-   - To compare two keys, walk both up to their lowest common ancestor; they diverge into two of that ancestor's
-     children; whichever child is senior (per rule 3's lists), that entire branch wins.
-     Formally this is lexicographic order on the sequence of sibling-ranks from root to key.
-     A brand-new child of the senior branch outranks a long-established child of the junior branch -
-     that is correct and deliberate; birth _time_ is not derivable under partition, branch seniority is.
-4. **Don't Go Out Without Your Coat of Arms** - Every key carries its whole family tree at time of creation,
-   which is a cumulative, append-only list of _potential usurpers_, a _compact lineage bundle_.
-   - A parent signing children in sequence produces `A1: [R]`, then `B1: [R, A1]`, then
-     `C1: [R, A1, B1]`. Entries can **never** be removed. A senior sibling never needs to know a junior one exists; the
-     junior always carries the signed acknowledgment that it is junior.
-   - If a stranger ever needs to compare two valid statements - contradictory revocations, for example - one of the
-     two statements must contain evidence that the other statement wins.
-   - Technically, _within the identity_, all participating nodes are replicating the full identity at all times, so
-     the usurpation list is just a stamp
-5. **How Are You Related to the King?** - A statement presented without the complete chain of parent-signed authorizations
-   is **invalid** - not "low priority", just straight-up invalid, an obvious forgery.
-6. **The King Has Amnesia After Being Hit By a Frying Pan** - The only way to create a contradiction in a well-meaning
-   system is for a parent to straight-up _forget it had a kid_. This seems unlikely and laughable, but it's possible:
-   a root node creates a child entry, then dies, is restored from a backup, and then creates a new child entry.
-   Now we have **equivocation**: two child nodes who both believe they have equal claim to the throne. This is not
-   necessarily a sign of malice (frying pans are everywhere, my dude) - so we resolve this with a tiebreaker:
-   - The tiebreaker is based on a random, cosmetic feature that the child can not choose for themselves.
-   - The winner is the _lexicographically smallest pubkey_ - essentially, the _child with the largest birthmark_.
+   - To compare two keys, walk both up to their lowest common ancestor; they
+     diverge into two of that ancestor's children; whichever child is senior
+     (per rule 3's lists), that entire branch wins. Formally this is
+     lexicographic order on the sequence of sibling-ranks from root to key. A
+     brand-new child of the senior branch outranks a long-established child of
+     the junior branch - that is correct and deliberate; birth _time_ is not
+     derivable under partition, branch seniority is.
+4. **Don't Go Out Without Your Coat of Arms** - Every key carries its whole
+   family tree at time of creation, which is a cumulative, append-only list of
+   _potential usurpers_, a _compact lineage bundle_.
+   - A parent signing children in sequence produces `A1: [R]`, then
+     `B1: [R, A1]`, then `C1: [R, A1, B1]`. Entries can **never** be removed. A
+     senior sibling never needs to know a junior one exists; the junior always
+     carries the signed acknowledgment that it is junior.
+   - If a stranger ever needs to compare two valid statements - contradictory
+     revocations, for example - one of the two statements must contain evidence
+     that the other statement wins.
+   - Technically, _within the identity_, all participating nodes are replicating
+     the full identity at all times, so the usurpation list is just a stamp
+5. **How Are You Related to the King?** - A statement presented without the
+   complete chain of parent-signed authorizations is **invalid** - not "low
+   priority", just straight-up invalid, an obvious forgery.
+6. **The King Has Amnesia After Being Hit By a Frying Pan** - The only way to
+   create a contradiction in a well-meaning system is for a parent to
+   straight-up _forget it had a kid_. This seems unlikely and laughable, but
+   it's possible: a root node creates a child entry, then dies, is restored from
+   a backup, and then creates a new child entry. Now we have **equivocation**:
+   two child nodes who both believe they have equal claim to the throne. This is
+   not necessarily a sign of malice (frying pans are everywhere, my dude) - so
+   we resolve this with a tiebreaker:
+   - The tiebreaker is based on a random, cosmetic feature that the child can
+     not choose for themselves.
+   - The winner is the _lexicographically smallest pubkey_ - essentially, the
+     _child with the largest birthmark_.
    - Prince `000aaa` was born lucky, prince `bbbfff` was not.
-   - Yes, an intentionally evil king can _grind out children until they have a birthmark-winning child_,
-     then forget their oldest. An intentionally evil king can also just revoke their oldest.
-7. **The King is Dead, Long Live the King** - Any key can act as a root for its own subtree - spawning children,
-   interacting with the network, and the rank-path order still totally ranks everyone without the root present.
-   If two warring brothers retreat to their own network partitions, each could pretend to be the identity _in full_
-   until any evidence of their brother appears.
+   - Yes, an intentionally evil king can _grind out children until they have a
+     birthmark-winning child_, then forget their oldest. An intentionally evil
+     king can also just revoke their oldest.
+7. **The King is Dead, Long Live the King** - Any key can act as a root for its
+   own subtree - spawning children, interacting with the network, and the
+   rank-path order still totally ranks everyone without the root present. If two
+   warring brothers retreat to their own network partitions, each could pretend
+   to be the identity _in full_ until any evidence of their brother appears.
 
 ### Revocation: What Happens When There's a Problem
 
 Bloody ~~revolution~~ **revocation**! Civil war at last!
 
-There are two kinds of revocation: repudiation and retirement. (A third, exit, was examined and declined -
-below.)
+There are two kinds of revocation: repudiation and retirement. (A third, exit,
+was examined and declined - below.)
 
-Revocations are signed statements that remove a node from the identity tree. The standing principle (settled
-2026-07-30): **friendly departures are self-service; hostile ones need a senior.** Retirement is self-issuable by
-a key that is not adversarial at the moment of the act; repudiation is never self-issued, because it is precisely
-the claim that the key cannot be trusted to speak for itself.
+Revocations are signed statements that remove a node from the identity tree. The
+standing principle (settled 2026-07-30): **friendly departures are self-service;
+hostile ones need a senior.** Retirement is self-issuable by a key that is not
+adversarial at the moment of the act; repudiation is never self-issued, because
+it is precisely the claim that the key cannot be trusted to speak for itself.
 
 #### Repudiation
 
-This is The Juicy One For Murders. Someone has misused your identity from a node and it's time for that node to be _excised_.
-This is a removal _with prejudice_.
+This is The Juicy One For Murders. Someone has misused your identity from a node
+and it's time for that node to be _excised_. This is a removal _with prejudice_.
 
 - Repudiation **must come from a senior node**.
-- Repudiation **distrusts every authority-conferring statement past the cut-point** (generalized 2026-07-30; the
-  Groups sketch caught the old wording claiming only "child authorizations" - a key-tree word that would leave
-  the wrong people inside things). Child authorizations die - the entire subtree goes down with the ship - and
-  so do the key's epoch mints, and, when they exist, its vouches and group admissions. Any future consumer that
-  folds authority from entries inherits this rule, not the narrow one.
-- Repudiation **distrusts all history after a cut-point** - and that cut-point can be _anywhere_ in logical history,
-  so a node can have everything its ever done since its birth struck permanently from the record.
+- Repudiation **distrusts every authority-conferring statement past the
+  cut-point** (generalized 2026-07-30; the Groups sketch caught the old wording
+  claiming only "child authorizations" - a key-tree word that would leave the
+  wrong people inside things). Child authorizations die - the entire subtree
+  goes down with the ship - and so do the key's epoch mints, and, when they
+  exist, its vouches and group admissions. Any future consumer that folds
+  authority from entries inherits this rule, not the narrow one.
+- Repudiation **distrusts all history after a cut-point** - and that cut-point
+  can be _anywhere_ in logical history, so a node can have everything its ever
+  done since its birth struck permanently from the record.
 
-Some of our data structures will actually allow us to rewrite history in this way: others will simply not allow
-the repudiated node _further_ access.
+Some of our data structures will actually allow us to rewrite history in this
+way: others will simply not allow the repudiated node _further_ access.
 
 #### Retirement
 
-This is the less juicy one: a node is being turned off intentionally. Maybe we're dumping a computer in the trash and we want
-to make sure that nobody goes dumpster diving and retrieves a valid identity, but we don't want to kill its children.
+This is the less juicy one: a node is being turned off intentionally. Maybe
+we're dumping a computer in the trash and we want to make sure that nobody goes
+dumpster diving and retrieves a valid identity, but we don't want to kill its
+children.
 
 A node can **retire**.
 
-This one's a little harder, because what stops the dumpster diver from simply minting more, evil children?
-The answer is determined by the history baked in to the retirement document: new children won't be in that history
-and will be distrusted.
+This one's a little harder, because what stops the dumpster diver from simply
+minting more, evil children? The answer is determined by the history baked in to
+the retirement document: new children won't be in that history and will be
+distrusted.
 
-- Retirement **can come from the retiring node itself** (self-issuable - the common decommission), **or from a
-  senior** ("retire the laptop, from the desktop" - mechanically identical to repudiation's issuance path, and
-  the UI's preferred route when another device is in reach, because the surviving signer can rotate the private
-  epoch in the same act; a self-retiring key cannot - see Private Chains, the minter rule).
-- The retirement chooses a point across all of its chains and signs that with its retirement,
-  a final call sign sealing its entire history. Anything written after this point is distrusted.
+- Retirement **can come from the retiring node itself** (self-issuable - the
+  common decommission), **or from a senior** ("retire the laptop, from the
+  desktop" - mechanically identical to repudiation's issuance path, and the UI's
+  preferred route when another device is in reach, because the surviving signer
+  can rotate the private epoch in the same act; a self-retiring key cannot - see
+  Private Chains, the minter rule).
+- The retirement chooses a point across all of its chains and signs that with
+  its retirement, a final call sign sealing its entire history. Anything written
+  after this point is distrusted.
 - It **does not kill the children**, they can go about their merry lives.
-- One wrinkle the implementation must honor (found and fixed 2026-07-30): **a revoke can never anchor itself**, so
-  a self-retirement's own entry sits just beyond the seal it declares - or, for a key that never wrote identity
-  history, stands as its chain's only entry with nothing anchored at all. Seal-or-nothing enforcement that
-  forgets this refuses the retirement itself, and the store forgets the key ever retired - which un-retires a
-  dumpster-dived key on the next resolve. `Crown::revocation_of` names the credited revoke so enforcers keep
-  exactly that one statement, and nothing else beyond the seal.
+- One wrinkle the implementation must honor (found and fixed 2026-07-30): **a
+  revoke can never anchor itself**, so a self-retirement's own entry sits just
+  beyond the seal it declares - or, for a key that never wrote identity history,
+  stands as its chain's only entry with nothing anchored at all. Seal-or-nothing
+  enforcement that forgets this refuses the retirement itself, and the store
+  forgets the key ever retired - which un-retires a dumpster-dived key on the
+  next resolve. `Crown::revocation_of` names the credited revoke so enforcers
+  keep exactly that one statement, and nothing else beyond the seal.
 
 #### Exit: the third disposition, examined and declined (2026-07-30)
 
-A departing _group_ member wanted a disposition that didn't exist: **honor the history, kill the subtree,
-self-issuable** - retirement can't say it (the subtree lives) and repudiation says too much (quarantines honest
-history, senior-only). Then the member-lane groups design made group departure a roster removal rather than a key
-event, and the remaining cases dissolve on inspection, because the combination is already expressible:
+A departing _group_ member wanted a disposition that didn't exist: **honor the
+history, kill the subtree, self-issuable** - retirement can't say it (the
+subtree lives) and repudiation says too much (quarantines honest history,
+senior-only). Then the member-lane groups design made group departure a roster
+removal rather than a key event, and the remaining cases dissolve on inspection,
+because the combination is already expressible:
 
-- **Hostile flavor** (severing a distrusted operator's branch): repudiation's cut-point can be _anywhere_,
-  including now. A senior repudiation **anchored at the branch's current heads** distrusts nothing that exists -
-  everything already written is the sealed prefix - and kills the subtree. Exit-by-senior, delivered by the
-  existing verb.
-- **Cooperative flavor** (self-issued): a key's children are exactly the authorize entries **on its own chain**,
-  so it can enumerate them completely - no unseen-child gap. **Repudiate each child** (anchored at their heads;
-  each takes its whole subtree, unseen grandchildren included), **then retire.** N+1 statements instead of one,
-  converging eventually like everything else does.
+- **Hostile flavor** (severing a distrusted operator's branch): repudiation's
+  cut-point can be _anywhere_, including now. A senior repudiation **anchored at
+  the branch's current heads** distrusts nothing that exists - everything
+  already written is the sealed prefix - and kills the subtree. Exit-by-senior,
+  delivered by the existing verb.
+- **Cooperative flavor** (self-issued): a key's children are exactly the
+  authorize entries **on its own chain**, so it can enumerate them completely -
+  no unseen-child gap. **Repudiate each child** (anchored at their heads; each
+  takes its whole subtree, unseen grandchildren included), **then retire.** N+1
+  statements instead of one, converging eventually like everything else does.
 
-So a distinct disposition would be sugar, and it fails the nameability test twice over: no named consumer, and no
-capability the existing verbs can't compose. If a real consumer ever wants the atomic form, this paragraph is the
-revisit point - and note the deadline shape: pre-ship it's a free additive enum variant; post-ship it's a protocol
-addition that strict readers reject until they learn it, which for a _revocation_ means the dangerous kind of
-divergence. The UI may still render the composite under one cozy verb; the protocol doesn't need a third one.
+So a distinct disposition would be sugar, and it fails the nameability test
+twice over: no named consumer, and no capability the existing verbs can't
+compose. If a real consumer ever wants the atomic form, this paragraph is the
+revisit point - and note the deadline shape: pre-ship it's a free additive enum
+variant; post-ship it's a protocol addition that strict readers reject until
+they learn it, which for a _revocation_ means the dangerous kind of divergence.
+The UI may still render the composite under one cozy verb; the protocol doesn't
+need a third one.
 
-**Epoch rotation: what is still owed** (found 2026-07-30 by pointing the epoch model at a
-group, and the live item in _Open Questions_). Settled and enforced: _you may not sign the
-epoch that excludes you_ - self-retirement no longer self-rotates, and `rotate_epoch` refuses
-a signer that is its own exclude; and what secures a rotation is that the recipient set is
-derivable and verified by every node, never who minted it, so gating rotation is a trap and
-its frequency a performance question. Owed: **rotation liveness has no owner** - any Active
-member may mint, seniority breaks ties, and a rank-ordered backoff (the seniormost acts at
-once, juniors step in only if no senior has) yields one rotation and harmless duplicates; the
-watcher is ledgered in REFACTOR.md. Stated policy: friendly departures are self-service
-retirements, hostile exits are senior-only repudiations.
+**Epoch rotation: what is still owed** (found 2026-07-30 by pointing the epoch
+model at a group, and the live item in _Open Questions_). Settled and enforced:
+_you may not sign the epoch that excludes you_ - self-retirement no longer
+self-rotates, and `rotate_epoch` refuses a signer that is its own exclude; and
+what secures a rotation is that the recipient set is derivable and verified by
+every node, never who minted it, so gating rotation is a trap and its frequency
+a performance question. Owed: **rotation liveness has no owner** - any Active
+member may mint, seniority breaks ties, and a rank-ordered backoff (the
+seniormost acts at once, juniors step in only if no senior has) yields one
+rotation and harmless duplicates; the watcher is ledgered in REFACTOR.md. Stated
+policy: friendly departures are self-service retirements, hostile exits are
+senior-only repudiations.
 
 ### Recovery Planning
 
-Structural seniority is fixed at signing time and cannot be honestly granted retroactively -
-there is no legitimate way to insert a senior key into an existing tree.
+Structural seniority is fixed at signing time and cannot be honestly granted
+retroactively - there is no legitimate way to insert a senior key into an
+existing tree.
 
 How do we recover when things go badly wrong?
 
-- **Recovery key, minted at identity creation.** When any new identity node is created, the node generates a **recovery key as
-  an early direct child of the root**. The user takes a photo of a QR code, that photo is their golden ticket:
-  a high-ranking identity stored on their person forever.
+- **Recovery key, minted at identity creation.** When any new identity node is
+  created, the node generates a **recovery key as an early direct child of the
+  root**. The user takes a photo of a QR code, that photo is their golden
+  ticket: a high-ranking identity stored on their person forever.
 
 ### Recovery Flows: Passwords vs. Keys
 
-Two failure modes wear the same "I'm locked out" face and must never share machinery. **Forgetting the node
-password loses nothing cryptographic** - on an always-on node the leaf keys are sealed under the envelope key, not
-the login password (see Key Storage), so the node still holds perfectly healthy keys and the user has only lost the
-ability to prove themselves to _this node's web app_. That is a web-app problem. Actual key loss (dead node, lost
-devices, compromise) is the rare case, and it alone runs the key-tree machinery. The load-bearing invariant for
-everything below: **presenting key K may grant at most K's own authority.**
+Two failure modes wear the same "I'm locked out" face and must never share
+machinery. **Forgetting the node password loses nothing cryptographic** - on an
+always-on node the leaf keys are sealed under the envelope key, not the login
+password (see Key Storage), so the node still holds perfectly healthy keys and
+the user has only lost the ability to prove themselves to _this node's web app_.
+That is a web-app problem. Actual key loss (dead node, lost devices, compromise)
+is the rare case, and it alone runs the key-tree machinery. The load-bearing
+invariant for everything below: **presenting key K may grant at most K's own
+authority.**
 
-**Flow A - forgot password (common): zero chain entries, zero new keys.** The recovery photo (QR code of the
-oldest-child recovery key) serves as the reset _authentication factor_: scan the QR, the node derives the pubkey,
-confirms it is the identity's **designated recovery key**, and resets the account password. The key signs a login
-challenge, never a statement; the tree is untouched. _(Scratch version IMPLEMENTED 2026-07-24 -
-`identity::recover_password`: seed pasted to the node rather than a browser-side challenge signature (acceptable on
-your own node; the hosted-node exposure is exactly why the challenge flow and post-use rotation remain owed), no
-cooling-off window yet. Per-identity scoping is fully live, split by account shape: a single-persona account resets
-in place (keeping its sign-in name - re-homing every reset would cost the common case its username for nothing),
-and a multi-persona account **re-homes** - the proven persona moves to a freshly named account while the old
-account is left entirely alone (password, sessions, siblings all intact: if the key was stolen, the victim keeps
-everything but the persona the stolen key already owned outright). The ask-for-a-new-name signal discloses that
-siblings exist - post-proof only, count-not-names, the accepted trade for not stranding multi-persona users.)_
+**Flow A - forgot password (common): zero chain entries, zero new keys.** The
+recovery photo (QR code of the oldest-child recovery key) serves as the reset
+_authentication factor_: scan the QR, the node derives the pubkey, confirms it
+is the identity's **designated recovery key**, and resets the account password.
+The key signs a login challenge, never a statement; the tree is untouched.
+_(Scratch version IMPLEMENTED 2026-07-24 - `identity::recover_password`: seed
+pasted to the node rather than a browser-side challenge signature (acceptable on
+your own node; the hosted-node exposure is exactly why the challenge flow and
+post-use rotation remain owed), no cooling-off window yet. Per-identity scoping
+is fully live, split by account shape: a single-persona account resets in place
+(keeping its sign-in name - re-homing every reset would cost the common case its
+username for nothing), and a multi-persona account **re-homes** - the proven
+persona moves to a freshly named account while the old account is left entirely
+alone (password, sessions, siblings all intact: if the key was stolen, the
+victim keeps everything but the persona the stolen key already owned outright).
+The ask-for-a-new-name signal discloses that siblings exist - post-proof only,
+count-not-names, the accepted trade for not stranding multi-persona users.)_
 
-- **Only the recovery key is reset-eligible - this is load-bearing, not convenience.** Access to a node is access
-  to the keys that node holds, so
-  any-tree-key-resets would let an attacker holding one compromised junior leaf walk up to the root-holding node,
-  pass an "is this an Active member?" check, reset the password, and wield the root - converting a bounded leaf
-  compromise into total takeover through the login layer, and turning revocation into a race the attacker wins.
-  Authentication channels must respect the authority lattice or the lattice is decorative. An ordinary leaf is
-  never reset-eligible, anywhere.
-- **Even recovery-key reset is an escalation channel - the one deliberate one** (the root outranks the recovery
-  key, and reset on the root's node wields the root). Every recovery credential in every system is definitionally
-  an escalation channel; the design response is that the exception is singular, designated, and guarded by
-  **node-local policy**: a cooling-off window ("reset completes in 24h; any logged-in session can cancel"), rate
-  limits, and notification to the identity's other devices once gossip exists. Note the layering: the _protocol_
-  forbids clocks because relying parties cannot share one, but a node's own login policy is node-local - the
-  time-boxed override that **No Clocks!** (Doctrine) exiles from the key tree is perfectly legal here.
-- **Per-identity scoping.** A node account may agent several identities; proof of one identity's recovery key
-  grants access to _that identity only_ (the reset re-homes the proven identity into a fresh or proven-only
-  account), or a stolen photo for one pseudonym would breach the authority and linkage boundaries of its siblings.
-- **The Node Can Do Other Stuff** - there are lots of ways to reset a password, and if the node wants to instead
-  offer email password reset, or password-reset-by-phone: sure! Why not!
+- **Only the recovery key is reset-eligible - this is load-bearing, not
+  convenience.** Access to a node is access to the keys that node holds, so
+  any-tree-key-resets would let an attacker holding one compromised junior leaf
+  walk up to the root-holding node, pass an "is this an Active member?" check,
+  reset the password, and wield the root - converting a bounded leaf compromise
+  into total takeover through the login layer, and turning revocation into a
+  race the attacker wins. Authentication channels must respect the authority
+  lattice or the lattice is decorative. An ordinary leaf is never
+  reset-eligible, anywhere.
+- **Even recovery-key reset is an escalation channel - the one deliberate one**
+  (the root outranks the recovery key, and reset on the root's node wields the
+  root). Every recovery credential in every system is definitionally an
+  escalation channel; the design response is that the exception is singular,
+  designated, and guarded by **node-local policy**: a cooling-off window ("reset
+  completes in 24h; any logged-in session can cancel"), rate limits, and
+  notification to the identity's other devices once gossip exists. Note the
+  layering: the _protocol_ forbids clocks because relying parties cannot share
+  one, but a node's own login policy is node-local - the time-boxed override
+  that **No Clocks!** (Doctrine) exiles from the key tree is perfectly legal
+  here.
+- **Per-identity scoping.** A node account may agent several identities; proof
+  of one identity's recovery key grants access to _that identity only_ (the
+  reset re-homes the proven identity into a fresh or proven-only account), or a
+  stolen photo for one pseudonym would breach the authority and linkage
+  boundaries of its siblings.
+- **The Node Can Do Other Stuff** - there are lots of ways to reset a password,
+  and if the node wants to instead offer email password reset, or
+  password-reset-by-phone: sure! Why not!
 
-**Flow B - actual key loss (rare): the tree machinery, ending in photo rotation.** At a fresh node: scan the QR;
-the recovery key authorizes **its successor recovery key first** (see designation, below), then the new device
-key; repudiate whatever was lost or hostile; the old recovery key **self-retires** with anchors at its final head.
-Retirement seals the old photo into a souvenir - everything it legitimately did (including authorizing the new
-branch) stands; anything signed beyond its anchors is invalid - which matters because the scan just exposed its
-seed to the scanning device. Each recovery consumes and reissues the artifact ("Your spare key worked! Here's a
-fresh one - take a picture. The old photo won't work anymore."), shrinking the skeleton-key window to
-until-first-use. **Recovery never mints a new identity**: the identity _is_ the root pubkey; a "fresh start" would
-orphan every follow, vouch, and page. New keys in the same tree, always.
+**Flow B - actual key loss (rare): the tree machinery, ending in photo
+rotation.** At a fresh node: scan the QR; the recovery key authorizes **its
+successor recovery key first** (see designation, below), then the new device
+key; repudiate whatever was lost or hostile; the old recovery key
+**self-retires** with anchors at its final head. Retirement seals the old photo
+into a souvenir - everything it legitimately did (including authorizing the new
+branch) stands; anything signed beyond its anchors is invalid - which matters
+because the scan just exposed its seed to the scanning device. Each recovery
+consumes and reissues the artifact ("Your spare key worked! Here's a fresh one -
+take a picture. The old photo won't work anymore."), shrinking the skeleton-key
+window to until-first-use. **Recovery never mints a new identity**: the identity
+_is_ the root pubkey; a "fresh start" would orphan every follow, vouch, and
+page. New keys in the same tree, always.
 
-**Designating "the" recovery key.** v1 rule: the **leftmost spine** - the recovery key is the root's first child
-by construction (rank `[0]`), and because a retiring recovery key authorizes its successor _first_, the current
-recovery key is always the unique Active key on the all-zeros path (`[0]`, `[0,0]`, ...). Derivable from pure tree
-structure, zero new format; fragile only in that Flow B's mint order is a convention that must be kept loudly.
-Graduation path: an additive `role` attribute on `authorize` (passes the ignorability test - an old reader treats
-the key as ordinary and _fails closed_ on reset eligibility; ranking is untouched), natural to add when Flow B is
-implemented. A future relaxation exists if ever needed - "reset with any key strictly senior to everything the
-node holds" is escalation-free by the invariant - but "only the spare-key photo unlocks you" is the v1 story a
-user can hold in one sentence.
+**Designating "the" recovery key.** v1 rule: the **leftmost spine** - the
+recovery key is the root's first child by construction (rank `[0]`), and because
+a retiring recovery key authorizes its successor _first_, the current recovery
+key is always the unique Active key on the all-zeros path (`[0]`, `[0,0]`, ...).
+Derivable from pure tree structure, zero new format; fragile only in that Flow
+B's mint order is a convention that must be kept loudly. Graduation path: an
+additive `role` attribute on `authorize` (passes the ignorability test - an old
+reader treats the key as ordinary and _fails closed_ on reset eligibility;
+ranking is untouched), natural to add when Flow B is implemented. A future
+relaxation exists if ever needed - "reset with any key strictly senior to
+everything the node holds" is escalation-free by the invariant - but "only the
+spare-key photo unlocks you" is the v1 story a user can hold in one sentence.
 
-**Spare-key succession after catastrophe (settled 2026-07-24).** Root dead, spare key lost, one junior node
-surviving: recovery is rebuildable, because rank-path order makes it so. Every future key must descend from the
-survivor (nothing else is left to sign), and a key's **first-authorized child outranks its every later child and
-all their descendants** - so the ceremony is Flow B's convention generalized: **the survivor mints its successor
-spare key first**, before any other post-catastrophe children, and that new spare is senior to the identity's
-entire reachable future. Precisely bounded, twice: (1) _nothing ever outranks the lost past_ - the dead root and
-lost spare stay dormant-senior forever (juniors cannot revoke uphill, structurally, or any leaf could coup the
-crown), so if "lost" was ever actually "stolen", the resurfaced key outranks everything rebuilt - the ghost
-senior is permanent, named risk; (2) the guarantee is "first child of the apex of what remains" - an elder
-sibling branch that later resurfaces re-enters above the new spare. Consequence that binds two open items
-together: v1's all-zeros-spine designation **cannot see** a succeeded spare minted off-spine, so the `role`
-attribute (or the strictly-senior reset relaxation) must ship _with_ Flow B, not after it - a rebuilt identity
-whose password recovery silently stopped working would be a cruel joke. Owed someday: a small, out-of-the-way
-"rebuild your spare key" ceremony in the key screens - rare by nature, load-bearing when it's needed at all.
+**Spare-key succession after catastrophe (settled 2026-07-24).** Root dead,
+spare key lost, one junior node surviving: recovery is rebuildable, because
+rank-path order makes it so. Every future key must descend from the survivor
+(nothing else is left to sign), and a key's **first-authorized child outranks
+its every later child and all their descendants** - so the ceremony is Flow B's
+convention generalized: **the survivor mints its successor spare key first**,
+before any other post-catastrophe children, and that new spare is senior to the
+identity's entire reachable future. Precisely bounded, twice: (1) _nothing ever
+outranks the lost past_ - the dead root and lost spare stay dormant-senior
+forever (juniors cannot revoke uphill, structurally, or any leaf could coup the
+crown), so if "lost" was ever actually "stolen", the resurfaced key outranks
+everything rebuilt - the ghost senior is permanent, named risk; (2) the
+guarantee is "first child of the apex of what remains" - an elder sibling branch
+that later resurfaces re-enters above the new spare. Consequence that binds two
+open items together: v1's all-zeros-spine designation **cannot see** a succeeded
+spare minted off-spine, so the `role` attribute (or the strictly-senior reset
+relaxation) must ship _with_ Flow B, not after it - a rebuilt identity whose
+password recovery silently stopped working would be a cruel joke. Owed someday:
+a small, out-of-the-way "rebuild your spare key" ceremony in the key screens -
+rare by nature, load-bearing when it's needed at all.
 
 ### Key Storage
 
-- Each node generates and stores **only its own private key**, never a root key or any other node's key.
-- **No private keys are ever transferred between nodes.** Only public keys and the chain of signatures (proving tree membership) replicate across the network.
-- **Encrypt the key - and now the database too** (amended 2026-07-20). The original rule here ("encrypt the key,
-  not the database") held while the per-user database was a mostly-public materialized view - public chains public
-  by definition, private-chain payloads _already_ ciphertext - so full-DB encryption would have taxed a public view
-  to protect one small secret. The persisted-views ruling (Data Layer, The Substrate) changes what the database
-  _contains_: it now holds decrypted private views (document tables, annotations, search indexes), so at-rest
-  encryption stops being a tax and becomes the load-bearing boundary. Every database is encrypted at rest (the
-  engine's native encryption), its key a random per-database secret sealed through the keystore under the envelope
-  key. The leaf private key still never moves into the database: it stays a **small, separately-stored,
-  envelope-encrypted key file** (more like `~/.ssh/id_ed25519` than a DB row), and the envelope-key residence rules
-  below are unchanged - the database encryption is exactly as strong as envelope-key residence, no more, and claims
+- Each node generates and stores **only its own private key**, never a root key
+  or any other node's key.
+- **No private keys are ever transferred between nodes.** Only public keys and
+  the chain of signatures (proving tree membership) replicate across the
+  network.
+- **Encrypt the key - and now the database too** (amended 2026-07-20). The
+  original rule here ("encrypt the key, not the database") held while the
+  per-user database was a mostly-public materialized view - public chains public
+  by definition, private-chain payloads _already_ ciphertext - so full-DB
+  encryption would have taxed a public view to protect one small secret. The
+  persisted-views ruling (Data Layer, The Substrate) changes what the database
+  _contains_: it now holds decrypted private views (document tables,
+  annotations, search indexes), so at-rest encryption stops being a tax and
+  becomes the load-bearing boundary. Every database is encrypted at rest (the
+  engine's native encryption), its key a random per-database secret sealed
+  through the keystore under the envelope key. The leaf private key still never
+  moves into the database: it stays a **small, separately-stored,
+  envelope-encrypted key file** (more like `~/.ssh/id_ed25519` than a DB row),
+  and the envelope-key residence rules below are unchanged - the database
+  encryption is exactly as strong as envelope-key residence, no more, and claims
   no more.
-- **The envelope key must be readable unattended on boot** - this is a hard requirement, not a preference. Network
-  resilience demands nodes be **trivially restartable** (a node in a bad environment may reboot several times a day
-  and must come back _signing_ with no human present), so **no human secret can be required at boot.** Autonomous
-  restart and password-on-boot are mutually exclusive, and autonomous restart wins for any node meant to stay live.
-  The envelope key therefore comes from **ambient machine state**:
-  - **Default: an env var or `0600` file** the process reads on boot (systemd unit, Docker secret, `.env`) - the
-    same way every always-on service handles at-rest secrets. Reboot, read, decrypt leaf key, resume signing.
-  - **Hardening: OS keychain / DPAPI / Secret Service / TPM** - same unattended-boot behavior, but the envelope
-    key is machine-bound so a _copied disk image or backup_ does not carry it. A strict upgrade over the env var
+- **The envelope key must be readable unattended on boot** - this is a hard
+  requirement, not a preference. Network resilience demands nodes be **trivially
+  restartable** (a node in a bad environment may reboot several times a day and
+  must come back _signing_ with no human present), so **no human secret can be
+  required at boot.** Autonomous restart and password-on-boot are mutually
+  exclusive, and autonomous restart wins for any node meant to stay live. The
+  envelope key therefore comes from **ambient machine state**:
+  - **Default: an env var or `0600` file** the process reads on boot (systemd
+    unit, Docker secret, `.env`) - the same way every always-on service handles
+    at-rest secrets. Reboot, read, decrypt leaf key, resume signing.
+  - **Hardening: OS keychain / DPAPI / Secret Service / TPM** - same
+    unattended-boot behavior, but the envelope key is machine-bound so a _copied
+    disk image or backup_ does not carry it. A strict upgrade over the env var
     against the leaked-artifact threat; identical autonomous-restart behavior.
-- **What this protects, honestly.** Both sources preserve autonomous restart and cover the **separated-artifact**
-  window (leaked `.db` / data-dir backup that does _not_ include the env var or keychain entry). Neither protects
-  against an attacker who owns the running machine or grabs a _full_ machine image - but that is already the threat
-  model's accepted case ("a malicious node can exfiltrate decrypted keys"), so no claimed guarantee is lost.
-- **Opt-in exception: lockable personal device.** On a device you _deliberately_ want inert when you are away (a
-  laptop), the envelope key can be **password-derived (Argon2 KDF)** so the key stays locked until you log in. This
-  trades away autonomous restart _on purpose_ - it is only for nodes not trying to stay live, and is never the
-  default.
-- Each node's at-rest protection is **independent** - compromising one node yields one leaf key and, at most, one
-  password or machine secret, never credentials for any other node.
+- **What this protects, honestly.** Both sources preserve autonomous restart and
+  cover the **separated-artifact** window (leaked `.db` / data-dir backup that
+  does _not_ include the env var or keychain entry). Neither protects against an
+  attacker who owns the running machine or grabs a _full_ machine image - but
+  that is already the threat model's accepted case ("a malicious node can
+  exfiltrate decrypted keys"), so no claimed guarantee is lost.
+- **Opt-in exception: lockable personal device.** On a device you _deliberately_
+  want inert when you are away (a laptop), the envelope key can be
+  **password-derived (Argon2 KDF)** so the key stays locked until you log in.
+  This trades away autonomous restart _on purpose_ - it is only for nodes not
+  trying to stay live, and is never the default.
+- Each node's at-rest protection is **independent** - compromising one node
+  yields one leaf key and, at most, one password or machine secret, never
+  credentials for any other node.
 
-**Node login is a separate concern from key encryption** - two jobs that are easy to conflate. **Login** gates
-_access_: username + password, **Argon2-hashed** like any web app, establishing a session that authorizes the app to
-use the envelope key. **Key encryption** at rest is done by that _envelope key_, never the password. On an always-on
-node the two stay fully separate - Argon2 for login, ambient machine state for the envelope key, so the node signs
-while no one is logged in - and only on the opt-in **lockable personal device** are they fused (the login password
-doubles as the envelope KDF), which is exactly what makes that device unable to restart unattended.
+**Node login is a separate concern from key encryption** - two jobs that are
+easy to conflate. **Login** gates _access_: username + password,
+**Argon2-hashed** like any web app, establishing a session that authorizes the
+app to use the envelope key. **Key encryption** at rest is done by that
+_envelope key_, never the password. On an always-on node the two stay fully
+separate - Argon2 for login, ambient machine state for the envelope key, so the
+node signs while no one is logged in - and only on the opt-in **lockable
+personal device** are they fused (the login password doubles as the envelope
+KDF), which is exactly what makes that device unable to restart unattended.
 
 ### Adding a New Node
 
-Node B mints a fresh keypair and shows its **public key**; that pubkey travels to Node A (QR, paste, or Iroh); Node
-A's authorizing key (e.g. the root) signs it into the tree with the current usurper list; the signed authorization
-travels back. Node B now holds its own private key plus signed proof of membership, and the user sets an independent
-local password (the leaf sealed under B's own envelope key - see Key Storage). **The private key never leaves the
-node that generated it.**
+Node B mints a fresh keypair and shows its **public key**; that pubkey travels
+to Node A (QR, paste, or Iroh); Node A's authorizing key (e.g. the root) signs
+it into the tree with the current usurper list; the signed authorization travels
+back. Node B now holds its own private key plus signed proof of membership, and
+the user sets an independent local password (the leaf sealed under B's own
+envelope key - see Key Storage). **The private key never leaves the node that
+generated it.**
 
-**One trip, not two (settled 2026-07-24).** Only the request code travels by human courier; the
-return leg goes over the wire. After authorizing, the granter dials the requester on a dedicated
-adoption ALPN (the request code carries the endpoint id and address hints) and delivers the grant
-directly; the requester completes on the spot and acks only when fully moved in. Safe without any
-bearer secret, twice over: iroh's channel is cryptographically pinned to the exact endpoint the
-request code named (the grant cannot reach an impostor), and the accept side only acts on grants
-matching a **pending adoption it minted itself** - the leaf pubkey is a 32-byte unguessable, so
-strangers cannot push personas onto a node unasked. (The rejected alternative - a granter-minted
-"invite code" the new device redeems - would have been a bearer capability: anyone holding the
-string joins the tree. Keeping the request direction keeps both codes non-bearer.) Delivery is
-best-effort: unreachable requester degrades to showing the grant code for the human to carry -
-the offline ceremony survives as the fallback - and completion is idempotent, so a code pasted
-after the wire already won confirms instead of failing. Wire format: the same node-level JSON
-artifacts as the codes themselves, length-prefix framed - deliberately one level above the entry
-conformance boundary, versioned by the codes' own `v` field. The _visible_ form the human
-carries wears a costume (2026-07-24): `rt1.` + base64url(deflate(JSON)) - an opaque ~40%-shorter
-strip instead of pubkey-and-socket gubbins that reads as "code? so complicated!". Decorative
-armor with two real dividends: the prefix versions the envelope, and the compact base64url form
-is what the eventual QR ceremony wants anyway.
+**One trip, not two (settled 2026-07-24).** Only the request code travels by
+human courier; the return leg goes over the wire. After authorizing, the granter
+dials the requester on a dedicated adoption ALPN (the request code carries the
+endpoint id and address hints) and delivers the grant directly; the requester
+completes on the spot and acks only when fully moved in. Safe without any bearer
+secret, twice over: iroh's channel is cryptographically pinned to the exact
+endpoint the request code named (the grant cannot reach an impostor), and the
+accept side only acts on grants matching a **pending adoption it minted
+itself** - the leaf pubkey is a 32-byte unguessable, so strangers cannot push
+personas onto a node unasked. (The rejected alternative - a granter-minted
+"invite code" the new device redeems - would have been a bearer capability:
+anyone holding the string joins the tree. Keeping the request direction keeps
+both codes non-bearer.) Delivery is best-effort: unreachable requester degrades
+to showing the grant code for the human to carry - the offline ceremony survives
+as the fallback - and completion is idempotent, so a code pasted after the wire
+already won confirms instead of failing. Wire format: the same node-level JSON
+artifacts as the codes themselves, length-prefix framed - deliberately one level
+above the entry conformance boundary, versioned by the codes' own `v` field. The
+_visible_ form the human carries wears a costume (2026-07-24): `rt1.` +
+base64url(deflate(JSON)) - an opaque ~40%-shorter strip instead of
+pubkey-and-socket gubbins that reads as "code? so complicated!". Decorative
+armor with two real dividends: the prefix versions the envelope, and the compact
+base64url form is what the eventual QR ceremony wants anyway.
 
 ### Threat Model
 
@@ -665,44 +858,57 @@ is what the eventual QR ceremony wants anyway.
 
 **Residual risks we do not fully close:**
 
-- **First-contact eclipse.** A brand-new relying party with no prior memory of an identity, fed a lie in isolation,
-  has nothing to detect the lie against. Monotonic memory (below) protects _returning_ relying parties but not
-  first contact. An attacker who controls a fresh peer's entire view can show it a stale/forged authority state.
-- **Concurrent-cousin resolution is safe, not fair.** The tiebreaker guarantees everyone agrees; it does not
-  guarantee they agree on the key the user would have _wanted_. Grinding can bias which branch wins.
+- **First-contact eclipse.** A brand-new relying party with no prior memory of
+  an identity, fed a lie in isolation, has nothing to detect the lie against.
+  Monotonic memory (below) protects _returning_ relying parties but not first
+  contact. An attacker who controls a fresh peer's entire view can show it a
+  stale/forged authority state.
+- **Concurrent-cousin resolution is safe, not fair.** The tiebreaker guarantees
+  everyone agrees; it does not guarantee they agree on the key the user would
+  have _wanted_. Grinding can bias which branch wins.
 
-For a social network the worst-case consequence of identity compromise is **impersonation** - annoying, not
-financially catastrophic. Users can build a new identity and re-establish relationships. The design goal is therefore
-**convergence + recoverability**, not prevention: make cheating undeniable and every failure survivable, rather than
-attempting (impossible) partition-and-eclipse-proof election of the "correct" successor.
+For a social network the worst-case consequence of identity compromise is
+**impersonation** - annoying, not financially catastrophic. Users can build a
+new identity and re-establish relationships. The design goal is therefore
+**convergence + recoverability**, not prevention: make cheating undeniable and
+every failure survivable, rather than attempting (impossible)
+partition-and-eclipse-proof election of the "correct" successor.
 
 ### Freshness: Monotonic Memory and the Revocation Ceiling
 
-Ranking conflicting statements solves _ordering_; it does not solve _freshness_ - "has this key been revoked since I
-last checked?" Absence of a revocation is unprovable in an open network (an eclipser simply withholds it). Two
-primitives blunt this without requiring an always-online authority:
+Ranking conflicting statements solves _ordering_; it does not solve
+_freshness_ - "has this key been revoked since I last checked?" Absence of a
+revocation is unprovable in an open network (an eclipser simply withholds it).
+Two primitives blunt this without requiring an always-online authority:
 
-- **Monotonic memory (cheap, always on).** Each relying party remembers the highest-authority statement it has _ever_
-  seen for an identity and never silently accepts a lower one. Eclipse can _delay_ new information but cannot make a
-  relying party _forget_ a revocation it already saw. This converts eclipse from "grants stale authority" into merely
-  "delays first delivery" - and it is essentially free. (It protects returning parties, not first contact; see
-  residual risks.)
-- **Revocation ceiling (opt-in, per-operation).** For the rare high-stakes operation, a relying party may _require_ a
-  recent positive attestation from a superior key rather than trusting "valid until revoked." This flips eclipse to
-  fail-_safe_: withholding the fresh attestation denies the action instead of granting it. The cost is that it needs a
-  superior online, which fights "root can vanish" - so it is a per-operation dial, off by default. Ordinary social
-  actions stay long-lived and fail-open (surviving an offline root); only the few dangerous operations opt in.
+- **Monotonic memory (cheap, always on).** Each relying party remembers the
+  highest-authority statement it has _ever_ seen for an identity and never
+  silently accepts a lower one. Eclipse can _delay_ new information but cannot
+  make a relying party _forget_ a revocation it already saw. This converts
+  eclipse from "grants stale authority" into merely "delays first delivery" -
+  and it is essentially free. (It protects returning parties, not first contact;
+  see residual risks.)
+- **Revocation ceiling (opt-in, per-operation).** For the rare high-stakes
+  operation, a relying party may _require_ a recent positive attestation from a
+  superior key rather than trusting "valid until revoked." This flips eclipse to
+  fail-_safe_: withholding the fresh attestation denies the action instead of
+  granting it. The cost is that it needs a superior online, which fights "root
+  can vanish" - so it is a per-operation dial, off by default. Ordinary social
+  actions stay long-lived and fail-open (surviving an offline root); only the
+  few dangerous operations opt in.
 
-Propagating revocations **through the trust graph** (rather than random DHT peers) further raises the bar: eclipsing
-someone across many trust-weighted paths is far harder than across a handful of random peers. The trust substrate
+Propagating revocations **through the trust graph** (rather than random DHT
+peers) further raises the bar: eclipsing someone across many trust-weighted
+paths is far harder than across a handful of random peers. The trust substrate
 doubles as an eclipse-resistance layer for authority propagation.
 
 ---
 
 ## Running Multiple Identities
 
-There is exactly **one identity primitive** - the key tree. A "persona" is not a protocol concept; it is what a
-client calls one of the several identities it manages. Users are expected and encouraged to run more than one:
+There is exactly **one identity primitive** - the key tree. A "persona" is not a
+protocol concept; it is what a client calls one of the several identities it
+manages. Users are expected and encouraged to run more than one:
 
 ```
 Node account on butts.node.place (username + password, local to that node)
@@ -719,280 +925,356 @@ Node account on butts.node.place (username + password, local to that node)
         └── (same root pubkey — its history is linkable to itself, but not to the other identities)
 ```
 
-- **One login, many identities.** A node account (see Authentication) can agent any number of identities: one local
-  password, several leaf keys, a persona switcher in the UI. Creating a new identity is two keygens and a signature
+- **One login, many identities.** A node account (see Authentication) can agent
+  any number of identities: one local password, several leaf keys, a persona
+  switcher in the UI. Creating a new identity is two keygens and a signature
   (root + recovery key), cheap enough to be disposable.
-- **No linkage exists anywhere.** Two identities share no keys, no records, no cryptographic relationship of any
-  kind. There is nothing connecting "Curtis" and "Corff Burblepunk" - not a hidden record, not a commitment, nothing
-  to leak. The only places the linkage exists are the node accounts that agent both (see Trust Model) and the user's
-  own head.
-- **Each identity carries its own everything.** Its own succession machinery, recovery key, trust position, vouches,
-  and reputation. A pseudonym starts from zero and earns its own name - vouches made for your main identity do not
+- **No linkage exists anywhere.** Two identities share no keys, no records, no
+  cryptographic relationship of any kind. There is nothing connecting "Curtis"
+  and "Corff Burblepunk" - not a hidden record, not a commitment, nothing to
+  leak. The only places the linkage exists are the node accounts that agent both
+  (see Trust Model) and the user's own head.
+- **Each identity carries its own everything.** Its own succession machinery,
+  recovery key, trust position, vouches, and reputation. A pseudonym starts from
+  zero and earns its own name - vouches made for your main identity do not
   transfer, because a transfer would _be_ the link.
-- **Voluntary linkage is a cross-signature.** To prove two identities share an owner, publish a statement signed by
-  both roots ("I am also X"). Nothing needs to be pre-arranged at creation time.
+- **Voluntary linkage is a cross-signature.** To prove two identities share an
+  owner, publish a statement signed by both roots ("I am also X"). Nothing needs
+  to be pre-arranged at creation time.
 
-**Pseudonymity, Not Anonymity** (Doctrine), applied to your own siblings: no observer, crawler, or platform-level
-query can connect two of your identities from protocol data - there is no protocol data connecting them. What _can_ connect them: the nodes that agent or front them (below), and the old-fashioned channels no protocol
-controls - writing style, posting schedule, what you talk about. Users should hear this up front, not discover it.
+**Pseudonymity, Not Anonymity** (Doctrine), applied to your own siblings: no
+observer, crawler, or platform-level query can connect two of your identities
+from protocol data - there is no protocol data connecting them. What _can_
+connect them: the nodes that agent or front them (below), and the old-fashioned
+channels no protocol controls - writing style, posting schedule, what you talk
+about. Users should hear this up front, not discover it.
 
 ### Temporal Profile State
 
-Each identity's profile data (name, bio, avatar hash) is synced across its nodes via the Ringtome sync protocol.
-Entries carry timestamps, giving the profile a natural history.
+Each identity's profile data (name, bio, avatar hash) is synced across its nodes
+via the Ringtome sync protocol. Entries carry timestamps, giving the profile a
+natural history.
 
-When content is created, it references the identity's root public key and includes a timestamp. This enables:
+When content is created, it references the identity's root public key and
+includes a timestamp. This enables:
 
 - **"Who posted that?"** — look up the identity.
-- **"What did they look like when they posted?"** — look up the profile state at that timestamp.
-- **Name changes are visible:** an identity that was "Hats Ahoy" at T1 and "Hat Fan" at T2 shows both names on the
-  respective content, but both are clearly the same identity (same root pubkey).
+- **"What did they look like when they posted?"** — look up the profile state at
+  that timestamp.
+- **Name changes are visible:** an identity that was "Hats Ahoy" at T1 and "Hat
+  Fan" at T2 shows both names on the respective content, but both are clearly
+  the same identity (same root pubkey).
 
 ### Display Names and Contact Names
 
-Three layers refer to an identity, in decreasing forgeability and increasing personal trust:
+Three layers refer to an identity, in decreasing forgeability and increasing
+personal trust:
 
-- **The identicon** (derived from the root pubkey) is the true, unforgeable identity - it never changes and cannot
-  be copied.
-- **The display name** is a _self-claim_: mutable, unverified, in the public profile, synced to followers. It always
-  shows, because even with zero other data, seeing that an identity claims to be "FART DRAGON" is a useful first
-  hook. Change it and followers see the change on next sync. (Names are **last-writer-wins** fields; the chain of past
-  writes doubles as the name history. The merge rule's one canonical home is The Ordering Contract.)
-- **The contact name** is _your_ private annotation - a local label you assign, stored on your private chain,
-  **never synced to anyone.** Like saving someone in your phone under a name that helps _you_ remember them. It
-  overrides the display name in your UI.
+- **The identicon** (derived from the root pubkey) is the true, unforgeable
+  identity - it never changes and cannot be copied.
+- **The display name** is a _self-claim_: mutable, unverified, in the public
+  profile, synced to followers. It always shows, because even with zero other
+  data, seeing that an identity claims to be "FART DRAGON" is a useful first
+  hook. Change it and followers see the change on next sync. (Names are
+  **last-writer-wins** fields; the chain of past writes doubles as the name
+  history. The merge rule's one canonical home is The Ordering Contract.)
+- **The contact name** is _your_ private annotation - a local label you assign,
+  stored on your private chain, **never synced to anyone.** Like saving someone
+  in your phone under a name that helps _you_ remember them. It overrides the
+  display name in your UI.
 
-Render rule: the contact name wins when set, but the self-claim stays visible on expand - `Dave (claims "FART
-DRAGON")` - so you keep the joke, and you can still notice when someone changes their public presentation.
+Render rule: the contact name wins when set, but the self-claim stays visible on
+expand - `Dave (claims "FART DRAGON")` - so you keep the joke, and you can still
+notice when someone changes their public presentation.
 
-**Contact names are the anti-impersonation tool, because they bind to the root, not the name.** The costume attack
-(someone copies a friend's display name and avatar under a different root) fails outright: an impostor can copy the
-name "Dave," but cannot become _your_ "Dave," which points at a specific root. So the UI cue is: an identity you have
-saved renders with a "known contact" marker; an identity merely _claiming_ a familiar display name does not. The safe
-path (save the people you actually know) is also the natural one, and the _absence_ of the known-contact marker on a
-familiar-looking name is the warning.
+**Contact names are the anti-impersonation tool, because they bind to the root,
+not the name.** The costume attack (someone copies a friend's display name and
+avatar under a different root) fails outright: an impostor can copy the name
+"Dave," but cannot become _your_ "Dave," which points at a specific root. So the
+UI cue is: an identity you have saved renders with a "known contact" marker; an
+identity merely _claiming_ a familiar display name does not. The safe path (save
+the people you actually know) is also the natural one, and the _absence_ of the
+known-contact marker on a familiar-looking name is the warning.
 
 Two constraints:
 
-- **Contact names sync within your identity, never outside it.** They live on the private chain, so they replicate
-  across all _your own_ nodes (save someone as "Dave" on your phone, they are "Dave" on your laptop) but never cross
-  the inter-identity boundary to followers, fronting nodes, or the public - like everything private, "private" means
-  _which sync boundary_, not _stored in one place_. Consequently, name _suggestions_ for a stranger ("who is this?")
-  may be drawn only from aggregated **public display names** across the trust graph ("the roots you trust mostly
-  render this identity as 'Curtis'"), never from anyone's private contact names. A convenience feature must not
-  puncture the private-chain guarantee.
-- **Contact-name collisions are local and yours.** Nothing stops you saving two roots as "Mike"; the client should
-  warn, but there is no global namespace to police - which is precisely why contact names have no squatting or
-  scarcity, unlike index names.
+- **Contact names sync within your identity, never outside it.** They live on
+  the private chain, so they replicate across all _your own_ nodes (save someone
+  as "Dave" on your phone, they are "Dave" on your laptop) but never cross the
+  inter-identity boundary to followers, fronting nodes, or the public - like
+  everything private, "private" means _which sync boundary_, not _stored in one
+  place_. Consequently, name _suggestions_ for a stranger ("who is this?") may
+  be drawn only from aggregated **public display names** across the trust graph
+  ("the roots you trust mostly render this identity as 'Curtis'"), never from
+  anyone's private contact names. A convenience feature must not puncture the
+  private-chain guarantee.
+- **Contact-name collisions are local and yours.** Nothing stops you saving two
+  roots as "Mike"; the client should warn, but there is no global namespace to
+  police - which is precisely why contact names have no squatting or scarcity,
+  unlike index names.
 
-Contact names are adjacent to vouching (both are "I have personally pinned this root as someone specific") but kept
-separate: you can save a public figure you have never met, and vouch for a real human you never bothered to save.
-The UI may offer them together, but they are distinct gestures.
+Contact names are adjacent to vouching (both are "I have personally pinned this
+root as someone specific") but kept separate: you can save a public figure you
+have never met, and vouch for a real human you never bothered to save. The UI
+may offer them together, but they are distinct gestures.
 
-**Device names (settled 2026-07-23; IMPLEMENTED).** The fourth member of the family, one hop
-inward: your private label for **your own keys**. A key tree rendered as fingerprints - "I've
-adopted `dd7ee7d7...` but I don't trust `039def...`" - is a statement for the utterly
-deranged; the tree a person can hold is _asceticbot-curtis, macbook-curtis, and the spare
-key_. The pieces:
+**Device names (settled 2026-07-23; IMPLEMENTED).** The fourth member of the
+family, one hop inward: your private label for **your own keys**. A key tree
+rendered as fingerprints - "I've adopted `dd7ee7d7...` but I don't trust
+`039def...`" - is a statement for the utterly deranged; the tree a person can
+hold is _asceticbot-curtis, macbook-curtis, and the spare key_. The pieces:
 
-- **Storage is a register collection** (`devices`, on general-private): key = leaf pubkey hex,
-  value = the label, LWW. Synced to all the identity's own nodes by the existing member gates
-  and structurally withheld from strangers - the greater internet never learns what you call
-  your laptop. Renaming is an ordinary register write; no bespoke machinery.
+- **Storage is a register collection** (`devices`, on general-private): key =
+  leaf pubkey hex, value = the label, LWW. Synced to all the identity's own
+  nodes by the existing member gates and structurally withheld from strangers -
+  the greater internet never learns what you call your laptop. Renaming is an
+  ordinary register write; no bespoke machinery.
 - **Nodes carry names; keys are born labeled.** Every node has a configured name
-  (`RINGTOME_NODE_NAME`; defaults to the machine's hostname - a desktop node is called what
-  the computer is called - and a public operator sets the domain). Identity creation labels
-  the founding key (the root doubles as the creating node's working leaf); an adopting node
-  labels its own new key as its **first authored write** on the identity - a birth
-  certificate. The recovery key gets no label: it is a _role_, rendered by rank ("the spare
-  key"), and storing what is derivable from structure would be a second source of truth.
-- **Disambiguation is derived, never stored.** Two visible keys sharing a name render with a
-  pubkey-derived shortcode suffix (`macbook-curtis · 4f2a`), UI-side, only on collision. The
-  common collision is _time_, not simultaneity: revoke the macbook, re-adopt the macbook, and
-  history holds two keys both honestly named "macbook."
-- **Names are pointers, never authority - enforced at the ceremonies.** A label is never the
-  argument to anything: revocation targets pubkeys, confirmations echo the fingerprint and
-  identicon. Any member device can rename any key (it's a shared private register), so a
-  compromised-but-unrevoked device can vandalize labels - recoverable (history is on the
-  chain), and a repudiation retroactively quarantines the hostile key's renames along with
-  everything else it signed: label vandalism heals itself.
+  (`RINGTOME_NODE_NAME`; defaults to the machine's hostname - a desktop node is
+  called what the computer is called - and a public operator sets the domain).
+  Identity creation labels the founding key (the root doubles as the creating
+  node's working leaf); an adopting node labels its own new key as its **first
+  authored write** on the identity - a birth certificate. The recovery key gets
+  no label: it is a _role_, rendered by rank ("the spare key"), and storing what
+  is derivable from structure would be a second source of truth.
+- **Disambiguation is derived, never stored.** Two visible keys sharing a name
+  render with a pubkey-derived shortcode suffix (`macbook-curtis · 4f2a`),
+  UI-side, only on collision. The common collision is _time_, not simultaneity:
+  revoke the macbook, re-adopt the macbook, and history holds two keys both
+  honestly named "macbook."
+- **Names are pointers, never authority - enforced at the ceremonies.** A label
+  is never the argument to anything: revocation targets pubkeys, confirmations
+  echo the fingerprint and identicon. Any member device can rename any key (it's
+  a shared private register), so a compromised-but-unrevoked device can
+  vandalize labels - recoverable (history is on the chain), and a repudiation
+  retroactively quarantines the hostile key's renames along with everything else
+  it signed: label vandalism heals itself.
 
 ### Hosting and the Colocation Problem
 
-pkarr records are public metadata: anyone can query a batch of pubkeys and **cluster identities by their address
-sets.** Two identities consistently served from the same addresses belong to the same person, with high confidence,
-for free. An identity's unlinkability is therefore bounded by **the crowd of the nodes serving it** - colocation on a
-node hosting 500 users says almost nothing; colocation on a personal Raspberry Pi with one user says everything.
+pkarr records are public metadata: anyone can query a batch of pubkeys and
+**cluster identities by their address sets.** Two identities consistently served
+from the same addresses belong to the same person, with high confidence, for
+free. An identity's unlinkability is therefore bounded by **the crowd of the
+nodes serving it** - colocation on a node hosting 500 users says almost nothing;
+colocation on a personal Raspberry Pi with one user says everything.
 
-The design lever is that **serving requires no keys.** Content is signed and blobs are content-addressed, so any
-cooperating node can replicate and serve an identity's public data without any ability to author as it. This splits
-the roles:
+The design lever is that **serving requires no keys.** Content is signed and
+blobs are content-addressed, so any cooperating node can replicate and serve an
+identity's public data without any ability to author as it. This splits the
+roles:
 
 - **Authoring** happens wherever the identity's leaf keys live.
-- **Serving/fronting** is delegable: the pkarr record points at whichever nodes _serve_ the identity, and those can
-  be large multi-tenant community nodes where the crowd is big. Different identities can front through different
-  nodes, keeping their address sets disjoint. The personal node authors and pushes over p2p sync; well-populated
-  nodes face the public.
+- **Serving/fronting** is delegable: the pkarr record points at whichever nodes
+  _serve_ the identity, and those can be large multi-tenant community nodes
+  where the crowd is big. Different identities can front through different
+  nodes, keeping their address sets disjoint. The personal node authors and
+  pushes over p2p sync; well-populated nodes face the public.
 
-Guidance to make explicit in the UI: **fronting all your identities from a single-user personal node publicly links
-them.** Users running the celebrated self-host setup (the PC, the cheap VPS, the emergency Pi) should front
+Guidance to make explicit in the UI: **fronting all your identities from a
+single-user personal node publicly links them.** Users running the celebrated
+self-host setup (the PC, the cheap VPS, the emergency Pi) should front
 identities they want unlinked through community nodes, or accept the linkage.
 
-Honest limits: fronting through big nodes defeats address clustering, not everything. Timing correlation (identities
-online in the same windows, posting seconds apart) accrues to any patient observer regardless of hosting; the
-fronting nodes themselves learn which identities one origin pushes to them (they become trusted parties for that
-link); and stylometry needs no network access at all. This is why the promise is **Pseudonymity, Not Anonymity**
-(Doctrine).
+Honest limits: fronting through big nodes defeats address clustering, not
+everything. Timing correlation (identities online in the same windows, posting
+seconds apart) accrues to any patient observer regardless of hosting; the
+fronting nodes themselves learn which identities one origin pushes to them (they
+become trusted parties for that link); and stylometry needs no network access at
+all. This is why the promise is **Pseudonymity, Not Anonymity** (Doctrine).
 
 ### Rehosting Policy: Pull, Not Push
 
-Anyone _can_ serve any identity's content - but no node is obligated to serve anything. If any identity could walk up
-to any node and say "rehost this for me," attackers distributing CSAM or hate speech would reliably turn the whole
-network into loud, nasty rebroadcasters. So replication is **demand-driven**: a node fronts an identity because
-someone accountable _on that node_ asked for it, never because the identity requested it.
+Anyone _can_ serve any identity's content - but no node is obligated to serve
+anything. If any identity could walk up to any node and say "rehost this for
+me," attackers distributing CSAM or hate speech would reliably turn the whole
+network into loud, nasty rebroadcasters. So replication is **demand-driven**: a
+node fronts an identity because someone accountable _on that node_ asked for it,
+never because the identity requested it.
 
 The mechanism is the concepts we already have, chained:
 
-- **Trust** gates who gets an account on a node (the operator's admission policy).
-- **Follow** is the demand signal: when a node's own users follow an identity, the node fronts it.
-- **Serving** is allocated only along that demand. Nobody can _push_ content onto a node; they can only be _wanted_
-  onto it.
+- **Trust** gates who gets an account on a node (the operator's admission
+  policy).
+- **Follow** is the demand signal: when a node's own users follow an identity,
+  the node fronts it.
+- **Serving** is allocated only along that demand. Nobody can _push_ content
+  onto a node; they can only be _wanted_ onto it.
 
-Per-node policy dial: **closed nodes** front only what their users follow. **Open nodes** may accept unsolicited
-fronting as a public service, with per-source quotas so they make poor amplifiers - and can tighten to follow-driven
-mode if burned.
+Per-node policy dial: **closed nodes** front only what their users follow.
+**Open nodes** may accept unsolicited fronting as a public service, with
+per-source quotas so they make poor amplifiers - and can tighten to
+follow-driven mode if burned.
 
 Two consequences:
 
-- **A serving-follow is public.** If your follow causes your node to front an identity, that fronting appears in
-  pkarr records. The UI must distinguish "follow quietly" from "follow and help host" or users will leak interest
-  they meant to keep private.
-- **This bounds operator liability.** A node operator's exposure is limited to what their own accountable users
-  pulled in - a defensible position in a way "we rebroadcast whatever arrives" is not.
+- **A serving-follow is public.** If your follow causes your node to front an
+  identity, that fronting appears in pkarr records. The UI must distinguish
+  "follow quietly" from "follow and help host" or users will leak interest they
+  meant to keep private.
+- **This bounds operator liability.** A node operator's exposure is limited to
+  what their own accountable users pulled in - a defensible position in a way
+  "we rebroadcast whatever arrives" is not.
 
-**Scope note (clarified 2026-07-22): this policy governs _hosting_, not sync initiation.** "Pull, not push" decides
-what a node fronts - it does not require an invitation before two nodes that already hold an identity exchange
-entries. Triggering a sync is network maintenance: the baseline is that hosts holding information they might want
-to trade SHOULD sync, unprompted (the eager-push and anti-entropy loops do exactly this). Refusing contact for
-specific identities is a legitimate future per-operator policy dial, not the default posture; the open question it
-raises - a malicious operator spraying sync requests - is tracked in NEXT_STEPS (sync-request flooding bounds).
+**Scope note (clarified 2026-07-22): this policy governs _hosting_, not sync
+initiation.** "Pull, not push" decides what a node fronts - it does not require
+an invitation before two nodes that already hold an identity exchange entries.
+Triggering a sync is network maintenance: the baseline is that hosts holding
+information they might want to trade SHOULD sync, unprompted (the eager-push and
+anti-entropy loops do exactly this). Refusing contact for specific identities is
+a legitimate future per-operator policy dial, not the default posture; the open
+question it raises - a malicious operator spraying sync requests - is tracked in
+NEXT_STEPS (sync-request flooding bounds).
 
 ---
 
 ## Follows, Friendship, and Invitation
 
-There is one relationship primitive: the **follow**, an Interest edge (a content subscription). "Friend" is not a
-protocol object - a friend is a **mutual follow**, composed, exactly as a persona is just an identity. The one
-guardrail carried down from the trust layer: the cozy word must never leak trust semantics. A follow (mutual or
-not) ships zero Trust; the vouch stays its own scarce, deliberate act.
+There is one relationship primitive: the **follow**, an Interest edge (a content
+subscription). "Friend" is not a protocol object - a friend is a **mutual
+follow**, composed, exactly as a persona is just an identity. The one guardrail
+carried down from the trust layer: the cozy word must never leak trust
+semantics. A follow (mutual or not) ships zero Trust; the vouch stays its own
+scarce, deliberate act.
 
 ### Edge-Endpoint Visibility
 
-Fully public follow graphs are how "Person X follows Guy We All Hate" happens; fully private ones make "do they
-follow me back?" - a thing people legitimately want - impossible. The resolution is a principle every future
-relationship edge will face:
+Fully public follow graphs are how "Person X follows Guy We All Hate" happens;
+fully private ones make "do they follow me back?" - a thing people legitimately
+want - impossible. The resolution is a principle every future relationship edge
+will face:
 
-**An edge is visible to its endpoints, and its wider publication is a per-contact switch that rests OPEN.**
+**An edge is visible to its endpoints, and its wider publication is a
+per-contact switch that rests OPEN.**
 
-_(Amended 2026-08-09. This line used to read "invisible to everyone else, and any wider publication is a
-separate, explicit act" - opt-in publication - and the reversal is deliberate, Curtis's call, so the reasoning
-should be legible to whoever finds it surprising. The graph is the substrate every Tier-5 feature reads: the flow
-computation, the inbound floor, the transport tier. A graph assembled from opt-in edges is not a smaller version
-of the real graph, it is a differently-shaped one - biased toward the few users who go looking for a privacy
-control and flip it the friendly way - and a Sybil computation over that is worse than no computation. Set
-against that: the enumeration harm the old default guarded is real but bounded here, because what publishes is
-the edge you deliberately dialed, never the mere fact that you looked at someone (silence stays silent - a
-contact with no bands set publishes nothing, which is what keeps browsing private), and every published edge is
-one write away from retraction. The switch did not weaken; it inverted. What IS honestly surrendered: the quiet
-follow is no longer the resting state, so a user who wants one must take an action, and users who take no
-actions are exactly the ones defaults are for. The mitigation is placement, not machinery - the visibility
-question now leads the relationship panel instead of trailing its dials, so the answer is in front of you before
-the dials that feed it.)_
+_(Amended 2026-08-09. This line used to read "invisible to everyone else, and
+any wider publication is a separate, explicit act" - opt-in publication - and
+the reversal is deliberate, Curtis's call, so the reasoning should be legible to
+whoever finds it surprising. The graph is the substrate every Tier-5 feature
+reads: the flow computation, the inbound floor, the transport tier. A graph
+assembled from opt-in edges is not a smaller version of the real graph, it is a
+differently-shaped one - biased toward the few users who go looking for a
+privacy control and flip it the friendly way - and a Sybil computation over that
+is worse than no computation. Set against that: the enumeration harm the old
+default guarded is real but bounded here, because what publishes is the edge you
+deliberately dialed, never the mere fact that you looked at someone (silence
+stays silent - a contact with no bands set publishes nothing, which is what
+keeps browsing private), and every published edge is one write away from
+retraction. The switch did not weaken; it inverted. What IS honestly
+surrendered: the quiet follow is no longer the resting state, so a user who
+wants one must take an action, and users who take no actions are exactly the
+ones defaults are for. The mitigation is placement, not machinery - the
+visibility question now leads the relationship panel instead of trailing its
+dials, so the answer is in front of you before the dials that feed it.)_
 
-The controversy was never the endpoints knowing; it was third parties enumerating - and that is still what the
-tiers below are shaped around.
+The controversy was never the endpoints knowing; it was third parties
+enumerating - and that is still what the tiers below are shaped around.
 
-Mechanically, a follow has **three disclosure tiers**, chosen per-follow (amended 2026-08-09: publication was
-added as the third tier, and it covers the whole relationship, not the follow alone):
+Mechanically, a follow has **three disclosure tiers**, chosen per-follow
+(amended 2026-08-09: publication was added as the third tier, and it covers the
+whole relationship, not the follow alone):
 
-- **Quiet** - the follow lives on your private chain (synced only among your own nodes); you fetch their public
-  content and tell no one. (The private-chain mechanism carrying it is implemented; the follow type itself is 4S.)
-  Since 2026-08-09 this tier is **chosen, not inherited**: `edges_public: no` on that contact.
-- **Tell them** - additionally, a signed "I follow you" statement is delivered **to the target's nodes only**,
-  who store the receipt on their own private chain. This is the member-proof pattern generalized: _prove you are
-  the subject of a datum, receive the datum._ Nobody can ask "who does A follow?" or "does A follow X?"; only
-  "does A follow **me**?", and only by being me. Honest limit: a signed statement proves it was true when signed
-  - unfollow is silent and receipts go stale. That matches the social norm every network's users quietly rely
-    on, and endpoints who have already disclosed to each other can re-ask cheaply for freshness. Because delivery is
-    a _write to the recipient's private chain_, an inbound receipt from a stranger passes The Inbound Gate like any
-    other inbound act; without that it is an unbounded write anyone can mint identities to spam. Mechanically the
-    receipt is a notice their node hands to one of yours, which transcribes it (Data Layer, Arrival and Attention) -
-    the sender never writes your chains, because nobody but you ever can.
-- **Publish** (settled 2026-08-09; **the default tier**, same day) - **one visibility dial per contact
-  (`edges_public`, resting open) publishes the relationship whole**
-  - the trust band and the interest band together, as signed statements on the author's public chain, LWW per
-    subject, retractable by writing the withdrawal. One toggle rather than per-edge consents, for simplicity: the
-    user is deciding "may the network see how I hold this person," and splitting that question per-dial buys
-    configuration surface, not privacy. The published form carries **the same bands the author set** - the earlier
-    rounded-tier hedge is dissolved along with the numbers themselves (see The Vouch, Dissolved; Bands, Not
-    Numbers) - because a consented edge is one its author has already agreed may be known, and publishing a
-    coarsened copy of a consented fact protected no one while creating a second value free to disagree with the
-    first.
+- **Quiet** - the follow lives on your private chain (synced only among your own
+  nodes); you fetch their public content and tell no one. (The private-chain
+  mechanism carrying it is implemented; the follow type itself is 4S.) Since
+  2026-08-09 this tier is **chosen, not inherited**: `edges_public: no` on that
+  contact.
+- **Tell them** - additionally, a signed "I follow you" statement is delivered
+  **to the target's nodes only**, who store the receipt on their own private
+  chain. This is the member-proof pattern generalized: _prove you are the
+  subject of a datum, receive the datum._ Nobody can ask "who does A follow?" or
+  "does A follow X?"; only "does A follow **me**?", and only by being me. Honest
+  limit: a signed statement proves it was true when signed
+  - unfollow is silent and receipts go stale. That matches the social norm every
+    network's users quietly rely on, and endpoints who have already disclosed to
+    each other can re-ask cheaply for freshness. Because delivery is a _write to
+    the recipient's private chain_, an inbound receipt from a stranger passes
+    The Inbound Gate like any other inbound act; without that it is an unbounded
+    write anyone can mint identities to spam. Mechanically the receipt is a
+    notice their node hands to one of yours, which transcribes it (Data Layer,
+    Arrival and Attention) - the sender never writes your chains, because nobody
+    but you ever can.
+- **Publish** (settled 2026-08-09; **the default tier**, same day) - **one
+  visibility dial per contact (`edges_public`, resting open) publishes the
+  relationship whole**
+  - the trust band and the interest band together, as signed statements on the
+    author's public chain, LWW per subject, retractable by writing the
+    withdrawal. One toggle rather than per-edge consents, for simplicity: the
+    user is deciding "may the network see how I hold this person," and splitting
+    that question per-dial buys configuration surface, not privacy. The
+    published form carries **the same bands the author set** - the earlier
+    rounded-tier hedge is dissolved along with the numbers themselves (see The
+    Vouch, Dissolved; Bands, Not Numbers) - because a consented edge is one its
+    author has already agreed may be known, and publishing a coarsened copy of a
+    consented fact protected no one while creating a second value free to
+    disagree with the first.
 
-_(Speculative, demoted 2026-08-09: **Help host** - the serving-follow, necessarily public because fronting
-appears in pkarr records regardless, per the Rehosting Policy. It stops being a disclosure tier of the follow and
-becomes its own future act attached to fronting, designed when fronting's ceremony is; the one rule already
-settled - the UI must keep hosting visibly distinct from following, or users leak interest they meant to keep
-private - carries forward to that design.)_
+_(Speculative, demoted 2026-08-09: **Help host** - the serving-follow,
+necessarily public because fronting appears in pkarr records regardless, per the
+Rehosting Policy. It stops being a disclosure tier of the follow and becomes its
+own future act attached to fronting, designed when fronting's ceremony is; the
+one rule already settled - the UI must keep hosting visibly distinct from
+following, or users leak interest they meant to keep private - carries forward
+to that design.)_
 
-**Friendship forms at the second disclosed follow** - both parties hold receipts, and both UIs may show the badge
-to the two of them. A _publicly visible_ friendship is the voluntary-linkage move (Running Multiple Identities):
+**Friendship forms at the second disclosed follow** - both parties hold
+receipts, and both UIs may show the badge to the two of them. A _publicly
+visible_ friendship is the voluntary-linkage move (Running Multiple Identities):
 a statement cross-signed by both, bilateral consent, separate act.
 
 ### The Follow Ceremony Is the Vouch Moment
 
-Following someone is exactly the right time to ask "do you actually know this human?" - so the UI offers the
-vouch (and the contact name - see Display Names) on the same screen. The discipline: this is a **fork in the UI,
-never a coupling in the data**. The follow writes an Interest edge; the vouch, if taken, sets the trust dial's
-met-in-person stop and offers the public flip - a gesture over the ledger (Trust, The Vouch Dissolved), not a
-third kind of record. Nothing about taking one implies the other, mechanically - or the follow-mints-Trust attack
+Following someone is exactly the right time to ask "do you actually know this
+human?" - so the UI offers the vouch (and the contact name - see Display Names)
+on the same screen. The discipline: this is a **fork in the UI, never a coupling
+in the data**. The follow writes an Interest edge; the vouch, if taken, sets the
+trust dial's met-in-person stop and offers the public flip - a gesture over the
+ledger (Trust, The Vouch Dissolved), not a third kind of record. Nothing about
+taking one implies the other, mechanically - or the follow-mints-Trust attack
 returns wearing a nicer sweater.
 
 ### Friend Tokens and the Bootstrap Problem
 
-New users face a circularity: to be vouched for you need an identity; to have an identity without self-hosting
-you need an account on someone's node; to get an account on a well-run (closed) node you need to be trusted -
-which is a vouch. The cut is physical: **a token handed over in person is admission, and the IRL handoff is a
-vouch occasion in artifact form.** (Direct descendant of api_old's invite codes + `invite_chain` - the autopsy's
-"most Ringtome-shaped thing in the old codebase.")
+New users face a circularity: to be vouched for you need an identity; to have an
+identity without self-hosting you need an account on someone's node; to get an
+account on a well-run (closed) node you need to be trusted - which is a vouch.
+The cut is physical: **a token handed over in person is admission, and the IRL
+handoff is a vouch occasion in artifact form.** (Direct descendant of api_old's
+invite codes + `invite_chain` - the autopsy's "most Ringtome-shaped thing in the
+old codebase.")
 
 One mechanism, two products, by flags - `{admission, auto_follow, vouch}`:
 
-- **Friend Token**: "join my server; redeeming creates your account, your first identity, a mutual follow
-  between us, and my vouch for you."
-- **Open Server Invite**: the same with the vouch flag off (auto-follow optional) - admission without
-  endorsement.
+- **Friend Token**: "join my server; redeeming creates your account, your first
+  identity, a mutual follow between us, and my vouch for you."
+- **Open Server Invite**: the same with the vouch flag off (auto-follow
+  optional) - admission without endorsement.
 
 Design rules settled now, before it is built:
 
-- **A token binds to exactly one identity, chosen at redemption.** The redemption ceremony is one flow: redeem →
-  account → first identity → the token's social payload attaches to _that identity only_. Pseudonyms created
-  later get nothing, or the token becomes a linkage oracle connecting the newcomer's whole future to the
-  inviter.
-- **Asymmetric vouch automation.** The inviter's vouch is automatic - minting a token for a specific human, hand
-  to hand, _is_ the deliberate act. The newcomer's vouch back is a one-tap confirmation ("Curtis invited you -
-  do you know Curtis in person?"), because they haven't taken a deliberate act yet, and vouches stay meaningful
-  only if every one is an act. Both retractable.
-- **The forwarded-token hazard** (you hand Dave a token; Dave posts it on a forum; a stranger redeems and
-  inherits your vouch) is bounded, not prevented: single-use, TTL on unredeemed tokens (cheaply-created things
-  expire unless they earn persistence - see api_old Keep #11), and a "someone joined on your token" notification
-  with one-tap vouch retraction. Recoverability over prevention, as usual.
-- **Provenance is kept**: who-invited-whom persists node-locally (the `invite_chain` lineage), seeding the trust
-  graph's audit trail.
+- **A token binds to exactly one identity, chosen at redemption.** The
+  redemption ceremony is one flow: redeem → account → first identity → the
+  token's social payload attaches to _that identity only_. Pseudonyms created
+  later get nothing, or the token becomes a linkage oracle connecting the
+  newcomer's whole future to the inviter.
+- **Asymmetric vouch automation.** The inviter's vouch is automatic - minting a
+  token for a specific human, hand to hand, _is_ the deliberate act. The
+  newcomer's vouch back is a one-tap confirmation ("Curtis invited you - do you
+  know Curtis in person?"), because they haven't taken a deliberate act yet, and
+  vouches stay meaningful only if every one is an act. Both retractable.
+- **The forwarded-token hazard** (you hand Dave a token; Dave posts it on a
+  forum; a stranger redeems and inherits your vouch) is bounded, not prevented:
+  single-use, TTL on unredeemed tokens (cheaply-created things expire unless
+  they earn persistence - see api_old Keep #11), and a "someone joined on your
+  token" notification with one-tap vouch retraction. Recoverability over
+  prevention, as usual.
+- **Provenance is kept**: who-invited-whom persists node-locally (the
+  `invite_chain` lineage), seeding the trust graph's audit trail.
 
-Sequencing: tokens + admission are node-local and buildable early (a natural companion to 4C's registration
-screens); the "tell them" disclosure lane needs an inter-identity delivery path (4S, adjacent to the sync
-surface); vouch payloads remain Tier 5 as planned.
+Sequencing: tokens + admission are node-local and buildable early (a natural
+companion to 4C's registration screens); the "tell them" disclosure lane needs
+an inter-identity delivery path (4S, adjacent to the sync surface); vouch
+payloads remain Tier 5 as planned.
 
 ---
 
@@ -1001,69 +1283,88 @@ surface); vouch payloads remain Tier 5 as planned.
 ### Phase 1: Username + Password (Local Only) - IMPLEMENTED (M0)
 
 - Users register with a username and password on a connector node.
-- The password gates _access_ (Argon2-hashed, verified at login); key material at rest is sealed under the node's
-  **envelope key**, not the password - see Key Storage, whose lockable-personal-device mode is the one deliberate
+- The password gates _access_ (Argon2-hashed, verified at login); key material
+  at rest is sealed under the node's **envelope key**, not the password - see
+  Key Storage, whose lockable-personal-device mode is the one deliberate
   exception. Passwords are **never transmitted over the p2p network**.
-- This is the simplest possible onboarding — no email, no phone, no external dependencies.
-- A node account can agent **multiple identities**: one login decrypts the leaf keys of every identity the user has
-  attached to that account, and the UI offers a switcher. The account-to-identities mapping is local to the node and
+- This is the simplest possible onboarding — no email, no phone, no external
+  dependencies.
+- A node account can agent **multiple identities**: one login decrypts the leaf
+  keys of every identity the user has attached to that account, and the UI
+  offers a switcher. The account-to-identities mapping is local to the node and
   never leaves it.
-- **Password reset** is the recovery photo used as an authentication factor - recovery-key-only, per-identity
-  scoped, cooling-off window; see Recovery Flows: Passwords vs. Keys in the Identity System section.
-- **The password floor follows the bind address** (settled 2026-07-24): a node listening only on loopback
-  relaxes the 8-character minimum to a 1-character PIN floor - reaching that login prompt already required
-  physical access to the machine, and short memorable blips are the honest posture for local device security.
-  Any non-loopback bind keeps the 8-character floor regardless of tenancy (a single-tenant node on `0.0.0.0`
-  is still remotely brute-forceable), and an unparseable bind address fails closed to strict. Reachability,
-  not tenancy, is the load-bearing signal.
+- **Password reset** is the recovery photo used as an authentication factor -
+  recovery-key-only, per-identity scoped, cooling-off window; see Recovery
+  Flows: Passwords vs. Keys in the Identity System section.
+- **The password floor follows the bind address** (settled 2026-07-24): a node
+  listening only on loopback relaxes the 8-character minimum to a 1-character
+  PIN floor - reaching that login prompt already required physical access to the
+  machine, and short memorable blips are the honest posture for local device
+  security. Any non-loopback bind keeps the 8-character floor regardless of
+  tenancy (a single-tenant node on `0.0.0.0` is still remotely brute-forceable),
+  and an unparseable bind address fails closed to strict. Reachability, not
+  tenancy, is the load-bearing signal.
 
 ### Registration Modes
 
-Who may create an account is **per-node policy** - the dial that actually bounds a node's exposure (**Bounded
-Operator Liability**, Doctrine: liability lives on the write side, whom you host and can eject, never on hiding
-public reads):
+Who may create an account is **per-node policy** - the dial that actually bounds
+a node's exposure (**Bounded Operator Liability**, Doctrine: liability lives on
+the write side, whom you host and can eject, never on hiding public reads):
 
-- **`closed`** - no registration at all (a personal node after its owner is aboard, or a device that hosts only you).
-- **`trusted`** - accounts only for identities already in the operator's trust graph; no token needed, but it needs
-  the trust layer live.
-- **`invite`** - **the default**: accounts are created only by redeeming a token (see Follows, Friendship, and
-  Invitation - the invite token is the admission mechanism, and the same artifact carries the friend/vouch payload
-  when those layers are live). The first-account-becomes-`node_admin` bootstrap is unchanged: boot, register once,
-  the node is yours, and you mint tokens from there. A personal node never notices this default.
-- **`open`** - anyone may register, and the node **auto-closes admission once it reaches ~150 open-access users**, so
-  a personal box cannot be accidentally dogpiled into a public utility. Allowed on purpose - some operators will
-  throw caution to the wind with their eyes open - but it is an **explicit, loudly-named opt-in**, never a default a
-  fresh operator discovers they'd made. An open-registration node is a public-facing role and inherits the
-  public-exposure gates (the security pass, and the abuse tooling that gates open modes - see the ship tier):
-  liability stays a decision someone made on purpose.
+- **`closed`** - no registration at all (a personal node after its owner is
+  aboard, or a device that hosts only you).
+- **`trusted`** - accounts only for identities already in the operator's trust
+  graph; no token needed, but it needs the trust layer live.
+- **`invite`** - **the default**: accounts are created only by redeeming a token
+  (see Follows, Friendship, and Invitation - the invite token is the admission
+  mechanism, and the same artifact carries the friend/vouch payload when those
+  layers are live). The first-account-becomes-`node_admin` bootstrap is
+  unchanged: boot, register once, the node is yours, and you mint tokens from
+  there. A personal node never notices this default.
+- **`open`** - anyone may register, and the node **auto-closes admission once it
+  reaches ~150 open-access users**, so a personal box cannot be accidentally
+  dogpiled into a public utility. Allowed on purpose - some operators will throw
+  caution to the wind with their eyes open - but it is an **explicit,
+  loudly-named opt-in**, never a default a fresh operator discovers they'd made.
+  An open-registration node is a public-facing role and inherits the
+  public-exposure gates (the security pass, and the abuse tooling that gates
+  open modes - see the ship tier): liability stays a decision someone made on
+  purpose.
 
-Today's rate-limited open registration becomes the `open` setting; the dial itself and tokens are early,
-node-local work (no new protocol).
+Today's rate-limited open registration becomes the `open` setting; the dial
+itself and tokens are early, node-local work (no new protocol).
 
-_Built 2026-09-25 (registration.rs), in a simpler shape than the dial above:_ **`open`, `password`,
-`closed`**, chosen by a node administrator in the Server app (the Device app on a desktop). `password`
+_Built 2026-09-25 (registration.rs), in a simpler shape than the dial above:_
+**`open`, `password`, `closed`**, chosen by a node administrator in the Server
+app (the Device app on a desktop). `password`
 
-- one sign-up password the operator shares by hand - stands in for `invite` until tokens exist, and
-  `trusted` waits for the trust layer. The defaults kept what shipped rather than the `invite` default
-  above: a server starts `open`, as every server did, and a desktop app starts `closed`.
+- one sign-up password the operator shares by hand - stands in for `invite`
+  until tokens exist, and `trusted` waits for the trust layer. The defaults kept
+  what shipped rather than the `invite` default above: a server starts `open`,
+  as every server did, and a desktop app starts `closed`.
 
 ### Phase 2: Passkeys / WebAuthn (Planned)
 
-- Passkey support as an additional (and eventually preferred) authentication method.
-- Passkeys are ideal because the private key never leaves the user's device and the server only stores a public key credential — safe to replicate.
+- Passkey support as an additional (and eventually preferred) authentication
+  method.
+- Passkeys are ideal because the private key never leaves the user's device and
+  the server only stores a public key credential — safe to replicate.
 - Could serve as an independent backup of the user's root key.
 
 ### Phase 3: Recovery Helpers (Planned)
 
-- Optional email verification for account recovery (self-hosted SMTP or pluggable provider — **no hard AWS dependency**).
+- Optional email verification for account recovery (self-hosted SMTP or
+  pluggable provider — **no hard AWS dependency**).
 - Seed phrase export of root key.
 - Key export/import (QR code, file).
 - Social recovery (M-of-N trusted contacts vouch for a recovery).
 
 ### Non-Goals
 
-- **No mandatory external service dependencies.** A node operator should be able to run a fully functional node with zero cloud service accounts.
-- **No centralized identity provider.** Identity is cryptographic, not tied to any server or service.
+- **No mandatory external service dependencies.** A node operator should be able
+  to run a fully functional node with zero cloud service accounts.
+- **No centralized identity provider.** Identity is cryptographic, not tied to
+  any server or service.
 
 ---
 
@@ -1071,246 +1372,326 @@ _Built 2026-09-25 (registration.rs), in a simpler shape than the dial above:_ **
 
 For every other person in my network I keep four scores:
 
-- **Trust** - my confidence that they are a real, distinct human, not a disposable bot.
-- **Credibility** - my confidence in their judgement, about people and about accuracy in general.
+- **Trust** - my confidence that they are a real, distinct human, not a
+  disposable bot.
+- **Credibility** - my confidence in their judgement, about people and about
+  accuracy in general.
 - **Interest** - how relevant they, personally, are to me.
 - **Taste** - how relevant their recommendations are to me.
 
-The scores are genuinely independent. My dad is high Trust (I know him) but medium Credibility (poor opsec, low scam
-literacy) and low Taste (too much fishing content). The Globe and Mail is high Trust and high Credibility (a
-DNS-verified institution with journalistic standards) but only medium Interest. Gullible Gary is medium Trust (I have
-met him) but very low Credibility (a parade of misinformation) and yet high Taste (he happens to follow good stuff).
-Auteur X is only medium Trust (never met them) but very high Interest (they made something I love). Trust does not
-imply Credibility, and Interest does not imply either.
+The scores are genuinely independent. My dad is high Trust (I know him) but
+medium Credibility (poor opsec, low scam literacy) and low Taste (too much
+fishing content). The Globe and Mail is high Trust and high Credibility (a
+DNS-verified institution with journalistic standards) but only medium Interest.
+Gullible Gary is medium Trust (I have met him) but very low Credibility (a
+parade of misinformation) and yet high Taste (he happens to follow good stuff).
+Auteur X is only medium Trust (never met them) but very high Interest (they made
+something I love). Trust does not imply Credibility, and Interest does not imply
+either.
 
-But the four are **not peers.** Trust sits underneath the other three, and understanding why is the point of this
-section.
+But the four are **not peers.** Trust sits underneath the other three, and
+understanding why is the point of this section.
 
 ### Why Trust comes first
 
-In a p2p network identities are free: anyone can mint unlimited fake identities and link them however they like (the
-classic **Sybil attack**). So any score that can be inflated by _making more accounts_ is meaningless - the attacker
-just manufactures whatever graph maximizes it. The one thing an attacker cannot fake is a vouch from a real human who
-verified someone in the physical world ("I met Eve in person"). Those vouches are scarce.
+In a p2p network identities are free: anyone can mint unlimited fake identities
+and link them however they like (the classic **Sybil attack**). So any score
+that can be inflated by _making more accounts_ is meaningless - the attacker
+just manufactures whatever graph maximizes it. The one thing an attacker cannot
+fake is a vouch from a real human who verified someone in the physical world ("I
+met Eve in person"). Those vouches are scarce.
 
-Every other score is an aggregate over other people ("how many flagged this as a scam?", "who else liked this?"). The
-moment you aggregate over people, the honest question is _how many real humans_, not _how many accounts_ - and without
-Trust that question has no answer. Trust is the denominator that turns a count of accounts into a count of humans. You
-rarely read it directly; it is the weight that keeps every other score from being captured by a bot cloud. Get Trust
-once and the others inherit its Sybil resistance for free.
+Every other score is an aggregate over other people ("how many flagged this as a
+scam?", "who else liked this?"). The moment you aggregate over people, the
+honest question is _how many real humans_, not _how many accounts_ - and without
+Trust that question has no answer. Trust is the denominator that turns a count
+of accounts into a count of humans. You rarely read it directly; it is the
+weight that keeps every other score from being captured by a bot cloud. Get
+Trust once and the others inherit its Sybil resistance for free.
 
 ### How Trust is computed
 
-The tempting approach - "multiply trust along the best chain of vouches" - is exactly wrong. An attacker sets all the
-edges among their own fakes to 100% (they own both ends, it is free), so a single vouch into their cluster propagates
-undiminished to every fake behind it. Best-path makes each fake _clone_ your trust.
+The tempting approach - "multiply trust along the best chain of vouches" - is
+exactly wrong. An attacker sets all the edges among their own fakes to 100%
+(they own both ends, it is free), so a single vouch into their cluster
+propagates undiminished to every fake behind it. Best-path makes each fake
+_clone_ your trust.
 
 Instead we use a **network-flow model** (the Advogato approach):
 
-- **Vouching budget.** Each person has a fixed budget of trust to spread across people they have personally verified.
-  This budget is the scarce resource an attacker cannot manufacture, and it is the _capacity_ of their vouch edges.
-- **Trust as shared flow.** My trust in a stranger is the flow that reaches them through the vouch graph, computed as
-  **one joint flow to everyone at once** - not a separate calculation per person. This is the detail everything hinges
-  on: under a single shared flow, a million fakes behind one vouch must _split_ that vouch's capacity and each ends up
-  with a trickle. (Computed per-person instead, each fake would independently receive the full value and the defense
-  evaporates.) The result: the number of fakes I accept is capped by the capacity of the vouches _into_ their cluster,
-  no matter how many fakes there are.
-- **Bounded horizon.** I only compute over the slice of the graph within a few hops of me (say 4), with trust fading
-  each hop. This keeps the computation local (I never need the global graph, which also serves privacy) and it bounds
-  my _lens_, not the network - Ringtome can be millions of people; I just cannot personally vouch-path to all of them.
-  Someone past my horizon is not "fake", just "not reachable through my web" - which is what non-web signals like DNS
+- **Vouching budget.** Each person has a fixed budget of trust to spread across
+  people they have personally verified. This budget is the scarce resource an
+  attacker cannot manufacture, and it is the _capacity_ of their vouch edges.
+- **Trust as shared flow.** My trust in a stranger is the flow that reaches them
+  through the vouch graph, computed as **one joint flow to everyone at once** -
+  not a separate calculation per person. This is the detail everything hinges
+  on: under a single shared flow, a million fakes behind one vouch must _split_
+  that vouch's capacity and each ends up with a trickle. (Computed per-person
+  instead, each fake would independently receive the full value and the defense
+  evaporates.) The result: the number of fakes I accept is capped by the
+  capacity of the vouches _into_ their cluster, no matter how many fakes there
+  are.
+- **Bounded horizon.** I only compute over the slice of the graph within a few
+  hops of me (say 4), with trust fading each hop. This keeps the computation
+  local (I never need the global graph, which also serves privacy) and it bounds
+  my _lens_, not the network - Ringtome can be millions of people; I just cannot
+  personally vouch-path to all of them. Someone past my horizon is not "fake",
+  just "not reachable through my web" - which is what non-web signals like DNS
   verification are for.
-- **Deliberately simple.** Trust does not try to weight a vouch by how good the voucher's judgement is. (That would be
-  Credibility, which is built _on_ Trust - the dependency would be circular.) A careless friend who vouches for junk
-  simply leaks their fixed budget into it, split across the junk. Everyone gets the same budget; that is the whole
-  rule. We can refine this later, but Trust's correctness must never depend on the refinement.
+- **Deliberately simple.** Trust does not try to weight a vouch by how good the
+  voucher's judgement is. (That would be Credibility, which is built _on_
+  Trust - the dependency would be circular.) A careless friend who vouches for
+  junk simply leaks their fixed budget into it, split across the junk. Everyone
+  gets the same budget; that is the whole rule. We can refine this later, but
+  Trust's correctness must never depend on the refinement.
 
-Trust is a continuous number, but we also expose a simple **floor** for coarse gates ("below this, you cannot DM me or
-appear in my feed") so features do not each have to reason about flow.
+Trust is a continuous number, but we also expose a simple **floor** for coarse
+gates ("below this, you cannot DM me or appear in my feed") so features do not
+each have to reason about flow.
 
 ### Bands, Not Numbers (settled 2026-08-09)
 
-The contact dials stopped being numbers. Every edge value in every system - the trust dial, the interest dial,
-rebroadcast interest, the stored registers, the node's routing memo, the published statements when they exist -
-is one of five bands: **none / low / medium / high / max**. The 0-100 integer scale is gone, and with it the
-machinery it kept demanding: nearest-stop snapping over values no UI could produce, a rounding step at the
-publication mint, "finer values a future flow engine might read." That last defense was the giveaway - the
-granularity's only argument was a consumer that might someday want it, which is the exact shape of speculation
-YAGNI exists to refuse. The stops were always the real interface: users pick worded stops, renderers map stops to
-a handful of emphasis levels, and the flow computation takes whatever weights the bands map to. Nothing consumed
-the numbers between the stops; now there is nothing between the stops. (The scale can still grow a stop someday -
-that is a vocabulary change, worn like any other pre-ship format change.)
+The contact dials stopped being numbers. Every edge value in every system - the
+trust dial, the interest dial, rebroadcast interest, the stored registers, the
+node's routing memo, the published statements when they exist - is one of five
+bands: **none / low / medium / high / max**. The 0-100 integer scale is gone,
+and with it the machinery it kept demanding: nearest-stop snapping over values
+no UI could produce, a rounding step at the publication mint, "finer values a
+future flow engine might read." That last defense was the giveaway - the
+granularity's only argument was a consumer that might someday want it, which is
+the exact shape of speculation YAGNI exists to refuse. The stops were always the
+real interface: users pick worded stops, renderers map stops to a handful of
+emphasis levels, and the flow computation takes whatever weights the bands map
+to. Nothing consumed the numbers between the stops; now there is nothing between
+the stops. (The scale can still grow a stop someday - that is a vocabulary
+change, worn like any other pre-ship format change.)
 
 ### The Vouch, Dissolved into the Ledger (settled 2026-08-02; amended 2026-08-09 - bands, one consent)
 
-The contact ledger (the id page's "your relationship" panel) holds one directed judgment per contact: the **trust
-edge** - a band on the worded scale whose top stop is "I've met them in person - they aren't being impersonated."
-That stop IS the statement the vouch was invented to carry, so a separate vouch object would be a second copy of
-the same opinion, free to drift from the first ("dial says none, vouch says met-them" is a state with no meaning).
-The concept dissolves, the same move as the roster-is-the-ACL: examined, and found to be machinery that already
-exists. What "vouch" decomposes into:
+The contact ledger (the id page's "your relationship" panel) holds one directed
+judgment per contact: the **trust edge** - a band on the worded scale whose top
+stop is "I've met them in person - they aren't being impersonated." That stop IS
+the statement the vouch was invented to carry, so a separate vouch object would
+be a second copy of the same opinion, free to drift from the first ("dial says
+none, vouch says met-them" is a state with no meaning). The concept dissolves,
+the same move as the roster-is-the-ACL: examined, and found to be machinery that
+already exists. What "vouch" decomposes into:
 
-- **A vouch is a positive trust edge its author did not keep quiet.** Your ledger is yours (your chain, your
-  lens); the network-wide graph other people's flow computations walk needs edges that were SHARED, and that is
-  the ledger's `edges_public` dial - one switch covering the relationship whole, trust band and interest band
-  together, **resting open** since 2026-08-09 (Edge-Endpoint Visibility, the Publish tier - where the reversal
-  from opt-in is argued). Copy, Don't Flip is untouched by the inversion: the flag is _visibility_, never
-  publication itself - the machinery still mints **signed public edge statements** (new artifacts on a public
-  chain, LWW per subject, retractable) from the ledger, and withholding retracts by writing, never by deleting.
-  Tier 5's "vouch payload" survives as exactly this minted form, carrying nothing the ledger doesn't already
-  hold.
-- **The mint publishes the bands as set.** The old "mint rounds to a tier" hedge is dissolved by Bands, Not
-  Numbers: the ledger holds a band, the statement carries that band, and there is no finer value to protect. A
-  published edge is one its author left visible; a coarsened public copy of it protected no one
+- **A vouch is a positive trust edge its author did not keep quiet.** Your
+  ledger is yours (your chain, your lens); the network-wide graph other people's
+  flow computations walk needs edges that were SHARED, and that is the ledger's
+  `edges_public` dial - one switch covering the relationship whole, trust band
+  and interest band together, **resting open** since 2026-08-09 (Edge-Endpoint
+  Visibility, the Publish tier - where the reversal from opt-in is argued).
+  Copy, Don't Flip is untouched by the inversion: the flag is _visibility_,
+  never publication itself - the machinery still mints **signed public edge
+  statements** (new artifacts on a public chain, LWW per subject, retractable)
+  from the ledger, and withholding retracts by writing, never by deleting. Tier
+  5's "vouch payload" survives as exactly this minted form, carrying nothing the
+  ledger doesn't already hold.
+- **The mint publishes the bands as set.** The old "mint rounds to a tier" hedge
+  is dissolved by Bands, Not Numbers: the ledger holds a band, the statement
+  carries that band, and there is no finer value to protect. A published edge is
+  one its author left visible; a coarsened public copy of it protected no one
   and was a second value free to drift from the first.
-- **The Sybil math is untouched.** The flow engine splits each participant's fixed budget across their published
-  edges; your own private edges are your lens's axioms and need no defense against yourself. Budget was always
-  enforced by the computation, not by vouches being a countable separate species.
-- **The word survives as a gesture.** "Vouch for them" is the ceremony that sets the met-in-person stop and
-  offers the public flip in one motion (The Follow Ceremony Is the Vouch Moment); the friend token's vouch flag
-  is the same write at redemption, with sharing consent asked at the IRL handoff. The seed crystal defaults to
-  SHARED - a consented-at-handoff public edge - or the graph the features will someday read never grows.
-- **The Interest/Trust firewall stands unchanged.** A follow still ships zero Trust; the trust dial is its own
-  deliberate act on its own screen. Nothing about the dissolution couples them.
+- **The Sybil math is untouched.** The flow engine splits each participant's
+  fixed budget across their published edges; your own private edges are your
+  lens's axioms and need no defense against yourself. Budget was always enforced
+  by the computation, not by vouches being a countable separate species.
+- **The word survives as a gesture.** "Vouch for them" is the ceremony that sets
+  the met-in-person stop and offers the public flip in one motion (The Follow
+  Ceremony Is the Vouch Moment); the friend token's vouch flag is the same write
+  at redemption, with sharing consent asked at the IRL handoff. The seed crystal
+  defaults to SHARED - a consented-at-handoff public edge - or the graph the
+  features will someday read never grows.
+- **The Interest/Trust firewall stands unchanged.** A follow still ships zero
+  Trust; the trust dial is its own deliberate act on its own screen. Nothing
+  about the dissolution couples them.
 
 ### The Inbound Gate: One Floor, Three Surfaces (settled 2026-07-30)
 
-Everything a stranger can cause to land on your node passes one predicate: **they clear your trust floor and you
-have not muted them.** Three surfaces consume it, and they are one gate rather than three policies:
+Everything a stranger can cause to land on your node passes one predicate:
+**they clear your trust floor and you have not muted them.** Three surfaces
+consume it, and they are one gate rather than three policies:
 
-- **A DM** from someone you have no conversation with. (An existing conversation is its own standing consent.)
-- **A follow receipt** - the "tell them" disclosure tier writes to your private chain, so an ungated one is an
-  unbounded inbound write from an arbitrary stranger (see Edge-Endpoint Visibility).
-- **A group invite** - an admission entry offered to a root that never asked for one (see Groups).
+- **A DM** from someone you have no conversation with. (An existing conversation
+  is its own standing consent.)
+- **A follow receipt** - the "tell them" disclosure tier writes to your private
+  chain, so an ungated one is an unbounded inbound write from an arbitrary
+  stranger (see Edge-Endpoint Visibility).
+- **A group invite** - an admission entry offered to a root that never asked for
+  one (see Groups).
 
-All three land the same way and through the same door: as notices transcribed onto the inbox chain (Data Layer,
-Arrival and Attention), which is where this predicate is actually enforced - at **transcription, never at
-delivery**, so a stranger's ability to spend your chain space is always mediated by a node of your own.
+All three land the same way and through the same door: as notices transcribed
+onto the inbox chain (Data Layer, Arrival and Attention), which is where this
+predicate is actually enforced - at **transcription, never at delivery**, so a
+stranger's ability to spend your chain space is always mediated by a node of
+your own.
 
 Four properties, each a decision rather than an accident:
 
-- **It is anti-spam, not anti-harassment.** The floor answers "probably a real, distinct human", and the people best
-  placed to hurt you score _highest_ on it - your ex is extremely real. Mute does the safety work, and mute is
-  per-root, reactive, and needs you to already know who they are. The cozy copy must never sell the floor as safety;
-  it will be believed.
-- **Refusal is visible to the sender, and that leaks exactly one bit.** A silent drop is the worst failure mode in
-  messaging, so we take the bit: "they are not accepting messages from you" confirms the sender sits below the
-  floor, and says nothing about its value or the graph behind it. **Two answers are carved out of this**
-  (2026-08-10, see _A block is the one refusal that is not spoken_): a block answers "accepted", because whether
-  you blocked someone is a fact about _you_ rather than about them; and a node that simply could not judge the
-  offer answers **"busy"** rather than any refusal, because the sender retires a refusal forever and our locked
-  keystore is not their bad behaviour. The rule the three answers follow: a refusal may only ever report a fact
-  about the sender or their envelope.
-- **There is no sender-side preflight.** The floor is computed in the _recipient's_ graph and deliberately
-  unknowable to the sender (Privacy of the graph, below), so no client can grey the button out ahead of time. The
-  compose surface always works; the refusal arrives from the network.
-- **The bootstrap out is physical.** Someone you know in person who joined independently has no vouch path and
-  cannot reach you - correct, and still a real human hitting a wall. The escape hatch is the one the system already
-  has: hand them a token (Friend Tokens and the Bootstrap Problem). A second reason tokens want to ship early.
+- **It is anti-spam, not anti-harassment.** The floor answers "probably a real,
+  distinct human", and the people best placed to hurt you score _highest_ on
+  it - your ex is extremely real. Mute does the safety work, and mute is
+  per-root, reactive, and needs you to already know who they are. The cozy copy
+  must never sell the floor as safety; it will be believed.
+- **Refusal is visible to the sender, and that leaks exactly one bit.** A silent
+  drop is the worst failure mode in messaging, so we take the bit: "they are not
+  accepting messages from you" confirms the sender sits below the floor, and
+  says nothing about its value or the graph behind it. **Two answers are carved
+  out of this** (2026-08-10, see _A block is the one refusal that is not
+  spoken_): a block answers "accepted", because whether you blocked someone is a
+  fact about _you_ rather than about them; and a node that simply could not
+  judge the offer answers **"busy"** rather than any refusal, because the sender
+  retires a refusal forever and our locked keystore is not their bad behaviour.
+  The rule the three answers follow: a refusal may only ever report a fact about
+  the sender or their envelope.
+- **There is no sender-side preflight.** The floor is computed in the
+  _recipient's_ graph and deliberately unknowable to the sender (Privacy of the
+  graph, below), so no client can grey the button out ahead of time. The compose
+  surface always works; the refusal arrives from the network.
+- **The bootstrap out is physical.** Someone you know in person who joined
+  independently has no vouch path and cannot reach you - correct, and still a
+  real human hitting a wall. The escape hatch is the one the system already has:
+  hand them a token (Friend Tokens and the Bootstrap Problem). A second reason
+  tokens want to ship early.
 
 ### The layer boundary: Trust flows down, never up
 
-Credibility, Interest, and Taste all compute _over the Trust-weighted graph_, and the direction is strict:
+Credibility, Interest, and Taste all compute _over the Trust-weighted graph_,
+and the direction is strict:
 
-- **Trust may weight the others (down - allowed).** Content from people I trust can rank higher; trusted follows can
-  be suggested. This is the whole point of the substrate.
-- **The others may never weight Trust (up - forbidden).** This is the rule that keeps Sybil resistance intact, and it
-  is easy to violate by accident. In particular, **a follow is not a vouch.** Following someone is an Interest edge - a
-  content subscription - and grants them zero Trust. All four combinations are normal: follow-and-trust (my dad),
-  follow-but-don't-trust (a fun account I am watching speculatively), trust-but-don't-follow (a real person whose posts
-  bore me), neither (a stranger). If a follow granted even a sliver of Trust, the attack writes itself: post fun
-  content, harvest speculative follows from real people, and each becomes a scarce human vouch. Things that are cheap
-  to elicit must never mint Trust.
+- **Trust may weight the others (down - allowed).** Content from people I trust
+  can rank higher; trusted follows can be suggested. This is the whole point of
+  the substrate.
+- **The others may never weight Trust (up - forbidden).** This is the rule that
+  keeps Sybil resistance intact, and it is easy to violate by accident. In
+  particular, **a follow is not a vouch.** Following someone is an Interest
+  edge - a content subscription - and grants them zero Trust. All four
+  combinations are normal: follow-and-trust (my dad), follow-but-don't-trust (a
+  fun account I am watching speculatively), trust-but-don't-follow (a real
+  person whose posts bore me), neither (a stranger). If a follow granted even a
+  sliver of Trust, the attack writes itself: post fun content, harvest
+  speculative follows from real people, and each becomes a scarce human vouch.
+  Things that are cheap to elicit must never mint Trust.
 
-**Signals carry the weight of the signaller, not the target.** If I follow `speculative.evil.ru` and Greg trusts that
-_I_ am real, then in Greg's feed my follow counts at Greg's-trust-in-me - a real human's worth of interest - even
-though `evil.ru` itself gains no Trust at all. This is what stops "100 trillion lightbulb accounts" from drowning out
-real people's interest signals: weight rides on the vouched-for signaller. Two guardrails make it safe:
+**Signals carry the weight of the signaller, not the target.** If I follow
+`speculative.evil.ru` and Greg trusts that _I_ am real, then in Greg's feed my
+follow counts at Greg's-trust-in-me - a real human's worth of interest - even
+though `evil.ru` itself gains no Trust at all. This is what stops "100 trillion
+lightbulb accounts" from drowning out real people's interest signals: weight
+rides on the vouched-for signaller. Two guardrails make it safe:
 
-- The weight is **bounded by Greg's trust in me and shared across everything I signal** - follow 10,000 things and
-  each carries a ten-thousandth of my weight. One trusted human cannot be turned into a signal-laundering firehose.
-- It is a **spotlight, not a transfer.** My interest illuminates `evil.ru` only for people who trust _me_, only while I
-  keep following, and `evil.ru` still holds zero Trust of its own. It cannot re-spend my weight to reach people who do
-  not trust me.
+- The weight is **bounded by Greg's trust in me and shared across everything I
+  signal** - follow 10,000 things and each carries a ten-thousandth of my
+  weight. One trusted human cannot be turned into a signal-laundering firehose.
+- It is a **spotlight, not a transfer.** My interest illuminates `evil.ru` only
+  for people who trust _me_, only while I keep following, and `evil.ru` still
+  holds zero Trust of its own. It cannot re-spend my weight to reach people who
+  do not trust me.
 
 ### The other three scores
 
-- **Credibility** (medium stakes) is partly _earned_, not just vouched: it blends vouched credibility (propagating
-  along trusted edges, and scoped by topic - good judgement about `#distributedSystems` is not good judgement about
-  who is a bot) with an observable track record (did the things they called fake turn out fake?). Gaming it needs
-  either a real track record or trusted edges, both already scarce.
-- **Interest and Taste** (low stakes) are just a **recommender system** - collaborative filtering over the
-  Trust-weighted graph, plus topic tags (boost `#computers`, bury `#fishing`). Worst case of a poisoned score is a
-  boring feed, so these get to stay simple and loose; no Sybil hardening of their own, because they inherit Trust's.
+- **Credibility** (medium stakes) is partly _earned_, not just vouched: it
+  blends vouched credibility (propagating along trusted edges, and scoped by
+  topic - good judgement about `#distributedSystems` is not good judgement about
+  who is a bot) with an observable track record (did the things they called fake
+  turn out fake?). Gaming it needs either a real track record or trusted edges,
+  both already scarce.
+- **Interest and Taste** (low stakes) are just a **recommender system** -
+  collaborative filtering over the Trust-weighted graph, plus topic tags (boost
+  `#computers`, bury `#fishing`). Worst case of a poisoned score is a boring
+  feed, so these get to stay simple and loose; no Sybil hardening of their own,
+  because they inherit Trust's.
 
 ### Privacy of the graph
 
-A fully public trust graph is not actually a privacy win (and my mom might be hurt to see her low Credibility score).
-The bounded horizon already means others only ever see a slice. On top of that, users control resolution and access:
+A fully public trust graph is not actually a privacy win (and my mom might be
+hurt to see her low Credibility score). The bounded horizon already means others
+only ever see a slice. On top of that, users control resolution and access:
 
-- Viewers see **end scores only**, not how they were derived or who I personally added.
-- Scores are **rounded** by access level - "close" contacts see finer detail (5%), "casual" ones coarser (25%),
-  everyone else sees nothing.
-- **Private nodes:** I can hide specific people entirely, excluded even from the calculations I share.
-- **Public nodes:** I can make specific ones globally visible ("I trust the Globe and Mail").
+- Viewers see **end scores only**, not how they were derived or who I personally
+  added.
+- Scores are **rounded** by access level - "close" contacts see finer detail
+  (5%), "casual" ones coarser (25%), everyone else sees nothing.
+- **Private nodes:** I can hide specific people entirely, excluded even from the
+  calculations I share.
+- **Public nodes:** I can make specific ones globally visible ("I trust the
+  Globe and Mail").
 
 ### What actually makes this safe (and how we will check)
 
-The flow model gives a real guarantee - fakes admitted are capped by the vouches into their cluster, for _any_ graph
-shape - but that guarantee is conditional on vouches being scarce, and **real people vouch carelessly all the time.**
-No proof survives a false premise. So the load-bearing safety does not come from the metric being clever; it comes from
-two things that hold even when careless vouches are abundant:
+The flow model gives a real guarantee - fakes admitted are capped by the vouches
+into their cluster, for _any_ graph shape - but that guarantee is conditional on
+vouches being scarce, and **real people vouch carelessly all the time.** No
+proof survives a false premise. So the load-bearing safety does not come from
+the metric being clever; it comes from two things that hold even when careless
+vouches are abundant:
 
-- **Low payoff.** Wire Trust into things where being wrong is cheap and reversible (feed ranking, bot floors), not
-  into high-value irreversible powers. If winning Trust buys only some spam higher in a feed, gaming it is not worth
-  the effort. This mirrors the identity model's stance on impersonation: annoying, not catastrophic.
-- **Recoverability.** You cannot prevent a bad vouch in advance, but you can make its effect bounded, fading, and
-  revocable the moment it is noticed.
+- **Low payoff.** Wire Trust into things where being wrong is cheap and
+  reversible (feed ranking, bot floors), not into high-value irreversible
+  powers. If winning Trust buys only some spam higher in a feed, gaming it is
+  not worth the effort. This mirrors the identity model's stance on
+  impersonation: annoying, not catastrophic.
+- **Recoverability.** You cannot prevent a bad vouch in advance, but you can
+  make its effect bounded, fading, and revocable the moment it is noticed.
 
-Testing cannot prove any of this - Sybil resistance looks perfect until someone attacks, and a friendly beta of real
-friends will never mint 10,000 fakes to show us the failure. So we build an **adversary-simulation harness** early and
-run it hoping it _breaks_: generate an honest graph, inject fakes in the nastiest topology we can, and measure trust
-extracted per attack vouch. It should stay flat as we add fakes; if it climbs, we have a bug (most likely the
-per-person-vs-joint-flow mistake above). The harness also calibrates the knobs the theory is silent on - budget size,
-horizon depth, fade curve, the feed/DM floor. It is a bug-finder and a dial, never our source of confidence.
+Testing cannot prove any of this - Sybil resistance looks perfect until someone
+attacks, and a friendly beta of real friends will never mint 10,000 fakes to
+show us the failure. So we build an **adversary-simulation harness** early and
+run it hoping it _breaks_: generate an honest graph, inject fakes in the
+nastiest topology we can, and measure trust extracted per attack vouch. It
+should stay flat as we add fakes; if it climbs, we have a bug (most likely the
+per-person-vs-joint-flow mistake above). The harness also calibrates the knobs
+the theory is silent on - budget size, horizon depth, fade curve, the feed/DM
+floor. It is a bug-finder and a dial, never our source of confidence.
 
 ### Sequencing: The Graph Grows Before the Features Arrive (settled 2026-07-09)
 
-Trust is the thesis, so it cannot ship _after_ the social launch - and, decomposed honestly, it doesn't need to.
-The **vouch payload** is a signed statement (private chains and the store layer already exist to carry it) and the
-**flow computation** is known, decades-old math (Advogato) over a cozy-scale graph - pure crate code,
-property-testable today. What is genuinely research is knob _calibration_ and Sybil _validation_, and that is the
-harness's job as an instrument and standing tripwire - **never a launch gate**, because the low-payoff principle
-above already covers shipping ahead of exhaustive validation: v1 trust gates only annoyance-priced, reversible
-surfaces.
+Trust is the thesis, so it cannot ship _after_ the social launch - and,
+decomposed honestly, it doesn't need to. The **vouch payload** is a signed
+statement (private chains and the store layer already exist to carry it) and the
+**flow computation** is known, decades-old math (Advogato) over a cozy-scale
+graph - pure crate code, property-testable today. What is genuinely research is
+knob _calibration_ and Sybil _validation_, and that is the harness's job as an
+instrument and standing tripwire - **never a launch gate**, because the
+low-payoff principle above already covers shipping ahead of exhaustive
+validation: v1 trust gates only annoyance-priced, reversible surfaces.
 
-The timing insight: **trust graphs need history, so the graph must start growing before the features that read
-it.** Vouch statements go live with the invite tokens (Follows, Friendship, and Invitation) - every IRL token
-handoff quietly writes an edge, and by the time feeds and floors arrive the graph is a living thing, not a cold
-start. The seed crystal, not the retrofit. Consequently the social launch (Tier 4S) includes the trust floor on
-its first low-stakes surfaces: social ships wearing its thesis. Deferred with honest labels, as refinements of a
-running system: credibility (needs track records that don't exist yet), interest/taste recommenders,
-graph-privacy resolution controls, and harness-driven knob refinement.
+The timing insight: **trust graphs need history, so the graph must start growing
+before the features that read it.** Vouch statements go live with the invite
+tokens (Follows, Friendship, and Invitation) - every IRL token handoff quietly
+writes an edge, and by the time feeds and floors arrive the graph is a living
+thing, not a cold start. The seed crystal, not the retrofit. Consequently the
+social launch (Tier 4S) includes the trust floor on its first low-stakes
+surfaces: social ships wearing its thesis. Deferred with honest labels, as
+refinements of a running system: credibility (needs track records that don't
+exist yet), interest/taste recommenders, graph-privacy resolution controls, and
+harness-driven knob refinement.
 
 ---
 
 ## The Identity-Managed Append-Only Log (IM-AOL)
 
-The IM-AOL is the data structure underneath everything: the key tree, revocations, posts, follows, and profile state
-are all entries in signed append-only logs. Retirement's "final sequence number," repudiation's "cut-point,"
-equivocation detection, the sync protocol's version vectors, and the rebuild-the-SQLite-view story all resolve to
-properties of this one structure.
+The IM-AOL is the data structure underneath everything: the key tree,
+revocations, posts, follows, and profile state are all entries in signed
+append-only logs. Retirement's "final sequence number," repudiation's
+"cut-point," equivocation detection, the sync protocol's version vectors, and
+the rebuild-the-SQLite-view story all resolve to properties of this one
+structure.
 
 ### Chains: One Per Key, Per Service
 
-Every key in an identity's tree maintains its own set of **chains**, one per service - and,
-for a service that keeps one chain per _thing_ rather than one per key, one per thing: the
-chain key is `(author, service, instance)`, the instance a sixteen-byte id absent for every
-service below (built 2026-09-18 as CHAT.md's slice 0, for the room whose lane is `(author,
-CHAT, room id)`). Absent and none are the same chain, so nothing here re-encoded: the entry's
-chain id, the sync frontier and the revocation anchor each grew an optional last element, the
-`entries` and `chain_heads` tables an `instance` column that is the empty blob for every
-existing row, and every gate, planner, memo and fingerprint groups by the whole key.
+Every key in an identity's tree maintains its own set of **chains**, one per
+service - and, for a service that keeps one chain per _thing_ rather than one
+per key, one per thing: the chain key is `(author, service, instance)`, the
+instance a sixteen-byte id absent for every service below (built 2026-09-18 as
+CHAT.md's slice 0, for the room whose lane is `(author, CHAT, room id)`). Absent
+and none are the same chain, so nothing here re-encoded: the entry's chain id,
+the sync frontier and the revocation anchor each grew an optional last element,
+the `entries` and `chain_heads` tables an `instance` column that is the empty
+blob for every existing row, and every gate, planner, memo and fingerprint
+groups by the whole key.
 
 ```
 Key K1 (the leaf on your VPS) maintains:
@@ -1324,208 +1705,284 @@ Key K1 (the leaf on your VPS) maintains:
   └── ...future services get their own chains
 ```
 
-- **Single-writer:** a chain is appended to only by its own key. Your phone's key writes to your phone's chains;
-  your VPS's key to the VPS's. No coordination, no consensus, works fully offline.
-- **Identity/content separation:** the identity chains are tiny and security-critical - every relying party fetches
-  them to validate authority, without wading through post history. Content chains are bulky, low-stakes, and fetched
-  only by followers and fronting nodes.
-- **Public/private separation is per-chain, not per-entry:** private entries live on their own encrypted chains
-  rather than encrypted-inline on public ones, so the count and timing of your private activity is not public
-  metadata, and public chain continuity is verifiable without seeing gaps.
+- **Single-writer:** a chain is appended to only by its own key. Your phone's
+  key writes to your phone's chains; your VPS's key to the VPS's. No
+  coordination, no consensus, works fully offline.
+- **Identity/content separation:** the identity chains are tiny and
+  security-critical - every relying party fetches them to validate authority,
+  without wading through post history. Content chains are bulky, low-stakes, and
+  fetched only by followers and fronting nodes.
+- **Public/private separation is per-chain, not per-entry:** private entries
+  live on their own encrypted chains rather than encrypted-inline on public
+  ones, so the count and timing of your private activity is not public metadata,
+  and public chain continuity is verifiable without seeing gaps.
 
 ### Hash Chaining
 
-Each entry is `{seq, prev_hash, type, timestamp (claimed), payload or blob hash, signature}`. Sequence numbers are
-dense (no gaps); `prev_hash` is the hash of the previous entry; the signature covers everything, `prev_hash`
-included. This buys three properties:
+Each entry is
+`{seq, prev_hash, type, timestamp (claimed), payload or blob hash, signature}`.
+Sequence numbers are dense (no gaps); `prev_hash` is the hash of the previous
+entry; the signature covers everything, `prev_hash` included. This buys three
+properties:
 
-- **The past is welded shut.** Altering any historical entry changes its hash, which breaks the signed `prev_hash`
-  in the next entry, and so on - tampering forces re-forging everything after the point of change, which every
-  holder of any later entry will detect.
-- **The head vouches for the whole history.** Trusting the hash of entry 812 transitively pins every byte back to
-  entry 1. One small commitment seals an entire prefix - this is what makes snapshots and revocation anchors work.
-- **Forks are self-proving.** The only way to rewrite is to sign a _second_ entry at the same `(chain, seq)` - and
-  anyone holding both holds portable, checkable proof of equivocation. A fork on any single chain condemns the key
-  (it proves duplication or compromise), feeding the identity layer's equivocation rules.
+- **The past is welded shut.** Altering any historical entry changes its hash,
+  which breaks the signed `prev_hash` in the next entry, and so on - tampering
+  forces re-forging everything after the point of change, which every holder of
+  any later entry will detect.
+- **The head vouches for the whole history.** Trusting the hash of entry 812
+  transitively pins every byte back to entry 1. One small commitment seals an
+  entire prefix - this is what makes snapshots and revocation anchors work.
+- **Forks are self-proving.** The only way to rewrite is to sign a _second_
+  entry at the same `(chain, seq)` - and anyone holding both holds portable,
+  checkable proof of equivocation. A fork on any single chain condemns the key
+  (it proves duplication or compromise), feeding the identity layer's
+  equivocation rules.
 
 ### Custody vs. Authorship
 
-**Only K1 can append to K1's chains - but everyone can hold them.** Being one of an identity's nodes means
-continuously replicating **all** of that identity's chains; being a follower or fronting node means the same for the
-public chains. Every copy of a signed chain is exactly as authoritative as any other; there is no "original."
+**Only K1 can append to K1's chains - but everyone can hold them.** Being one of
+an identity's nodes means continuously replicating **all** of that identity's
+chains; being a follower or fronting node means the same for the public chains.
+Every copy of a signed chain is exactly as authoritative as any other; there is
+no "original."
 
-This is what makes device loss survivable. Phone in the toilet: the phone's _key_ can never sign again, but its
-chains live on every replica. A surviving senior key retires the drowned key (final seqs = the highest any replica
-holds), the chains freeze - permanently valid, permanently served - and the new phone gets a fresh key with fresh
-chains. **The identity's history is the merged view of all its keys' chains**, recomputed by every reader from
-replicas; losing a device costs a keypair, never a history.
+This is what makes device loss survivable. Phone in the toilet: the phone's
+_key_ can never sign again, but its chains live on every replica. A surviving
+senior key retires the drowned key (final seqs = the highest any replica holds),
+the chains freeze - permanently valid, permanently served - and the new phone
+gets a fresh key with fresh chains. **The identity's history is the merged view
+of all its keys' chains**, recomputed by every reader from replicas; losing a
+device costs a keypair, never a history.
 
-**The genuinely fragile window: authored-but-never-replicated entries.** Posts written offline that never synced
-die with the device - irreducible in any offline-first design. Mitigations: **eager push** (implemented 2026-07-22,
-`net::resync`: a node pushes fresh local writes to every known peer after a short debounce, shrinking the window to
-seconds-while-connected) and an **unsynced indicator** (the authoring device knows which of its entries no peer has
-acknowledged - surface it like an unsaved document; still future). Before retiring a lost key, survivors run a **straggler sweep** - gossip for entries above their known
-frontiers - so retirement does not guillotine entries sitting one hop away.
+**The genuinely fragile window: authored-but-never-replicated entries.** Posts
+written offline that never synced die with the device - irreducible in any
+offline-first design. Mitigations: **eager push** (implemented 2026-07-22,
+`net::resync`: a node pushes fresh local writes to every known peer after a
+short debounce, shrinking the window to seconds-while-connected) and an
+**unsynced indicator** (the authoring device knows which of its entries no peer
+has acknowledged - surface it like an unsaved document; still future). Before
+retiring a lost key, survivors run a **straggler sweep** - gossip for entries
+above their known frontiers - so retirement does not guillotine entries sitting
+one hop away.
 
 ### The Ordering Contract
 
-1. **Within a chain, order is cryptographic fact** - dense sequence numbers, hash-chained.
-2. **Across chains, order is advisory.** Entries carry claimed wall-clock timestamps used for display interleaving
-   and simple LWW state; timestamps are claims, not facts, and **nothing security-relevant may depend on them.**
-3. **The one exception: hash anchors.** An entry may embed the hash of another chain's entry, which verifiably
-   proves "that entry existed before this one" (you cannot hash what does not exist yet). Anchors are the only
-   trustworthy cross-chain causal facts in the system, and the only ones any mechanism may rely on.
+1. **Within a chain, order is cryptographic fact** - dense sequence numbers,
+   hash-chained.
+2. **Across chains, order is advisory.** Entries carry claimed wall-clock
+   timestamps used for display interleaving and simple LWW state; timestamps are
+   claims, not facts, and **nothing security-relevant may depend on them.**
+3. **The one exception: hash anchors.** An entry may embed the hash of another
+   chain's entry, which verifiably proves "that entry existed before this one"
+   (you cannot hash what does not exist yet). Anchors are the only trustworthy
+   cross-chain causal facts in the system, and the only ones any mechanism may
+   rely on.
 
-**Concurrent writes never conflict at the log layer.** Two keys writing "simultaneously" write to different chains -
-both entries simply exist. Conflicts exist only at the _semantic_ layer, where each data type declares its merge
-rule: authority statements resolve by rank-path (never time); simple state (bio, display name) resolves by LWW on
-claimed timestamps with a deterministic tiebreak, since the stakes are cosmetic and convergence is what matters;
-additive content (two posts) does not conflict at all. Richer future types bring their own merge rules (CRDTs) to the
-same conflict-free substrate.
+**Concurrent writes never conflict at the log layer.** Two keys writing
+"simultaneously" write to different chains - both entries simply exist.
+Conflicts exist only at the _semantic_ layer, where each data type declares its
+merge rule: authority statements resolve by rank-path (never time); simple state
+(bio, display name) resolves by LWW on claimed timestamps with a deterministic
+tiebreak, since the stakes are cosmetic and convergence is what matters;
+additive content (two posts) does not conflict at all. Richer future types bring
+their own merge rules (CRDTs) to the same conflict-free substrate.
 
 ### Displayed Time vs. Claimed Time
 
-Timestamps carry no security weight, but they carry plenty of _UI_ weight - "posted May 2, 2031, 3:35 PM" is an
-important detail a human reads as fact, and individual machines' clocks are reliably unreliable (VMs, localization,
-user preference; ask anyone who has shipped a networked client). This is **No Clocks!** (Doctrine) made concrete:
-**there is no network time synchronization, ever, and admissibility never consults a clock** - a sync-to-peers scheme hands your
-eclipse attacker your watch, and a gate that rejects "future" entries makes admission depend on the local clock,
-forking honest nodes' views. Instead, each trust boundary handles time defensively at its own edge:
+Timestamps carry no security weight, but they carry plenty of _UI_ weight -
+"posted May 2, 2031, 3:35 PM" is an important detail a human reads as fact, and
+individual machines' clocks are reliably unreliable (VMs, localization, user
+preference; ask anyone who has shipped a networked client). This is **No
+Clocks!** (Doctrine) made concrete: **there is no network time synchronization,
+ever, and admissibility never consults a clock** - a sync-to-peers scheme hands
+your eclipse attacker your watch, and a gate that rejects "future" entries makes
+admission depend on the local clock, forking honest nodes' views. Instead, each
+trust boundary handles time defensively at its own edge:
 
-- **Authoring clamp (implemented).** A node signs `max(now, own chain head's claim)` - a key's own chain never goes
-  backwards in claimed time. This closes a real LWW footgun: one write from a fast clock would otherwise beat every
-  later, correctly-stamped write until reality catches up. (Equal-stamp ties fall through to seq, true authoring
-  order.)
-- **Receipt bound (implemented).** Each replica records `received_at_ms` per entry - a local, unsigned,
-  never-synced fact. An entry cannot have been authored after it arrived, so display logic gets a per-node upper
-  bound: render `min(claimed, received)` or hedge ("claims the future").
-- **Client renders against its node's clock (with 4C).** The browser is the least trustworthy clock in the system,
-  and the node is already its trusted agent: the node ships its `now` in API responses, the client computes a
-  display offset. Lightweight client-local time sync, one hop, entirely inside an existing trust boundary.
-- **Cross-device skew is surfaced, not corrected.** If your own identity's other node signs claims well past
-  `received_at`, that's a UI notification ("your Pi thinks it's Thursday"), never a silent rewrite - the claims are
-  signed, and other people's confusion is their signed assertion to own.
-- **The user's own claimed date is the most authoritative, and openly the least trustworthy** (implemented
-  2026-07-25). A document may carry a `display_date` annotation - the date the _user_ asserts for it, distinct from
-  its authoring claim, its `received_at`, and its last-edit stamp. Writing up a July 31 2015 interaction in 2026 and
-  wanting it filed under 2015 is the case: the claim overrides the derived display date for sorting and display,
-  because a human's deliberate assertion about their own document outranks any clock. It is a conventional
-  annotation field (rides the annotation layer, editable without a version, joined onto the list row) holding a
-  self-describing ISO value - a date, or a date and time when the user cares to be precise - and the UI marks it as
-  a claim rather than a system fact. Absent it, display falls back to the derived stamps above.
+- **Authoring clamp (implemented).** A node signs
+  `max(now, own chain head's claim)` - a key's own chain never goes backwards in
+  claimed time. This closes a real LWW footgun: one write from a fast clock
+  would otherwise beat every later, correctly-stamped write until reality
+  catches up. (Equal-stamp ties fall through to seq, true authoring order.)
+- **Receipt bound (implemented).** Each replica records `received_at_ms` per
+  entry - a local, unsigned, never-synced fact. An entry cannot have been
+  authored after it arrived, so display logic gets a per-node upper bound:
+  render `min(claimed, received)` or hedge ("claims the future").
+- **Client renders against its node's clock (with 4C).** The browser is the
+  least trustworthy clock in the system, and the node is already its trusted
+  agent: the node ships its `now` in API responses, the client computes a
+  display offset. Lightweight client-local time sync, one hop, entirely inside
+  an existing trust boundary.
+- **Cross-device skew is surfaced, not corrected.** If your own identity's other
+  node signs claims well past `received_at`, that's a UI notification ("your Pi
+  thinks it's Thursday"), never a silent rewrite - the claims are signed, and
+  other people's confusion is their signed assertion to own.
+- **The user's own claimed date is the most authoritative, and openly the least
+  trustworthy** (implemented 2026-07-25). A document may carry a `display_date`
+  annotation - the date the _user_ asserts for it, distinct from its authoring
+  claim, its `received_at`, and its last-edit stamp. Writing up a July 31 2015
+  interaction in 2026 and wanting it filed under 2015 is the case: the claim
+  overrides the derived display date for sorting and display, because a human's
+  deliberate assertion about their own document outranks any clock. It is a
+  conventional annotation field (rides the annotation layer, editable without a
+  version, joined onto the list row) holding a self-describing ISO value - a
+  date, or a date and time when the user cares to be precise - and the UI marks
+  it as a claim rather than a system fact. Absent it, display falls back to the
+  derived stamps above.
 
 ### Anchored Revocations
 
-A revocation statement (either disposition) carries, for **every chain of the affected key**, a
-`(chain_id, seq, head_hash)` triple. The hash - not just the seq - is load-bearing: it pins the exact entry and,
-transitively, the entire prefix beneath it. A revocation is a **closing seal across the whole bundle of chains**.
+A revocation statement (either disposition) carries, for **every chain of the
+affected key**, a `(chain_id, seq, head_hash)` triple. The hash - not just the
+seq - is load-bearing: it pins the exact entry and, transitively, the entire
+prefix beneath it. A revocation is a **closing seal across the whole bundle of
+chains**.
 
-- **Retirement:** the key anchors its own true final heads. Everything in the anchored prefixes is honored history;
-  anything claiming to sit beyond an anchored head is invalid, and anything claiming to sit under one but outside
+- **Retirement:** the key anchors its own true final heads. Everything in the
+  anchored prefixes is honored history; anything claiming to sit beyond an
+  anchored head is invalid, and anything claiming to sit under one but outside
   the anchored prefix requires a fork - self-proving equivocation.
-- **Repudiation:** the senior anchors the frontier it has seen - a conservative boundary. Everything within the
-  anchored prefixes is trusted; everything beyond or on any fork is quarantined **regardless of claimed timestamp.**
-  The attacker cannot backdate around the seal: inserting an entry "before" the cut means rewriting a hashed prefix
-  (impossible) or forking below the head (self-incriminating). The anchor converts "distrust everything after time
-  T" (unenforceable) into "distrust everything not in this exact hashed prefix" (mechanically checkable) - it is
-  what makes repudiation implementable. The straggler sweep applies here too, as the emergency allows: gossip for
-  missing entries before signing, so legitimate unsynced entries are not needlessly quarantined.
+- **Repudiation:** the senior anchors the frontier it has seen - a conservative
+  boundary. Everything within the anchored prefixes is trusted; everything
+  beyond or on any fork is quarantined **regardless of claimed timestamp.** The
+  attacker cannot backdate around the seal: inserting an entry "before" the cut
+  means rewriting a hashed prefix (impossible) or forking below the head
+  (self-incriminating). The anchor converts "distrust everything after time T"
+  (unenforceable) into "distrust everything not in this exact hashed prefix"
+  (mechanically checkable) - it is what makes repudiation implementable. The
+  straggler sweep applies here too, as the emergency allows: gossip for missing
+  entries before signing, so legitimate unsynced entries are not needlessly
+  quarantined.
 
-Enforcement follows from one fact: the revoked key is **still attacker-held**, so `seq <= final_seq` alone proves
-nothing - the attacker can sign a fresh under-ceiling prefix at will, with perfect signatures. The sealed prefix is
-therefore **a unit, verified by its hash**, and three rules make that concrete (implemented in `crown.rs` and the
-sync gate):
+Enforcement follows from one fact: the revoked key is **still attacker-held**,
+so `seq <= final_seq` alone proves nothing - the attacker can sign a fresh
+under-ceiling prefix at will, with perfect signatures. The sealed prefix is
+therefore **a unit, verified by its hash**, and three rules make that concrete
+(implemented in `crown.rs` and the sync gate):
 
-- **Sealed prefix as the credited unit.** The key tree credits a ceilinged key's statements - child authorizations,
-  revokes - only from a prefix held through `final_seq` whose entry there _is_ `head_hash`. Contradicted, incomplete,
-  or never-anchored chains credit nothing: fail closed, authority must be proven. A hash mismatch at the anchor is
-  cryptographic proof of forgery and is recorded as evidence.
-- **Seal-or-nothing at the gate.** Under-ceiling entries are stored only when stored ∪ incoming assembles the
-  complete sealed prefix (walked down by hash link from the anchor itself). No provisional acceptance of partial
-  under-ceiling prefixes - that is exactly the hole a still-held key forks into. Refusal is retriable and honest
-  sync converges: the revoker's own nodes hold the prefix whole and ship it whole.
-- **Proven-forgery eviction.** The attacker can race its forged prefix in ahead of the revocation. When the ceiling
-  arrives, any _stored_ chain whose entry at `final_seq` contradicts the anchor is deleted outright. This does not
-  bend monotonic memory: that promise protects **honest history** from being forgotten, not cryptographically-proven
-  fabrications - the revoker's signed anchor and the stored row cannot both be honest at one seq, and the anchor is
-  the senior word. Incomplete-but-consistent stored prefixes stay (they may complete honestly later; the gate keeps
-  them untrusted meanwhile).
+- **Sealed prefix as the credited unit.** The key tree credits a ceilinged key's
+  statements - child authorizations, revokes - only from a prefix held through
+  `final_seq` whose entry there _is_ `head_hash`. Contradicted, incomplete, or
+  never-anchored chains credit nothing: fail closed, authority must be proven. A
+  hash mismatch at the anchor is cryptographic proof of forgery and is recorded
+  as evidence.
+- **Seal-or-nothing at the gate.** Under-ceiling entries are stored only when
+  stored ∪ incoming assembles the complete sealed prefix (walked down by hash
+  link from the anchor itself). No provisional acceptance of partial
+  under-ceiling prefixes - that is exactly the hole a still-held key forks into.
+  Refusal is retriable and honest sync converges: the revoker's own nodes hold
+  the prefix whole and ship it whole.
+- **Proven-forgery eviction.** The attacker can race its forged prefix in ahead
+  of the revocation. When the ceiling arrives, any _stored_ chain whose entry at
+  `final_seq` contradicts the anchor is deleted outright. This does not bend
+  monotonic memory: that promise protects **honest history** from being
+  forgotten, not cryptographically-proven fabrications - the revoker's signed
+  anchor and the stored row cannot both be honest at one seq, and the anchor is
+  the senior word. Incomplete-but-consistent stored prefixes stay (they may
+  complete honestly later; the gate keeps them untrusted meanwhile).
 
 ### Private Chains: Epoch Keys and the Membership Boundary (IMPLEMENTED)
 
-Private chains hold what must sync across your own nodes and never cross the identity boundary: contact names,
-quiet follows, trust edges, settings. "Private" means _which sync boundary_, not _stored in one place_ - so the
+Private chains hold what must sync across your own nodes and never cross the
+identity boundary: contact names, quiet follows, trust edges, settings.
+"Private" means _which sync boundary_, not _stored in one place_ - so the
 mechanism has two independent layers, and both are load-bearing:
 
-- **Encryption (protects the bytes).** An identity has a sequence of **epoch keys** - 32-byte symmetric keys.
-  Epoch `N` is published as a `key-epoch` entry on the identity-public chain, carrying the fresh key **sealed
-  separately to every member** (NaCl sealed box to each member's X25519 encryption pubkey). Private records are
-  XChaCha20-Poly1305 ciphertext under the current epoch key, on the `private` service chain; only the epoch
-  number and nonce are visible. Each leaf's encryption pubkey is **parent-attested from birth** - field 2 of its
-  authorize stamp - so any member can seal to any other without a round-trip; the root's (which has no authorize
-  entry) rides in epoch recipient lists from epoch 0. The recovery key derives _both_ its keypairs (signing +
-  encryption) from the one photo seed, and is a recipient of every epoch - the offline spare key can always read.
-- **The sync gate (protects the metadata).** Private chains are exchanged only with peers presenting a **member
-  proof**: the peer's leaf key signs (root, its endpoint, our endpoint), channel-bound to the iroh connection and
-  worthless replayed elsewhere, verified against the local tree (leaf must be Active). Unproven peers get neither
-  private entries nor private _frontiers_ - the count and cadence of private activity is itself private. Both
-  directions enforce it (verify-then-reveal: a requester's first Hello advertises public frontiers only, since
-  the responder's membership isn't known yet; a proven responder re-offers and the duplicate-skip absorbs it).
+- **Encryption (protects the bytes).** An identity has a sequence of **epoch
+  keys** - 32-byte symmetric keys. Epoch `N` is published as a `key-epoch` entry
+  on the identity-public chain, carrying the fresh key **sealed separately to
+  every member** (NaCl sealed box to each member's X25519 encryption pubkey).
+  Private records are XChaCha20-Poly1305 ciphertext under the current epoch key,
+  on the `private` service chain; only the epoch number and nonce are visible.
+  Each leaf's encryption pubkey is **parent-attested from birth** - field 2 of
+  its authorize stamp - so any member can seal to any other without a
+  round-trip; the root's (which has no authorize entry) rides in epoch recipient
+  lists from epoch 0. The recovery key derives _both_ its keypairs (signing +
+  encryption) from the one photo seed, and is a recipient of every epoch - the
+  offline spare key can always read.
+- **The sync gate (protects the metadata).** Private chains are exchanged only
+  with peers presenting a **member proof**: the peer's leaf key signs (root, its
+  endpoint, our endpoint), channel-bound to the iroh connection and worthless
+  replayed elsewhere, verified against the local tree (leaf must be Active).
+  Unproven peers get neither private entries nor private _frontiers_ - the count
+  and cadence of private activity is itself private. Both directions enforce it
+  (verify-then-reveal: a requester's first Hello advertises public frontiers
+  only, since the responder's membership isn't known yet; a proven responder
+  re-offers and the duplicate-skip absorbs it).
 
 **Membership transitions are key events:**
 
-- **Adoption**: the granting node re-seals every historical epoch key to the newcomer (one `key-epoch` entry per
-  epoch, recipient list of one). A member is a member of the whole history; a new device materializes the full
-  private state back to epoch 0.
-- **Revocation - either disposition - rotates**: a fresh epoch sealed to every Active member except the target.
-  The departed key's server still physically holds its old epoch keys, so the guarantee is exactly this: **it
-  reads its era forever; the future is closed.** And because the revoked leaf stops being Active, the gate stops
-  shipping it post-rotation ciphertext at all - forward secrecy backed by refusal, not just math. One exception,
-  the **minter rule** (settled 2026-07-30): _you may not sign the epoch that excludes you_ - an epoch you mint is
-  an epoch you know. So a **self-retirement does not rotate**; the rotation falls to a surviving member's node on
-  observing the retirement (the liveness machinery is designed, not yet built - see The Adult In The Room, items
-  1-3), and until it lands, members writing under the old epoch are the honest window of the cooperative
-  disposition. A hostile exit is repudiation: senior-issued, rotated by its signer in the same act, windowless.
+- **Adoption**: the granting node re-seals every historical epoch key to the
+  newcomer (one `key-epoch` entry per epoch, recipient list of one). A member is
+  a member of the whole history; a new device materializes the full private
+  state back to epoch 0.
+- **Revocation - either disposition - rotates**: a fresh epoch sealed to every
+  Active member except the target. The departed key's server still physically
+  holds its old epoch keys, so the guarantee is exactly this: **it reads its era
+  forever; the future is closed.** And because the revoked leaf stops being
+  Active, the gate stops shipping it post-rotation ciphertext at all - forward
+  secrecy backed by refusal, not just math. One exception, the **minter rule**
+  (settled 2026-07-30): _you may not sign the epoch that excludes you_ - an
+  epoch you mint is an epoch you know. So a **self-retirement does not rotate**;
+  the rotation falls to a surviving member's node on observing the retirement
+  (the liveness machinery is designed, not yet built - see The Adult In The
+  Room, items 1-3), and until it lands, members writing under the old epoch are
+  the honest window of the cooperative disposition. A hostile exit is
+  repudiation: senior-issued, rotated by its signer in the same act, windowless.
 
-Honest wrinkles, accepted for v1: two nodes racing a rotation can both mint "epoch N" (single-writer chains, so
-not a fork) - readers try all keys for an epoch and the AEAD tag disambiguates; a member whose encryption pubkey
-never reached the chain is skipped by rotation (fails closed, loudly logged, recoverable by re-seal); revocation
-rotation happens on the revoking node and reaches others by ordinary sync, so a partitioned member keeps writing
-under the old epoch until it hears - members hold old keys, so nothing is lost, but the boundary is eventual, not
-instantaneous. The `identity-private` service is reserved and gated but has no writer yet.
+Honest wrinkles, accepted for v1: two nodes racing a rotation can both mint
+"epoch N" (single-writer chains, so not a fork) - readers try all keys for an
+epoch and the AEAD tag disambiguates; a member whose encryption pubkey never
+reached the chain is skipped by rotation (fails closed, loudly logged,
+recoverable by re-seal); revocation rotation happens on the revoking node and
+reaches others by ordinary sync, so a partitioned member keeps writing under the
+old epoch until it hears - members hold old keys, so nothing is lost, but the
+boundary is eventual, not instantaneous. The `identity-private` service is
+reserved and gated but has no writer yet.
 
-**Rotation rules (settled 2026-07-30).** Three rules keep rotation safe without an owner - what secures it is
-never _who_ mints, but that everything about a mint is checkable:
+**Rotation rules (settled 2026-07-30).** Three rules keep rotation safe without
+an owner - what secures it is never _who_ mints, but that everything about a
+mint is checkable:
 
-- **Recipients are verified, never asserted.** Every node derives the correct recipient set itself (the Active
-  leaves' enc pubkeys, from the chain), so a `key-epoch` that smuggles a non-Active recipient is malformed - a
-  hard refusal. An _omitted_ member is only flagged, loudly: the minter's chain view may honestly have lacked the
-  pubkey (the fail-closed skip above), and the flag's remedy is a re-seal. Completeness binds only the newest
-  epoch - adoption re-seals are recipient-lists-of-one for historical epochs, the mechanism working as designed.
-  _(Rule stated now; gate enforcement is ledgered in REFACTOR.md.)_
-- **Any Active member's node may mint a missing rotation; rank orders the delay, never the right.** "Seniormost
-  surviving" is not computable - liveness never is - and never needs to be: an Active member minting an epoch
-  learns nothing it didn't already hold, so there is no election to get right. On observing an ejection with no
-  matching rotation, seniormost-by-rank acts at once; each rank behind waits longer and acts only if nothing
-  arrived. A wrong liveness guess costs latency in one direction and a harmless duplicate in the other - never
-  security. The timers are legal under **No Clocks!** (they tune liveness; nothing is wrong if all of them
-  misfire), and the degenerate case closes itself: no surviving member means no future writes, and rotation only
-  ever protected a future someone writes. _(The watcher is ledgered in REFACTOR.md; until it lands, the only
-  unrotated case is self-retirement.)_
-- **Concurrent mints converge, and the next rotation unifies.** Racing mints of "epoch N" are not a fork
-  (single-writer chains) and not a danger (each is fresh, excludes the departed, and stays readable forever by
-  everyone it sealed to). Writers converge on one key per epoch number by **(minter rank, entry hash)** - a
-  write-preference pick, not a verdict - and readers try keys in that same order, so first-try decryption stays
-  the norm even mid-race. Whatever else happens, the next rotation steps to max+1 sealed to the full Active set:
-  a race's split ends at the following epoch no matter what anyone does.
+- **Recipients are verified, never asserted.** Every node derives the correct
+  recipient set itself (the Active leaves' enc pubkeys, from the chain), so a
+  `key-epoch` that smuggles a non-Active recipient is malformed - a hard
+  refusal. An _omitted_ member is only flagged, loudly: the minter's chain view
+  may honestly have lacked the pubkey (the fail-closed skip above), and the
+  flag's remedy is a re-seal. Completeness binds only the newest epoch -
+  adoption re-seals are recipient-lists-of-one for historical epochs, the
+  mechanism working as designed. _(Rule stated now; gate enforcement is ledgered
+  in REFACTOR.md.)_
+- **Any Active member's node may mint a missing rotation; rank orders the delay,
+  never the right.** "Seniormost surviving" is not computable - liveness never
+  is - and never needs to be: an Active member minting an epoch learns nothing
+  it didn't already hold, so there is no election to get right. On observing an
+  ejection with no matching rotation, seniormost-by-rank acts at once; each rank
+  behind waits longer and acts only if nothing arrived. A wrong liveness guess
+  costs latency in one direction and a harmless duplicate in the other - never
+  security. The timers are legal under **No Clocks!** (they tune liveness;
+  nothing is wrong if all of them misfire), and the degenerate case closes
+  itself: no surviving member means no future writes, and rotation only ever
+  protected a future someone writes. _(The watcher is ledgered in REFACTOR.md;
+  until it lands, the only unrotated case is self-retirement.)_
+- **Concurrent mints converge, and the next rotation unifies.** Racing mints of
+  "epoch N" are not a fork (single-writer chains) and not a danger (each is
+  fresh, excludes the departed, and stays readable forever by everyone it sealed
+  to). Writers converge on one key per epoch number by **(minter rank, entry
+  hash)** - a write-preference pick, not a verdict - and readers try keys in
+  that same order, so first-try decryption stays the norm even mid-race.
+  Whatever else happens, the next rotation steps to max+1 sealed to the full
+  Active set: a race's split ends at the following epoch no matter what anyone
+  does.
 
 ### Lanes: Public, Gated, Private (settled 2026-08-01)
 
-Every chain lives in exactly one of three **lanes**, and the lane is a property of the _service slot_ - never a
-flag on an entry (Copy, Don't Flip: crossing lanes is a re-sign onto another chain, a deliberate act, and there is
-no switch for a bug to throw). The triad was born piecemeal - public chains at M1, private chains above, the
-member lane under Groups - and this section is the promotion: the gated lane is identity-generic, not a groups
-feature.
+Every chain lives in exactly one of three **lanes**, and the lane is a property
+of the _service slot_ - never a flag on an entry (Copy, Don't Flip: crossing
+lanes is a re-sign onto another chain, a deliberate act, and there is no switch
+for a bug to throw). The triad was born piecemeal - public chains at M1, private
+chains above, the member lane under Groups - and this section is the promotion:
+the gated lane is identity-generic, not a groups feature.
 
 | lane        | bytes at rest    | served to                                            |
 | ----------- | ---------------- | ---------------------------------------------------- |
@@ -1533,385 +1990,495 @@ feature.
 | **gated**   | plaintext        | requesters proving the lane's predicate              |
 | **private** | epoch ciphertext | this identity's own Active leaves (the member proof) |
 
-The symmetry is the design: all three lanes are _serve behind a predicate_. Public's predicate is `true`;
-private's is "a leaf of this same identity" (the sync gate above); **gated is everything in between**, and the
-predicate is the parameter - roster membership (The Member Lane, the first instance), a disclosed mutual follow
-(friends-visible content, over the receipts the serving node already holds), or a proof chained one hop through a
-member group (Supergroups). Gated access is a predicate, and predicates compose. Verify-then-reveal applies to
-every non-`true` predicate alike: an unproven peer gets neither entries nor _frontiers_ - strangers cannot learn
-that a gated lane has activity at all, let alone enumerate its audience.
+The symmetry is the design: all three lanes are _serve behind a predicate_.
+Public's predicate is `true`; private's is "a leaf of this same identity" (the
+sync gate above); **gated is everything in between**, and the predicate is the
+parameter - roster membership (The Member Lane, the first instance), a disclosed
+mutual follow (friends-visible content, over the receipts the serving node
+already holds), or a proof chained one hop through a member group (Supergroups).
+Gated access is a predicate, and predicates compose. Verify-then-reveal applies
+to every non-`true` predicate alike: an unproven peer gets neither entries nor
+_frontiers_ - strangers cannot learn that a gated lane has activity at all, let
+alone enumerate its audience.
 
-Encryption is the **other axis**, and it stays two-valued: ciphertext or not. The missing cell - encrypted _and_
-selectively shared - is the sealed-group design, examined and declined (The Member Lane tells that story): key
-distribution on membership change is exactly the machinery the gated lane exists to remove. A shared secret
-survives at the one scale it is meaningful, the two-party sealed pair (Direct Messages).
+Encryption is the **other axis**, and it stays two-valued: ciphertext or not.
+The missing cell - encrypted _and_ selectively shared - is the sealed-group
+design, examined and declined (The Member Lane tells that story): key
+distribution on membership change is exactly the machinery the gated lane exists
+to remove. A shared secret survives at the one scale it is meaningful, the
+two-party sealed pair (Direct Messages).
 
-**Shared is shared** - the ruling "public is public" generalizes to the gated lane. Gating is disclosure control
-plus enumeration resistance, **never secrecy**: the serving operator reads the bytes (We Trust the Node Operator),
-every authorized reader copies freely, and revoking access closes the future only - _it reads its era; the future
-is closed_, the same bound ejection and revocation already carry. A gated lane is not a place for a file you would
-not put on a friend's hard drive. And it is deliberately not "unlisted": anyone-with-the-link is a capability-URL
-design - obscurity where the gate offers proof - and does not exist here.
+**Shared is shared** - the ruling "public is public" generalizes to the gated
+lane. Gating is disclosure control plus enumeration resistance, **never
+secrecy**: the serving operator reads the bytes (We Trust the Node Operator),
+every authorized reader copies freely, and revoking access closes the future
+only - _it reads its era; the future is closed_, the same bound ejection and
+revocation already carry. A gated lane is not a place for a file you would not
+put on a friend's hard drive. And it is deliberately not "unlisted":
+anyone-with-the-link is a capability-URL design - obscurity where the gate
+offers proof - and does not exist here.
 
-Reach follows the predicate: a gated lane is served only by nodes that can _evaluate_ its gate - the identity's
-own agents, which hold the roster, the receipts, or the composed proof's inputs. Gated chains are never
-help-hosted; fronting is a public-lane concept.
+Reach follows the predicate: a gated lane is served only by nodes that can
+_evaluate_ its gate - the identity's own agents, which hold the roster, the
+receipts, or the composed proof's inputs. Gated chains are never help-hosted;
+fronting is a public-lane concept.
 
-Three consequences, settled here and ledgered in NEXT_STEPS before any consumer is built:
+Three consequences, settled here and ledgered in NEXT_STEPS before any consumer
+is built:
 
-- **Lane is a per-service declaration.** Each service name maps statically to its lane; a personal identity gains
-  its first gated slot when friends-visible content arrives. No dynamic lane assignment, ever.
-- **The friendship predicate's staleness bound, stated honestly.** Receipts prove the follow was true when
-  signed; unfollow is silent. The friend gate will therefore serve a recently-stale friend, exactly as a stale
-  roster admits the recently ejected - the same eventual bound as everything else at this layer. Fail closed on a
-  proof that cannot be resolved, and log it.
-- **The blob gate is built once, predicate-parameterized.** Gated blobs are plaintext, so the File Layer's
-  "ungated, the hash is the boundary" rule does not cover them (safe only while every non-public body is
-  ciphertext). Group content and friends-gated media hit the identical requirement - one authorization check on
-  the blob transport, shared by every predicate, built before either consumer so it is not discovered late.
+- **Lane is a per-service declaration.** Each service name maps statically to
+  its lane; a personal identity gains its first gated slot when friends-visible
+  content arrives. No dynamic lane assignment, ever.
+- **The friendship predicate's staleness bound, stated honestly.** Receipts
+  prove the follow was true when signed; unfollow is silent. The friend gate
+  will therefore serve a recently-stale friend, exactly as a stale roster admits
+  the recently ejected - the same eventual bound as everything else at this
+  layer. Fail closed on a proof that cannot be resolved, and log it.
+- **The blob gate is built once, predicate-parameterized.** Gated blobs are
+  plaintext, so the File Layer's "ungated, the hash is the boundary" rule does
+  not cover them (safe only while every non-public body is ciphertext). Group
+  content and friends-gated media hit the identical requirement - one
+  authorization check on the blob transport, shared by every predicate, built
+  before either consumer so it is not discovered late.
 
 ### Open Items
 
-- **Deletability: split headers from content from day one** (**Immutable Chains ≠ Immutable Content**, Doctrine). Chains store entry headers + blob hashes; content
-  lives in droppable blobs (`iroh-blobs`). "Delete" = tombstone entry + drop the blob: chain integrity survives
-  (headers remain), content is genuinely gone from cooperating nodes. The _fact_ of a post at seq 41 is permanent;
-  its content is not. Also keeps chains tiny. Retrofitting this split later is a protocol break, so it is v1.
-- **Blob availability must not gate chain validity.** An entry whose blob is unfetchable (dropped, never shared)
-  still validates as a chain link - validation is signatures and hashes only; fetching is best-effort.
-- **Snapshots.** Replaying years of entries to materialize state is the classic cost of this architecture, and
-  signed checkpoints solve it - plus two more problems at the same door: they make fold-based views (registers,
-  sets) **suffix-safe** (fetch snapshot + tail instead of all of history), and they make prefixes **droppable**
-  (a fronting node keeps snapshot + tail and garbage-collects the ancient entries; stacks with the header/blob
-  split). Expect them to matter for performance broadly - even the profile, where history exists but nearly every
-  client just wants the current state fast. The design, settled 2026-07-08: a snapshot is an ordinary signed entry
-  (blob-split - state can be big) written by one of the identity's own nodes, containing the folded state **with
-  its LWW stamps** (`(timestamp, seq, hash)` per key/element, so tail ops merge against it by the same total order
-  as everything else) plus `(chain, seq, head_hash)` **anchors** pinning the exact cross-chain frontier it
-  summarizes. Trust: the author is already the sole authority over its single-writer content, and any full-history
-  replica (the identity's own nodes, at minimum) can replay the chains against the snapshot and hold signed,
-  checkable proof of a contradiction - the same self-incrimination pattern as forks. **Red line: snapshots never
-  cover the identity chains** - a "trust my summary of the key tree" entry would bypass rank-path validation;
-  authority is always recomputed from full chains, only content state gets checkpointed. Not needed until chains
-  are long; the entry format's additive fields mean no protocol prep is required.
-- **Fork aftermath.** After the tiebreaker picks a winning fork (the innocent stale-backup case), the losing fork's
-  entries are invalid. The client should offer to re-sign that content onto the winning chain as new entries, or
-  the recovery silently eats the user's posts. Needs specifying before the recovery UX ships.
-- **Device-attribution metadata.** Chains are per-key and keys are per-device, so a patient observer can see which
-  device authored what. Same honesty class as the timing-correlation caveats in Hosting.
+- **Deletability: split headers from content from day one** (**Immutable Chains
+  ≠ Immutable Content**, Doctrine). Chains store entry headers + blob hashes;
+  content lives in droppable blobs (`iroh-blobs`). "Delete" = tombstone entry +
+  drop the blob: chain integrity survives (headers remain), content is genuinely
+  gone from cooperating nodes. The _fact_ of a post at seq 41 is permanent; its
+  content is not. Also keeps chains tiny. Retrofitting this split later is a
+  protocol break, so it is v1.
+- **Blob availability must not gate chain validity.** An entry whose blob is
+  unfetchable (dropped, never shared) still validates as a chain link -
+  validation is signatures and hashes only; fetching is best-effort.
+- **Snapshots.** Replaying years of entries to materialize state is the classic
+  cost of this architecture, and signed checkpoints solve it - plus two more
+  problems at the same door: they make fold-based views (registers, sets)
+  **suffix-safe** (fetch snapshot + tail instead of all of history), and they
+  make prefixes **droppable** (a fronting node keeps snapshot + tail and
+  garbage-collects the ancient entries; stacks with the header/blob split).
+  Expect them to matter for performance broadly - even the profile, where
+  history exists but nearly every client just wants the current state fast. The
+  design, settled 2026-07-08: a snapshot is an ordinary signed entry
+  (blob-split - state can be big) written by one of the identity's own nodes,
+  containing the folded state **with its LWW stamps** (`(timestamp, seq, hash)`
+  per key/element, so tail ops merge against it by the same total order as
+  everything else) plus `(chain, seq, head_hash)` **anchors** pinning the exact
+  cross-chain frontier it summarizes. Trust: the author is already the sole
+  authority over its single-writer content, and any full-history replica (the
+  identity's own nodes, at minimum) can replay the chains against the snapshot
+  and hold signed, checkable proof of a contradiction - the same
+  self-incrimination pattern as forks. **Red line: snapshots never cover the
+  identity chains** - a "trust my summary of the key tree" entry would bypass
+  rank-path validation; authority is always recomputed from full chains, only
+  content state gets checkpointed. Not needed until chains are long; the entry
+  format's additive fields mean no protocol prep is required.
+- **Fork aftermath.** After the tiebreaker picks a winning fork (the innocent
+  stale-backup case), the losing fork's entries are invalid. The client should
+  offer to re-sign that content onto the winning chain as new entries, or the
+  recovery silently eats the user's posts. Needs specifying before the recovery
+  UX ships.
+- **Device-attribution metadata.** Chains are per-key and keys are per-device,
+  so a patient observer can see which device authored what. Same honesty class
+  as the timing-correlation caveats in Hosting.
 
 ---
 
 ## Direct Messages: The Sealed Pair (settled 2026-07-30)
 
-A DM is a two-party conversation on the sealed lane, and **two is not an arbitrary threshold - it is the only size
-at which membership is not a mutable object.** A pair has no roster, no admission, no ejection, no invite tree, no
-blast radius. Its membership changes only through _identity_ events - Alice adopts a phone, Bob repudiates a laptop
+A DM is a two-party conversation on the sealed lane, and **two is not an
+arbitrary threshold - it is the only size at which membership is not a mutable
+object.** A pair has no roster, no admission, no ejection, no invite tree, no
+blast radius. Its membership changes only through _identity_ events - Alice
+adopts a phone, Bob repudiates a laptop
 
-- which are the adoption re-seal and the revocation rotation, both already specified and already IMPLEMENTED.
+- which are the adoption re-seal and the revocation rotation, both already
+  specified and already IMPLEMENTED.
 
-That is the whole argument for the cut, and it is a better one than group size: node count is a gradient (three
-people is six to nine nodes, five is ten to fifteen) and a gradient argues for cutting _somewhere_, not here. Read
-The Adult In The Room (Groups, below) with the membership framing in hand and every defect in that list is
-downstream of **membership-triggered** rotation - who mints when the ejection was derived rather than signed, who
-is obliged to mint at all, the window an ejected member can watch open. None of them exist at N=2, because there is
-nothing to be ejected _from_. The epoch machinery works at two exactly as written.
+That is the whole argument for the cut, and it is a better one than group size:
+node count is a gradient (three people is six to nine nodes, five is ten to
+fifteen) and a gradient argues for cutting _somewhere_, not here. Read The Adult
+In The Room (Groups, below) with the membership framing in hand and every defect
+in that list is downstream of **membership-triggered** rotation - who mints when
+the ejection was derived rather than signed, who is obliged to mint at all, the
+window an ejected member can watch open. None of them exist at N=2, because
+there is nothing to be ejected _from_. The epoch machinery works at two exactly
+as written.
 
-- **A DM is two chains, not one.** Single-writer is the core invariant (Chains: One Per Key, Per Service), so a
-  conversation is Alice's chain and Bob's chain, interleaved into a view at read time. No shared writable object,
-  therefore no conflicts; ordering is The Ordering Contract, unchanged. Typing indicators and read receipts are
-  gossip - ephemeral, never persisted.
-- **The key is an epoch scoped to two**, sealed to both parties' Active leaf encryption pubkeys - parent-attested
-  from birth, so no round-trip. It re-seals on device adoption and rotates on device revocation, and it never
-  rotates for membership, because there is none.
-- **Opening one passes The Inbound Gate.** A stranger may start a conversation if they clear your floor and are not
-  muted; an existing conversation is its own standing consent.
-- **You cannot add a third person to a DM.** There is no such operation. Attempting it _mints a room_ - a new group
-  identity, an explicit ceremony, history that stays behind unless deliberately re-signed across (**Copy, Don't
-  Flip**). This is load-bearing product design rather than bookkeeping: every messenger anyone has used makes 1:1
-  and group look identical and be equally secure, so the user's prior is actively wrong here. The change of lane
-  has to be something a person _did_, with different chrome on the other side of it, and never a property that
-  quietly changed underneath them.
+- **A DM is two chains, not one.** Single-writer is the core invariant (Chains:
+  One Per Key, Per Service), so a conversation is Alice's chain and Bob's chain,
+  interleaved into a view at read time. No shared writable object, therefore no
+  conflicts; ordering is The Ordering Contract, unchanged. Typing indicators and
+  read receipts are gossip - ephemeral, never persisted.
+- **The key is an epoch scoped to two**, sealed to both parties' Active leaf
+  encryption pubkeys - parent-attested from birth, so no round-trip. It re-seals
+  on device adoption and rotates on device revocation, and it never rotates for
+  membership, because there is none.
+- **Opening one passes The Inbound Gate.** A stranger may start a conversation
+  if they clear your floor and are not muted; an existing conversation is its
+  own standing consent.
+- **You cannot add a third person to a DM.** There is no such operation.
+  Attempting it _mints a room_ - a new group identity, an explicit ceremony,
+  history that stays behind unless deliberately re-signed across (**Copy, Don't
+  Flip**). This is load-bearing product design rather than bookkeeping: every
+  messenger anyone has used makes 1:1 and group look identical and be equally
+  secure, so the user's prior is actively wrong here. The change of lane has to
+  be something a person _did_, with different chrome on the other side of it,
+  and never a property that quietly changed underneath them.
 
-**Realized 2026-09-20 as a room of two** (CHAT.md, ruling 12), which amends one line above: the pair's key is the
-room POST's key, sealed to exactly one person through the post's own audience, not an epoch minted for the two of
-them. Everything the argument rests on survives - two chains interleaved at read, no roster, no admission, no
-ejection, membership changing only through identity events - and what the change buys is that a DM is the chat
-machinery with the pair's rules on it (no mute, no close, no delete, no passing along, both sides keeping the whole
-of it) rather than a second messaging system beside it. The epoch scoped to two remains the stronger shape and the
-road back to it is open: the key is a thing the post door hands out, and what hands it out can change.
+**Realized 2026-09-20 as a room of two** (CHAT.md, ruling 12), which amends one
+line above: the pair's key is the room POST's key, sealed to exactly one person
+through the post's own audience, not an epoch minted for the two of them.
+Everything the argument rests on survives - two chains interleaved at read, no
+roster, no admission, no ejection, membership changing only through identity
+events - and what the change buys is that a DM is the chat machinery with the
+pair's rules on it (no mute, no close, no delete, no passing along, both sides
+keeping the whole of it) rather than a second messaging system beside it. The
+epoch scoped to two remains the stronger shape and the road back to it is open:
+the key is a thing the post door hands out, and what hands it out can change.
 
-The honest cost of the cut is the sympathetic three-person case - three friends planning a surprise, a couple and
-their lawyer - which lands in the gated lane along with the thousand-person room. That is a real trade, taken
-deliberately: the alternative is a mutable roster and everything it drags in, at every size above one pair.
+The honest cost of the cut is the sympathetic three-person case - three friends
+planning a surprise, a couple and their lawyer - which lands in the gated lane
+along with the thousand-person room. That is a real trade, taken deliberately:
+the alternative is a mutable roster and everything it drags in, at every size
+above one pair.
 
 ---
 
 ## Groups: Identity-Shaped (SKETCH, scoped)
 
-**Status: sketch, not doctrine** - with the decisions inside it settled (2026-07-30) and kept
-here in short. Groups are on no roadmap; contact tags and audiences (_Contact tags_) now cover
-the concrete use they were first wanted for. What survives is the shape a group would take,
-so that nothing built meanwhile forecloses it.
+**Status: sketch, not doctrine** - with the decisions inside it settled
+(2026-07-30) and kept here in short. Groups are on no roadmap; contact tags and
+audiences (_Contact tags_) now cover the concrete use they were first wanted
+for. What survives is the shape a group would take, so that nothing built
+meanwhile forecloses it.
 
-**A group is an identity for its public face, and a roster for everything else.** The
-shower thought - thirty people want what one person's five devices want - was half right: the
-social and public half maps for free. The epoch half does not, since it drags minted secrecy
-into a place where every membership change would have to mint something while every
-membership _fact_ is merely computed. So group content lives on a **member lane**: plaintext,
-served only to peers who prove membership, with the sealed lane kept for the pair.
-Confidentiality by refusal, not by mathematics. The trade, stated once: a group's content
-sits readable on every member's node, so every member's node operator can read it - _We
-Trust the Node Operator_ already says that much - and what it buys is that ejection is a
-computed fact rather than a minted one. A shared secret works at the scale where one is
-meaningful; two is that scale, thirty is not.
+**A group is an identity for its public face, and a roster for everything
+else.** The shower thought - thirty people want what one person's five devices
+want - was half right: the social and public half maps for free. The epoch half
+does not, since it drags minted secrecy into a place where every membership
+change would have to mint something while every membership _fact_ is merely
+computed. So group content lives on a **member lane**: plaintext, served only to
+peers who prove membership, with the sealed lane kept for the pair.
+Confidentiality by refusal, not by mathematics. The trade, stated once: a
+group's content sits readable on every member's node, so every member's node
+operator can read it - _We Trust the Node Operator_ already says that much - and
+what it buys is that ejection is a computed fact rather than a minted one. A
+shared secret works at the scale where one is meaningful; two is that scale,
+thirty is not.
 
-**The roster references identities; it does not contain them.** Grafting members' trees
-under a group root is not constructible (a root is unparented, and seniority cannot be granted
-retroactively), and both weaker shapes - a key per member, a subtree per member - fail on
-authority grounds: a compromised laptop becomes the member, permanently, and only the group can
-revoke what only the member should. So the roster names member identity _roots_, members act
-with their ordinary keys, and a proof is the chain from leaf to root plus the group's admission
-entry for that root, walked back to the founder past nothing ejected or repudiated. Every step
-is computed from public and member-lane facts with no secret anywhere; Alice repudiates a
-laptop once, on her own chain, and every group observes it. Consequences: a roster entry is a
-pointer, nothing to steal; pseudonymous membership is joining under a persona; a new device
-costs the group nothing; the group must sync every member's identity-public chain.
+**The roster references identities; it does not contain them.** Grafting
+members' trees under a group root is not constructible (a root is unparented,
+and seniority cannot be granted retroactively), and both weaker shapes - a key
+per member, a subtree per member - fail on authority grounds: a compromised
+laptop becomes the member, permanently, and only the group can revoke what only
+the member should. So the roster names member identity _roots_, members act with
+their ordinary keys, and a proof is the chain from leaf to root plus the group's
+admission entry for that root, walked back to the founder past nothing ejected
+or repudiated. Every step is computed from public and member-lane facts with no
+secret anywhere; Alice repudiates a laptop once, on her own chain, and every
+group observes it. Consequences: a roster entry is a pointer, nothing to steal;
+pseudonymous membership is joining under a persona; a new device costs the group
+nothing; the group must sync every member's identity-public chain.
 
-**The member lane (the first identity-generic chain class - _Lanes: Public, Gated, Private_).**
-The roster is plaintext and member-only, three distinctions each load-bearing: _not
-encrypted_, because the roster is the ACL and every enforcing node must read it; _not
-published_, because membership is the trust graph's enumeration problem in another hat, and a
-member-only roster hides even the count; _a lane, not a bit_, because gating is a property of
-the service slot, never a flag an entry could have wrong. Member-lane blobs are plaintext, so
-they must be served behind the member proof - a real authorization on the blob transport that
-does not exist today, the one place this design costs machinery rather than saving it. What
-remains is a correlation channel, not a disclosure: a group is not a place for a file you would
-not put on a friend's hard drive. **Ejection** is a member-lane entry signed by someone senior
-in the invite tree; every serving node computes it and refuses, no window, nothing to watch,
-and the departed keep what they already synced: it reads its era, the future is closed. Three
-merge rules are decisions: ejection dominates a concurrent admission of the same root unless
-the admission is senior-signed; re-admission is an ordinary add ordered by its `(timestamp,
-seq, hash)` stamp; a stale roster admits the recently ejected, so a proof that cannot be
-resolved fails closed and is logged. **Departure** drops you from the roster and leaves the
-admissions you signed standing, since they were honest when made; **repudiation** kills the
-subtree. Supergroups compose by nesting rosters; there is nothing to fan out.
+**The member lane (the first identity-generic chain class - _Lanes: Public,
+Gated, Private_).** The roster is plaintext and member-only, three distinctions
+each load-bearing: _not encrypted_, because the roster is the ACL and every
+enforcing node must read it; _not published_, because membership is the trust
+graph's enumeration problem in another hat, and a member-only roster hides even
+the count; _a lane, not a bit_, because gating is a property of the service
+slot, never a flag an entry could have wrong. Member-lane blobs are plaintext,
+so they must be served behind the member proof - a real authorization on the
+blob transport that does not exist today, the one place this design costs
+machinery rather than saving it. What remains is a correlation channel, not a
+disclosure: a group is not a place for a file you would not put on a friend's
+hard drive. **Ejection** is a member-lane entry signed by someone senior in the
+invite tree; every serving node computes it and refuses, no window, nothing to
+watch, and the departed keep what they already synced: it reads its era, the
+future is closed. Three merge rules are decisions: ejection dominates a
+concurrent admission of the same root unless the admission is senior-signed;
+re-admission is an ordinary add ordered by its `(timestamp, seq, hash)` stamp; a
+stale roster admits the recently ejected, so a proof that cannot be resolved
+fails closed and is logged. **Departure** drops you from the roster and leaves
+the admissions you signed standing, since they were honest when made;
+**repudiation** kills the subtree. Supergroups compose by nesting rosters; there
+is nothing to fan out.
 
-**The yield was elsewhere.** Pointing the epoch model at thirty people made audible that it was
-underspecified at the identity level, where it is shipped: who mints a rotation, what secures
-it, who owns its liveness. Those were fixed or scoped at the source on 2026-07-30 - _Private
-Chains_ states the rules, _Revocation_ carries what is still owed.
+**The yield was elsewhere.** Pointing the epoch model at thirty people made
+audible that it was underspecified at the identity level, where it is shipped:
+who mints a rotation, what secures it, who owns its liveness. Those were fixed
+or scoped at the source on 2026-07-30 - _Private Chains_ states the rules,
+_Revocation_ carries what is still owed.
 
 ---
 
 ## Canonical Encoding, Signature Domains, and Versioning
 
-This is foundational, not a late detail: the byte representation of an entry _is_ what gets hashed, signed,
-chain-linked, and anchored. If two implementations disagree about how a logical entry becomes bytes, they compute
-different hashes for the "same" entry - and a legitimate entry looks like a forgery, or two nodes "converge" on
-byte-different state that no longer verifies. Changing any of these rules after data exists breaks every prior
+This is foundational, not a late detail: the byte representation of an entry
+_is_ what gets hashed, signed, chain-linked, and anchored. If two
+implementations disagree about how a logical entry becomes bytes, they compute
+different hashes for the "same" entry - and a legitimate entry looks like a
+forgery, or two nodes "converge" on byte-different state that no longer
+verifies. Changing any of these rules after data exists breaks every prior
 signature and snaps every hash chain, so they are decided now.
 
 ### The core rule: hash and store the author's original bytes; never re-serialize
 
-The signed, hashed object is **the exact serialized bytes the author first produced.** Those bytes travel the network
-verbatim; every node hashes and verifies _the bytes it received_, and stores them unchanged. **A node MUST NOT
-re-serialize an entry it intends to hash, forward, or store** - re-encoding is permitted only for ephemeral local use
-(display, indexing) whose output never re-enters the log. This single rule makes serialization determinism a
-non-issue by construction: canonicity only matters when two parties independently encode the same object, and here
-there is only ever one encoding - the author's - which everyone copies. It also makes additive evolution safe: an old
-node that cannot interpret a new field still forwards the _original bytes_ intact, so newer nodes see the field and
-the hash still matches.
+The signed, hashed object is **the exact serialized bytes the author first
+produced.** Those bytes travel the network verbatim; every node hashes and
+verifies _the bytes it received_, and stores them unchanged. **A node MUST NOT
+re-serialize an entry it intends to hash, forward, or store** - re-encoding is
+permitted only for ephemeral local use (display, indexing) whose output never
+re-enters the log. This single rule makes serialization determinism a non-issue
+by construction: canonicity only matters when two parties independently encode
+the same object, and here there is only ever one encoding - the author's - which
+everyone copies. It also makes additive evolution safe: an old node that cannot
+interpret a new field still forwards the _original bytes_ intact, so newer nodes
+see the field and the hash still matches.
 
 ### Format: canonical CBOR
 
-Entries are encoded as **deterministically-encoded CBOR** (RFC 8949 §4.2: sorted map keys, shortest-form integers,
-no indefinite-length items). CBOR was chosen because it is the one widely-supported, cross-language (IETF standard,
-implementations everywhere, the substrate under COSE/WebAuthn) format that targets _both_ schema evolution
-(self-describing, old readers skip unknown fields) _and_ specified deterministic encoding. Its determinism is
-defense-in-depth behind the store-original-bytes rule: the rule is the primary guarantee, CBOR's canonical mode is
-the belt to its suspenders if a bug ever causes a re-encode. (postcard was rejected for tying the ecosystem to one
+Entries are encoded as **deterministically-encoded CBOR** (RFC 8949 §4.2: sorted
+map keys, shortest-form integers, no indefinite-length items). CBOR was chosen
+because it is the one widely-supported, cross-language (IETF standard,
+implementations everywhere, the substrate under COSE/WebAuthn) format that
+targets _both_ schema evolution (self-describing, old readers skip unknown
+fields) _and_ specified deterministic encoding. Its determinism is
+defense-in-depth behind the store-original-bytes rule: the rule is the primary
+guarantee, CBOR's canonical mode is the belt to its suspenders if a bug ever
+causes a re-encode. (postcard was rejected for tying the ecosystem to one
 language's serializer; protobuf for making canonicity an explicit non-goal.)
 
-- **Strings are NFC-normalized** before encoding, so "the same" text is never two different byte sequences.
-- **Unknown types/fields are carried forward** verbatim, never dropped - this is what makes old nodes safe to run
-  against newer data.
+- **Strings are NFC-normalized** before encoding, so "the same" text is never
+  two different byte sequences.
+- **Unknown types/fields are carried forward** verbatim, never dropped - this is
+  what makes old nodes safe to run against newer data.
 
 ### Hash: BLAKE3-256
 
-All hashing - entry hashes, `prev_hash` chain links, revocation anchors - uses **BLAKE3, 256-bit output (32 bytes)**.
-This matches `iroh-blobs`, which is already BLAKE3-content-addressed, so one hash algorithm covers the whole system
-(entry chains and blob refs alike) rather than two side by side. BLAKE3 is fast (parallel/SIMD, faster than SHA-2),
-cryptographically strong, and its native `derive_key` / keyed mode is a clean primitive for the signature-domain
-separation below. The hash is a **versioned parameter** (recorded via the version tag), not a baked-in constant, so a
-future entry version could switch algorithms without making old entries unparseable - crypto agility without betting
-the system on "BLAKE3 is never broken."
+All hashing - entry hashes, `prev_hash` chain links, revocation anchors - uses
+**BLAKE3, 256-bit output (32 bytes)**. This matches `iroh-blobs`, which is
+already BLAKE3-content-addressed, so one hash algorithm covers the whole system
+(entry chains and blob refs alike) rather than two side by side. BLAKE3 is fast
+(parallel/SIMD, faster than SHA-2), cryptographically strong, and its native
+`derive_key` / keyed mode is a clean primitive for the signature-domain
+separation below. The hash is a **versioned parameter** (recorded via the
+version tag), not a baked-in constant, so a future entry version could switch
+algorithms without making old entries unparseable - crypto agility without
+betting the system on "BLAKE3 is never broken."
 
 ### The entry on the wire (IMPLEMENTED in `ringtome-proto`)
 
-The implementation of record is the `ringtome-proto` crate and the byte-level authority is
-`spec/test-vectors/entry-v0.json`: this logical entry MUST produce exactly these bytes, this
-hash, this signature. The field layout lives there, not here. The rulings the layout serves:
+The implementation of record is the `ringtome-proto` crate and the byte-level
+authority is `spec/test-vectors/entry-v0.json`: this logical entry MUST produce
+exactly these bytes, this hash, this signature. The field layout lives there,
+not here. The rulings the layout serves:
 
-- **An entry travels, hashes and verifies as bytes.** The envelope is `[body, sig]`; the
-  body is canonical CBOR but a verifier slices the received bytes and never re-encodes (the
-  COSE trick). `sig` sits outside the body so nothing re-serializes, and the entry hash is
-  BLAKE3 of the exact envelope the author produced - re-encoding during verification is
-  where canonicity bugs become forgery bugs.
-- **The signature covers `seq`, `prev_hash`, `chain` and `type`** through a domain-separated
-  preimage, which is what makes the hash chain and anchoring sound.
-- **Header versus blob.** Small payloads ride inline (8 KiB; the envelope 16 KiB); large
-  content is a droppable blob hash, so deletion drops the blob while the signed header
-  survives.
-- **`timestamp` is advisory** - display ordering and LWW of cosmetic fields, never a
-  security input - and a reader MUST reject values above `i64::MAX`.
-- **Decoding is strict.** Non-minimal integers, indefinite lengths, out-of-order keys,
-  non-NFC text, tags and floats are rejected: one logical value has one accepted encoding,
-  because entries are hostile input and lenient parsers are how "the same" entry grows two
-  hashes. Unknown keys above the known ones are skipped and carried through - the additive
-  evolution mechanism.
+- **An entry travels, hashes and verifies as bytes.** The envelope is
+  `[body, sig]`; the body is canonical CBOR but a verifier slices the received
+  bytes and never re-encodes (the COSE trick). `sig` sits outside the body so
+  nothing re-serializes, and the entry hash is BLAKE3 of the exact envelope the
+  author produced - re-encoding during verification is where canonicity bugs
+  become forgery bugs.
+- **The signature covers `seq`, `prev_hash`, `chain` and `type`** through a
+  domain-separated preimage, which is what makes the hash chain and anchoring
+  sound.
+- **Header versus blob.** Small payloads ride inline (8 KiB; the envelope 16
+  KiB); large content is a droppable blob hash, so deletion drops the blob while
+  the signed header survives.
+- **`timestamp` is advisory** - display ordering and LWW of cosmetic fields,
+  never a security input - and a reader MUST reject values above `i64::MAX`.
+- **Decoding is strict.** Non-minimal integers, indefinite lengths, out-of-order
+  keys, non-NFC text, tags and floats are rejected: one logical value has one
+  accepted encoding, because entries are hostile input and lenient parsers are
+  how "the same" entry grows two hashes. Unknown keys above the known ones are
+  skipped and carried through - the additive evolution mechanism.
 
 ### Signature domains
 
-Every signature is computed over a **domain-separated preimage**: a context tag prefixes the bytes - implemented
-today as `ringtome-v0/entry` for chain entries, with future contexts like `ringtome-v0/pkarr-record` following the
-same pattern. This makes a
-signature valid in exactly one context - a signature over a chain entry can never be replayed as an authorization,
-and vice versa. Cross-context signature-replay bugs are common and stupid; domain separation eliminates the class.
+Every signature is computed over a **domain-separated preimage**: a context tag
+prefixes the bytes - implemented today as `ringtome-v0/entry` for chain entries,
+with future contexts like `ringtome-v0/pkarr-record` following the same pattern.
+This makes a signature valid in exactly one context - a signature over a chain
+entry can never be replayed as an authorization, and vice versa. Cross-context
+signature-replay bugs are common and stupid; domain separation eliminates the
+class.
 
-- **Ringtome identity keys and iroh node keys are distinct key types** even though both are ed25519-shaped; the
-  protocol never treats a signature from one as valid in the other's role.
+- **Ringtome identity keys and iroh node keys are distinct key types** even
+  though both are ed25519-shaped; the protocol never treats a signature from one
+  as valid in the other's role.
 
 ### Versioning and the type registry
 
-- Every entry carries an explicit **version tag** and a **type** drawn from a registry (`chain-entry`, `authorize`,
-  `revoke`, `profile-set`, `post`, ...). New types and new fields are added additively; old fields are never removed
-  or repurposed.
-- **Protocol version negotiation** happens at connection setup; the version tag on each entry lets a node apply the
-  right validation rules to historical entries written under older versions.
-- Any future change that alters how relying parties _rank_ or _validate_ entries is a breaking change gated behind a
-  version bump (this is the same rule already noted for authority statements).
-- **Test vectors are mandatory:** the spec publishes "this logical entry MUST produce exactly these bytes and this
-  hash / this signature," so independent implementations stay bit-compatible. These are the conformance boundary.
+- Every entry carries an explicit **version tag** and a **type** drawn from a
+  registry (`chain-entry`, `authorize`, `revoke`, `profile-set`, `post`, ...).
+  New types and new fields are added additively; old fields are never removed or
+  repurposed.
+- **Protocol version negotiation** happens at connection setup; the version tag
+  on each entry lets a node apply the right validation rules to historical
+  entries written under older versions.
+- Any future change that alters how relying parties _rank_ or _validate_ entries
+  is a breaking change gated behind a version bump (this is the same rule
+  already noted for authority statements).
+- **Test vectors are mandatory:** the spec publishes "this logical entry MUST
+  produce exactly these bytes and this hash / this signature," so independent
+  implementations stay bit-compatible. These are the conformance boundary.
 
 ### Many versions on one network (settled 2026-09-23)
 
-Once the app updates itself and releases are days apart, the network is never on one version. Three
-rules make that survivable, each with its enforcement named:
+Once the app updates itself and releases are days apart, the network is never on
+one version. Three rules make that survivable, each with its enforcement named:
 
-- **Sync messages grow by appending slots; a reader skips what it does not know.** Within one ALPN
-  a message is `[tag, ...slots]`: a reader requires the slots its table was born with, takes the ones it
-  recognises after them, gives an absent slot its pre-slot default, and steps over any it cannot name.
-  Slots are never removed, reordered or given a new meaning - that is a new ALPN, which two endpoints
-  on different tables fail to negotiate rather than misread. (`ringtome-proto/src/sync.rs`; before this
-  the Hello's decoder took an exact arity range, and each of its four later slots had been a silent
-  break survivable only because every node was rebuilt from one tree.) The app version rides as the
-  Hello's last slot: a fact the receiver logs, never a switch anything branches on.
-- **A new entry field must degrade safely for a reader that ignores it.** The entry format's additive
-  rule (above) guarantees an old reader _skips_ an unknown header key and forwards the bytes intact; it
-  does not guarantee the old reader's _reading_ is safe. The test for a new key is "what does a node
-  that has never heard of it show?", and the answer must never widen visibility, weaken a seal, or
-  change the meaning of a key that already exists. The `im` flag (header key 23) is the model: an old
-  reader sees a sealed room it cannot open, which is the correct fallback. A key that only makes sense
-  alongside a change to an existing key's meaning is not additive and needs the version tag.
-- **The proof is a cross-version rig, not an argument.** `just integration` with one node built from
-  the last release tag and the rest from HEAD is the only thing that makes either rule true rather
-  than asserted. It costs a second Rust build, so it belongs on the release workflow rather than every
-  commit. Not built yet (2026-09-23); until it is, the two rules above are held by review.
+- **Sync messages grow by appending slots; a reader skips what it does not
+  know.** Within one ALPN a message is `[tag, ...slots]`: a reader requires the
+  slots its table was born with, takes the ones it recognises after them, gives
+  an absent slot its pre-slot default, and steps over any it cannot name. Slots
+  are never removed, reordered or given a new meaning - that is a new ALPN,
+  which two endpoints on different tables fail to negotiate rather than misread.
+  (`ringtome-proto/src/sync.rs`; before this the Hello's decoder took an exact
+  arity range, and each of its four later slots had been a silent break
+  survivable only because every node was rebuilt from one tree.) The app version
+  rides as the Hello's last slot: a fact the receiver logs, never a switch
+  anything branches on.
+- **A new entry field must degrade safely for a reader that ignores it.** The
+  entry format's additive rule (above) guarantees an old reader _skips_ an
+  unknown header key and forwards the bytes intact; it does not guarantee the
+  old reader's _reading_ is safe. The test for a new key is "what does a node
+  that has never heard of it show?", and the answer must never widen visibility,
+  weaken a seal, or change the meaning of a key that already exists. The `im`
+  flag (header key 23) is the model: an old reader sees a sealed room it cannot
+  open, which is the correct fallback. A key that only makes sense alongside a
+  change to an existing key's meaning is not additive and needs the version tag.
+- **The proof is a cross-version rig, not an argument.** `just integration` with
+  one node built from the last release tag and the rest from HEAD is the only
+  thing that makes either rule true rather than asserted. It costs a second Rust
+  build, so it belongs on the release workflow rather than every commit. Not
+  built yet (2026-09-23); until it is, the two rules above are held by review.
 
 ### A debug tool, not text on the wire
 
-Binary sacrifices human readability, which is recovered cheaply by a `ringtome inspect <entry>` tool that
-pretty-prints the decoded structure. Readability is wanted only when a human is debugging - exactly where a tool
-serves it - not on the wire, where the audience is machines hashing and verifying.
+Binary sacrifices human readability, which is recovered cheaply by a
+`ringtome inspect <entry>` tool that pretty-prints the decoded structure.
+Readability is wanted only when a human is debugging - exactly where a tool
+serves it - not on the wire, where the audience is machines hashing and
+verifying.
 
 ---
 
 ## Addressing: The Path Is the Address, the Origin Is the Lens (rewritten 2026-07-31)
 
-The IM-AOL is the storage substrate; **identity-rooted HTTPS URLs** are the interface to it. An address names
-_whose_ data and _what_ within it in its **path**; _where_ rides the URL's ordinary **origin** - as a suggestion,
-never as authority - because identities are multi-homed and roam.
+The IM-AOL is the storage substrate; **identity-rooted HTTPS URLs** are the
+interface to it. An address names _whose_ data and _what_ within it in its
+**path**; _where_ rides the URL's ordinary **origin** - as a suggestion, never
+as authority - because identities are multi-homed and roam.
 
 ```
 https://<node>/…/<root>/<path>[?via=<key>[,<key>…]]
 ```
 
-**This section originally designed a custom `ringtome://` scheme** (git holds the full form:
-`ringtome://<root>[:<nodeID>][(<hints>)]/path`). Dissolved 2026-07-31, for three reasons that had each quietly
-become decisive. First, the packaging doctrine forecloses the scheme's only consumer: a custom scheme is clickable
-only where a native handler is registered, and Delivery settles on one client carried by the web - a local server
-and the system browser, never a native shell - so no program would ever exist to register it; in every real
-browser, `ringtome://` is the link that doesn't open. Second, the codebase voted with its feet: months in, every
-reference every feature actually mints - cozy addresses, crosslinks, media embeds - is an identity-rooted HTTP
-path, and the scheme appeared in exactly one comment. Third, the out-of-band niche the hint slots served best (the
-just-minted QR at a meetup) already belongs to the `rt1.` code grammar, whose consumers are nodes - which is who
-hints are for. Everything load-bearing survives, re-homed below; the scheme was a costume over a path.
+**This section originally designed a custom `ringtome://` scheme** (git holds
+the full form: `ringtome://<root>[:<nodeID>][(<hints>)]/path`). Dissolved
+2026-07-31, for three reasons that had each quietly become decisive. First, the
+packaging doctrine forecloses the scheme's only consumer: a custom scheme is
+clickable only where a native handler is registered, and Delivery settles on one
+client carried by the web - a local server and the system browser, never a
+native shell - so no program would ever exist to register it; in every real
+browser, `ringtome://` is the link that doesn't open. Second, the codebase voted
+with its feet: months in, every reference every feature actually mints - cozy
+addresses, crosslinks, media embeds - is an identity-rooted HTTP path, and the
+scheme appeared in exactly one comment. Third, the out-of-band niche the hint
+slots served best (the just-minted QR at a meetup) already belongs to the `rt1.`
+code grammar, whose consumers are nodes - which is who hints are for. Everything
+load-bearing survives, re-homed below; the scheme was a costume over a path.
 
 ### The three slots, each with one job (now ordinary URL parts)
 
-- **`root` - authority - rides the path.** The identity's root public key. The _only_ trusted element in the URL:
-  any data served for this address must present a signature chain terminating at `root`, or it is discarded. The
-  name is self-certifying - given `root`, you can verify content from anyone, with no trusted host.
-- **The origin - provenance and preferred first contact.** The node that minted the URL: minting is itself proof
-  the node was alive at t=0, so it is the single best liveness bet and gets tried _first_ - and, unlike the old
-  `nodeID` slot, it is **clickable**. A consumer with no ringtome anywhere follows it like any link and reads
-  through that node's public face (Public Means Public); a ringtome-aware consumer may instead **re-home** the path
-  at its own lens. One URL serves both audiences, which the scheme served neither of.
-- **`?via=` - reachability.** An unordered, best-effort set of additional pubkeys offering more discovery entry
-  points so resolution does not hinge on any one node. A via key may be an **identity leaf** of the target (the
-  preferred form, settled 2026-08-07: mint the ~10 most-recently-active leaves, ranked by serving-record
-  freshness - each resolves through a leaf-signed serving record carrying its root binding, checkable against the
-  resolver's revocation memory), a **friend's identity root** ("you can find me through Alice": resolve their
-  rendezvous, ask their nodes), or a bare **node key** (the original form, transport-layer, kept for
-  compatibility). With the target root itself resolvable via the announce, vias as a whole demote from
-  load-bearing to accelerant. Hints are **keys, never addresses** - a key delegates
-  freshness to the DHT (self-healing while its owner is online); an address would freeze a routing snapshot into
-  the string and rot. Never trusted; verified against `root` on arrival and discarded on failure.
+- **`root` - authority - rides the path.** The identity's root public key. The
+  _only_ trusted element in the URL: any data served for this address must
+  present a signature chain terminating at `root`, or it is discarded. The name
+  is self-certifying - given `root`, you can verify content from anyone, with no
+  trusted host.
+- **The origin - provenance and preferred first contact.** The node that minted
+  the URL: minting is itself proof the node was alive at t=0, so it is the
+  single best liveness bet and gets tried _first_ - and, unlike the old `nodeID`
+  slot, it is **clickable**. A consumer with no ringtome anywhere follows it
+  like any link and reads through that node's public face (Public Means Public);
+  a ringtome-aware consumer may instead **re-home** the path at its own lens.
+  One URL serves both audiences, which the scheme served neither of.
+- **`?via=` - reachability.** An unordered, best-effort set of additional
+  pubkeys offering more discovery entry points so resolution does not hinge on
+  any one node. A via key may be an **identity leaf** of the target (the
+  preferred form, settled 2026-08-07: mint the ~10 most-recently-active leaves,
+  ranked by serving-record freshness - each resolves through a leaf-signed
+  serving record carrying its root binding, checkable against the resolver's
+  revocation memory), a **friend's identity root** ("you can find me through
+  Alice": resolve their rendezvous, ask their nodes), or a bare **node key**
+  (the original form, transport-layer, kept for compatibility). With the target
+  root itself resolvable via the announce, vias as a whole demote from
+  load-bearing to accelerant. Hints are **keys, never addresses** - a key
+  delegates freshness to the DHT (self-healing while its owner is online); an
+  address would freeze a routing snapshot into the string and rot. Never
+  trusted; verified against `root` on arrival and discarded on failure.
 
 ### The prefix gets its name: `/id/` (settled 2026-08-01)
 
-The `…` in the template above is the literal path prefix **`/id/`**, identical on every node:
+The `…` in the template above is the literal path prefix **`/id/`**, identical
+on every node:
 
 ```
 https://<node>/id/<root>/<path>[?via=<key>[,<key>…]]
 ```
 
-- **Universal, so re-homing stays mechanical.** The re-homer (the paste-time origin-strip, generalized)
-  recognizes identity-rooted paths by this prefix at any origin - no sniffing key-shaped segments, and the root's
-  text encoding can evolve behind it. It also keeps `/` clean for whatever else the node serves.
-- **The SPA serves there, and the session is the lens.** For a logged-in member, `/id/<root>/…` renders in the
-  console chrome, dressed by _their_ lens: contact name in the title bar, follow/vouch controls, trust context,
-  the what-I-know-about-them panel writing to their own private chains. The dressing rides the session, never the
-  URL - so the address bar on a person's page is _legitimately shareable as-is_, origin-as-provenance included.
-  The only place "copy what's in the address bar" is safe is the place where the URL names someone else. An
-  anonymous visitor at the same path gets one of the gateway's three answers (Moderation, The Web Gateway): the shelf
-  with its disclaimer, the signpost, or the honest dead end; an authenticated member asking about an off-shelf root
-  gets the temporary fetch-and-serve.
-- _(Superseded 2026-09-28 - see "`/ringtome/` replaces `/home`, `/in` and `/id`" below.)_ **`/home` stays identity-free, exactly as ruled.** No foreign root ever appears under `/home`; the console's
-  people surface is a **rolodex** (`/home/people` - your follows, friends, contact names, identity-free at the
-  list level) whose entries navigate _out_ to `/id/<root>`. The structural signal survives unrefined: a `/home`
-  URL is never shareable, an `/id/` URL always is.
-- **The query namespace is reserved, `/id/`-wide.** `?via=` (reachability hints) and the eventual view/log
-  modifier belong to the address layer; resource paths under `/id/` never define their own query parameters.
-  *(Amended 2026-09-28, Curtis: a document's address may carry `?bucket=` - which notebook it was opened in
-  - see "`/ringtome/` replaces `/home`, `/in` and `/id`".)*
-    Costless in practice: signed documents carry the origin-free _path_ form, so query strings never survive into
-    stored references anyway - they are envelope, not address.
-- **Handles alias onto it later** (`/@curtis` → `/id/<root>` on nodes that know the handle) - pointers, never
-  authority, per Naming below.
+- **Universal, so re-homing stays mechanical.** The re-homer (the paste-time
+  origin-strip, generalized) recognizes identity-rooted paths by this prefix at
+  any origin - no sniffing key-shaped segments, and the root's text encoding can
+  evolve behind it. It also keeps `/` clean for whatever else the node serves.
+- **The SPA serves there, and the session is the lens.** For a logged-in member,
+  `/id/<root>/…` renders in the console chrome, dressed by _their_ lens: contact
+  name in the title bar, follow/vouch controls, trust context, the
+  what-I-know-about-them panel writing to their own private chains. The dressing
+  rides the session, never the URL - so the address bar on a person's page is
+  _legitimately shareable as-is_, origin-as-provenance included. The only place
+  "copy what's in the address bar" is safe is the place where the URL names
+  someone else. An anonymous visitor at the same path gets one of the gateway's
+  three answers (Moderation, The Web Gateway): the shelf with its disclaimer,
+  the signpost, or the honest dead end; an authenticated member asking about an
+  off-shelf root gets the temporary fetch-and-serve.
+- _(Superseded 2026-09-28 - see "`/ringtome/` replaces `/home`, `/in` and `/id`"
+  below.)_ **`/home` stays identity-free, exactly as ruled.** No foreign root
+  ever appears under `/home`; the console's people surface is a **rolodex**
+  (`/home/people` - your follows, friends, contact names, identity-free at the
+  list level) whose entries navigate _out_ to `/id/<root>`. The structural
+  signal survives unrefined: a `/home` URL is never shareable, an `/id/` URL
+  always is.
+- **The query namespace is reserved, `/id/`-wide.** `?via=` (reachability hints)
+  and the eventual view/log modifier belong to the address layer; resource paths
+  under `/id/` never define their own query parameters. *(Amended 2026-09-28,
+  Curtis: a document's address may carry `?bucket=` - which notebook it was
+  opened in
+  - see "`/ringtome/` replaces `/home`, `/in` and `/id`".)* Costless in
+    practice: signed documents carry the origin-free _path_ form, so query
+    strings never survive into stored references anyway - they are envelope, not
+    address.
+- **Handles alias onto it later** (`/@curtis` → `/id/<root>` on nodes that know
+  the handle) - pointers, never authority, per Naming below.
 
 ### `/ringtome/` replaces `/home`, `/in` and `/id` (Curtis, 2026-09-28; built 2026-09-28)
 
-**The problem it answers.** A post's address (`/id/<root>/post/<doc>`) pasted into any text box stayed
-plain text: the paste rule stripped our own origin, and marquee only unfolds a line that is a whole
-`scheme://` URL, so it rendered as a long unreadable path - not even a link. A link from another node
-unfolded, but through the generic OpenGraph fetcher, which drew the _author's_ card, not the post. There
-was no copy-link on a feed card, a post or a chat line. And a private note linking another private note
-published the link verbatim (a cozy `/in/…` path), which on the post resolves against the _reader's_
-notebooks - nothing, or the wrong page - even after the target is itself published.
+**The problem it answers.** A post's address (`/id/<root>/post/<doc>`) pasted
+into any text box stayed plain text: the paste rule stripped our own origin, and
+marquee only unfolds a line that is a whole `scheme://` URL, so it rendered as a
+long unreadable path - not even a link. A link from another node unfolded, but
+through the generic OpenGraph fetcher, which drew the _author's_ card, not the
+post. There was no copy-link on a feed card, a post or a chat line. And a
+private note linking another private note published the link verbatim (a cozy
+`/in/…` path), which on the post resolves against the _reader's_ notebooks -
+nothing, or the wrong page - even after the target is itself published.
 
-**The ruling.** Every address the app mints, and every address its URL bar shows, is one grammar under
-one prefix that can only be us:
+**The ruling.** Every address the app mints, and every address its URL bar
+shows, is one grammar under one prefix that can only be us:
 
 ```
 https://<any origin>/ringtome/user/<root>                          a person
@@ -1922,303 +2489,389 @@ https://<any origin>/ringtome/user/<root>/room/<doc>[/line/<hash>] a chat room, 
 https://<any origin>/ringtome/<app>[/…]                            the console's apps (launcher: /ringtome)
 ```
 
-`<root>` is the **short form**: bare base58, no checksum words (44 characters); the resolver still
-accepts hex and the worded form. `<doc>` is the 32-hex document id. `?via=` stays the address layer's.
-`user` is reserved under `/ringtome/`: no app may take it.
+`<root>` is the **short form**: bare base58, no checksum words (44 characters);
+the resolver still accepts hex and the worded form. `<doc>` is the 32-hex
+document id. `?via=` stays the address layer's. `user` is reserved under
+`/ringtome/`: no app may take it.
 
-- **The origin is a lens, never trusted, and the marker makes that mechanical.** `/id/` could appear on
-  any site; `/ringtome/` announces itself. Any Ringtome renderer seeing `/ringtome/…` at any origin
-  **rehomes it at render**: the link drawn, and the card fetched, are the reader's own node's. A link
-  copied from `http://localhost:8374/…` inside a public post works for every reader. Resolution is by
-  key (root and document id), and signatures prove what arrives, so a hostile origin costs nothing.
-- **The URL bar is the copy source.** Posts, people, rooms and documents navigate at their `/ringtome/`
-  addresses, so "copy the address bar" is always right; a copy button on feed cards, posts, chat lines
-  and the editor copies exactly that (the desktop app has no address bar). A copy mints the node's
+- **The origin is a lens, never trusted, and the marker makes that mechanical.**
+  `/id/` could appear on any site; `/ringtome/` announces itself. Any Ringtome
+  renderer seeing `/ringtome/…` at any origin **rehomes it at render**: the link
+  drawn, and the card fetched, are the reader's own node's. A link copied from
+  `http://localhost:8374/…` inside a public post works for every reader.
+  Resolution is by key (root and document id), and signatures prove what
+  arrives, so a hostile origin costs nothing.
+- **The URL bar is the copy source.** Posts, people, rooms and documents
+  navigate at their `/ringtome/` addresses, so "copy the address bar" is always
+  right; a copy button on feed cards, posts, chat lines and the editor copies
+  exactly that (the desktop app has no address bar). A copy mints the node's
   public URL when it has one, and its own origin otherwise.
-- **Stored text keeps the origin (the paste strip goes).** A whole URL on its own line is marquee's
-  turbolink sugar, and it still opens in a reader that is not ours. _Supersedes_ "signed documents carry
-  the origin-free path" above: render-time rehoming does the strip's job without rewriting what the
-  author pasted. Residual: a desktop app's links carry `localhost`, dead outside Ringtome (Discord,
-  email) until there is a public gateway to mint against.
-- **The cozy `/home` and `/in` paths are discarded** (Curtis: "everything uses the complicated ugly
-  paths - we're essentially replacing 'home' (which could be any site) with 'ringtome' (which can be only
-  us)"). _Supersedes_ "_Local addresses: three floors_" and "`/home` stays identity-free": a private
-  document now has an address that names you and looks shareable - and it is safe to share, because
-  anyone else gets the private placeholder below. Documents already hold `/home/…` and `/in/…` links in
-  their bodies (drag-to-link), and rewriting synced text in place would fight the merge, so the old
-  paths **redirect** to their `/ringtome/` form forever; nothing mints them. `/id/…` is likewise an alias
-  that redirects: published bodies carry `/id/<root>/docs/<twin>/body/…` picture paths inside signed
-  documents, which can never change.
+- **Stored text keeps the origin (the paste strip goes).** A whole URL on its
+  own line is marquee's turbolink sugar, and it still opens in a reader that is
+  not ours. _Supersedes_ "signed documents carry the origin-free path" above:
+  render-time rehoming does the strip's job without rewriting what the author
+  pasted. Residual: a desktop app's links carry `localhost`, dead outside
+  Ringtome (Discord, email) until there is a public gateway to mint against.
+- **The cozy `/home` and `/in` paths are discarded** (Curtis: "everything uses
+  the complicated ugly paths - we're essentially replacing 'home' (which could
+  be any site) with 'ringtome' (which can be only us)"). _Supersedes_ "_Local
+  addresses: three floors_" and "`/home` stays identity-free": a private
+  document now has an address that names you and looks shareable - and it is
+  safe to share, because anyone else gets the private placeholder below.
+  Documents already hold `/home/…` and `/in/…` links in their bodies
+  (drag-to-link), and rewriting synced text in place would fight the merge, so
+  the old paths **redirect** to their `/ringtome/` form forever; nothing mints
+  them. `/id/…` is likewise an alias that redirects: published bodies carry
+  `/id/<root>/docs/<twin>/body/…` picture paths inside signed documents, which
+  can never change.
 
-**One resolver** takes `/ringtome/user/<root>/{post,doc}/<doc>` - a wrong kind still lands:
+**One resolver** takes `/ringtome/user/<root>/{post,doc}/<doc>` - a wrong kind
+still lands:
 
-1. the reader holds the document (it is theirs, or public and carried here): open it, or draw its card;
-2. one of `<root>`'s public posts carries **`published_from = <doc>`**: that post;
-3. otherwise **"(THIS DOCUMENT IS PRIVATE)"** - the same answer whether the document is private or
-   never existed.
+1. the reader holds the document (it is theirs, or public and carried here):
+   open it, or draw its card;
+2. one of `<root>`'s public posts carries **`published_from = <doc>`**: that
+   post;
+3. otherwise **"(THIS DOCUMENT IS PRIVATE)"** - the same answer whether the
+   document is private or never existed.
 
-A reader's node that does not carry `<root>` asks the persona's node, by the ladder below, as a post
-peek already does.
+A reader's node that does not carry `<root>` asks the persona's node, by the
+ladder below, as a post peek already does.
 
-**The private-to-public map: `published_from`.** Publishing already records `published_as` (note → post)
-on the private note, which no stranger can read. Publishing now also writes the reverse as a **public
-label on the post**, `published_from = <note id>` - an ordinary signed annotation, riding the chain to
-every node that carries the persona; no wire change (Curtis: acceptable). So a published post that
-links a private note shows the placeholder _until that note is published_, and then resolves on its own,
-with nothing republished. What it reveals: that this post came from note X - a random 128-bit id nobody
-has except from a link its author already gave them.
+**The private-to-public map: `published_from`.** Publishing already records
+`published_as` (note → post) on the private note, which no stranger can read.
+Publishing now also writes the reverse as a **public label on the post**,
+`published_from = <note id>` - an ordinary signed annotation, riding the chain
+to every node that carries the persona; no wire change (Curtis: acceptable). So
+a published post that links a private note shows the placeholder _until that
+note is published_, and then resolves on its own, with nothing republished. What
+it reveals: that this post came from note X - a random 128-bit id nobody has
+except from a link its author already gave them.
 
-**The turbolink.** A ringtome turbolink plugin (doc/turbolinks.js, ahead of the OpenGraph one) matches
-`/ringtome/` at any origin and draws from the resolver: a post card (byline, title, first picture,
-replies), a person card, a room line for members, or the placeholder. Mid-sentence, the same address is
-an ordinary link, drawn rehomed. A post page's own server head becomes the post's (title, picture,
-snippet) rather than the author's, for the unfurlers outside.
+**The turbolink.** A ringtome turbolink plugin (doc/turbolinks.js, ahead of the
+OpenGraph one) matches `/ringtome/` at any origin and draws from the resolver: a
+post card (byline, title, first picture, replies), a person card, a room line
+for members, or the placeholder. Mid-sentence, the same address is an ordinary
+link, drawn rehomed. A post page's own server head becomes the post's (title,
+picture, snippet) rather than the author's, for the unfurlers outside.
 
 **Slices.**
 
-1. _The links_: `/ringtome/` routes on the node and in the app, `/id/` redirecting; the resolver and
-   its turbolink card and placeholder; the paste strip gone; copy buttons.
-2. _The URL bar_: every content page and app at its `/ringtome/` address; `/home` and `/in` redirect.
-3. _The map_: `published_from` at publish; the placeholder turning into the post.
+1. _The links_: `/ringtome/` routes on the node and in the app, `/id/`
+   redirecting; the resolver and its turbolink card and placeholder; the paste
+   strip gone; copy buttons.
+2. _The URL bar_: every content page and app at its `/ringtome/` address;
+   `/home` and `/in` redirect.
+3. _The map_: `published_from` at publish; the placeholder turning into the
+   post.
 4. _The outside_: the post page's own OpenGraph head.
 
-**Settled** (Curtis, 2026-09-28): a notebook's own page is `/ringtome/<app>/notebook/<bucket slug>`; a
-document filed in two notebooks carries `?bucket=` (below), and opens in its first without one.
+**Settled** (Curtis, 2026-09-28): a notebook's own page is
+`/ringtome/<app>/notebook/<bucket slug>`; a document filed in two notebooks
+carries `?bucket=` (below), and opens in its first without one.
 
-**Slice 1, as built** (2026-09-28). `pure/ringtome.js` mints, reads (at any origin) and rehomes the
-grammar; `links.js` is the one place the app mints an address (`personHref`, `postHref`, `docHref`,
-`roomHref`) and its whole shareable URL (`shareUrl`: the declared public URL, else this page's
-origin). The node serves `/ringtome/user/{seg}[/…]` with the persona's head (its `og:url` now the
-short form) and every other `/ringtome/…` path as the app; `/id/{seg}[/…]` pages answer **307** to
-their `/ringtome/` spelling, hints kept - temporary while the grammar is young - and `/id/…/docs/…`
-bytes never move. In the app: the person and post pages live at their `/ringtome/` addresses and
-old `/id/` links bounce there; a `/doc/` address opens your own document where it lives, a public
-post as the post, and otherwise "(THIS DOCUMENT IS PRIVATE)"; a `/room/` address still lands in
-`/home/chat/…` until slice 2 moves the address bar. The `ringtome` turbolink plugin runs ahead of the
-OpenGraph one and draws a card (face, name, title, date, picture) or the placeholder, linking to this
-node's own path, and the raw link beside it is hidden; an ordinary link to a `/ringtome/` address at
-another origin takes the local path when pointed at, focused or clicked. A copy-link chip sits on
-feed cards and posts (just before copy-into-notes), on chat lines, and in the editor; the reader's
-copy-link gives a text document its `/doc/` address. Two departures from the design above:
+**Slice 1, as built** (2026-09-28). `pure/ringtome.js` mints, reads (at any
+origin) and rehomes the grammar; `links.js` is the one place the app mints an
+address (`personHref`, `postHref`, `docHref`, `roomHref`) and its whole
+shareable URL (`shareUrl`: the declared public URL, else this page's origin).
+The node serves `/ringtome/user/{seg}[/…]` with the persona's head (its `og:url`
+now the short form) and every other `/ringtome/…` path as the app;
+`/id/{seg}[/…]` pages answer **307** to their `/ringtome/` spelling, hints
+kept - temporary while the grammar is young - and `/id/…/docs/…` bytes never
+move. In the app: the person and post pages live at their `/ringtome/` addresses
+and old `/id/` links bounce there; a `/doc/` address opens your own document
+where it lives, a public post as the post, and otherwise "(THIS DOCUMENT IS
+PRIVATE)"; a `/room/` address still lands in `/home/chat/…` until slice 2 moves
+the address bar. The `ringtome` turbolink plugin runs ahead of the OpenGraph one
+and draws a card (face, name, title, date, picture) or the placeholder, linking
+to this node's own path, and the raw link beside it is hidden; an ordinary link
+to a `/ringtome/` address at another origin takes the local path when pointed
+at, focused or clicked. A copy-link chip sits on feed cards and posts (just
+before copy-into-notes), on chat lines, and in the editor; the reader's
+copy-link gives a text document its `/doc/` address. Two departures from the
+design above:
 
-- **The paste strip stays for everything but Ringtome addresses.** A pasted self-URL to a picture
-  (`/api/identity/…/body`) must still arrive as a path, because publication bakes only the path
-  form - a `localhost` picture would be an external embed the node refuses to fetch. A
-  `/ringtome/…` URL keeps its origin, as ruled.
-- **A book's page is its own post id** (`/post/<book>/page/<doc>`), as the old `/id/` links were.
+- **The paste strip stays for everything but Ringtome addresses.** A pasted
+  self-URL to a picture (`/api/identity/…/body`) must still arrive as a path,
+  because publication bakes only the path form - a `localhost` picture would be
+  an external embed the node refuses to fetch. A `/ringtome/…` URL keeps its
+  origin, as ruled.
+- **A book's page is its own post id** (`/post/<book>/page/<doc>`), as the old
+  `/id/` links were.
 
-Residuals: a copied post or document address carries no `?via=` yet (a person's does), so a reader's
-node finds a stranger by the directory alone; the placeholder is still words, not yet the map of
-slice 3.
+Residuals: a copied post or document address carries no `?via=` yet (a person's
+does), so a reader's node finds a stranger by the directory alone; the
+placeholder is still words, not yet the map of slice 3.
 
-**`?bucket=`** (Curtis, 2026-09-28). A document can be filed in several notebooks at once, and its
-address alone does not say which it was opened in - so when it is filed in more than one, its address
-carries the notebook in view as a slug, `…/doc/<id>?bucket=family-recipes` (pure/naming.js
-`bucketHint`). A preference, never an authority: honoured only for the document's owner and only while
-it is still filed there; stale or foreign, it is ignored and the document opens in its first notebook
-(`docPlacement`). A notebook's name is private, so the hint must not leak into public text: posts'
-own addresses never carry it, and slice 3's rewrite at publish drops it.
+**`?bucket=`** (Curtis, 2026-09-28). A document can be filed in several
+notebooks at once, and its address alone does not say which it was opened in -
+so when it is filed in more than one, its address carries the notebook in view
+as a slug, `…/doc/<id>?bucket=family-recipes` (pure/naming.js `bucketHint`). A
+preference, never an authority: honoured only for the document's owner and only
+while it is still filed there; stale or foreign, it is ignored and the document
+opens in its first notebook (`docPlacement`). A notebook's name is private, so
+the hint must not leak into public text: posts' own addresses never carry it,
+and slice 3's rewrite at publish drops it.
 
-**Slice 2, as built** (2026-09-28). The signed-in app lives under `/ringtome`: the console at
-`/ringtome`, each app at `/ringtome/<app>`, a notebook's list at `/ringtome/<app>/notebook/<slug>`
-(`bucketHref`), the persona's pages at `/ringtome/persona/…`, a room at its
+**Slice 2, as built** (2026-09-28). The signed-in app lives under `/ringtome`:
+the console at `/ringtome`, each app at `/ringtome/<app>`, a notebook's list at
+`/ringtome/<app>/notebook/<slug>` (`bucketHref`), the persona's pages at
+`/ringtome/persona/…`, a room at its
 `/ringtome/user/<author>/room/<doc>[/line/<hash>]`, and your own document at its
-`/ringtome/user/<you>/doc/<id>` - the shell reads the notebook it opens in off the mirror row and the
-`?bucket=` (`docPlacement`), and the app from that notebook's type, so the documents app itself is
-unchanged. Selecting a document routes to its address (with `?bucket=` when it is filed twice); the
-header's notebook switcher routes to the notebook's list; the everything-view, which is no notebook's,
-keeps `/ringtome/<app>/<id>`. A diff is `…/doc/<id>/diff`. Crosslinks (dragged in, or picked from the
-`[` completion) are written as the document's address, final at once - the cozy-form swap is gone,
-and with it the address-bar dressing and `slugPathFor`. The node's alerts point at a room's address and
-`/ringtome/notifications`. `/home/…` and `/in/…` are **redirects** now (index.js `LegacyHome`, the old
-cozy resolver kept for exactly this), and nothing in the app mints them.
+`/ringtome/user/<you>/doc/<id>` - the shell reads the notebook it opens in off
+the mirror row and the `?bucket=` (`docPlacement`), and the app from that
+notebook's type, so the documents app itself is unchanged. Selecting a document
+routes to its address (with `?bucket=` when it is filed twice); the header's
+notebook switcher routes to the notebook's list; the everything-view, which is
+no notebook's, keeps `/ringtome/<app>/<id>`. A diff is `…/doc/<id>/diff`.
+Crosslinks (dragged in, or picked from the `[` completion) are written as the
+document's address, final at once - the cozy-form swap is gone, and with it the
+address-bar dressing and `slugPathFor`. The node's alerts point at a room's
+address and `/ringtome/notifications`. `/home/…` and `/in/…` are **redirects**
+now (index.js `LegacyHome`, the old cozy resolver kept for exactly this), and
+nothing in the app mints them.
 
-**Slice 3, as built** (2026-09-28). Publishing states `published_from = <note id>` among the labels it
-restates about the post (store.rs `PUBLISHED_FROM`, routes.rs `replicate_annotations`), sealed with the
-post's other labels when the post is sealed. `GET /api/id/{root}/from/{doc}` answers `{ post }` from the
-**author's own** label (annotations.rs `published_from`: annotator and target author both the author),
-under the post read's shelf rule, with one 404 for private and never-was alike. The resolver asks it
-after the post read, so a document address turns into its post the moment the note is published - in
-the turbolink card and at the address alike - and the feed card hides the label as machinery. The
-publish-time link pass (bake.rs `public_links`) takes `?bucket=` off every document address in the
-words and turns an old `/home/<app>/<id>` or `/in/…/<id>` crosslink into the author's document address.
-One departure: the design imagined rewriting a link to a published note into the post's own address at
-publish; it is not needed - the document address resolves to the post through the label, and keeps
-resolving if the note is published only later. Residuals: a post published before today carries no
-`published_from` until its note is published again; a cozy link spelled by titles rather than an id
-cannot be read off the words and is left as written; a reader's node that does not carry the author
-sees the label only once it holds their public lane.
+**Slice 3, as built** (2026-09-28). Publishing states
+`published_from = <note id>` among the labels it restates about the post
+(store.rs `PUBLISHED_FROM`, routes.rs `replicate_annotations`), sealed with the
+post's other labels when the post is sealed. `GET /api/id/{root}/from/{doc}`
+answers `{ post }` from the **author's own** label (annotations.rs
+`published_from`: annotator and target author both the author), under the post
+read's shelf rule, with one 404 for private and never-was alike. The resolver
+asks it after the post read, so a document address turns into its post the
+moment the note is published - in the turbolink card and at the address alike -
+and the feed card hides the label as machinery. The publish-time link pass
+(bake.rs `public_links`) takes `?bucket=` off every document address in the
+words and turns an old `/home/<app>/<id>` or `/in/…/<id>` crosslink into the
+author's document address. One departure: the design imagined rewriting a link
+to a published note into the post's own address at publish; it is not needed -
+the document address resolves to the post through the label, and keeps resolving
+if the note is published only later. Residuals: a post published before today
+carries no `published_from` until its note is published again; a cozy link
+spelled by titles rather than an id cannot be read off the words and is left as
+written; a reader's node that does not carry the author sees the label only once
+it holds their public lane.
 
-**Slice 4, as built** (2026-09-28). A post's address - `…/post/<doc>`, a book's `…/page/<doc>`, and a
-published note's `…/doc/<note>` through its `published_from` - wears the post's own head (idface.rs
-`post_page`): `<title>` the title and the author, `og:title` the title or, untitled, its first nine
-words, `og:description` the author's own description label or the first 200 characters of its words
-(markup dropped, bake.rs `plain_words`), `og:image` the first picture its words embed - a text post
-has no thumbnail of its own, only a picture does (corrected 2026-09-28) - else the author's picture,
-`og:type` article, `og:url` its own short-form address. Only for a persona this node hosts, whose shelf
-it vouches for; a sealed post, a post off the shelf, and anyone else's keep the person's head, so
-nothing sealed reaches an unfurler.
+**Slice 4, as built** (2026-09-28). A post's address - `…/post/<doc>`, a book's
+`…/page/<doc>`, and a published note's `…/doc/<note>` through its
+`published_from` - wears the post's own head (idface.rs `post_page`): `<title>`
+the title and the author, `og:title` the title or, untitled, its first nine
+words, `og:description` the author's own description label or the first 200
+characters of its words (markup dropped, bake.rs `plain_words`), `og:image` the
+first picture its words embed - a text post has no thumbnail of its own, only a
+picture does (corrected 2026-09-28) - else the author's picture, `og:type`
+article, `og:url` its own short-form address. Only for a persona this node
+hosts, whose shelf it vouches for; a sealed post, a post off the shelf, and
+anyone else's keep the person's head, so nothing sealed reaches an unfurler.
 
-**Pictures** (Curtis, 2026-09-28: "copy image address", pasted, stayed a long plain path). A public
-picture - any document's bytes - has a `/ringtome/` address too, `/ringtome/user/<root>/doc/<id>/body
-[/<name.ext>]`, served beside the old `/id/<root>/docs/<id>/body/…` (which signed posts still name,
-and which still serves). Publication mints the new form (bake.rs `public_media_target`), the root in
-short form. A paste that is exactly one picture's address - the new form from any origin, the old one
-or a private `/api/identity/…/body/…` from this node - arrives as the picture, `![](<path>)` (pure/
-portable.js `pastedPicture`), and a `/ringtome/` picture at another origin is drawn from this node.
-**Somebody else's picture: a reference while private, a copy at publish** (Curtis: "reference when
-private, copy at publish"). A post may not lean on a picture a reader's node might not hold, so
-publication copies it into the poster's own public picture - through the external bake's registry,
-worker and progress modal, its bytes read from this node by key (`twin_address`) rather than
-downloaded - and adds its author to the note's provenance, which the post states. The copy is a
-**re-mint, never a re-encode** (bake.rs `foreign_twin`): it is already in the house formats, so its
-bytes, thumbnail and video preview go in as they are, with the format, size, length and loop flag
-off its signed header (the author's chain, else the fragment ledger) - lossless, and the same for a
-picture, a sound and a video, which the crush would have refused. Only the open web is crushed. The poster's own
-public pictures are left as they are. A sealed post refuses to copy, as it refuses the open web: the
-background job cannot seal.
+**Pictures** (Curtis, 2026-09-28: "copy image address", pasted, stayed a long
+plain path). A public picture - any document's bytes - has a `/ringtome/`
+address too, `/ringtome/user/<root>/doc/<id>/body [/<name.ext>]`, served beside
+the old `/id/<root>/docs/<id>/body/…` (which signed posts still name, and which
+still serves). Publication mints the new form (bake.rs `public_media_target`),
+the root in short form. A paste that is exactly one picture's address - the new
+form from any origin, the old one or a private `/api/identity/…/body/…` from
+this node - arrives as the picture, `![](<path>)` (pure/ portable.js
+`pastedPicture`), and a `/ringtome/` picture at another origin is drawn from
+this node. **Somebody else's picture: a reference while private, a copy at
+publish** (Curtis: "reference when private, copy at publish"). A post may not
+lean on a picture a reader's node might not hold, so publication copies it into
+the poster's own public picture - through the external bake's registry, worker
+and progress modal, its bytes read from this node by key (`twin_address`) rather
+than downloaded - and adds its author to the note's provenance, which the post
+states. The copy is a **re-mint, never a re-encode** (bake.rs `foreign_twin`):
+it is already in the house formats, so its bytes, thumbnail and video preview go
+in as they are, with the format, size, length and loop flag off its signed
+header (the author's chain, else the fragment ledger) - lossless, and the same
+for a picture, a sound and a video, which the crush would have refused. Only the
+open web is crushed. The poster's own public pictures are left as they are. A
+sealed post refuses to copy, as it refuses the open web: the background job
+cannot seal.
 
 ### Resolution: the lens runs the ladder
 
-Every dereference is served by _some_ node - the origin as clicked, or your own node after re-homing. A node asked
-for a root it holds simply serves it; asked for one it doesn't, it runs the ladder: try the reference's origin and
-`via` keys first (freshest liveness evidence, in parallel), then resolve `root` itself via the directory as the
-always-correct backstop; verify whatever answers against `root`; ignore anything that fails to chain. A stale or
-malicious non-root element costs at worst a wasted connection attempt, never a wrong answer. A new node bootstraps
-identically: resolve any resolvable element, sync, and thereafter learn the rest through the anti-entropy mesh -
-the URL only has to yield _one_ live first contact. (This is 4S's surface consuming M3.5's directory; the ladder
-is unchanged from the scheme design, only its parser died.)
+Every dereference is served by _some_ node - the origin as clicked, or your own
+node after re-homing. A node asked for a root it holds simply serves it; asked
+for one it doesn't, it runs the ladder: try the reference's origin and `via`
+keys first (freshest liveness evidence, in parallel), then resolve `root` itself
+via the directory as the always-correct backstop; verify whatever answers
+against `root`; ignore anything that fails to chain. A stale or malicious
+non-root element costs at worst a wasted connection attempt, never a wrong
+answer. A new node bootstraps identically: resolve any resolvable element, sync,
+and thereafter learn the rest through the anti-entropy mesh - the URL only has
+to yield _one_ live first contact. (This is 4S's surface consuming M3.5's
+directory; the ladder is unchanged from the scheme design, only its parser
+died.)
 
 ### Graceful degradation: a URL degrades to its path
 
-Every shorter form is valid, and shorter is what a URL becomes as its context rots:
+Every shorter form is valid, and shorter is what a URL becomes as its context
+rots:
 
-- `/…/<root>/path` (origin-relative) — minimal, always correct; **the form signed documents carry** (a document
-  must never bake in an origin - the paste-time rewrite enforces it; see Content Markup).
-- `https://<node>/…/<root>/path` — + provenance and a clickable first contact; the natural long-lived share.
-- `https://<node>/…/<root>/path?via=k1,k2` — + fresh reachability; the just-minted, immediately-shared form (chat,
-  a QR at a meetup - which now opens on any phone), commonly one hop with no DHT round-trip at all.
+- `/…/<root>/path` (origin-relative) — minimal, always correct; **the form
+  signed documents carry** (a document must never bake in an origin - the
+  paste-time rewrite enforces it; see Content Markup).
+- `https://<node>/…/<root>/path` — + provenance and a clickable first contact;
+  the natural long-lived share.
+- `https://<node>/…/<root>/path?via=k1,k2` — + fresh reachability; the
+  just-minted, immediately-shared form (chat, a QR at a meetup - which now opens
+  on any phone), commonly one hop with no DHT round-trip at all.
 
-A dead origin or rotted hints never break the URL: a ringtome-aware consumer **re-homes** it - recognizes the
-identity-rooted path at any origin, strips the origin, re-roots at its own lens (the shipped paste-time
-origin-strip, generalized) - and the always-correct path remains. Bootstrap survives whole: a fresh node handed
-the full URL may ignore everything but `root` and resolve from the directory. The URL only gets slower or less
-clickable, never wrong. This is the intended failure mode.
+A dead origin or rotted hints never break the URL: a ringtome-aware consumer
+**re-homes** it - recognizes the identity-rooted path at any origin, strips the
+origin, re-roots at its own lens (the shipped paste-time origin-strip,
+generalized) - and the always-correct path remains. Bootstrap survives whole: a
+fresh node handed the full URL may ignore everything but `root` and resolve from
+the directory. The URL only gets slower or less clickable, never wrong. This is
+the intended failure mode.
 
 ### View vs. log, identity vs. resource
 
-- **Bare form** (no path) is the **identity URL** - it names the identity itself (a client typically renders the
-  profile).
-- **Path form** (`/profile`, `/posts/<id>`) names a **resource** within the identity.
-- By default a resource resolves to the node's **reconciled view** (the merged, current-state object). The
-  underlying IM-AOL entry streams are available as an explicit option (e.g. a log/raw modifier), for consumers that
-  want to verify or re-merge themselves rather than trust the server's materialization.
+- **Bare form** (no path) is the **identity URL** - it names the identity itself
+  (a client typically renders the profile).
+- **Path form** (`/profile`, `/posts/<id>`) names a **resource** within the
+  identity.
+- By default a resource resolves to the node's **reconciled view** (the merged,
+  current-state object). The underlying IM-AOL entry streams are available as an
+  explicit option (e.g. a log/raw modifier), for consumers that want to verify
+  or re-merge themselves rather than trust the server's materialization.
 
 ### Costs to keep in mind
 
-- **Verbosity is a privacy dial.** More hints reveal more of which keys belong to one identity (a linkage /
-  enumeration signal). Fine for a public identity being broadcast anyway; a client should **not** auto-populate hints
-  for identities the user treats as pseudonymous - bare-root, or root plus a single fronting-node hint, is the
-  privacy-friendly form.
-- **Length.** (Re-ruled 2026-08-02, reversing the original short-default.) Until the root-directory backstop
-  exists, the hints ARE the ladder: a fast-moving identity survives exactly as long as some listed node answers,
-  and a fleet of friendly nodes going quiet must not strand it. So the minted default is now **up to ten
-  liveliest `via` keys, base58-dressed** (44 chars each against hex's 64 - the denser coat claws back half the
-  cost; node keys get base58 but no words, their audience being nodes). A ~500-char URL is an accepted price for
-  liveness; the privacy dial above still governs WHICH identities auto-populate hints at all.
+- **Verbosity is a privacy dial.** More hints reveal more of which keys belong
+  to one identity (a linkage / enumeration signal). Fine for a public identity
+  being broadcast anyway; a client should **not** auto-populate hints for
+  identities the user treats as pseudonymous - bare-root, or root plus a single
+  fronting-node hint, is the privacy-friendly form.
+- **Length.** (Re-ruled 2026-08-02, reversing the original short-default.) Until
+  the root-directory backstop exists, the hints ARE the ladder: a fast-moving
+  identity survives exactly as long as some listed node answers, and a fleet of
+  friendly nodes going quiet must not strand it. So the minted default is now
+  **up to ten liveliest `via` keys, base58-dressed** (44 chars each against
+  hex's 64 - the denser coat claws back half the cost; node keys get base58 but
+  no words, their audience being nodes). A ~500-char URL is an accepted price
+  for liveness; the privacy dial above still governs WHICH identities
+  auto-populate hints at all.
 
 ### Naming: Human-Readable Names Are Pointers, Never Authority
 
-A raw identity address is unspeakable by design - a ~50-char root key is the price of a self-certifying, decentralized
-name (this is Zooko's Triangle: secure + decentralized + human-meaningful, pick two; the URL picks the first two).
-Human-readable names are a layer _on top_, and the invariant that keeps them safe is absolute: **a human name only
-answers "which root?"; `root` remains the sole authority; resolution always ends in sync-and-verify-against-root.**
-Whoever answers "which root" can misdirect first contact, but can never forge content, impersonate an established
-root, or deceive people who already know the root - so naming lives entirely outside the security core. The raw
-address is the infohash-equivalent; names are how you find it.
+A raw identity address is unspeakable by design - a ~50-char root key is the
+price of a self-certifying, decentralized name (this is Zooko's Triangle:
+secure + decentralized + human-meaningful, pick two; the URL picks the first
+two). Human-readable names are a layer _on top_, and the invariant that keeps
+them safe is absolute: **a human name only answers "which root?"; `root` remains
+the sole authority; resolution always ends in sync-and-verify-against-root.**
+Whoever answers "which root" can misdirect first contact, but can never forge
+content, impersonate an established root, or deceive people who already know the
+root - so naming lives entirely outside the security core. The raw address is
+the infohash-equivalent; names are how you find it.
 
 Three tiers, by technical bar:
 
-- **Indexes (mass-market).** A directory site maps `some-name -> root`, exactly like a BitTorrent
-  tracker maps a name to an infohash. Near-zero bar: type a name, register a pointer. Ringtome may run a reference
-  index (`pub.ringtome.ca`); others can run their own; they **compete and are disposable** - an index can go down
-  while the network stays up (thepiratebay vs. BitTorrent), because the protocol never depends on one. An index is
-  **non-authoritative by construction**: it can lie about which root a name points at (bait-and-switch on first
-  contact), but nothing more, so it must present mappings as "this name points here," never "verified to be them."
-- **DNS-anchored domains (power users / institutions).** `curtis.lassam.net` doubles as name and trust anchor, but
-  gates on domain ownership - an enthusiast's tool, not a mass-market one. The binding must be **bidirectional**:
-  the domain publishes the root, _and_ the identity's profile DNS-pin claims the domain; a resolver accepts only if
-  both agree (otherwise anyone could publish a record claiming your root).
-- **Contact names (post-first-contact, conversational).** Once you have met an identity, your client files its root
-  under a local name ("Eve") and you never touch the URL again. Secure + meaningful, sacrificing _global_ (my "Eve"
-  is not yours). See Display Names and Contact Names for the full model; this is how humans refer to each other
-  anyway.
+- **Indexes (mass-market).** A directory site maps `some-name -> root`, exactly
+  like a BitTorrent tracker maps a name to an infohash. Near-zero bar: type a
+  name, register a pointer. Ringtome may run a reference index
+  (`pub.ringtome.ca`); others can run their own; they **compete and are
+  disposable** - an index can go down while the network stays up (thepiratebay
+  vs. BitTorrent), because the protocol never depends on one. An index is
+  **non-authoritative by construction**: it can lie about which root a name
+  points at (bait-and-switch on first contact), but nothing more, so it must
+  present mappings as "this name points here," never "verified to be them."
+- **DNS-anchored domains (power users / institutions).** `curtis.lassam.net`
+  doubles as name and trust anchor, but gates on domain ownership - an
+  enthusiast's tool, not a mass-market one. The binding must be
+  **bidirectional**: the domain publishes the root, _and_ the identity's profile
+  DNS-pin claims the domain; a resolver accepts only if both agree (otherwise
+  anyone could publish a record claiming your root).
+- **Contact names (post-first-contact, conversational).** Once you have met an
+  identity, your client files its root under a local name ("Eve") and you never
+  touch the URL again. Secure + meaningful, sacrificing _global_ (my "Eve" is
+  not yours). See Display Names and Contact Names for the full model; this is
+  how humans refer to each other anyway.
 
-**The one piece of this that is protocol, not ecosystem:** clients **pin a name -> root mapping on first
-resolution** and treat a later change as an _event to surface_, not a silent redirect (monotonic memory, applied to
-names). This is what stops a compromised index from hijacking an established relationship - the index is for first
-contact only; after that the client remembers the root. Confusable-name attacks ("cvrtis") are further caught by the
-**root-derived identicon** (the name may collide; the image will not) and by showing trust-graph context rather than
-letting the index adjudicate truth. Everything else about indexes is "someone builds a website," and the doc means
-that literally - it is liberating, not hand-waving.
+**The one piece of this that is protocol, not ecosystem:** clients **pin a name
+-> root mapping on first resolution** and treat a later change as an _event to
+surface_, not a silent redirect (monotonic memory, applied to names). This is
+what stops a compromised index from hijacking an established relationship - the
+index is for first contact only; after that the client remembers the root.
+Confusable-name attacks ("cvrtis") are further caught by the **root-derived
+identicon** (the name may collide; the image will not) and by showing
+trust-graph context rather than letting the index adjudicate truth. Everything
+else about indexes is "someone builds a website," and the doc means that
+literally - it is liberating, not hand-waving.
 
 ### The Speakable Identicon (settled 2026-08-01)
 
-The identicon made audible: a root renders for human transport as **two checksum words and the key in base58** -
-`sway-broke-AwTyvw9SPjfiJ4xvMfwDKZeHQH6N1mw3LQtoYtJNPfqU` - the canonical mint everywhere humans see a root (the
-`/id/` segment, the persona page, rolodex, tombstones and signposts). "I'm sway-broke" survives a phone call, a
-sticky note, and a conversation in a way neither hex nor a picture does. The pieces, all wire format:
+The identicon made audible: a root renders for human transport as **two checksum
+words and the key in base58** -
+`sway-broke-AwTyvw9SPjfiJ4xvMfwDKZeHQH6N1mw3LQtoYtJNPfqU` - the canonical mint
+everywhere humans see a root (the `/id/` segment, the persona page, rolodex,
+tombstones and signposts). "I'm sway-broke" survives a phone call, a sticky
+note, and a conversation in a way neither hex nor a picture does. The pieces,
+all wire format:
 
-- **Words**: the first two 4-byte windows of `blake3(root)`, big-endian, each mod 1,296 into a **pinned
-  wordlist** (`wordlist/eff_short_1.txt` - the EFF short list, chosen for unique three-letter prefixes, no
-  homophones, deliberately inoffensive; one amendment: the hyphen-bearing "yo-yo" slot is "yonder"). Words are
-  addressed by _index_, so the list is frozen like the entry format: never reorder, never remove, never improve.
-- **Key**: the 32 bytes in **base58btc** (~44 chars) - `0OIl` dropped because this string exists to survive
-  handwriting and dictation. Length is a wash against hex (~61 vs 64 with the words on); the win is cognitive.
-- **Grammar**: worded form, bare base58, and bare hex-64 all parse; the worded form's checksum is **verified and
-  a mismatch refuses loudly** (with the true words in hand, so the UI can say "did you mean") - lenient
-  acceptance would train everyone to ignore the words, which deletes the feature. `?via=` keys stay raw: their
-  audience is nodes.
-- **Twenty-one bits is recognition, never authority.** Grinding a fresh key to collide two words costs minutes,
-  so the words are how friends recognize an address and how a paste proves it arrived whole - never how a
-  stranger verifies anything. Same family, same rule as every human-facing name above: pointers; the root
-  decides; pin on first resolution; nobody ever promotes the words.
+- **Words**: the first two 4-byte windows of `blake3(root)`, big-endian, each
+  mod 1,296 into a **pinned wordlist** (`wordlist/eff_short_1.txt` - the EFF
+  short list, chosen for unique three-letter prefixes, no homophones,
+  deliberately inoffensive; one amendment: the hyphen-bearing "yo-yo" slot is
+  "yonder"). Words are addressed by _index_, so the list is frozen like the
+  entry format: never reorder, never remove, never improve.
+- **Key**: the 32 bytes in **base58btc** (~44 chars) - `0OIl` dropped because
+  this string exists to survive handwriting and dictation. Length is a wash
+  against hex (~61 vs 64 with the words on); the win is cognitive.
+- **Grammar**: worded form, bare base58, and bare hex-64 all parse; the worded
+  form's checksum is **verified and a mismatch refuses loudly** (with the true
+  words in hand, so the UI can say "did you mean") - lenient acceptance would
+  train everyone to ignore the words, which deletes the feature. `?via=` keys
+  stay raw: their audience is nodes.
+- **Twenty-one bits is recognition, never authority.** Grinding a fresh key to
+  collide two words costs minutes, so the words are how friends recognize an
+  address and how a paste proves it arrived whole - never how a stranger
+  verifies anything. Same family, same rule as every human-facing name above:
+  pointers; the root decides; pin on first resolution; nobody ever promotes the
+  words.
 
-Implementation is twinned - `js/speakable.js` and `src/speakable.rs` - pinned bit-compatible by shared goldens
-(integration/test/pure/speakable.cjs), the entry-format vector discipline at miniature scale.
+Implementation is twinned - `js/speakable.js` and `src/speakable.rs` - pinned
+bit-compatible by shared goldens (integration/test/pure/speakable.cjs), the
+entry-format vector discipline at miniature scale.
 
 ### Slugs, Views, and the Personal Address Bar (settled 2026-07-09)
 
-Raw addresses are cryptographic and ugly (`…/3f9a.../public/8c2e...`); humans get two
-readability layers, one personal and one author-owned - both pointers, never authority (per
-Naming, above):
+Raw addresses are cryptographic and ugly (`…/3f9a.../public/8c2e...`); humans
+get two readability layers, one personal and one author-owned - both pointers,
+never authority (per Naming, above):
 
-- **Personal display names in URLs.** The client renders contact names in the address bar -
-  `…/jeff/public/...` - a personal-only DNS. The load-bearing rule is
-  **canonical-on-share**: aliases are display-only; copying or sharing always serializes the
-  full identity form. Your local "jeff" never leaks into a context where jeff is someone else.
-- **Slugs: an author-owned mutable namespace over immutable content.** A public LWW register
-  maps slug → doc_id, so `…/jeff/public/my-thoughts-on-cheese` resolves through the
-  author's slug register to a document. Because the mapping is a _register_, retargeting is
-  invisible to readers: slug an essay today, repoint it at a taxonomy when it becomes a series
-  tomorrow - inbound links survive reorganization without redirects, something the web never
-  managed. Slugs are author-scoped, so there is no global namespace to squat (same posture as
-  contact names).
-- **Resolution behaviors are author-declared.** A slug pointing at a plain document renders it.
-  A slug pointing at a _taxonomy_ consults the taxonomy's own `default_view` field: `index`
-  (the auto-generated directory listing - the cozy Apache move) or `latest` (the blog move) -
-  the author's choice, versioned like everything else. Readers override with **path-segment
-  views**: `.../my-thoughts-on-cheese/latest`, `/earliest`, `/root`, `/index` (path segments,
-  not `:suffixes` - the colon is already spent on identity hints). The view vocabulary is the
-  same family as Marquee's `:::computed` roles: one set of taxonomy-view functions consumed by
-  URLs and page widgets alike.
-- **Liveness composes as expected**: a slug URL is maximally live (register → taxonomy →
-  materialized head, every link mutable by the author); pinning any step means using the id or
-  hash form for that step. The live/pinned duality, end to end.
+- **Personal display names in URLs.** The client renders contact names in the
+  address bar - `…/jeff/public/...` - a personal-only DNS. The load-bearing rule
+  is **canonical-on-share**: aliases are display-only; copying or sharing always
+  serializes the full identity form. Your local "jeff" never leaks into a
+  context where jeff is someone else.
+- **Slugs: an author-owned mutable namespace over immutable content.** A public
+  LWW register maps slug → doc_id, so `…/jeff/public/my-thoughts-on-cheese`
+  resolves through the author's slug register to a document. Because the mapping
+  is a _register_, retargeting is invisible to readers: slug an essay today,
+  repoint it at a taxonomy when it becomes a series tomorrow - inbound links
+  survive reorganization without redirects, something the web never managed.
+  Slugs are author-scoped, so there is no global namespace to squat (same
+  posture as contact names).
+- **Resolution behaviors are author-declared.** A slug pointing at a plain
+  document renders it. A slug pointing at a _taxonomy_ consults the taxonomy's
+  own `default_view` field: `index` (the auto-generated directory listing - the
+  cozy Apache move) or `latest` (the blog move) - the author's choice, versioned
+  like everything else. Readers override with **path-segment views**:
+  `.../my-thoughts-on-cheese/latest`, `/earliest`, `/root`, `/index` (path
+  segments, not `:suffixes` - the colon is already spent on identity hints). The
+  view vocabulary is the same family as Marquee's `:::computed` roles: one set
+  of taxonomy-view functions consumed by URLs and page widgets alike.
+- **Liveness composes as expected**: a slug URL is maximally live (register →
+  taxonomy → materialized head, every link mutable by the author); pinning any
+  step means using the id or hash form for that step. The live/pinned duality,
+  end to end.
 
 ### Resource Namespace and Access Protocol
 
-A path addresses a typed resource, with the public/private axis **first** because it mirrors the sync boundary:
+A path addresses a typed resource, with the public/private axis **first**
+because it mirrors the sync boundary:
 
 ```
 …/<root>/public/name        (LWW-register)
@@ -2227,157 +2880,217 @@ A path addresses a typed resource, with the public/private axis **first** becaus
 …/<root>/private/config     (map of typed fields; self-only)
 ```
 
-- **The prefix is an access namespace, not a folder.** `/public/*` is served across the inter-identity boundary to
-  anyone who can resolve the identity; `/private/*` is **unservable** to non-self requesters as a hard rule - a
-  request for it from anyone outside the identity's own node set returns "not authorized," never the data. Access is
-  legible from the path, not buried in per-field config.
-- **Each leaf declares its CRDT merge type** (LWW-register, set, counter, log-of-entries), and `/public/` itself is
-  a discoverable index so a client can render an unknown identity without hardcoding field names.
-- **Keep it flat.** `/public/name`, `/public/bio`, `/public/links`, `/private/config` is plenty for v1. Deep
-  document trees (`/public/profile/contact/email/...`) are the MongoDB-document trap wearing a URL; resist until a
-  feature demands depth.
+- **The prefix is an access namespace, not a folder.** `/public/*` is served
+  across the inter-identity boundary to anyone who can resolve the identity;
+  `/private/*` is **unservable** to non-self requesters as a hard rule - a
+  request for it from anyone outside the identity's own node set returns "not
+  authorized," never the data. Access is legible from the path, not buried in
+  per-field config.
+- **Each leaf declares its CRDT merge type** (LWW-register, set, counter,
+  log-of-entries), and `/public/` itself is a discoverable index so a client can
+  render an unknown identity without hardcoding field names.
+- **Keep it flat.** `/public/name`, `/public/bio`, `/public/links`,
+  `/private/config` is plenty for v1. Deep document trees
+  (`/public/profile/contact/email/...`) are the MongoDB-document trap wearing a
+  URL; resist until a feature demands depth.
 
-**Transport: request/response over QUIC, but not HTTP's assumptions.** Reads are modeled as HTTP-like RPC over iroh
-bidirectional streams (open stream, write request, read response) - familiar and correct for point reads. But four
-HTTP assumptions are false here and each is load-bearing:
+**Transport: request/response over QUIC, but not HTTP's assumptions.** Reads are
+modeled as HTTP-like RPC over iroh bidirectional streams (open stream, write
+request, read response) - familiar and correct for point reads. But four HTTP
+assumptions are false here and each is load-bearing:
 
-- **No origin server.** The URL is locationless; a read is "ask _some_ replica (resolved via pkarr), verify its
-  answer against `root`," not "fetch from the authority." Trust comes from the signature chain, not from who answered.
-- **Responses are signed data, not authoritative bytes.** Any replica can answer, so a response is IM-AOL entries
-  (or a reconciled view) the client verifies chain-to-root itself. This is the view-vs-log choice: a trusting client
-  accepts the responder's reconciled view; a paranoid one requests the log and re-merges.
-- **Auth is by key, mutual, at the transport.** iroh authenticates _both_ endpoints by node key, so "may this
-  requester read `/private/*`?" is answered by the connection itself - is the peer's node key part of my identity's
-  tree? No cookies or tokens; the transport identity _is_ the authorization. (This is a place QUIC is better than
-  HTTP, where the client is normally anonymous.)
-- **The important verb is sync, not fetch.** One-shot request/response fits "show me `/public/name` now," but
-  ongoing replication ("keep me current on this identity's posts") is anti-entropy over long-lived bidirectional
-  streams - a subscribe/stream shape QUIC suits and HTTP is awkward at. There are two interaction styles: read-as-RPC
-  and sync-as-stream; do not force the second into the first.
+- **No origin server.** The URL is locationless; a read is "ask _some_ replica
+  (resolved via pkarr), verify its answer against `root`," not "fetch from the
+  authority." Trust comes from the signature chain, not from who answered.
+- **Responses are signed data, not authoritative bytes.** Any replica can
+  answer, so a response is IM-AOL entries (or a reconciled view) the client
+  verifies chain-to-root itself. This is the view-vs-log choice: a trusting
+  client accepts the responder's reconciled view; a paranoid one requests the
+  log and re-merges.
+- **Auth is by key, mutual, at the transport.** iroh authenticates _both_
+  endpoints by node key, so "may this requester read `/private/*`?" is answered
+  by the connection itself - is the peer's node key part of my identity's tree?
+  No cookies or tokens; the transport identity _is_ the authorization. (This is
+  a place QUIC is better than HTTP, where the client is normally anonymous.)
+- **The important verb is sync, not fetch.** One-shot request/response fits
+  "show me `/public/name` now," but ongoing replication ("keep me current on
+  this identity's posts") is anti-entropy over long-lived bidirectional
+  streams - a subscribe/stream shape QUIC suits and HTTP is awkward at. There
+  are two interaction styles: read-as-RPC and sync-as-stream; do not force the
+  second into the first.
 
 ---
 
 ## Content Markup: Fanciful, Constrained, Never HTML
 
-User-authored content (pages, posts, profiles) is written in a **custom, deliberately weak markup language** -
-([Marquee](https://github.com/cube-drone/marqueemarkup)) a closed vocabulary in the spirit of BBCode/gemtext,
-with the clumsy expressiveness of the Old Internet as an explicit
-design goal. Users never author real HTML, and clients never render user bytes as HTML. This is a security decision
-first and an aesthetic one second:
+User-authored content (pages, posts, profiles) is written in a **custom,
+deliberately weak markup language** -
+([Marquee](https://github.com/cube-drone/marqueemarkup)) a closed vocabulary in
+the spirit of BBCode/gemtext, with the clumsy expressiveness of the Old Internet
+as an explicit design goal. Users never author real HTML, and clients never
+render user bytes as HTML. This is a security decision first and an aesthetic
+one second:
 
-- **User HTML on the node's origin would be the worst vulnerability class this system could have.** The web client's
-  session is what authorizes _signing_. The trust model already concedes "a node that serves your client can become
-  your client" - user-authored HTML served from that origin is strictly worse: any _author you view_ could become
-  your client. Script in a viewed page = exfiltrated session = statements signed as the victim, achieved by a
-  stranger posting a page. And "sanitize a safe subset of HTML" is a graveyard - MySpace's Samy worm is the
-  canonical, era-appropriate fable. A sanitizer is a blocklist over an adversary's language; a custom markup is an
-  allowlist over ours.
-- **The render rule:** markup blobs are parsed by a strict grammar into an AST of a closed vocabulary, and clients
-  render by constructing UI themselves (DOM nodes, native controls). User bytes are never passed to anything
-  `innerHTML`-shaped. Enforcement lives **at the renderer, never at submission** - signed blobs from strangers
-  arrive via sync, and nothing upstream can be trusted to have validated them - **Every Byte From The Network Is
-  Hostile** (Doctrine), markup included.
-- **The language is [Marquee](https://github.com/cube-drone/marqueemarkup)** - a standalone product (Ringtome is its first embedder,
-  not its owner), MPL-2.0 parsers, CC0 spec. Ringtome consumes it through an **embedder profile**: the language
-  defines what a construct _means_; the profile defines what it may _do_ here.
-- **Links out are free; embeds are baked.** Scheme policy is **embedder profile, never grammar** - Marquee admits
-  regular-web targets (a language that can't link a picture is useless outside Ringtome), and Ringtome's profile
-  decides what they _do_. A link is the reader's choice and is free; an embed is _ingested_ into a local blob at
-  authoring time. **Not Hermetically Sealed** (Doctrine) at the markup layer. Full mechanism: _An Embed Is an
-  Ingest_, below.
-- **Protocol fit: the registry names the codec, never the dialect.** The type is `marquee` - unversioned, meaning
-  no more and no less than "hand these bytes to a Marquee parser." The **dialect version travels in band**
-  (Marquee's own `#!marquee N` line, absent meaning 0), and Ringtome never speaks it. This is forced, not stylistic:
-  markup payloads are content-addressed blobs, and a blob's meaning must not depend on which entry referred to it -
-  a version in the envelope would let the same bytes parse two ways from two referrers, which is a
-  parser-differential manufactured by hand, in the one place this document least wants one. It is also the only
-  version the parser actually reads: an unknown dialect is Marquee's single refusal, and a tag no parser consults is
-  dead metadata inside a signed structure, which is worse than none.
-  **The dividend: new vocabulary is not a wire-format change.** Adding a guestbook widget touches no registry, no
-  version, no protocol - unknown vocabulary _shrugs_ (renders its children as plain content, grants no capability),
-  and that per-construct degradation is a strictly better forward-compatibility mechanism than a per-document
-  version negotiation. Only a grammar change bumps the dialect, and a grammar change is refused rather than skipped.
-  A second markup, if one ever earns its way in, is a second type id - which is what a codec registry is for.
-- **A small closed vocabulary is what keeps multiple clients affordable.** Rendering all of Ringtome correctly means
-  implementing a renderer for a few dozen tags, not embedding a browser. This is what keeps future native, phone,
-  and game-engine clients feasible for small teams (see The Client Story) - it was never true of "arbitrary HTML,
-  good luck."
+- **User HTML on the node's origin would be the worst vulnerability class this
+  system could have.** The web client's session is what authorizes _signing_.
+  The trust model already concedes "a node that serves your client can become
+  your client" - user-authored HTML served from that origin is strictly worse:
+  any _author you view_ could become your client. Script in a viewed page =
+  exfiltrated session = statements signed as the victim, achieved by a stranger
+  posting a page. And "sanitize a safe subset of HTML" is a graveyard -
+  MySpace's Samy worm is the canonical, era-appropriate fable. A sanitizer is a
+  blocklist over an adversary's language; a custom markup is an allowlist over
+  ours.
+- **The render rule:** markup blobs are parsed by a strict grammar into an AST
+  of a closed vocabulary, and clients render by constructing UI themselves (DOM
+  nodes, native controls). User bytes are never passed to anything
+  `innerHTML`-shaped. Enforcement lives **at the renderer, never at
+  submission** - signed blobs from strangers arrive via sync, and nothing
+  upstream can be trusted to have validated them - **Every Byte From The Network
+  Is Hostile** (Doctrine), markup included.
+- **The language is [Marquee](https://github.com/cube-drone/marqueemarkup)** - a
+  standalone product (Ringtome is its first embedder, not its owner), MPL-2.0
+  parsers, CC0 spec. Ringtome consumes it through an **embedder profile**: the
+  language defines what a construct _means_; the profile defines what it may
+  _do_ here.
+- **Links out are free; embeds are baked.** Scheme policy is **embedder profile,
+  never grammar** - Marquee admits regular-web targets (a language that can't
+  link a picture is useless outside Ringtome), and Ringtome's profile decides
+  what they _do_. A link is the reader's choice and is free; an embed is
+  _ingested_ into a local blob at authoring time. **Not Hermetically Sealed**
+  (Doctrine) at the markup layer. Full mechanism: _An Embed Is an Ingest_,
+  below.
+- **Protocol fit: the registry names the codec, never the dialect.** The type is
+  `marquee` - unversioned, meaning no more and no less than "hand these bytes to
+  a Marquee parser." The **dialect version travels in band** (Marquee's own
+  `#!marquee N` line, absent meaning 0), and Ringtome never speaks it. This is
+  forced, not stylistic: markup payloads are content-addressed blobs, and a
+  blob's meaning must not depend on which entry referred to it - a version in
+  the envelope would let the same bytes parse two ways from two referrers, which
+  is a parser-differential manufactured by hand, in the one place this document
+  least wants one. It is also the only version the parser actually reads: an
+  unknown dialect is Marquee's single refusal, and a tag no parser consults is
+  dead metadata inside a signed structure, which is worse than none. **The
+  dividend: new vocabulary is not a wire-format change.** Adding a guestbook
+  widget touches no registry, no version, no protocol - unknown vocabulary
+  _shrugs_ (renders its children as plain content, grants no capability), and
+  that per-construct degradation is a strictly better forward-compatibility
+  mechanism than a per-document version negotiation. Only a grammar change bumps
+  the dialect, and a grammar change is refused rather than skipped. A second
+  markup, if one ever earns its way in, is a second type id - which is what a
+  codec registry is for.
+- **A small closed vocabulary is what keeps multiple clients affordable.**
+  Rendering all of Ringtome correctly means implementing a renderer for a few
+  dozen tags, not embedding a browser. This is what keeps future native, phone,
+  and game-engine clients feasible for small teams (see The Client Story) - it
+  was never true of "arbitrary HTML, good luck."
 
-**Three tiers of expressiveness** - the first two ship; the third may never need to exist:
+**Three tiers of expressiveness** - the first two ship; the third may never need
+to exist:
 
-1. **Static markup** (shipped as Marquee): text, headings, links (identity-rooted paths and pinned web links), blob-hash images, and the
-   shameless tags - marquee, blink, rainbow text, tiled backgrounds, autoplaying MIDI as a media type. The promise
-   is a sandbox with the clumsy charm of Old HTML.
-2. **Interactivity as platform widgets, never user code.** Hit counters, guestbooks, webring navigators,
-   under-construction banners: each is a _tag_ whose behavior is implemented by the client and whose state is
-   implemented by the protocol (a hit counter is a protocol feature wearing a `<counter>` tag). Users compose
-   widgets; they do not script them - the HyperCard move. 90% of the "alive page" feeling at 0% of the
-   code-execution risk. Added one widget at a time, after the v1 core.
-3. **Actual user scripting** (the ActionScript nostalgia): a tiny interpreted language - no network access, no
-   ambient UI access, budgeted execution, explicit capabilities only. The Pico-8 lesson says brutal constraints
-   become a community's aesthetic identity, so this could be wonderful - but it is a whole product in itself.
-   Deferred indefinitely, and possibly forever if the widget vocabulary is good.
+1. **Static markup** (shipped as Marquee): text, headings, links
+   (identity-rooted paths and pinned web links), blob-hash images, and the
+   shameless tags - marquee, blink, rainbow text, tiled backgrounds, autoplaying
+   MIDI as a media type. The promise is a sandbox with the clumsy charm of Old
+   HTML.
+2. **Interactivity as platform widgets, never user code.** Hit counters,
+   guestbooks, webring navigators, under-construction banners: each is a _tag_
+   whose behavior is implemented by the client and whose state is implemented by
+   the protocol (a hit counter is a protocol feature wearing a `<counter>` tag).
+   Users compose widgets; they do not script them - the HyperCard move. 90% of
+   the "alive page" feeling at 0% of the code-execution risk. Added one widget
+   at a time, after the v1 core.
+3. **Actual user scripting** (the ActionScript nostalgia): a tiny interpreted
+   language - no network access, no ambient UI access, budgeted execution,
+   explicit capabilities only. The Pico-8 lesson says brutal constraints become
+   a community's aesthetic identity, so this could be wonderful - but it is a
+   whole product in itself. Deferred indefinitely, and possibly forever if the
+   widget vocabulary is good.
 
 ### An Embed Is an Ingest (settled 2026-07-12; amended 2026-08-06 - the bake moved to the crossing)
 
-The web conflates two gestures that want opposite treatment. **A link is the reader choosing to go somewhere; an
-embed is the author causing the reader's client to fetch.** Ringtome separates them, and treats the second as what
-it actually is: an upload.
+The web conflates two gestures that want opposite treatment. **A link is the
+reader choosing to go somewhere; an embed is the author causing the reader's
+client to fetch.** Ringtome separates them, and treats the second as what it
+actually is: an upload.
 
-- **Links out are free** - no dial, no interstitial, no reveal button. The reader chose to follow it.
-- **A draft references; the crossing bakes.** An embed in a private draft is just a reference: an uploaded image
-  is already a local blob (crushed at upload, epoch-encrypted, embedded as its private-doc URL), and a foreign URL
-  stays foreign in the draft body, rendering live in the author's own browser - the author's fetch of the author's
-  own reference, and nothing stored. The ceremony happens at _publication_: the body is walked with the Marquee
-  reference parser (the AST, never a regex - the markup repo keeps adversarial examples precisely to punish
-  pattern-matching) and every media embed is baked across the membrane. A private media doc decrypts and re-mints
-  as its **public twin** (`published_as`, the same one door as text, one twin reused by every post that embeds
-  it). A foreign URL is downloaded (SSRF-guarded, hard size cap), crushed through the same pipeline uploads take
-  (see Fidelity Caps), and minted public in the background - publish answers "still baking" with per-item progress
-  until every embed can stand, and a failure is an honest tombstone the author retries or edits around. The
-  published body is **rewritten** to the twins; the private draft keeps its links untouched - the crossing mints,
-  never moves. **An embed is still an ingest**: pasting an image URL _is_ an upload, deferred to the crossing -
-  the storage it consumes and the liability it creates are both real.
-- **Video is refused at the crossing, for now** (2026-08-06 scope line, both kinds - private twin and foreign
-  fetch - the tombstone naming it). Revisited when the preview/segment story is designed.
-- **Past the size cap it isn't an embed, it's a link** - but the crossing states this as a refusal, not a silent
-  rewrite: an oversized bake fails with its tombstone, and making it a link is the author's edit. Ringtome
-  declines to fetch-and-bake beyond a ceiling, exactly as every forum since phpBB has declined oversized uploads.
-- **The origin URL survives the bake as provenance, forever - as text, which is free.** The draft body keeps the
-  foreign URL for the draft's life (the reference IS the provenance); the node's bake registry holds (root, url,
-  verdict, when) as the durable record; the public artifact carries the source URL as the media doc's _title_
-  until the header grows a real field at the next deliberate wire break (DocHeaderPlain is fixed-arity CBOR). It
-  is attribution (you have just copied someone's picture), it is the "go to original" affordance, and -
-  load-bearing - it is what makes the blob _droppable_ later: **the provenance URL is an epitaph, not a
-  fallback.** When retention drops a blob no live head references, the embed degrades to a placeholder naming
-  where it came from, with a link - rollback is exact for text and best-effort for media (**Immutable Chains ≠
-  Immutable Content**, Doctrine, one level down) - and the renderer must never quietly hotlink the origin instead:
-  that would resurrect every problem the bake exists to solve. The placeholder is what makes dropping the blob a
-  defensible act rather than a data-loss event.
-- **Rich players are the honest exception.** A YouTube or Spotify embed is not bytes we may have; it cannot be
-  baked. Those stay live and third-party, and looking at one tells Google you looked. The onebox card is a
-  click-to-play surface by construction, so nothing phones home until the reader presses play - privacy arriving as
-  a side effect of good page-weight design, which is the only kind anyone leaves switched on.
-- **The bake happens twice, for uploads.** A draft's uploaded image is epoch-encrypted; publication re-mints it as
-  a public blob and signs it, exactly as the prose is - **Copy, Don't Flip** (Doctrine), applied to pictures.
-  Draft original and published image are distinct blobs, independently droppable. (Foreign URLs bake once, at the
-  crossing - there is no draft blob to twin.)
+- **Links out are free** - no dial, no interstitial, no reveal button. The
+  reader chose to follow it.
+- **A draft references; the crossing bakes.** An embed in a private draft is
+  just a reference: an uploaded image is already a local blob (crushed at
+  upload, epoch-encrypted, embedded as its private-doc URL), and a foreign URL
+  stays foreign in the draft body, rendering live in the author's own browser -
+  the author's fetch of the author's own reference, and nothing stored. The
+  ceremony happens at _publication_: the body is walked with the Marquee
+  reference parser (the AST, never a regex - the markup repo keeps adversarial
+  examples precisely to punish pattern-matching) and every media embed is baked
+  across the membrane. A private media doc decrypts and re-mints as its **public
+  twin** (`published_as`, the same one door as text, one twin reused by every
+  post that embeds it). A foreign URL is downloaded (SSRF-guarded, hard size
+  cap), crushed through the same pipeline uploads take (see Fidelity Caps), and
+  minted public in the background - publish answers "still baking" with per-item
+  progress until every embed can stand, and a failure is an honest tombstone the
+  author retries or edits around. The published body is **rewritten** to the
+  twins; the private draft keeps its links untouched - the crossing mints, never
+  moves. **An embed is still an ingest**: pasting an image URL _is_ an upload,
+  deferred to the crossing - the storage it consumes and the liability it
+  creates are both real.
+- **Video is refused at the crossing, for now** (2026-08-06 scope line, both
+  kinds - private twin and foreign fetch - the tombstone naming it). Revisited
+  when the preview/segment story is designed.
+- **Past the size cap it isn't an embed, it's a link** - but the crossing states
+  this as a refusal, not a silent rewrite: an oversized bake fails with its
+  tombstone, and making it a link is the author's edit. Ringtome declines to
+  fetch-and-bake beyond a ceiling, exactly as every forum since phpBB has
+  declined oversized uploads.
+- **The origin URL survives the bake as provenance, forever - as text, which is
+  free.** The draft body keeps the foreign URL for the draft's life (the
+  reference IS the provenance); the node's bake registry holds (root, url,
+  verdict, when) as the durable record; the public artifact carries the source
+  URL as the media doc's _title_ until the header grows a real field at the next
+  deliberate wire break (DocHeaderPlain is fixed-arity CBOR). It is attribution
+  (you have just copied someone's picture), it is the "go to original"
+  affordance, and - load-bearing - it is what makes the blob _droppable_ later:
+  **the provenance URL is an epitaph, not a fallback.** When retention drops a
+  blob no live head references, the embed degrades to a placeholder naming where
+  it came from, with a link - rollback is exact for text and best-effort for
+  media (**Immutable Chains ≠ Immutable Content**, Doctrine, one level down) -
+  and the renderer must never quietly hotlink the origin instead: that would
+  resurrect every problem the bake exists to solve. The placeholder is what
+  makes dropping the blob a defensible act rather than a data-loss event.
+- **Rich players are the honest exception.** A YouTube or Spotify embed is not
+  bytes we may have; it cannot be baked. Those stay live and third-party, and
+  looking at one tells Google you looked. The onebox card is a click-to-play
+  surface by construction, so nothing phones home until the reader presses
+  play - privacy arriving as a side effect of good page-weight design, which is
+  the only kind anyone leaves switched on.
+- **The bake happens twice, for uploads.** A draft's uploaded image is
+  epoch-encrypted; publication re-mints it as a public blob and signs it,
+  exactly as the prose is - **Copy, Don't Flip** (Doctrine), applied to
+  pictures. Draft original and published image are distinct blobs, independently
+  droppable. (Foreign URLs bake once, at the crossing - there is no draft blob
+  to twin.)
 
-**What the bake buys** (none of it sold as privacy): no reader of a _published_ page ever fetches a stranger's
-server, and it needs no setting because nobody opts out of _fast_; link rot can't break a published page; the
-scanning machinery can see the bytes; the crunch filter applies to _all_ media, so **Everything Always Crunched**
-survives the open web. And recentralization closes on its own - to a network that ingests images on sight, an
-external host is a **clipboard, not a CDN**, so there is no `ringtome-imgur.com` to build.
+**What the bake buys** (none of it sold as privacy): no reader of a _published_
+page ever fetches a stranger's server, and it needs no setting because nobody
+opts out of _fast_; link rot can't break a published page; the scanning
+machinery can see the bytes; the crunch filter applies to _all_ media, so
+**Everything Always Crunched** survives the open web. And recentralization
+closes on its own - to a network that ingests images on sight, an external host
+is a **clipboard, not a CDN**, so there is no `ringtome-imgur.com` to build.
 
-**The honest costs, now two:** the operator still _hosts_ what their user embedded, so a vile embed becomes their
-problem in a way a hotlink wasn't - the correct place for it to land (operator exposure is already bounded by
-their accountable users), but a real increase, and a bake is a copy, so provenance is the least we owe. And the
-authoring-time bake's best argument died with the move: the author no longer sees the crunched version of a
-_foreign_ embed until after it is published (uploads were always crunched at upload, so their preview stays
-honest).
+**The honest costs, now two:** the operator still _hosts_ what their user
+embedded, so a vile embed becomes their problem in a way a hotlink wasn't - the
+correct place for it to land (operator exposure is already bounded by their
+accountable users), but a real increase, and a bake is a copy, so provenance is
+the least we owe. And the authoring-time bake's best argument died with the
+move: the author no longer sees the crunched version of a _foreign_ embed until
+after it is published (uploads were always crunched at upload, so their preview
+stays honest).
 
-_(This retired two earlier rules: embed-targets-unrepresentable-in-grammar, and a reader-facing proxy/direct/no-fetch
-dial. The dial defended a promise the doc declines to make - **Pseudonymity, Not Anonymity** (Doctrine) - and on a
+_(This retired two earlier rules: embed-targets-unrepresentable-in-grammar, and
+a reader-facing proxy/direct/no-fetch dial. The dial defended a promise the doc
+declines to make - **Pseudonymity, Not Anonymity** (Doctrine) - and on a
 self-hosted node it was theater, since the proxy's IP is the reader's IP.)_
 
 ---
@@ -2388,1016 +3101,1256 @@ self-hosted node it was theater, since the proxy's IP is the reader's IP.)_
 
 Each connector node maintains:
 
-- **Node database** (`node.db`): Node configuration, known peers, replication state, network metadata.
-- **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their own database file — a **local
-  materialized view** of that user's signed sync entries. The database file itself is never transmitted: when a user
-  connects to a new node, the node syncs the user's entries via the Ringtome sync protocol (validating each against the
-  key tree as it arrives) and builds its own database from them.
+- **Node database** (`node.db`): Node configuration, known peers, replication
+  state, network metadata.
+- **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their
+  own database file — a **local materialized view** of that user's signed sync
+  entries. The database file itself is never transmitted: when a user connects
+  to a new node, the node syncs the user's entries via the Ringtome sync
+  protocol (validating each against the key tree as it arrives) and builds its
+  own database from them.
 
 ### Why Per-User Databases?
 
 - **Isolation:** One user's data can't accidentally leak into another's queries.
-- **Sync granularity:** replication scope is naturally per-user. A node only syncs (and stores) the users it agents
-  or fronts.
-- **Disposability:** because the database is a materialized view, it can be rebuilt at any time from the signed
-  entries — after a schema migration, a corruption, or a Repudiation Revocation that retroactively quarantines
-  entries. The signed entry log is the source of truth; the database is a query-shaped cache of it.
-- **Offline-friendly:** a user's database is fully self-contained for serving and authoring while disconnected.
+- **Sync granularity:** replication scope is naturally per-user. A node only
+  syncs (and stores) the users it agents or fronts.
+- **Disposability:** because the database is a materialized view, it can be
+  rebuilt at any time from the signed entries — after a schema migration, a
+  corruption, or a Repudiation Revocation that retroactively quarantines
+  entries. The signed entry log is the source of truth; the database is a
+  query-shaped cache of it.
+- **Offline-friendly:** a user's database is fully self-contained for serving
+  and authoring while disconnected.
 
 ### The Substrate: Turso, Encrypted at Rest (settled 2026-07-20)
 
-The database engine is **Turso** - SQLite rewritten from scratch in Rust (SQLite's dialect and
-file format, MVCC, native at-rest encryption, Tantivy-backed full-text search). The move from C
-SQLite + sqlx is a substrate swap, not a model change: everything above about what the databases
-_are_ survives verbatim. Why, honestly ranked:
+The database engine is **Turso** - SQLite rewritten from scratch in Rust
+(SQLite's dialect and file format, MVCC, native at-rest encryption,
+Tantivy-backed full-text search). The move from C SQLite + sqlx is a substrate
+swap, not a model change: everything above about what the databases _are_
+survives verbatim. Why, honestly ranked:
 
-- **Encrypted at rest, natively.** The persisted-views ruling (below) puts decrypted private
-  state on disk; Turso encrypts the whole database file, with keys we wrap through the keystore.
-  The alternatives were SQLCipher (a C fork of SQLite plus vendored OpenSSL - rejected on
-  dependency grounds, explicitly not quality grounds) and hand-rolled sealed snapshots of
-  in-memory databases (rejected: fails multi-tenant memory, next bullet).
-- **Memory becomes cache-shaped, not dataset-shaped.** Views live on disk behind a page cache.
-  Any design that materializes views into RAM - recomputed per read, or in-memory databases
-  sealed to disk - holds every resident's _full_ view in memory simultaneously, and a
-  multi-account node on small hardware dies exactly there.
-- **One toolchain.** The stack becomes Rust end to end; the database stops being the one C
-  dependency the no-new-toolchains instinct had grandfathered in.
+- **Encrypted at rest, natively.** The persisted-views ruling (below) puts
+  decrypted private state on disk; Turso encrypts the whole database file, with
+  keys we wrap through the keystore. The alternatives were SQLCipher (a C fork
+  of SQLite plus vendored OpenSSL - rejected on dependency grounds, explicitly
+  not quality grounds) and hand-rolled sealed snapshots of in-memory databases
+  (rejected: fails multi-tenant memory, next bullet).
+- **Memory becomes cache-shaped, not dataset-shaped.** Views live on disk behind
+  a page cache. Any design that materializes views into RAM - recomputed per
+  read, or in-memory databases sealed to disk - holds every resident's _full_
+  view in memory simultaneously, and a multi-account node on small hardware dies
+  exactly there.
+- **One toolchain.** The stack becomes Rust end to end; the database stops being
+  the one C dependency the no-new-toolchains instinct had grandfathered in.
 
-**The risk posture, stated plainly.** Turso is beta. This stack ships iroh and a from-scratch
-media pipeline, so "experimental" is a consistent appetite - but beta is only acceptable in
-front of _recoverable_ state, and that is made true by construction rather than assumed:
+**The risk posture, stated plainly.** Turso is beta. This stack ships iroh and a
+from-scratch media pipeline, so "experimental" is a consistent appetite - but
+beta is only acceptable in front of _recoverable_ state, and that is made true
+by construction rather than assumed:
 
-- **The raw-entry journal.** Every entry accepted into a database is also appended, verbatim, to
-  a flat per-identity journal file. Entries are already immutable signed CBOR envelopes (private
-  payloads already ciphertext) - the journal is just what sync would send, written down, so it is
-  nearly free. With it the entire SQL layer is derived state: entries tables, views, everything
-  rebuilds by replay. The journal is deliberately plaintext: entries self-protect (signatures
-  for integrity, epoch ciphertext for payloads), and a recovery artifact must be readable with
-  zero key material - its confidentiality posture is the disk's, an accepted, named trade (the
-  at-rest metadata of private activity). This is what covers the **single-device user**, whose
-  chains would otherwise have exactly one copy sitting on a beta engine. Node-local non-chain
-  state (accounts, password hashes, the ingest queue) is tiny and low-write: journaled or
-  periodically dumped, same discipline.
-- **The escape hatch is the export tool, not the file format.** Encryption voids "worst case,
-  open the file with real SQLite" - stock SQLite cannot read an encrypted Turso database. The
-  decrypt-and-dump tool and its CI dump/restore upgrade gate are **ship gates, not current
-  invariants** (re-scoped 2026-07-22 by the User-1 rule, STYLE.md: until an install base
-  exists there is no data to protect, and a Turso bump today may simply wipe and rebuild from
-  the journal - which is what recovery actually rides anyway). Turso's version is pinned
-  (`=0.7.0`) for reproducibility, not safety; the tool lands with Tier 6, before User 1's data
-  exists to lose.
-- **Migrations are a ladder (settled 2026-09-23).** Once 0.1.x put a node on a real machine,
-  the squash-and-rebuild policy ended. Each database kind has a ladder of numbered SQL rungs
-  (`node/src/migrations.rs`, how-to in `node/migrations/README.md`), climbed in place on
-  open, one transaction per rung. The baseline rung is the schema 0.1.x shipped, numbered at
-  its old generation, so every released database is already on the ladder. Released rungs are
-  pinned by hash and frozen. **Chains never migrate**: their entries are signed bytes and the
-  format only grows. What migrates is the views folded from them: a user rung names the
-  services whose views it invalidates, and those views drop and rebuild from the entries. The
-  gap still open is node rungs that need to re-derive a memo from personas' chains. That needs
-  a code rung, to be built when the first such change arrives.
+- **The raw-entry journal.** Every entry accepted into a database is also
+  appended, verbatim, to a flat per-identity journal file. Entries are already
+  immutable signed CBOR envelopes (private payloads already ciphertext) - the
+  journal is just what sync would send, written down, so it is nearly free. With
+  it the entire SQL layer is derived state: entries tables, views, everything
+  rebuilds by replay. The journal is deliberately plaintext: entries
+  self-protect (signatures for integrity, epoch ciphertext for payloads), and a
+  recovery artifact must be readable with zero key material - its
+  confidentiality posture is the disk's, an accepted, named trade (the at-rest
+  metadata of private activity). This is what covers the **single-device user**,
+  whose chains would otherwise have exactly one copy sitting on a beta engine.
+  Node-local non-chain state (accounts, password hashes, the ingest queue) is
+  tiny and low-write: journaled or periodically dumped, same discipline.
+- **The escape hatch is the export tool, not the file format.** Encryption voids
+  "worst case, open the file with real SQLite" - stock SQLite cannot read an
+  encrypted Turso database. The decrypt-and-dump tool and its CI dump/restore
+  upgrade gate are **ship gates, not current invariants** (re-scoped 2026-07-22
+  by the User-1 rule, STYLE.md: until an install base exists there is no data to
+  protect, and a Turso bump today may simply wipe and rebuild from the journal -
+  which is what recovery actually rides anyway). Turso's version is pinned
+  (`=0.7.0`) for reproducibility, not safety; the tool lands with Tier 6, before
+  User 1's data exists to lose.
+- **Migrations are a ladder (settled 2026-09-23).** Once 0.1.x put a node on a
+  real machine, the squash-and-rebuild policy ended. Each database kind has a
+  ladder of numbered SQL rungs (`node/src/migrations.rs`, how-to in
+  `node/migrations/README.md`), climbed in place on open, one transaction per
+  rung. The baseline rung is the schema 0.1.x shipped, numbered at its old
+  generation, so every released database is already on the ladder. Released
+  rungs are pinned by hash and frozen. **Chains never migrate**: their entries
+  are signed bytes and the format only grows. What migrates is the views folded
+  from them: a user rung names the services whose views it invalidates, and
+  those views drop and rebuild from the entries. The gap still open is node
+  rungs that need to re-derive a memo from personas' chains. That needs a code
+  rung, to be built when the first such change arrives.
 
-**Views persist now (the persistence dial, revisited).** The store's original discipline - views
-recomputed in memory per read, never persisted, because "a decrypted view on disk would be a
-second secret" - was always an argument about _plaintext at rest_, not about persistence. With
-the database itself encrypted, that objection is answered structurally, and views become
-ordinary tables: normalized and query-shaped (per-document version facts, annotations, tag
-membership, full-text indexes over titles and descriptions), folded **incrementally** by
-statement-atomic stamp-compare upserts (the `profile_view` pattern, generalized), watermarked
-per chain (`(author, service, instance) → seq`) so boot fast-forwards from the last fold instead of
-replaying history. What survives untouched is the deeper invariant: **views are disposable** -
-pure functions of the log, rebuilt by drop-and-replay, never a source of truth. And version-DAG
-_resolution_ (heads, logical-head folding, the merges) stays in Rust: SQL holds facts, not
-judgment - graph-shaped, ordered logic is miserable as SQL and lives in code.
+**Views persist now (the persistence dial, revisited).** The store's original
+discipline - views recomputed in memory per read, never persisted, because "a
+decrypted view on disk would be a second secret" - was always an argument about
+_plaintext at rest_, not about persistence. With the database itself encrypted,
+that objection is answered structurally, and views become ordinary tables:
+normalized and query-shaped (per-document version facts, annotations, tag
+membership, full-text indexes over titles and descriptions), folded
+**incrementally** by statement-atomic stamp-compare upserts (the `profile_view`
+pattern, generalized), watermarked per chain
+(`(author, service, instance) → seq`) so boot fast-forwards from the last fold
+instead of replaying history. What survives untouched is the deeper invariant:
+**views are disposable** - pure functions of the log, rebuilt by
+drop-and-replay, never a source of truth. And version-DAG _resolution_ (heads,
+logical-head folding, the merges) stays in Rust: SQL holds facts, not judgment -
+graph-shaped, ordered logic is miserable as SQL and lives in code.
 
 ### The Store Layer (IMPLEMENTED)
 
-Application code never touches chains directly. `node/src/store.rs` is the **data map** - one
-table declaring every application variable's chain, merge rule, visibility, and materialization -
-plus typed handles whose methods are exactly the CRDT's legal operations: an LWW register has
-`set`/`all`, an LWW-element-set has `add`/`remove`/`elements`, an append-only log has
-`append`/`page` and deliberately nothing else. The sync contract is stated once there: writes
-land locally and immediately on this node's chain; reads are the merged view of all the
-identity's chains; replication is per-identity, all chains at once; the only distinction is
-public vs. members-only visibility. New features add a data-map row and a handle - never a sync
-knob. (The identity chains are deliberately not stores: authority is not application data.)
+Application code never touches chains directly. `node/src/store.rs` is the
+**data map** - one table declaring every application variable's chain, merge
+rule, visibility, and materialization - plus typed handles whose methods are
+exactly the CRDT's legal operations: an LWW register has `set`/`all`, an
+LWW-element-set has `add`/`remove`/`elements`, an append-only log has
+`append`/`page` and deliberately nothing else. The sync contract is stated once
+there: writes land locally and immediately on this node's chain; reads are the
+merged view of all the identity's chains; replication is per-identity, all
+chains at once; the only distinction is public vs. members-only visibility. New
+features add a data-map row and a handle - never a sync knob. (The identity
+chains are deliberately not stores: authority is not application data.)
 
 ### The File Layer
 
-One **file object** for everything file-shaped in the system - private note bodies, public post
-bodies, media - a content-addressed store of bytes built on **iroh-blobs** (BLAKE3, the same hash
-as everything else). The store is content-agnostic: bytes in, hash out; it cannot tell a note from
-a photo. (Born in the notes design, whose document is folded here. Canonical
-statement here; first implementation `node/src/files.rs`.)
+One **file object** for everything file-shaped in the system - private note
+bodies, public post bodies, media - a content-addressed store of bytes built on
+**iroh-blobs** (BLAKE3, the same hash as everything else). The store is
+content-agnostic: bytes in, hash out; it cannot tell a note from a photo. (Born
+in the notes design, whose document is folded here. Canonical statement here;
+first implementation `node/src/files.rs`.)
 
-- **Private files are encrypted, then stored.** A private file is XChaCha ciphertext under the
-  current epoch key with a **random 24-byte nonce**, laid out self-describing
-  (`epoch ‖ nonce ‖ ciphertext` - epoch numbers are already public, so readers know which keys to
-  try), and content-addressed by the **ciphertext** hash. The random nonce makes every hash
-  unforgeable and unlinkable: nobody - not even a member who knows the plaintext - can precompute a
-  target file's hash or reverse a hash to known content. The deliberate cost: **no dedup for
-  private files** (identical content encrypts differently every time). The alternative, convergent
-  encryption, would dedup but hand out a known-plaintext confirmation oracle - the wrong trade for
+- **Private files are encrypted, then stored.** A private file is XChaCha
+  ciphertext under the current epoch key with a **random 24-byte nonce**, laid
+  out self-describing (`epoch ‖ nonce ‖ ciphertext` - epoch numbers are already
+  public, so readers know which keys to try), and content-addressed by the
+  **ciphertext** hash. The random nonce makes every hash unforgeable and
+  unlinkable: nobody - not even a member who knows the plaintext - can
+  precompute a target file's hash or reverse a hash to known content. The
+  deliberate cost: **no dedup for private files** (identical content encrypts
+  differently every time). The alternative, convergent encryption, would dedup
+  but hand out a known-plaintext confirmation oracle - the wrong trade for
   private data.
-- **Public files are the same substrate with the encryption off.** Plaintext bytes, addressed by
-  plaintext hash - so dedup returns exactly where it's safe (two posts embedding the same image
-  share one blob), and serving is open because the content is public anyway.
-- **Serving is ungated, because the hash is the boundary** - and this holds _only_ while every
-  non-public body is ciphertext. iroh-blobs is _dark by default_: it announces nothing to any DHT
-  or index, has no enumeration primitive, and a fetch needs both the exact hash and a node address.
-  Private hashes exist only inside encrypted headers, so only members ever hold one; an unproven
-  peer has nothing to ask for, and would get useless ciphertext if it did. (**The exception, and
-  the reason this bullet names its premise:** a group's member lane is plaintext by design, so its
-  bodies are plaintext blobs and the hash stops being a boundary. Member-lane blobs must be served
-  _behind the member proof_ - a real gate on the blob transport, which does not exist today. See
-  Groups: The Member Lane.) The one residual is **size** (disclosed to anyone holding a hash - member-bounded,
-  pad-able later, ignorable for text).
-- **No content discovery, ever, on either side.** Discovery is the taxonomy and identity layer's
-  job: a hash never arrives naked - it arrives inside a signed document you synced, with
-  provenance, and you reach its holder through the identity's serving nodes (pkarr). iroh-blobs is
-  **pure point-to-point transfer**; its optional content-discovery layer stays off, private and
-  public alike. Every blob is reachable only through the document that names it.
-- **One global blob store per node** (iroh-blobs' redb-backed store), not per identity. Blobs are
-  identity-agnostic at the storage layer (a request is a hash, carrying no identity to route on),
-  and public dedup only works shared. The granularity is the mirror of SQLite's, on purpose:
-  identity-scoped relational _ledger_ → per-identity SQLite, precious, backed up; content-addressed
-  reconstructible _cache_ → one node-wide blob store, droppable, re-fetchable from peers and
-  re-verified against its hash.
-- **Retention is pin management.** A **pin** protects one blob from GC on behalf of one identity -
-  the IPFS sense of the word, and _not_ a taxonomy tag: tags are the user's plural organizing
-  strings and never touch storage; a pin is singular retention machinery. (Implementation detail,
-  named once: pins are iroh-blobs "tags," its GC-protection primitive.) The scheme: a pin is
-  `(root, blob hash)`, named `<root_hex>/<blob_hash_hex>`, and the **invariant** is that after any
-  retention pass, the pin set under an identity's prefix equals the live-hash set computed from its
-  materialized views (document heads, ancestors kept for merge, and - once `refs` exist - the files
-  those versions reference). Everything follows: a retention pass is idempotent set reconciliation
-  (compute live set, diff, add/delete); pins are a rebuildable cache of the views exactly as the
-  views are of the chains; deleting an identity is one prefix drop; and two identities pinning the
-  same public blob hold independent pins, so no refcounts and no coordination. Not per-document
-  pins (a document's retained history spans several hashes, and one pin protects one) and not
-  per-version pins (the "why is this held" a longer name would encode is the view's job to answer,
-  not the pin store's). GC is iroh-blobs' own, enabled via its `GcConfig`: collect whatever no pin
-  protects - and until pinning is wired, GC stays off, which fails safe. A node-level accounting
-  index (hash → account/size, for quotas and attribution) is deferred to the storage-budgets open
-  question - pins already answer GC, and nothing else needs it before 4M.
-- **The primitive, not the pipeline.** This layer is bytes ↔ hash, transfer, and GC - nothing else.
-  Media _processing_ (the crunch filter, EXIF stripping, type admission) sits above it and is 4M
-  work.
+- **Public files are the same substrate with the encryption off.** Plaintext
+  bytes, addressed by plaintext hash - so dedup returns exactly where it's safe
+  (two posts embedding the same image share one blob), and serving is open
+  because the content is public anyway.
+- **Serving is ungated, because the hash is the boundary** - and this holds
+  _only_ while every non-public body is ciphertext. iroh-blobs is _dark by
+  default_: it announces nothing to any DHT or index, has no enumeration
+  primitive, and a fetch needs both the exact hash and a node address. Private
+  hashes exist only inside encrypted headers, so only members ever hold one; an
+  unproven peer has nothing to ask for, and would get useless ciphertext if it
+  did. (**The exception, and the reason this bullet names its premise:** a
+  group's member lane is plaintext by design, so its bodies are plaintext blobs
+  and the hash stops being a boundary. Member-lane blobs must be served _behind
+  the member proof_ - a real gate on the blob transport, which does not exist
+  today. See Groups: The Member Lane.) The one residual is **size** (disclosed
+  to anyone holding a hash - member-bounded, pad-able later, ignorable for
+  text).
+- **No content discovery, ever, on either side.** Discovery is the taxonomy and
+  identity layer's job: a hash never arrives naked - it arrives inside a signed
+  document you synced, with provenance, and you reach its holder through the
+  identity's serving nodes (pkarr). iroh-blobs is **pure point-to-point
+  transfer**; its optional content-discovery layer stays off, private and public
+  alike. Every blob is reachable only through the document that names it.
+- **One global blob store per node** (iroh-blobs' redb-backed store), not per
+  identity. Blobs are identity-agnostic at the storage layer (a request is a
+  hash, carrying no identity to route on), and public dedup only works shared.
+  The granularity is the mirror of SQLite's, on purpose: identity-scoped
+  relational _ledger_ → per-identity SQLite, precious, backed up;
+  content-addressed reconstructible _cache_ → one node-wide blob store,
+  droppable, re-fetchable from peers and re-verified against its hash.
+- **Retention is pin management.** A **pin** protects one blob from GC on behalf
+  of one identity - the IPFS sense of the word, and _not_ a taxonomy tag: tags
+  are the user's plural organizing strings and never touch storage; a pin is
+  singular retention machinery. (Implementation detail, named once: pins are
+  iroh-blobs "tags," its GC-protection primitive.) The scheme: a pin is
+  `(root, blob hash)`, named `<root_hex>/<blob_hash_hex>`, and the **invariant**
+  is that after any retention pass, the pin set under an identity's prefix
+  equals the live-hash set computed from its materialized views (document heads,
+  ancestors kept for merge, and - once `refs` exist - the files those versions
+  reference). Everything follows: a retention pass is idempotent set
+  reconciliation (compute live set, diff, add/delete); pins are a rebuildable
+  cache of the views exactly as the views are of the chains; deleting an
+  identity is one prefix drop; and two identities pinning the same public blob
+  hold independent pins, so no refcounts and no coordination. Not per-document
+  pins (a document's retained history spans several hashes, and one pin protects
+  one) and not per-version pins (the "why is this held" a longer name would
+  encode is the view's job to answer, not the pin store's). GC is iroh-blobs'
+  own, enabled via its `GcConfig`: collect whatever no pin protects - and until
+  pinning is wired, GC stays off, which fails safe. A node-level accounting
+  index (hash → account/size, for quotas and attribution) is deferred to the
+  storage-budgets open question - pins already answer GC, and nothing else needs
+  it before 4M.
+- **The primitive, not the pipeline.** This layer is bytes ↔ hash, transfer, and
+  GC - nothing else. Media _processing_ (the crunch filter, EXIF stripping, type
+  admission) sits above it and is 4M work.
 
 ### Versioned Documents
 
-The general mutable-content model: **a document is a stable identity whose versions form a DAG,
-with bodies in the file layer.** Born as the notes design and deliberately format-agnostic - a
-note is a versioned document whose body happens to be text; the same machinery versions an image,
-a tileset, anything with rolling states.
+The general mutable-content model: **a document is a stable identity whose
+versions form a DAG, with bodies in the file layer.** Born as the notes design
+and deliberately format-agnostic - a note is a versioned document whose body
+happens to be text; the same machinery versions an image, a tileset, anything
+with rolling states.
 
-- **A version is a header entry on a chain.** Each save appends a small CBOR header
-  `{doc_id, parents, file_hash, body_hash, title, format?, refs?}`; the body never rides the
-  chain. A **version's identity is its entry hash** (BLAKE3, already unique); `doc_id` is the
-  document's stable identity across versions - what taxonomies and publication reference, never
-  version hashes. `body_hash` is a **plaintext fingerprint riding inside the encrypted header**
-  (BLAKE3 keyed by doc_id, so no global rainbow tables): equality checks - the no-op save bounce,
-  twin/echo detection in merge - never need the body bytes, and work even after old bodies are
-  GC'd. It is a member-secret exactly like the body: never on a plaintext surface. The honest
-  cost: a permanent fingerprint of droppable content - deleted words become _confirmable_ (never
-  recoverable) to a key-holder guessing low-entropy content, an accepted asterisk on deletability
-  (the notes design, folded here).
-- **`parents` is a list from day one** - the git-commit model: zero at genesis, one for an ordinary
-  save, two-plus for a merge, so reconvergence needs no format change. Fast-forward when your
-  parent is the current head; two saves sharing a parent are
-  **detected divergence**, and the universal resolution is **keep-both-with-lineage** - never lose
-  words. Auto-merge is a _per-format capability_ layered on top (three-way merge for text; images
-  simply keep both), never core machinery.
-- **A diverged document presents its conflict _in_ the body; there is no merge UI, ever.** The
-  one hard requirement: no sequence of saves, syncs, tabs, or crashes may silently discard
-  written words (whole-note LWW is the stale-tab failure that eats an afternoon). Read-time,
-  never written: heads carrying no distinct words (identical twins, ancestor echoes) fold
-  deterministically, and a conflicted document's displayed body is the merge output with the
-  conflict inline - synthesized deterministically from chain data alone, so every device
-  derives the same tangle. Resolution is the user tidying the text and saving, which lists all
-  true heads as `parents` and heals the fork through the ordinary write. Merge is text's
-  per-format capability and format-agnostic in structure (Marquee source is still lines); only
-  the _presentation_ forks: git-style marker blocks for plaintext, Marquee's shipped
-  `:::conflict`/`:::variant` vocabulary (device attribution is free - chains are per-device;
-  unknown vocabulary shrugs to a lossless full render). Three-plus heads over a single fork
-  point merge per-hunk too, one variant per distinct proposal; two-head criss-cross merges
-  over git's recursive virtual base (clean merges only, so one raced resolution doesn't
-  degrade every later fork); anything murkier - no shared fork point, a GC'd base body -
-  degrades to the whole-document conflict, lossless and conservative. Client obligations:
-  check the head before saving (rebase or fork knowingly, never blind-save); synthesized text
-  starts _clean_, not dirty (autosave never commits an untouched tangle); presentation is
-  built from merge structure, never by re-parsing marked text. Media never merges: keep-both,
-  bytes served separately.
-- **Real-time collaborative text is a non-goal (decided in the notes design).** A text CRDT's
-  op-log would become a wire format inside the conformance boundary - a giant cost with no named
-  consumer. The goal is asynchronous convergence-without-loss, and the DAG delivers it at
-  app-payload level with zero protocol changes. The door stays open exactly as The Ordering
-  Contract states it: richer merge rules arrive as new payload types on the same conflict-free
-  substrate, if a real collaborative feature ever names itself.
-- **`refs` is a derived index** - the file hashes and doc-ids the body references, extracted from
-  the body at save time so GC-reachability and backlinks never require decrypting every body. The
-  body stays the source of truth.
-- **Versions are whole-file snapshots, never diffs.** Encryption defeats storage-layer delta
-  compression (random nonces destroy exactly the redundancy deltas exploit), and delta chains would
-  reintroduce base-dependencies that break independent droppability. Retention bounds storage
-  instead: debounced saves, skip-no-op saves, keep-last-N + GC.
-- **Private documents and public documents share the model, not the history.** A post's draft _is_
-  a private note; publication snapshots **one version** across the membrane as a new public
-  artifact with a history of one (**Copy, Don't Flip**, Doctrine). The version DAG solves a
-  private, multi-device drafting problem; public edit semantics are tombstone/replace (4M's
-  problem).
+- **A version is a header entry on a chain.** Each save appends a small CBOR
+  header `{doc_id, parents, file_hash, body_hash, title, format?, refs?}`; the
+  body never rides the chain. A **version's identity is its entry hash**
+  (BLAKE3, already unique); `doc_id` is the document's stable identity across
+  versions - what taxonomies and publication reference, never version hashes.
+  `body_hash` is a **plaintext fingerprint riding inside the encrypted header**
+  (BLAKE3 keyed by doc_id, so no global rainbow tables): equality checks - the
+  no-op save bounce, twin/echo detection in merge - never need the body bytes,
+  and work even after old bodies are GC'd. It is a member-secret exactly like
+  the body: never on a plaintext surface. The honest cost: a permanent
+  fingerprint of droppable content - deleted words become _confirmable_ (never
+  recoverable) to a key-holder guessing low-entropy content, an accepted
+  asterisk on deletability (the notes design, folded here).
+- **`parents` is a list from day one** - the git-commit model: zero at genesis,
+  one for an ordinary save, two-plus for a merge, so reconvergence needs no
+  format change. Fast-forward when your parent is the current head; two saves
+  sharing a parent are **detected divergence**, and the universal resolution is
+  **keep-both-with-lineage** - never lose words. Auto-merge is a _per-format
+  capability_ layered on top (three-way merge for text; images simply keep
+  both), never core machinery.
+- **A diverged document presents its conflict _in_ the body; there is no merge
+  UI, ever.** The one hard requirement: no sequence of saves, syncs, tabs, or
+  crashes may silently discard written words (whole-note LWW is the stale-tab
+  failure that eats an afternoon). Read-time, never written: heads carrying no
+  distinct words (identical twins, ancestor echoes) fold deterministically, and
+  a conflicted document's displayed body is the merge output with the conflict
+  inline - synthesized deterministically from chain data alone, so every device
+  derives the same tangle. Resolution is the user tidying the text and saving,
+  which lists all true heads as `parents` and heals the fork through the
+  ordinary write. Merge is text's per-format capability and format-agnostic in
+  structure (Marquee source is still lines); only the _presentation_ forks:
+  git-style marker blocks for plaintext, Marquee's shipped
+  `:::conflict`/`:::variant` vocabulary (device attribution is free - chains are
+  per-device; unknown vocabulary shrugs to a lossless full render). Three-plus
+  heads over a single fork point merge per-hunk too, one variant per distinct
+  proposal; two-head criss-cross merges over git's recursive virtual base (clean
+  merges only, so one raced resolution doesn't degrade every later fork);
+  anything murkier - no shared fork point, a GC'd base body - degrades to the
+  whole-document conflict, lossless and conservative. Client obligations: check
+  the head before saving (rebase or fork knowingly, never blind-save);
+  synthesized text starts _clean_, not dirty (autosave never commits an
+  untouched tangle); presentation is built from merge structure, never by
+  re-parsing marked text. Media never merges: keep-both, bytes served
+  separately.
+- **Real-time collaborative text is a non-goal (decided in the notes design).**
+  A text CRDT's op-log would become a wire format inside the conformance
+  boundary - a giant cost with no named consumer. The goal is asynchronous
+  convergence-without-loss, and the DAG delivers it at app-payload level with
+  zero protocol changes. The door stays open exactly as The Ordering Contract
+  states it: richer merge rules arrive as new payload types on the same
+  conflict-free substrate, if a real collaborative feature ever names itself.
+- **`refs` is a derived index** - the file hashes and doc-ids the body
+  references, extracted from the body at save time so GC-reachability and
+  backlinks never require decrypting every body. The body stays the source of
+  truth.
+- **Versions are whole-file snapshots, never diffs.** Encryption defeats
+  storage-layer delta compression (random nonces destroy exactly the redundancy
+  deltas exploit), and delta chains would reintroduce base-dependencies that
+  break independent droppability. Retention bounds storage instead: debounced
+  saves, skip-no-op saves, keep-last-N + GC.
+- **Private documents and public documents share the model, not the history.** A
+  post's draft _is_ a private note; publication snapshots **one version** across
+  the membrane as a new public artifact with a history of one (**Copy, Don't
+  Flip**, Doctrine). The version DAG solves a private, multi-device drafting
+  problem; public edit semantics are tombstone/replace (4M's problem).
 
 ### Taxonomies: Documents About Documents (amended 2026-07-22/23; lists + trees IMPLEMENTED)
 
-Everything that _organizes_ documents - tags, streams, folders, knowledge-base trees, reading
-lists - is itself ordinary data, external to what it organizes. (Born in the notes design; see
-the notes design, folded here. Canonical statement here, because addressing, feeds,
-and Marquee's computed widgets all consume it.)
+Everything that _organizes_ documents - tags, streams, folders, knowledge-base
+trees, reading lists - is itself ordinary data, external to what it organizes.
+(Born in the notes design; see the notes design, folded here. Canonical
+statement here, because addressing, feeds, and Marquee's computed widgets all
+consume it.)
 
-- **Taxonomies live outside documents, never in header data.** Three independently-sufficient
-  proofs: third parties curate (a stranger's reading list over your documents cannot write into
-  your headers); views mix boundaries (a private list interleaving your drafts with your
-  published posts is inexpressible as public header data); and the publication membrane stays
-  clean (organizing metadata never rides the document, so nothing needs stripping at the
-  crossing). One deliberate exception rides the payload: consent **labels** - a stranger's
-  server filters on them without access to anyone's taxonomies. Same-looking strings, opposite
-  transport requirements, permanently separate fields.
-- **One merge shape, chosen twice (amended 2026-07-22).** Unordered membership (tags) is an
-  **LWW-element-set** whose merge unit is the single `(doc, tag)` pair - concurrent tagging
-  merges automatically, and no shape that stores a document's tags as one value survives two
-  devices (whole-list LWW eats one side's tags: the stale-tab failure in miniature). Since
-  2026-07-20 tags _live_ in the annotation layer, grouped per-document on the doc-meta chain
-  (Annotations, below) - "all docs tagged X" vs "all of D's tags" turned out to be a false
-  choice, since both directions are indexes over the same materialized table. Ordered
-  structure (curated sequences, "BOOK ABOUT HORSES") decomposes the same way -
-  **per-element facts, never a document body**: a taxonomy is a stable minted id whose members
-  are set elements in its `tax:<taxonomy_id>` collection on the same doc-meta chain, each
-  element the `(root, doc_id)` reference, each value the member's **rank** (a fractional
-  base-36 index - client convention, rebalanced by a burst of rewrites when it bloats;
-  `record/rank.rs`). Order is assembled at read time (rank, element tiebreak), never stored as
-  one value, because a taxonomy's commonest concurrent edit is two devices each adding an
-  item, and any whole-value shape turns that obvious union into a manufactured conflict - the
-  tags argument, verbatim. Same-element position races resolve LWW: one position wins, nothing
-  leaves the list, history stays on the chain. Concurrent same-spot inserts land adjacent in
-  tiebreak order - harmless for a curated list, which is exactly why the no-text-CRDT ruling
-  (Versioned Documents) doesn't apply here: interleaving destroys prose, not reading lists,
-  and on the wire these are ordinary private records. Existence is a roster fact (the `taxonomies` set): an empty list exists, deletion
-  is one remove, re-creating an id resurrects its members. Taxonomy-level facts (title,
-  `default_view`, description) are annotations on the taxonomy's own id. An album is a `tax:`
-  collection, full stop - still never metadata on its tracks. Chronological streams are
-  usually no artifact at all: a derivable view.
-- **Trees are composition, not structure (amended 2026-07-23).** A taxonomy placed as a
-  member of another taxonomy IS the tree - the design considered a formal alternative (a
-  `parent` slot in the member value, tree shape internal to one collection) and rejected it on
-  one decisive ground: _where the cycle lives_. Parent pointers put a merge-created cycle **in
-  the storage structure** - broken until a deterministic fold-time resolver repairs it, and
-  that resolver silently rewrites someone's move: exactly the move the notes design refused.
-  Composition cycles are just independent membership facts - storage never corrupts, and a
-  loop is a _render_ concern: traversal carries a visited set, and a repeat visit (a cycle, or
-  a diamond's second parent) renders as a titled **stub-link**, the conflict-markers
-  philosophy holding for shape. Prevention where cheap, recoverability always: `place` refuses
-  the locally-visible cycle (the single-device mistake, including self-placement); the visited
-  set absorbs what concurrent placement can still mint. What composition buys beyond the
-  cycle story: interior nodes are themselves taxonomies (titled, describable, taggable for
-  free - a "section heading" is a small titled list, no pseudo-documents); a sub-list can live
-  under two parents (a DAG - the appendix cited from two chapters); and the same document can
-  appear in two sections, because sections are separate collections. The honest costs, named:
-  a cross-section move is two writes (remove + place; the race loses the remove and leaves a
-  _visible, recoverable_ duplicate - chosen over the parent-pointer model's atomic move that
-  can corrupt), and multi-parent makes "the" breadcrumb path a UI arrived-from concern. The
-  `parent` slot is retired **unused**; the fold-time cycle rule is retired _unslain_.
-- **Taxonomy documents are the publication form** - now their _entire_ jurisdiction.
-  Publishing a knowledge base is the standard membrane crossing (**Copy, Don't Flip**,
-  Doctrine): fold the collection, encode an ordered-references body, sign it public under a
-  stable `doc_id` with a history of one; re-publish is another explicit act.
-  Private/mutable collection and public/mostly-immutable document mirror the note → post
-  reflection exactly. The honest cost of the working form, named: the version DAG's
-  user-facing rollback ("restore yesterday's arrangement") is given up - the chain retains
-  every edit in principle, and restore points can ride the snapshot machinery if a real need
-  names itself. What this amendment retires is the analogy that chose documents first -
-  "reorganizing a tree on two devices _is_ editing a note on two devices" - retired because
-  taxonomy edits decompose into element facts with obvious merge semantics, and prose does
-  not. Third-party curation is unchanged: their chain, their collection, their published list.
-- **References are `(root, doc_id)`** - stable identities, never version hashes (an edit must
-  not shatter every tree pointing at the document). Relative forms elide the root via base-URI
-  resolution (see Addressing); cross-identity references are fully qualified.
-- **Taxonomies answer queries.** A taxonomy carries an author-declared `default_view`
-  (`index` | `latest` | ...) - an annotation on the private working form, a payload field on
-  the published document - and the view vocabulary (`latest`, `earliest`, `root`, `index`,
-  `next-in-stream`, ...) is one function family consumed by slug URLs (Addressing) and
-  Marquee's `:::computed` roles alike.
+- **Taxonomies live outside documents, never in header data.** Three
+  independently-sufficient proofs: third parties curate (a stranger's reading
+  list over your documents cannot write into your headers); views mix boundaries
+  (a private list interleaving your drafts with your published posts is
+  inexpressible as public header data); and the publication membrane stays clean
+  (organizing metadata never rides the document, so nothing needs stripping at
+  the crossing). One deliberate exception rides the payload: consent
+  **labels** - a stranger's server filters on them without access to anyone's
+  taxonomies. Same-looking strings, opposite transport requirements, permanently
+  separate fields.
+- **One merge shape, chosen twice (amended 2026-07-22).** Unordered membership
+  (tags) is an **LWW-element-set** whose merge unit is the single `(doc, tag)`
+  pair - concurrent tagging merges automatically, and no shape that stores a
+  document's tags as one value survives two devices (whole-list LWW eats one
+  side's tags: the stale-tab failure in miniature). Since 2026-07-20 tags _live_
+  in the annotation layer, grouped per-document on the doc-meta chain
+  (Annotations, below) - "all docs tagged X" vs "all of D's tags" turned out to
+  be a false choice, since both directions are indexes over the same
+  materialized table. Ordered structure (curated sequences, "BOOK ABOUT HORSES")
+  decomposes the same way - **per-element facts, never a document body**: a
+  taxonomy is a stable minted id whose members are set elements in its
+  `tax:<taxonomy_id>` collection on the same doc-meta chain, each element the
+  `(root, doc_id)` reference, each value the member's **rank** (a fractional
+  base-36 index - client convention, rebalanced by a burst of rewrites when it
+  bloats; `record/rank.rs`). Order is assembled at read time (rank, element
+  tiebreak), never stored as one value, because a taxonomy's commonest
+  concurrent edit is two devices each adding an item, and any whole-value shape
+  turns that obvious union into a manufactured conflict - the tags argument,
+  verbatim. Same-element position races resolve LWW: one position wins, nothing
+  leaves the list, history stays on the chain. Concurrent same-spot inserts land
+  adjacent in tiebreak order - harmless for a curated list, which is exactly why
+  the no-text-CRDT ruling (Versioned Documents) doesn't apply here: interleaving
+  destroys prose, not reading lists, and on the wire these are ordinary private
+  records. Existence is a roster fact (the `taxonomies` set): an empty list
+  exists, deletion is one remove, re-creating an id resurrects its members.
+  Taxonomy-level facts (title, `default_view`, description) are annotations on
+  the taxonomy's own id. An album is a `tax:` collection, full stop - still
+  never metadata on its tracks. Chronological streams are usually no artifact at
+  all: a derivable view.
+- **Trees are composition, not structure (amended 2026-07-23).** A taxonomy
+  placed as a member of another taxonomy IS the tree - the design considered a
+  formal alternative (a `parent` slot in the member value, tree shape internal
+  to one collection) and rejected it on one decisive ground: _where the cycle
+  lives_. Parent pointers put a merge-created cycle **in the storage
+  structure** - broken until a deterministic fold-time resolver repairs it, and
+  that resolver silently rewrites someone's move: exactly the move the notes
+  design refused. Composition cycles are just independent membership facts -
+  storage never corrupts, and a loop is a _render_ concern: traversal carries a
+  visited set, and a repeat visit (a cycle, or a diamond's second parent)
+  renders as a titled **stub-link**, the conflict-markers philosophy holding for
+  shape. Prevention where cheap, recoverability always: `place` refuses the
+  locally-visible cycle (the single-device mistake, including self-placement);
+  the visited set absorbs what concurrent placement can still mint. What
+  composition buys beyond the cycle story: interior nodes are themselves
+  taxonomies (titled, describable, taggable for free - a "section heading" is a
+  small titled list, no pseudo-documents); a sub-list can live under two parents
+  (a DAG - the appendix cited from two chapters); and the same document can
+  appear in two sections, because sections are separate collections. The honest
+  costs, named: a cross-section move is two writes (remove + place; the race
+  loses the remove and leaves a _visible, recoverable_ duplicate - chosen over
+  the parent-pointer model's atomic move that can corrupt), and multi-parent
+  makes "the" breadcrumb path a UI arrived-from concern. The `parent` slot is
+  retired **unused**; the fold-time cycle rule is retired _unslain_.
+- **Taxonomy documents are the publication form** - now their _entire_
+  jurisdiction. Publishing a knowledge base is the standard membrane crossing
+  (**Copy, Don't Flip**, Doctrine): fold the collection, encode an
+  ordered-references body, sign it public under a stable `doc_id` with a history
+  of one; re-publish is another explicit act. Private/mutable collection and
+  public/mostly-immutable document mirror the note → post reflection exactly.
+  The honest cost of the working form, named: the version DAG's user-facing
+  rollback ("restore yesterday's arrangement") is given up - the chain retains
+  every edit in principle, and restore points can ride the snapshot machinery if
+  a real need names itself. What this amendment retires is the analogy that
+  chose documents first - "reorganizing a tree on two devices _is_ editing a
+  note on two devices" - retired because taxonomy edits decompose into element
+  facts with obvious merge semantics, and prose does not. Third-party curation
+  is unchanged: their chain, their collection, their published list.
+- **References are `(root, doc_id)`** - stable identities, never version hashes
+  (an edit must not shatter every tree pointing at the document). Relative forms
+  elide the root via base-URI resolution (see Addressing); cross-identity
+  references are fully qualified.
+- **Taxonomies answer queries.** A taxonomy carries an author-declared
+  `default_view` (`index` | `latest` | ...) - an annotation on the private
+  working form, a payload field on the published document - and the view
+  vocabulary (`latest`, `earliest`, `root`, `index`, `next-in-stream`, ...) is
+  one function family consumed by slug URLs (Addressing) and Marquee's
+  `:::computed` roles alike.
 
 ### Annotations: Private Facts About Documents (settled 2026-07-20; IMPLEMENTED)
 
-Where does a description go? Audio's artist and album? The question forced a third category into
-existence, and with it **the placement test** that decides every future "where does field X
-live":
+Where does a description go? Audio's artist and album? The question forced a
+third category into existence, and with it **the placement test** that decides
+every future "where does field X live":
 
-- **A function of the version's bytes → the header.** Width, height, duration, format, hashes:
-  derivable from the file, changing exactly when the bytes change, riding free on the version
-  save that is already happening. `title` is the single blessed human exception (listings need
-  it without a second lookup) - and it is the cautionary precedent, not a pattern: every
-  human-editable header field must buy its own answer to concurrent editing inside machinery
-  built for body divergence (title's answer is its own field-wise merge). No second
-  exception.
-- **Cross-document structure → taxonomy** (above). An album is an ordered taxonomy;
-  artist-as-grouping is a tag, or an ordered taxonomy when someone curates a discography.
-- **A human assertion about one document → an annotation.** Per-doc, singular, editable, and
-  decoupled from the version lifecycle: a description is edited without minting a version, and a
-  new version never re-asks for it. It fails the header test (prose bloats every entry; edits
-  must not write versions) and the taxonomy test (nothing cross-document about it) - so it is
-  its own thing.
+- **A function of the version's bytes → the header.** Width, height, duration,
+  format, hashes: derivable from the file, changing exactly when the bytes
+  change, riding free on the version save that is already happening. `title` is
+  the single blessed human exception (listings need it without a second
+  lookup) - and it is the cautionary precedent, not a pattern: every
+  human-editable header field must buy its own answer to concurrent editing
+  inside machinery built for body divergence (title's answer is its own
+  field-wise merge). No second exception.
+- **Cross-document structure → taxonomy** (above). An album is an ordered
+  taxonomy; artist-as-grouping is a tag, or an ordered taxonomy when someone
+  curates a discography.
+- **A human assertion about one document → an annotation.** Per-doc, singular,
+  editable, and decoupled from the version lifecycle: a description is edited
+  without minting a version, and a new version never re-asks for it. It fails
+  the header test (prose bloats every entry; edits must not write versions) and
+  the taxonomy test (nothing cross-document about it) - so it is its own thing.
 
-**The shape: the private store's CRDTs, grouped per document.** Annotations reuse `PrivatePlain`
-wholesale - registers for fields, set-elements for tags - with everything the user asserts about
-doc D in one collection, `annot:<root>/<doc_id>` (the full `(root, doc_id)` reference form, so
-privately annotating _someone else's_ document stays representable). `key` is the field name -
-`description`, `artist`, `album`, `source`, `rating`, ... - a conventional vocabulary that is
-client custom, never protocol; absent value means cleared; tags are set elements in the same
-collection. Values inherit PrivatePlain's caps, with an annotations-layer cap of **2 KiB** on
-descriptions: past a few hundred characters a "description" is becoming another document - write
-one and reference it. Merge is the existing LWW stamp `(timestamp, seq, hash)` under the
-authoring clamp, and last-writer-wins is the _correct_ contract for a prose blurb precisely
-because history stays recoverable - no new merge machinery, which is exactly what staying out of the
+**The shape: the private store's CRDTs, grouped per document.** Annotations
+reuse `PrivatePlain` wholesale - registers for fields, set-elements for tags -
+with everything the user asserts about doc D in one collection,
+`annot:<root>/<doc_id>` (the full `(root, doc_id)` reference form, so privately
+annotating _someone else's_ document stays representable). `key` is the field
+name - `description`, `artist`, `album`, `source`, `rating`, ... - a
+conventional vocabulary that is client custom, never protocol; absent value
+means cleared; tags are set elements in the same collection. Values inherit
+PrivatePlain's caps, with an annotations-layer cap of **2 KiB** on descriptions:
+past a few hundred characters a "description" is becoming another document -
+write one and reference it. Merge is the existing LWW stamp
+`(timestamp, seq, hash)` under the authoring clamp, and last-writer-wins is the
+_correct_ contract for a prose blurb precisely because history stays
+recoverable - no new merge machinery, which is exactly what staying out of the
 header buys.
 
-**Its own chain, pre-graduated: `doc-meta` (service 7).** The graduation rule (features scribble
-on `general-private` until cadence earns them a chain) gains a refinement: **skip the scribble
-phase when the cadence is forecastable.** Here it is, twice over. (1) Annotation volume scales
-with **library size**, not human decision count - a bulk media import writes tens of thousands
-of registers in an afternoon, exactly the ingest-shaped traffic documents were evicted from
-`general-private` for. (2) On an encrypted chain, **`service` is the only cleartext partition
-key** - collections live inside the ciphertext, so co-located annotations would tax every
-small-fact read with decrypt-everything, forever; and un-graduating later means re-asserting
-state on a new chain and dual-reading the old one permanently. Mandatory mechanics, named so
-they are not missed: a fresh AAD constant (domain separation from general-private records), the
-`is_private_service()` line in sync (miss it and annotations leak to unproven strangers), and
-the withheld-from-strangers test cloned for the new service.
+**Its own chain, pre-graduated: `doc-meta` (service 7).** The graduation rule
+(features scribble on `general-private` until cadence earns them a chain) gains
+a refinement: **skip the scribble phase when the cadence is forecastable.** Here
+it is, twice over. (1) Annotation volume scales with **library size**, not human
+decision count - a bulk media import writes tens of thousands of registers in an
+afternoon, exactly the ingest-shaped traffic documents were evicted from
+`general-private` for. (2) On an encrypted chain, **`service` is the only
+cleartext partition key** - collections live inside the ciphertext, so
+co-located annotations would tax every small-fact read with decrypt-everything,
+forever; and un-graduating later means re-asserting state on a new chain and
+dual-reading the old one permanently. Mandatory mechanics, named so they are not
+missed: a fresh AAD constant (domain separation from general-private records),
+the `is_private_service()` line in sync (miss it and annotations leak to
+unproven strangers), and the withheld-from-strangers test cloned for the new
+service.
 
-**The ingest membrane holds.** The media pipeline strips embedded metadata (EXIF, ID3, OpusTags)
-at ingest, forever - harvested metadata is a privacy leak and mostly junk. The authoring client
-may _read_ artist/album/title from the file before the bytes are laundered and offer them as
-pre-filled annotations; persisting them is a deliberate user act (bulk import consents once per
-batch, never silently per file). The pipeline launders; the user asserts - copy-don't-flip,
-extended to metadata a second time.
+**The ingest membrane holds.** The media pipeline strips embedded metadata
+(EXIF, ID3, OpusTags) at ingest, forever - harvested metadata is a privacy leak
+and mostly junk. The authoring client may _read_ artist/album/title from the
+file before the bytes are laundered and offer them as pre-filled annotations;
+persisting them is a deliberate user act (bulk import consents once per batch,
+never silently per file). The pipeline launders; the user asserts -
+copy-don't-flip, extended to metadata a second time.
 
-**Rejected, so they stay rejected:** descriptive fields in the version header (the merge
-tax, above); a document's tags as one register value (whole-list LWW eats concurrent tagging);
-tag collections grouped per-tag rather than per-doc (read direction is the materializer's job;
-per-doc keeps a document's assertions, deletions, and exports single-collection); SQLCipher and
-sealed-snapshot views (see The Substrate - dependency and multi-tenant-memory grounds
-respectively).
+**Rejected, so they stay rejected:** descriptive fields in the version header
+(the merge tax, above); a document's tags as one register value (whole-list LWW
+eats concurrent tagging); tag collections grouped per-tag rather than per-doc
+(read direction is the materializer's job; per-doc keeps a document's
+assertions, deletions, and exports single-collection); SQLCipher and
+sealed-snapshot views (see The Substrate - dependency and multi-tenant-memory
+grounds respectively).
 
 ### Replication over Iroh
 
-- User data is synced between nodes using the **Ringtome sync protocol** (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
+- User data is synced between nodes using the **Ringtome sync protocol** (see
+  Iroh Protocol Mapping below), not by replicating raw SQLite files.
 - The per-user SQLite database is the local materialized view of synced data.
-- Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
-- Concurrent writes never conflict at the log layer; merge rules live at the semantic layer, stated once in
-  **The Ordering Contract** (LWW for scalar state, set-merge for collections, rank-path - never time - for
-  authority) and implemented node-side by the Store Layer's typed handles.
-- **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that a Repudiation Revocation can retroactively quarantine everything a hostile key signed after its cut-point (see Revocation Types).
+- Both nodes continue to sync the user's data bidirectionally as long as the
+  user is active on both.
+- Concurrent writes never conflict at the log layer; merge rules live at the
+  semantic layer, stated once in **The Ordering Contract** (LWW for scalar
+  state, set-merge for collections, rank-path - never time - for authority) and
+  implemented node-side by the Store Layer's typed handles.
+- **Entry validation:** Every incoming sync entry is validated against the
+  current key tree. Entries are stored **signed** so that a Repudiation
+  Revocation can retroactively quarantine everything a hostile key signed after
+  its cut-point (see Revocation Types).
 
 ### The Browser Is a View: The Live Cache (settled 2026-07-23)
 
-The web client is **not a peer**. It holds no keys, validates nothing, never touches
-ciphertext, and never dials the network - it has exactly one sync partner forever, the node
-that agents its identity, and what it syncs is not chains but **the view**. The architecture
-arrived here on its own: chains → journal → disposable materialized views is already the
-node's shape, and the browser adds one more disposable materialized view, one hop further out.
+The web client is **not a peer**. It holds no keys, validates nothing, never
+touches ciphertext, and never dials the network - it has exactly one sync
+partner forever, the node that agents its identity, and what it syncs is not
+chains but **the view**. The architecture arrived here on its own: chains →
+journal → disposable materialized views is already the node's shape, and the
+browser adds one more disposable materialized view, one hop further out.
 
-- **Downstream is a WebSocket, and it is read-only.** Per identity, the node streams **view
-  deltas** - the same row shapes the persisted views hold (doc summaries, annotations, tags,
-  taxonomy facts, profile fields), already decrypted, already folded - and the browser upserts
-  them into an IndexedDB mirror (Dexie). The node folds once; every browser inherits the
-  fold. This is what keeps the dual-implementation cost near zero: the browser reimplements
-  _display_ logic, never merge judgment - LWW, DAG resolution, and conflict synthesis
-  stay in Rust, stated once. A per-chain cursor rides the stream so a returning browser
-  catches up incrementally; a browser with no cursor (or a doubtful one) drops the cache and
-  re-streams from zero. **The cache is disposable** - a pure function of the node's view,
-  never a source of truth: the Turso invariant, one hop out.
-- **Upstream is HTTP POST, and every write is one.** No mutations ride the socket: actions
-  arrive as the discrete, logged, rate-limited, cap-checked HTTP writes that already exist.
-  The asymmetry is deliberate - a socket that only ever flows outward is easy to reason
-  about, and the write surface stays one surface.
-- **Optimistic writes are a shadow overlay.** The client applies its own POSTs to a shadow
-  layer over the mirror immediately; the write lands on the node, folds, and **echoes back
-  down the stream**, which clears the shadow. Until the echo arrives the change is visibly
-  "on its way" - the first level of the unsynced-indicator doctrine, free. (The second level -
-  "has any _other node_ seen it?" - is peer-ack information the node must expose; still
-  deferred, and slot-compatible with this same stream.)
-- **Plaintext in browser storage is accepted, deliberately.** The persisted-views ruling
-  leaned on Turso's at-rest encryption; IndexedDB has none, and the difference is accepted on
-  ownership grounds: the browser runs on the _user's own machine_ - private docs cached there
-  live on hardware that is theirs, which is at least as sound as their plaintext living on a
-  node they may not own. The obligations that make this a posture rather than a leak: a
-  **"forget this browser"** control that drops mirror and shadow wholesale (logout offers
-  it), and nothing is ever cached for an identity the session doesn't own.
-- **The browser is never a device. Ever.** No leaf key, no signing, no adoption ceremony, no
-  seat in the key tree - cancelled permanently, not deferred. Browser storage is evictable at
-  the browser's whim, the XSS surface is real, and - decisively - it is unnecessary: the node
-  signs, so a browser can be lost, cleared, or stolen with zero authority attached. The
-  intermediate tier ("a browser that validates entries itself" - wasm-proto at the trust
-  boundary) is likewise unplanned: the browser's trust in its own node is the same trust
-  every HTTP read already extends (**We Trust the Node Operator**), and no consumer has named
-  a reason to shrink it. Offline _writes_ are out of scope by construction - an offline
-  browser is a reading browser, and that is the accepted shape.
+- **Downstream is a WebSocket, and it is read-only.** Per identity, the node
+  streams **view deltas** - the same row shapes the persisted views hold (doc
+  summaries, annotations, tags, taxonomy facts, profile fields), already
+  decrypted, already folded - and the browser upserts them into an IndexedDB
+  mirror (Dexie). The node folds once; every browser inherits the fold. This is
+  what keeps the dual-implementation cost near zero: the browser reimplements
+  _display_ logic, never merge judgment - LWW, DAG resolution, and conflict
+  synthesis stay in Rust, stated once. A per-chain cursor rides the stream so a
+  returning browser catches up incrementally; a browser with no cursor (or a
+  doubtful one) drops the cache and re-streams from zero. **The cache is
+  disposable** - a pure function of the node's view, never a source of truth:
+  the Turso invariant, one hop out.
+- **Upstream is HTTP POST, and every write is one.** No mutations ride the
+  socket: actions arrive as the discrete, logged, rate-limited, cap-checked HTTP
+  writes that already exist. The asymmetry is deliberate - a socket that only
+  ever flows outward is easy to reason about, and the write surface stays one
+  surface.
+- **Optimistic writes are a shadow overlay.** The client applies its own POSTs
+  to a shadow layer over the mirror immediately; the write lands on the node,
+  folds, and **echoes back down the stream**, which clears the shadow. Until the
+  echo arrives the change is visibly "on its way" - the first level of the
+  unsynced-indicator doctrine, free. (The second level - "has any _other node_
+  seen it?" - is peer-ack information the node must expose; still deferred, and
+  slot-compatible with this same stream.)
+- **Plaintext in browser storage is accepted, deliberately.** The
+  persisted-views ruling leaned on Turso's at-rest encryption; IndexedDB has
+  none, and the difference is accepted on ownership grounds: the browser runs on
+  the _user's own machine_ - private docs cached there live on hardware that is
+  theirs, which is at least as sound as their plaintext living on a node they
+  may not own. The obligations that make this a posture rather than a leak: a
+  **"forget this browser"** control that drops mirror and shadow wholesale
+  (logout offers it), and nothing is ever cached for an identity the session
+  doesn't own.
+- **The browser is never a device. Ever.** No leaf key, no signing, no adoption
+  ceremony, no seat in the key tree - cancelled permanently, not deferred.
+  Browser storage is evictable at the browser's whim, the XSS surface is real,
+  and - decisively - it is unnecessary: the node signs, so a browser can be
+  lost, cleared, or stolen with zero authority attached. The intermediate tier
+  ("a browser that validates entries itself" - wasm-proto at the trust boundary)
+  is likewise unplanned: the browser's trust in its own node is the same trust
+  every HTTP read already extends (**We Trust the Node Operator**), and no
+  consumer has named a reason to shrink it. Offline _writes_ are out of scope by
+  construction - an offline browser is a reading browser, and that is the
+  accepted shape.
 
-What this buys: a live UI (every view reactive), offline reads, instant boot from cache,
-multi-tab coherence (one socket, BroadcastChannel fan-out - a client detail), and near-zero
-growth in bespoke read endpoints. What it costs: the change-stream endpoint and cursor
-bookkeeping on the node, the Dexie mirror + shadow overlay in the client. Sequencing
-consequence, deliberate: this **precedes the notes UI** - once an identity's view streams and
-its writes echo, the notes app is mostly rendering.
+What this buys: a live UI (every view reactive), offline reads, instant boot
+from cache, multi-tab coherence (one socket, BroadcastChannel fan-out - a client
+detail), and near-zero growth in bespoke read endpoints. What it costs: the
+change-stream endpoint and cursor bookkeeping on the node, the Dexie mirror +
+shadow overlay in the client. Sequencing consequence, deliberate: this
+**precedes the notes UI** - once an identity's view streams and its writes echo,
+the notes app is mostly rendering.
 
-*(Stage 1 IMPLEMENTED 2026-07-25 - `/api/identity/{root}/stream` + `mirror.js`. The v1
-simplifications, named so their refinements stay honest: updates are **whole-kind refreshes**
-(every row of profile/docs/taxonomies - the degenerate delta, same shapes, idempotent; row
-deltas when a library is big enough to care); the **cursor is a frontier fingerprint**
-(BLAKE3 over the identity's sorted chain heads - resync's change detector, hashed), so a
-matching reconnect goes straight to live and ANY doubt gets the full snapshot - incremental
-catch-up beyond nothing-changed is deliberately unbuilt, because "drop the cache and
-re-stream" is this design's own answer; **change detection is a 1s fingerprint poll per open
-socket, now nudged** (the anticipated internal broadcast bus - it showed in a profile, 2026-07-25:
-title/annotation edits lagged a full tick before reflecting in the list. Local writes ping the
-same write-nudge bus the eager-sync loop uses, upgraded from a single-waiter `Notify` to a `()`
-broadcast so every open socket wakes; each still re-checks its own cursor and sends only if it
-moved. The 1s tick stays as the backstop - it catches writes that race a send and body blobs
-arriving by backfill - so the nudge is pure latency, never correctness); one
-socket **per tab** rather than BroadcastChannel fan-out (Dexie's liveQuery already makes the
-mirror reactive cross-tab; the shared-socket economy can come later); the mirror is dropped
-on logout unconditionally (the "forget this browser" obligation, v1 shape); and the **shadow
-overlay shipped with the notes editor** (2026-07-25) in its natural form - the edit buffer
-itself: local state the stream never repaints, watched against the mirror but never rendered
-from it, fast-forwarded by save responses without refetching. The badge was the first
-consumer: rename a persona on any computer and every browser's bar catches up in seconds.
+*(Stage 1 IMPLEMENTED 2026-07-25 - `/api/identity/{root}/stream` + `mirror.js`.
+The v1 simplifications, named so their refinements stay honest: updates are
+**whole-kind refreshes** (every row of profile/docs/taxonomies - the degenerate
+delta, same shapes, idempotent; row deltas when a library is big enough to
+care); the **cursor is a frontier fingerprint** (BLAKE3 over the identity's
+sorted chain heads - resync's change detector, hashed), so a matching reconnect
+goes straight to live and ANY doubt gets the full snapshot - incremental
+catch-up beyond nothing-changed is deliberately unbuilt, because "drop the cache
+and re-stream" is this design's own answer; **change detection is a 1s
+fingerprint poll per open socket, now nudged** (the anticipated internal
+broadcast bus - it showed in a profile, 2026-07-25: title/annotation edits
+lagged a full tick before reflecting in the list. Local writes ping the same
+write-nudge bus the eager-sync loop uses, upgraded from a single-waiter `Notify`
+to a `()` broadcast so every open socket wakes; each still re-checks its own
+cursor and sends only if it moved. The 1s tick stays as the backstop - it
+catches writes that race a send and body blobs arriving by backfill - so the
+nudge is pure latency, never correctness); one socket **per tab** rather than
+BroadcastChannel fan-out (Dexie's liveQuery already makes the mirror reactive
+cross-tab; the shared-socket economy can come later); the mirror is dropped on
+logout unconditionally (the "forget this browser" obligation, v1 shape); and the
+**shadow overlay shipped with the notes editor** (2026-07-25) in its natural
+form - the edit buffer itself: local state the stream never repaints, watched
+against the mirror but never rendered from it, fast-forwarded by save responses
+without refetching. The badge was the first consumer: rename a persona on any
+computer and every browser's bar catches up in seconds.
 
-Two amendments since (2026-07-25). The cursor gained a **`view_epochs` term**: a per-root
-in-memory counter for view changes chain frontiers can't see - specifically a body blob
-arriving by backfill, which moves a document's resolution (and search tokens) without moving
-any chain head. Bumped when `fetch_missing_bodies` lands blobs, mixed into the fingerprint, it
-makes open browsers re-stream on body arrival; in-memory, so a boot resets it to a full
-snapshot - the disposable-mirror answer, unchanged. And the **search index** (`doc_search`,
-a token-bag view streamed as a new kind) became the first real customer for the promised
-Stage-2 row deltas: at whole-kind refresh it re-ships the token corpus per save, tolerable at
-cozy scale and the concrete pressure that will earn per-row deltas when a library grows.)*
+Two amendments since (2026-07-25). The cursor gained a **`view_epochs` term**: a
+per-root in-memory counter for view changes chain frontiers can't see -
+specifically a body blob arriving by backfill, which moves a document's
+resolution (and search tokens) without moving any chain head. Bumped when
+`fetch_missing_bodies` lands blobs, mixed into the fingerprint, it makes open
+browsers re-stream on body arrival; in-memory, so a boot resets it to a full
+snapshot - the disposable-mirror answer, unchanged. And the **search index**
+(`doc_search`, a token-bag view streamed as a new kind) became the first real
+customer for the promised Stage-2 row deltas: at whole-kind refresh it re-ships
+the token corpus per save, tolerable at cozy scale and the concrete pressure
+that will earn per-row deltas when a library grows.)*
 
 ### Other People Live in Their Own Database (settled 2026-08-03)
 
-The partition rule (Why Per-User Databases?, above) answers a question it was never asked: when you follow Greg,
-where does Greg go? **Into Greg's database** - `data/users/<greg-root>.db`, on your node, shared by every account
-on it - not into yours, and not once per follower. Four reasons, all the same reason: a materialized view of
-Greg's chains is a property of _Greg_ (it is his history, folded, validated against his root, self-certifying
-whoever handed it over); deduplication is what a node is _for_ (three housemates following Greg store one Greg);
-the serving face reads it directly; and un-fronting him is a file delete rather than surgery on your data. Blobs
-go one step further still - the node keeps **one** content-addressed store for every identity, so a picture two
-people both hold is one picture.
+The partition rule (Why Per-User Databases?, above) answers a question it was
+never asked: when you follow Greg, where does Greg go? **Into Greg's
+database** - `data/users/<greg-root>.db`, on your node, shared by every account
+on it - not into yours, and not once per follower. Four reasons, all the same
+reason: a materialized view of Greg's chains is a property of _Greg_ (it is his
+history, folded, validated against his root, self-certifying whoever handed it
+over); deduplication is what a node is _for_ (three housemates following Greg
+store one Greg); the serving face reads it directly; and un-fronting him is a
+file delete rather than surgery on your data. Blobs go one step further still -
+the node keeps **one** content-addressed store for every identity, so a picture
+two people both hold is one picture.
 
-The line that keeps this coherent: **content is theirs; opinions are yours.** Greg's posts, profile and avatar
-live in Greg's database. Your nickname for him, your trust and interest dials, your block, what you have seen -
-all of it lives on _your_ private chain (`contact:<greg-root>`). Which is why dropping Greg's database loses
-nothing you authored, and why your nickname reaches your phone without ever touching his data.
+The line that keeps this coherent: **content is theirs; opinions are yours.**
+Greg's posts, profile and avatar live in Greg's database. Your nickname for him,
+your trust and interest dials, your block, what you have seen - all of it lives
+on _your_ private chain (`contact:<greg-root>`). Which is why dropping Greg's
+database loses nothing you authored, and why your nickname reaches your phone
+without ever touching his data.
 
-**What lands there is exactly what you can prove entitlement to**, and for an ordinary person that is the public
-lane alone - enforced three times over, not by anyone's good behaviour: his node withholds private entries _and
-their frontiers_ from a peer with no member proof; your node's ingest gate refuses private-service entries from an
-unproven peer, so nothing hostile can stuff his database with opaque ciphertext; and they would be unreadable
-anyway, sealed to his members' keys. The same rule generalizes without amendment: a **group's** database on your
-node holds its public lane _plus_ its member lane, because there you can prove entitlement (Groups: The Member
-Lane). Same file, same rule, one more lane admitted.
+**What lands there is exactly what you can prove entitlement to**, and for an
+ordinary person that is the public lane alone - enforced three times over, not
+by anyone's good behaviour: his node withholds private entries _and their
+frontiers_ from a peer with no member proof; your node's ingest gate refuses
+private-service entries from an unproven peer, so nothing hostile can stuff his
+database with opaque ciphertext; and they would be unreadable anyway, sealed to
+his members' keys. The same rule generalizes without amendment: a **group's**
+database on your node holds its public lane _plus_ its member lane, because
+there you can prove entitlement (Groups: The Member Lane). Same file, same rule,
+one more lane admitted.
 
-Two consequences worth stating plainly. **A foreign database is entirely disposable** - every byte is a replica of
-public facts, re-fetchable, and nothing you authored is inside - so eviction is safe by construction, which is what
-makes retention tractable here and fraught in your own database. And **store, serve, and advertise are three
-different acts**: holding Greg's chains is local; serving them to anonymous visitors is the gateway's shelf rule
-(Moderation); publishing a serving record for him is what makes fronting _public_ (Rehosting Policy). Only the
-third is inherently visible to the world, and "does following Greg tell anyone I follow Greg?" has a different
-answer for each.
+Two consequences worth stating plainly. **A foreign database is entirely
+disposable** - every byte is a replica of public facts, re-fetchable, and
+nothing you authored is inside - so eviction is safe by construction, which is
+what makes retention tractable here and fraught in your own database. And
+**store, serve, and advertise are three different acts**: holding Greg's chains
+is local; serving them to anonymous visitors is the gateway's shelf rule
+(Moderation); publishing a serving record for him is what makes fronting
+_public_ (Rehosting Policy). Only the third is inherently visible to the world,
+and "does following Greg tell anyone I follow Greg?" has a different answer for
+each.
 
-**Your own nodes may relay foreign content to each other**, and should. Entries are self-validating - a post of
-Greg's is signed by Greg and chains to Greg's root - so your laptop can accept it from your desktop exactly as
-safely as from Greg, and Greg's node need not serve your fleet N times. This is the epidemic relay the sync layer
-already performs for your own identities, extended to the identities you carry, and it wants the rule `?via=`
-already follows: **a frontier another node reports is a hint, never a fact** - fetch and validate, never believe.
+**Your own nodes may relay foreign content to each other**, and should. Entries
+are self-validating - a post of Greg's is signed by Greg and chains to Greg's
+root - so your laptop can accept it from your desktop exactly as safely as from
+Greg, and Greg's node need not serve your fleet N times. This is the epidemic
+relay the sync layer already performs for your own identities, extended to the
+identities you carry, and it wants the rule `?via=` already follows: **a
+frontier another node reports is a hint, never a fact** - fetch and validate,
+never believe.
 
-The consolation for everything below: the per-identity partition that makes fan-in reads awkward is exactly what
-makes the storage sane. A hundred users following the same three hundred identities store three hundred
-databases, not thirty thousand.
+The consolation for everything below: the per-identity partition that makes
+fan-in reads awkward is exactly what makes the storage sane. A hundred users
+following the same three hundred identities store three hundred databases, not
+thirty thousand.
 
-_(Owed, and named here because doctrine currently runs ahead of code: nothing records **who demanded** a foreign
-identity. The Three Funnels asserts that "every remote identity a node fronts exists because a specific local
-account demanded it... remediation is severing the demand edge and talking to the user who created it" - but the
-node's fetch bookkeeping is keyed by root alone, with no demander and no reference count. The subscription table
-below is where that debt gets paid.)_
+_(Owed, and named here because doctrine currently runs ahead of code: nothing
+records **who demanded** a foreign identity. The Three Funnels asserts that
+"every remote identity a node fronts exists because a specific local account
+demanded it... remediation is severing the demand edge and talking to the user
+who created it" - but the node's fetch bookkeeping is keyed by root alone, with
+no demander and no reference count. The subscription table below is where that
+debt gets paid.)_
 
 ### Arrival and Attention: The Inbox and the Feed (settled 2026-08-03; extended 2026-08-09)
 
-Two things must be materialized for a reader across many writers, and they are one problem in
-different clothes: what **arrived** (the inbox) and what is **worth attention** (the feed).
-Both are fan-in over hundreds of identities; neither may be computed at render time. The
-routing rule, stated once: **where a follow-edge exists, evidence travels by pull and opinions
-are derived locally; where none exists, evidence travels by envelope and is transcribed under
+Two things must be materialized for a reader across many writers, and they are
+one problem in different clothes: what **arrived** (the inbox) and what is
+**worth attention** (the feed). Both are fan-in over hundreds of identities;
+neither may be computed at render time. The routing rule, stated once: **where a
+follow-edge exists, evidence travels by pull and opinions are derived locally;
+where none exists, evidence travels by envelope and is transcribed under
 quota.**
 
 #### The follow-edge rule: zero rows by pull
 
-A follow-edge produces no inbox row, ever: the follower's node already syncs you and its fold
-derives "she replied" as a feed row, so an envelope would be a duplicate surface for a fact the
-pull path owns. Freshness rides the recipient's interest dial; the remedy for a drowsy follower
-is a content-free sync offer ("I have new entries for you") - a poke, never a knock.
+A follow-edge produces no inbox row, ever: the follower's node already syncs you
+and its fold derives "she replied" as a feed row, so an envelope would be a
+duplicate surface for a fact the pull path owns. Freshness rides the recipient's
+interest dial; the remedy for a drowsy follower is a content-free sync offer ("I
+have new entries for you") - a poke, never a knock.
 
 #### The inbox: a doorbell and a peephole
 
-The inbox holds what strangers cause: follow receipts, comment, tag and rebroadcast notices,
-first-contact requests, and your own nodes' system events. Ongoing awareness of someone
-obligates nothing: the graduation is **discovery** (their notice lands), **watch** (a quiet
-follow converts them from delivered to derived), **trust** (a deliberate later act), each
-optional. Strangers cannot write your chains; they _deliver_ to one of your nodes, which
-applies _The Inbound Gate_ and, on a pass, **transcribes** - the sender's signed envelope copied
-verbatim into a notice on an inbox chain, encrypted under your epoch key, signed by the node's
-leaf, so your other nodes verify the sender themselves; the notice id is the envelope hash,
-so transcription is idempotent. The gate runs at transcription, not delivery. An unadmitted
-stranger renders as derived identity only, identicon and speakable words; their name and
-picture cost a sync you pay only for people you have answered. The attack surface, named:
-strangers can induce your node to write its own record, so everything here bounds a gate
+The inbox holds what strangers cause: follow receipts, comment, tag and
+rebroadcast notices, first-contact requests, and your own nodes' system events.
+Ongoing awareness of someone obligates nothing: the graduation is **discovery**
+(their notice lands), **watch** (a quiet follow converts them from delivered to
+derived), **trust** (a deliberate later act), each optional. Strangers cannot
+write your chains; they _deliver_ to one of your nodes, which applies _The
+Inbound Gate_ and, on a pass, **transcribes** - the sender's signed envelope
+copied verbatim into a notice on an inbox chain, encrypted under your epoch key,
+signed by the node's leaf, so your other nodes verify the sender themselves; the
+notice id is the envelope hash, so transcription is idempotent. The gate runs at
+transcription, not delivery. An unadmitted stranger renders as derived identity
+only, identicon and speakable words; their name and picture cost a sync you pay
+only for people you have answered. The attack surface, named: strangers can
+induce your node to write its own record, so everything here bounds a gate
 mistake to a few kilobytes of junk that ages out of a bounded pool.
 
 #### Envelopes carry evidence, not claims
 
-A stranger's notice verifies **offline, from the envelope alone** - the moment verification
-costs a sync, "broadcast implausible claims to force a sync" is the attack. The authorization
-path embeds (key-tree entries are self-authenticating, root to leaf, verifiable from the root
-pubkey, which is the identity), and the claimed entry embeds (a follow, comment, tag or
-rebroadcast IS a signed entry on the sender's chain, a header plus hashes, about a post you
-hold). **First-contact is the only bare-claim kind**: unverifiable, hence a hard-capped greeting
-and the smallest quota. Residuals accepted: revocation (verifiable-modulo-revocation is enough
-for a notification) and publication (an entry signed but never served still occupies `(chain,
-seq)`, so the sender's real chain must eventually contradict it and every recipient holds fork
-proof - minting fake claims hands out time bombs against your own standing, which deters
-exactly the population the floor admits). Rejected: accept-then-audit with node blacklists -
-auditing is itself a forced sync, and blame lands on nodes when claims are authored by
-identities.
+A stranger's notice verifies **offline, from the envelope alone** - the moment
+verification costs a sync, "broadcast implausible claims to force a sync" is the
+attack. The authorization path embeds (key-tree entries are self-authenticating,
+root to leaf, verifiable from the root pubkey, which is the identity), and the
+claimed entry embeds (a follow, comment, tag or rebroadcast IS a signed entry on
+the sender's chain, a header plus hashes, about a post you hold).
+**First-contact is the only bare-claim kind**: unverifiable, hence a hard-capped
+greeting and the smallest quota. Residuals accepted: revocation
+(verifiable-modulo-revocation is enough for a notification) and publication (an
+entry signed but never served still occupies `(chain, seq)`, so the sender's
+real chain must eventually contradict it and every recipient holds fork proof -
+minting fake claims hands out time bombs against your own standing, which deters
+exactly the population the floor admits). Rejected: accept-then-audit with node
+blacklists - auditing is itself a forced sync, and blame lands on nodes when
+claims are authored by identities.
 
 #### The gate: per-kind floors and the pre-Trust fallback
 
-Checks run cheapest first: floor and mute (a local lookup on the claimed root), size cap,
-signature verification of the embedded evidence, quota, transcription. Floors are per kind and
-ranked by flow, since identities are free but paths are not; a pathless sender is not refused
-(corrected 2026-08-10) but lands in the stranger pool, which a flood can only spend against
-itself - refusal at the gate is reserved for a block. Until Trust ships the gate runs a
-degenerate classifier: explicit or mutual edge is the trusted tier, anyone else the stranger
-tier, muted dropped in silence; Trust later replaces the function only, the chain layout and
-gate position being final. **Blocks** are LWW facts on your private chain, enforced at every
-door; anti-spam, never anti-harassment. **A block is the one refusal that is not spoken**
-(2026-08-10): a refusal reports the sender's own standing, which they are owed, but whether you
-blocked them is a fact about you, and an honest door would be a block oracle - so a blocked
-sender is told "accepted" and nothing follows, the one place a node answers falsely, buying
-_no signal at all_ rather than "you cannot reach me".
+Checks run cheapest first: floor and mute (a local lookup on the claimed root),
+size cap, signature verification of the embedded evidence, quota, transcription.
+Floors are per kind and ranked by flow, since identities are free but paths are
+not; a pathless sender is not refused (corrected 2026-08-10) but lands in the
+stranger pool, which a flood can only spend against itself - refusal at the gate
+is reserved for a block. Until Trust ships the gate runs a degenerate
+classifier: explicit or mutual edge is the trusted tier, anyone else the
+stranger tier, muted dropped in silence; Trust later replaces the function only,
+the chain layout and gate position being final. **Blocks** are LWW facts on your
+private chain, enforced at every door; anti-spam, never anti-harassment. **A
+block is the one refusal that is not spoken** (2026-08-10): a refusal reports
+the sender's own standing, which they are owed, but whether you blocked them is
+a fact about you, and an honest door would be a block oracle - so a blocked
+sender is told "accepted" and nothing follows, the one place a node answers
+falsely, buying _no signal at all_ rather than "you cannot reach me".
 
 #### Tiered inbox chains, count-bounded
 
-Inbox chains are plural, `(device key x tier)`, so each tier's retention and sync depth is
-per-chain policy. **The stranger tier is a chain, never a node-local buffer**, because the
-device you read on is the least reachable one you own: anything shown to the user exists as a
-chain row; anything node-local is in flight. **Retention is count-based** (2048 trusted, 512
-stranger; "last N" is clock-free where "last 7 days" is not), the one named exception to "an
-identity's nodes hold its chains whole": pruning is aging off the floor, a peer that pruned
-offers a chain starting above zero, and **suffix admission is scoped to exactly the inbox
-services** - the narrowness is the security argument, since a suffix door on an ordinary chain
-lets a sender make history vanish. The prune keeps at least the head, since an emptied chain
-would re-genesis at seq 0 and equivocate with itself. **Inbox cargo skips the journal**
-(2026-08-09, Curtis's call): a stranger flood must not accrete as dead frames on the disk a
-subpoena visits, so the journal-superset invariant reads "for durable services" and an
-eighty-byte per-chain **head checkpoint** file, written before the insert, carries the
-exception - under-recording would let a rebuilt device re-sign a held seq, over-recording is a
-phantom gap that suffix admission forgives; inbox chains do not replay, they continue from the
-checkpoint. One row per (sender, kind); seen and deleted are LWW facts on the same chains;
-graduation never migrates rows. Rejected: per-calendar-day chains - the discriminator is a
-clock fact; **chain discriminators are identity-shaped, never time-shaped.**
+Inbox chains are plural, `(device key x tier)`, so each tier's retention and
+sync depth is per-chain policy. **The stranger tier is a chain, never a
+node-local buffer**, because the device you read on is the least reachable one
+you own: anything shown to the user exists as a chain row; anything node-local
+is in flight. **Retention is count-based** (2048 trusted, 512 stranger; "last N"
+is clock-free where "last 7 days" is not), the one named exception to "an
+identity's nodes hold its chains whole": pruning is aging off the floor, a peer
+that pruned offers a chain starting above zero, and **suffix admission is scoped
+to exactly the inbox services** - the narrowness is the security argument, since
+a suffix door on an ordinary chain lets a sender make history vanish. The prune
+keeps at least the head, since an emptied chain would re-genesis at seq 0 and
+equivocate with itself. **Inbox cargo skips the journal** (2026-08-09, Curtis's
+call): a stranger flood must not accrete as dead frames on the disk a subpoena
+visits, so the journal-superset invariant reads "for durable services" and an
+eighty-byte per-chain **head checkpoint** file, written before the insert,
+carries the exception - under-recording would let a rebuilt device re-sign a
+held seq, over-recording is a phantom gap that suffix admission forgives; inbox
+chains do not replay, they continue from the checkpoint. One row per (sender,
+kind); seen and deleted are LWW facts on the same chains; graduation never
+migrates rows. Rejected: per-calendar-day chains - the discriminator is a clock
+fact; **chain discriminators are identity-shaped, never time-shaped.**
 
 #### Delivery: one door, then your own sync
 
-The sender's job is to reach one node of yours, ever; fan-out across your devices is your own
-sync. The failure condition is "zero nodes of mine were reachable", softened in three layers:
-the underlying fact is durable (a missed notice loses the alert, never the event), the sender
-retries with backoff within the notice's relevance window, and sealed-envelope relays - a
-friend's always-on node as your answering service, holding a few kilobytes sealed to your epoch
-key - close the gap on existing trust. A persona with zero durable nodes has degraded
-availability for everything, which is Hosting's subject.
+The sender's job is to reach one node of yours, ever; fan-out across your
+devices is your own sync. The failure condition is "zero nodes of mine were
+reachable", softened in three layers: the underlying fact is durable (a missed
+notice loses the alert, never the event), the sender retries with backoff within
+the notice's relevance window, and sealed-envelope relays - a friend's always-on
+node as your answering service, holding a few kilobytes sealed to your epoch
+key - close the gap on existing trust. A persona with zero durable nodes has
+degraded availability for everything, which is Hosting's subject.
 
 #### The transport tier: standing before the gate
 
-The node prices connection admission by **shared standing**: how many of our users' outbound
-public edges point at personas the peer verifiably hosts, from a materialized graph of public
-edges and signed serving records. Four constraints: **public edges only, structurally** - quiet
-follows feeding the tier would leak them through timing, so treatment is quantized to a few
-tiers; **relief, never penalty** - the zero-edge lane is the baseline every stranger gets,
-sluggish but usable, since "zero edges means unreachable" would build big-server gravity, and
-legitimate zero-edge traffic is tiny; **count only edges our side authored, with diminishing
-returns per local persona** - inbound edges are attacker-mintable; **every input is a signed
-artifact** - no node reputation or blacklists. Zero shared edges is the normal condition for
-first contact, and the friend token is the fast-pass at this layer as at the gate. Honesty
-ledger: tiered treatment leaks aggregate colocation, marginal since the inputs are public.
+The node prices connection admission by **shared standing**: how many of our
+users' outbound public edges point at personas the peer verifiably hosts, from a
+materialized graph of public edges and signed serving records. Four constraints:
+**public edges only, structurally** - quiet follows feeding the tier would leak
+them through timing, so treatment is quantized to a few tiers; **relief, never
+penalty** - the zero-edge lane is the baseline every stranger gets, sluggish but
+usable, since "zero edges means unreachable" would build big-server gravity, and
+legitimate zero-edge traffic is tiny; **count only edges our side authored, with
+diminishing returns per local persona** - inbound edges are attacker-mintable;
+**every input is a signed artifact** - no node reputation or blacklists. Zero
+shared edges is the normal condition for first contact, and the friend token is
+the fast-pass at this layer as at the gate. Honesty ledger: tiered treatment
+leaks aggregate colocation, marginal since the inputs are public.
 
 #### The proof-of-work stamp (a fixed, configured price)
 
-Every zero-standing envelope carries a hashcash stamp over its own body. **The price is
-operator configuration, fixed at boot, never adjusted at runtime**: `RINGTOME_POW_REQUESTED_BITS`
-and `RINGTOME_POW_WILLING_BITS`, shipped at 19 bits (tens of milliseconds to solve, a fraction of
-a microsecond to verify). What it buys, without inflation: a zero-second attack becomes a
-twenty-second one; the ring bounds the attack, the stamp prices being the flood. Hashcash
-rather than a memory-hard function because cheap verification is load-bearing, and the stamp
-is checked before the signatures. **No dynamic pricing, no flood detector, no decay** (cut
-2026-08-10): a price high enough to deter a flood is high enough that honest phones stop
-paying, leaving only attackers willing - an oblique refusal that costs the honest stranger
-everything. An under-stamped envelope gets `NeedsStamp(bits)`, a door held open, paid within
-the sender's willingness and never re-ground for a price already cleared; a node charging more
-than it would pay warns about itself at boot. Only the zero-standing lane ever pays.
+Every zero-standing envelope carries a hashcash stamp over its own body. **The
+price is operator configuration, fixed at boot, never adjusted at runtime**:
+`RINGTOME_POW_REQUESTED_BITS` and `RINGTOME_POW_WILLING_BITS`, shipped at 19
+bits (tens of milliseconds to solve, a fraction of a microsecond to verify).
+What it buys, without inflation: a zero-second attack becomes a twenty-second
+one; the ring bounds the attack, the stamp prices being the flood. Hashcash
+rather than a memory-hard function because cheap verification is load-bearing,
+and the stamp is checked before the signatures. **No dynamic pricing, no flood
+detector, no decay** (cut 2026-08-10): a price high enough to deter a flood is
+high enough that honest phones stop paying, leaving only attackers willing - an
+oblique refusal that costs the honest stranger everything. An under-stamped
+envelope gets `NeedsStamp(bits)`, a door held open, paid within the sender's
+willingness and never re-ground for a price already cleared; a node charging
+more than it would pay warns about itself at boot. Only the zero-standing lane
+ever pays.
 
 #### Saying it out loud: desktop notifications and Web Push (settled 2026-09-25)
 
-Whenever a badge would light, the person hears about it off-screen. The deciding happens once, in
-the node (`attention.rs`): it reads exactly the rows the two dock badges count - the bell's list and
-the chat badge's rooms - and raises an alert for each unseen item not yet announced, so an alert can
-never disagree with the badge. "Not yet announced" is a set of items, never a time mark (a line
-said while its speaker's node was offline arrives late with an old stamp and is still news), and a
-persona's first look announces nothing (a launch never replays the backlog). Two listeners:
+Whenever a badge would light, the person hears about it off-screen. The deciding
+happens once, in the node (`attention.rs`): it reads exactly the rows the two
+dock badges count - the bell's list and the chat badge's rooms - and raises an
+alert for each unseen item not yet announced, so an alert can never disagree
+with the badge. "Not yet announced" is a set of items, never a time mark (a line
+said while its speaker's node was offline arrives late with an old stamp and is
+still news), and a persona's first look announces nothing (a launch never
+replays the backlog). Two listeners:
 
-- **The desktop app** shows each alert as an OS notification unless its window is in front, and a
-  click lands in the room or the bell.
-- **Web Push**, for a browser with no tab open. The node is the push _sender_: a browser that opts
-  in (per browser, per persona) hands over its vendor's push endpoint and a key, and the node
-  encrypts each alert to that key (RFC 8291) and signs the request with its own VAPID key (RFC 8292)
-  - no vendor account, no API keys. **The accepted trade:** delivery rides Google's, Mozilla's or
-    Apple's push service, which carries only ciphertext but learns _when_ a browser is notified, and
-    a hosted node makes outbound HTTPS requests to those services. It is opt-in per browser for that
-    reason, and never offered in the desktop app, which needs none of it.
+- **The desktop app** shows each alert as an OS notification unless its window
+  is in front, and a click lands in the room or the bell.
+- **Web Push**, for a browser with no tab open. The node is the push _sender_: a
+  browser that opts in (per browser, per persona) hands over its vendor's push
+  endpoint and a key, and the node encrypts each alert to that key (RFC 8291)
+  and signs the request with its own VAPID key (RFC 8292)
+  - no vendor account, no API keys. **The accepted trade:** delivery rides
+    Google's, Mozilla's or Apple's push service, which carries only ciphertext
+    but learns _when_ a browser is notified, and a hosted node makes outbound
+    HTTPS requests to those services. It is opt-in per browser for that reason,
+    and never offered in the desktop app, which needs none of it.
 
 #### The feed is fanned out, not fetched
 
-A fan-in read is three hundred encrypted files thrashing a capped handle cache, so the fold
-writes a memo and reads never fold: a **cross-identity index** in its own disposable file, one
-row per public item, public-lane only by structure. **The node routes; the user ranks**: the
-subscription table `(foreign_root, local_root, eagerness)` is all routing needs, and the node
-deliberately does not assemble trust weights, nicknames or blocks - already-possible and
-already-assembled are different security postures. **Journal, then index**: arrival appends to
-a per-reader journal, a later pass builds the sorted view, so a policy change is a re-index,
-never a retraction. **One cursor** (2026-08-09): delivered is node-local pipeline bookkeeping
-and the only cursor the feed has - **the feed has no read state at all**, for two reasons
-that arrived together: per-document marks fired from scroll made reading the highest write-rate
-act in the application, and an unread badge is a debt the application invents on the reader's
-behalf, the engagement machinery the Vision indicts. A watermark over claimed time was examined
-and declined (clock skew makes a backdated post never read as new); where "since I last looked"
-is wanted, `arrived_ms` is on every row. Read state survives only at the bell: one watermark
-register per persona, arrival-stamped, **moved by a deliberate act, never by automatic
-observation**. The interest dial is a sync-cadence dial, and backfill is the burst to bound.
-Nodes share frontiers, never views.
+A fan-in read is three hundred encrypted files thrashing a capped handle cache,
+so the fold writes a memo and reads never fold: a **cross-identity index** in
+its own disposable file, one row per public item, public-lane only by structure.
+**The node routes; the user ranks**: the subscription table
+`(foreign_root, local_root, eagerness)` is all routing needs, and the node
+deliberately does not assemble trust weights, nicknames or blocks -
+already-possible and already-assembled are different security postures.
+**Journal, then index**: arrival appends to a per-reader journal, a later pass
+builds the sorted view, so a policy change is a re-index, never a retraction.
+**One cursor** (2026-08-09): delivered is node-local pipeline bookkeeping and
+the only cursor the feed has - **the feed has no read state at all**, for two
+reasons that arrived together: per-document marks fired from scroll made reading
+the highest write-rate act in the application, and an unread badge is a debt the
+application invents on the reader's behalf, the engagement machinery the Vision
+indicts. A watermark over claimed time was examined and declined (clock skew
+makes a backdated post never read as new); where "since I last looked" is
+wanted, `arrived_ms` is on every row. Read state survives only at the bell: one
+watermark register per persona, arrival-stamped, **moved by a deliberate act,
+never by automatic observation**. The interest dial is a sync-cadence dial, and
+backfill is the burst to bound. Nodes share frontiers, never views.
 
 #### Feed selectivity: one slider, two budgets (designed 2026-08-15)
 
-**Two budgets, strictly separated.** ACQUISITION is what the node syncs and stores, governed by
-the dials and the derived subscriptions. ATTENTION is what a human is shown, governed by one
-slider at the top of the feed: a read-time floor over each row's effective interest, instant,
-reversible, network-silent. **Six stops** (Curtis's names): _Explorer, highly speculative,
-speculative, interest only, medium interest only, high interest only_ - the top three show
-rows by explicit dial band, the lower three add the derived pools as they land. **New users
-default to Explorer**, the widest floor rather than an empty room. **Every row carries one
-effective interest level with a provenance precedence**: the reader's dial on the author, else
-the reader's rebroadcast dial on the sharer, else the derived path score, else the floor pool
-that admitted it - which is also the answer to "why am I seeing this?". The filter runs
-client-side; the slider position is a persona-level private register, since it is a fact about
-the person's feed. The speculative pool's shape: the trust tree at depth along links carrying
-high trust AND high interest, parallel paths taking MAX never sum, revocation a re-score never a
-cascade; same-node shares parked until a node has strangers on it.
+**Two budgets, strictly separated.** ACQUISITION is what the node syncs and
+stores, governed by the dials and the derived subscriptions. ATTENTION is what a
+human is shown, governed by one slider at the top of the feed: a read-time floor
+over each row's effective interest, instant, reversible, network-silent. **Six
+stops** (Curtis's names): _Explorer, highly speculative, speculative, interest
+only, medium interest only, high interest only_ - the top three show rows by
+explicit dial band, the lower three add the derived pools as they land. **New
+users default to Explorer**, the widest floor rather than an empty room. **Every
+row carries one effective interest level with a provenance precedence**: the
+reader's dial on the author, else the reader's rebroadcast dial on the sharer,
+else the derived path score, else the floor pool that admitted it - which is
+also the answer to "why am I seeing this?". The filter runs client-side; the
+slider position is a persona-level private register, since it is a fact about
+the person's feed. The speculative pool's shape: the trust tree at depth along
+links carrying high trust AND high interest, parallel paths taking MAX never
+sum, revocation a re-score never a cascade; same-node shares parked until a node
+has strangers on it.
 
 #### Implicit edges: the graph assembled, the fold kept home (built 2026-08-16)
 
-Two memos, and the level split is the design. **`edge_graph`** (node.db): what synced personas
-say publicly about each other, one row per published `(author, subject, trust band, interest
-band)`, a cache of public speech. **`implicit_edges`** (each persona's own db): my dial toward a
-friend composed with their published band toward a stranger, min of the two, one row per
-`(target, lane, introducer)` - in the user database because the composition uses the reader's
-private dial. The algebra: **two lanes that never mix** (my trust dial with their trust band; my
-rebroadcast dial with their interest band - an implicit follow is a taste judgement, not a
-character one); **raw ingredients over collapsed scores** (depth, level, introducer, the
-introducer's vouch count, so promiscuity discounts happen at read and the UI can explain);
-**MAX across introducers, never sums**, promiscuity a discount not a gate; explicit beats
-implicit, blocked beats everything. The folds ride the follows-public frontier move and the
-subscriptions refresh, one choreography, served raw at `GET /api/identity/{root}/implicit`.
+Two memos, and the level split is the design. **`edge_graph`** (node.db): what
+synced personas say publicly about each other, one row per published
+`(author, subject, trust band, interest band)`, a cache of public speech.
+**`implicit_edges`** (each persona's own db): my dial toward a friend composed
+with their published band toward a stranger, min of the two, one row per
+`(target, lane, introducer)` - in the user database because the composition uses
+the reader's private dial. The algebra: **two lanes that never mix** (my trust
+dial with their trust band; my rebroadcast dial with their interest band - an
+implicit follow is a taste judgement, not a character one); **raw ingredients
+over collapsed scores** (depth, level, introducer, the introducer's vouch count,
+so promiscuity discounts happen at read and the UI can explain); **MAX across
+introducers, never sums**, promiscuity a discount not a gate; explicit beats
+implicit, blocked beats everything. The folds ride the follows-public frontier
+move and the subscriptions refresh, one choreography, served raw at
+`GET /api/identity/{root}/implicit`.
 
 #### Discovery: the second-order pipeline (settled and built, 2026-08-15 → 08-25)
 
-Fan-out delivers what was asked for; discovery is the content that was not. Four stages:
+Fan-out delivers what was asked for; discovery is the content that was not. Four
+stages:
 
-1. **Demand** - a node-level speculative rollup over hosted readers' implicit edges, top-K
-   targets per reader by composed level, bounded by an acquisition budget; a memo that recedes
-   when its inputs do.
-2. **Acquisition** - quiet pulls through the INTRODUCER's node first (asking a friend discloses
-   only to that friend), the target's serving records as fallback; a quiet mirror, no serving
-   record, no fronting, polled on a slow beat.
-3. **Journaling** - a third reader criterion beside followers and share-followers, rows marked
-   speculative with the introducer as provenance ("suggested via Mara"), newest page only; any
-   real arrival converts the row in place, speculation never downgrades.
+1. **Demand** - a node-level speculative rollup over hosted readers' implicit
+   edges, top-K targets per reader by composed level, bounded by an acquisition
+   budget; a memo that recedes when its inputs do.
+2. **Acquisition** - quiet pulls through the INTRODUCER's node first (asking a
+   friend discloses only to that friend), the target's serving records as
+   fallback; a quiet mirror, no serving record, no fronting, polled on a slow
+   beat.
+3. **Journaling** - a third reader criterion beside followers and
+   share-followers, rows marked speculative with the introducer as provenance
+   ("suggested via Mara"), newest page only; any real arrival converts the row
+   in place, speculation never downgrades.
 4. **Attention** - the selectivity slider, pure read-time.
 
-The speculative pass is one dialer with one per-target question, depth: the rollup's strongest
-paths earn recent POSTS, the tail keeps a name and a key (identity-public and profile at
-headers depth) under separate staleness-ordered caps; the wire is the **scoped sync Hello**
-(only these services, scope narrows only). A posts-held mirror is never downgraded; a
-headers-held one admitted at posts depth reads as never fetched. **Depth 2 is as far as this
-goes** (2026-08-25): vouches decay per hop faster than the machinery's cost, and rebroadcasts
-carry discovery to any depth with a human choice at every hop.
+The speculative pass is one dialer with one per-target question, depth: the
+rollup's strongest paths earn recent POSTS, the tail keeps a name and a key
+(identity-public and profile at headers depth) under separate staleness-ordered
+caps; the wire is the **scoped sync Hello** (only these services, scope narrows
+only). A posts-held mirror is never downgraded; a headers-held one admitted at
+posts depth reads as never fetched. **Depth 2 is as far as this goes**
+(2026-08-25): vouches decay per hop faster than the machinery's cost, and
+rebroadcasts carry discovery to any depth with a human choice at every hop.
 
-Invariants, as checks: no fronting and no push for speculative mirrors (reciprocity is the
-test); the dice order visits, the memo decides retention; disclosure stays in-relationship;
-MAX across introducers, never sums; explicit beats implicit, blocked beats everything; budgets
-are caps, not pacing; promotion is clean - one real dial and the pair leaves the pipeline.
-Field doctrine: outward surfaces speak with a held chain's authority only under a freshness
-contract; beat-driven machinery never dials an unresolved key; deadlines detach, never cancel.
-Parked, kept only so the shapes need not be re-derived: depth 3+ as an edges-only appetite;
-same-network detection near depth 6 by neighbourhood sketches, whose useful boolean is the
-negative; adversarial simulation as a regression test. What this is not: a recommendation
-engine - no engagement signals, no popularity inputs, and every suggestion explainable in one
-sentence that names people, not scores.
+Invariants, as checks: no fronting and no push for speculative mirrors
+(reciprocity is the test); the dice order visits, the memo decides retention;
+disclosure stays in-relationship; MAX across introducers, never sums; explicit
+beats implicit, blocked beats everything; budgets are caps, not pacing;
+promotion is clean - one real dial and the pair leaves the pipeline. Field
+doctrine: outward surfaces speak with a held chain's authority only under a
+freshness contract; beat-driven machinery never dials an unresolved key;
+deadlines detach, never cancel. Parked, kept only so the shapes need not be
+re-derived: depth 3+ as an edges-only appetite; same-network detection near
+depth 6 by neighbourhood sketches, whose useful boolean is the negative;
+adversarial simulation as a regression test. What this is not: a recommendation
+engine - no engagement signals, no popularity inputs, and every suggestion
+explainable in one sentence that names people, not scores.
 
 ### Rebroadcast: Pointer Plus Pinned Replica (settled 2026-08-10)
 
-How you share someone else's post through your network. The tension the design has to hold: copying content whole
-into your own chain is the easy replication model and it destroys the original author's ability to delete or edit
-that content, _ever_; a bare reference preserves author control and makes every share only as durable as the
-author's own nodes. The balance point is the one the system already struck for feeds - the author's shelf is
-authoritative, everything downstream is a disposable copy that honors it - proven end-to-end by the repudiation
-work (a device's disowned posts swept from a follower's journal and its bodies un-served, on nodes the author
-never touched). _A delivery memo cannot launder disproven content_ generalizes one hop out.
+How you share someone else's post through your network. The tension the design
+has to hold: copying content whole into your own chain is the easy replication
+model and it destroys the original author's ability to delete or edit that
+content, _ever_; a bare reference preserves author control and makes every share
+only as durable as the author's own nodes. The balance point is the one the
+system already struck for feeds - the author's shelf is authoritative,
+everything downstream is a disposable copy that honors it - proven end-to-end by
+the repudiation work (a device's disowned posts swept from a follower's journal
+and its bodies un-served, on nodes the author never touched). _A delivery memo
+cannot launder disproven content_ generalizes one hop out.
 
-**A rebroadcast is a signed pointer on your chain plus a pinned replica your node serves. Never a copy into your
-chain.**
+**A rebroadcast is a signed pointer on your chain plus a pinned replica your
+node serves. Never a copy into your chain.**
 
-- **The pointer is the social act**: `(author_root, doc_id, version_hash_seen)`, authored on the rebroadcaster's
-  own chain. Permanent the way your words are permanent; retractable the way published edges are retractable - a
-  later entry withdraws it, because LWW needs a write and silence cannot un-say.
-- **The replica is the virality**: the author's original signed entry and body, exact bytes, their signature
-  intact - so it stays self-authenticating and no hop can launder provenance. The rebroadcaster's node serves it
-  to their followers. Every rebroadcast adds a serving node, so **popularity = replication = availability** -
-  replication tracks heat, which is the p2p virality model working with the grain.
-- **Author control rides the retraction machinery that already exists.** The replica is keyed to the author's
-  chain state: the rebroadcaster's node holds a suffix of the author's POSTS chain (shallow sync exists for
-  exactly this) and refreshes it. Author retracts → replica drops on the next refresh, the `retract_vanished`
-  edge one hop out. The pointer survives but hollows - renders as "retracted by its author."
+- **The pointer is the social act**: `(author_root, doc_id, version_hash_seen)`,
+  authored on the rebroadcaster's own chain. Permanent the way your words are
+  permanent; retractable the way published edges are retractable - a later entry
+  withdraws it, because LWW needs a write and silence cannot un-say.
+- **The replica is the virality**: the author's original signed entry and body,
+  exact bytes, their signature intact - so it stays self-authenticating and no
+  hop can launder provenance. The rebroadcaster's node serves it to their
+  followers. Every rebroadcast adds a serving node, so **popularity =
+  replication = availability** - replication tracks heat, which is the p2p
+  virality model working with the grain.
+- **Author control rides the retraction machinery that already exists.** The
+  replica is keyed to the author's chain state: the rebroadcaster's node holds a
+  suffix of the author's POSTS chain (shallow sync exists for exactly this) and
+  refreshes it. Author retracts → replica drops on the next refresh, the
+  `retract_vanished` edge one hop out. The pointer survives but hollows -
+  renders as "retracted by its author."
 
-**Silence preserves, speech deletes.** An author who merely goes offline cannot retract, so their content survives
-through the replicas - the availability that full-copy wanted. An author who actively retracts is honored by every
-honest node on the refresh cadence. Full-copy trades the second away to get the first; pointer-plus-replica keeps
-both, and edits keep working too, which full-copy kills outright.
+**Silence preserves, speech deletes.** An author who merely goes offline cannot
+retract, so their content survives through the replicas - the availability that
+full-copy wanted. An author who actively retracts is honored by every honest
+node on the refresh cadence. Full-copy trades the second away to get the first;
+pointer-plus-replica keeps both, and edits keep working too, which full-copy
+kills outright.
 
 The two honest bounds on "author control," owned rather than pretended away:
 
-- **Eventually-consistent, never instant.** Retraction propagates on the refresh cadence; that cadence IS the
-  author-control dial. The number, and the subscription class that implements pinning (an author I rebroadcast but
-  do not follow still needs their suffix refreshed), are left to be discovered during the build.
-- **Unenforceable against adversaries** - already conceded above ("public content served to even one follower can
-  be rebroadcast to the open web the instant they choose"). The design question was never whether deletion can be
-  guaranteed; it is whether the protocol's own machinery helps or hinders, and pointer-plus-replica means the
-  protocol never hands out permanence for free.
+- **Eventually-consistent, never instant.** Retraction propagates on the refresh
+  cadence; that cadence IS the author-control dial. The number, and the
+  subscription class that implements pinning (an author I rebroadcast but do not
+  follow still needs their suffix refreshed), are left to be discovered during
+  the build.
+- **Unenforceable against adversaries** - already conceded above ("public
+  content served to even one follower can be rebroadcast to the open web the
+  instant they choose"). The design question was never whether deletion can be
+  guaranteed; it is whether the protocol's own machinery helps or hinders, and
+  pointer-plus-replica means the protocol never hands out permanence for free.
 
-**Doctrine fit, for free**: a rebroadcast IS the accountable-user demand signal that _Pull, Not Push_ requires
-before a node fronts content, so bounded operator liability holds - you chose to carry it. And the per-contact
-rebroadcast band already exists in the edge model as the consumption dial ("how much of X's rebroadcasting do I
-want in my feed").
+**Doctrine fit, for free**: a rebroadcast IS the accountable-user demand signal
+that _Pull, Not Push_ requires before a node fronts content, so bounded operator
+liability holds - you chose to carry it. And the per-contact rebroadcast band
+already exists in the edge model as the consumption dial ("how much of X's
+rebroadcasting do I want in my feed").
 
-**Edits, and the rug-pull** (you rebroadcast a benign post; the author edits it into something vile; your
-endorsement now fronts words you never saw): the pointer records the version hash _seen_ - nearly free, and it is
-evidence of what was endorsed - while readers are shown the author's **current head**, because edits are theirs,
-with a badge when head ≠ seen ("edited since rebroadcast"). The version DAG makes all of it available.
+**Edits, and the rug-pull** (you rebroadcast a benign post; the author edits it
+into something vile; your endorsement now fronts words you never saw): the
+pointer records the version hash _seen_ - nearly free, and it is evidence of
+what was endorsed - while readers are shown the author's **current head**,
+because edits are theirs, with a badge when head ≠ seen ("edited since
+rebroadcast"). The version DAG makes all of it available.
 
-**Hollow, not auto-retract**: when the author deletes, the rebroadcaster's pointer entry stands and renders
-hollow. Software must not retract your chain entry because someone else deleted theirs - that is someone else
-authoring your chain by proxy.
+**Hollow, not auto-retract**: when the author deletes, the rebroadcaster's
+pointer entry stands and renders hollow. Software must not retract your chain
+entry because someone else deleted theirs - that is someone else authoring your
+chain by proxy.
 
 #### What travels with a share, and what never does (settled 2026-08-10)
 
-The failure mode this subsection exists to forbid, caught at design time: if _seeing_ a share ever creates a
-chain subscription, density does the rest - in a well-connected network everyone eventually sees everything once,
-and "pin a fragment of the author's chain" degrades to every public persona synced to every computer. So the
-invariant, stated as doctrine: **a share never creates a chain subscription - not for viewers, and not for the
-sharer either** (corrected 2026-08-11; the first cut gave the sharer a full subscription per shared author, which
-was the same fan-out through the door marked "accountable" - ten thousand shares of one post meant ten thousand
-nodes pulling that author's whole history - and it flattened the share tree into a star where nobody ever
-relayed, so deletion could travel exactly two hops and stop). A pin records that a persona here shares a
-DOCUMENT, and obliges the node to keep a copy of it fresh. Nothing more. Reachability never needed a
-subscription: asking an author whether one document still lives is a single round trip on the fragment ALPN.
+The failure mode this subsection exists to forbid, caught at design time: if
+_seeing_ a share ever creates a chain subscription, density does the rest - in a
+well-connected network everyone eventually sees everything once, and "pin a
+fragment of the author's chain" degrades to every public persona synced to every
+computer. So the invariant, stated as doctrine: **a share never creates a chain
+subscription - not for viewers, and not for the sharer either** (corrected
+2026-08-11; the first cut gave the sharer a full subscription per shared author,
+which was the same fan-out through the door marked "accountable" - ten thousand
+shares of one post meant ten thousand nodes pulling that author's whole
+history - and it flattened the share tree into a star where nobody ever relayed,
+so deletion could travel exactly two hops and stop). A pin records that a
+persona here shares a DOCUMENT, and obliges the node to keep a copy of it fresh.
+Nothing more. Reachability never needed a subscription: asking an author whether
+one document still lives is a single round trip on the fragment ALPN.
 
-What a reader's node holds instead is smaller than any chain fragment: **a document fragment with an origin** -
-the author's signed entry plus its referenced blobs - **all of them, inline media included, at full fidelity**
+What a reader's node holds instead is smaller than any chain fragment: **a
+document fragment with an origin** - the author's signed entry plus its
+referenced blobs - **all of them, inline media included, at full fidelity**
 
-- cached at journal time the same way feed bodies already ride behind headers. Self-authenticating on its own:
-  the author's signature is on the entry, the blobs are content-addressed, and nothing about holding it requires
-  holding their history.
+- cached at journal time the same way feed bodies already ride behind headers.
+  Self-authenticating on its own: the author's signature is on the entry, the
+  blobs are content-addressed, and nothing about holding it requires holding
+  their history.
 
-**What makes "all of them" safe to say is a bound at the source, not a tier at the destination** (settled
-2026-08-10, replacing a briefly-considered preview-tier design): a public post's total media budget is capped at
-publish time - ~10MB, one big file or many small ones, deliberately the same order as the existing "nothing
-bigger moves on the network" ceilings (`RINGTOME_MAX_DOCUMENT_BYTES`, the transcode output cap). So a fragment
-is bounded by construction, and replication carries the _real bytes_: viral transmission of the actual media is
-what keeps hot content fast everywhere, instead of every reader hitting one origin for the payload behind a
-preview. "Display the preview if that's all you have, fetch the original if you can" survives as graceful
-degradation - never as the obligation structure. A hundred-track mixtape is not one post over the cap; it is a
-**Taxonomy of posts**, and publishing-and-rebroadcasting a whole bucket at a time is its own design, deliberately
-deferred.
+**What makes "all of them" safe to say is a bound at the source, not a tier at
+the destination** (settled 2026-08-10, replacing a briefly-considered
+preview-tier design): a public post's total media budget is capped at publish
+time - ~10MB, one big file or many small ones, deliberately the same order as
+the existing "nothing bigger moves on the network" ceilings
+(`RINGTOME_MAX_DOCUMENT_BYTES`, the transcode output cap). So a fragment is
+bounded by construction, and replication carries the _real bytes_: viral
+transmission of the actual media is what keeps hot content fast everywhere,
+instead of every reader hitting one origin for the payload behind a preview.
+"Display the preview if that's all you have, fetch the original if you can"
+survives as graceful degradation - never as the obligation structure. A
+hundred-track mixtape is not one post over the cap; it is a **Taxonomy of
+posts**, and publishing-and-rebroadcasting a whole bucket at a time is its own
+design, deliberately deferred.
 
-**A share is an implicit rebroadcast of the post's media** (built 2026-08-14): one pointer, one budget, one
-renderable whole - nobody believes they shared a post minus its picture, and the machinery now agrees. The
-covered set is never parsed out of a foreign body: the post's SIGNED header names what it embeds
-(`DocHeaderPlain.refs`, derived at the mint by the same parse that bakes, capped at 50 - the count cap prices
-the obligations the way the byte budget prices the bytes). A post fragment's arrival obliges its refs from the
-SAME origin - the pointer's edge is the media's edge, so a shared image survives its author sleeping exactly as
-the post does - and the media set is version-relative: an edit's refs reconcile, fetching what was added and
-releasing what was dropped. Deletion composes instead of needing its own story: `fragment_covers` refcounts why
-each media fragment exists (a doc two shared posts embed is one fragment with two reasons), and a post
-fragment's death - takedown, withdrawal, edit - releases its solely-covered media on the spot, locally, no
-network round trip. The lying-author cases are self-scoped like every header claim: an over-claim obliges the
-author's own sharers (budget-capped), an under-claim breaks the author's own images past hop one. What remains
-deliberately open: whether a reply's parent-pin covers the PARENT's media (leaning yes, same rule one level,
+**A share is an implicit rebroadcast of the post's media** (built 2026-08-14):
+one pointer, one budget, one renderable whole - nobody believes they shared a
+post minus its picture, and the machinery now agrees. The covered set is never
+parsed out of a foreign body: the post's SIGNED header names what it embeds
+(`DocHeaderPlain.refs`, derived at the mint by the same parse that bakes, capped
+at 50 - the count cap prices the obligations the way the byte budget prices the
+bytes). A post fragment's arrival obliges its refs from the SAME origin - the
+pointer's edge is the media's edge, so a shared image survives its author
+sleeping exactly as the post does - and the media set is version-relative: an
+edit's refs reconcile, fetching what was added and releasing what was dropped.
+Deletion composes instead of needing its own story: `fragment_covers` refcounts
+why each media fragment exists (a doc two shared posts embed is one fragment
+with two reasons), and a post fragment's death - takedown, withdrawal, edit -
+releases its solely-covered media on the spot, locally, no network round trip.
+The lying-author cases are self-scoped like every header claim: an over-claim
+obliges the author's own sharers (budget-capped), an under-claim breaks the
+author's own images past hop one. What remains deliberately open: whether a
+reply's parent-pin covers the PARENT's media (leaning yes, same rule one level,
 budget per covered post), to be settled when replies land.
 
-Revalidation is **star and tree, in that order** (settled 2026-08-11). The author's own node is asked first -
-the fastest, most authoritative answer there is, one small round trip, jittered so a viral post's ten thousand
-holders do not knock on the same second forever. When the author cannot be reached, the ORIGIN answers: whoever
-handed over the pointer holds the content, and having revalidated on its own schedule it eventually holds the
-knowledge of any edit or deletion too. Authority where it is reachable, resilience where it is not. Retraction
-propagates down the tree hop by hop - author's tombstone → a chain-holding node answers `Gone` → each fragment
-holder drops its copy, **keeps a 48-byte tombstone**, and answers `Gone` itself to whoever fetched from it. The
-tombstone is the load-bearing move: dropping the content correctly destroys a node's ability to say what
-happened, and the memo is what lets deletion travel to ANY depth rather than exactly two hops. A failed
-fragment fetch is retried by ledger (`fragment_wants`, the missing-bodies idiom), because the share fold only
-re-runs when the sharer's chain moves and a race as small as "the pointer folded before the post synced" must
-not eat a share forever. The whole relay path is proven at four hops with the fast lane disabled
-(`cascade.cjs`), precisely because a fallback that is never exercised has rotted by the time it matters. The
-scaling law falls out:
+Revalidation is **star and tree, in that order** (settled 2026-08-11). The
+author's own node is asked first - the fastest, most authoritative answer there
+is, one small round trip, jittered so a viral post's ten thousand holders do not
+knock on the same second forever. When the author cannot be reached, the ORIGIN
+answers: whoever handed over the pointer holds the content, and having
+revalidated on its own schedule it eventually holds the knowledge of any edit or
+deletion too. Authority where it is reachable, resilience where it is not.
+Retraction propagates down the tree hop by hop - author's tombstone → a
+chain-holding node answers `Gone` → each fragment holder drops its copy, **keeps
+a 48-byte tombstone**, and answers `Gone` itself to whoever fetched from it. The
+tombstone is the load-bearing move: dropping the content correctly destroys a
+node's ability to say what happened, and the memo is what lets deletion travel
+to ANY depth rather than exactly two hops. A failed fragment fetch is retried by
+ledger (`fragment_wants`, the missing-bodies idiom), because the share fold only
+re-runs when the sharer's chain moves and a race as small as "the pointer folded
+before the post synced" must not eat a share forever. The whole relay path is
+proven at four hops with the fast lane disabled (`cascade.cjs`), precisely
+because a fallback that is never exercised has rotted by the time it matters.
+The scaling law falls out:
 
-- **Fragments spread O(interest × the per-post media cap)** - the shared doc, real bytes and all, gets copied
-  to nodes whose users look at it. That is the feature (availability tracks heat, the CDN property), bounded by
-  a number we chose at publish time, never by the author's history or the doc's appetite.
-- **Chain subscriptions spread O(people you actually follow)** - sharing creates none, for anyone (the first
-  cut said "O(deliberate shares)", which sounded bounded and was not: shares scale with virality, and each one
-  was a full subscription).
+- **Fragments spread O(interest × the per-post media cap)** - the shared doc,
+  real bytes and all, gets copied to nodes whose users look at it. That is the
+  feature (availability tracks heat, the CDN property), bounded by a number we
+  chose at publish time, never by the author's history or the doc's appetite.
+- **Chain subscriptions spread O(people you actually follow)** - sharing creates
+  none, for anyone (the first cut said "O(deliberate shares)", which sounded
+  bounded and was not: shares scale with virality, and each one was a full
+  subscription).
 
-The cost this deliberately does NOT bound, named so it is a decision and not a discovery: **a node's total feed
-and fragment footprint grows with its users' appetites**, as it always has - fragments make an existing curve
-steeper, not a new curve. The answer is operator storage management (quotas, eviction pressure on the journal's
-"forgettable" end), which is Node Management's problem and is not solved here.
+The cost this deliberately does NOT bound, named so it is a decision and not a
+discovery: **a node's total feed and fragment footprint grows with its users'
+appetites**, as it always has - fragments make an existing curve steeper, not a
+new curve. The answer is operator storage management (quotas, eviction pressure
+on the journal's "forgettable" end), which is Node Management's problem and is
+not solved here.
 
-Costs, named: staleness is bounded by the revalidation cadence _per hop_, so deep share chains honour retraction
-slowly, and a node serves stale while its origin is offline - "silence preserves, speech deletes", operating
-hop by hop. A fragment whose origin vanishes forever is orphaned; fragments ride the journal rows' lifecycle
-("recent, relevant, forgettable" - the feed row ages out or is excised, the fragment's claim on disk goes with
-it), which is GC, discoverable later. And the genuinely new machinery is bookkeeping, not transport: a fragment
-ledger (whose doc, from whom, last revalidated) feeding the same body-walk and healing loops `net::bodies`
-already runs - a new table and a membership rule, not a new protocol.
+Costs, named: staleness is bounded by the revalidation cadence _per hop_, so
+deep share chains honour retraction slowly, and a node serves stale while its
+origin is offline - "silence preserves, speech deletes", operating hop by hop. A
+fragment whose origin vanishes forever is orphaned; fragments ride the journal
+rows' lifecycle ("recent, relevant, forgettable" - the feed row ages out or is
+excised, the fragment's claim on disk goes with it), which is GC, discoverable
+later. And the genuinely new machinery is bookkeeping, not transport: a fragment
+ledger (whose doc, from whom, last revalidated) feeding the same body-walk and
+healing loops `net::bodies` already runs - a new table and a membership rule,
+not a new protocol.
 
 #### Retraction, edits, and what a node must remember forever (settled 2026-08-10)
 
-The prerequisite nothing above works without: **today a public post has no public un-publish signal at all.**
-Deleting a document writes a tombstone on the doc-meta chain - private, epoch-encrypted, synced only to the
-author's own nodes - so a follower's replica can never learn a post was deleted, and "author retracts → replicas
-drop" is currently true only of repudiation. The fix is a **public tombstone on the POSTS chain**: content-free
-(a doc_id, nothing else), LWW per document, the same retraction-as-a-write shape the rebroadcast pointer already
-uses. Deletion becomes speech, and speech propagates.
+The prerequisite nothing above works without: **today a public post has no
+public un-publish signal at all.** Deleting a document writes a tombstone on the
+doc-meta chain - private, epoch-encrypted, synced only to the author's own
+nodes - so a follower's replica can never learn a post was deleted, and "author
+retracts → replicas drop" is currently true only of repudiation. The fix is a
+**public tombstone on the POSTS chain**: content-free (a doc_id, nothing else),
+LWW per document, the same retraction-as-a-write shape the rebroadcast pointer
+already uses. Deletion becomes speech, and speech propagates.
 
-With retraction real, the next question is what every serving node owes history: naively, "is X still live? has
-X been edited?" answered about arbitrarily old documents means either deep search into the annals or memoizing
-every edit and delete forever. The trim (Curtis, 2026-08-10) splits the problem by the same move the inbox ring
-made - a bounded rolling window plus a one-bit-forever fact, which have completely different storage laws:
+With retraction real, the next question is what every serving node owes history:
+naively, "is X still live? has X been edited?" answered about arbitrarily old
+documents means either deep search into the annals or memoizing every edit and
+delete forever. The trim (Curtis, 2026-08-10) splits the problem by the same
+move the inbox ring made - a bounded rolling window plus a one-bit-forever fact,
+which have completely different storage laws:
 
-- **Posts edit forever; COPIES are kept current for a day** (amended 2026-10-02; from 2026-08-10 to then,
-  edits themselves were allowed only within the window). Curtis, going back over his own history: "sometimes
-  I do, in fact, want to go back and edit a post I made years and years ago" - and a friend fixing a recent
-  post was baffled by the lock that guarded it. The window was built to bound a cost, and the cost was never
-  the edit: **a follower holding the author's chain pays nothing for an edit at any age** - it is one more
-  entry on a chain it syncs anyway. The expensive thing is keeping every _rebroadcast copy_ current forever,
-  "checking for invalidations on every post you ever receive, forever: bad". So the day now bounds exactly
-  that: a node holding only a copy re-asks the author on the sweep's beat while the post is a day old, and
-  stops (`documents::fresh_window_ms`, the old `genesis_ms` anchor) - edit-tracking state is still
-  O(posting-rate × window), a rolling buffer that never grows with history. Past the day a copy **may go
-  stale, and stale copies may proliferate** - Curtis: "I mostly don't care if old rebroadcast versions of that
-  post are stale". A copy is freshened when someone opens the post: the post read asks the author in the
-  background (`fragments::refresh_on_visit`), so the page's reader sees the copy held, and the next look sees
-  what is current. Everything else the window did goes: the resolver threads a version of any age, a held
-  copy takes one, the author's door publishes one, and superseded versions' bytes are kept (they were
-  reaped a day after genesis), because **an edit says so**: a post whose head postdates its mint wears
-  "edited {date}" on its card, and that opens `{post}/history` - every version, newest first, each with what
-  it changed (`/api/id/{seg}/posts/{doc}/versions`; a sealed post's to its readers only, every version under
-  the post's one key). The UI's seal - a lock costing a fifteen-second unlock - is gone with the window: edit
-  opens the editor, at once.
-  _What the freeze also did, and what answers it now._ (1) **The rug-pull** - "post something benign, wait
-  for it to go viral, rewrite it" - is possible again in the narrow sense, and is answered by visibility
-  rather than impossibility: the rewrite wears "edited", its history shows what changed, and the copies it
-  went viral on keep the version they were shared at until someone opens the post. (2) **A stolen device
-  key** could only rewrite recent posts; now it could rewrite any, and the answer is the one that already
-  covers everything else it could do - revoke the key, and repudiation's genesis cut takes back what it
-  signed. (3) Nodes running an older build still ignore late edits; they show what they show until they
-  update, which is the stale copy the design already accepts. _The superseded mechanics, for the record:_
-  the 2026-08-15 build carried the anchor in the signed header (`genesis_ms`, still carried, still never
-  re-derived), dropped late versions in the fold before threading, refused them at the author's door and on
-  the fragment shelf, and took frozen copies out of the sweep - only the last survives, renamed for what it
-  bounds.
-- **The anchor is the author's own claimed delta** - a version's claimed timestamp against the original's, NOT
-  local receipt time. Receipt time diverges: a fresh node syncing an old chain receives original and edit in
-  one exchange and would judge "freshness" by its own clock. It now governs only which copies the sweep keeps
-  current - a scheduling question, so a node's clock deciding when to stop asking is harmless - but the anchor
-  stays the signed claim, deterministic on every node.
-- **Deletes are memoized forever, because they are the cheap half**: sixteen bytes, no content, and "is X
-  deleted?" is the only question that must stay answerable for all time. And the set is far smaller than
-  "forever" suggests, which the first draft of this section got wrong: **the delete-set scales with regret,
-  not with the corpus.** An author with ten thousand posts across a decade retracts perhaps fifty; the whole
-  list fits in a packet. The obligation compounds with takedowns - rare, deliberate human acts - never with
-  writing.
-- **Retraction cursors carry the delete-sets between nodes** (amended 2026-08-13; this bullet previously
-  specified per-author bloom-filter summaries, struck below. Built the same day: `WantDeaths`/`Deaths` on
-  the fragment ALPN, the death log in `fragments.rs`, one reap per sweep beat). Retractions are entries on the author's POSTS
-  chain: append-only, signed, and sequence-numbered - so the batch question is not "check your shelf against
-  this summary" but **"what died since seq N?"**, and the steady-state answer is _empty_: one round trip,
-  no payload, nothing to tune. A non-empty answer is a short list of signed tombstone entries with their
-  delegation paths - the same self-proving shape a fragment travels as, so deletion becomes verifiable
-  offline exactly like content is, and a lying relay can no more kill a document than alter one. A fragment
-  holder asks its ORIGINS, not its authors: one dial per relationship it already maintains, a per-pair
-  cursor, "what died among everything you serve me, since T?" - so batch revalidation scales
-  O(people your users follow) per beat, this design's favorite number, with per-document dials reserved for
-  the young, in-window minority.
+- **Posts edit forever; COPIES are kept current for a day** (amended 2026-10-02;
+  from 2026-08-10 to then, edits themselves were allowed only within the
+  window). Curtis, going back over his own history: "sometimes I do, in fact,
+  want to go back and edit a post I made years and years ago" - and a friend
+  fixing a recent post was baffled by the lock that guarded it. The window was
+  built to bound a cost, and the cost was never the edit: **a follower holding
+  the author's chain pays nothing for an edit at any age** - it is one more
+  entry on a chain it syncs anyway. The expensive thing is keeping every
+  _rebroadcast copy_ current forever, "checking for invalidations on every post
+  you ever receive, forever: bad". So the day now bounds exactly that: a node
+  holding only a copy re-asks the author on the sweep's beat while the post is a
+  day old, and stops (`documents::fresh_window_ms`, the old `genesis_ms`
+  anchor) - edit-tracking state is still O(posting-rate × window), a rolling
+  buffer that never grows with history. Past the day a copy **may go stale, and
+  stale copies may proliferate** - Curtis: "I mostly don't care if old
+  rebroadcast versions of that post are stale". A copy is freshened when someone
+  opens the post: the post read asks the author in the background
+  (`fragments::refresh_on_visit`), so the page's reader sees the copy held, and
+  the next look sees what is current. Everything else the window did goes: the
+  resolver threads a version of any age, a held copy takes one, the author's
+  door publishes one, and superseded versions' bytes are kept (they were reaped
+  a day after genesis), because **an edit says so**: a post whose head postdates
+  its mint wears "edited {date}" on its card, and that opens `{post}/history` -
+  every version, newest first, each with what it changed
+  (`/api/id/{seg}/posts/{doc}/versions`; a sealed post's to its readers only,
+  every version under the post's one key). The UI's seal - a lock costing a
+  fifteen-second unlock - is gone with the window: edit opens the editor, at
+  once. _What the freeze also did, and what answers it now._ (1) **The
+  rug-pull** - "post something benign, wait for it to go viral, rewrite it" - is
+  possible again in the narrow sense, and is answered by visibility rather than
+  impossibility: the rewrite wears "edited", its history shows what changed, and
+  the copies it went viral on keep the version they were shared at until someone
+  opens the post. (2) **A stolen device key** could only rewrite recent posts;
+  now it could rewrite any, and the answer is the one that already covers
+  everything else it could do - revoke the key, and repudiation's genesis cut
+  takes back what it signed. (3) Nodes running an older build still ignore late
+  edits; they show what they show until they update, which is the stale copy the
+  design already accepts. _The superseded mechanics, for the record:_ the
+  2026-08-15 build carried the anchor in the signed header (`genesis_ms`, still
+  carried, still never re-derived), dropped late versions in the fold before
+  threading, refused them at the author's door and on the fragment shelf, and
+  took frozen copies out of the sweep - only the last survives, renamed for what
+  it bounds.
+- **The anchor is the author's own claimed delta** - a version's claimed
+  timestamp against the original's, NOT local receipt time. Receipt time
+  diverges: a fresh node syncing an old chain receives original and edit in one
+  exchange and would judge "freshness" by its own clock. It now governs only
+  which copies the sweep keeps current - a scheduling question, so a node's
+  clock deciding when to stop asking is harmless - but the anchor stays the
+  signed claim, deterministic on every node.
+- **Deletes are memoized forever, because they are the cheap half**: sixteen
+  bytes, no content, and "is X deleted?" is the only question that must stay
+  answerable for all time. And the set is far smaller than "forever" suggests,
+  which the first draft of this section got wrong: **the delete-set scales with
+  regret, not with the corpus.** An author with ten thousand posts across a
+  decade retracts perhaps fifty; the whole list fits in a packet. The obligation
+  compounds with takedowns - rare, deliberate human acts - never with writing.
+- **Retraction cursors carry the delete-sets between nodes** (amended
+  2026-08-13; this bullet previously specified per-author bloom-filter
+  summaries, struck below. Built the same day: `WantDeaths`/`Deaths` on the
+  fragment ALPN, the death log in `fragments.rs`, one reap per sweep beat).
+  Retractions are entries on the author's POSTS chain: append-only, signed, and
+  sequence-numbered - so the batch question is not "check your shelf against
+  this summary" but **"what died since seq N?"**, and the steady-state answer is
+  _empty_: one round trip, no payload, nothing to tune. A non-empty answer is a
+  short list of signed tombstone entries with their delegation paths - the same
+  self-proving shape a fragment travels as, so deletion becomes verifiable
+  offline exactly like content is, and a lying relay can no more kill a document
+  than alter one. A fragment holder asks its ORIGINS, not its authors: one dial
+  per relationship it already maintains, a per-pair cursor, "what died among
+  everything you serve me, since T?" - so batch revalidation scales O(people
+  your users follow) per beat, this design's favorite number, with per-document
+  dials reserved for the young, in-window minority.
 
-  _Why the blooms were struck_ (they were this section's original answer, and they lost on the merits, not
-  on taste): a bloom compresses a large set, and the sets here are small - a filter with a useful error rate
-  over fifty retractions is no smaller than the fifty doc_ids it summarizes; a cursor's empty delta answers
-  "nothing happened" better than any summary can answer anything; and the design already conceded that a
-  bloom-positive must fetch the signed entry, so the exact signed protocol had to exist and be correct
-  regardless - the filter was only a cache in front of it, with sizing knobs, inter-node version skew, and
-  un-printable state, sitting in the one path where a wrong "dead" is permanent by design. Re-entry
-  criteria, so this is a decision and not an allergy: blooms earn a place when a set is huge, unenumerable,
-  or held by a party that cannot be asked incrementally - e.g. an anonymous gateway someday checking
-  arbitrary doc_ids against deletions it never subscribed to. Nothing on the current map is that.
+  _Why the blooms were struck_ (they were this section's original answer, and
+  they lost on the merits, not on taste): a bloom compresses a large set, and
+  the sets here are small - a filter with a useful error rate over fifty
+  retractions is no smaller than the fifty doc_ids it summarizes; a cursor's
+  empty delta answers "nothing happened" better than any summary can answer
+  anything; and the design already conceded that a bloom-positive must fetch the
+  signed entry, so the exact signed protocol had to exist and be correct
+  regardless - the filter was only a cache in front of it, with sizing knobs,
+  inter-node version skew, and un-printable state, sitting in the one path where
+  a wrong "dead" is permanent by design. Re-entry criteria, so this is a
+  decision and not an allergy: blooms earn a place when a set is huge,
+  unenumerable, or held by a party that cannot be asked incrementally - e.g. an
+  anonymous gateway someday checking arbitrary doc_ids against deletions it
+  never subscribed to. Nothing on the current map is that.
 
-The honest cost, chosen rather than discovered: **you cannot fix a typo in a two-year-old post.** The recourse
-is delete-and-repost, which mints a new doc_id and loses the shares and journal position pointing at the old
-one. The record is the record - the old-internet posture, and the price of every node not carrying an
-ever-growing edit index.
+The honest cost, chosen rather than discovered: **you cannot fix a typo in a
+two-year-old post.** The recourse is delete-and-repost, which mints a new doc_id
+and loses the shares and journal position pointing at the old one. The record is
+the record - the old-internet posture, and the price of every node not carrying
+an ever-growing edit index.
 
 #### Replies are rebroadcast plus a comment (settled and built, 2026-08-26/27)
 
-A public reply carries the soft promise of rebroadcasting the thing it responds to - without it, "well,
-@rando, I disagree" is context-free noise to everyone but the two of you. So structurally a reply is a quote:
-**rebroadcast + your own comment doc, linked.** Your words are yours forever, an ordinary public post in every
-mechanical respect (tombstones, editing forever with its "edited" mark and history, media, the full composer) - any new special case is a
-design smell. The context is a replica that honors its author's control: delete the post someone was dunking on
-and their reply stands over "in reply to a retracted post" - the hollow rendering composes, no new case.
+A public reply carries the soft promise of rebroadcasting the thing it responds
+to - without it, "well, @rando, I disagree" is context-free noise to everyone
+but the two of you. So structurally a reply is a quote: **rebroadcast + your own
+comment doc, linked.** Your words are yours forever, an ordinary public post in
+every mechanical respect (tombstones, editing forever with its "edited" mark and
+history, media, the full composer) - any new special case is a design smell. The
+context is a replica that honors its author's control: delete the post someone
+was dunking on and their reply stands over "in reply to a retracted post" - the
+hollow rendering composes, no new case.
 
-The settled shape, from the arc's rulings (full build history in HISTORY.md, 2026-08-26/27):
+The settled shape, from the arc's rulings (full build history in HISTORY.md,
+2026-08-26/27):
 
-- **The link lives on the comment's signed header** (`reply_to` + `thread_root`, the `refs` precedent): the
-  author's own claim, travelling with every fragment and share, verifiable offline, carried forward on
-  re-publication so an edit can never re-parent a conversation. The codec refuses a root without a parent.
-- **A reply pins parent-plus-root, never the ancestor path**: depth-N stays O(1) per reply, context degrades hop
-  by hop, and a hot root pinned by every direct replier is the named, accepted cost. The pin lives and dies with
-  the comment - deletion retracts both pointers, read off the reply's own held copy.
-- **A reply IS a recommendation**: the pins are ordinary rebroadcasts - journaling, bylines, crowd counts, media
-  covers and all. One pointer kind, one semantics, no flavor flag. If someone does not want a post in their
-  network, they should not comment on it.
-- **Replies are ordinary posts in followers' feeds**, worn with the parent as a quoted mini-card; the share/reply
-  pair collapses at render (lead-sharer-keyed, journal stays honest about both rows). **The feed never assembles
-  a tree** - the post's own permalink is where the visible tree forms, and the only place.
-- **Assembly is honest-partial**: nobody's chain holds "all replies to P". The node-level replies memo folds
-  every link it can verify - synced chains, fragments, comment-notice evidence - and every read of it is
-  cursor-paged ("replies known here"; a thread is a read whose cost grows with history, so it ships with a
-  cursor or not at all). Reply counts are the same memo's numbers: a root counts its known tree, a mid-thread
-  reply its direct children.
-- **Comment notices are first-class, never murmurs** (`notice_kind::COMMENT`, both roads): the envelope carries
-  the reply's own signed header as evidence, the derived twin folds from followed repliers' shelves, the two
-  roads dedupe on the follow-edge rule, and the parent pin goes quiet - one act, one notice. For a sender the
-  reader now pulls, the derived path owns a fact's ABSENCE too: stale delivered copies never resurface.
-- **The author's thread door**: the author is structurally the best-informed node about their own post's thread,
-  and serves a reply INDEX on the fragment ALPN (`WantReplies`/`Replies`, the death-cursor idiom) - the
-  repliers' own signed evidence, claims never words; the asker verifies each proof against the exact parent
-  asked, notes the claims, and fetches the words through ordinary `Want` machinery. Visiting the permalink IS
-  the demand (budget-capped SWR behind the render, a refresh affordance that re-reads the index from zero,
+- **The link lives on the comment's signed header** (`reply_to` + `thread_root`,
+  the `refs` precedent): the author's own claim, travelling with every fragment
+  and share, verifiable offline, carried forward on re-publication so an edit
+  can never re-parent a conversation. The codec refuses a root without a parent.
+- **A reply pins parent-plus-root, never the ancestor path**: depth-N stays O(1)
+  per reply, context degrades hop by hop, and a hot root pinned by every direct
+  replier is the named, accepted cost. The pin lives and dies with the comment -
+  deletion retracts both pointers, read off the reply's own held copy.
+- **A reply IS a recommendation**: the pins are ordinary rebroadcasts -
+  journaling, bylines, crowd counts, media covers and all. One pointer kind, one
+  semantics, no flavor flag. If someone does not want a post in their network,
+  they should not comment on it.
+- **Replies are ordinary posts in followers' feeds**, worn with the parent as a
+  quoted mini-card; the share/reply pair collapses at render (lead-sharer-keyed,
+  journal stays honest about both rows). **The feed never assembles a tree** -
+  the post's own permalink is where the visible tree forms, and the only place.
+- **Assembly is honest-partial**: nobody's chain holds "all replies to P". The
+  node-level replies memo folds every link it can verify - synced chains,
+  fragments, comment-notice evidence - and every read of it is cursor-paged
+  ("replies known here"; a thread is a read whose cost grows with history, so it
+  ships with a cursor or not at all). Reply counts are the same memo's numbers:
+  a root counts its known tree, a mid-thread reply its direct children.
+- **Comment notices are first-class, never murmurs** (`notice_kind::COMMENT`,
+  both roads): the envelope carries the reply's own signed header as evidence,
+  the derived twin folds from followed repliers' shelves, the two roads dedupe
+  on the follow-edge rule, and the parent pin goes quiet - one act, one notice.
+  For a sender the reader now pulls, the derived path owns a fact's ABSENCE too:
+  stale delivered copies never resurface.
+- **The author's thread door**: the author is structurally the best-informed
+  node about their own post's thread, and serves a reply INDEX on the fragment
+  ALPN (`WantReplies`/`Replies`, the death-cursor idiom) - the repliers' own
+  signed evidence, claims never words; the asker verifies each proof against the
+  exact parent asked, notes the claims, and fetches the words through ordinary
+  `Want` machinery. Visiting the permalink IS the demand (budget-capped SWR
+  behind the render, a refresh affordance that re-reads the index from zero,
   because a cursor resumed can never see a withheld row approved later).
-- **Curation is the same bit as display**: trusted-tier (followed) repliers serve automatically; an anonymous
-  reply waits for the author's "approve comment" nod; a per-persona register flips the default to auto-share-all
-  or to suppress-all (the "no comments" switch, absolute - past approvals included). Honest limit, stated:
-  suppression mutes the author's amplification, never the reply's existence on its own author's chain.
+- **Curation is the same bit as display**: trusted-tier (followed) repliers
+  serve automatically; an anonymous reply waits for the author's "approve
+  comment" nod; a per-persona register flips the default to auto-share-all or to
+  suppress-all (the "no comments" switch, absolute - past approvals included).
+  Honest limit, stated: suppression mutes the author's amplification, never the
+  reply's existence on its own author's chain.
 
-Named residual (NEXT_STEPS): envelope-kept reply evidence has no deletion road until the keeping node ever meets
-the replier's chain or fragment.
+Named residual (NEXT_STEPS): envelope-kept reply evidence has no deletion road
+until the keeping node ever meets the replier's chain or fragment.
 
 ---
 
 ## Iroh Protocol Mapping
 
-Iroh provides composable protocols on top of its QUIC-based p2p connections, plus a discovery layer. Here's how each maps to Ringtome:
+Iroh provides composable protocols on top of its QUIC-based p2p connections,
+plus a discovery layer. Here's how each maps to Ringtome:
 
 ### Ringtome Sync Protocol → Identity Data & User Content
 
-**Why not `iroh-docs`?** `iroh-docs` is a multi-writer key-value store where Authors sign entries with their own keypairs. However, it has **no protocol-level revocation** — once an Author has write access, their entries sync to all replicas forever. Since Ringtome's key tree requires that revoked Identity nodes lose all authority, iroh-docs' trust model is fundamentally incompatible. A revoked node could keep writing garbage into the shared document indefinitely, and iroh-docs would happily sync it to every peer.
+**Why not `iroh-docs`?** `iroh-docs` is a multi-writer key-value store where
+Authors sign entries with their own keypairs. However, it has **no
+protocol-level revocation** — once an Author has write access, their entries
+sync to all replicas forever. Since Ringtome's key tree requires that revoked
+Identity nodes lose all authority, iroh-docs' trust model is fundamentally
+incompatible. A revoked node could keep writing garbage into the shared document
+indefinitely, and iroh-docs would happily sync it to every peer.
 
-Instead, Ringtome uses a **custom sync protocol** that runs over iroh QUIC bidirectional streams. This gives us control of the sync boundary:
+Instead, Ringtome uses a **custom sync protocol** that runs over iroh QUIC
+bidirectional streams. This gives us control of the sync boundary:
 
 **Architecture:**
 
@@ -3406,936 +4359,1138 @@ Peer A ──iroh QUIC──► Ringtome sync protocol ──validate──► a
                       (we control this)      (key tree)   (gate here!)      (clean)        (clean)
 ```
 
-**Sync mechanism:** Nodes exchange **version vectors** - per-chain _held ranges_ `[floor..head]`, keyed by
-`(key, chain)` (see IM-AOL) - to discover what each side is missing, then send individual signed entries. Dense
-per-chain sequence numbers make gaps detectable; claimed timestamps are never used for sync state. The frontier is a
-range, not a single high-water mark, because content chains may be held shallow (below). This is simpler than
-iroh-docs' range-based set reconciliation, but sufficient because the number of chains per identity is small
-(bounded by keys in the tree times services).
+**Sync mechanism:** Nodes exchange **version vectors** - per-chain _held ranges_
+`[floor..head]`, keyed by `(key, chain)` (see IM-AOL) - to discover what each
+side is missing, then send individual signed entries. Dense per-chain sequence
+numbers make gaps detectable; claimed timestamps are never used for sync state.
+The frontier is a range, not a single high-water mark, because content chains
+may be held shallow (below). This is simpler than iroh-docs' range-based set
+reconciliation, but sufficient because the number of chains per identity is
+small (bounded by keys in the tree times services).
 
-**Key tree sync** is handled as a special case — key tree entries (child authorizations, revocations) are **self-authenticating** (each entry is a signed statement verifiable from the signature chain alone). The key tree syncs first and establishes the authority context for all other data.
+**Key tree sync** is handled as a special case — key tree entries (child
+authorizations, revocations) are **self-authenticating** (each entry is a signed
+statement verifiable from the signature chain alone). The key tree syncs first
+and establishes the authority context for all other data.
 
-**Entry validation:** Every incoming content entry is checked against the current key tree state. If the author's Identity node has been revoked, the entry is rejected at the protocol level — it never enters the local store. This is the critical advantage over iroh-docs, where filtering could only happen _after_ data was already synced and stored.
+**Entry validation:** Every incoming content entry is checked against the
+current key tree state. If the author's Identity node has been revoked, the
+entry is rejected at the protocol level — it never enters the local store. This
+is the critical advantage over iroh-docs, where filtering could only happen
+_after_ data was already synced and stored.
 
 ### Shallow Sync and the Day-Long-Sync Problem
 
-SSB's onboarding pain, precisely blamed: pubs transitively inflated the follow-graph hops math, every feed in
-your slice replicated whole-from-genesis mandatorily, and clients rebuilt databases by replaying the entire log on
-first run - and SSB _had_ a header/blob split, which prevented none of it. Ringtome's escapes: no transitive
-hops-amplification (fronting is direct demand - your node fetches who _you_ follow, not who they follow),
-incremental materialized views (full replay is an optional integrity ritual, never a startup cost), and - the
-piece that needs a protocol commitment - **suffix-capable chains**. "Chains replicate whole" as a default would still recreate SSB's tail (follow a posts-every-minute bot
-with a decade of history and you owe five million entries and verifications; a fronting node multiplies that by its
-user count). The fix is cheap because **the hash chain already permits it - this is a git shallow clone.** If a node holds the _suffix_ of a chain, the oldest held entry's signed
-`prev_hash` commits to the entire missing prefix: everything held verifies as authored, and any later backfill must
-hash-match the commitment already in hand or be rejected. `prev_hash` never required _possessing_ the prefix - only
-that any prefix ever accepted be _the_ prefix. **Recently-rewritten LWW fields are correct from a
-suffix** (an unseen older entry loses by definition) - but fold-based views are not: a register key or set element
-last touched inside the unfetched prefix is silently _absent_, not stale (the store layer's two-question suffix
-test). Snapshots exist to close exactly that gap. What shallow holding otherwise forgoes is fork detection inside
-the unfetched prefix and complete history display - both acceptable to acquire lazily. Policy:
+SSB's onboarding pain, precisely blamed: pubs transitively inflated the
+follow-graph hops math, every feed in your slice replicated whole-from-genesis
+mandatorily, and clients rebuilt databases by replaying the entire log on first
+run - and SSB _had_ a header/blob split, which prevented none of it. Ringtome's
+escapes: no transitive hops-amplification (fronting is direct demand - your node
+fetches who _you_ follow, not who they follow), incremental materialized views
+(full replay is an optional integrity ritual, never a startup cost), and - the
+piece that needs a protocol commitment - **suffix-capable chains**. "Chains
+replicate whole" as a default would still recreate SSB's tail (follow a
+posts-every-minute bot with a decade of history and you owe five million entries
+and verifications; a fronting node multiplies that by its user count). The fix
+is cheap because **the hash chain already permits it - this is a git shallow
+clone.** If a node holds the _suffix_ of a chain, the oldest held entry's signed
+`prev_hash` commits to the entire missing prefix: everything held verifies as
+authored, and any later backfill must hash-match the commitment already in hand
+or be rejected. `prev_hash` never required _possessing_ the prefix - only that
+any prefix ever accepted be _the_ prefix. **Recently-rewritten LWW fields are
+correct from a suffix** (an unseen older entry loses by definition) - but
+fold-based views are not: a register key or set element last touched inside the
+unfetched prefix is silently _absent_, not stale (the store layer's two-question
+suffix test). Snapshots exist to close exactly that gap. What shallow holding
+otherwise forgoes is fork detection inside the unfetched prefix and complete
+history display - both acceptable to acquire lazily. Policy:
 
-1. **Identity chains: always full, always first.** Tiny, security-critical, they are the authority context - never
-   shallow.
-2. **Content chains: suffix-first, backfill lazy.** Follow = head plus a small recent window; older history streams
-   on demand (scrollback) or idle time. This is why the frontier is a `[floor..head]` range - designed into sync v1,
-   because a protocol that assumes dense-from-zero storage bakes that assumption into every peer forever.
-3. **Render at first entry, never at completion.** SSB's sin was as much UI as protocol: the app blocked on
-   replication. Progressive display is a standing rule for every client.
-4. **Fronting depth is a dial.** Fronting an identity promises its _availability_, not its infinite history:
-   per-identity depth/size budgets, so a node fronting 500 users is not archiving 500 lifetimes.
-5. **Snapshots close the fold gap.** Fold-based views (multi-key registers, sets) go suffix-safe only behind a
-   signed checkpoint - design settled, build deferred with its trigger named (see IM-AOL Open Items: Snapshots).
+1. **Identity chains: always full, always first.** Tiny, security-critical, they
+   are the authority context - never shallow.
+2. **Content chains: suffix-first, backfill lazy.** Follow = head plus a small
+   recent window; older history streams on demand (scrollback) or idle time.
+   This is why the frontier is a `[floor..head]` range - designed into sync v1,
+   because a protocol that assumes dense-from-zero storage bakes that assumption
+   into every peer forever.
+3. **Render at first entry, never at completion.** SSB's sin was as much UI as
+   protocol: the app blocked on replication. Progressive display is a standing
+   rule for every client.
+4. **Fronting depth is a dial.** Fronting an identity promises its
+   _availability_, not its infinite history: per-identity depth/size budgets, so
+   a node fronting 500 users is not archiving 500 lifetimes.
+5. **Snapshots close the fold gap.** Fold-based views (multi-key registers,
+   sets) go suffix-safe only behind a signed checkpoint - design settled, build
+   deferred with its trigger named (see IM-AOL Open Items: Snapshots).
 
-The honest trade, named: shallow-held chains mean a node can serve recent content while deep history is only
-_provably-committed-to_, not present. Archival completeness becomes a **role**, not a universal guarantee - an
-identity's own nodes hold its own chains whole (agenting stays full-fat), and anyone may volunteer as a deep
-archive. That is the same trade git made, and the right one.
+The honest trade, named: shallow-held chains mean a node can serve recent
+content while deep history is only _provably-committed-to_, not present.
+Archival completeness becomes a **role**, not a universal guarantee - an
+identity's own nodes hold its own chains whole (agenting stays full-fat), and
+anyone may volunteer as a deep archive. That is the same trade git made, and the
+right one.
 
 ### Post visibility: settled posts and trusted-only posts (settled and built, 2026-09-01/02)
 
-Two flags an author sets at posting time, both carried in the SIGNED public header so any
-holder checks them offline (keys 15 and 16, absent when false, carried forward on
-re-publication like `genesis_ms`), both persisted on the doc memos and the feed journal.
+Two flags an author sets at posting time, both carried in the SIGNED public
+header so any holder checks them offline (keys 15 and 16, absent when false,
+carried forward on re-publication like `genesis_ms`), both persisted on the doc
+memos and the feed journal.
 
-**"Settled" - comments turned off** (narrowed to that on 2026-09-10; it once refused shares
-too, and the seal owns spread now). A wish, not cryptography: malicious clients and
-screenshots exist, and from this network's own point of view a settled post is settled.
-Every honest door honours it - a reply publish naming a settled parent refuses with words,
-the author's thread door serves nothing, and the card drops the thread section for one quiet
-line, the chip riding a share card so the reader knows the post will not take their reply.
-Tags stay allowed: a label is the labeller's speech about the post, not participation inside
-it. The user-facing language is "turn off comments"; "settled" is internal. (It was also the
-store's word for a post whose edit window had closed - there is no such post since 2026-10-02.)
+**"Settled" - comments turned off** (narrowed to that on 2026-09-10; it once
+refused shares too, and the seal owns spread now). A wish, not cryptography:
+malicious clients and screenshots exist, and from this network's own point of
+view a settled post is settled. Every honest door honours it - a reply publish
+naming a settled parent refuses with words, the author's thread door serves
+nothing, and the card drops the thread section for one quiet line, the chip
+riding a share card so the reader knows the post will not take their reply. Tags
+stay allowed: a label is the labeller's speech about the post, not participation
+inside it. The user-facing language is "turn off comments"; "settled" is
+internal. (It was also the store's word for a post whose edit window had
+closed - there is no such post since 2026-10-02.)
 
-**"Trusted only" - the words go to readers the author admits.** The body is CIPHERTEXT
-wherever it travels: sealed at mint under a fresh per-post key, the private lane's own blob
-shape at a sentinel epoch, `file_hash` naming the ciphertext (public, spreadable, harmless)
-and `body_hash` the keyed plaintext fingerprint. The first design gated serving instead and
-was retired unbuilt: serve-time gating makes every holder an enforcement point, and "many
-nodes are malicious" is the assumption. Sealing means untrusted nodes do not refuse to carry
-the words, they cannot read them - every extra carrier makes the post harder to lose without
-making it easier to read, and a relay passes a sealed fragment two hops on without ever
-opening it. Embedded media seals under the same key, twin body and thumbnail, minted fresh
-per post; external web media in a sealed post refuses at bake, the background job having no
-key in hand. The title and the labels are sealed too, and a reply wears the parent's seal
-(_Replies under the author's seal_); who the key goes to - everyone the author publishes
-trust for, or a contact tag, or the people the post names - is _Contact tags_, ruling 4.
+**"Trusted only" - the words go to readers the author admits.** The body is
+CIPHERTEXT wherever it travels: sealed at mint under a fresh per-post key, the
+private lane's own blob shape at a sentinel epoch, `file_hash` naming the
+ciphertext (public, spreadable, harmless) and `body_hash` the keyed plaintext
+fingerprint. The first design gated serving instead and was retired unbuilt:
+serve-time gating makes every holder an enforcement point, and "many nodes are
+malicious" is the assumption. Sealing means untrusted nodes do not refuse to
+carry the words, they cannot read them - every extra carrier makes the post
+harder to lose without making it easier to read, and a relay passes a sealed
+fragment two hops on without ever opening it. Embedded media seals under the
+same key, twin body and thumbnail, minted fresh per post; external web media in
+a sealed post refuses at bake, the background job having no key in hand. The
+title and the labels are sealed too, and a reply wears the parent's seal
+(_Replies under the author's seal_); who the key goes to - everyone the author
+publishes trust for, or a contact tag, or the people the post names - is
+_Contact tags_, ruling 4.
 
-**The key is the only gated thing.** It lives on the draft's private meta (`trusted_key`,
-device-durable, excluded from publish replication) and in the node's `post_keys` memo - the
-author's node at mint, under the post id and every twin id; a reader's node once the key
-lane teaches it. The HTTP body door decrypts for a persona the seal admits; node to node,
-`WantKey`/`Key` on the fragment lane names the persona asking, and the author's node
-releases only when that persona is admitted and the dialing endpoint serves it. "Not here"
-and "not for you" answer identically. Trust published later opens older posts; trust
-withdrawn closes future serving, and a key already released cannot be recalled - delivered
-copies are the honest-parties floor.
+**The key is the only gated thing.** It lives on the draft's private meta
+(`trusted_key`, device-durable, excluded from publish replication) and in the
+node's `post_keys` memo - the author's node at mint, under the post id and every
+twin id; a reader's node once the key lane teaches it. The HTTP body door
+decrypts for a persona the seal admits; node to node, `WantKey`/`Key` on the
+fragment lane names the persona asking, and the author's node releases only when
+that persona is admitted and the dialing endpoint serves it. "Not here" and "not
+for you" answer identically. Trust published later opens older posts; trust
+withdrawn closes future serving, and a key already released cannot be recalled -
+delivered copies are the honest-parties floor.
 
-**What the surfaces show.** A sealed post its reader cannot open never shows - a hollow card
-is an advertisement for a refusal - filtered at read, so the same journal row surfaces the
-moment trust is published; the memo keeps every row, the surface chooses. Discovery's
-speculative lane carries no sealed posts at all, the one surface a reader never chose. The
-permalink keeps one honest line for a direct visit: "the author shares these words only with
-people they trust". A sealed post is not passed along: a share would move the pointer and
-the carriage but never the key, so the button is gone and the door refuses - unless the
-author asked for the hop with "people I trust, and onward" (_Contact tags_, ruling 7).
+**What the surfaces show.** A sealed post its reader cannot open never shows - a
+hollow card is an advertisement for a refusal - filtered at read, so the same
+journal row surfaces the moment trust is published; the memo keeps every row,
+the surface chooses. Discovery's speculative lane carries no sealed posts at
+all, the one surface a reader never chose. The permalink keeps one honest line
+for a direct visit: "the author shares these words only with people they trust".
+A sealed post is not passed along: a share would move the pointer and the
+carriage but never the key, so the button is gone and the door refuses - unless
+the author asked for the hop with "people I trust, and onward" (_Contact tags_,
+ruling 7).
 
-_Residual._ Bare media posts take no flags. A COMMENT envelope about a settled post still
-transcribes to the bell (only a malicious client sends one). A double-tapped sealed publish
-mints one redundant version. Key rotation on revocation is future-posts-only.
+_Residual._ Bare media posts take no flags. A COMMENT envelope about a settled
+post still transcribes to the bell (only a malicious client sends one). A
+double-tapped sealed publish mints one redundant version. Key rotation on
+revocation is future-posts-only.
 
 ### Public annotations: labels on posts (settled 2026-08-29, built 2026-08-29..31)
 
-What a post is said to be, by whom. Tags, description, claimed date and bucket are private
-facts on a draft; publishing restates them as PUBLIC speech, carried the way everything
-public here is carried. Folded here from ANNOTATIONS.md when the arc closed (2026-09-06);
-the moment-by-moment record is HISTORY's.
+What a post is said to be, by whom. Tags, description, claimed date and bucket
+are private facts on a draft; publishing restates them as PUBLIC speech, carried
+the way everything public here is carried. Folded here from ANNOTATIONS.md when
+the arc closed (2026-09-06); the moment-by-moment record is HISTORY's.
 
 **The shape.**
 
-1. **A statement on the SPEAKER's chain.** `ANNOTATIONS_PUBLIC` (service 12) holds LWW
-   statements keyed `(target author, target doc, key, value)` - one per tag, one per
-   single-valued key - present or retracted; the same statement whoever speaks, never a
-   shared object. Codec caps: key 64, value 1024, a tag 32; a label past its cap is refused
-   with words.
-2. **Publishing replicates the draft's annotations, all of them, bucket included** - as a
-   DIFF against what the chain already says, so an untouched re-post mints nothing and a
-   tag removed from the draft is retracted in public on the next post.
-3. **Labels are statements, not versions.** A post's words edit forever (2026-10-02; they froze
-   after a day until then) and its labels stay mutable for life alongside them.
-4. **Two roads to a reader.** By subscription, a node folds an annotator's chain into the
-   node-level `doc_annotations` memo. Virally, a post's fragment (`Have`) carries every
-   proof the relaying node knows - `(annotator, signed entry, auth path)`, byte-budgeted
-   under the frame, the author's first - each verified at the receiving edge against its
-   own annotator and bound to exactly the post it rode with; received proofs are kept for
-   the next hop. Virality is a relay of proofs, never hearsay.
-5. **The reader decides what shows** - amended 2026-08-31 to one rule: everyone's labels,
-   a blocked annotator's never. The old author/followed/everyone register is not read.
-6. **Provenance is always on the label.** The author's labels render plain; anyone else's
-   carry the annotator's byline. Identical labels collapse into one chip worn by everyone
-   who said it, and a chip you have not said is the agree button.
-7. **A third party's label on your post is news** - `notice_kind::TAGGED`, both roads, the
-   comment notice's murmur-grade twin, carrying the label's own words.
+1. **A statement on the SPEAKER's chain.** `ANNOTATIONS_PUBLIC` (service 12)
+   holds LWW statements keyed `(target author, target doc, key, value)` - one
+   per tag, one per single-valued key - present or retracted; the same statement
+   whoever speaks, never a shared object. Codec caps: key 64, value 1024, a tag
+   32; a label past its cap is refused with words.
+2. **Publishing replicates the draft's annotations, all of them, bucket
+   included** - as a DIFF against what the chain already says, so an untouched
+   re-post mints nothing and a tag removed from the draft is retracted in public
+   on the next post.
+3. **Labels are statements, not versions.** A post's words edit forever
+   (2026-10-02; they froze after a day until then) and its labels stay mutable
+   for life alongside them.
+4. **Two roads to a reader.** By subscription, a node folds an annotator's chain
+   into the node-level `doc_annotations` memo. Virally, a post's fragment
+   (`Have`) carries every proof the relaying node knows -
+   `(annotator, signed entry, auth path)`, byte-budgeted under the frame, the
+   author's first - each verified at the receiving edge against its own
+   annotator and bound to exactly the post it rode with; received proofs are
+   kept for the next hop. Virality is a relay of proofs, never hearsay.
+5. **The reader decides what shows** - amended 2026-08-31 to one rule:
+   everyone's labels, a blocked annotator's never. The old
+   author/followed/everyone register is not read.
+6. **Provenance is always on the label.** The author's labels render plain;
+   anyone else's carry the annotator's byline. Identical labels collapse into
+   one chip worn by everyone who said it, and a chip you have not said is the
+   agree button.
+7. **A third party's label on your post is news** - `notice_kind::TAGGED`, both
+   roads, the comment notice's murmur-grade twin, carrying the label's own
+   words.
 
-**Beyond labels.** The dossier (`GET /api/id/{root}/posts/{doc}/dossier`, the post page's
-folded "post history") names the road every reply and label arrived by - `chain`,
-`fragment`, `envelope`, `door`, or `relay:<endpoint>` for a proof that rode a fragment - so
-carriage has a name and a harassed author can reverse-engineer a vector. Pins (below) and
-the book's restated labels are statements on this lane too.
+**Beyond labels.** The dossier (`GET /api/id/{root}/posts/{doc}/dossier`, the
+post page's folded "post history") names the road every reply and label arrived
+by - `chain`, `fragment`, `envelope`, `door`, or `relay:<endpoint>` for a proof
+that rode a fragment - so carriage has a name and a harassed author can
+reverse-engineer a vector. Pins (below) and the book's restated labels are
+statements on this lane too.
 
-**Invariants.** Annotations are the speaker's signed claims; no relay can mint, alter or
-re-target one. Everything verifies offline, per statement. Nothing grows unbounded: caps at
-mint and at relay, page-scoped memo reads. The memo is disposable. Not folksonomy-as-truth:
-no global namespace, no vote count - people saying things under their own names.
+**Invariants.** Annotations are the speaker's signed claims; no relay can mint,
+alter or re-target one. Everything verifies offline, per statement. Nothing
+grows unbounded: caps at mint and at relay, page-scoped memo reads. The memo is
+disposable. Not folksonomy-as-truth: no global namespace, no vote count - people
+saying things under their own names.
 
-**Residuals.** A retraction reaches fragment-held labels only when a fragment carries it or
-the annotator's chain is met; the door-learn road records no endpoint; public buckets as
-browsable collections and search over public tags are consumers still to build.
+**Residuals.** A retraction reaches fragment-held labels only when a fragment
+carries it or the annotator's chain is met; the door-learn road records no
+endpoint; public buckets as browsable collections and search over public tags
+are consumers still to build.
 
 ### Books: publishing a whole notebook (settled 2026-09-03, built 2026-09-03..05)
 
-A notebook whose taxonomy holds dozens of documents publishes as one glob: the book, and
-later "GRIMOIRE updated: …". Folded here from BOOKS.md when the arc closed (2026-09-06).
+A notebook whose taxonomy holds dozens of documents publishes as one glob: the
+book, and later "GRIMOIRE updated: …". Folded here from BOOKS.md when the arc
+closed (2026-09-06).
 
 **The rulings.**
 
-1. **A book is a Writer column, not an app**: "Publish", beside tags, items and tree, holding
-   a switch, a ledger, hidden marks and one button. The reader's side is a public page.
-2. **The notebook is the book.** A bucket-level switch changes what the bucket's publication
-   means; the book is minted once onto a stable id the bucket's private facts remember
-   (`books`), and every later rollout is a new VERSION of it.
-3. **Hidden never publishes** - a section or a document marked hidden (`book_hidden`, a
-   private fact beside the taxonomy) is left out, and one hidden after publication is
-   retracted at the next rollout.
-4. **Pages get no feed items of their own.** A page is a real public post carrying header
-   key 19, `part_of`; the fold keeps parts off journals and shelves as a rule of the fold.
-   `part_of` is carried on re-publication like the reply link.
-5. **What reaches feeds is the book and its updates**: one post per rollout, threaded under
-   the book like a reply - "published" with every page, "updated" naming the changed pages
-   as links and the removed ones by name; an order-only rollout re-mints the book quietly.
-6. **Once published, per-document status goes away**: the editor's bar becomes a book bar,
-   Writer's rows wear changed / new / hidden, and the column tracks the DIFF against the
-   last rollout through `published_version` beside `published_as`.
-7. **A page under a living book is updatable while the book lives** - a book's update is a
-   distinct new event. (It once had to be excepted from the edit window that froze ordinary posts;
-   since 2026-10-02 every post edits forever, so the exception is the rule.)
-8. **A rollout is a plan executed in the background** (`book_rollout` on the private kv,
-   naming the minting device; `POST /books/{bucket}/rollout`; the book-rollout sweep mints
-   pages, then the book, then the update - the update last so nothing half-lands).
-9. **The book has no generated body; it carries the tree.** Format `book` (wire id 6,
-   `application/json`): sections, order, pages with their tags. The reader is Writer in
-   read-only mode over it - route `/id/:seg/post/:book/:page`, the first page open by
-   default, in-place navigation, the book's tags under the table filtering it - and
-   threads, replies and the dossier live on the BOOK, never per page.
-10. **Wishes are the book's**: settled and trusted-only set at the first rollout and
-    inherited by every page (a trusted book seals each page under its own key and the book
-    under one the bucket's facts keep). Unpublishing (`DELETE /books/{bucket}`) retracts the
-    book, every page it names and every update, releases the notes to drafts, and forgets
-    the id, so the next rollout mints a fresh book.
-11. **The title page.** The first published page in reading order titles the book, its
-    words ride the book's feed post in full ahead of the table, and the book's tags are the
-    union of its pages' tags.
+1. **A book is a Writer column, not an app**: "Publish", beside tags, items and
+   tree, holding a switch, a ledger, hidden marks and one button. The reader's
+   side is a public page.
+2. **The notebook is the book.** A bucket-level switch changes what the bucket's
+   publication means; the book is minted once onto a stable id the bucket's
+   private facts remember (`books`), and every later rollout is a new VERSION of
+   it.
+3. **Hidden never publishes** - a section or a document marked hidden
+   (`book_hidden`, a private fact beside the taxonomy) is left out, and one
+   hidden after publication is retracted at the next rollout.
+4. **Pages get no feed items of their own.** A page is a real public post
+   carrying header key 19, `part_of`; the fold keeps parts off journals and
+   shelves as a rule of the fold. `part_of` is carried on re-publication like
+   the reply link.
+5. **What reaches feeds is the book and its updates**: one post per rollout,
+   threaded under the book like a reply - "published" with every page, "updated"
+   naming the changed pages as links and the removed ones by name; an order-only
+   rollout re-mints the book quietly.
+6. **Once published, per-document status goes away**: the editor's bar becomes a
+   book bar, Writer's rows wear changed / new / hidden, and the column tracks
+   the DIFF against the last rollout through `published_version` beside
+   `published_as`.
+7. **A page under a living book is updatable while the book lives** - a book's
+   update is a distinct new event. (It once had to be excepted from the edit
+   window that froze ordinary posts; since 2026-10-02 every post edits forever,
+   so the exception is the rule.)
+8. **A rollout is a plan executed in the background** (`book_rollout` on the
+   private kv, naming the minting device; `POST /books/{bucket}/rollout`; the
+   book-rollout sweep mints pages, then the book, then the update - the update
+   last so nothing half-lands).
+9. **The book has no generated body; it carries the tree.** Format `book` (wire
+   id 6, `application/json`): sections, order, pages with their tags. The reader
+   is Writer in read-only mode over it - route `/id/:seg/post/:book/:page`, the
+   first page open by default, in-place navigation, the book's tags under the
+   table filtering it - and threads, replies and the dossier live on the BOOK,
+   never per page.
+10. **Wishes are the book's**: settled and trusted-only set at the first rollout
+    and inherited by every page (a trusted book seals each page under its own
+    key and the book under one the bucket's facts keep). Unpublishing
+    (`DELETE /books/{bucket}`) retracts the book, every page it names and every
+    update, releases the notes to drafts, and forgets the id, so the next
+    rollout mints a fresh book.
+11. **The title page.** The first published page in reading order titles the
+    book, its words ride the book's feed post in full ahead of the table, and
+    the book's tags are the union of its pages' tags.
 
 **Residuals.** Scheduling a rollout; a section published on its own.
 
 ### Peeks, ceilings and pins (settled and built 2026-09-05)
 
-A first look at a stranger used to mirror their whole public object, and a persona this
-node had been made to want could fill the disk - the exchange bounded a frame and a blob,
-never a stream. Folded here from PEEK.md when the arc closed (2026-09-06); the rulings keep
-their numbers, since the code cites them.
+A first look at a stranger used to mirror their whole public object, and a
+persona this node had been made to want could fill the disk - the exchange
+bounded a frame and a blob, never a stream. Folded here from PEEK.md when the
+arc closed (2026-09-06); the rulings keep their numbers, since the code cites
+them.
 
 **The rulings.**
 
-1. **Three depths, chosen by relationship, never by the peer.** _Hosted_: whole. _Followed_
-   (any dial - follow, rebroadcast interest, or trust): the mirror, under the follow ceiling.
-   _Peeked_ (nobody here dials them, not a speculative mirror): a shape, below. Depth is a
-   fact about OUR relationships; what a peer offers never widens it.
-2. **Every exchange has a budget** in entries and bytes, per direction, on both sides
-   (`RINGTOME_SYNC_BUDGET_ENTRIES`, `_BYTES`). A cut, or a peer whose claimed heads sit
-   above what we hold, marks the persona BEHIND; the wake pass reads it as stale and the
-   fetch ladders chain up to eight passes per wake.
-3. **Identity chains: whole, first, and capped** (`RINGTOME_IDENTITY_CHAIN_CEILING`) - over
-   it, a persona this node does not host is refused at the gate.
-4. **A peek is** identity, profile, the published follow and trust edges, and the
-   annotations chain (`PEEK_SCOPE`, a scoped exchange), the newest twenty posts and up to
-   twenty pinned ones as fragments through the shelf question on the fragment door
-   (`WantShelf`/`Shelf`, ids only), each verified with its labels riding, and bodies on
-   demand. A peek's mirror has no posts lane: the profile, the shelf page, the permalink,
-   the fragment door and the body route read fragment-first for it, and fetch a document
-   it never held by id on read. The serve side narrows a peeked persona's pushes to the
-   same scope.
-5. **Bodies follow the eye.** A peek fetches words and thumbnails in shelf order while it
-   has room; media comes when opened. A follow fetches pinned bodies first.
-6. **A peek has a footprint and an expiry**: the fetch registry stamps every look and
-   measures the peek's bytes (`RINGTOME_PEEK_MAX_BYTES`, `_TOTAL_BYTES`, `_EXPIRY_MS`);
-   past its ceiling the reads say "this look is full"; the eviction sweep retires a peek
-   nobody has looked at, and the least recently looked-at when all peeks exceed the budget;
-   a looked-at peek keeps, a peek's own fragments do not.
-7. **Promotion is the dial.** A dial on a peeked (or never-fetched) persona fetches them
-   whole in the dial's own request, bounded, then detached; the fetch ladder remembers peek
-   depth in memory so the dial and the wake pass both promote on it.
-8. **A follow has a ceiling too** (`RINGTOME_FOLLOW_POSTS_CEILING`): the posts chain of a
-   persona this node does not host is fetched as a SUFFIX of its newest entries, the oldest
-   held entry's `prev_hash` committing to the prefix. The Hello's depth slot asks for the
-   ceiling and, beneath a held floor, for a backfill walked DOWN from the floor so a budget
-   cut still joins; the gate, on a foreign persona only, adopts a suffix and admits a
-   backfill only when its top entry hash-matches the floor's commitment, then lowers the
-   lane's view watermark so the fold sees what landed. Scrollback backfills when a page
-   comes up short. Honest costs: an old post edited inside the suffix is dated by its
-   earliest held version; the re-fold after a backfill is bounded, not free.
-9. **Render at first entry.** The persona answers the moment its chains land; the shelf
-   lands behind it and the page polls, spinning, while the node says the posts are still
-   arriving. A peek says "a look at their newest posts - follow them to keep up".
-10. **Trusted-only is unchanged**: a sealed post peeked shows its title and refuses its
-    body.
-11. **A public pin is a public annotation** - `pin = yes`, said and retracted through the
-    label routes, honoured only when the annotator is the author. _Amended 2026-09-29 (Curtis:
-    "Pin books, chats, or rebroadcasts"):_ any post of the author's pins, a book and a room
-    included, and so does a post they pass along: the same statement, said by the sharer
-    about the shared post, which places it in the SHARER's strip, as a share, only while the
-    share stands. A pin is therefore never a label, whoever said it: it is placement on
-    the page of whoever said it.
-12. **Pinned first, and only once.** The author's page opens with the pinned strip - most
-    recently pinned first, twenty at most - and leaves the pinned posts out of "recent
-    posts"; the API's pages and the feed keep them in place. Every card wears a pinned chip;
-    the author's card wears a push-pin toggle beside the takedown.
-13. **Pinned posts are fetched first at every depth**: the shelf answer names the pins, the
-    missing-bodies walk moves pinned bodies to the front, and a pin beneath a follow's
-    floor is fetched by id over the fragment road.
-14. **Admission is a budget too, and it refuses rather than queues** (`net::admission`):
-    ceilings on concurrent connections, on the unproven among them, and per peer, closed at
-    accept over any of them; a first-frame deadline; a whole-exchange wall clock that
-    closes the connection on both sides; transport limits set by us at endpoint
-    construction (`RINGTOME_ADMIT_*`, `RINGTOME_SYNC_FIRST_FRAME_MS`,
+1. **Three depths, chosen by relationship, never by the peer.** _Hosted_: whole.
+   _Followed_ (any dial - follow, rebroadcast interest, or trust): the mirror,
+   under the follow ceiling. _Peeked_ (nobody here dials them, not a speculative
+   mirror): a shape, below. Depth is a fact about OUR relationships; what a peer
+   offers never widens it.
+2. **Every exchange has a budget** in entries and bytes, per direction, on both
+   sides (`RINGTOME_SYNC_BUDGET_ENTRIES`, `_BYTES`). A cut, or a peer whose
+   claimed heads sit above what we hold, marks the persona BEHIND; the wake pass
+   reads it as stale and the fetch ladders chain up to eight passes per wake.
+3. **Identity chains: whole, first, and capped**
+   (`RINGTOME_IDENTITY_CHAIN_CEILING`) - over it, a persona this node does not
+   host is refused at the gate.
+4. **A peek is** identity, profile, the published follow and trust edges, and
+   the annotations chain (`PEEK_SCOPE`, a scoped exchange), the newest twenty
+   posts and up to twenty pinned ones as fragments through the shelf question on
+   the fragment door (`WantShelf`/`Shelf`, ids only), each verified with its
+   labels riding, and bodies on demand. A peek's mirror has no posts lane: the
+   profile, the shelf page, the permalink, the fragment door and the body route
+   read fragment-first for it, and fetch a document it never held by id on read.
+   The serve side narrows a peeked persona's pushes to the same scope.
+5. **Bodies follow the eye.** A peek fetches words and thumbnails in shelf order
+   while it has room; media comes when opened. A follow fetches pinned bodies
+   first.
+6. **A peek has a footprint and an expiry**: the fetch registry stamps every
+   look and measures the peek's bytes (`RINGTOME_PEEK_MAX_BYTES`,
+   `_TOTAL_BYTES`, `_EXPIRY_MS`); past its ceiling the reads say "this look is
+   full"; the eviction sweep retires a peek nobody has looked at, and the least
+   recently looked-at when all peeks exceed the budget; a looked-at peek keeps,
+   a peek's own fragments do not.
+7. **Promotion is the dial.** A dial on a peeked (or never-fetched) persona
+   fetches them whole in the dial's own request, bounded, then detached; the
+   fetch ladder remembers peek depth in memory so the dial and the wake pass
+   both promote on it.
+8. **A follow has a ceiling too** (`RINGTOME_FOLLOW_POSTS_CEILING`): the posts
+   chain of a persona this node does not host is fetched as a SUFFIX of its
+   newest entries, the oldest held entry's `prev_hash` committing to the prefix.
+   The Hello's depth slot asks for the ceiling and, beneath a held floor, for a
+   backfill walked DOWN from the floor so a budget cut still joins; the gate, on
+   a foreign persona only, adopts a suffix and admits a backfill only when its
+   top entry hash-matches the floor's commitment, then lowers the lane's view
+   watermark so the fold sees what landed. Scrollback backfills when a page
+   comes up short. Honest costs: an old post edited inside the suffix is dated
+   by its earliest held version; the re-fold after a backfill is bounded, not
+   free.
+9. **Render at first entry.** The persona answers the moment its chains land;
+   the shelf lands behind it and the page polls, spinning, while the node says
+   the posts are still arriving. A peek says "a look at their newest posts -
+   follow them to keep up".
+10. **Trusted-only is unchanged**: a sealed post peeked shows its title and
+    refuses its body.
+11. **A public pin is a public annotation** - `pin = yes`, said and retracted
+    through the label routes, honoured only when the annotator is the author.
+    _Amended 2026-09-29 (Curtis: "Pin books, chats, or rebroadcasts"):_ any post
+    of the author's pins, a book and a room included, and so does a post they
+    pass along: the same statement, said by the sharer about the shared post,
+    which places it in the SHARER's strip, as a share, only while the share
+    stands. A pin is therefore never a label, whoever said it: it is placement
+    on the page of whoever said it.
+12. **Pinned first, and only once.** The author's page opens with the pinned
+    strip - most recently pinned first, twenty at most - and leaves the pinned
+    posts out of "recent posts"; the API's pages and the feed keep them in
+    place. Every card wears a pinned chip; the author's card wears a push-pin
+    toggle beside the takedown.
+13. **Pinned posts are fetched first at every depth**: the shelf answer names
+    the pins, the missing-bodies walk moves pinned bodies to the front, and a
+    pin beneath a follow's floor is fetched by id over the fragment road.
+14. **Admission is a budget too, and it refuses rather than queues**
+    (`net::admission`): ceilings on concurrent connections, on the unproven
+    among them, and per peer, closed at accept over any of them; a first-frame
+    deadline; a whole-exchange wall clock that closes the connection on both
+    sides; transport limits set by us at endpoint construction
+    (`RINGTOME_ADMIT_*`, `RINGTOME_SYNC_FIRST_FRAME_MS`,
     `RINGTOME_SYNC_EXCHANGE_MAX_MS`).
 
-**Invariants.** No exchange transfers more than its budget; no chain grows past its
-ceiling on a node that did not host it. A peek never holds a posts chain; every post it
-holds proves itself alone. Work is never queued behind a budget. Refusal is uniform.
+**Invariants.** No exchange transfers more than its budget; no chain grows past
+its ceiling on a node that did not host it. A peek never holds a posts chain;
+every post it holds proves itself alone. Work is never queued behind a budget.
+Refusal is uniform.
 
-**Trust without interest keeps the identity.** A person you trust but do not read is
-someone you KNOW: any dial fetches them and keeps them fresh, the bell and the thread know
-their name, the trusted default admits their replies, and their page hides only what they
-seal from you.
+**Trust without interest keeps the identity.** A person you trust but do not
+read is someone you KNOW: any dial fetches them and keeps them fresh, the bell
+and the thread know their name, the trusted default admits their replies, and
+their page hides only what they seal from you.
 
-**Residuals.** A misbehaving peer for the rig (the deadlines and the flood ceiling have unit
-proofs only); a backoff on the dialer's side of "busy"; snapshots for fold-based views under
-a suffix.
+**Residuals.** A misbehaving peer for the rig (the deadlines and the flood
+ceiling have unit proofs only); a backoff on the dialer's side of "busy";
+snapshots for fold-based views under a suffix.
 
 ### Mentions: a user card in the words (settled and built 2026-09-06)
 
-A post can name a person. The author summons a **user card** in the editor and the persona
-it names hears of it on the bell. Everything below rides machinery that already existed - the
-markup's directive grammar, the labels lane, the tagged notice's two roads - so the arc is
-small and its rules are few.
+A post can name a person. The author summons a **user card** in the editor and
+the persona it names hears of it on the bell. Everything below rides machinery
+that already existed - the markup's directive grammar, the labels lane, the
+tagged notice's two roads - so the arc is small and its rules are few.
 
 1. **The card has two shapes, one name.** The block: the leaf directive
-   `:::user id=/id/<address>:::` on a line of its own (Marquee makes every directive a block,
-   so a `:::user` inline in a sentence is text). The inline: the span
-   `[user id=/id/<address>]Their Name[/user]`, sitting in the line of text with the person's
-   name inside it, so a renderer that knows no `user` span still shows who was meant. The
-   address is any spelling the `/id/` door accepts - worded with its checksum verified, bare
-   base58, or hex - and a card whose words lie names nobody, exactly as the door refuses them.
-2. **`@` at a word start opens the people picker** - the start of a line or after whitespace,
-   never inside a word, so an email address's `@` stays text. It offers the people you know
-   - everyone your ledger holds a standing relationship with, worn as you call them, and then
-     the node's directory for people you have met but not dialed - filters as you type across
-     the spaces of a name, and fills the shape the line asks for: the block when the line holds
-     nothing but the summons, the span when there are words around it (Curtis's rule).
-3. **Every renderer dresses the card as the person**: the feed card, the reader, the post
-   page and the book reader all render bodies through one component, which hands the react
-   renderer a directive hook and a span hook - a `user` card becomes the person: the block,
-   the small heptagon beside their full name when the node knows it (their words when it
-   does not), sized to its content; the span, the mini heptagon and the name in the line.
-   The live editor's preview renders through the string profile, so it draws the same shapes
-   from a face cache the editor fills as the profiles land - words alone until then.
-4. **Publishing restates each card, either shape, as a public statement** `mention=<root hex>` on the
-   author's own labels chain, about the post - diffed with every other label, so a re-publish
-   that keeps its cards says nothing new and an edit that drops a card retracts the
-   statement. A card naming the author says nothing: you cannot mention yourself. The wire
-   refuses a `mention` whose value is not a root.
-5. **The mentioned persona's bell carries a fresh kind, "mentioned"**, by the two roads a tag
-   travels. The envelope road: at publish, each freshly minted mention is sealed to the
-   persona it names with the statement as evidence, and the verifier binds it twice - the
-   statement is about the SENDER's own post, and the root it names is the RECIPIENT; the
-   recipient's gate drops it when they already pull the author. The derived road: the labels
-   leg of the notifications fold turns a `mention` the author says about their own post into
-   a row for the reader it names, when that reader is hosted here and follows the author,
-   collapsing per (reader, post) and receding with the retraction. The two roads dedupe on
-   the kind's one name.
-6. **A mention is conversation, not a murmur**: it tiers by sender like a comment, so a
-   stranger naming you lands in the stranger ring and a friend's lands with the friends'.
-7. **The row's card is the author's post** - the one kind whose mini-card points away from
-   the reader's own shelf. The bell does not join a title for it from the reader's store;
-   the card asks the author's shelf for its title itself, the way a reply's parent does.
+   `:::user id=/id/<address>:::` on a line of its own (Marquee makes every
+   directive a block, so a `:::user` inline in a sentence is text). The inline:
+   the span `[user id=/id/<address>]Their Name[/user]`, sitting in the line of
+   text with the person's name inside it, so a renderer that knows no `user`
+   span still shows who was meant. The address is any spelling the `/id/` door
+   accepts - worded with its checksum verified, bare base58, or hex - and a card
+   whose words lie names nobody, exactly as the door refuses them.
+2. **`@` at a word start opens the people picker** - the start of a line or
+   after whitespace, never inside a word, so an email address's `@` stays text.
+   It offers the people you know
+   - everyone your ledger holds a standing relationship with, worn as you call
+     them, and then the node's directory for people you have met but not
+     dialed - filters as you type across the spaces of a name, and fills the
+     shape the line asks for: the block when the line holds nothing but the
+     summons, the span when there are words around it (Curtis's rule).
+3. **Every renderer dresses the card as the person**: the feed card, the reader,
+   the post page and the book reader all render bodies through one component,
+   which hands the react renderer a directive hook and a span hook - a `user`
+   card becomes the person: the block, the small heptagon beside their full name
+   when the node knows it (their words when it does not), sized to its content;
+   the span, the mini heptagon and the name in the line. The live editor's
+   preview renders through the string profile, so it draws the same shapes from
+   a face cache the editor fills as the profiles land - words alone until then.
+4. **Publishing restates each card, either shape, as a public statement**
+   `mention=<root hex>` on the author's own labels chain, about the post -
+   diffed with every other label, so a re-publish that keeps its cards says
+   nothing new and an edit that drops a card retracts the statement. A card
+   naming the author says nothing: you cannot mention yourself. The wire refuses
+   a `mention` whose value is not a root.
+5. **The mentioned persona's bell carries a fresh kind, "mentioned"**, by the
+   two roads a tag travels. The envelope road: at publish, each freshly minted
+   mention is sealed to the persona it names with the statement as evidence, and
+   the verifier binds it twice - the statement is about the SENDER's own post,
+   and the root it names is the RECIPIENT; the recipient's gate drops it when
+   they already pull the author. The derived road: the labels leg of the
+   notifications fold turns a `mention` the author says about their own post
+   into a row for the reader it names, when that reader is hosted here and
+   follows the author, collapsing per (reader, post) and receding with the
+   retraction. The two roads dedupe on the kind's one name.
+6. **A mention is conversation, not a murmur**: it tiers by sender like a
+   comment, so a stranger naming you lands in the stranger ring and a friend's
+   lands with the friends'.
+7. **The row's card is the author's post** - the one kind whose mini-card points
+   away from the reader's own shelf. The bell does not join a title for it from
+   the reader's store; the card asks the author's shelf for its title itself,
+   the way a reply's parent does.
 
-Residuals: the picker knows your contacts and the node's directory; mentioning someone by
-pasting an address the node has never seen works, but the card will dress itself only once
-the address is fetched. A mention on a trusted-only post is restated like
-any other label on a sealed post - the statement is public while the words are not - and the
-notice says "mentioned you in" a post the reader may not be able to open.
+Residuals: the picker knows your contacts and the node's directory; mentioning
+someone by pasting an address the node has never seen works, but the card will
+dress itself only once the address is fetched. A mention on a trusted-only post
+is restated like any other label on a sealed post - the statement is public
+while the words are not - and the notice says "mentioned you in" a post the
+reader may not be able to open.
 
 ### Copying a post, and the copy chain (settled and built 2026-09-08)
 
-Any post can be copied into your private notes - yours, anyone's, public, or one of your
-own notes into another bucket - and a copy remembers where it came from.
+Any post can be copied into your private notes - yours, anyone's, public, or one
+of your own notes into another bucket - and a copy remembers where it came from.
 
-1. **One door, every surface.** The copy button (Phosphor's copy) sits on every card beside
-   the share, and as a chip in the editor and the reader. It opens one modal: the bucket
-   list, and "+ new bucket". The node does the copying: title, words, format, and the
-   author's own tags become a fresh private note in that bucket. The words come through the
-   body door, so a copy is exactly what you could read - a sealed post copies for a trusted
-   reader and refuses for anyone else.
-2. **The provenance stack.** A copy of somebody else's post records that person; a copy of a
-   copy records the source's author and everyone the source itself descended from, oldest
-   first, each once, never yourself. On the draft it is a private field, a JSON array of
-   roots; publishing restates it as one `provenance=<root>` statement per author on the
-   labels lane, so a re-publish that keeps the chain says nothing new. Copying your own
-   post adds nobody; copying your own private note carries its chain.
-3. **Where it shows.** Only on the post's page, under the replies: "Other Authors in the
-   Copy Chain", the author's own provenance statements as person cards. Never a chip on a
-   card, never a facet - a credit, not a label.
+1. **One door, every surface.** The copy button (Phosphor's copy) sits on every
+   card beside the share, and as a chip in the editor and the reader. It opens
+   one modal: the bucket list, and "+ new bucket". The node does the copying:
+   title, words, format, and the author's own tags become a fresh private note
+   in that bucket. The words come through the body door, so a copy is exactly
+   what you could read - a sealed post copies for a trusted reader and refuses
+   for anyone else.
+2. **The provenance stack.** A copy of somebody else's post records that person;
+   a copy of a copy records the source's author and everyone the source itself
+   descended from, oldest first, each once, never yourself. On the draft it is a
+   private field, a JSON array of roots; publishing restates it as one
+   `provenance=<root>` statement per author on the labels lane, so a re-publish
+   that keeps the chain says nothing new. Copying your own post adds nobody;
+   copying your own private note carries its chain.
+3. **Where it shows.** Only on the post's page, under the replies: "Other
+   Authors in the Copy Chain", the author's own provenance statements as person
+   cards. Never a chip on a card, never a facet - a credit, not a label.
 
-4. **The pictures come too.** A published body's media twins become the copier's own media
-   documents - the twin's bytes through the body door, into the ingest queue like an
-   upload, filed in the same bucket with the same provenance - and the copy's words point
-   at them in the picker's own private spelling, so the copy is whole on its own and the
-   bake mints fresh twins when it is posted. A twin that will not open for the copier stays
-   the source's link.
-5. **A sealed post copies for those who may, and the copy wishes to stay sealed.** The words
-   come through the body door, so a trusted reader's copy carries them and anyone else's is
-   refused. The copy carries a private `seal=yes` wish: a publish that names no wish of its
-   own seals the post, the editor's box comes pre-ticked, and the feed's post button honours
-   it unless its own toggle says otherwise. The wish is the copier's to clear - what a
-   trusted reader can read they can retype, so the seal is a default, not a lock.
-6. **A book copies whole, into a fresh notebook.** The door offers no existing bucket for a
-   book - only a name for a new one - and rebuilds the book's tree there: the wiki root
-   named for the notebook, a taxonomy per section, the pages in order, each page a copy
-   with the chain (the book's own provenance rides along), then switches the notebook to
-   book mode so the copier can roll it out as their own. A page that will not open is
-   skipped and the book goes on without it.
+4. **The pictures come too.** A published body's media twins become the copier's
+   own media documents - the twin's bytes through the body door, into the ingest
+   queue like an upload, filed in the same bucket with the same provenance - and
+   the copy's words point at them in the picker's own private spelling, so the
+   copy is whole on its own and the bake mints fresh twins when it is posted. A
+   twin that will not open for the copier stays the source's link.
+5. **A sealed post copies for those who may, and the copy wishes to stay
+   sealed.** The words come through the body door, so a trusted reader's copy
+   carries them and anyone else's is refused. The copy carries a private
+   `seal=yes` wish: a publish that names no wish of its own seals the post, the
+   editor's box comes pre-ticked, and the feed's post button honours it unless
+   its own toggle says otherwise. The wish is the copier's to clear - what a
+   trusted reader can read they can retype, so the seal is a default, not a
+   lock.
+6. **A book copies whole, into a fresh notebook.** The door offers no existing
+   bucket for a book - only a name for a new one - and rebuilds the book's tree
+   there: the wiki root named for the notebook, a taxonomy per section, the
+   pages in order, each page a copy with the chain (the book's own provenance
+   rides along), then switches the notebook to book mode so the copier can roll
+   it out as their own. A page that will not open is skipped and the book goes
+   on without it.
 
-Residuals: a chain is what the source's author said, so a source that dropped its credits
-drops them for everyone downstream; the fresh twins a posted copy mints carry no
-provenance statements of their own - the post does.
+Residuals: a chain is what the source's author said, so a source that dropped
+its credits drops them for everyone downstream; the fresh twins a posted copy
+mints carry no provenance statements of their own - the post does.
 
 ### Local addresses: three floors (settled 2026-09-08; superseded 2026-09-28)
 
-_Superseded by "`/ringtome/` replaces `/home`, `/in` and `/id`" under Addressing: the cozy paths are
-discarded, and survive only as redirects. Kept as the record of why they were built._
+_Superseded by "`/ringtome/` replaces `/home`, `/in` and `/id`" under
+Addressing: the cozy paths are discarded, and survive only as redirects. Kept as
+the record of why they were built._
 
 The console's own addresses live on three floors that can never meet:
 
-- **`/home/<app>`** is an app's - the launcher's tiles, the persona pages beneath
-  `/home/persona`, an app's home bucket at the app's own address (`/home/notes/<doc>`).
-- **`/in/<bucket>`** is a bucket's - every notebook that is not an app's home bucket, at its
-  slug, its documents and sections beneath it (`/in/cook-book/starters/soup`); a bare
-  `/in/<bucket>` is the bucket's own list. Under `/in/` only buckets answer, whatever they
-  are called, so a notebook named "feed" is still a notebook.
+- **`/home/<app>`** is an app's - the launcher's tiles, the persona pages
+  beneath `/home/persona`, an app's home bucket at the app's own address
+  (`/home/notes/<doc>`).
+- **`/in/<bucket>`** is a bucket's - every notebook that is not an app's home
+  bucket, at its slug, its documents and sections beneath it
+  (`/in/cook-book/starters/soup`); a bare `/in/<bucket>` is the bucket's own
+  list. Under `/in/` only buckets answer, whatever they are called, so a
+  notebook named "feed" is still a notebook.
 - **`/id/<persona>`** is a person's, as before.
 
-Why disjoint rather than shared with apps resolving first: a shared floor makes every new
-app a name grab. A reserved list of app ids protects only the apps that exist on launch
-day; the first app shipped afterwards either shadows every notebook a person already gave
-that name or takes an awkward name to avoid them. Disjoint floors cost one short word and
-end the conversation. One constant names the word; the pure address builder writes the
-floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
+Why disjoint rather than shared with apps resolving first: a shared floor makes
+every new app a name grab. A reserved list of app ids protects only the apps
+that exist on launch day; the first app shipped afterwards either shadows every
+notebook a person already gave that name or takes an awkward name to avoid them.
+Disjoint floors cost one short word and end the conversation. One constant names
+the word; the pure address builder writes the floor and the resolver reads it;
+every hand-written link goes through one `bucketHref`.
 
 ### Scores and sort orders: hot and best (settled 2026-09-27; built 2026-09-28)
 
-"Each item in your feed carries a score ... a unit of content with many positive tags gets a
-very high score ... if someone you trust a lot is responsible for a tag, that tag counts more."
-Chronological stays the default; **hot** and **best** (year, month, week, day) are orders a
-reader picks, for the feed and for reply trees. **No "best ever"** (Curtis): a year is the most
-any order reaches back, which bounds what a score must be kept for. The scale it is built for (Curtis): a
-monkeysphere of 10-100 people per reader, with _some_ up- and downvoting.
+"Each item in your feed carries a score ... a unit of content with many positive
+tags gets a very high score ... if someone you trust a lot is responsible for a
+tag, that tag counts more." Chronological stays the default; **hot** and
+**best** (year, month, week, day) are orders a reader picks, for the feed and
+for reply trees. **No "best ever"** (Curtis): a year is the most any order
+reaches back, which bounds what a score must be kept for. The scale it is built
+for (Curtis): a monkeysphere of 10-100 people per reader, with _some_ up- and
+downvoting.
 
-**The score is the reader's, computed on the reader's node.** It is a reading of labels
-through the reader's own dials - nothing on the wire changes, nothing merges, and two readers
-of one post hold two scores. Per post:
+**The score is the reader's, computed on the reader's node.** It is a reading of
+labels through the reader's own dials - nothing on the wire changes, nothing
+merges, and two readers of one post hold two scores. Per post:
 
-- **What counts:** reaction tags from the picker's glad row (+1) and sour row (-1) - one
-  lexicon, spelled once in each language and pinned together like `MAX_TAGS_PER_LABELLER`.
-  Words and neutral emoji count 0. Each tag counts: two tags to a person means a person may
-  **double-like or double-dislike** (Curtis) - a person contributes -2..+2.
-- **Whose counts, and how much** - the tag's weight is the reader's dial on its annotator:
-  - trusted: linear in the band - low 0.25, medium 0.5, high 0.75, max 1 (Curtis's ramp,
-    "a very naive guess": a starting value, tuned by feel);
+- **What counts:** reaction tags from the picker's glad row (+1) and sour row
+  (-1) - one lexicon, spelled once in each language and pinned together like
+  `MAX_TAGS_PER_LABELLER`. Words and neutral emoji count 0. Each tag counts: two
+  tags to a person means a person may **double-like or double-dislike**
+  (Curtis) - a person contributes -2..+2.
+- **Whose counts, and how much** - the tag's weight is the reader's dial on its
+  annotator:
+  - trusted: linear in the band - low 0.25, medium 0.5, high 0.75, max 1
+    (Curtis's ramp, "a very naive guess": a starting value, tuned by feel);
   - followed without trust: counts, less - 0.1 to start, below the lowest trust;
   - the reader themself: 1;
-  - **everyone else: 0, entirely** - no tie-breaker, no fallback for a reader with no dials.
-    Minting a labeller is free on this network, so any influence from a stranger is suspect
-    (Curtis). This is Denunciations' rule for negative signal applied to both signs: signal
-    counts only when it rides an edge the reader drew. Blocked annotators are 0 as they are
-    invisible.
-- **Interest in the poster, mildly:** the sum is scaled by the reader's interest in the
-  author, about x0.9 (none) to x1.1 (max) - enough to break near-ties, never enough to lift a
-  post nobody reacted to.
+  - **everyone else: 0, entirely** - no tie-breaker, no fallback for a reader
+    with no dials. Minting a labeller is free on this network, so any influence
+    from a stranger is suspect (Curtis). This is Denunciations' rule for
+    negative signal applied to both signs: signal counts only when it rides an
+    edge the reader drew. Blocked annotators are 0 as they are invisible.
+- **Interest in the poster, mildly:** the sum is scaled by the reader's interest
+  in the author, about x0.9 (none) to x1.1 (max) - enough to break near-ties,
+  never enough to lift a post nobody reacted to.
 
-**Hot** (built 2026-09-28) is time plus score, linear: one max-trust like is worth **one hour** of recency (Curtis),
-a dislike the same hour backwards - `published + score x 1h`. Linear, not logarithmic, at this
-scale: "each like from someone you fully trust is worth an hour" is a sentence a person can
-hold. Hot may also give a high score more of the card (the interest dial's emphasis, extended)
+**Hot** (built 2026-09-28) is time plus score, linear: one max-trust like is
+worth **one hour** of recency (Curtis), a dislike the same hour backwards -
+`published + score x 1h`. Linear, not logarithmic, at this scale: "each like
+from someone you fully trust is worth an hour" is a sentence a person can hold.
+Hot may also give a high score more of the card (the interest dial's emphasis,
+extended)
 
-- the one place a score touches rendering. **Best (window)** is posts published inside the
-  window, highest score first, newest first among equals.
+- the one place a score touches rendering. **Best (window)** is posts published
+  inside the window, highest score first, newest first among equals.
 
-**The score is never on the card.** A number on a post is a leaderboard, and it would mean
-nothing to anyone else: it is arithmetic over one reader's private dials. The card surfaces
-nothing new - the reaction chips already say what was said, and by whom. **The whole
-calculation lives in the post's dossier** (postpage.js `PostDossier`, the plain-text log
-folded at the foot of the post page), renamed "history & popularity" (Curtis: "for users who
-want to see how the sausage is made"): every reaction with its annotator, the dial that
-weighed it, and its weight - strangers' reactions listed at x0 - the interest factor, the
-score, and what hot made of it. That honours the recommendation rule that anything the node
-puts in front of you is explainable by naming people, without surfacing it on every card. It
-knowingly bends the feed's standing rule that dials shape rendering, never order
-(pure/feed.js): only in an order the reader chose.
+**The score is never on the card.** A number on a post is a leaderboard, and it
+would mean nothing to anyone else: it is arithmetic over one reader's private
+dials. The card surfaces nothing new - the reaction chips already say what was
+said, and by whom. **The whole calculation lives in the post's dossier**
+(postpage.js `PostDossier`, the plain-text log folded at the foot of the post
+page), renamed "history & popularity" (Curtis: "for users who want to see how
+the sausage is made"): every reaction with its annotator, the dial that weighed
+it, and its weight - strangers' reactions listed at x0 - the interest factor,
+the score, and what hot made of it. That honours the recommendation rule that
+anything the node puts in front of you is explainable by naming people, without
+surfacing it on every card. It knowingly bends the feed's standing rule that
+dials shape rendering, never order (pure/feed.js): only in an order the reader
+chose.
 
-**The popularity lines are the reader's alone.** The dossier's door answers anonymous callers
-too, and the calculation is a readout of the reader's trust and follow dials - so it is computed
-only for a signed-in session's own persona, and never served to anybody else.
+**The popularity lines are the reader's alone.** The dossier's door answers
+anonymous callers too, and the calculation is a readout of the reader's trust
+and follow dials - so it is computed only for a signed-in session's own persona,
+and never served to anybody else.
 
-**Shape: stored, and kept incrementally** (Curtis, 2026-09-27, over a first cut that reckoned
-at read time from the newest 5000 journal rows - which silently dropped everything older, and
-made every page pay for every reaction in the window: fine for a monkeysphere, not for the
-outlier with 10,000 busy trusted friends). The cost lands at write time, where it is paid once:
+**Shape: stored, and kept incrementally** (Curtis, 2026-09-27, over a first cut
+that reckoned at read time from the newest 5000 journal rows - which silently
+dropped everything older, and made every page pay for every reaction in the
+window: fine for a monkeysphere, not for the outlier with 10,000 busy trusted
+friends). The cost lands at write time, where it is paid once:
 
-- **Two tables per reader:** each annotator's contribution to each post, and the post's total.
-  A reaction noted or retracted recomputes that one annotator's contribution to that one post
-  (two tags at most) and moves the total by the difference, for each reader on the node whose
-  journal holds the post - constant work per reaction, beside the memo write it already costs.
-  Every rule a read applies is applied here instead: two tags to a person, no reaction to your
-  own post, blocks, sealed admission.
-- **A dial change rescores one person** - their contributions to this reader's feed, which is as
-  large as their reacting, not everyone's. Blocking is a dial change, so it takes effect at once.
-  An interest change rescores that author's posts.
-- **A year, then pruned:** a score older than the longest window can never be shown, so it goes.
-- **Three runs, two read paths** (measured 2026-09-27 at 131,072 posts, 26,215 scored): a page is
-  the posts scored above zero, then the zero run - nobody the reader weighs reacted - then those
-  below zero. The zero run streams off the journal's time index, each score probed by key (~0.3 ms
-  a page, any window). The scored runs sort by score: read by the window for a month or less (a
-  day 16 ms, a month 29 ms) and off the score index for a year (123 ms - the one sort left, ties
-  by time living in the journal; if it bites, a cached ranking per reader and window is the
-  lever). Every key descends (score, time, document id - score.rs `Rank`), so the time index
-  walks one direction with no sort.
-- **The engine's planner is pinned.** Turso's, left alone, reached for the rooms index and sorted
-  a reader's whole journal for every page - the plain newest-first feed included, which had never
-  been able to stream (its ties ran the other way, so no index matched) - and probed scores with
-  the reader alone. The journal's reads name their indexes (`INDEXED BY`), node rung 0058 adds the
-  one-direction time index, and fanout.rs's tests ask the planner and fail on a sort.
-- **No safety net at run time** (Curtis: a post gently misfiled is a post a little more or less
-  popular than it should be, in a window that ages out on its own). A `rebuild(reader)` exists for
-  the tests, and one asserts that a tangle of reactions, retractions and dial changes kept
-  incrementally equals a rebuild - the systematic bugs (a retraction that never subtracts) are the
-  ones that compound. A change of weights is a rebuild.
-- **Open:** the Law of Conservation of Trust says a firehose's signal rounds to zero - a person
-  who reacts to everything might have their weight split across their reacting. A ranking choice,
-  not a cost one; not yet.
+- **Two tables per reader:** each annotator's contribution to each post, and the
+  post's total. A reaction noted or retracted recomputes that one annotator's
+  contribution to that one post (two tags at most) and moves the total by the
+  difference, for each reader on the node whose journal holds the post -
+  constant work per reaction, beside the memo write it already costs. Every rule
+  a read applies is applied here instead: two tags to a person, no reaction to
+  your own post, blocks, sealed admission.
+- **A dial change rescores one person** - their contributions to this reader's
+  feed, which is as large as their reacting, not everyone's. Blocking is a dial
+  change, so it takes effect at once. An interest change rescores that author's
+  posts.
+- **A year, then pruned:** a score older than the longest window can never be
+  shown, so it goes.
+- **Three runs, two read paths** (measured 2026-09-27 at 131,072 posts, 26,215
+  scored): a page is the posts scored above zero, then the zero run - nobody the
+  reader weighs reacted - then those below zero. The zero run streams off the
+  journal's time index, each score probed by key (~0.3 ms a page, any window).
+  The scored runs sort by score: read by the window for a month or less (a day
+  16 ms, a month 29 ms) and off the score index for a year (123 ms - the one
+  sort left, ties by time living in the journal; if it bites, a cached ranking
+  per reader and window is the lever). Every key descends (score, time, document
+  id - score.rs `Rank`), so the time index walks one direction with no sort.
+- **The engine's planner is pinned.** Turso's, left alone, reached for the rooms
+  index and sorted a reader's whole journal for every page - the plain
+  newest-first feed included, which had never been able to stream (its ties ran
+  the other way, so no index matched) - and probed scores with the reader alone.
+  The journal's reads name their indexes (`INDEXED BY`), node rung 0058 adds the
+  one-direction time index, and fanout.rs's tests ask the planner and fail on a
+  sort.
+- **No safety net at run time** (Curtis: a post gently misfiled is a post a
+  little more or less popular than it should be, in a window that ages out on
+  its own). A `rebuild(reader)` exists for the tests, and one asserts that a
+  tangle of reactions, retractions and dial changes kept incrementally equals a
+  rebuild - the systematic bugs (a retraction that never subtracts) are the ones
+  that compound. A change of weights is a rebuild.
+- **Open:** the Law of Conservation of Trust says a firehose's signal rounds to
+  zero - a person who reacts to everything might have their weight split across
+  their reacting. A ranking choice, not a cost one; not yet.
 
-**The feed's other readers get the same treatment - the 5000 cap goes** (found the same day: the
-search, the facet picks, the tag cloud, the search's backlog walk, the chats column and "chat with
-them" all read "the newest 5000 journal rows, then filter", so a room you were in left your chats
-column once 5000 newer posts arrived; and your own rooms came from your newest 500 posts). The aim
-is a million-row journal:
+**The feed's other readers get the same treatment - the 5000 cap goes** (found
+the same day: the search, the facet picks, the tag cloud, the search's backlog
+walk, the chats column and "chat with them" all read "the newest 5000 journal
+rows, then filter", so a room you were in left your chats column once 5000 newer
+posts arrived; and your own rooms came from your newest 500 posts). The aim is a
+million-row journal:
 
-- **One journal filter**, in SQL, for every reader of the journal - reader, own, window, format,
-  the dial's stop, the picks - so rooms are a `format = 'room'` on an index of (reader, format,
-  time), and nothing takes the newest N and hopes.
-- **The tag cloud counts a year, cached** (Curtis, 2026-09-28, over stored counts: a count that
-  can be one number per tag must follow every journal write, every label, every dial and other
-  people's trust opening sealed labels - exactly, forever, or be wrong for good). It counts the
-  posts the feed shows from the last year (or a shorter best window) - the dial, "me" and the
-  window in SQL off the time index, their labels in one join probing the memo by key - and keeps
-  the answer an hour unless something moves: a generation every journal and label write bumps, and
-  the reader's own store's mtime (a dial). A missed signal is a cloud up to an hour stale, never a
-  count wrong for good. The year is said under the cloud. A pick narrows the other rows to what
-  shares a post with it - **unless the pick is larger than 1000 posts** (Curtis: a glad emoji
-  picked could be a bastard of an expensive time): then the lists stay as if nothing were picked,
-  while the posts themselves still narrow. The pick's size is read off the unpicked counts - a
-  tag's count, the smallest among tags picked together, the sum among buckets. Measured (debug
-  build, 131,072 posts, a year of them): the window 159 ms, its labels 427 ms - a cache miss.
-- **Search is an inverted index** (node rung 0059): a row per (term, post) - `post_terms`, kept
-  with each post's word bag - so a query's word is a prefix range scan of the index. A post is
-  indexed by its title the moment it is met and by its words when its body is read (the backlog
-  walk, by cursor to the end of the journal; the newest hundred of a feed before any search, so
-  what just arrived is found at once).
-- **A search or a pick takes one of two roads**, chosen per request: a word or a label naming at
-  most 5000 posts (the inverted index; the labels' value index, also rung 0059) starts from that
-  small set and meets the journal by key; when every one is commoner, the feed is walked newest
-  first until a page of matches is found - soon, since they are common. The exact judgment
-  (whose bucket, the two-tag rule, sealed admission, kinds) is the same either way. Built
+- **One journal filter**, in SQL, for every reader of the journal - reader, own,
+  window, format, the dial's stop, the picks - so rooms are a `format = 'room'`
+  on an index of (reader, format, time), and nothing takes the newest N and
+  hopes.
+- **The tag cloud counts a year, cached** (Curtis, 2026-09-28, over stored
+  counts: a count that can be one number per tag must follow every journal
+  write, every label, every dial and other people's trust opening sealed
+  labels - exactly, forever, or be wrong for good). It counts the posts the feed
+  shows from the last year (or a shorter best window) - the dial, "me" and the
+  window in SQL off the time index, their labels in one join probing the memo by
+  key - and keeps the answer an hour unless something moves: a generation every
+  journal and label write bumps, and the reader's own store's mtime (a dial). A
+  missed signal is a cloud up to an hour stale, never a count wrong for good.
+  The year is said under the cloud. A pick narrows the other rows to what shares
+  a post with it - **unless the pick is larger than 1000 posts** (Curtis: a glad
+  emoji picked could be a bastard of an expensive time): then the lists stay as
+  if nothing were picked, while the posts themselves still narrow. The pick's
+  size is read off the unpicked counts - a tag's count, the smallest among tags
+  picked together, the sum among buckets. Measured (debug build, 131,072 posts,
+  a year of them): the window 159 ms, its labels 427 ms - a cache miss.
+- **Search is an inverted index** (node rung 0059): a row per (term, post) -
+  `post_terms`, kept with each post's word bag - so a query's word is a prefix
+  range scan of the index. A post is indexed by its title the moment it is met
+  and by its words when its body is read (the backlog walk, by cursor to the end
+  of the journal; the newest hundred of a feed before any search, so what just
+  arrived is found at once).
+- **A search or a pick takes one of two roads**, chosen per request: a word or a
+  label naming at most 5000 posts (the inverted index; the labels' value index,
+  also rung 0059) starts from that small set and meets the journal by key; when
+  every one is commoner, the feed is walked newest first until a page of matches
+  is found - soon, since they are common. The exact judgment (whose bucket, the
+  two-tag rule, sealed admission, kinds) is the same either way. Built
   2026-09-28; with it the newest-5000 read had no caller left and is gone.
 
-**Hot, as built:** a post's hot key is `published + score x 1h` - it moves with the score, never the
-clock, so a page boundary holds. A page merges two streams and sorts neither the feed nor the
-scores: the unscored, whose key is their time, off the time index; and the scored, which a score
-can only have moved as far as the reader's highest and lowest scores reach, so only those
-published within that reach of the page are read (a bounded range of the time index, each score
-by key). A post at two whole likes or more comes back `lifted`, and the card takes the interest
-dial's top emphasis - a flag, never the number. Measured (debug build, 131,072 posts): a page
-~8 ms, any depth.
+**Hot, as built:** a post's hot key is `published + score x 1h` - it moves with
+the score, never the clock, so a page boundary holds. A page merges two streams
+and sorts neither the feed nor the scores: the unscored, whose key is their
+time, off the time index; and the scored, which a score can only have moved as
+far as the reader's highest and lowest scores reach, so only those published
+within that reach of the page are read (a bounded range of the time index, each
+score by key). A post at two whole likes or more comes back `lifted`, and the
+card takes the interest dial's top emphasis - a flag, never the number. Measured
+(debug build, 131,072 posts): a page ~8 ms, any depth.
 
-**Slices:** (1) the score, its breakdown in the dossier, and best (window) - built first at read
-time, then rebuilt: label columns and indexes; the one journal filter (chats fixed); the score
-tables and best on them; the tag cloud over a cached year; the picks' narrowing and the inverted
-search index (the newest-5000 read gone). (2) hot, and a high score's emphasis - built 2026-09-28.
-(3) reply trees - built 2026-09-28: each level of a thread ordered among itself, oldest first
-(the default, the conversation's own order), hot (reply time plus an hour a like) or best (score
-high first, ties oldest first), by the viewer's own scores - only for a signed-in viewer asking as a
-persona of theirs; anyone else reads oldest first. A level is read whole (up to 500 replies) so
-every sibling can be placed.
+**Slices:** (1) the score, its breakdown in the dossier, and best (window) -
+built first at read time, then rebuilt: label columns and indexes; the one
+journal filter (chats fixed); the score tables and best on them; the tag cloud
+over a cached year; the picks' narrowing and the inverted search index (the
+newest-5000 read gone). (2) hot, and a high score's emphasis - built 2026-09-28.
+(3) reply trees - built 2026-09-28: each level of a thread ordered among itself,
+oldest first (the default, the conversation's own order), hot (reply time plus
+an hour a like) or best (score high first, ties oldest first), by the viewer's
+own scores - only for a signed-in viewer asking as a persona of theirs; anyone
+else reads oldest first. A level is read whole (up to 500 replies) so every
+sibling can be placed.
 
 ### Contact tags: private labels on the people you know (settled 2026-09-10)
 
-"What I'm imagining now is the ability to tag your acquaintances - these are private tags."
-The first half of the audience arc, useful on its own: a persona puts words on the people
-they know - "family", "trade-show", "bikes" - and the words never leave their own
-computers.
+"What I'm imagining now is the ability to tag your acquaintances - these are
+private tags." The first half of the audience arc, useful on its own: a persona
+puts words on the people they know - "family", "trade-show", "bikes" - and the
+words never leave their own computers.
 
-1. **One register in the contact's bag.** A contact's tags are the `tags` register of the
-   `contact:<root>` collection on the private chain, a JSON list, written through the same
-   door as trust, interest and the nickname and read back with the bag. So every computer
-   the persona signs in on keeps the same lists, and nothing about a tag reaches a public
-   chain, a profile, an edge or a shelf - the suite reads the persona's public face as a
-   stranger and finds no tag on it.
-2. **A tag is a key, not prose.** Lowercased, whitespace collapsed, capped at thirty-two
-   characters and twenty-four per person, never twice on one person. The editor on a
-   person's ledger offers every tag the persona has put on anyone as a completion, so one
-   spelling stays one spelling.
-3. **The People page filters by them.** The same facet widget the feed wears, tags only:
-   every tag on the roster with how many people wear it, picks AND, kept for the browser
-   session like the feed's picks. Nothing picked shows everyone.
-4. **The audience (built 2026-09-10).** A sealed post may name a contact tag - "family" -
-   and then it is for the people who wear it rather than for everyone the author trusts.
-   The tag rides the draft as its `audience` field, never the wire: the public header is
-   an ordinary sealed header, and the audience is noted beside the post's key on the
-   author's own node, the only place it is ever judged. Every sealed door asks one
-   question, `seal_admits(holder, key document, subject)`: the holder themself, always;
-   with an audience, whoever the holder has tagged so, read from the holder's private
-   contact bag; without one, whoever the holder publishes trust for. The key lane, the
-   body door, the shelf, the feed, the thread, the sealed labels and the mention notice
-   all ask it, so an audience is one narrower answer and not a new mechanism. A reply
-   under the post's seal inherits the audience with the key: the family member's reply is
-   for the family. A reader the author trusts but did not tag holds a header they cannot
-   open; their node asks for the key, is refused, and remembers the refusal for ten minutes
-   so the feed, the shelf, the thread and the labels stop showing what the door would refuse
-   - the body door itself never honours a refusal, since it is what asks for the key and
-     must ask again the moment trust or the audience changes; a key's arrival clears the
-     memo, and a wrongful refusal (a peer ledger not yet derived) is retried after ten
-     minutes regardless.
-     In the composer it is one control (Curtis, 2026-09-12): "only show to" everyone, people
-     I trust, or a contact tag - the seal is on whenever the choice is not everyone, and the
-     trust list is the seal's default. A tag is the whole answer: a person tagged "family" is
-     in the audience whether or not the author has published trust for them.
-     Your own card says the list ("only family", 2026-09-13); anyone else's says "trusted
-     only", since the tag is the author's private business.
-     Residuals: a book seals to everyone the author trusts, not to an audience; the copy
-     of an audience post keeps the seal but not the audience.
-5. **The people mentioned (built 2026-09-14).** "We're very close to being able to support
-   messages directly to a person." A post may be for the people its user cards name: the
-   audience memo says `@mentioned` and a member list beside it says who, fixed at publish
-   and re-said on every re-publish, minus the author. Everything else is the seal as it
-   stands - the one gate answers from the member list, a reply under the post's seal
-   inherits the room, the mention notice already goes only to people the seal admits, so
-   the named people are told and can open the card, and a trusted-but-unnamed reader is
-   refused and hides it. A post for the people mentioned that names nobody is refused at
-   publish ("mention someone first"). What the public record shows: that the author
-   published something sealed and when, and - from a reply's header - who answered; the
-   mention statements are sealed labels, so not who was named. Not the sealed pair: no
-   forward secrecy, and the key lives on the author's node. The composer offers "the
-   people mentioned" whenever the seal is on; the client does not parse mentions, so the
-   node's refusal is the check. The publish also says `audience=@mentioned` as a sealed
-   label, so a named reader's card reads "only the people mentioned" (a contact-tag
-   audience says nothing to the room: the tag is the author's private business).
-6. **The lane admits people, not machines (2026-09-14).** The messages suite found it in
-   its first run: cal and dana share a node, cal's fetch put the key in that node's memo,
-   and dana - trusted, unnamed - read the post off it. A key request now names the persona
-   asking; the author's lane releases only when that persona is admitted AND the dialing
-   endpoint serves it; the reader's node remembers grants and refusals per persona, and
-   its door serves a sealed body to a persona with a grant or asks the lane for that
-   persona and is granted or refused. Away from the holder's node the gate's word is the
-   grant, with published trust as the fallback for a persona the lane has not yet been
-   asked about. The reply mint, the label doors and the bell's fold ask for the persona
-   at hand too.
-7. **People I trust, and onward (built 2026-09-18).** The seal's list, with the share button
-   left on: "I think splitting 'people I trust' into 'people I trust, and onward' and
-   'people I trust' ... is easy enough as a slam dunk." The composer's list runs from most
-   to least permissive - everyone, people I trust and onward, people I trust, the people
-   mentioned, each contact tag. Onward is a bit in the signed header (key 22, beside the
-   seal), never an audience: the gate's list is the trust list as for any plain sealed
-   post, and the card wears "trusted, and onward" from the header, to everyone. What the
-   bit changes is the hop. A trusted reader may pass the post along - the share door
-   admits the share when they hold the key, and notes them a holder - and every door then
-   hears the sharer: the feed's gate, the body door (`?via=`, the hint a share card already
-   carries) and the key lane ask `seal_admits` with the sharer named, and on an onward
-   post the sharer's own published trust admits the reader, one hop, judged from the
-   sharer's mirrored record - their share on their shares chain, their trust on their
-   identity chain - so a hint nobody's record backs admits nobody. The sharer's node is
-   the one that releases the key to the people they trust; the author's own lane still
-   answers only for the author's list, and is asked after the sharer's. Convention, not
-   cryptography: the author trusts the sharer's judgment as the sharer's node enforces it,
-   and a copy already delivered was never recallable. A reader admitted through the hop
-   is granted like any other, so the permalink, the thread and the labels open for them
-   afterwards without the hint. _Residual._ The hop is one deep by construction - a
-   re-share by the reader admits nobody further, since the door asks the sharer's trust
-   for the reader's reader and finds none - though a second sharer trusted by the author
-   admits their own people the same way. The permalink carries no sharer, so a reader who
-   reaches an onward post by its address alone, before their feed card opened it, is
-   refused until it has.
+1. **One register in the contact's bag.** A contact's tags are the `tags`
+   register of the `contact:<root>` collection on the private chain, a JSON
+   list, written through the same door as trust, interest and the nickname and
+   read back with the bag. So every computer the persona signs in on keeps the
+   same lists, and nothing about a tag reaches a public chain, a profile, an
+   edge or a shelf - the suite reads the persona's public face as a stranger and
+   finds no tag on it.
+2. **A tag is a key, not prose.** Lowercased, whitespace collapsed, capped at
+   thirty-two characters and twenty-four per person, never twice on one person.
+   The editor on a person's ledger offers every tag the persona has put on
+   anyone as a completion, so one spelling stays one spelling.
+3. **The People page filters by them.** The same facet widget the feed wears,
+   tags only: every tag on the roster with how many people wear it, picks AND,
+   kept for the browser session like the feed's picks. Nothing picked shows
+   everyone.
+4. **The audience (built 2026-09-10).** A sealed post may name a contact tag -
+   "family" - and then it is for the people who wear it rather than for everyone
+   the author trusts. The tag rides the draft as its `audience` field, never the
+   wire: the public header is an ordinary sealed header, and the audience is
+   noted beside the post's key on the author's own node, the only place it is
+   ever judged. Every sealed door asks one question,
+   `seal_admits(holder, key document, subject)`: the holder themself, always;
+   with an audience, whoever the holder has tagged so, read from the holder's
+   private contact bag; without one, whoever the holder publishes trust for. The
+   key lane, the body door, the shelf, the feed, the thread, the sealed labels
+   and the mention notice all ask it, so an audience is one narrower answer and
+   not a new mechanism. A reply under the post's seal inherits the audience with
+   the key: the family member's reply is for the family. A reader the author
+   trusts but did not tag holds a header they cannot open; their node asks for
+   the key, is refused, and remembers the refusal for ten minutes so the feed,
+   the shelf, the thread and the labels stop showing what the door would refuse
+   - the body door itself never honours a refusal, since it is what asks for the
+     key and must ask again the moment trust or the audience changes; a key's
+     arrival clears the memo, and a wrongful refusal (a peer ledger not yet
+     derived) is retried after ten minutes regardless. In the composer it is one
+     control (Curtis, 2026-09-12): "only show to" everyone, people I trust, or a
+     contact tag - the seal is on whenever the choice is not everyone, and the
+     trust list is the seal's default. A tag is the whole answer: a person
+     tagged "family" is in the audience whether or not the author has published
+     trust for them. Your own card says the list ("only family", 2026-09-13);
+     anyone else's says "trusted only", since the tag is the author's private
+     business. Residuals: a book seals to everyone the author trusts, not to an
+     audience; the copy of an audience post keeps the seal but not the audience.
+5. **The people mentioned (built 2026-09-14).** "We're very close to being able
+   to support messages directly to a person." A post may be for the people its
+   user cards name: the audience memo says `@mentioned` and a member list beside
+   it says who, fixed at publish and re-said on every re-publish, minus the
+   author. Everything else is the seal as it stands - the one gate answers from
+   the member list, a reply under the post's seal inherits the room, the mention
+   notice already goes only to people the seal admits, so the named people are
+   told and can open the card, and a trusted-but-unnamed reader is refused and
+   hides it. A post for the people mentioned that names nobody is refused at
+   publish ("mention someone first"). What the public record shows: that the
+   author published something sealed and when, and - from a reply's header - who
+   answered; the mention statements are sealed labels, so not who was named. Not
+   the sealed pair: no forward secrecy, and the key lives on the author's node.
+   The composer offers "the people mentioned" whenever the seal is on; the
+   client does not parse mentions, so the node's refusal is the check. The
+   publish also says `audience=@mentioned` as a sealed label, so a named
+   reader's card reads "only the people mentioned" (a contact-tag audience says
+   nothing to the room: the tag is the author's private business).
+6. **The lane admits people, not machines (2026-09-14).** The messages suite
+   found it in its first run: cal and dana share a node, cal's fetch put the key
+   in that node's memo, and dana - trusted, unnamed - read the post off it. A
+   key request now names the persona asking; the author's lane releases only
+   when that persona is admitted AND the dialing endpoint serves it; the
+   reader's node remembers grants and refusals per persona, and its door serves
+   a sealed body to a persona with a grant or asks the lane for that persona and
+   is granted or refused. Away from the holder's node the gate's word is the
+   grant, with published trust as the fallback for a persona the lane has not
+   yet been asked about. The reply mint, the label doors and the bell's fold ask
+   for the persona at hand too.
+7. **People I trust, and onward (built 2026-09-18).** The seal's list, with the
+   share button left on: "I think splitting 'people I trust' into 'people I
+   trust, and onward' and 'people I trust' ... is easy enough as a slam dunk."
+   The composer's list runs from most to least permissive - everyone, people I
+   trust and onward, people I trust, the people mentioned, each contact tag.
+   Onward is a bit in the signed header (key 22, beside the seal), never an
+   audience: the gate's list is the trust list as for any plain sealed post, and
+   the card wears "trusted, and onward" from the header, to everyone. What the
+   bit changes is the hop. A trusted reader may pass the post along - the share
+   door admits the share when they hold the key, and notes them a holder - and
+   every door then hears the sharer: the feed's gate, the body door (`?via=`,
+   the hint a share card already carries) and the key lane ask `seal_admits`
+   with the sharer named, and on an onward post the sharer's own published trust
+   admits the reader, one hop, judged from the sharer's mirrored record - their
+   share on their shares chain, their trust on their identity chain - so a hint
+   nobody's record backs admits nobody. The sharer's node is the one that
+   releases the key to the people they trust; the author's own lane still
+   answers only for the author's list, and is asked after the sharer's.
+   Convention, not cryptography: the author trusts the sharer's judgment as the
+   sharer's node enforces it, and a copy already delivered was never recallable.
+   A reader admitted through the hop is granted like any other, so the
+   permalink, the thread and the labels open for them afterwards without the
+   hint. _Residual._ The hop is one deep by construction - a re-share by the
+   reader admits nobody further, since the door asks the sharer's trust for the
+   reader's reader and finds none - though a second sharer trusted by the author
+   admits their own people the same way. The permalink carries no sharer, so a
+   reader who reaches an onward post by its address alone, before their feed
+   card opened it, is refused until it has.
 
 ### The node's public face: strangers, listing and slugs (settled 2026-09-14; built 2026-09-16)
 
-"Present the public content with all the same react tools we use to present things to
-logged-in users." What a node shows to someone who is not signed in: the personas it hosts
-and everything public they have said, as one feed, on the same surfaces a reader gets, fed
-by two anonymous doors; a per-persona switch for appearing there; and a short address per
-node.
+"Present the public content with all the same react tools we use to present
+things to logged-in users." What a node shows to someone who is not signed in:
+the personas it hosts and everything public they have said, as one feed, on the
+same surfaces a reader gets, fed by two anonymous doors; a per-persona switch
+for appearing there; and a short address per node.
 
-1. **Data versus rendering, not HTML versus Preact.** The cards, the facet rows, the search
-   and label hooks, the person row and the persona shelf adapter take their data from the
-   API and accept no current persona. What did not reuse was the feed app and the people
-   app, which read the signed-in persona's own mirror; a stranger has none. So the arc was
-   two doors and a shell, not a rewrite: the feed's stream takes its doors as props (`feedUrl`,
-   `labelsUrl`, no dial, its own facet picks), one body over two doors.
-2. **The sealed rule is already the stranger's rule.** A viewer of nobody gets no sealed
-   post, no sealed label and no key. The anonymous doors pass no viewer, read the node
-   memos every other listing reads, and never open a user database.
-3. **Listed on this node, default on.** A node's front page turns hosting into publication,
-   and someone may host a persona on a friend's node without wanting to be its front page.
-   Each hosted persona has "listed on this node's front page", on by default; the node feed
-   and the people page honour it. A node fact (`node_listing`), not the persona's - it does
-   not travel - set through an authenticated door, read by the anonymous ones.
-4. **The node feed.** Everything public by every listed hosted persona, newest first, with
-   the labels row, the kind row and the search over the whole held shelf (the reader's own
-   narrowing, viewer none), keyset paging; shares by hosted personas ride as shares. Fed by
-   `node_shelf`, folded from each hosted persona's own shelf when their chain moves (the
-   annotations memo's discipline: one user-db open per move, none per request; a hundred
-   posts per statement, since the history dig shares the fold lane). The dial does not
-   apply: there is no reader to have interest. Its null state sends a stranger to sign in.
-5. **The people page.** Every listed hosted persona with the byline the node holds, the
-   speakable address and the slug when one is claimed; no relationships, no sorts by trust.
-6. **Node slugs: a short address per node, first come first served.** A hosted persona may
-   claim `@cube-drone`, and `node.tld/@cube-drone` is its page here. A slug cannot follow the
-   persona around: two nodes can each hand the same name to different people and nothing in
-   a system with no centre could referee it - so it is a node fact, meaning nothing on any
-   other node, and the page says so beside the speakable address, which is the persona's
-   real name everywhere. A fourth address floor: `/home/` for apps, `/in/` for buckets,
-   `/id/` for personas by their real address, `/@` for personas by this node's short name.
-   The router cannot say `/@:slug` - a parameter is a whole segment - so a single-segment
-   route takes the segment and dispatches on the `@`.
-7. **Claiming, changing, holding.** Lowercase letters, digits and hyphens, three to
-   thirty-two characters, no leading or trailing hyphen; uppercase lowered and a leading `@`
-   forgiven. Claimed by a hosted persona through an authenticated door; refused when another
-   persona holds it as current OR last. A persona may change to any unclaimed slug and then
-   holds two: the current, and the last it claimed, which redirects to the current and which
-   nobody else may take. Changing again drops the older; retaking one's own last swaps the
-   two; giving the name up keeps it as the last; leaving the node releases both. An unlisted
-   persona keeps its slug: listing is about the front page, claiming a name is its own choice.
-   The address block shows the declared public URL in front of the name, `@name` in bold:
-   this server, only.
-8. **The shell.** Without a session the app serves the sign-in at `/` (Curtis, 2026-09-28: "make
-   the homepage the login page again"), the node's front page - its feed - at `/feed`, the people
-   page at `/people`, every `/id/` and `/@` page and every post page, under a header with the
-   node's search box and three icon buttons: feed, people, sign in - the sign-in is also at
-   `/home`, where every app URL lands a stranger; a signed-in reader at `/` or `/feed` goes on to
-   `/home`. The
-   server's `/id/` and `/@` pages are the app with a head - the title and the OpenGraph meta,
-   the URL carrying the via hints - for hosted, peeked and unknown personas alike (the
-   malformed-address pages stay raw, having no persona); the raw card page and its identicon
-   retired. The node pages live beside the shell, not among the registry's apps: an app may
+1. **Data versus rendering, not HTML versus Preact.** The cards, the facet rows,
+   the search and label hooks, the person row and the persona shelf adapter take
+   their data from the API and accept no current persona. What did not reuse was
+   the feed app and the people app, which read the signed-in persona's own
+   mirror; a stranger has none. So the arc was two doors and a shell, not a
+   rewrite: the feed's stream takes its doors as props (`feedUrl`, `labelsUrl`,
+   no dial, its own facet picks), one body over two doors.
+2. **The sealed rule is already the stranger's rule.** A viewer of nobody gets
+   no sealed post, no sealed label and no key. The anonymous doors pass no
+   viewer, read the node memos every other listing reads, and never open a user
+   database.
+3. **Listed on this node, default on.** A node's front page turns hosting into
+   publication, and someone may host a persona on a friend's node without
+   wanting to be its front page. Each hosted persona has "listed on this node's
+   front page", on by default; the node feed and the people page honour it. A
+   node fact (`node_listing`), not the persona's - it does not travel - set
+   through an authenticated door, read by the anonymous ones.
+4. **The node feed.** Everything public by every listed hosted persona, newest
+   first, with the labels row, the kind row and the search over the whole held
+   shelf (the reader's own narrowing, viewer none), keyset paging; shares by
+   hosted personas ride as shares. Fed by `node_shelf`, folded from each hosted
+   persona's own shelf when their chain moves (the annotations memo's
+   discipline: one user-db open per move, none per request; a hundred posts per
+   statement, since the history dig shares the fold lane). The dial does not
+   apply: there is no reader to have interest. Its null state sends a stranger
+   to sign in.
+5. **The people page.** Every listed hosted persona with the byline the node
+   holds, the speakable address and the slug when one is claimed; no
+   relationships, no sorts by trust.
+6. **Node slugs: a short address per node, first come first served.** A hosted
+   persona may claim `@cube-drone`, and `node.tld/@cube-drone` is its page here.
+   A slug cannot follow the persona around: two nodes can each hand the same
+   name to different people and nothing in a system with no centre could referee
+   it - so it is a node fact, meaning nothing on any other node, and the page
+   says so beside the speakable address, which is the persona's real name
+   everywhere. A fourth address floor: `/home/` for apps, `/in/` for buckets,
+   `/id/` for personas by their real address, `/@` for personas by this node's
+   short name. The router cannot say `/@:slug` - a parameter is a whole
+   segment - so a single-segment route takes the segment and dispatches on the
+   `@`.
+7. **Claiming, changing, holding.** Lowercase letters, digits and hyphens, three
+   to thirty-two characters, no leading or trailing hyphen; uppercase lowered
+   and a leading `@` forgiven. Claimed by a hosted persona through an
+   authenticated door; refused when another persona holds it as current OR last.
+   A persona may change to any unclaimed slug and then holds two: the current,
+   and the last it claimed, which redirects to the current and which nobody else
+   may take. Changing again drops the older; retaking one's own last swaps the
+   two; giving the name up keeps it as the last; leaving the node releases both.
+   An unlisted persona keeps its slug: listing is about the front page, claiming
+   a name is its own choice. The address block shows the declared public URL in
+   front of the name, `@name` in bold: this server, only.
+8. **The shell.** Without a session the app serves the sign-in at `/` (Curtis,
+   2026-09-28: "make the homepage the login page again"), the node's front
+   page - its feed - at `/feed`, the people page at `/people`, every `/id/` and
+   `/@` page and every post page, under a header with the node's search box and
+   three icon buttons: feed, people, sign in - the sign-in is also at `/home`,
+   where every app URL lands a stranger; a signed-in reader at `/` or `/feed`
+   goes on to `/home`. The server's `/id/` and `/@` pages are the app with a
+   head - the title and the OpenGraph meta, the URL carrying the via hints - for
+   hosted, peeked and unknown personas alike (the malformed-address pages stay
+   raw, having no persona); the raw card page and its identicon retired. The
+   node pages live beside the shell, not among the registry's apps: an app may
    not import an app.
 
-**Residuals.** Rate limits on the anonymous doors: a node's front page is the first thing a
-scraper finds; the feed door's paging bounds the damage, a per-address budget is the next
-step. A node-observed feed is a different thing and stays on NEXT_STEPS. Full pre-rendering
-of the app to HTML stays possible if crawlers ever need the words; nothing asks for it.
+**Residuals.** Rate limits on the anonymous doors: a node's front page is the
+first thing a scraper finds; the feed door's paging bounds the damage, a
+per-address budget is the next step. A node-observed feed is a different thing
+and stays on NEXT_STEPS. Full pre-rendering of the app to HTML stays possible if
+crawlers ever need the words; nothing asks for it.
 
 ### Replies under the author's seal, and sealed titles (settled 2026-09-08)
 
-A sealed conversation stays pinned to the context it began in. Two rulings, one key.
+A sealed conversation stays pinned to the context it began in. Two rulings, one
+key.
 
-1. **A reply to a sealed post is sealed under the parent's key.** A trusted reader holds the
-   post's key already; their reply's words are encrypted under that same key, so whoever can
-   obtain the parent's key from the author's gate can read the reply, and nobody else can.
-   The author's gate stays the only gate - no re-keying, no second audience - and the
-   audience of the conversation equals the audience of the post by construction. The reply
-   still lives on the commenter's own chain, as ciphertext, so sync and carriage are the
-   sealed post's own. Composed with private audiences (tags on acquaintances, when they
-   come): my brother's reply to a family post is readable by my mother and never by his
-   colleagues, whatever he dials for them.
-2. **The header names the seal's holder.** A sealed document says whose key seals it and
-   whose author's trust opens it; absent means its own author, which is every ordinary
-   sealed post. A reply under its parent's seal names the parent, and so does every media
-   twin that reply bakes - a twin cannot name the post that embeds it, and without the
-   statement a picture inside a sealed reply would be gated by the commenter's trust
-   rather than the author's (stated rather than inferred, 2026-09-09). The body door looks
-   for the named post's key and applies that author's trust; readers never ask the
-   commenter's node for a key at all. The shelf, which reads a folded view rather than the
+1. **A reply to a sealed post is sealed under the parent's key.** A trusted
+   reader holds the post's key already; their reply's words are encrypted under
+   that same key, so whoever can obtain the parent's key from the author's gate
+   can read the reply, and nobody else can. The author's gate stays the only
+   gate - no re-keying, no second audience - and the audience of the
+   conversation equals the audience of the post by construction. The reply still
+   lives on the commenter's own chain, as ciphertext, so sync and carriage are
+   the sealed post's own. Composed with private audiences (tags on
+   acquaintances, when they come): my brother's reply to a family post is
+   readable by my mother and never by his colleagues, whatever he dials for
+   them.
+2. **The header names the seal's holder.** A sealed document says whose key
+   seals it and whose author's trust opens it; absent means its own author,
+   which is every ordinary sealed post. A reply under its parent's seal names
+   the parent, and so does every media twin that reply bakes - a twin cannot
+   name the post that embeds it, and without the statement a picture inside a
+   sealed reply would be gated by the commenter's trust rather than the author's
+   (stated rather than inferred, 2026-09-09). The body door looks for the named
+   post's key and applies that author's trust; readers never ask the commenter's
+   node for a key at all. The shelf, which reads a folded view rather than the
    header, infers a reply's holder from its parent and lands on the same answer.
-3. **No key, no reply.** The mint reads the parent's key from the key memo; a replier who
-   never could read the parent has none, and the door refuses with words. The reply box
-   under a sealed parent says the reply will wear the author's seal, and offers no toggle:
-   the seal is not the commenter's to choose.
-4. **The feed judges a sealed reply by the parent's author.** A follower of the commenter
-   whom the original author does not trust sees nothing - no hollow card - exactly as for
-   the sealed post itself. Threads hide what the reader cannot open the same way.
-5. **The title is sealed too.** "TALKIN BOUT MY BUTT MEDICINE" is personal before a word of
-   the body is read. A sealed post's public header carries no title: the title is sealed
-   under the same post key, with its own nonce, and rides the header beside the body - so
-   the BODY stays byte-exactly what the author wrote in every format (a plaintext post is
-   still plain text) and no surface has to strip anything. The body door, which already
-   decrypts for a reader who may, hands the title back beside the words in a response
-   header; the card and the mini-card take it from there, the copy door takes it for the
-   copy's title, and the text index reads it with the key it already has. Sealed media
-   twins seal their titles too: a picture called "ultrasound" is as personal as its post.
-   The untrusted see nothing, since the surfaces already hide what they cannot open; the
-   one honest line ("the author shares these words only with people they trust") carries
-   no title.
-6. **The edges, named.** A takedown of the parent leaves its replies sealed under a key
-   nobody hands out any more: they go dark with it, the pinned behaviour taken to its end.
-   The commenter's other computers read their own reply as anyone does, by asking the
-   author's gate, which trusts the persona, not the device. A sealed reply to a sealed reply
-   chains to the root post's key: one key per conversation.
+3. **No key, no reply.** The mint reads the parent's key from the key memo; a
+   replier who never could read the parent has none, and the door refuses with
+   words. The reply box under a sealed parent says the reply will wear the
+   author's seal, and offers no toggle: the seal is not the commenter's to
+   choose.
+4. **The feed judges a sealed reply by the parent's author.** A follower of the
+   commenter whom the original author does not trust sees nothing - no hollow
+   card - exactly as for the sealed post itself. Threads hide what the reader
+   cannot open the same way.
+5. **The title is sealed too.** "TALKIN BOUT MY BUTT MEDICINE" is personal
+   before a word of the body is read. A sealed post's public header carries no
+   title: the title is sealed under the same post key, with its own nonce, and
+   rides the header beside the body - so the BODY stays byte-exactly what the
+   author wrote in every format (a plaintext post is still plain text) and no
+   surface has to strip anything. The body door, which already decrypts for a
+   reader who may, hands the title back beside the words in a response header;
+   the card and the mini-card take it from there, the copy door takes it for the
+   copy's title, and the text index reads it with the key it already has. Sealed
+   media twins seal their titles too: a picture called "ultrasound" is as
+   personal as its post. The untrusted see nothing, since the surfaces already
+   hide what they cannot open; the one honest line ("the author shares these
+   words only with people they trust") carries no title.
+6. **The edges, named.** A takedown of the parent leaves its replies sealed
+   under a key nobody hands out any more: they go dark with it, the pinned
+   behaviour taken to its end. The commenter's other computers read their own
+   reply as anyone does, by asking the author's gate, which trusts the persona,
+   not the device. A sealed reply to a sealed reply chains to the root post's
+   key: one key per conversation.
 
-7. **The labels are sealed too (settled 2026-09-10).** "The 'divorce' tag is probably too
-   juicy to leak, even if only malicious clients would ever display it." Every public
-   statement about a sealed post - the author's tags, buckets, mentions and provenance, a
-   trusted reader's tag, a book's union - rides the annotations lane as `sealed=<hex>`, the
-   real `key=value` encrypted under the post's key with a fresh nonce; whoever labels a
-   sealed post must hold its key, which is to say they must be able to read the words, and
-   the door says so ("you can't label words you can't read"). The statement's SUBJECT stays
-   in the clear, as a reply's link does: that someone annotated that document is visible,
-   what they said is not. The memo folds a sealed statement raw until the node holds the
-   key, then opens it in place - the body door opens a post's labels with the key it just
-   used, so the moment a reader is proven entitled to the words is the moment their node
-   may hold the labels open - and every reader (facets, narrowing, the cards, content
-   warnings, the copy door) filters opened rows by the viewer's standing with the seal's
-   holder, judged once per holder per request; a raw row is served to nobody. One decrypt
-   point, every consumer unchanged. A mention inside a sealed post notifies only someone
-   the seal's holder trusts, and its notice is the sender's word: the recipient's door
-   cannot read a name out of ciphertext, so it verifies the statement is the sender's own
-   about their own sealed post and tiers it by sender like any notice; the bell's own
-   fold opens sealed statements with the post's key, fetching it over the key lane for an
-   author a hosted reader follows - the same fetch that reader's body door would make.
-   Two things are accepted: a labeller's untrusted followers see
-   a statement they cannot open and never count it, and a sealed label rides the chain
-   only, never a fragment's proofs (the residual).
+7. **The labels are sealed too (settled 2026-09-10).** "The 'divorce' tag is
+   probably too juicy to leak, even if only malicious clients would ever display
+   it." Every public statement about a sealed post - the author's tags, buckets,
+   mentions and provenance, a trusted reader's tag, a book's union - rides the
+   annotations lane as `sealed=<hex>`, the real `key=value` encrypted under the
+   post's key with a fresh nonce; whoever labels a sealed post must hold its
+   key, which is to say they must be able to read the words, and the door says
+   so ("you can't label words you can't read"). The statement's SUBJECT stays in
+   the clear, as a reply's link does: that someone annotated that document is
+   visible, what they said is not. The memo folds a sealed statement raw until
+   the node holds the key, then opens it in place - the body door opens a post's
+   labels with the key it just used, so the moment a reader is proven entitled
+   to the words is the moment their node may hold the labels open - and every
+   reader (facets, narrowing, the cards, content warnings, the copy door)
+   filters opened rows by the viewer's standing with the seal's holder, judged
+   once per holder per request; a raw row is served to nobody. One decrypt
+   point, every consumer unchanged. A mention inside a sealed post notifies only
+   someone the seal's holder trusts, and its notice is the sender's word: the
+   recipient's door cannot read a name out of ciphertext, so it verifies the
+   statement is the sender's own about their own sealed post and tiers it by
+   sender like any notice; the bell's own fold opens sealed statements with the
+   post's key, fetching it over the key lane for an author a hosted reader
+   follows - the same fetch that reader's body door would make. Two things are
+   accepted: a labeller's untrusted followers see a statement they cannot open
+   and never count it, and a sealed label rides the chain only, never a
+   fragment's proofs (the residual).
 
-Both slices built 2026-09-08: (1) replies under the seal - the mint, the doors, the feed,
-shelf and thread filters, the reply box, the suite; (2) sealed titles - the mint writes the
-meta line and blanks the header, the card and the mini-card read it back, the copy door
-takes it back out, the suites read the words unsealed.
+Both slices built 2026-09-08: (1) replies under the seal - the mint, the doors,
+the feed, shelf and thread filters, the reply box, the suite; (2) sealed
+titles - the mint writes the meta line and blanks the header, the card and the
+mini-card read it back, the copy door takes it back out, the suites read the
+words unsealed.
 
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
-There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the
-tree is simply **its local frontier of the identity chains**: every key it knows about is an authorization entry it
-has synced. That picture is signed (never wrong), possibly stale (missing the newest branches), and converges through
-sync itself:
+There is no roster of an identity's nodes, no membership protocol, and no
+coordinator (**No Central Authority**, Doctrine). Each node's picture of the
+tree is simply **its local frontier of the identity chains**: every key it knows
+about is an authorization entry it has synced. That picture is signed (never
+wrong), possibly stale (missing the newest branches), and converges through sync
+itself:
 
-- **Who:** the chain frontier is the peer list. **Where:** pkarr resolves keys to current addresses, the root's
-  announce rendezvous resolves the identity itself to its live announcers (the discoverability doctrine), and
-  record expiry doubles, unchanged, as the liveness signal for the identity's own nodes.
-- **Juniors sync upward from birth:** a new key's signed ancestry (its usurper list) tells it exactly who its
-  seniors are, and in the common case it was just talking to its parent's node anyway.
-- **Cousins learn of each other through diffusion:** K4's authorization is an entry on K2's identity chain, so it
-  reaches K3 through _any_ sync partner who has seen that chain - no direct contact needed. News of new keys
-  spreads epidemically; any connected set of nodes converges completely.
-- **The handshake accepts unknown-but-valid keys.** A key never heard of before may knock, presenting its full
-  chain-to-root - which is self-authenticating (rule 4) and is checked against locally-known revocations
-  (monotonic memory) before anything is trusted. Refusing unknown-but-valid keys would deadlock tree discovery;
-  accepting them is what makes it self-healing.
-- **Partition is latency, not damage.** Two halves of an identity that cannot talk accumulate separate
-  single-writer chains; whenever they reconnect, everything merges with zero conflict. The only thing that makes a
-  partition ugly is the same _key_ signing in both halves - equivocation, already handled. Reconnection itself is
-  the root rendezvous's job: without it, two honest replicas whose only mutual awareness ran through a dead
-  introducer held the same identity forever apart - the sync graph healed only along edges the adoption ceremonies
-  happened to draw.
+- **Who:** the chain frontier is the peer list. **Where:** pkarr resolves keys
+  to current addresses, the root's announce rendezvous resolves the identity
+  itself to its live announcers (the discoverability doctrine), and record
+  expiry doubles, unchanged, as the liveness signal for the identity's own
+  nodes.
+- **Juniors sync upward from birth:** a new key's signed ancestry (its usurper
+  list) tells it exactly who its seniors are, and in the common case it was just
+  talking to its parent's node anyway.
+- **Cousins learn of each other through diffusion:** K4's authorization is an
+  entry on K2's identity chain, so it reaches K3 through _any_ sync partner who
+  has seen that chain - no direct contact needed. News of new keys spreads
+  epidemically; any connected set of nodes converges completely.
+- **The handshake accepts unknown-but-valid keys.** A key never heard of before
+  may knock, presenting its full chain-to-root - which is self-authenticating
+  (rule 4) and is checked against locally-known revocations (monotonic memory)
+  before anything is trusted. Refusing unknown-but-valid keys would deadlock
+  tree discovery; accepting them is what makes it self-healing.
+- **Partition is latency, not damage.** Two halves of an identity that cannot
+  talk accumulate separate single-writer chains; whenever they reconnect,
+  everything merges with zero conflict. The only thing that makes a partition
+  ugly is the same _key_ signing in both halves - equivocation, already handled.
+  Reconnection itself is the root rendezvous's job: without it, two honest
+  replicas whose only mutual awareness ran through a dead introducer held the
+  same identity forever apart - the sync graph healed only along edges the
+  adoption ceremonies happened to draw.
 
-**Sync discipline:** each node syncs with a few peers per interval (k = 3-5), **selected randomly over its full
-known peer set - never a fixed subset.** Anti-entropy between up-to-date peers is a kilobyte frontier exchange, and
-epidemic spread reaches every node in O(log n) rounds, so this keeps traffic linear rather than n^2 even for
-absurdly node-rich identities (the design center is 2-5 nodes). The random selection is not just a traffic rule: it
-keeps the sync graph well-connected so no node ossifies into a chokepoint by habit - the traffic discipline and the
-security property below are one mechanism seen from two sides. (Implemented 2026-07-22 as `net::resync`'s two
-background passes: debounced eager push on local change, plus a periodic anti-entropy exchange with up to k=3
-randomly chosen peers per identity, first pass at boot. Write-nudged 2026-07-25: locally-signed writes ring the
-eager loop's doorbell so the debounce clock starts at the write itself - a save is on its peers in about a second -
-while sync-received entries deliberately relay on the lazy tick, the damping that keeps a peer triangle from
-ping-ponging exchanges.)
+**Sync discipline:** each node syncs with a few peers per interval (k = 3-5),
+**selected randomly over its full known peer set - never a fixed subset.**
+Anti-entropy between up-to-date peers is a kilobyte frontier exchange, and
+epidemic spread reaches every node in O(log n) rounds, so this keeps traffic
+linear rather than n^2 even for absurdly node-rich identities (the design center
+is 2-5 nodes). The random selection is not just a traffic rule: it keeps the
+sync graph well-connected so no node ossifies into a chokepoint by habit - the
+traffic discipline and the security property below are one mechanism seen from
+two sides. (Implemented 2026-07-22 as `net::resync`'s two background passes:
+debounced eager push on local change, plus a periodic anti-entropy exchange with
+up to k=3 randomly chosen peers per identity, first pass at boot. Write-nudged
+2026-07-25: locally-signed writes ring the eager loop's doorbell so the debounce
+clock starts at the write itself - a save is on its peers in about a second -
+while sync-received entries deliberately relay on the lazy tick, the damping
+that keeps a peer triangle from ping-ponging exchanges.)
 
-**The adversary in the mesh lies only by omission.** A malicious-but-not-yet-repudiated node cannot forge others'
-entries (signatures), cannot truncate chains undetectably (hash chain + dense seqs), and cannot lie about its own
-ancestry - its credential _is_ its parent-signed usurper list, a confession of exactly who outranks it. What it can
-do is withhold: claim ignorance of a branch, or sit on the revocation that targets itself while syncing everything
-else helpfully. Omission only works on victims for whom the withholder is a **cut vertex** - their only path to the
-rest of the identity. Against anyone with a single honest sync partner, the withheld entry arrives by another route
-and monotonic memory makes the arrival permanent. So in steady state this degenerates to the eclipse residual risk
-already named in the threat model.
+**The adversary in the mesh lies only by omission.** A
+malicious-but-not-yet-repudiated node cannot forge others' entries (signatures),
+cannot truncate chains undetectably (hash chain + dense seqs), and cannot lie
+about its own ancestry - its credential _is_ its parent-signed usurper list, a
+confession of exactly who outranks it. What it can do is withhold: claim
+ignorance of a branch, or sit on the revocation that targets itself while
+syncing everything else helpfully. Omission only works on victims for whom the
+withholder is a **cut vertex** - their only path to the rest of the identity.
+Against anyone with a single honest sync partner, the withheld entry arrives by
+another route and monotonic memory makes the arrival permanent. So in steady
+state this degenerates to the eclipse residual risk already named in the threat
+model.
 
-**The exception is onboarding, and it gets a corroboration ladder.** At the moment a key is created, its recruiting
-parent is naturally its entire view of the identity - a free cut vertex. A malicious recruiter can present a pruned
-universe: no cousins, no inconvenient revocations. The defense is corroboration from **any source independent of the
-recruiter** - rank is not what matters, independence is; chain entries are self-authenticating regardless of who
-serves them, so even a junior cousin or a mere fronting node can reveal a hidden branch or revocation. A newly
-authorized key climbs this ladder:
+**The exception is onboarding, and it gets a corroboration ladder.** At the
+moment a key is created, its recruiting parent is naturally its entire view of
+the identity - a free cut vertex. A malicious recruiter can present a pruned
+universe: no cousins, no inconvenient revocations. The defense is corroboration
+from **any source independent of the recruiter** - rank is not what matters,
+independence is; chain entries are self-authenticating regardless of who serves
+them, so even a junior cousin or a mere fronting node can reveal a hidden branch
+or revocation. A newly authorized key climbs this ladder:
 
-1. **Reachable seniors** from its own usurper list (a signed, unfakeable contact sheet).
-2. **Anyone serving the identity:** query pkarr from the key's own network position and sync with whatever nodes
-   answer.
-3. **Nothing reachable: proceed uncorroborated, and keep retrying.** The key operates with its worldview flagged
-   unverified; every later sync with any independent party is a corroboration opportunity, and monotonic memory
-   makes late-arriving truth land permanently.
+1. **Reachable seniors** from its own usurper list (a signed, unfakeable contact
+   sheet).
+2. **Anyone serving the identity:** query pkarr from the key's own network
+   position and sync with whatever nodes answer.
+3. **Nothing reachable: proceed uncorroborated, and keep retrying.** The key
+   operates with its worldview flagged unverified; every later sync with any
+   independent party is a corroboration opportunity, and monotonic memory makes
+   late-arriving truth land permanently.
 
-The ladder must not be a hard gate, because the sole-survivor recovery case (root dead, one key rebuilding, recovery
-key cold in a drawer) would deadlock it _forever_ - every senior dead, cold, or the recruiter itself. And in the one
-case where corroboration is genuinely impossible _and_ the recruiter is malicious, the recruiter is the senior-most
-surviving key, compromised - the threat model's documented worst case, which no onboarding rule can save. A gate
-that only closes when it cannot help should be an attempt, not a gate. A pruned worldview still requires eclipsing
-the child's entire network view rather than merely being its sole informant - and the corroboration attempt doubles
-as tree repair, since it is exactly the anti-entropy that heals whatever partition made seniors unreachable.
+The ladder must not be a hard gate, because the sole-survivor recovery case
+(root dead, one key rebuilding, recovery key cold in a drawer) would deadlock it
+_forever_ - every senior dead, cold, or the recruiter itself. And in the one
+case where corroboration is genuinely impossible _and_ the recruiter is
+malicious, the recruiter is the senior-most surviving key, compromised - the
+threat model's documented worst case, which no onboarding rule can save. A gate
+that only closes when it cannot help should be an attempt, not a gate. A pruned
+worldview still requires eclipsing the child's entire network view rather than
+merely being its sole informant - and the corroboration attempt doubles as tree
+repair, since it is exactly the anti-entropy that heals whatever partition made
+seniors unreachable.
 
 ### Encountering Your Own Identity in the Wild
 
-Casual browsing doubles as tree-integrity patrol. If a node fetches content signed by a key whose chain terminates
-in **its own user's root** but which it has never seen, the standard handshake applies (verify chain-to-root, check
-local revocations, sync) and the merge routes the stranger-you to existing machinery: a **legitimate lost branch**
-(sync is the repair - you now know your own shape better), a **stale-backup fork** (equivocation, innocent flavor:
-tiebreaker plus fork-aftermath re-signing), or a **hostile branch** (the encounter hands you the proof; a senior key
-repudiates with anchors). The owner is the best-positioned auditor of their own tree, and this makes every read of
-the public network a free audit. **The trigger is root equality, nothing softer** - matching names, avatars, or bios
-must never start this flow, or lookalikes gain a lever to get your node treating them as kin.
+Casual browsing doubles as tree-integrity patrol. If a node fetches content
+signed by a key whose chain terminates in **its own user's root** but which it
+has never seen, the standard handshake applies (verify chain-to-root, check
+local revocations, sync) and the merge routes the stranger-you to existing
+machinery: a **legitimate lost branch** (sync is the repair - you now know your
+own shape better), a **stale-backup fork** (equivocation, innocent flavor:
+tiebreaker plus fork-aftermath re-signing), or a **hostile branch** (the
+encounter hands you the proof; a senior key repudiates with anchors). The owner
+is the best-positioned auditor of their own tree, and this makes every read of
+the public network a free audit. **The trigger is root equality, nothing
+softer** - matching names, avatars, or bios must never start this flow, or
+lookalikes gain a lever to get your node treating them as kin.
 
-Someone using your _name_ with a different root is not a protocol event at all - cryptographically it is simply
-another identity, and the costume attack is handled where it belongs, in the UI: contact names bind to roots, and
-the **root-derived identicon** shows wherever a display name does (one canonical treatment: Display Names and
-Contact Names).
+Someone using your _name_ with a different root is not a protocol event at all -
+cryptographically it is simply another identity, and the costume attack is
+handled where it belongs, in the UI: contact names bind to roots, and the
+**root-derived identicon** shows wherever a display name does (one canonical
+treatment: Display Names and Contact Names).
 
 ### `iroh-blobs` → The File Layer's Transport
 
-The transfer and storage substrate for **every** file-shaped byte in the system - private
-(encrypted) note bodies as much as public media; see Data Layer, The File Layer, for the canonical
-design (this section is just the protocol mapping). Chain entries carry blob hashes; the bytes move
-over iroh-blobs as pure point-to-point transfer - dark by default, no content discovery, second
-ALPN on the same endpoint as sync.
+The transfer and storage substrate for **every** file-shaped byte in the
+system - private (encrypted) note bodies as much as public media; see Data
+Layer, The File Layer, for the canonical design (this section is just the
+protocol mapping). Chain entries carry blob hashes; the bytes move over
+iroh-blobs as pure point-to-point transfer - dark by default, no content
+discovery, second ALPN on the same endpoint as sync.
 
-`iroh-blobs` is unaffected by the revocation model because blobs are immutable and content-addressed — there is no concept of "author" or "write access" at the blob level. A blob is just bytes identified by a hash. (Revocation _of readers_ is the epoch-key layer's job: a revoked member keeps the blobs it already fetched and cannot decrypt anything sealed after its rotation.)
+`iroh-blobs` is unaffected by the revocation model because blobs are immutable
+and content-addressed — there is no concept of "author" or "write access" at the
+blob level. A blob is just bytes identified by a hash. (Revocation _of readers_
+is the epoch-key layer's job: a revoked member keeps the blobs it already
+fetched and cannot decrypt anything sealed after its rotation.)
 
 ### `iroh-gossip` → Real-Time Notifications
 
-Epidemic broadcast messaging to topic subscribers (HyParView/PlumTree). Used for:
+Epidemic broadcast messaging to topic subscribers (HyParView/PlumTree). Used
+for:
 
 - Notifying followers that an identity's profile has changed.
 - Real-time message delivery.
 - Signaling that a sync is needed.
 
-`iroh-gossip` is compatible with the revocation model because gossip is **ephemeral** — messages are broadcast and not persisted. Outbound gossip messages are signed so receivers can validate the author against the key tree and discard messages from revoked nodes. For private topics (e.g., DM signaling), per-topic encryption keys are rotated when a node is revoked.
+`iroh-gossip` is compatible with the revocation model because gossip is
+**ephemeral** — messages are broadcast and not persisted. Outbound gossip
+messages are signed so receivers can validate the author against the key tree
+and discard messages from revoked nodes. For private topics (e.g., DM
+signaling), per-topic encryption keys are rotated when a node is revoked.
 
 ### `pkarr` + Mainline DHT → Discovery (Liveness Signal)
 
-The BitTorrent Mainline DHT via `pkarr` (Public-Key Addressable Resource Records) provides **decentralized, serverless identity discovery**.
+The BitTorrent Mainline DHT via `pkarr` (Public-Key Addressable Resource
+Records) provides **decentralized, serverless identity discovery**.
 
-**Records are keyed by node keys, not the root.** pkarr records are keyed by _and self-signed by_ the pubkey they
-live under - so a node can only publish a record keyed by a key it actually holds. Since nodes never hold the root
-key (and the root may be cold, retired, or gone), records are keyed by each **node's own key**:
+**Records are keyed by node keys, not the root.** pkarr records are keyed by
+_and self-signed by_ the pubkey they live under - so a node can only publish a
+record keyed by a key it actually holds. Since nodes never hold the root key
+(and the root may be cold, retired, or gone), records are keyed by each **node's
+own key**:
 
-- Each online node **publishes a record under its own node key**, containing its current addresses (~1000 bytes),
-  plus the chain proving that node key is authorized to serve the identity (chain-to-root, verified by the resolver).
-- **The root is the _authority_ you verify against - and, since 2026-08-06, also a resolvable rendezvous.** A
-  pkarr record cannot be keyed by the root (records are self-signed by the key they live under, and nodes never
-  hold the root key), so root resolution uses the DHT's announce shape instead: every device of an identity
-  announces under a key derived from the root, and a resolver who knows nothing but the root collects the
-  announcers, dials them over Iroh, and believes only whoever presents a valid chain-to-root. Announces are
-  unauthenticated at the DHT layer on purpose - they are hints, never facts, same posture as frontier claims; a
-  poisoned announce costs the resolver one dial and a failed chain check. (The earlier doctrine here - "a bare
-  root does not resolve, and that is a feature" - is deliberately reversed; see the discoverability doctrine
-  below.)
-- Records **expire after a few hours** if not republished. Each node **republishes its own record on a fixed
-  schedule** (e.g. hourly) as a background task, for as long as it is online. The record is thus a **liveness
-  signal**: it answers "which of this identity's nodes is currently online and reachable?"
-- If all of an identity's nodes go offline, all their records expire, which is correct - there is nobody to serve
-  the data. Anyone who previously cached the identity's data still has it; the DHT is only needed for first contact.
+- Each online node **publishes a record under its own node key**, containing its
+  current addresses (~1000 bytes), plus the chain proving that node key is
+  authorized to serve the identity (chain-to-root, verified by the resolver).
+- **The root is the _authority_ you verify against - and, since 2026-08-06, also
+  a resolvable rendezvous.** A pkarr record cannot be keyed by the root (records
+  are self-signed by the key they live under, and nodes never hold the root
+  key), so root resolution uses the DHT's announce shape instead: every device
+  of an identity announces under a key derived from the root, and a resolver who
+  knows nothing but the root collects the announcers, dials them over Iroh, and
+  believes only whoever presents a valid chain-to-root. Announces are
+  unauthenticated at the DHT layer on purpose - they are hints, never facts,
+  same posture as frontier claims; a poisoned announce costs the resolver one
+  dial and a failed chain check. (The earlier doctrine here - "a bare root does
+  not resolve, and that is a feature" - is deliberately reversed; see the
+  discoverability doctrine below.)
+- Records **expire after a few hours** if not republished. Each node
+  **republishes its own record on a fixed schedule** (e.g. hourly) as a
+  background task, for as long as it is online. The record is thus a **liveness
+  signal**: it answers "which of this identity's nodes is currently online and
+  reachable?"
+- If all of an identity's nodes go offline, all their records expire, which is
+  correct - there is nobody to serve the data. Anyone who previously cached the
+  identity's data still has it; the DHT is only needed for first contact.
 
-**The discoverability doctrine (settled 2026-08-06): participation implies locatability; there are no fully dark
-personas.** Every device of every identity publishes - node-key pkarr record and root-keyed announce alike, one
-tier, no opt-out posture. The reasoning: a network whose thesis is _my files, encrypted, available from anywhere to
-anywhere_ cannot also promise that nobody can tell your devices exist - your own devices finding each other and a
-crawler noticing that they exist are the same mechanism. What is deliberately given up: anyone holding a root can
-walk root -> announcers -> endpoint -> an IP that answers, so an identity's device count and network locations are
-crawlable. What does NOT move is the disclosure floor of the machine at the end of that trail: the serving
-wanted-check's uniform empty answer stands, so the dialed node confirms no holdings, no chains, no content, no
-relationships - the accepted leak is **existence and locatability, never contents**. What this buys, besides
-discovery: the adoption tree stops being a single point of partition (a persona's surviving devices re-find each
-other when the node that introduced them dies - without this, two honest replicas that shared only a dead middle
-node were split-brained _forever_), and total-device-loss recovery works from a bare machine holding nothing but a
-spare key - no surviving bookmark or friend's hint required. Division of labor between the two record kinds
-(sharpened 2026-08-07): anyone HOLDING the identity chain never needs the announce at all - the tree enumerates the
-leaves, and each leaf's serving record resolves authenticated (the tree is the index; universal publication is what
-makes it complete). The unauthenticated announce is the bootstrap ramp only: first contact from a bare root, and
-the stale-tree corner where every leaf you knew is gone and the survivors were authorized after your last sync.
+**The discoverability doctrine (settled 2026-08-06): participation implies
+locatability; there are no fully dark personas.** Every device of every identity
+publishes - node-key pkarr record and root-keyed announce alike, one tier, no
+opt-out posture. The reasoning: a network whose thesis is _my files, encrypted,
+available from anywhere to anywhere_ cannot also promise that nobody can tell
+your devices exist - your own devices finding each other and a crawler noticing
+that they exist are the same mechanism. What is deliberately given up: anyone
+holding a root can walk root -> announcers -> endpoint -> an IP that answers, so
+an identity's device count and network locations are crawlable. What does NOT
+move is the disclosure floor of the machine at the end of that trail: the
+serving wanted-check's uniform empty answer stands, so the dialed node confirms
+no holdings, no chains, no content, no relationships - the accepted leak is
+**existence and locatability, never contents**. What this buys, besides
+discovery: the adoption tree stops being a single point of partition (a
+persona's surviving devices re-find each other when the node that introduced
+them dies - without this, two honest replicas that shared only a dead middle
+node were split-brained _forever_), and total-device-loss recovery works from a
+bare machine holding nothing but a spare key - no surviving bookmark or friend's
+hint required. Division of labor between the two record kinds (sharpened
+2026-08-07): anyone HOLDING the identity chain never needs the announce at all -
+the tree enumerates the leaves, and each leaf's serving record resolves
+authenticated (the tree is the index; universal publication is what makes it
+complete). The unauthenticated announce is the bootstrap ramp only: first
+contact from a bare root, and the stale-tree corner where every leaf you knew is
+gone and the survivors were authorized after your last sync.
 
 ### Discovery Flow
 
@@ -4352,307 +5507,415 @@ Node X wants <root>/... (with or without an origin node / via-hints in hand)
   → Future lookups are instant cache hits
 ```
 
-Two things this flow assumes. First, **you must know a key to look one up** - the DHT resolves a root or node
-key you name; it does not let you enumerate identities you have never heard of, so it remains a _lookup_ channel,
-not an enumeration one (consistent with the graph-privacy model - what the discoverability doctrine concedes is the
-device topology of identities you already know, never the existence of identities you don't). Second, **trust comes
-from the chain-to-root check, never from who answered** - any node may respond, announces are unauthenticated; only
-a responder presenting a valid chain to `<root>` is believed.
+Two things this flow assumes. First, **you must know a key to look one up** -
+the DHT resolves a root or node key you name; it does not let you enumerate
+identities you have never heard of, so it remains a _lookup_ channel, not an
+enumeration one (consistent with the graph-privacy model - what the
+discoverability doctrine concedes is the device topology of identities you
+already know, never the existence of identities you don't). Second, **trust
+comes from the chain-to-root check, never from who answered** - any node may
+respond, announces are unauthenticated; only a responder presenting a valid
+chain to `<root>` is believed.
 
 ### How people find each other (Discovery Channels)
 
-Discovery is in direct tension with the trust graph's privacy, and the tension is not incidental: **discovering someone through a friend and mapping that friend's relationships are the same operation** (traversing their vouch edges). You cannot offer friend-of-friend discovery while hiding the friend-of-friend graph, because the discovery _is_ the enumeration.
+Discovery is in direct tension with the trust graph's privacy, and the tension
+is not incidental: **discovering someone through a friend and mapping that
+friend's relationships are the same operation** (traversing their vouch edges).
+You cannot offer friend-of-friend discovery while hiding the friend-of-friend
+graph, because the discovery _is_ the enumeration.
 
-The vouch graph is the most sensitive dataset in Ringtome - a real-world map of who has met whom - so we do **not** make it globally enumerable to power discovery. Instead, discovery runs on several channels, most of which never touch the graph:
+The vouch graph is the most sensitive dataset in Ringtome - a real-world map of
+who has met whom - so we do **not** make it globally enumerable to power
+discovery. Instead, discovery runs on several channels, most of which never
+touch the graph:
 
-- **Content and tags.** Peter posts under `#distributedSystems`; I find Peter by the content, no edge traversal needed. This is the primary channel and it keeps the network lively without exposing anyone's associations.
-- **DNS-anchored identities.** I can find the Globe and Mail (or the Ringtome seed account) directly by name, with no vouch path required. This is also how a brand-new user with zero vouches bootstraps a first trust edge.
-- **Seed / directory accounts.** A curated on-ramp account (see cold-start) that follows and lists interesting identities, giving newcomers somewhere to start.
-- **Opt-in discoverable overlay.** A _subset_ of vouch edges that their owners deliberately mark discoverable. This is a strictly smaller, volunteered graph - "I trust the Globe and Mail" published on purpose - and it is the only graph strangers may traverse. The full trust graph stays private and still powers each user's own trust computation locally.
+- **Content and tags.** Peter posts under `#distributedSystems`; I find Peter by
+  the content, no edge traversal needed. This is the primary channel and it
+  keeps the network lively without exposing anyone's associations.
+- **DNS-anchored identities.** I can find the Globe and Mail (or the Ringtome
+  seed account) directly by name, with no vouch path required. This is also how
+  a brand-new user with zero vouches bootstraps a first trust edge.
+- **Seed / directory accounts.** A curated on-ramp account (see cold-start) that
+  follows and lists interesting identities, giving newcomers somewhere to start.
+- **Opt-in discoverable overlay.** A _subset_ of vouch edges that their owners
+  deliberately mark discoverable. This is a strictly smaller, volunteered
+  graph - "I trust the Globe and Mail" published on purpose - and it is the only
+  graph strangers may traverse. The full trust graph stays private and still
+  powers each user's own trust computation locally.
 
 Two limits to design around:
 
-- **Discovery quality tracks opt-in.** If few edges are made discoverable, the overlay is sparse and the network feels like a void. There is real pressure to make the discoverable overlay generous, and every step toward "discoverable by default" re-exposes the association map. This dial needs ongoing tuning, not a one-time setting.
-- **Hidden edges leak through visible ones.** Hiding a few edges in an otherwise-public neighborhood does not hide them well: surrounding public structure often lets an outsider infer the hidden edge by correlation. Per-edge privacy is weakest exactly when most edges are public - which is the state generous discovery pushes toward. Sensitive edges (activist, source, survivor) should be understood as protected only when the _neighborhood_ is private, not just the single edge.
+- **Discovery quality tracks opt-in.** If few edges are made discoverable, the
+  overlay is sparse and the network feels like a void. There is real pressure to
+  make the discoverable overlay generous, and every step toward "discoverable by
+  default" re-exposes the association map. This dial needs ongoing tuning, not a
+  one-time setting.
+- **Hidden edges leak through visible ones.** Hiding a few edges in an
+  otherwise-public neighborhood does not hide them well: surrounding public
+  structure often lets an outsider infer the hidden edge by correlation.
+  Per-edge privacy is weakest exactly when most edges are public - which is the
+  state generous discovery pushes toward. Sensitive edges (activist, source,
+  survivor) should be understood as protected only when the _neighborhood_ is
+  private, not just the single edge.
 
 ---
 
 ## Moderation and Operator Liability
 
-Ringtome does not grow a moderation subsystem; it consults machinery it already has at the moments content changes
-hands. Every mechanism in this section reduces to one shape: **an opinion, signed by an identity, weighted by the
-reader's trust in its author, applied as node-local policy at a serving decision.** Admission, peering,
-denunciations, hash lists - all instances of that shape. The section exists because a federated node operator is
-the person legal reality actually visits, and the design owes them a defensible position, not a shrug about p2p.
+Ringtome does not grow a moderation subsystem; it consults machinery it already
+has at the moments content changes hands. Every mechanism in this section
+reduces to one shape: **an opinion, signed by an identity, weighted by the
+reader's trust in its author, applied as node-local policy at a serving
+decision.** Admission, peering, denunciations, hash lists - all instances of
+that shape. The section exists because a federated node operator is the person
+legal reality actually visits, and the design owes them a defensible position,
+not a shrug about p2p.
 
 ### Public Means Public
 
-Content sits in one of three lanes, and **the lane is a property of the service slot the entry lives on, never a
-flag on the entry** (**Copy, Don't Flip**) - so crossing between them is always a re-sign, and there is no bit a bug
-can throw:
+Content sits in one of three lanes, and **the lane is a property of the service
+slot the entry lives on, never a flag on the entry** (**Copy, Don't Flip**) - so
+crossing between them is always a re-sign, and there is no bit a bug can throw:
 
-- **Sealed** - epoch-key ciphertext: your own private chains, and the two-party DM. The _pull_ side - your private
-  input stream, whom you trust, what you consume. Opaque to any node that is not a member.
-- **Member-gated** - plaintext, served only to peers presenting a member proof: the group member lane (see Groups:
-  The Member Lane). Confidential by refusal rather than by mathematics, with the honest bounds that implies.
-- **Public** - and **public means public**: a reachable node serves it to whoever asks, over HTTP and Iroh alike, no
-  standing in the network required.
+- **Sealed** - epoch-key ciphertext: your own private chains, and the two-party
+  DM. The _pull_ side - your private input stream, whom you trust, what you
+  consume. Opaque to any node that is not a member.
+- **Member-gated** - plaintext, served only to peers presenting a member proof:
+  the group member lane (see Groups: The Member Lane). Confidential by refusal
+  rather than by mathematics, with the honest bounds that implies.
+- **Public** - and **public means public**: a reachable node serves it to
+  whoever asks, over HTTP and Iroh alike, no standing in the network required.
 
-The earlier posture here - "public-readable but never served to anonymous HTTP" - is retired. It contradicted
-**Not Hermetically Sealed** (Doctrine), and worse, it protected nothing: public content served to even one follower
-over Iroh can be rebroadcast to the open web by that follower the instant they choose, so withholding it from an
-anonymous HTTP client at your own node buys zero privacy and costs a working web presence. If it is public, it is on
-the web the moment anyone wants it there - own that instead of pretending otherwise.
+The earlier posture here - "public-readable but never served to anonymous
+HTTP" - is retired. It contradicted **Not Hermetically Sealed** (Doctrine), and
+worse, it protected nothing: public content served to even one follower over
+Iroh can be rebroadcast to the open web by that follower the instant they
+choose, so withholding it from an anonymous HTTP client at your own node buys
+zero privacy and costs a working web presence. If it is public, it is on the web
+the moment anyone wants it there - own that instead of pretending otherwise.
 
-The member-gated lane is not that posture returning under a new name, and the difference is the whole reason it is
-sound: the retired one gated content that _also_ existed publicly, where the gate was theatre because a second copy
-was already loose. Member-lane content has no public copy - the gate is not a second answer over a leaky one, it is
-the only answer, and a member choosing to re-sign something across to the public lane is a deliberate act by an
-accountable person, exactly as it is everywhere else.
+The member-gated lane is not that posture returning under a new name, and the
+difference is the whole reason it is sound: the retired one gated content that
+_also_ existed publicly, where the gate was theatre because a second copy was
+already loose. Member-lane content has no public copy - the gate is not a second
+answer over a leaky one, it is the only answer, and a member choosing to re-sign
+something across to the public lane is a deliberate act by an accountable
+person, exactly as it is everywhere else.
 
-What varies is never _what a node serves_ but _whom it hosts_ and _whether it is reachable_:
+What varies is never _what a node serves_ but _whom it hosts_ and _whether it is
+reachable_:
 
-- **Admission is the real control**, and it is on the write side (**Bounded Operator Liability**, Doctrine). A node
-  dials who may hold an account from `closed` (just you) through `trusted`, `invite`, and auto-capped `open` - see
-  Registration Modes. Overload and liability are bounded by _whom you host and can eject_, never by hiding readable
-  bytes.
-- **Reachability is deployment, not policy.** A home node behind NAT may only ever be reachable by followers over
-  Iroh; a VPS with a domain is a public HTTP endpoint. A reachable node serves _other identities'_ public content
-  to the web by default, in the three answers of **The Web Gateway** (below; amended 2026-08-01 from the earlier
-  opt-in role) - shelf, signpost, dead end - with the disclaimer keeping provenance honest.
-- **No node must answer any particular request.** "Anyone _may_ read" is not "every node _must_ serve every
-  request": a node still rate-limits, blocks abusers, and refuses to be an amplifier (**You Can't Push Hosting
-  Decisions On Others**, Doctrine).
+- **Admission is the real control**, and it is on the write side (**Bounded
+  Operator Liability**, Doctrine). A node dials who may hold an account from
+  `closed` (just you) through `trusted`, `invite`, and auto-capped `open` - see
+  Registration Modes. Overload and liability are bounded by _whom you host and
+  can eject_, never by hiding readable bytes.
+- **Reachability is deployment, not policy.** A home node behind NAT may only
+  ever be reachable by followers over Iroh; a VPS with a domain is a public HTTP
+  endpoint. A reachable node serves _other identities'_ public content to the
+  web by default, in the three answers of **The Web Gateway** (below; amended
+  2026-08-01 from the earlier opt-in role) - shelf, signpost, dead end - with
+  the disclaimer keeping provenance honest.
+- **No node must answer any particular request.** "Anyone _may_ read" is not
+  "every node _must_ serve every request": a node still rate-limits, blocks
+  abusers, and refuses to be an amplifier (**You Can't Push Hosting Decisions On
+  Others**, Doctrine).
 
-None of this weakens the moderation story, which was always about _ingress_ - what a node hosts - not read access
-(see The Three Funnels, next). And public still is not a megaphone: readable content is a website you can visit if
-you know its address, not a global feed that finds you. Growth rides membership and vouch edges, as it always did.
+None of this weakens the moderation story, which was always about _ingress_ -
+what a node hosts - not read access (see The Three Funnels, next). And public
+still is not a megaphone: readable content is a website you can visit if you
+know its address, not a global feed that finds you. Growth rides membership and
+vouch edges, as it always did.
 
 ### The Three Funnels: Why Moderation Load Stays Bounded
 
-The nightmare - a reporting pipeline that cannot keep up with gobs of bots - assumes unbounded content inflow.
-Pull-not-push means content lands on a federated node through exactly three funnels, each with an accountable
-human attached:
+The nightmare - a reporting pipeline that cannot keep up with gobs of bots -
+assumes unbounded content inflow. Pull-not-push means content lands on a
+federated node through exactly three funnels, each with an accountable human
+attached:
 
-1. **Your own users author it.** Admission is trust-gated; you inducted them. Kick, delete, done - ordinary
-   hosting-provider remediation.
-2. **Your users follow it in.** Every remote identity a node fronts exists because a specific local account
-   demanded it. Remediation is severing the demand edge and talking to the user who created it - a name, a
-   conversation, a small blast radius.
-3. **Open mode**, if enabled, accepts unsolicited fronting - already opt-in, quota'd per source, and revocable
-   when burned.
+1. **Your own users author it.** Admission is trust-gated; you inducted them.
+   Kick, delete, done - ordinary hosting-provider remediation.
+2. **Your users follow it in.** Every remote identity a node fronts exists
+   because a specific local account demanded it. Remediation is severing the
+   demand edge and talking to the user who created it - a name, a conversation,
+   a small blast radius.
+3. **Open mode**, if enabled, accepts unsolicited fronting - already opt-in,
+   quota'd per source, and revocable when burned.
 
-Moderation load is therefore proportional to **your community's behavior, not the network's size** (**Bounded Operator Liability**, Doctrine). Bots cannot
-push; they must be pulled, and pulling requires an account or a follow from someone who has one. This is the same
-structural insight as "no global timeline is the structural repellent": the megaphone not existing is not just
-culture curation - it is the liability shield. (This is **Allowlist Beats Blocklist** (Doctrine) once more: an
-LLM auto-moderator is a _blocklist over the adversary's content_; demand-driven serving is an _allowlist over
-ours_. A small local model is decent at NSFW flagging, mediocre at
-contextual hate speech, useless for copyright, and forbidden territory for CSAM - and it becomes an adversarial
-target the moment it is load-bearing. LLM as triage for an operator's review queue on public-facing roles: fine.
-LLM as verdict: never. If the design only works when a small model correctly identifies evil, the design does not
-work.)
+Moderation load is therefore proportional to **your community's behavior, not
+the network's size** (**Bounded Operator Liability**, Doctrine). Bots cannot
+push; they must be pulled, and pulling requires an account or a follow from
+someone who has one. This is the same structural insight as "no global timeline
+is the structural repellent": the megaphone not existing is not just culture
+curation - it is the liability shield. (This is **Allowlist Beats Blocklist**
+(Doctrine) once more: an LLM auto-moderator is a _blocklist over the adversary's
+content_; demand-driven serving is an _allowlist over ours_. A small local model
+is decent at NSFW flagging, mediocre at contextual hate speech, useless for
+copyright, and forbidden territory for CSAM - and it becomes an adversarial
+target the moment it is load-bearing. LLM as triage for an operator's review
+queue on public-facing roles: fine. LLM as verdict: never. If the design only
+works when a small model correctly identifies evil, the design does not work.)
 
-Field data that bounded ingress is tractable: the fediverse's IFTAS pilot ran hash-scanning for 8 Mastodon servers
-(~30k monthly actives) and found ~4.3 matches per 100,000 media files - real (small operators _do_ encounter this
-material via federation; "not my cozy node" is false) but rare enough that quarantine-and-review pipelines keep up
-easily once ingress is bounded.
+Field data that bounded ingress is tractable: the fediverse's IFTAS pilot ran
+hash-scanning for 8 Mastodon servers (~30k monthly actives) and found ~4.3
+matches per 100,000 media files - real (small operators _do_ encounter this
+material via federation; "not my cozy node" is false) but rare enough that
+quarantine-and-review pipelines keep up easily once ingress is bounded.
 
 ### Four Abuse Categories, Four Machineries
 
-Collapsing these into one "detect evil and hammer it" pipeline is the design error to refuse. Each category has
-different legal duties and different correct machinery:
+Collapsing these into one "detect evil and hammer it" pipeline is the design
+error to refuse. Each category has different legal duties and different correct
+machinery:
 
-- **CSAM** - the only category where "ban the user" is never sufficient and affirmative legal duties exist (in the
-  US, mandatory reporting to NCMEC under 18 U.S.C. §2258A, with preservation duties - so the pipeline on discovery
-  is **quarantine + preserve + report**, emphatically not reflexive deletion). Detection is hash-list scanning
-  (below) - **never a home-built classifier**: possessing or training on the material is strict-liability criminal
-  territory with no self-declared research exception. Note also what the law does _not_ demand: §2258A imposes no
-  monitoring duty and the DSA forbids general-monitoring obligations - scanning is something a node _chooses_ at
-  its public-facing roles, not a protocol-wide obligation.
-- **Copyright** - proactive detection is neither possible (no local model identifies a movie from blob chunks; no
-  rights database exists to consult) nor required: the safe-harbor model is **notice-and-takedown plus a
-  repeat-infringer policy.** What a node needs is response machinery - fast blob drop, root refusal, and for
-  hosted nodes of size, a registered agent. Speed of removal matters; detection does not. (See also Fidelity Caps:
-  a network that cannot carry high-fidelity media is a bad piracy channel by construction.)
-- **Hate speech** - jurisdiction-dependent, operator-policy territory. Ban + drop locally; optionally publish the
-  denunciation so nodes that trust your judgement inherit it (below).
-- **NSFW** - not a removal problem at all: a **labeling and consent** problem. Self-claimed content labels on
-  post/page payloads, operator-applied label overrides, reader-side filters. Room for a labels field must be
-  reserved when the content types are designed (Tier 4M) - retrofitting label semantics into signed content is a
-  protocol break in miniature.
+- **CSAM** - the only category where "ban the user" is never sufficient and
+  affirmative legal duties exist (in the US, mandatory reporting to NCMEC under
+  18 U.S.C. §2258A, with preservation duties - so the pipeline on discovery is
+  **quarantine + preserve + report**, emphatically not reflexive deletion).
+  Detection is hash-list scanning (below) - **never a home-built classifier**:
+  possessing or training on the material is strict-liability criminal territory
+  with no self-declared research exception. Note also what the law does _not_
+  demand: §2258A imposes no monitoring duty and the DSA forbids
+  general-monitoring obligations - scanning is something a node _chooses_ at its
+  public-facing roles, not a protocol-wide obligation.
+- **Copyright** - proactive detection is neither possible (no local model
+  identifies a movie from blob chunks; no rights database exists to consult) nor
+  required: the safe-harbor model is **notice-and-takedown plus a
+  repeat-infringer policy.** What a node needs is response machinery - fast blob
+  drop, root refusal, and for hosted nodes of size, a registered agent. Speed of
+  removal matters; detection does not. (See also Fidelity Caps: a network that
+  cannot carry high-fidelity media is a bad piracy channel by construction.)
+- **Hate speech** - jurisdiction-dependent, operator-policy territory. Ban +
+  drop locally; optionally publish the denunciation so nodes that trust your
+  judgement inherit it (below).
+- **NSFW** - not a removal problem at all: a **labeling and consent** problem.
+  Self-claimed content labels on post/page payloads, operator-applied label
+  overrides, reader-side filters. Room for a labels field must be reserved when
+  the content types are designed (Tier 4M) - retrofitting label semantics into
+  signed content is a protocol break in miniature.
 
 ### Policy Is Never Protocol
 
-The sync gate refuses entries that are cryptographically _invalid_ - broken chains, revoked keys. Operator
-moderation is a **second, separate input** to the same gate: _valid, but refused here._ The two must never blur:
+The sync gate refuses entries that are cryptographically _invalid_ - broken
+chains, revoked keys. Operator moderation is a **second, separate input** to the
+same gate: _valid, but refused here._ The two must never blur:
 
-- A **denunciation is not a repudiation.** Repudiation is an identity's senior key evicting its own junior - an
-  intra-tree authority act. A denunciation is a stranger's signed opinion about someone else's root. Reusing the
-  key-tree revocation types for moderation would be a category error with teeth: other nodes must never mistake
-  "this operator refuses R" for "R's chains are cryptographically dead."
-- Refusal is **node-local.** A denounced identity's own nodes still serve it; followers who do not subscribe to
-  the denouncer still fetch it. The maximum effect of moderation machinery is _refusal to carry_ - never
-  network-wide erasure. (Erasure of specific content is the blob layer's tombstone/drop, an authorial or operator
-  act on cooperating nodes, exactly as the Data Layer designs it.)
+- A **denunciation is not a repudiation.** Repudiation is an identity's senior
+  key evicting its own junior - an intra-tree authority act. A denunciation is a
+  stranger's signed opinion about someone else's root. Reusing the key-tree
+  revocation types for moderation would be a category error with teeth: other
+  nodes must never mistake "this operator refuses R" for "R's chains are
+  cryptographically dead."
+- Refusal is **node-local.** A denounced identity's own nodes still serve it;
+  followers who do not subscribe to the denouncer still fetch it. The maximum
+  effect of moderation machinery is _refusal to carry_ - never network-wide
+  erasure. (Erasure of specific content is the blob layer's tombstone/drop, an
+  authorial or operator act on cooperating nodes, exactly as the Data Layer
+  designs it.)
 
 ### Denunciations: Negative Signal Without Negative Trust
 
-Naive negative trust dies instantly in an open-identity network: minting a denouncer is free, so negative edges
-from the open graph are botnet fuel. The flow model's Sybil guarantee is directional - it protects the supply of
-_positive_ signal and says nothing about negative. There is exactly one safe construction: **negative signal is
-only ever an opinion carried over existing positive trust edges.** Not negative edges _in_ the graph - negative
-payloads _on top of_ it. A botnet's million denunciations weigh zero because none of its authors are
-flow-reachable; eleven flow-reachable friends independently publishing "this account is a stormfront bot" is
-strong, usable signal.
+Naive negative trust dies instantly in an open-identity network: minting a
+denouncer is free, so negative edges from the open graph are botnet fuel. The
+flow model's Sybil guarantee is directional - it protects the supply of
+_positive_ signal and says nothing about negative. There is exactly one safe
+construction: **negative signal is only ever an opinion carried over existing
+positive trust edges.** Not negative edges _in_ the graph - negative payloads
+_on top of_ it. A botnet's million denunciations weigh zero because none of its
+authors are flow-reachable; eleven flow-reachable friends independently
+publishing "this account is a stormfront bot" is strong, usable signal.
 
 Three rules keep it safe:
 
-1. **Denunciations never touch the Trust computation.** They gate downstream policy (serve/front/admit/rank),
-   never the substrate. Feeding them back into Trust would build the up-flow the layer boundary forbids, and let
-   a clique excommunicate someone from the _graph_ rather than from their own nodes.
-2. **Weight-shared like every signal** (per **The Law of Conservation of Trust**, Doctrine). A denunciation carries
-   the denouncer's weight, split across everything they signal, so an account that denounces 10,000 identities is a
-   firehose whose individual denunciations round to zero.
-3. **Refusal-to-carry, not excommunication** (per Policy Is Never Protocol). A clique of real, mutually-trusted
-   humans brigading a victim can make the victim unwelcome in _their_ neighborhood - roughly the power human
+1. **Denunciations never touch the Trust computation.** They gate downstream
+   policy (serve/front/admit/rank), never the substrate. Feeding them back into
+   Trust would build the up-flow the layer boundary forbids, and let a clique
+   excommunicate someone from the _graph_ rather than from their own nodes.
+2. **Weight-shared like every signal** (per **The Law of Conservation of
+   Trust**, Doctrine). A denunciation carries the denouncer's weight, split
+   across everything they signal, so an account that denounces 10,000 identities
+   is a firehose whose individual denunciations round to zero.
+3. **Refusal-to-carry, not excommunication** (per Policy Is Never Protocol). A
+   clique of real, mutually-trusted humans brigading a victim can make the
+   victim unwelcome in _their_ neighborhood - roughly the power human
    communities have always had - not delete them from the network.
 
-A denunciation is a signed statement on its author's chain (target root, reason class, optionally a blob hash -
-see Hash Lists), revocable by its author, subscribable by anyone. "I trust Rache to moderate on my behalf" needs
-no new primitive: it is **topic-scoped Credibility** - the score the trust layer already defines - where the topic
-is moderation judgement. (Open, for the statement-type design: the reason-class taxonomy, and whether denunciations
-live on the operator's identity chain or a node-key chain.)
+A denunciation is a signed statement on its author's chain (target root, reason
+class, optionally a blob hash - see Hash Lists), revocable by its author,
+subscribable by anyone. "I trust Rache to moderate on my behalf" needs no new
+primitive: it is **topic-scoped Credibility** - the score the trust layer
+already defines - where the topic is moderation judgement. (Open, for the
+statement-type design: the reason-class taxonomy, and whether denunciations live
+on the operator's identity chain or a node-key chain.)
 
 ### Operator Identity: Bind, Don't Adopt
 
-Nodes already have keys (transport-level node keys, distinct from identity keys). The question is whether a node
-should be welded into its operator's key tree. **No - bind, don't adopt.** Making the node key a child of the
-operator's tree conflates machine compromise with personal-identity compromise, forecloses pseudonymous operation,
-and drags succession machinery where it is not needed (dead node key = mint a new node, re-bind). Instead, reuse
-the voluntary-linkage primitive ("I am also X"): the operator's identity publishes a signed **operator-binding
-statement** - "identity O operates node N" - and trust in O reaches N through ordinary graph mechanics.
+Nodes already have keys (transport-level node keys, distinct from identity
+keys). The question is whether a node should be welded into its operator's key
+tree. **No - bind, don't adopt.** Making the node key a child of the operator's
+tree conflates machine compromise with personal-identity compromise, forecloses
+pseudonymous operation, and drags succession machinery where it is not needed
+(dead node key = mint a new node, re-bind). Instead, reuse the voluntary-linkage
+primitive ("I am also X"): the operator's identity publishes a signed
+**operator-binding statement** - "identity O operates node N" - and trust in O
+reaches N through ordinary graph mechanics.
 
 What the binding buys:
 
-1. **Admission policy becomes automatable.** "Anyone vouch-reachable within 3 hops of the operator may register"
-   is the difference between a 12-person node and a 500-person node _without_ open registration - the scaling
-   mechanism for trust-gated growth.
-2. **Peering by operator trust.** Unsolicited fronting and open-mode sync weighted by trust in the bound operator;
-   anonymous unbound nodes get the strictest quotas or nothing.
-3. **Moderation delegation.** Subscribe to denunciation feeds and hash lists weighted by the author's
-   moderation-Credibility.
-4. **Abuse routing.** Reports and "your user is causing trouble on my node" conversations travel
-   operator-to-operator along trust edges instead of an abuse@ inbox exposed to the anonymous world.
+1. **Admission policy becomes automatable.** "Anyone vouch-reachable within 3
+   hops of the operator may register" is the difference between a 12-person node
+   and a 500-person node _without_ open registration - the scaling mechanism for
+   trust-gated growth.
+2. **Peering by operator trust.** Unsolicited fronting and open-mode sync
+   weighted by trust in the bound operator; anonymous unbound nodes get the
+   strictest quotas or nothing.
+3. **Moderation delegation.** Subscribe to denunciation feeds and hash lists
+   weighted by the author's moderation-Credibility.
+4. **Abuse routing.** Reports and "your user is causing trouble on my node"
+   conversations travel operator-to-operator along trust edges instead of an
+   abuse@ inbox exposed to the anonymous world.
 
-Two caveats, kept loud: **the operator's personal graph is an input to node policy, never identical with it** (a
-personal vouch should not silently auto-admit; personal follows are not the node's subscriptions - node policy
-chooses which levers to pull). And the fediverse's known failure mode applies: **operator trust clusters can
-calcify into de facto blocklist authorities** (the fediblock wars). The structural mitigation is that
-subscriptions are per-node and weighted, not binary and global - but any feature that makes subscribing to one big
-list the path of least resistance is quietly rebuilding the authority this architecture claims not to have.
+Two caveats, kept loud: **the operator's personal graph is an input to node
+policy, never identical with it** (a personal vouch should not silently
+auto-admit; personal follows are not the node's subscriptions - node policy
+chooses which levers to pull). And the fediverse's known failure mode applies:
+**operator trust clusters can calcify into de facto blocklist authorities** (the
+fediblock wars). The structural mitigation is that subscriptions are per-node
+and weighted, not binary and global - but any feature that makes subscribing to
+one big list the path of least resistance is quietly rebuilding the authority
+this architecture claims not to have.
 
 ### Hash Lists and Scanning
 
-Blocklists at blob granularity are denunciations carrying hashes, and they come in two kinds on one list:
+Blocklists at blob granularity are denunciations carrying hashes, and they come
+in two kinds on one list:
 
-- **Exact (BLAKE3).** Nearly useless on the web (any re-encode evades); **unusually strong here**, because blobs
-  propagate _by their hash_ - the same bytes get requested and re-served across nodes. One exact-hash denunciation
-  kills that blob among subscribers network-wide; evading it means re-authoring and re-seeding a new blob, not
-  re-sharing a link. Zero-cost to check (the blob store is already keyed by it).
-- **Perceptual (PDQ).** Catches the re-encode. Computed locally at blob ingest - which means _decoding hostile
-  media_, a classic vulnerability class: decoders run sandboxed, the same posture taken toward every other hostile
-  byte.
+- **Exact (BLAKE3).** Nearly useless on the web (any re-encode evades);
+  **unusually strong here**, because blobs propagate _by their hash_ - the same
+  bytes get requested and re-served across nodes. One exact-hash denunciation
+  kills that blob among subscribers network-wide; evading it means re-authoring
+  and re-seeding a new blob, not re-sharing a link. Zero-cost to check (the blob
+  store is already keyed by it).
+- **Perceptual (PDQ).** Catches the re-encode. Computed locally at blob ingest -
+  which means _decoding hostile media_, a classic vulnerability class: decoders
+  run sandboxed, the same posture taken toward every other hostile byte.
 
-**Operator-authored lists** are the established pattern, not a hack (StopNCII works exactly this way: victims hash
-their own images locally; platforms block on the hash, and the image never travels). The workflow: report arrives
--> operator reviews -> **hash before dropping** -> the entry goes on the node's signed denunciation chain ->
-trusted subscribers inherit the block. Distribution is trust-gated _on purpose_: a public hash list is an offline
-evasion-testing oracle and (for perceptual hashes) a dictionary-attack risk - "shared along trust edges" is the
-operationally correct model, not just the philosophically tidy one.
+**Operator-authored lists** are the established pattern, not a hack (StopNCII
+works exactly this way: victims hash their own images locally; platforms block
+on the hash, and the image never travels). The workflow: report arrives ->
+operator reviews -> **hash before dropping** -> the entry goes on the node's
+signed denunciation chain -> trusted subscribers inherit the block. Distribution
+is trust-gated _on purpose_: a public hash list is an offline evasion-testing
+oracle and (for perceptual hashes) a dictionary-attack risk - "shared along
+trust edges" is the operationally correct model, not just the philosophically
+tidy one.
 
-**CSAM lists are never distributable and never local.** The clearinghouse ecosystem (NCMEC, IWF, the Canadian
-Centre for Child Protection) keeps hashes server-side and exposes vetted access or query APIs. The shipped default
-backend is **Shield by Project Arachnid** (C3P): free, signup-keyed, accepts **locally-computed PDQ hashes** -
-fingerprints go out, user media never does - returns exact/visual match classifications, and has an official Rust
-SDK (`arachnid-shield`). Each operator signs up for their own key (the accountability chain behind the key is part
-of the point; Ringtome ships no shared credentials). IWF's small-operator offering (Image Intercept) is a second
-supplier to watch. The fediverse's IFTAS experience is the cautionary architecture note: their centralized
-scanning intermediary cost $60k+/year and died of funding within months - so Ringtome's shape is **a scanner trait
-at the blob layer** plus trust-edge republication: the few operators who run scanning publish their own blocking
-_decisions_ (their moderation acts - never the clearinghouse's list) as exact-hash denunciations, and the long
-tail inherits protection by subscription, with no intermediary organization to keep funded.
+**CSAM lists are never distributable and never local.** The clearinghouse
+ecosystem (NCMEC, IWF, the Canadian Centre for Child Protection) keeps hashes
+server-side and exposes vetted access or query APIs. The shipped default backend
+is **Shield by Project Arachnid** (C3P): free, signup-keyed, accepts
+**locally-computed PDQ hashes** - fingerprints go out, user media never does -
+returns exact/visual match classifications, and has an official Rust SDK
+(`arachnid-shield`). Each operator signs up for their own key (the
+accountability chain behind the key is part of the point; Ringtome ships no
+shared credentials). IWF's small-operator offering (Image Intercept) is a second
+supplier to watch. The fediverse's IFTAS experience is the cautionary
+architecture note: their centralized scanning intermediary cost $60k+/year and
+died of funding within months - so Ringtome's shape is **a scanner trait at the
+blob layer** plus trust-edge republication: the few operators who run scanning
+publish their own blocking _decisions_ (their moderation acts - never the
+clearinghouse's list) as exact-hash denunciations, and the long tail inherits
+protection by subscription, with no intermediary organization to keep funded.
 
 Operational rules:
 
-- **Scanning defaults are keyed to role.** Off/optional for a personal node serving its own author's content;
-  on-by-default - arguably required by the software - for **open mode and gateway mode**, exactly the roles where
+- **Scanning defaults are keyed to role.** Off/optional for a personal node
+  serving its own author's content; on-by-default - arguably required by the
+  software - for **open mode and gateway mode**, exactly the roles where
   strangers' media crosses the disk headed for the public.
-- **Gateways fail closed:** if the scanning backend is unreachable, new unscanned media is held, not served.
-- **A perceptual match is a lead, never a verdict** (Apple's NeuralHash collision lesson). Auto-_block_ on match:
-  fine - cheap, reversible. Auto-_report a human_ on match: never - human review precedes reports.
-- **On a CSAM match: quarantine + preserve + report.** The blob is sealed in a locker, not shredded (preservation
-  is a legal duty where reporting is); the serving path goes dark immediately; the operator gets a "you likely
-  have reporting obligations, here is where" prompt. Cache clean verdicts by exact hash so nothing is scanned
-  twice.
-- **Scope honesty:** scanning covers what a node can see - public chains and fronted blobs. Encrypted
-  private-chain content is structurally unscannable, and the design says so proudly: promising to scan inside the
-  private boundary is the chat-control position. The correct control for private content is the admission/trust
-  layer, not the scanner. Likewise, perceptual hashes stop _casual redistribution_ of known material, not a
-  determined adversary with a re-render pipeline: a hygiene layer on the architecture, never the wall.
+- **Gateways fail closed:** if the scanning backend is unreachable, new
+  unscanned media is held, not served.
+- **A perceptual match is a lead, never a verdict** (Apple's NeuralHash
+  collision lesson). Auto-_block_ on match: fine - cheap, reversible.
+  Auto-_report a human_ on match: never - human review precedes reports.
+- **On a CSAM match: quarantine + preserve + report.** The blob is sealed in a
+  locker, not shredded (preservation is a legal duty where reporting is); the
+  serving path goes dark immediately; the operator gets a "you likely have
+  reporting obligations, here is where" prompt. Cache clean verdicts by exact
+  hash so nothing is scanned twice.
+- **Scope honesty:** scanning covers what a node can see - public chains and
+  fronted blobs. Encrypted private-chain content is structurally unscannable,
+  and the design says so proudly: promising to scan inside the private boundary
+  is the chat-control position. The correct control for private content is the
+  admission/trust layer, not the scanner. Likewise, perceptual hashes stop
+  _casual redistribution_ of known material, not a determined adversary with a
+  re-render pipeline: a hygiene layer on the architecture, never the wall.
 
 ### The Web Gateway: Default-On (amended 2026-08-01; formerly a dual-opt-in role)
 
-Every reachable node is a gateway, automatically. The earlier design - a separate role, author
-opt-in, operator allowlist - was judged overwrought by the argument that retired "never served
-to anonymous HTTP": public content is on the web the moment one reader wants it there, so
-ceremony around re-serving it protects nothing and costs the network a working public face.
-Not a safety-forward decision but an early-usefulness one, made with eyes open. What is not a
-dial is the shape: the `/id/` surface answers an anonymous request in exactly one of three
-ways, and the line between them is what keeps Bounded Operator Liability true.
+Every reachable node is a gateway, automatically. The earlier design - a
+separate role, author opt-in, operator allowlist - was judged overwrought by the
+argument that retired "never served to anonymous HTTP": public content is on the
+web the moment one reader wants it there, so ceremony around re-serving it
+protects nothing and costs the network a working public face. Not a
+safety-forward decision but an early-usefulness one, made with eyes open. What
+is not a dial is the shape: the `/id/` surface answers an anonymous request in
+exactly one of three ways, and the line between them is what keeps Bounded
+Operator Liability true.
 
-- **Serve the shelf.** Identities the node hosts, plus identities its members durably follow
-  or serve - every one has an accountable human attached. Content carried for someone the node
-  does not host wears a visible disclaimer. The shelf IS the community's behaviour.
-- **Signpost the reachable.** An off-shelf root resolves as metadata, never bytes: the URL's
-  own `via` hints plus the root's serving records, rate-limited and cached. A web-faced serving
-  node's public URL rides the identity's serving records, so any node asked can relay "this
-  persona may be found at these addresses" - a road sign, not a rehost; the node adjudicated
-  nothing.
-- **The honest dead end.** No web-faced serving node exists: the persona page under a 404 (the
-  app, which says nothing about this persona is served here, with the copyable `/id/` address -
-  _The node's public face_, ruling 8). Irreducible without pushing hosting decisions on others;
-  its frequency is governed by the pull side - one help-host with a web face dissolves it per
+- **Serve the shelf.** Identities the node hosts, plus identities its members
+  durably follow or serve - every one has an accountable human attached. Content
+  carried for someone the node does not host wears a visible disclaimer. The
+  shelf IS the community's behaviour.
+- **Signpost the reachable.** An off-shelf root resolves as metadata, never
+  bytes: the URL's own `via` hints plus the root's serving records, rate-limited
+  and cached. A web-faced serving node's public URL rides the identity's serving
+  records, so any node asked can relay "this persona may be found at these
+  addresses" - a road sign, not a rehost; the node adjudicated nothing.
+- **The honest dead end.** No web-faced serving node exists: the persona page
+  under a 404 (the app, which says nothing about this persona is served here,
+  with the copyable `/id/` address - _The node's public face_, ruling 8).
+  Irreducible without pushing hosting decisions on others; its frequency is
+  governed by the pull side - one help-host with a web face dissolves it per
   identity, and minting discipline keeps well-formed links off it.
 
-**Authenticated visitors get a fourth behaviour: fetch-and-serve.** A member asking about an
-off-shelf root is a demand edge in miniature, so the node syncs the identity's public chains
-and serves that member a lens view with a freshness TTL. Member-scoped, deliberately: **the
-anonymous shelf grows only through durable demand** (hosting, follows, serving), never one
-member's curiosity; a follow converts the visit into shelf. The fetch's knowledge is durable
-(2026-08-02): what was fetched, when and through whom lives on disk, because once an identity's
-own nodes go dark it survives in the nodes that fetched it and their memory of having done so.
+**Authenticated visitors get a fourth behaviour: fetch-and-serve.** A member
+asking about an off-shelf root is a demand edge in miniature, so the node syncs
+the identity's public chains and serves that member a lens view with a freshness
+TTL. Member-scoped, deliberately: **the anonymous shelf grows only through
+durable demand** (hosting, follows, serving), never one member's curiosity; a
+follow converts the visit into shelf. The fetch's knowledge is durable
+(2026-08-02): what was fetched, when and through whom lives on disk, because
+once an identity's own nodes go dark it survives in the nodes that fetched it
+and their memory of having done so.
 
-What replaces author opt-in is an **opt-out courtesy**, a signed "do not gateway me" honoured
-the way robots.txt is - a politeness, never a wall. Two hard edges survive: foreign media keeps
-the scanner rule (fail-closed: a node with no scanning backend serves foreign text and holds
-foreign blobs), and the hardened serving headers are the default build. The curated gateway
-survives as the deluxe tier - a **magazine**, an allowlist of chosen authors on its own domain
-with real infrastructure - a stronger editorial position and a real product, no longer the
-prerequisite for public content reaching the web.
+What replaces author opt-in is an **opt-out courtesy**, a signed "do not gateway
+me" honoured the way robots.txt is - a politeness, never a wall. Two hard edges
+survive: foreign media keeps the scanner rule (fail-closed: a node with no
+scanning backend serves foreign text and holds foreign blobs), and the hardened
+serving headers are the default build. The curated gateway survives as the
+deluxe tier - a **magazine**, an allowlist of chosen authors on its own domain
+with real infrastructure - a stronger editorial position and a real product, no
+longer the prerequisite for public content reaching the web.
 
 ### The Media-Type Admission Test
 
-Blob types are a **closed registry** - the same **Allowlist Beats Blocklist** (Doctrine) move as the markup
-vocabulary, applied to bytes. A media type earns admission to the network when it has all three:
+Blob types are a **closed registry** - the same **Allowlist Beats Blocklist**
+(Doctrine) move as the markup vocabulary, applied to bytes. A media type earns
+admission to the network when it has all three:
 
-1. **A strict-parse validation story** - magic bytes and structural parse at ingest (in a sandboxed decoder), a
-   typed renderer at display (never a generic "open this file" path). The declared type is _enforced, never
-   trusted_: the attack is not `badtouch.exe` labeled honestly, it is a blob declared `image/png` whose bytes are
-   a polyglot or script.
-2. **A scanning story**, where its abuse category demands one - PDQ/Shield covers images and video, which are
-   conveniently exactly the CSAM-relevant types.
-3. **A metadata-privacy story** - what the format smuggles, and how it is stripped.
+1. **A strict-parse validation story** - magic bytes and structural parse at
+   ingest (in a sandboxed decoder), a typed renderer at display (never a generic
+   "open this file" path). The declared type is _enforced, never trusted_: the
+   attack is not `badtouch.exe` labeled honestly, it is a blob declared
+   `image/png` whose bytes are a polyglot or script.
+2. **A scanning story**, where its abuse category demands one - PDQ/Shield
+   covers images and video, which are conveniently exactly the CSAM-relevant
+   types.
+3. **A metadata-privacy story** - what the format smuggles, and how it is
+   stripped.
 
 The v1 lineup that results:
 
@@ -4665,46 +5928,58 @@ The v1 lineup that results:
 | **PDF**                     | No                                      | JavaScript, launch actions, embedded files, forms - a document _platform_, not a document. Strongest future concession is "sandboxed pdf.js only," still a concession to resist.                                                                                                 |
 | **Generic file attachment** | Resist hardest                          | With the registry closed to markup/images/av/audio, there is _no surface_ on which an executable arrives - not blocked, nonexistent. A tileset zip becomes a new _specific_ type with its own validation story.                                                                  |
 
-On plaintext malware (base64 in a post body): unwinnable and therefore out of scope - anyone a filter could stop
-can paste ciphertext instead. The defensible line is that **the network never puts bytes on a path to an
-interpreter**: no execution context, no native-handler handoff, no one-click-open. Weird text a human must
-manually extract and run is outside any threat model a protocol can hold.
+On plaintext malware (base64 in a post body): unwinnable and therefore out of
+scope - anyone a filter could stop can paste ciphertext instead. The defensible
+line is that **the network never puts bytes on a path to an interpreter**: no
+execution context, no native-handler handoff, no one-click-open. Weird text a
+human must manually extract and run is outside any threat model a protocol can
+hold.
 
-**Origin isolation is software defaults, not operator labor.** The isolation never actually came from owning a
-second domain - it comes from how blob bytes are served, and the node ships it: `Content-Type` set from the
-_validated_ type (never the declared one), `X-Content-Type-Options: nosniff`,
-`Content-Security-Policy: sandbox` (which gives every blob response a unique opaque origin - works on
-`localhost`, requires zero operator configuration), `Content-Disposition: attachment` for anything not strictly
-renderable, and blob serving bound to a **separate port** from the app UI (a genuinely different origin by
-definition, free even on a Raspberry Pi; the client keeps session credentials where the blob origin can never
-read them). The **separate serving domain** is asked only of the gateway role - the burden lands where the risk
-lands: local operators configure nothing and get isolation from headers; publishers take on publisher
-infrastructure. (Also load-bearing: the client renders blobs through its own typed renderers - decoded bitmaps
-into constructed DOM, media elements for a/v - so blob bytes are never _navigated to_ as documents in the first
-place.)
+**Origin isolation is software defaults, not operator labor.** The isolation
+never actually came from owning a second domain - it comes from how blob bytes
+are served, and the node ships it: `Content-Type` set from the _validated_ type
+(never the declared one), `X-Content-Type-Options: nosniff`,
+`Content-Security-Policy: sandbox` (which gives every blob response a unique
+opaque origin - works on `localhost`, requires zero operator configuration),
+`Content-Disposition: attachment` for anything not strictly renderable, and blob
+serving bound to a **separate port** from the app UI (a genuinely different
+origin by definition, free even on a Raspberry Pi; the client keeps session
+credentials where the blob origin can never read them). The **separate serving
+domain** is asked only of the gateway role - the burden lands where the risk
+lands: local operators configure nothing and get isolation from headers;
+publishers take on publisher infrastructure. (Also load-bearing: the client
+renders blobs through its own typed renderers - decoded bitmaps into constructed
+DOM, media elements for a/v - so blob bytes are never _navigated to_ as
+documents in the first place.)
 
 ### Fidelity Caps: The Crunch Filter (provisional)
 
-Once photos and video exist, node disk space becomes a design surface. Full storage budgeting (quotas, eviction,
-what a node owes the identities it agents and fronts) is an open question - but one provisional stance is worth
-recording because it serves four goals at once: **media passes through an aggressive, lossy, retro-aesthetic
-re-encode in the authoring client** - palette quantization, dithering, hard dimension caps, brutal video profiles.
+Once photos and video exist, node disk space becomes a design surface. Full
+storage budgeting (quotas, eviction, what a node owes the identities it agents
+and fronts) is an open question - but one provisional stance is worth recording
+because it serves four goals at once: **media passes through an aggressive,
+lossy, retro-aesthetic re-encode in the authoring client** - palette
+quantization, dithering, hard dimension caps, brutal video profiles.
 
-- It merges with a pass that must exist anyway: the pre-sign metadata strip (EXIF) is already a mandatory
-  authoring-time re-encode; crunch is the same pass with taste. (And constraint-as-identity is already this
-  document's stated aesthetic bet - the Pico-8 lesson.)
-- It bounds storage and sync cost to 1999 levels: ten thousand tiny GIFs are barely an inconvenience, and the
-  day-long-sync problem stays dead.
-- It is enforceable where it matters: the _aesthetic_ is cultural plus default-client, but **size and dimension
-  caps are ingest policy** - a node verifies and refuses oversized blobs regardless of which client authored them.
-- It is quietly a moderation feature: **a network that only carries small, heavily-quantized media is a terrible
-  distribution channel for high-fidelity contraband.** Nobody pirates a movie at 160p in 8 colors; fidelity caps
-  make the piracy-exit-node problem structurally unattractive rather than policed.
+- It merges with a pass that must exist anyway: the pre-sign metadata strip
+  (EXIF) is already a mandatory authoring-time re-encode; crunch is the same
+  pass with taste. (And constraint-as-identity is already this document's stated
+  aesthetic bet - the Pico-8 lesson.)
+- It bounds storage and sync cost to 1999 levels: ten thousand tiny GIFs are
+  barely an inconvenience, and the day-long-sync problem stays dead.
+- It is enforceable where it matters: the _aesthetic_ is cultural plus
+  default-client, but **size and dimension caps are ingest policy** - a node
+  verifies and refuses oversized blobs regardless of which client authored them.
+- It is quietly a moderation feature: **a network that only carries small,
+  heavily-quantized media is a terrible distribution channel for high-fidelity
+  contraband.** Nobody pirates a movie at 160p in 8 colors; fidelity caps make
+  the piracy-exit-node problem structurally unattractive rather than policed.
 
-One honest tradeoff: heavy quantization is a large visual transform, and perceptual-hash matching against
-clearinghouse databases (built from originals and common re-encodes) degrades with transform distance - crunching
-may cost some scanner recall. Scan at ingest _before_ the blob is accepted, and accept that the fidelity cap
-itself does much of the work the scanner would.
+One honest tradeoff: heavy quantization is a large visual transform, and
+perceptual-hash matching against clearinghouse databases (built from originals
+and common re-encodes) degrades with transform distance - crunching may cost
+some scanner recall. Scan at ingest _before_ the blob is accepted, and accept
+that the fidelity cap itself does much of the work the scanner would.
 
 ---
 
@@ -4728,23 +6003,28 @@ itself does much of the work the scanner would.
 | Private-chain sealing | **NaCl sealed box** (X25519), via **dryoc** | Epoch keys sealed to members' encryption pubkeys (see Private Chains)                                                                      |
 | Frontend              | **Preact + htm + esbuild**                  | The retro-OS web client - v1's only client, and the reference renderer for the content markup (see The Client Story)                       |
 
-**Crypto dependency boundary (a standing policy, learned the hard way).** Our cryptography talks to the network
-layer (iroh) in **bytes, never in shared typed crates** - 32-byte public keys in, opaque sealed blobs out - and we
-prefer **reusing a primitive we already depend on over adding a new one**. iroh rides the frontier of the
-`curve25519-dalek` ecosystem (it pins release-candidates), and twice now its transitive versions have collided with
-crates we tried to add (pkarr, then the sealing libraries). The byte boundary makes us immune: dryoc's
-`curve25519-dalek` is a different major version than iroh's, they never exchange a typed value, and Cargo simply
-keeps both - so iroh's version weather stops at the edge of our types. This is the same bytes-not-structure
-discipline the entry format uses for forgery-proofing, doing a second job. New crypto boundaries are rare (sealing
-now; WebAuthn maybe later); reaching for a _third_ new crypto crate to do a job the existing ones cover is the smell
-to stop on. (Turso's at-rest encryption is engine-internal and does not open one: its cipher never crosses our type
-boundary - we only wrap its per-database keys in the keystore, which is the existing XChaCha envelope doing its
-existing job.)
+**Crypto dependency boundary (a standing policy, learned the hard way).** Our
+cryptography talks to the network layer (iroh) in **bytes, never in shared typed
+crates** - 32-byte public keys in, opaque sealed blobs out - and we prefer
+**reusing a primitive we already depend on over adding a new one**. iroh rides
+the frontier of the `curve25519-dalek` ecosystem (it pins release-candidates),
+and twice now its transitive versions have collided with crates we tried to add
+(pkarr, then the sealing libraries). The byte boundary makes us immune: dryoc's
+`curve25519-dalek` is a different major version than iroh's, they never exchange
+a typed value, and Cargo simply keeps both - so iroh's version weather stops at
+the edge of our types. This is the same bytes-not-structure discipline the entry
+format uses for forgery-proofing, doing a second job. New crypto boundaries are
+rare (sealing now; WebAuthn maybe later); reaching for a _third_ new crypto
+crate to do a job the existing ones cover is the smell to stop on. (Turso's
+at-rest encryption is engine-internal and does not open one: its cipher never
+crosses our type boundary - we only wrap its per-database keys in the keystore,
+which is the existing XChaCha envelope doing its existing job.)
 
 ## Delivery and Packaging
 
-**One binary, two modes, chosen by config - not two codebases.** The node and the personal-desktop app are the same
-Rust binary with different switches flipped:
+**One binary, two modes, chosen by config - not two codebases.** The node and
+the personal-desktop app are the same Rust binary with different switches
+flipped:
 
 |              | Node mode (hosted / always-on)          | Desktop mode (personal)                                                                         |
 | ------------ | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -4753,125 +6033,164 @@ Rust binary with different switches flipped:
 | Envelope key | env var / file, upgradeable to keychain | OS keychain                                                                                     |
 | Lifecycle    | always-on service                       | tray shell + autostart                                                                          |
 
-Because these are config seams (bind address, tenancy, auto-login, envelope-key source), they must be **configuration
-from the start**, never hardcoded assumptions - which the config-driven design already gives us. Picking one to ship
-first does not close the door on the other.
+Because these are config seams (bind address, tenancy, auto-login, envelope-key
+source), they must be **configuration from the start**, never hardcoded
+assumptions - which the config-driven design already gives us. Picking one to
+ship first does not close the door on the other.
 
 ### Node-first as the bootstrap
 
-Ship **node mode first** (`testnode-N.ringtome.ca` sample nodes; enthusiasts run their own from the binary). It is
-the path we can walk now, the old codebase's HTTP patterns port directly, and iteration is fast. But name the trap
-honestly: hosted-first is a **decentralized system deployed centrally** - the median early user's keys live on _our_
-nodes, so for them the self-sovereign story is aspirational, not actual (email works this way - most people use
-Gmail). This is an acceptable bootstrap, but it has gravitational pull toward _staying_ centralized, because once
-keys live on our nodes, "move to your own machine" is a migration nobody bothers to do. Guard against it: make
-**self-hosting a first-class, documented, easy path from day one**, and ship desktop mode _before_ hosted usage
-calcifies - the moment hosted-first feels like it is working is the moment to ship desktop, not later.
+Ship **node mode first** (`testnode-N.ringtome.ca` sample nodes; enthusiasts run
+their own from the binary). It is the path we can walk now, the old codebase's
+HTTP patterns port directly, and iteration is fast. But name the trap honestly:
+hosted-first is a **decentralized system deployed centrally** - the median early
+user's keys live on _our_ nodes, so for them the self-sovereign story is
+aspirational, not actual (email works this way - most people use Gmail). This is
+an acceptable bootstrap, but it has gravitational pull toward _staying_
+centralized, because once keys live on our nodes, "move to your own machine" is
+a migration nobody bothers to do. Guard against it: make **self-hosting a
+first-class, documented, easy path from day one**, and ship desktop mode
+_before_ hosted usage calcifies - the moment hosted-first feels like it is
+working is the moment to ship desktop, not later.
 
 ### Desktop mode: Tauri, with the node embedded (settled 2026-08-11)
 
-**One binary.** A Tauri v2 window, and the node linked in as a library running axum on the same tokio runtime - no
-child process, no sidecar, no second executable. The window loads the UI from the node's own HTTP server, so `ui.rs`
-keeps its job and the hosted-browser path and the desktop path serve byte-identical UI from one source. The rollout,
-the packaging and the signing costs are [DESKTOP.md](plans/DESKTOP.md); the evidence is
+**One binary.** A Tauri v2 window, and the node linked in as a library running
+axum on the same tokio runtime - no child process, no sidecar, no second
+executable. The window loads the UI from the node's own HTTP server, so `ui.rs`
+keeps its job and the hosted-browser path and the desktop path serve
+byte-identical UI from one source. The rollout, the packaging and the signing
+costs are [DESKTOP.md](plans/DESKTOP.md); the evidence is
 [`spike-tauri/`](spike-tauri/README.md).
 
-This **reverses** this section's previous position ("local server + system browser, NOT Tauri"), and the reversal is
-recorded rather than tidied away, because both of its arguments failed in instructive ways.
+This **reverses** this section's previous position ("local server + system
+browser, NOT Tauri"), and the reversal is recorded rather than tidied away,
+because both of its arguments failed in instructive ways.
 
-**The first argument answered the wrong question.** It held that Tauri's core value is bridging a webview to native
-Rust, and that we already have the universal bridge in HTTP-on-localhost. True, and beside the point: nobody chooses
-a webview shell for the IPC bridge. They choose it for _being an application_ - one signed binary, its own icon,
-window and dock identity, a tray, an updater. A shell that opens your real browser for all of its UI reads as a
-service with a config page, and this section's own floor case (auto-open the browser, no GUI at all) is exactly that
-shape. That matters beyond taste: an application that reads as a toy has an adoption problem, and adoption is
-load-bearing for _Node-first as the bootstrap_ and for the desktop-as-always-on-node argument below. The cited
-precedent also drifted - Syncthing _is_ the config-page feel, Plex ships native clients, Ollama shipped a real
-desktop app.
+**The first argument answered the wrong question.** It held that Tauri's core
+value is bridging a webview to native Rust, and that we already have the
+universal bridge in HTTP-on-localhost. True, and beside the point: nobody
+chooses a webview shell for the IPC bridge. They choose it for _being an
+application_ - one signed binary, its own icon, window and dock identity, a
+tray, an updater. A shell that opens your real browser for all of its UI reads
+as a service with a config page, and this section's own floor case (auto-open
+the browser, no GUI at all) is exactly that shape. That matters beyond taste: an
+application that reads as a toy has an adoption problem, and adoption is
+load-bearing for _Node-first as the bootstrap_ and for the
+desktop-as-always-on-node argument below. The cited precedent also drifted -
+Syncthing _is_ the config-page feel, Plex ships native clients, Ollama shipped a
+real desktop app.
 
-**The second argument was the strong one, and it was tested rather than argued away.** Cross-platform webview skew
-is a documented misery in general, but for this codebase it had a specific address: the Dexie mirror, because
-IndexedDB-on-WebKit is the most notorious compatibility surface on the web platform and `js/mirror.js` is the whole
-read path. `spike-tauri/` put the real UI in both WebKit engines and hammered it. **Both pass**: WKWebView (WebKit
-21624.4.5.11.5, macOS 26.6.1) and WebKitGTK 2.52.3 on Ubuntu 26.04, with `liveQuery` reacting to writes and the 8MB
-Blob and ArrayBuffer round-trips byte-identical on both. Dexie stays. Two predictions in the docs were wrong in
-opposite directions and are kept on the record: Linux was expected to be the dangerous engine and was the best one,
-and the mirror was expected to be the risk and never was.
+**The second argument was the strong one, and it was tested rather than argued
+away.** Cross-platform webview skew is a documented misery in general, but for
+this codebase it had a specific address: the Dexie mirror, because
+IndexedDB-on-WebKit is the most notorious compatibility surface on the web
+platform and `js/mirror.js` is the whole read path. `spike-tauri/` put the real
+UI in both WebKit engines and hammered it. **Both pass**: WKWebView (WebKit
+21624.4.5.11.5, macOS 26.6.1) and WebKitGTK 2.52.3 on Ubuntu 26.04, with
+`liveQuery` reacting to writes and the 8MB Blob and ArrayBuffer round-trips
+byte-identical on both. Dexie stays. Two predictions in the docs were wrong in
+opposite directions and are kept on the record: Linux was expected to be the
+dangerous engine and was the best one, and the mirror was expected to be the
+risk and never was.
 
-**In-process rather than sidecar, from the start.** A sidecar has to solve orphaned children, a readiness race and
-port collisions; embedding _deletes_ those problems instead - there is nothing to orphan, we know when the server is
-up because we started it, and the per-launch auth token never leaves the process. One Mach-O to notarize, nothing
-placed beside the executable. The cost is the `lib.rs` split (`node/Cargo.toml` declares only `[[bin]]` today), which
-is mechanical - `crate::` still resolves to the crate root inside a library, so the ~49 files using it are untouched -
-and which **phones and any future engine client need anyway**. That is the convergence that makes this decision worth
-more than a nicer window: one shell, one Rust toolchain, three platforms, and a phone client that becomes a _port of
-a shipping application_ rather than a separate project. _Phones: deferred, by design_ predates this and wants
+**In-process rather than sidecar, from the start.** A sidecar has to solve
+orphaned children, a readiness race and port collisions; embedding _deletes_
+those problems instead - there is nothing to orphan, we know when the server is
+up because we started it, and the per-launch auth token never leaves the
+process. One Mach-O to notarize, nothing placed beside the executable. The cost
+is the `lib.rs` split (`node/Cargo.toml` declares only `[[bin]]` today), which
+is mechanical - `crate::` still resolves to the crate root inside a library, so
+the ~49 files using it are untouched - and which **phones and any future engine
+client need anyway**. That is the convergence that makes this decision worth
+more than a nicer window: one shell, one Rust toolchain, three platforms, and a
+phone client that becomes a _port of a shipping application_ rather than a
+separate project. _Phones: deferred, by design_ predates this and wants
 revisiting in that light.
 
-**What we are accepting, so it can be checked later.** "We develop against real browsers and that is what ships"
-splits in half: because the node serves the UI over HTTP, day-to-day development is unchanged - Chrome pointed at
-localhost, the shell involved only at package time - but what _ships_ is not what we developed against. Windows is
-Chromium regardless (WebView2 is Chromium-based and evergreen), so the exposure is macOS and Linux. Two live risks
-ride with it: **stale engines** on old systems we cannot patch, and **capabilities that vary by install** - WebKitGTK
-delegates media to GStreamer, so the spike found AV1 encode present on one Ubuntu and absent on WKWebView, meaning we
-degrade per machine rather than requiring a platform. Electron was the other candidate and was declined: it would
-have bought one pinned Chromium and a decade of battle-testedness ("when something breaks at 11pm, somebody has
-already hit it and written it down"), at the price of ~200MB, two shipped runtimes, owning Chromium's CVEs forever,
-and no mobile story at all.
+**What we are accepting, so it can be checked later.** "We develop against real
+browsers and that is what ships" splits in half: because the node serves the UI
+over HTTP, day-to-day development is unchanged - Chrome pointed at localhost,
+the shell involved only at package time - but what _ships_ is not what we
+developed against. Windows is Chromium regardless (WebView2 is Chromium-based
+and evergreen), so the exposure is macOS and Linux. Two live risks ride with it:
+**stale engines** on old systems we cannot patch, and **capabilities that vary
+by install** - WebKitGTK delegates media to GStreamer, so the spike found AV1
+encode present on one Ubuntu and absent on WKWebView, meaning we degrade per
+machine rather than requiring a platform. Electron was the other candidate and
+was declined: it would have bought one pinned Chromium and a decade of
+battle-testedness ("when something breaks at 11pm, somebody has already hit it
+and written it down"), at the price of ~200MB, two shipped runtimes, owning
+Chromium's CVEs forever, and no mobile story at all.
 
-**The port question, answered.** _Caveats that apply to desktop mode regardless_ warns that a floating port silently
-drops per-origin state. The node picks a port on first run, persists it in the data directory and reuses it, keeping
-the page and the API same-origin - which also means the live-cache WebSocket needs no cross-origin handling. A
-collision picks a new port and the mirror resnapshots, which is free because the mirror is disposable.
+**The port question, answered.** _Caveats that apply to desktop mode regardless_
+warns that a floating port silently drops per-origin state. The node picks a
+port on first run, persists it in the data directory and reuses it, keeping the
+page and the API same-origin - which also means the live-cache WebSocket needs
+no cross-origin handling. A collision picks a new port and the mirror
+resnapshots, which is free because the mirror is disposable.
 
 ### The client: one, carried by the web
 
-One client, the Preact app the node serves - the retro-OS desktop it was once imagined as
-(draggable windows, a paint program, the modem icon) did not survive contact with the
-product and is struck. Two rules from that era still hold. **The API is strictly
-client-agnostic:** the web client is the reference client, never a privileged one - no
-web-UI-private endpoints, and the HTTP API is documented and versioned with the protocol's
-discipline, which is what keeps every future client possible, including ones we do not
-build. **A game-engine client is struck** - a social network is data-bound, text-heavy,
-accessible UI, exactly what game-engine toolkits are worst at; [GODOT.md](plans/GODOT.md) carries
-the costed argument and why the idea keeps returning. Desktop delivery is _Desktop mode:
-Tauri, with the node embedded_.
+One client, the Preact app the node serves - the retro-OS desktop it was once
+imagined as (draggable windows, a paint program, the modem icon) did not survive
+contact with the product and is struck. Two rules from that era still hold.
+**The API is strictly client-agnostic:** the web client is the reference client,
+never a privileged one - no web-UI-private endpoints, and the HTTP API is
+documented and versioned with the protocol's discipline, which is what keeps
+every future client possible, including ones we do not build. **A game-engine
+client is struck** - a social network is data-bound, text-heavy, accessible UI,
+exactly what game-engine toolkits are worst at; [GODOT.md](plans/GODOT.md)
+carries the costed argument and why the idea keeps returning. Desktop delivery
+is _Desktop mode: Tauri, with the node embedded_.
 
 ### Phones
 
-[MOBILE.md](plans/MOBILE.md) is the shape for phones and corrects the premise this section once
-carried (that a phone must be a remote client of always-on nodes). Two facts from here
-survive: the web client works in a phone browser from day one, and push notifications are
-the one structural gap - APNs and FCM need a server holding credentials, likely an optional
-push-gateway role hosted nodes opt into; recorded so it does not ambush the first phone
-client, no design work now.
+[MOBILE.md](plans/MOBILE.md) is the shape for phones and corrects the premise
+this section once carried (that a phone must be a remote client of always-on
+nodes). Two facts from here survive: the web client works in a phone browser
+from day one, and push notifications are the one structural gap - APNs and FCM
+need a server holding credentials, likely an optional push-gateway role hosted
+nodes opt into; recorded so it does not ambush the first phone client, no design
+work now.
 
 ### Always-on nodes are needed either way
 
-Neither model escapes running always-on infrastructure: **p2p social content needs someone awake to serve it** (the
-fronting / rehosting problem; cf. BitTorrent seeders). A desktop app online only while its window is open is a poor
-p2p citizen - its content vanishes when the laptop closes unless an always-on node fronts it. So we run server nodes
-regardless; the only question a packaging choice answers is whether the _user's keys_ also live there. Node-mode work
-is therefore never throwaway - those nodes become the seeders/fronts the desktop model also needs.
+Neither model escapes running always-on infrastructure: **p2p social content
+needs someone awake to serve it** (the fronting / rehosting problem; cf.
+BitTorrent seeders). A desktop app online only while its window is open is a
+poor p2p citizen - its content vanishes when the laptop closes unless an
+always-on node fronts it. So we run server nodes regardless; the only question a
+packaging choice answers is whether the _user's keys_ also live there. Node-mode
+work is therefore never throwaway - those nodes become the seeders/fronts the
+desktop model also needs.
 
 ### Caveats that apply to desktop mode regardless (do not forget these)
 
-These are the irreducible price of shipping a background service to non-terminal users. They were written when this
-section still planned a browser-opening shell, and they survive the 2026-08-11 move to Tauri unchanged - which is what
-the original framing predicted, having noted they would cost the same either way. Two now have settled answers rather
-than open warnings: the localhost-CSRF hazard is what the desktop app's per-launch auth token exists to close, and the
-stable-port requirement is answered by persisting the port (both in _Desktop mode: Tauri, with the node embedded_).
+These are the irreducible price of shipping a background service to non-terminal
+users. They were written when this section still planned a browser-opening
+shell, and they survive the 2026-08-11 move to Tauri unchanged - which is what
+the original framing predicted, having noted they would cost the same either
+way. Two now have settled answers rather than open warnings: the localhost-CSRF
+hazard is what the desktop app's per-launch auth token exists to close, and the
+stable-port requirement is answered by persisting the port (both in _Desktop
+mode: Tauri, with the node embedded_).
 
-- **Localhost is not automatically safe.** A malicious web page you visit can make requests to `localhost:PORT`, so
-  the local server needs CSRF / origin-checking even though it is "just local" (Syncthing shipped exactly this bug).
-- **Use a stable port, not a floating one.** The browser treats `localhost:3000` and `:3001` as different origins, so
-  a port that shifts between launches silently logs the user out and drops per-origin state. Pick a fixed default,
+- **Localhost is not automatically safe.** A malicious web page you visit can
+  make requests to `localhost:PORT`, so the local server needs CSRF /
+  origin-checking even though it is "just local" (Syncthing shipped exactly this
+  bug).
+- **Use a stable port, not a floating one.** The browser treats `localhost:3000`
+  and `:3001` as different origins, so a port that shifts between launches
+  silently logs the user out and drops per-origin state. Pick a fixed default,
   fall back only on collision, and persist the choice.
-- **Autostart is the real work of the tray shell.** The status light is trivial; keeping the node running (ideally
-  launching at login, so the identity stays live) is per-OS fiddliness (launchd / Task Scheduler / XDG autostart) -
-  and it is fiddly in Tauri too.
-- **Code signing does not go away.** Any distributed executable needs Mac notarization / Windows signing or users hit
-  scary warnings - equal cost across all packaging approaches.
+- **Autostart is the real work of the tray shell.** The status light is trivial;
+  keeping the node running (ideally launching at login, so the identity stays
+  live) is per-OS fiddliness (launchd / Task Scheduler / XDG autostart) - and it
+  is fiddly in Tauri too.
+- **Code signing does not go away.** Any distributed executable needs Mac
+  notarization / Windows signing or users hit scary warnings - equal cost across
+  all packaging approaches.
 
 ---
 
@@ -4885,24 +6204,28 @@ ringtome/
 └── *.md       ← the documents (README.md is the map)
 ```
 
-The system as built is best read from the code's own maps: `node/src/main.rs` (composition root + the
-background-loop registry), `node/src/store.rs` (the data map), `node/src/sync.rs` (the trust boundary),
-`proto/src/lib.rs` (the conformance boundary).
+The system as built is best read from the code's own maps: `node/src/main.rs`
+(composition root + the background-loop registry), `node/src/store.rs` (the data
+map), `node/src/sync.rs` (the trust boundary), `proto/src/lib.rs` (the
+conformance boundary).
 
 ---
 
 ## Open Questions
 
-Questions still genuinely open. (Resolved questions are deleted, not archived - each answer lives in its
-owning section, and git remembers the deliberations.)
+Questions still genuinely open. (Resolved questions are deleted, not archived -
+each answer lives in its owning section, and git remembers the deliberations.)
 
-- [ ] **Epoch rotation needs an adult** (raised 2026-07-13; a defect in shipped machinery, not a
-      future feature). "Revocation - either disposition - rotates" never says who mints the epoch, and a
-      self-issued retirement cannot mint its own. The core rule is _you may not sign the epoch that
-      excludes you_, plus a derivable-recipient-list rule that makes rotation safe to leave ungated;
-      the defect list is under _Revocation_. Also owed there: repudiation's blast radius beyond
-      "child authorizations", and a third disposition for _departure_ (honour the history, kill
-      the subtree, self-issuable).
-- [ ] **Storage budgets:** how much disk a node owes the identities it agents and fronts - quotas,
-      eviction, and the crunch filter's enforceable size and dimension caps (_Fidelity Caps_) as the
-      likely anchor. Media has landed; this has not.
+- [ ] **Epoch rotation needs an adult** (raised 2026-07-13; a defect in shipped
+      machinery, not a future feature). "Revocation - either disposition -
+      rotates" never says who mints the epoch, and a self-issued retirement
+      cannot mint its own. The core rule is _you may not sign the epoch that
+      excludes you_, plus a derivable-recipient-list rule that makes rotation
+      safe to leave ungated; the defect list is under _Revocation_. Also owed
+      there: repudiation's blast radius beyond "child authorizations", and a
+      third disposition for _departure_ (honour the history, kill the subtree,
+      self-issuable).
+- [ ] **Storage budgets:** how much disk a node owes the identities it agents
+      and fronts - quotas, eviction, and the crunch filter's enforceable size
+      and dimension caps (_Fidelity Caps_) as the likely anchor. Media has
+      landed; this has not.

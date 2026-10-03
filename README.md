@@ -2,138 +2,167 @@
 
 **Two names, one repository** (2026-09-25):
 
-- **Ringtome** is the _protocol_: signed append-only chains, roaming key-tree identities, sync over
-  [iroh](https://iroh.computer/), the trust web. The `ringtome` node, the `ringtome-proto` crate, the
-  wire (`ringtome/sync/0`), the signature domains and the test vectors all keep the name.
-- **Horse Drawing Tycoon 2** is the _consumer application_ built on it - the desktop app, the UI people
-  actually use, at [horsedrawingtycoon.com](https://horsedrawingtycoon.com). The sequel to a
-  tycoon game about drawing horses, built on a bar bet eleven years ago; the social network lives
-  inside the dumb game, which is exactly where it should live.
+- **Ringtome** is the _protocol_: signed append-only chains, roaming key-tree
+  identities, sync over [iroh](https://iroh.computer/), the trust web. The
+  `ringtome` node, the `ringtome-proto` crate, the wire (`ringtome/sync/0`), the
+  signature domains and the test vectors all keep the name.
+- **Horse Drawing Tycoon 2** is the _consumer application_ built on it - the
+  desktop app, the UI people actually use, at
+  [horsedrawingtycoon.com](https://horsedrawingtycoon.com). The sequel to a
+  tycoon game about drawing horses, built on a bar bet eleven years ago; the
+  social network lives inside the dumb game, which is exactly where it should
+  live.
 
-When a sentence is about bytes, chains or peers, it says Ringtome; when it is about what a person
-installs, opens or sees, it says Horse Drawing Tycoon 2.
+When a sentence is about bytes, chains or peers, it says Ringtome; when it is
+about what a person installs, opens or sees, it says Horse Drawing Tycoon 2.
 
-A cozy p2p retro-web social network: IRC-flavored chat, bulletin boards, geocities-style pages,
-webrings, hit counters, MIDI files. Identities are cryptographic key trees that roam between
-nodes; content lives in signed append-only logs replicated over [iroh](https://iroh.computer/);
-trust is modeled explicitly instead of moderated retroactively. Private by default, lightly
-federated, unapologetically Old Internet.
+A cozy p2p retro-web social network: IRC-flavored chat, bulletin boards,
+geocities-style pages, webrings, hit counters, MIDI files. Identities are
+cryptographic key trees that roam between nodes; content lives in signed
+append-only logs replicated over [iroh](https://iroh.computer/); trust is
+modeled explicitly instead of moderated retroactively. Private by default,
+lightly federated, unapologetically Old Internet.
 
-> This README is the **map**. The full design — with every decision's reasoning — is
-> [`PROJECT_PLAN.md`](PROJECT_PLAN.md), which is canon; if the two disagree, this file is the one
-> that's wrong. Don't read the plan cover-to-cover: grep its headers and read the sections you
-> need (see _The documents_, below).
+> This README is the **map**. The full design — with every decision's reasoning
+> — is [`PROJECT_PLAN.md`](PROJECT_PLAN.md), which is canon; if the two
+> disagree, this file is the one that's wrong. Don't read the plan
+> cover-to-cover: grep its headers and read the sections you need (see _The
+> documents_, below).
 
 ## The documents
 
-- [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the doctrine: architecture, identity model, trust model,
-  threat model, every load-bearing design decision with its reasoning. Edited in place; always
-  current. **Too big to read whole — that's accepted**: grep the `##`/`###` headers, read the
-  sections your task touches, and follow its cross-references by header name.
-- [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: where the ladder stands, the standing
-  residuals, and the unordered tiers ahead. Forward-looking only.
-- [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
-  residuals as recorded at the time. New work appends at the bottom in full detail; when the tail
-  grows unwieldy it is folded into the era narrative above it. Read the tail for recent status.
-- [`history/`](history/) — extracted investigation logs. When one thread runs long enough that
-  folding it would cost the story (the entries only make sense in sequence), it moves here whole
-  and HISTORY keeps a pointer entry in its place. Two so far:
-  [`2026-08-popularity-problems.md`](history/2026-08-popularity-problems.md), the 50k-follow
-  audit and its two days of consequences; and
-  [`2026-08-chain-genesis-roundup.md`](history/2026-08-chain-genesis-roundup.md), the full-chain
-  audit — every read whose cost grew with an identity's history, and the rule that came out of
-  fixing them.
-- Public annotations, books, and peeks/ceilings/pins are sections of `PROJECT_PLAN.md` now
-  (their working documents were folded in on 2026-09-06; the moment-by-moment record is
-  `HISTORY.md`'s).
-- [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
-  language mapping.
-- [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and
-  the pragmatism rules; the patterns every new file is expected to hold.
-- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
-  a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
-- [`plans/`](plans/) — the plans: one design document per app, feature or delivery shape, drafts and
-  built alike, plus the signing guide. **A new plan is written here.** So far:
-- [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is an entry on its author's
-  own chain on the room's lane, live is gossip carrying the same entries, history is recent
-  everywhere and whole at the creator's. Rulings settled 2026-09-18; the chain key's third
-  element comes first as its own arc, then five slices.
-- [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a versioned document whose body is
-  its strokes, undo is a recorded removal, and two histories merge by putting both sets of strokes
-  together (on the node, held to the browser by shared test vectors); copies and publications are
+- [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the doctrine: architecture, identity
+  model, trust model, threat model, every load-bearing design decision with its
+  reasoning. Edited in place; always current. **Too big to read whole — that's
+  accepted**: grep the `##`/`###` headers, read the sections your task touches,
+  and follow its cross-references by header name.
+- [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: where the ladder stands,
+  the standing residuals, and the unordered tiers ahead. Forward-looking only.
+- [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status
+  notes and residuals as recorded at the time. New work appends at the bottom in
+  full detail; when the tail grows unwieldy it is folded into the era narrative
+  above it. Read the tail for recent status.
+- [`history/`](history/) — extracted investigation logs. When one thread runs
+  long enough that folding it would cost the story (the entries only make sense
+  in sequence), it moves here whole and HISTORY keeps a pointer entry in its
+  place. Two so far:
+  [`2026-08-popularity-problems.md`](history/2026-08-popularity-problems.md),
+  the 50k-follow audit and its two days of consequences; and
+  [`2026-08-chain-genesis-roundup.md`](history/2026-08-chain-genesis-roundup.md),
+  the full-chain audit — every read whose cost grew with an identity's history,
+  and the rule that came out of fixing them.
+- Public annotations, books, and peeks/ceilings/pins are sections of
+  `PROJECT_PLAN.md` now (their working documents were folded in on 2026-09-06;
+  the moment-by-moment record is `HISTORY.md`'s).
+- [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the
+  engine-room ↔ cozy-UI language mapping.
+- [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape,
+  testing doctrine, and the pragmatism rules; the patterns every new file is
+  expected to hold.
+- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued
+  cleanups (tech debt is a mortgage; this is the current balance). Completed
+  entries are deleted — git is the archive.
+- [`plans/`](plans/) — the plans: one design document per app, feature or
+  delivery shape, drafts and built alike, plus the signing guide. **A new plan
+  is written here.** So far:
+- [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is
+  an entry on its author's own chain on the room's lane, live is gossip carrying
+  the same entries, history is recent everywhere and whole at the creator's.
+  Rulings settled 2026-09-18; the chain key's third element comes first as its
+  own arc, then five slices.
+- [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a
+  versioned document whose body is its strokes, undo is a recorded removal, and
+  two histories merge by putting both sets of strokes together (on the node,
+  held to the browser by shared test vectors); copies and publications are
   pictures of it.
-- [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks and the other currencies:
-  never transferable, a balance is a fold over the persona's own ledger that may go negative and is
-  never rolled back, interest measured in HorseTicks rather than time, exact bigint balances shown in broken-number notation,
-  wealth-gated posts honoured by the reader's own node, and a daily public heartbeat. A design draft
-  (2026-09-29); nothing built.
-- [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the private chain, items fetched
-  once per node into a shared cache and translated to Marquee (never rendered as HTML), images
-  through the node, a merged newest-first view, and a rebroadcast that carries its source. A design
-  draft (2026-09-30); nothing built.
-- **The delivery-shape trio** — what kind of application this is, one document per candidate
-  surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
-  canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri, with the node embedded_ was rewritten to match
-  it on 2026-08-11), while MOBILE and GODOT still **disagree with canon on purpose** — the first
-  correcting a premise in _Phones: deferred, by design_, the second recording why an idea _The Client
-  Story_ struck keeps returning. Read them together; they constrain each other.
-  - [`DESKTOP.md`](plans/DESKTOP.md) — a Tauri shell with the node **linked in-process**, one binary, plus
-    the rollout and the recurring signing costs. The decision itself is canon as of 2026-08-11
-    (_Desktop mode: Tauri, with the node embedded_); this document is the execution plan, and it keeps
-    the Electron comparison as the record of how the decision was made.
-  - [`SIGNING.md`](plans/SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits on, and the only document
-    here addressed to the operator rather than the code: what to enrol in (Apple, Azure Artifact
-    Signing), the eligibility traps, where each secret lands, and what proceeds unsigned meanwhile.
-  - [`SERVER.md`](SERVER.md) — running a Ringtome node on a server: which release download is which,
-    the container image, the settings, HTTPS (the operator's own proxy), the peer-to-peer port, the
-    data directory that IS the node, and why every upgrade takes a backup first.
-  - [`MOBILE.md`](plans/MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
-    deliberately narrow UI. Corrects a factual premise in _Phones: deferred, by design_ and
-    carries the availability arithmetic for a network with no always-on infrastructure.
-  - [`GODOT.md`](plans/GODOT.md) — the game-engine client, still struck from the roadmap by _The Client
-    Story_, with the properly-costed argument for the day a gamey product layer asks for it.
-- [`API_OLD.md`](plans/API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
-  cautionary tales.
+- [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks
+  and the other currencies: never transferable, a balance is a fold over the
+  persona's own ledger that may go negative and is never rolled back, interest
+  measured in HorseTicks rather than time, exact bigint balances shown in
+  broken-number notation, wealth-gated posts honoured by the reader's own node,
+  and a daily public heartbeat. A design draft (2026-09-29); nothing built.
+- [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the
+  private chain, items fetched once per node into a shared cache and translated
+  to Marquee (never rendered as HTML), images through the node, a merged
+  newest-first view, and a rebroadcast that carries its source. A design draft
+  (2026-09-30); nothing built.
+- **The delivery-shape trio** — what kind of application this is, one document
+  per candidate surface. Their relationship to canon differs and each says which
+  at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,
+  with the node embedded_ was rewritten to match it on 2026-08-11), while MOBILE
+  and GODOT still **disagree with canon on purpose** — the first correcting a
+  premise in _Phones: deferred, by design_, the second recording why an idea
+  _The Client Story_ struck keeps returning. Read them together; they constrain
+  each other.
+  - [`DESKTOP.md`](plans/DESKTOP.md) — a Tauri shell with the node **linked
+    in-process**, one binary, plus the rollout and the recurring signing costs.
+    The decision itself is canon as of 2026-08-11 (_Desktop mode: Tauri, with
+    the node embedded_); this document is the execution plan, and it keeps the
+    Electron comparison as the record of how the decision was made.
+  - [`SIGNING.md`](plans/SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits
+    on, and the only document here addressed to the operator rather than the
+    code: what to enrol in (Apple, Azure Artifact Signing), the eligibility
+    traps, where each secret lands, and what proceeds unsigned meanwhile.
+  - [`SERVER.md`](SERVER.md) — running a Ringtome node on a server: which
+    release download is which, the container image, the settings, HTTPS (the
+    operator's own proxy), the peer-to-peer port, the data directory that IS the
+    node, and why every upgrade takes a backup first.
+  - [`MOBILE.md`](plans/MOBILE.md) — the soft shape for phones: Tauri v2, the
+    node linked in-process, a deliberately narrow UI. Corrects a factual premise
+    in _Phones: deferred, by design_ and carries the availability arithmetic for
+    a network with no always-on infrastructure.
+  - [`GODOT.md`](plans/GODOT.md) — the game-engine client, still struck from the
+    roadmap by _The Client Story_, with the properly-costed argument for the day
+    a gamey product layer asks for it.
+- [`API_OLD.md`](plans/API_OLD.md) — salvage report on the prior codebase:
+  patterns kept, patterns cut, cautionary tales.
 
-**Suggested first hour:** this file top to bottom; PROJECT_PLAN's _Vision_ and _Doctrine_
-sections; GLOSSARY skimmed for unfamiliar terms; then NEXT_STEPS to see what's in motion.
+**Suggested first hour:** this file top to bottom; PROJECT_PLAN's _Vision_ and
+_Doctrine_ sections; GLOSSARY skimmed for unfamiliar terms; then NEXT_STEPS to
+see what's in motion.
 
 ## The shape of the system
 
-Seven load-bearing ideas; everything else hangs off one of them. Each pointer names a
-PROJECT_PLAN section.
+Seven load-bearing ideas; everything else hangs off one of them. Each pointer
+names a PROJECT_PLAN section.
 
-1. **Identity is a tree of keys** (the CROWN): a root keypair authorizes children, children
-   authorize grandchildren; authority is ordered by rank-path, never by time. Revocation
-   (retirement / repudiation-with-anchors) and a recovery key minted at creation make key loss
-   and key theft survivable. → _The CROWN Identity_.
-2. **All content is signed append-only chains**, one per `(key, service)` — dense sequence
-   numbers, hash links, canonical CBOR, store-the-author's-original-bytes. Merge semantics live
-   above the log and are stated once: LWW for scalars, set-merge for collections, rank-path for
-   authority. → _The Identity-Managed Append-Only Log (IM-AOL)_, _Canonical Encoding_.
-3. **Private by default**: private chains are epoch-key ciphertext, membership is key
-   possession, and a revoked device reads its era and nothing after. Anything public is a
-   deliberate signing act that _copies_ content across the membrane — there is no
-   "make public" flip anywhere in the system. → _Private Chains_, _Doctrine_ (Copy, Don't Flip).
-4. **Databases are disposable views of the log.** Per-identity Turso databases (encrypted at
-   rest), incrementally-folded materialized views, and a raw-entry journal file per identity;
-   the signed entries are the only source of truth and everything else rebuilds by replay.
-   → _Data Layer_, _The Substrate_, _The Store Layer_.
-5. **Files are content-addressed blobs; mutable content is versioned documents.** One
-   iroh-blobs store for every file-shaped byte (private = encrypt-then-hash, random nonce, no
-   dedup by design); a document is a stable `doc_id` whose versions form a DAG of whole-file
-   snapshots — divergence is detected and kept-both, never silently merged. Organization
-   (tags, trees, annotations) lives _outside_ documents. → _The File Layer_, _Versioned
+1. **Identity is a tree of keys** (the CROWN): a root keypair authorizes
+   children, children authorize grandchildren; authority is ordered by
+   rank-path, never by time. Revocation (retirement / repudiation-with-anchors)
+   and a recovery key minted at creation make key loss and key theft survivable.
+   → _The CROWN Identity_.
+2. **All content is signed append-only chains**, one per `(key, service)` —
+   dense sequence numbers, hash links, canonical CBOR,
+   store-the-author's-original-bytes. Merge semantics live above the log and are
+   stated once: LWW for scalars, set-merge for collections, rank-path for
+   authority. → _The Identity-Managed Append-Only Log (IM-AOL)_, _Canonical
+   Encoding_.
+3. **Private by default**: private chains are epoch-key ciphertext, membership
+   is key possession, and a revoked device reads its era and nothing after.
+   Anything public is a deliberate signing act that _copies_ content across the
+   membrane — there is no "make public" flip anywhere in the system. → _Private
+   Chains_, _Doctrine_ (Copy, Don't Flip).
+4. **Databases are disposable views of the log.** Per-identity Turso databases
+   (encrypted at rest), incrementally-folded materialized views, and a raw-entry
+   journal file per identity; the signed entries are the only source of truth
+   and everything else rebuilds by replay. → _Data Layer_, _The Substrate_, _The
+   Store Layer_.
+5. **Files are content-addressed blobs; mutable content is versioned
+   documents.** One iroh-blobs store for every file-shaped byte (private =
+   encrypt-then-hash, random nonce, no dedup by design); a document is a stable
+   `doc_id` whose versions form a DAG of whole-file snapshots — divergence is
+   detected and kept-both, never silently merged. Organization (tags, trees,
+   annotations) lives _outside_ documents. → _The File Layer_, _Versioned
    Documents_, _Taxonomies_, _Annotations_.
-6. **Sync is a custom protocol over iroh QUIC** with a validation gate: every entry is checked
-   against the key tree before it is stored, which is what makes revocation real (and why
-   iroh-docs wasn't usable). Chains can be held as suffixes (git-shallow-clone style);
-   discovery is pkarr signed records on the Mainline DHT. → _Iroh Protocol Mapping_,
-   _Shallow Sync_, _Discovery_.
-7. **Trust is explicit and flow-computed**: signed vouches from real-world invites seed a
-   graph; an Advogato-style joint-flow computation prices Sybils out; moderation stays
-   node-operator policy, never protocol. → _Trust, Credibility, Interest, and Taste_,
-   _Moderation and Operator Liability_.
+6. **Sync is a custom protocol over iroh QUIC** with a validation gate: every
+   entry is checked against the key tree before it is stored, which is what
+   makes revocation real (and why iroh-docs wasn't usable). Chains can be held
+   as suffixes (git-shallow-clone style); discovery is pkarr signed records on
+   the Mainline DHT. → _Iroh Protocol Mapping_, _Shallow Sync_, _Discovery_.
+7. **Trust is explicit and flow-computed**: signed vouches from real-world
+   invites seed a graph; an Advogato-style joint-flow computation prices Sybils
+   out; moderation stays node-operator policy, never protocol. → _Trust,
+   Credibility, Interest, and Taste_, _Moderation and Operator Liability_.
 
 ## Workspace
 

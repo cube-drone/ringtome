@@ -2,9 +2,11 @@
 
 - **Webview:** `2.52.3` (from the runtime, not the UA)
 - **OS:** `Ubuntu 26.04 LTS`
-- **Origin:** `http://127.0.0.1:39315` · secureContext=true · crossOriginIsolated=false
+- **Origin:** `http://127.0.0.1:39315` · secureContext=true ·
+  crossOriginIsolated=false
 - **Tested:** Dexie 4.4.4, video-ingest `ad9dbd5`
-- **UA (identifies nothing, kept for completeness):** `Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15`
+- **UA (identifies nothing, kept for completeness):**
+  `Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15`
 
 **IndexedDB / the mirror**
 

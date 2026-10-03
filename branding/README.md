@@ -1,7 +1,7 @@
 # Branding
 
-Horse Drawing Tycoon 2's own pictures (README's _Two names_: the app is Horse Drawing Tycoon 2, the
-protocol under it Ringtome).
+Horse Drawing Tycoon 2's own pictures (README's _Two names_: the app is Horse
+Drawing Tycoon 2, the protocol under it Ringtome).
 
 | file                                   | what                                                                                                                                                         |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -12,8 +12,8 @@ protocol under it Ringtome).
 
 ## Remaking the icons
 
-After changing the logo, regenerate everything from it (Pillow in a throwaway virtualenv; nothing
-here installs it):
+After changing the logo, regenerate everything from it (Pillow in a throwaway
+virtualenv; nothing here installs it):
 
 ```sh
 python3 -m venv /tmp/pv && /tmp/pv/bin/pip install pillow
@@ -38,4 +38,5 @@ cp /tmp/hdt-icons-mac/icon.icns desktop/icons/icon.icns
 rm -rf desktop/icons/android desktop/icons/ios
 ```
 
-The web icons are baked into the node binary (`node/src/ui.rs`), so a rebuild picks them up.
+The web icons are baked into the node binary (`node/src/ui.rs`), so a rebuild
+picks them up.

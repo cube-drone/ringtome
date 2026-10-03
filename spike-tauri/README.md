@@ -1,26 +1,30 @@
 # spike-tauri
 
-**One job: find out whether Tauri can host the client we already have.** Two features decide it,
-both of which work in Chromium today and neither of which is guaranteed in a platform webview:
+**One job: find out whether Tauri can host the client we already have.** Two
+features decide it, both of which work in Chromium today and neither of which is
+guaranteed in a platform webview:
 
-1. **IndexedDB** — the Dexie mirror (`node/js/mirror.js`) is the client's whole read path.
-2. **Browser-side video encode** — the laundering pipeline proved in [`../video-ingest`](../video-ingest),
-   which is what lets a memory-safe Rust server never decode a hostile bitstream.
+1. **IndexedDB** — the Dexie mirror (`node/js/mirror.js`) is the client's whole
+   read path.
+2. **Browser-side video encode** — the laundering pipeline proved in
+   [`../video-ingest`](../video-ingest), which is what lets a memory-safe Rust
+   server never decode a hostile bitstream.
 
-[`../DESKTOP.md`](../plans/DESKTOP.md) names the first as the deciding experiment between Electron and
-Tauri; the second is the half that document does not consider, and it is the one with a real
-chance of being fatal. Answers land in _Results_, below, and get carried into DESKTOP.md's
-_Electron and Tauri, compared_.
+[`../DESKTOP.md`](../plans/DESKTOP.md) names the first as the deciding
+experiment between Electron and Tauri; the second is the half that document does
+not consider, and it is the one with a real chance of being fatal. Answers land
+in _Results_, below, and get carried into DESKTOP.md's _Electron and Tauri,
+compared_.
 
-**Not a product, and not a starting point for one.** The Tauri config here is deliberately
-permissive — CSP disabled, `Access-Control-Allow-Origin: *` on the harness server — because a
-spike that fights its own sandbox measures the sandbox. None of it may be copied into a shipping
-shell.
+**Not a product, and not a starting point for one.** The Tauri config here is
+deliberately permissive — CSP disabled, `Access-Control-Allow-Origin: *` on the
+harness server — because a spike that fights its own sandbox measures the
+sandbox. None of it may be copied into a shipping shell.
 
 ## Running it
 
-No `tauri-cli`, no npm, no bundler. The frontend is plain ES modules and the app is a plain cargo
-binary.
+No `tauri-cli`, no npm, no bundler. The frontend is plain ES modules and the app
+is a plain cargo binary.
 
 ```sh
 ./sync-vendor.sh                      # copy Dexie + video-ingest into ui/vendor (once, and after either changes)
@@ -28,25 +32,28 @@ cd src-tauri && cargo run             # origin mode: http  — the page on http:
 SPIKE_ORIGIN=scheme cargo run         # origin mode: scheme — the page on tauri://localhost
 ```
 
-`sync-vendor.sh` needs `just install` to have been run in `node/` — it vendors the **same Dexie
-build the client ships** rather than a fresh one from npm, because a spike that tests a different
-Dexie answers the wrong question. It records what it copied in `ui/vendor/VENDORED.json`, and the
-harness prints that in its environment block so a result stays interpretable later.
+`sync-vendor.sh` needs `just install` to have been run in `node/` — it vendors
+the **same Dexie build the client ships** rather than a fresh one from npm,
+because a spike that tests a different Dexie answers the wrong question. It
+records what it copied in `ui/vendor/VENDORED.json`, and the harness prints that
+in its environment block so a result stays interpretable later.
 
-The harness also prints and passes down `tauri::webview_version()` and the real OS version, because
-**a webview's user-agent identifies nothing** — WKWebView reports a frozen
-`Intel Mac OS X 10_15_7` regardless of the actual system. The engine version is the fact that makes
-a results row worth keeping, so it comes from the runtime rather than from `navigator.userAgent`.
+The harness also prints and passes down `tauri::webview_version()` and the real
+OS version, because **a webview's user-agent identifies nothing** — WKWebView
+reports a frozen `Intel Mac OS X 10_15_7` regardless of the actual system. The
+engine version is the fact that makes a results row worth keeping, so it comes
+from the runtime rather than from `navigator.userAgent`.
 
-**Run every probe in both origin modes.** They are different security contexts, and both appear in
-DESKTOP.md's architecture: the UI served by the node over loopback, and the custom scheme that
-makes the origin stable while the port floats. Storage is partitioned per origin and WebCodecs
-requires a secure context, so neither result implies the other.
+**Run every probe in both origin modes.** They are different security contexts,
+and both appear in DESKTOP.md's architecture: the UI served by the node over
+loopback, and the custom scheme that makes the origin stable while the port
+floats. Storage is partitioned per origin and WebCodecs requires a secure
+context, so neither result implies the other.
 
 ### Three names, two engines
 
-The platform webviews have nearly colliding names, which makes it very easy to read the risk
-backwards — so, explicitly:
+The platform webviews have nearly colliding names, which makes it very easy to
+read the risk backwards — so, explicitly:
 
 | name          | platform    | engine                                        |
 | ------------- | ----------- | --------------------------------------------- |
@@ -54,21 +61,23 @@ backwards — so, explicitly:
 | **WKWebView** | macOS / iOS | WebKit (Safari's)                             |
 | **WebKitGTK** | Linux       | WebKit, with media delegated to **GStreamer** |
 
-`WebView2` is the Chromium one. Suspicion therefore runs
-**WebKitGTK on an old LTS ≫ WKWebView > WebView2**: Windows should be a non-event precisely
-_because_ it is Chromium — the same engine family as the Electron you would otherwise bundle, the
-same IndexedDB, the same WebCodecs with libaom AV1 encode.
+`WebView2` is the Chromium one. Suspicion therefore runs **WebKitGTK on an old
+LTS ≫ WKWebView > WebView2**: Windows should be a non-event precisely _because_
+it is Chromium — the same engine family as the Electron you would otherwise
+bundle, the same IndexedDB, the same WebCodecs with libaom AV1 encode.
 
-Linux is the dangerous row not because it is WebKit but because WebKitGTK hands media to GStreamer,
-so `<video>` decode of H.264 depends on which codec packages the distro installed. That is the one
-place these probes can return a genuinely BLOCKING answer.
+Linux is the dangerous row not because it is WebKit but because WebKitGTK hands
+media to GStreamer, so `<video>` decode of H.264 depends on which codec packages
+the distro installed. That is the one place these probes can return a genuinely
+BLOCKING answer.
 
-One Windows caveat that belongs to _packaging_ rather than to capability, recorded so it is not
-mistaken for a probe result: WebView2 is a **runtime dependency**, not something baked into the
-binary. It ships with Windows 11 and current Windows 10, but an older or stripped install needs the
-bootstrapper, so an installer has to detect and fetch it. The Fixed Version mode — bundling a pinned
-WebView2 instead — quietly reimports Electron's problem, since you would then own its update duty
-and its size.
+One Windows caveat that belongs to _packaging_ rather than to capability,
+recorded so it is not mistaken for a probe result: WebView2 is a **runtime
+dependency**, not something baked into the binary. It ships with Windows 11 and
+current Windows 10, but an older or stripped install needs the bootstrapper, so
+an installer has to detect and fetch it. The Fixed Version mode — bundling a
+pinned WebView2 instead — quietly reimports Electron's problem, since you would
+then own its update duty and its size.
 
 Then press **Rebuild Markdown** and paste the block into _Results_.
 
@@ -83,16 +92,19 @@ Then press **Rebuild Markdown** and paste the block into _Results_.
 | `src-tauri/src/main.rs`        | the window, plus a small loopback server and `POST /save/<name>`                          |
 | `out/`                         | artifacts the video probe saved, for cross-checking against the Rust decoders; gitignored |
 
-`src-tauri` is **its own cargo workspace** on purpose. If it joined the root workspace, `cargo test`
-and `just ci` would start building Tauri on every run — so the repo's gates never see this
-directory, and building it is always a deliberate act from inside it.
+`src-tauri` is **its own cargo workspace** on purpose. If it joined the root
+workspace, `cargo test` and `just ci` would start building Tauri on every run —
+so the repo's gates never see this directory, and building it is always a
+deliberate act from inside it.
 
 ## Question 1 — does the mirror work?
 
-`probe-indexeddb.js` uses the schema copied verbatim from `openMirror()` and performs what the live
-cache performs: clear-and-replace per kind inside one `rw` transaction across seven stores, then
-`bulkPut`/`bulkDelete` deltas, then `liveQuery` observation. A probe on a simpler schema would prove
-nothing, because the parts historically weakest on WebKit are the ones we lean on hardest.
+`probe-indexeddb.js` uses the schema copied verbatim from `openMirror()` and
+performs what the live cache performs: clear-and-replace per kind inside one
+`rw` transaction across seven stores, then `bulkPut`/`bulkDelete` deltas, then
+`liveQuery` observation. A probe on a simpler schema would prove nothing,
+because the parts historically weakest on WebKit are the ones we lean on
+hardest.
 
 | step                         | why it is in here                                                                                                                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -106,82 +118,95 @@ nothing, because the parts historically weakest on WebKit are the ones we lean o
 | storage quota + persistence  | informational: `persist()` refusing is fine — the mirror is disposable and any doubt sends a full snapshot                            |
 | write reload marker          | arms the next run's persistence check                                                                                                 |
 
-**PASS** means every step green, in both origin modes, with the byte checks intact. A red
-`liveQuery` row is disqualifying on its own: without it the UI does not update.
+**PASS** means every step green, in both origin modes, with the byte checks
+intact. A red `liveQuery` row is disqualifying on its own: without it the UI
+does not update.
 
 ### Workarounds, if it fails
 
-In rough order of preference — the first two are already designed, not inventions:
+In rough order of preference — the first two are already designed, not
+inventions:
 
-1. **A memory-only mirror.** [`../MOBILE.md`](../plans/MOBILE.md) works through what the mirror actually
-   buys a client whose node is zero hops away, and the answer is mostly reactivity rather than
-   storage. A pluggable backing store behind `mirror.js` — memory locally, Dexie for remote
-   clients — is a contained change, because the conventions cop already enforces one owner for
+1. **A memory-only mirror.** [`../MOBILE.md`](../plans/MOBILE.md) works through
+   what the mirror actually buys a client whose node is zero hops away, and the
+   answer is mostly reactivity rather than storage. A pluggable backing store
+   behind `mirror.js` — memory locally, Dexie for remote clients — is a
+   contained change, because the conventions cop already enforces one owner for
    Dexie and there is exactly one `liveQuery` call site. It also discharges the
    "forget this browser" obligations by construction.
-2. **Move persistence to the node.** It already has SQLite. `prefs` and the two fingerprinted
-   fetch caches become a small endpoint, and the durable side of the wire becomes the durable side
-   of the design.
-3. **`localStorage` for `prefs` only.** Kilobytes, supported everywhere, covers the one table whose
-   loss a user would notice (remembered view mode per document).
-4. **Tauri's own store or filesystem plugin.** Works, and it is the last resort: the UI would start
-   depending on Tauri APIs, which forks the client and breaks the client-agnostic API rule that
-   makes every other client possible.
+2. **Move persistence to the node.** It already has SQLite. `prefs` and the two
+   fingerprinted fetch caches become a small endpoint, and the durable side of
+   the wire becomes the durable side of the design.
+3. **`localStorage` for `prefs` only.** Kilobytes, supported everywhere, covers
+   the one table whose loss a user would notice (remembered view mode per
+   document).
+4. **Tauri's own store or filesystem plugin.** Works, and it is the last resort:
+   the UI would start depending on Tauri APIs, which forks the client and breaks
+   the client-agnostic API rule that makes every other client possible.
 
 ## Question 2 — can it do the video ingest?
 
-`probe-video.js` reports **decode and encode separately**, because the two failure modes are not
-equally bad and a single verdict would hide the difference:
+`probe-video.js` reports **decode and encode separately**, because the two
+failure modes are not equally bad and a single verdict would hide the
+difference:
 
-- **HAPPY** — `pickLane()` routes to `av1`, the lane completes, and the output re-decodes here.
-- **DEGRADED** — no MediaRecorder AV1, so the universal `frames` lane carries it. Workable, and
-  anticipated by design; the cost is bandwidth (video-ingest measured ~1.6MB vs ~58MB for 20s of
-  4K source).
-- **BLOCKING** — the webview cannot decode the input at all, or has no `AudioEncoder`. Then there
-  is nothing to launder and video upload is unavailable on that platform.
+- **HAPPY** — `pickLane()` routes to `av1`, the lane completes, and the output
+  re-decodes here.
+- **DEGRADED** — no MediaRecorder AV1, so the universal `frames` lane carries
+  it. Workable, and anticipated by design; the cost is bandwidth (video-ingest
+  measured ~1.6MB vs ~58MB for 20s of 4K source).
+- **BLOCKING** — the webview cannot decode the input at all, or has no
+  `AudioEncoder`. Then there is nothing to launder and video upload is
+  unavailable on that platform.
 
-The capability matrix covers secure context, `MediaRecorder.isTypeSupported` across five types,
-`VideoEncoder`/`VideoDecoder`/`AudioEncoder` config support, `<video>.canPlayType` across seven
-codecs, `captureStream`, `canvas.toBlob`, `decodeAudioData`, plus two informational rows —
-`ImageDecoder` (Chromium-only, and video-ingest uses it in its _test_ only, so its absence is not a
-finding) and `SharedArrayBuffer` (which would gate any wasm-codec workaround).
+The capability matrix covers secure context, `MediaRecorder.isTypeSupported`
+across five types, `VideoEncoder`/`VideoDecoder`/`AudioEncoder` config support,
+`<video>.canPlayType` across seven codecs, `captureStream`, `canvas.toBlob`,
+`decodeAudioData`, plus two informational rows — `ImageDecoder` (Chromium-only,
+and video-ingest uses it in its _test_ only, so its absence is not a finding)
+and `SharedArrayBuffer` (which would gate any wasm-codec workaround).
 
-Then it runs the real `ingestVideo()` on a file you pick, for whichever lanes you ask, and checks
-the output **re-decodes** — a lane that "succeeds" while emitting something unreadable is a failure
-we would otherwise discover on the server. Outputs go to `out/` through the harness's save
-endpoint rather than a webview download, because download support is uneven and a POST is not.
+Then it runs the real `ingestVideo()` on a file you pick, for whichever lanes
+you ask, and checks the output **re-decodes** — a lane that "succeeds" while
+emitting something unreadable is a failure we would otherwise discover on the
+server. Outputs go to `out/` through the harness's save endpoint rather than a
+webview download, because download support is uneven and a POST is not.
 
-**Pick a real video.** A phone's H.264 is the input that matters, and it is precisely what a
-GStreamer-backed WebKitGTK may not decode. The **Generate fixture** button exists for convenience
-and uses MediaRecorder — itself under test — so a failure there is reported as "cannot generate a
-fixture", never as an ingest result.
+**Pick a real video.** A phone's H.264 is the input that matters, and it is
+precisely what a GStreamer-backed WebKitGTK may not decode. The **Generate
+fixture** button exists for convenience and uses MediaRecorder — itself under
+test — so a failure there is reported as "cannot generate a fixture", never as
+an ingest result.
 
 ### Workarounds, if it fails
 
-1. **No AV1 encode → nothing to do.** The `frames` lane _is_ the designed answer. Record the size
-   cost and move on.
-2. **No `AudioEncoder` → upload raw PCM and encode Opus server-side.** video-ingest's README
-   already proposes this, and the reasoning holds: encoders are not a hostile-input surface, so
-   even a C `libopus` would be safe there. The node already links `unsafe-libopus`, so most of the
-   server half exists.
-3. **MediaRecorder lacks `av01` but WebCodecs `VideoEncoder` has it → rebuild the av1 lane on
-   WebCodecs.** Already video-ingest's top recommended improvement, and it widens coverage as well
-   as making encode faster than realtime. Cost: a real WebM muxer, the one piece MediaRecorder gave
-   away free. Heed the detection lesson recorded there — probe the encoder the lane actually
-   invokes, not a different one.
-4. **`<video>` cannot decode the source at all → there may be no workaround.** Rust cannot decode
-   H.264 either; that asymmetry is the entire reason the browser does the decoding. The honest
-   finding would be "video upload requires a codec-capable webview, which on Linux is a distro
-   dependency," and the options after that are ugly: ship GStreamer codec plugins (packaging and
+1. **No AV1 encode → nothing to do.** The `frames` lane _is_ the designed
+   answer. Record the size cost and move on.
+2. **No `AudioEncoder` → upload raw PCM and encode Opus server-side.**
+   video-ingest's README already proposes this, and the reasoning holds:
+   encoders are not a hostile-input surface, so even a C `libopus` would be safe
+   there. The node already links `unsafe-libopus`, so most of the server half
+   exists.
+3. **MediaRecorder lacks `av01` but WebCodecs `VideoEncoder` has it → rebuild
+   the av1 lane on WebCodecs.** Already video-ingest's top recommended
+   improvement, and it widens coverage as well as making encode faster than
+   realtime. Cost: a real WebM muxer, the one piece MediaRecorder gave away
+   free. Heed the detection lesson recorded there — probe the encoder the lane
+   actually invokes, not a different one.
+4. **`<video>` cannot decode the source at all → there may be no workaround.**
+   Rust cannot decode H.264 either; that asymmetry is the entire reason the
+   browser does the decoding. The honest finding would be "video upload requires
+   a codec-capable webview, which on Linux is a distro dependency," and the
+   options after that are ugly: ship GStreamer codec plugins (packaging and
    patent questions) or disable video upload on affected systems.
-5. **If video is impractical across platform webviews generally**, that is an argument for Electron
-   independent of the IndexedDB result — and the two questions should then be weighed together
-   rather than separately.
+5. **If video is impractical across platform webviews generally**, that is an
+   argument for Electron independent of the IndexedDB result — and the two
+   questions should then be weighed together rather than separately.
 
 ## Results
 
-Fill in per platform **and** per origin mode. Paste the harness's Markdown export under each
-heading; the summary table is the part DESKTOP.md reads.
+Fill in per platform **and** per origin mode. Paste the harness's Markdown
+export under each heading; the summary table is the part DESKTOP.md reads.
 
 | platform                     | engine                | origin mode | IndexedDB                           | video                   | notes                                                                                                    |
 | ---------------------------- | --------------------- | ----------- | ----------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -192,118 +217,137 @@ heading; the summary table is the part DESKTOP.md reads.
 | Windows (WebView2)           |                       | `scheme`    |                                     |                         |                                                                                                          |
 | Linux, old LTS (WebKitGTK)   |                       | `http`      |                                     |                         |                                                                                                          |
 
-**Verdict, called 2026-08-11: Tauri is sufficient for our purposes.** Both WebKit engines run the
-mirror, neither blocks video, and the deciding experiment DESKTOP.md named — _does the Dexie mirror
-survive WKWebView and WebKitGTK?_ — came back **yes on both**. Dexie stays; the memory-mirror
-workaround is not needed for desktop. The outstanding items below are scoping notes, not blockers.
+**Verdict, called 2026-08-11: Tauri is sufficient for our purposes.** Both
+WebKit engines run the mirror, neither blocks video, and the deciding experiment
+DESKTOP.md named — _does the Dexie mirror survive WKWebView and WebKitGTK?_ —
+came back **yes on both**. Dexie stays; the memory-mirror workaround is not
+needed for desktop. The outstanding items below are scoping notes, not blockers.
 
-Two predictions in this file were wrong, and both are recorded rather than quietly amended:
+Two predictions in this file were wrong, and both are recorded rather than
+quietly amended:
 
-1. **Linux was supposed to be the dangerous row.** It is the _only_ row that reached the happy `av1`
-   lane. WebKitGTK's MediaRecorder muxes AV1 on Ubuntu 26.04; WKWebView's does not.
-2. **The mirror was supposed to be the risk.** It passed everywhere, including the 8MB Blob
-   round-trips that were the specific worry.
+1. **Linux was supposed to be the dangerous row.** It is the _only_ row that
+   reached the happy `av1` lane. WebKitGTK's MediaRecorder muxes AV1 on Ubuntu
+   26.04; WKWebView's does not.
+2. **The mirror was supposed to be the risk.** It passed everywhere, including
+   the 8MB Blob round-trips that were the specific worry.
 
 ### macOS (WKWebView), origin mode `http` — 2026-08-11
 
 Full export below. What it means, in the order it matters:
 
-**The mirror passes cleanly, including the parts expected to be fragile.** `liveQuery` fired and
-reacted to a write — the disqualifying row, green. Both 8MB round-trips came back byte-identical,
-which is the classic WebKit sore spot and it is clean. The snapshot applied 2000 docs plus 2000
-search rows across seven stores in 92ms. On this engine the pluggable-store workaround is not
+**The mirror passes cleanly, including the parts expected to be fragile.**
+`liveQuery` fired and reacted to a write — the disqualifying row, green. Both
+8MB round-trips came back byte-identical, which is the classic WebKit sore spot
+and it is clean. The snapshot applied 2000 docs plus 2000 search rows across
+seven stores in 92ms. On this engine the pluggable-store workaround is not
 needed.
 
-**One posture note, not a failure:** `persisted=false` and `persist()=false` — WebKit refuses
-storage persistence, so the mirror here is genuinely evictable (~19GB quota, but no promise it
-survives disuse). The design already tolerates this: the mirror is disposable and any doubt sends a
-full snapshot. It is worth remembering when weighing what the persistence tier buys, since it buys
-less on an engine that can evict it at will.
+**One posture note, not a failure:** `persisted=false` and `persist()=false` —
+WebKit refuses storage persistence, so the mirror here is genuinely evictable
+(~19GB quota, but no promise it survives disuse). The design already tolerates
+this: the mirror is disposable and any doubt sends a full snapshot. It is worth
+remembering when weighing what the persistence tier buys, since it buys less on
+an engine that can evict it at will.
 
-**Video is DEGRADED, and the reason is our code rather than the engine.** `MediaRecorder` supports
-neither `av01` type, so `pickLane()` routes to `frames` — but **`VideoEncoder.isConfigSupported`
-reports `av01.0.04M.08` supported.** WKWebView can encode AV1; it just cannot _mux_ it through
-MediaRecorder.
+**Video is DEGRADED, and the reason is our code rather than the engine.**
+`MediaRecorder` supports neither `av01` type, so `pickLane()` routes to `frames`
+— but **`VideoEncoder.isConfigSupported` reports `av01.0.04M.08` supported.**
+WKWebView can encode AV1; it just cannot _mux_ it through MediaRecorder.
 
-That is precisely the asymmetry video-ingest recorded for Firefox, now confirmed on a second
-engine — which promotes workaround 3 above from hypothetical to evidenced. **Rebuilding the av1
-lane on WebCodecs plus a real WebM muxer would recover the compact lane on macOS**, turning this
-platform's ~58MB of APNG back into ~1.6MB. It is already video-ingest's top recommended
-improvement; this row is the argument for actually doing it.
+That is precisely the asymmetry video-ingest recorded for Firefox, now confirmed
+on a second engine — which promotes workaround 3 above from hypothetical to
+evidenced. **Rebuilding the av1 lane on WebCodecs plus a real WebM muxer would
+recover the compact lane on macOS**, turning this platform's ~58MB of APNG back
+into ~1.6MB. It is already video-ingest's top recommended improvement; this row
+is the argument for actually doing it.
 
-The rebuild also sidesteps the other gap here: **`HTMLMediaElement.captureStream` is absent**, so the
-current av1 lane's audio tap could not work on this engine even if MediaRecorder could mux AV1. A
-WebCodecs lane would take the frames lane's audio path (`decodeAudioData` → `AudioEncoder`, both
-present) and need no tap at all.
+The rebuild also sidesteps the other gap here:
+**`HTMLMediaElement.captureStream` is absent**, so the current av1 lane's audio
+tap could not work on this engine even if MediaRecorder could mux AV1. A
+WebCodecs lane would take the frames lane's audio path (`decodeAudioData` →
+`AudioEncoder`, both present) and need no tap at all.
 
-**Nothing is blocking.** `<video>` reports it can play all seven probed types including H.264 and
-HEVC, so the hostile decode the whole premise rests on is available. `AudioEncoder` Opus is
-supported, so both lanes can emit Opus.
+**Nothing is blocking.** `<video>` reports it can play all seven probed types
+including H.264 and HEVC, so the hostile decode the whole premise rests on is
+available. `AudioEncoder` Opus is supported, so both lanes can emit Opus.
 
 **Two gaps in this row, both real:**
 
-1. **The reload check never ran** — it needs a second pass with a reload between, so persistence
-   across restart is unproven here. The marker is armed at 1951 docs.
-2. **No end-to-end ingest run.** The capability matrix says the pieces exist; it does not say the
-   `frames` lane completes. That distinction is not pedantic — video-ingest's own Firefox lesson is
-   that a capability probe can route a lane into a throw. The remaining risk sits in the hand-rolled
-   parts: the per-frame `<video>` seek loop (seek behaviour differs by engine) and the APNG
-   assembly. The APNG chunk parsing was checked and is generic — it walks every chunk and
-   concatenates all IDAT payloads, so a different PNG encoder's layout will not break it — which
-   leaves the seek loop as the thing to watch.
+1. **The reload check never ran** — it needs a second pass with a reload
+   between, so persistence across restart is unproven here. The marker is armed
+   at 1951 docs.
+2. **No end-to-end ingest run.** The capability matrix says the pieces exist; it
+   does not say the `frames` lane completes. That distinction is not pedantic —
+   video-ingest's own Firefox lesson is that a capability probe can route a lane
+   into a throw. The remaining risk sits in the hand-rolled parts: the per-frame
+   `<video>` seek loop (seek behaviour differs by engine) and the APNG assembly.
+   The APNG chunk parsing was checked and is generic — it walks every chunk and
+   concatenates all IDAT payloads, so a different PNG encoder's layout will not
+   break it — which leaves the seek loop as the thing to watch.
 
 **A harness gap this row exposed, now fixed.** WKWebView reports a frozen UA
-(`Intel Mac OS X 10_15_7`, no Safari token), so the export identified the engine _family_ and
-nothing more — a row nobody could interpret later. The harness now reports
-`tauri::webview_version()` and the real OS version instead, passed down in the query string; this
-machine is **WebKit 21624.4.5.11.5 on macOS 26.6.1**, which is what the table above records.
+(`Intel Mac OS X 10_15_7`, no Safari token), so the export identified the engine
+_family_ and nothing more — a row nobody could interpret later. The harness now
+reports `tauri::webview_version()` and the real OS version instead, passed down
+in the query string; this machine is **WebKit 21624.4.5.11.5 on macOS 26.6.1**,
+which is what the table above records.
 
-Provenance, stated because it matters for a results file: those two versions were read from a later
-launch on the same machine, not from the original export, which predates the fix. Every subsequent
-row carries them natively.
+Provenance, stated because it matters for a results file: those two versions
+were read from a later launch on the same machine, not from the original export,
+which predates the fix. Every subsequent row carries them natively.
 
 ### Ubuntu 26.04 LTS (WebKitGTK 2.52.3), origin mode `http` — 2026-08-11
 
 Raw export: [`LINUX.md`](LINUX.md). What it means:
 
-**The mirror passes here too**, including `liveQuery` and both 8MB round-trips byte-identical.
-Slower than WKWebView (148ms vs 92ms for the snapshot, 272ms vs 53ms for the Blob) and entirely
-acceptable.
+**The mirror passes here too**, including `liveQuery` and both 8MB round-trips
+byte-identical. Slower than WKWebView (148ms vs 92ms for the snapshot, 272ms vs
+53ms for the Blob) and entirely acceptable.
 
-**`LINUX.md` records the verdict as FAIL. That verdict was a harness bug, not a result.** The
-storage-posture step is documented in this file and in its own code comment as informational and
-unable to fail a run — and was then implemented with a `throw`, so an engine with no
-`navigator.storage` failed the whole probe while every load-bearing row passed. Fixed the same day:
-`informational` is now a flag on the step rather than a claim in a comment, the verdict excludes such
-steps, and they no longer render as failures. **Read that row as PASS.** The raw export is left
-as-exported rather than edited, because a results file that quietly corrects itself is worth less
-than one that shows its scars.
+**`LINUX.md` records the verdict as FAIL. That verdict was a harness bug, not a
+result.** The storage-posture step is documented in this file and in its own
+code comment as informational and unable to fail a run — and was then
+implemented with a `throw`, so an engine with no `navigator.storage` failed the
+whole probe while every load-bearing row passed. Fixed the same day:
+`informational` is now a flag on the step rather than a claim in a comment, the
+verdict excludes such steps, and they no longer render as failures. **Read that
+row as PASS.** The raw export is left as-exported rather than edited, because a
+results file that quietly corrects itself is worth less than one that shows its
+scars.
 
-The engine fact underneath it is real and worth keeping: **WebKitGTK 2.52.3 has no StorageManager at
-all**, so there is no quota signal and persistence cannot even be requested. The mirror is fully
-evictable there. Tolerable by design — the mirror is disposable and any doubt sends a full snapshot —
-and one more reason the persistence tier buys less than it appears to.
+The engine fact underneath it is real and worth keeping: **WebKitGTK 2.52.3 has
+no StorageManager at all**, so there is no quota signal and persistence cannot
+even be requested. The mirror is fully evictable there. Tolerable by design —
+the mirror is disposable and any doubt sends a full snapshot — and one more
+reason the persistence tier buys less than it appears to.
 
-**Video reached the happy path**, which is the inversion. `MediaRecorder` supports
-`video/webm;codecs=av01,opus`, so `pickLane()` routed to `av1` — the compact lane, unavailable on
-macOS. **But this is a property of the install, not of the engine.** WebKitGTK delegates media to
-GStreamer, so AV1 muxing depends on which plugins Ubuntu 26.04 shipped; another distro, or a
-stripped container, may answer differently. The consequence is not doubt about Tauri, it is that the
-product must probe at runtime and degrade per machine — which `pickLane()` already does. It does mean
-**no Linux capability can be stated as a platform requirement**, which is harder to document than a
-uniform answer would have been.
+**Video reached the happy path**, which is the inversion. `MediaRecorder`
+supports `video/webm;codecs=av01,opus`, so `pickLane()` routed to `av1` — the
+compact lane, unavailable on macOS. **But this is a property of the install, not
+of the engine.** WebKitGTK delegates media to GStreamer, so AV1 muxing depends
+on which plugins Ubuntu 26.04 shipped; another distro, or a stripped container,
+may answer differently. The consequence is not doubt about Tauri, it is that the
+product must probe at runtime and degrade per machine — which `pickLane()`
+already does. It does mean **no Linux capability can be stated as a platform
+requirement**, which is harder to document than a uniform answer would have
+been.
 
-**One claim in this row not to lean on:** every `canPlayType` returned `probably`, _including HEVC_.
-WebKitGTK answers from GStreamer's registry rather than from real decode capability, so on this
-engine `canPlayType` is an optimistic guess. That raises the value of the end-to-end run rather than
+**One claim in this row not to lean on:** every `canPlayType` returned
+`probably`, _including HEVC_. WebKitGTK answers from GStreamer's registry rather
+than from real decode capability, so on this engine `canPlayType` is an
+optimistic guess. That raises the value of the end-to-end run rather than
 substituting for it.
 
 ### macOS raw export
 
-- **Webview:** `WebKit 21624.4.5.11.5` · **OS:** `macos 26.6.1` (both backfilled — see above)
-- **Origin:** `http://127.0.0.1:61912` · secureContext=true · crossOriginIsolated=false
+- **Webview:** `WebKit 21624.4.5.11.5` · **OS:** `macos 26.6.1` (both backfilled
+  — see above)
+- **Origin:** `http://127.0.0.1:61912` · secureContext=true ·
+  crossOriginIsolated=false
 - **Tested:** Dexie 4.4.4, video-ingest `ad9dbd5`
-- **UA (identifies nothing, kept for completeness):** `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)`
+- **UA (identifies nothing, kept for completeness):**
+  `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)`
 
 IndexedDB verdict: **PASS (reload check pending)**
 
@@ -351,45 +395,52 @@ No end-to-end ingest run.
 
 ### What is still outstanding
 
-The shell decision no longer waits on any of these. They are the difference between "Tauri can host
-this" (settled) and "video upload works" (not yet observed).
+The shell decision no longer waits on any of these. They are the difference
+between "Tauri can host this" (settled) and "video upload works" (not yet
+observed).
 
-1. **No end-to-end ingest run on either platform.** The capability matrices say the pieces exist;
-   nobody has watched a lane complete and emit valid output. **This is an inference, not an
-   observation**, and video-ingest's own history is exactly a case where a capability probe routed a
-   lane into a throw. Worth closing before video upload ships; not before a shell is chosen.
-2. **The reload check on both rows.** Two runs with a reload between. Unproven persistence across
-   restart on either engine, and on WebKitGTK it is the more interesting question, given there is no
-   StorageManager to ask.
-3. **The `scheme` origin mode, everywhere.** Both rows so far are `http`. Storage is origin-
-   partitioned, so a custom-scheme result is not implied by a loopback one.
-4. **Windows.** A formality — WebView2 is Chromium — and worth one run to confirm rather than assume.
-5. **An older Linux.** Ubuntu 26.04 is current. The install-dependent AV1 finding above means an
-   older or more minimal system is the interesting comparison, not a redundant one.
+1. **No end-to-end ingest run on either platform.** The capability matrices say
+   the pieces exist; nobody has watched a lane complete and emit valid output.
+   **This is an inference, not an observation**, and video-ingest's own history
+   is exactly a case where a capability probe routed a lane into a throw. Worth
+   closing before video upload ships; not before a shell is chosen.
+2. **The reload check on both rows.** Two runs with a reload between. Unproven
+   persistence across restart on either engine, and on WebKitGTK it is the more
+   interesting question, given there is no StorageManager to ask.
+3. **The `scheme` origin mode, everywhere.** Both rows so far are `http`.
+   Storage is origin- partitioned, so a custom-scheme result is not implied by a
+   loopback one.
+4. **Windows.** A formality — WebView2 is Chromium — and worth one run to
+   confirm rather than assume.
+5. **An older Linux.** Ubuntu 26.04 is current. The install-dependent AV1
+   finding above means an older or more minimal system is the interesting
+   comparison, not a redundant one.
 
 ## What this spike does not answer
 
-- **The WebSocket-through-a-custom-scheme wrinkle.** DESKTOP.md flags that WebSocket upgrades do
-  not route through a custom protocol handler, so the live-cache stream needs a real
-  `ws://127.0.0.1:<port>` URL and its origin differs from the page's. That is a separate question
-  about the _stream_, not about storage or codecs, and it is deliberately out of scope here — do
-  not read a green result below as covering it.
-- **Whether the node should run in-process.** This harness spawns nothing and links nothing; it
-  serves static files. The in-process question needs the `lib.rs` split and belongs to
-  [`../MOBILE.md`](../plans/MOBILE.md).
-- **Anything about the engine on a machine other than the one you ran it on.** One row of the
-  matrix is one row.
-- **Performance under a real persona.** The probe's 2000 docs are a plausible load, not a measured
-  one.
+- **The WebSocket-through-a-custom-scheme wrinkle.** DESKTOP.md flags that
+  WebSocket upgrades do not route through a custom protocol handler, so the
+  live-cache stream needs a real `ws://127.0.0.1:<port>` URL and its origin
+  differs from the page's. That is a separate question about the _stream_, not
+  about storage or codecs, and it is deliberately out of scope here — do not
+  read a green result below as covering it.
+- **Whether the node should run in-process.** This harness spawns nothing and
+  links nothing; it serves static files. The in-process question needs the
+  `lib.rs` split and belongs to [`../MOBILE.md`](../plans/MOBILE.md).
+- **Anything about the engine on a machine other than the one you ran it on.**
+  One row of the matrix is one row.
+- **Performance under a real persona.** The probe's 2000 docs are a plausible
+  load, not a measured one.
 
 ## Honest limitations
 
-- The `av1` lane records at **playback speed** (MediaRecorder), so a three-minute clip takes three
-  minutes. Use short clips.
-- `icons/icon.png` is a generated 64×64 ring, committed only because Tauri's codegen refuses to
-  build without an icon at the default path.
-- The harness server is ~200 lines of hand-rolled HTTP: GET, one POST route, loopback, one thread
-  per connection. It refuses path traversal by canonicalize-then-prefix-check, and that is the
-  extent of its hardening. It is a fixture.
-- `Cargo.lock` is not gitignored. Committing it pins the Tauri and wry versions a result was
-  obtained against, which for this spike is part of the evidence.
+- The `av1` lane records at **playback speed** (MediaRecorder), so a
+  three-minute clip takes three minutes. Use short clips.
+- `icons/icon.png` is a generated 64×64 ring, committed only because Tauri's
+  codegen refuses to build without an icon at the default path.
+- The harness server is ~200 lines of hand-rolled HTTP: GET, one POST route,
+  loopback, one thread per connection. It refuses path traversal by
+  canonicalize-then-prefix-check, and that is the extent of its hardening. It is
+  a fixture.
+- `Cargo.lock` is not gitignored. Committing it pins the Tauri and wry versions
+  a result was obtained against, which for this spike is part of the evidence.

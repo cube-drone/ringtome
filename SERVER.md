@@ -1,28 +1,33 @@
 # Running a Ringtome server node
 
-**Horse Drawing Tycoon 2** is the app people install; underneath, every copy runs a **Ringtome** node.
-This page is for running one on a server instead - a node other people's apps and browsers can
-reach, or one you keep online for yourself (see README's _Two names_).
+**Horse Drawing Tycoon 2** is the app people install; underneath, every copy
+runs a **Ringtome** node. This page is for running one on a server instead - a
+node other people's apps and browsers can reach, or one you keep online for
+yourself (see README's _Two names_).
 
-Each release on GitHub carries two kinds of download, and it is worth knowing which is which:
+Each release on GitHub carries two kinds of download, and it is worth knowing
+which is which:
 
 | file                                                                             | what it is                                                                                                                                       |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Horse Drawing Tycoon 2_…` (`.dmg`, `.exe`, `.msi`, `.AppImage`, `.deb`, `.rpm`) | the **desktop app**: a window, a tray, updates itself                                                                                            |
 | `ringtome-server-<version>-<name>-linux-<arch>.tar.gz`                           | the **server node** for a Linux host, no window: `ringtome` (the node) and `ringtome-supervisor` (which keeps it running, updated and backed up) |
 
-The server node also ships as a container image: `ghcr.io/cube-drone/ringtome:<version>` (and
-`:latest`), for `linux/amd64` and `linux/arm64`.
+The server node also ships as a container image:
+`ghcr.io/cube-drone/ringtome:<version>` (and `:latest`), for `linux/amd64` and
+`linux/arm64`.
 
 ## Checking what you downloaded
 
-Every server tarball is signed with the same key that signs the desktop app's updates, and each
-release carries `server-latest.json` - the version, and for each architecture the tarball's URL,
-signature and sha256 - at a fixed address that always names the newest release:
+Every server tarball is signed with the same key that signs the desktop app's
+updates, and each release carries `server-latest.json` - the version, and for
+each architecture the tarball's URL, signature and sha256 - at a fixed address
+that always names the newest release:
 `https://github.com/cube-drone/ringtome/releases/latest/download/server-latest.json`.
 
-To check a tarball by hand with [minisign](https://jedisct1.github.io/minisign/): the `.sig` beside
-it is the signature, base64-wrapped.
+To check a tarball by hand with
+[minisign](https://jedisct1.github.io/minisign/): the `.sig` beside it is the
+signature, base64-wrapped.
 
 ```sh
 base64 -d ringtome-server-…-linux-x86_64.tar.gz.sig > tarball.minisig
@@ -30,8 +35,9 @@ minisign -V -P RWS8OTS+AgxV50ecE3P4OKhhLRQrosZc08PVRsF6mcQjK3wWIM9LzRgx \
   -m ringtome-server-…-linux-x86_64.tar.gz -x tarball.minisig
 ```
 
-The container image is signed keylessly with [cosign](https://docs.sigstore.dev/): the signature
-says it was built by this repository's release workflow at a release tag, with no key to trust but
+The container image is signed keylessly with
+[cosign](https://docs.sigstore.dev/): the signature says it was built by this
+repository's release workflow at a release tag, with no key to trust but
 GitHub's.
 
 ```sh
@@ -42,10 +48,11 @@ cosign verify ghcr.io/cube-drone/ringtome:<version> \
 
 ## Which to use
 
-**The container**, if you already deploy with Docker or anything that runs OCI images - updating
-it is your container tooling's job. **The supervisor**, if you want a node that keeps itself up to
-date and backed up on a plain Linux host. **The binary alone**, if you would rather do all of that
-yourself. The tarball needs nothing but a Linux with glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu
+**The container**, if you already deploy with Docker or anything that runs OCI
+images - updating it is your container tooling's job. **The supervisor**, if you
+want a node that keeps itself up to date and backed up on a plain Linux host.
+**The binary alone**, if you would rather do all of that yourself. The tarball
+needs nothing but a Linux with glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu
 20.04 and everything after), on x86_64 or aarch64.
 
 ## The container
@@ -58,9 +65,9 @@ docker run -d --name ringtome \
   ghcr.io/cube-drone/ringtome:latest
 ```
 
-The image is `distroless`, runs as a non-root user (uid 65532), and sets its defaults out loud
-(see the table below): production mode, the public network, HTTP on 5281, peer-to-peer on 5282/udp,
-data in `/data`.
+The image is `distroless`, runs as a non-root user (uid 65532), and sets its
+defaults out loud (see the table below): production mode, the public network,
+HTTP on 5281, peer-to-peer on 5282/udp, data in `/data`.
 
 ## The binary
 
@@ -71,30 +78,36 @@ RINGTOME_BIND_ADDRESS=0.0.0.0 RINGTOME_DATA_DIRECTORY=/var/lib/ringtome \
   ./ringtome
 ```
 
-A release binary is a production node on the public network by default. Supervise it the way you
-supervise anything else (a systemd unit, `Restart=always`) - or let the supervisor do it.
+A release binary is a production node on the public network by default.
+Supervise it the way you supervise anything else (a systemd unit,
+`Restart=always`) - or let the supervisor do it.
 
 ## The supervisor
 
-`ringtome-supervisor` is a small program that runs the node as its child and does the three things
-a node on a server needs and systemd cannot know how to do:
+`ringtome-supervisor` is a small program that runs the node as its child and
+does the three things a node on a server needs and systemd cannot know how to
+do:
 
-- **keeps it running**: restarts the node when it exits, waiting a little longer after each quick
-  crash (up to a minute);
-- **keeps it current**: checks `server-latest.json` hourly, and installs a newer release only after
-  checking its sha256 **and** its signature against the release key built into the supervisor;
-- **keeps it safe to update**: backs the node up before each update, starts the new version, and
-  waits for it to answer `/health` and stay healthy for a minute. If it doesn't, the supervisor
-  **rolls back** - the previous binary _and_ the backup, since nothing migrates down - and never
-  tries that version again. A newer release is tried, since it may be the fix.
+- **keeps it running**: restarts the node when it exits, waiting a little longer
+  after each quick crash (up to a minute);
+- **keeps it current**: checks `server-latest.json` hourly, and installs a newer
+  release only after checking its sha256 **and** its signature against the
+  release key built into the supervisor;
+- **keeps it safe to update**: backs the node up before each update, starts the
+  new version, and waits for it to answer `/health` and stay healthy for a
+  minute. If it doesn't, the supervisor **rolls back** - the previous binary
+  _and_ the backup, since nothing migrates down - and never tries that version
+  again. A newer release is tried, since it may be the fix.
 
-The backup before an update is taken live through the node's own backup endpoint, so the node only
-stops for the swap; if the node won't answer, it is stopped and its data directory archived directly.
-No backup, no update - unless you turn backups off (below). A restore moves the data directory's
-contents aside into `.rollback-<time>` first, and removes that once the restored node is healthy.
+The backup before an update is taken live through the node's own backup
+endpoint, so the node only stops for the swap; if the node won't answer, it is
+stopped and its data directory archived directly. No backup, no update - unless
+you turn backups off (below). A restore moves the data directory's contents
+aside into `.rollback-<time>` first, and removes that once the restored node is
+healthy.
 
-The supervisor does not update itself. It is meant to change rarely; replace it by hand from a newer
-tarball when a release says to.
+The supervisor does not update itself. It is meant to change rarely; replace it
+by hand from a newer tarball when a release says to.
 
 ```ini
 # /etc/systemd/system/ringtome.service
@@ -118,100 +131,114 @@ TimeoutStopSec=45
 WantedBy=multi-user.target
 ```
 
-With that unit, the node's data is `/var/lib/ringtome/data`, installed versions and the state file
-are in `/var/lib/ringtome/ringtome-supervisor/`, and backups go to
-`/var/lib/ringtome/ringtome-supervisor/backups/`. On first start the supervisor adopts the `ringtome`
-it was unpacked beside, so the node you checked is the one that runs; after that it downloads its
-own. Everything the node reads from the environment is passed through, so configure the node here
-exactly as you would without the supervisor. `state.json` says what is running, what ran before, and
-what was skipped; `node.pid` holds the node's process id.
+With that unit, the node's data is `/var/lib/ringtome/data`, installed versions
+and the state file are in `/var/lib/ringtome/ringtome-supervisor/`, and backups
+go to `/var/lib/ringtome/ringtome-supervisor/backups/`. On first start the
+supervisor adopts the `ringtome` it was unpacked beside, so the node you checked
+is the one that runs; after that it downloads its own. Everything the node reads
+from the environment is passed through, so configure the node here exactly as
+you would without the supervisor. `state.json` says what is running, what ran
+before, and what was skipped; `node.pid` holds the node's process id.
 
 ## HTTPS is required - and it is yours
 
-The node speaks plain HTTP. Put your own HTTPS proxy in front of it (Caddy, nginx, Traefik, your
-platform's load balancer). This is not optional: browsers only allow notifications, service workers
-and the rest of what the app needs on a secure origin, so a node served over plain HTTP from anywhere
-but `localhost` quietly loses features. Set `RINGTOME_PUBLIC_URL` to the HTTPS address people use, so
-the links the node mints point there.
+The node speaks plain HTTP. Put your own HTTPS proxy in front of it (Caddy,
+nginx, Traefik, your platform's load balancer). This is not optional: browsers
+only allow notifications, service workers and the rest of what the app needs on
+a secure origin, so a node served over plain HTTP from anywhere but `localhost`
+quietly loses features. Set `RINGTOME_PUBLIC_URL` to the HTTPS address people
+use, so the links the node mints point there.
 
 ## The peer-to-peer port
 
-Nodes talk to each other over QUIC, which is UDP. Publish or open `RINGTOME_P2P_PORT` (the image uses 5282) so other nodes can connect directly. Without it the node still works - it reaches peers through
-iroh's relays - but every connection takes the long way round. On a plain Linux host,
-`--network host` for the container is the simplest way to get direct connections.
+Nodes talk to each other over QUIC, which is UDP. Publish or open
+`RINGTOME_P2P_PORT` (the image uses 5282) so other nodes can connect directly.
+Without it the node still works - it reaches peers through iroh's relays - but
+every connection takes the long way round. On a plain Linux host,
+`--network host` for the container is the simplest way to get direct
+connections.
 
 ## The data directory is the node's identity
 
-`RINGTOME_DATA_DIRECTORY` (`/data` in the image) holds the databases **and the keys that decrypt
-them and identify the node**. Lose it and the node, and everyone's accounts on it, are gone; copy it
-and you have copied the node. Back it up, and keep the backup as private as you keep the server.
+`RINGTOME_DATA_DIRECTORY` (`/data` in the image) holds the databases **and the
+keys that decrypt them and identify the node**. Lose it and the node, and
+everyone's accounts on it, are gone; copy it and you have copied the node. Back
+it up, and keep the backup as private as you keep the server.
 
 ## The Server app
 
-An account holding `node_admin` - the first account made on a server - sees a **Server** app among
-its apps. It has two pages:
+An account holding `node_admin` - the first account made on a server - sees a
+**Server** app among its apps. It has two pages:
 
-- **Registration**: who may make an account here. `open` (anyone who reaches the node, rate-limited
-  per address - a fresh server's default), `password` (sign-up asks for a password you choose and
-  share by hand), or `closed`.
-  Below it, on the same page:
-  - **Limits** - the most accounts this node holds, and a disk-use percentage (of the disk under
-    the data directory) past which it takes no more sign-ups. Each is empty for no limit; the page
-    shows where the node stands against both.
-  - **Group** - a name, for a group server: while sign-ups take a password, whoever signs up with it
-    joins the group. Their first persona, every other member, and every node administrator begin
-    knowing each other - low trust and low interest, both ways, published like any dial - tagged
-    with the group's name in each other's People list. Accounts that were here before are not
-    added, and nothing is written to anyone except when somebody joins: renaming or clearing the
-    group changes no one's settings.
-  - **Starter Friends** - people every persona made here starts out knowing, with the dials
-    you choose (low trust, medium interest, low shares unless you say otherwise), beside the app's
-    own starters. Paste a page's link or an address. Taking somebody off the list changes nobody
-    who already began with them.
-- **Backups**: make a backup and watch it go, and download the ones already made (below). Restoring
-  is not in the app yet.
+- **Registration**: who may make an account here. `open` (anyone who reaches the
+  node, rate-limited per address - a fresh server's default), `password`
+  (sign-up asks for a password you choose and share by hand), or `closed`. Below
+  it, on the same page:
+  - **Limits** - the most accounts this node holds, and a disk-use percentage
+    (of the disk under the data directory) past which it takes no more sign-ups.
+    Each is empty for no limit; the page shows where the node stands against
+    both.
+  - **Group** - a name, for a group server: while sign-ups take a password,
+    whoever signs up with it joins the group. Their first persona, every other
+    member, and every node administrator begin knowing each other - low trust
+    and low interest, both ways, published like any dial - tagged with the
+    group's name in each other's People list. Accounts that were here before are
+    not added, and nothing is written to anyone except when somebody joins:
+    renaming or clearing the group changes no one's settings.
+  - **Starter Friends** - people every persona made here starts out knowing,
+    with the dials you choose (low trust, medium interest, low shares unless you
+    say otherwise), beside the app's own starters. Paste a page's link or an
+    address. Taking somebody off the list changes nobody who already began with
+    them.
+- **Backups**: make a backup and watch it go, and download the ones already made
+  (below). Restoring is not in the app yet.
 
 ## Backups
 
-The node backs itself up without stopping. Ask it from the Server app, from the machine itself, or
-as a node administrator:
+The node backs itself up without stopping. Ask it from the Server app, from the
+machine itself, or as a node administrator:
 
 ```sh
 curl -X POST http://127.0.0.1:5281/api/admin/backup           # -> 202 {"id": "20260925T183012Z", ...}
 curl http://127.0.0.1:5281/api/admin/backup/20260925T183012Z  # 202 + the log while it runs; 200 when done
 ```
 
-The result is `backup_<UTC time>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY`. Each database is copied
-under its own lock (a brief pause for that one database, never the node), the journals after them,
-the blob store's metadata behind a moment's write pause, and the archive is renamed into place only
-once it is whole. **It contains the keys** - `envelope.key` and the key files - so it restores on its
-own, and anyone holding it holds the node. To restore: stop the node, unpack the archive into an
-empty data directory, start the node.
+The result is `backup_<UTC time>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY`. Each
+database is copied under its own lock (a brief pause for that one database,
+never the node), the journals after them, the blob store's metadata behind a
+moment's write pause, and the archive is renamed into place only once it is
+whole. **It contains the keys** - `envelope.key` and the key files - so it
+restores on its own, and anyone holding it holds the node. To restore: stop the
+node, unpack the archive into an empty data directory, start the node.
 
-A request that arrived through a proxy (an `X-Forwarded-For` header) is refused unless it carries a
-node administrator's session. A proxy on the same machine that adds no such header would look like
-the machine itself - but the endpoint only ever writes the archive to disk and reports its path, so
-the most such a request can do is start a backup, never read one. Reading one back - the list, and
-the download in the Server app (`GET /api/admin/backups`, `GET /api/admin/backups/<name>`) - takes a
-node administrator's session, never the machine alone.
+A request that arrived through a proxy (an `X-Forwarded-For` header) is refused
+unless it carries a node administrator's session. A proxy on the same machine
+that adds no such header would look like the machine itself - but the endpoint
+only ever writes the archive to disk and reports its path, so the most such a
+request can do is start a backup, never read one. Reading one back - the list,
+and the download in the Server app (`GET /api/admin/backups`,
+`GET /api/admin/backups/<name>`) - takes a node administrator's session, never
+the machine alone.
 
 ## Upgrading
 
-Under the supervisor, upgrading is automatic (above). Otherwise, an upgrade is a restart onto a
-newer binary or image: the node brings its databases forward (migrations run on start), and that is
-the whole procedure. **There is no going back** - a node refuses to open databases a newer version
-has already upgraded, since nothing migrates down. So take a backup before each upgrade; it is your
+Under the supervisor, upgrading is automatic (above). Otherwise, an upgrade is a
+restart onto a newer binary or image: the node brings its databases forward
+(migrations run on start), and that is the whole procedure. **There is no going
+back** - a node refuses to open databases a newer version has already upgraded,
+since nothing migrates down. So take a backup before each upgrade; it is your
 rollback.
 
 ## How much computer
 
-One CPU runs a small group that posts words and pictures. Encoding is the heavy work: every upload
-is re-encoded on the server, and a video takes every thread it is given for as long as it takes. So
-the node gives encoding one thread fewer than the machine has, and encodes one upload at a time; on
-two or more CPUs that leaves a CPU free for everything else, and people can keep using the site
-while somebody's video encodes. On one CPU there is nothing spare: the site slows while a video
-encodes. If people will upload video, use two CPUs or more. `RINGTOME_MEDIA_THREADS` changes how many
-threads encode.
+One CPU runs a small group that posts words and pictures. Encoding is the heavy
+work: every upload is re-encoded on the server, and a video takes every thread
+it is given for as long as it takes. So the node gives encoding one thread fewer
+than the machine has, and encodes one upload at a time; on two or more CPUs that
+leaves a CPU free for everything else, and people can keep using the site while
+somebody's video encodes. On one CPU there is nothing spare: the site slows
+while a video encodes. If people will upload video, use two CPUs or more.
+`RINGTOME_MEDIA_THREADS` changes how many threads encode.
 
 ## Settings
 
@@ -235,11 +262,12 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_MEDIA_THREADS`        | the CPUs, less one (at least 1)  | how many threads encode pictures, sound and video - see _How much computer_                                               |
 | `RUST_LOG`                      | `info` for the node              | log filter, in the usual `tracing` syntax                                                                                 |
 
-The rest (sync and admission budgets, proof-of-work prices) have defaults sized for a small hosted
-node and are documented where they are read, in `node/src/config.rs`.
+The rest (sync and admission budgets, proof-of-work prices) have defaults sized
+for a small hosted node and are documented where they are read, in
+`node/src/config.rs`.
 
-The supervisor reads these as well (and `RINGTOME_DATA_DIRECTORY`, `RINGTOME_BIND_ADDRESS` and
-`RINGTOME_PORT` above, to find the node):
+The supervisor reads these as well (and `RINGTOME_DATA_DIRECTORY`,
+`RINGTOME_BIND_ADDRESS` and `RINGTOME_PORT` above, to find the node):
 
 | variable                                 | default                                | meaning                                                                                                                                                                                                                                                                             |
 | ---------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

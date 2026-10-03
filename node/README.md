@@ -1,8 +1,9 @@
 # ringtome-node
 
-The connector node: an always-on(ish) Rust server that joins the p2p network, agents identities
-on behalf of its users, stores their signed chains, and serves the web client (eventually). One
-binary; hosted-multi-tenant vs. personal-desktop is configuration, not a fork.
+The connector node: an always-on(ish) Rust server that joins the p2p network,
+agents identities on behalf of its users, stores their signed chains, and serves
+the web client (eventually). One binary; hosted-multi-tenant vs.
+personal-desktop is configuration, not a fork.
 
 ## Running
 
@@ -41,13 +42,16 @@ data/
     └── <root>.db      # per-identity DB: the entries log (source of truth) + materialized views
 ```
 
-Everything in `users/*.db` outside the `entries` table is a disposable projection, rebuildable by
-replaying the log. `node.db` and the key files are the only things that aren't.
+Everything in `users/*.db` outside the `entries` table is a disposable
+projection, rebuildable by replaying the log. `node.db` and the key files are
+the only things that aren't.
 
-**Migrations:** every schema change is a new numbered rung under `migrations/node/` or
-`migrations/user/`, climbed in place when a database opens. Released rungs are frozen. How to
-write one: [`migrations/README.md`](migrations/README.md). (Before 0.1.0, changes were squashed
-into one file and dev data was deleted instead. That ended with the first release.)
+**Migrations:** every schema change is a new numbered rung under
+`migrations/node/` or `migrations/user/`, climbed in place when a database
+opens. Released rungs are frozen. How to write one:
+[`migrations/README.md`](migrations/README.md). (Before 0.1.0, changes were
+squashed into one file and dev data was deleted instead. That ended with the
+first release.)
 
 ## Testing
 
@@ -66,17 +70,20 @@ just mainline-smoke           # the mainline field test: two nodes on the REAL p
                               # dispatch-only "Mainline smoke" GitHub action)
 ```
 
-The integration suite talks to real nodes over real HTTP (and real iroh QUIC for the two-node
-sync tests). Two-node tests skip themselves if `RINGTOME_TEST_HOST_B` is absent. The one exception
-is `test/pure/`: pure-logic tests over the UI's browser-free modules, which need no node at all -
-they run in the full suite like everything else, and on their own in seconds via `just ui-check`.
+The integration suite talks to real nodes over real HTTP (and real iroh QUIC for
+the two-node sync tests). Two-node tests skip themselves if
+`RINGTOME_TEST_HOST_B` is absent. The one exception is `test/pure/`: pure-logic
+tests over the UI's browser-free modules, which need no node at all - they run
+in the full suite like everything else, and on their own in seconds via
+`just ui-check`.
 
 ### Simulating a partition
 
-The rig's four nodes are shared by every spec, so a test cannot kill one to make it unreachable -
-the next forty files need it up. `/test/unplug` makes a node **refuse iroh connections while its
-HTTP surface stays healthy**, per protocol and per direction, which is a partition for every
-purpose a test has. From a spec, always through the helper:
+The rig's four nodes are shared by every spec, so a test cannot kill one to make
+it unreachable - the next forty files need it up. `/test/unplug` makes a node
+**refuse iroh connections while its HTTP surface stays healthy**, per protocol
+and per direction, which is a partition for every purpose a test has. From a
+spec, always through the helper:
 
 ```js
 const { withUnplugged } = require("./unplug.cjs");
@@ -86,49 +93,58 @@ await withUnplugged([HOST_B], fn, { alpns: ["blob"] });          // bodies only;
 await withUnplugged([HOST_B], fn, { direction: "inbound" });     // an asymmetric partition
 ```
 
-`integration/roothooks.cjs` re-plugs anything a spec left unplugged after every test, so a spec
-that dies mid-partition cannot poison the ones after it. The gate is armed only in local-test mode
-and refuses to arm outside it; `src/net/p2p.rs` (`Unplugged`) carries the design and the safety
-argument, and `integration/test/unplugged.cjs` proves it stops real traffic.
+`integration/roothooks.cjs` re-plugs anything a spec left unplugged after every
+test, so a spec that dies mid-partition cannot poison the ones after it. The
+gate is armed only in local-test mode and refuses to arm outside it;
+`src/net/p2p.rs` (`Unplugged`) carries the design and the safety argument, and
+`integration/test/unplugged.cjs` proves it stops real traffic.
 
-What it does **not** do: kill a process. Cold start, WAL replay and iroh rebinding on a fresh UDP
-port need a node that actually restarts - `test/mainline.cjs` is the shape for that (it spawns and
-restarts its own, on the band's spare lane).
+What it does **not** do: kill a process. Cold start, WAL replay and iroh
+rebinding on a fresh UDP port need a node that actually restarts -
+`test/mainline.cjs` is the shape for that (it spawns and restarts its own, on
+the band's spare lane).
 
 ## Code conventions
 
-**Data access:** cross-module reads/writes go through the owning module's public functions; raw
-SQL naming a table lives only in that table's owner (enforced by `tests/conventions.rs` - the
-architecture cop). The `entries` table is protocol law: rows appear only via `imaol::append`
-(local authorship) or the sync gate (validated arrival).
+**Data access:** cross-module reads/writes go through the owning module's public
+functions; raw SQL naming a table lives only in that table's owner (enforced by
+`tests/conventions.rs` - the architecture cop). The `entries` table is protocol
+law: rows appear only via `imaol::append` (local authorship) or the sync gate
+(validated arrival).
 
-**UI layout (`js/`):** the same shape as `src/` - flat modules, with a directory only where one
-concept outgrew one file, so `x.js` + a sibling `x/` reads the way `net.rs` + `net/` does. The
-directories are `pure/` (below), `mirror.js` + `mirror/` (the Dexie mirror: the stream and handle,
-plus `prefs` and `doccache`), `doc/` (the document machinery every document app composes: session,
-editor, reader, tree, address, crosslink, annotations, upload, completions, turbolinks,
-livemarquee, docapp), and `apps/` (the app surfaces - notes, journal, wiki). Everything else stays
-flat: `index.js` is the composition root and `net.js` is the only HTTP client. No barrel files: a
-directory re-exports nothing, so you import the file you want.
+**UI layout (`js/`):** the same shape as `src/` - flat modules, with a directory
+only where one concept outgrew one file, so `x.js` + a sibling `x/` reads the
+way `net.rs` + `net/` does. The directories are `pure/` (below), `mirror.js` +
+`mirror/` (the Dexie mirror: the stream and handle, plus `prefs` and
+`doccache`), `doc/` (the document machinery every document app composes:
+session, editor, reader, tree, address, crosslink, annotations, upload,
+completions, turbolinks, livemarquee, docapp), and `apps/` (the app surfaces -
+notes, journal, wiki). Everything else stays flat: `index.js` is the composition
+root and `net.js` is the only HTTP client. No barrel files: a directory
+re-exports nothing, so you import the file you want.
 
-**`pure/` is the UI's conformance boundary** - the client-side echo of `ringtome-proto`. Everything
-in it is values-in, values-out: no browser API, no mirror, no fetch, and no import from outside
-`pure/`. That is where the rules live, which is why it holds the app registry, the cozy-address
-rules, the tree walks, the divergence lookout, the keepalive cap, the claimed-date arithmetic and
-Swatch time. It mirrors `integration/test/pure/` file for file - `js/pure/x.js` is interrogated by
-`test/pure/x.cjs`, with nothing booted, in about a second via `just ui-check` - so membership is
-self-evident on both sides rather than listed anywhere. **Growing it is the point:** logic that can
-be a value-in, value-out function belongs in a file that is one.
+**`pure/` is the UI's conformance boundary** - the client-side echo of
+`ringtome-proto`. Everything in it is values-in, values-out: no browser API, no
+mirror, no fetch, and no import from outside `pure/`. That is where the rules
+live, which is why it holds the app registry, the cozy-address rules, the tree
+walks, the divergence lookout, the keepalive cap, the claimed-date arithmetic
+and Swatch time. It mirrors `integration/test/pure/` file for file -
+`js/pure/x.js` is interrogated by `test/pure/x.cjs`, with nothing booted, in
+about a second via `just ui-check` - so membership is self-evident on both sides
+rather than listed anywhere. **Growing it is the point:** logic that can be a
+value-in, value-out function belongs in a file that is one.
 
-`integration/test/pure/conventions.cjs` enforces all of the above - `pure/`'s three rules, an
-acyclic import graph, no app importing another app, one owner each for `fetch` and `Dexie`, no dead
-CSS, and no colour literal outside `tokens.css`. **An app is one file until it needs two**, then it
-becomes `apps/journal.js` + `apps/journal/`.
+`integration/test/pure/conventions.cjs` enforces all of the above - `pure/`'s
+three rules, an acyclic import graph, no app importing another app, one owner
+each for `fetch` and `Dexie`, no dead CSS, and no colour literal outside
+`tokens.css`. **An app is one file until it needs two**, then it becomes
+`apps/journal.js` + `apps/journal/`.
 
 ## HTTP surface (unstable, pre-4C)
 
-Auth (`/api/auth/*`: register, login, logout, whoami, check-username), tags (`/api/admin/*`),
-identities (`/api/identity` and `/api/identity/{root}/…`: profile, keys, entries, sync, serve,
-nodes, revoke, adoption), node info (`/api/node`), health (`/health`). The routes files
-(`src/auth/routes.rs`, `src/identity/routes.rs`) are the reference until the API stabilizes
-enough to deserve a document.
+Auth (`/api/auth/*`: register, login, logout, whoami, check-username), tags
+(`/api/admin/*`), identities (`/api/identity` and `/api/identity/{root}/…`:
+profile, keys, entries, sync, serve, nodes, revoke, adoption), node info
+(`/api/node`), health (`/health`). The routes files (`src/auth/routes.rs`,
+`src/identity/routes.rs`) are the reference until the API stabilizes enough to
+deserve a document.
