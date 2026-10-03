@@ -24,14 +24,16 @@ export const kindHolds = (doc, kind) =>
  *               opposite things (no filter vs no results), which is why this isn't a plain array
  * @param tags   active tag filters, ANDed: a document must carry every one
  * @param kind   the kind dial: 'all' (default) | 'docs' | 'media'
+ * @param first  a document above even the pinned ones: a notebook published as a book puts its
+ *               title page here (2026-10-02), an implicit pin
  */
-export function orderDocs(docs, { app, bucket, hits, tags, kind } = {}) {
+export function orderDocs(docs, { app, bucket, hits, tags, kind, first } = {}) {
     return (docs || [])
         .filter((d) => bucketHolds(d, app, bucket))
         .filter((d) => !hits || hits.has(d.doc_id))
         .filter((d) => (tags || []).every((t) => (d.tags || []).includes(t)))
         .filter((d) => kindHolds(d, kind))
-        .sort(byPinnedThenClaimed);
+        .sort((a, b) => (b.doc_id === first) - (a.doc_id === first) || byPinnedThenClaimed(a, b));
 }
 
 /// Pinned documents float to the top (a doc-meta flag), then newest by CLAIMED date - a document's

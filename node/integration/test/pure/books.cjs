@@ -12,7 +12,8 @@ let bookModes,
     neighbours,
     titlePageOf,
     bookTags,
-    filterBook;
+    filterBook,
+    frontChanged;
 before(async () => {
     ({
         bookModes,
@@ -28,6 +29,7 @@ before(async () => {
         titlePageOf,
         bookTags,
         filterBook,
+        frontChanged,
     } = await import('../../../js/pure/books.js'));
 });
 
@@ -188,6 +190,43 @@ describe("books: the title page (PROJECT_PLAN's Books, ruling 11)", () => {
                 .cover.title,
             'Cover',
         );
+    });
+});
+
+describe("books: the title page's front matter (2026-10-02)", () => {
+    const front = {
+        page: 'p1',
+        tags: ['bread', 'loaf'],
+        description: 'a cookbook',
+        date: '2019-05-04',
+    };
+    const row = (over = {}) => ({
+        doc_id: 'p1',
+        tags: ['loaf', 'bread', 'long', 'image'],
+        fields: { description: 'a cookbook', display_date: '2019-05-04' },
+        ...over,
+    });
+    it('is unchanged when the title page says what the book said, the implicit tags aside', () => {
+        assert.equal(frontChanged(front, row()), false);
+    });
+    it('changes with a tag, the description, the date, or a different title page', () => {
+        assert.ok(frontChanged(front, row({ tags: ['bread'] })), 'a tag dropped');
+        assert.ok(
+            frontChanged(front, row({ fields: { display_date: '2019-05-04' } })),
+            'the description cleared',
+        );
+        assert.ok(
+            frontChanged(
+                front,
+                row({ fields: { description: 'a cookbook', display_date: '2020-01-01' } }),
+            ),
+            'redated',
+        );
+        assert.ok(frontChanged(front, row({ doc_id: 'p2' })), 'another page leads the book now');
+    });
+    it('says nothing before the first rollout', () => {
+        assert.equal(frontChanged(undefined, row()), false);
+        assert.equal(frontChanged(front, null), false);
     });
 });
 

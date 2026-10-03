@@ -36,7 +36,7 @@ import { t } from '../i18n.js';
 import { holdNewDoc } from '../mirror.js';
 import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
-import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
+import { isBookBucket, hiddenDocsOf, pageStanding, titlePageOf } from '../pure/books.js';
 import { docHref } from '../links.js';
 import { FacetRow, narrowTitle } from '../facets.js';
 import { togglePick } from '../pure/facets.js';
@@ -224,6 +224,7 @@ const NoteRow = ({
     onSelect,
     onToggleTag,
     book,
+    titlePage,
 }) => html`<button
     class=${doc.doc_id === selected ? 'note-row jag-line selected' : 'note-row jag-line'}
     data-settles
@@ -237,7 +238,12 @@ const NoteRow = ({
             globe for public, clock for scheduled - each in its own colour. */ ''
         }
         <${StatusMark} doc=${doc} book=${book} />
-        ${doc.pinned && html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `}
+        ${
+            titlePage
+                ? html`<span class="note-row-pin" title=${t('apps.notes.the-books-title-page', "the book's title page")}><${Icons.titlePage} /></span> `
+                : doc.pinned &&
+                  html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `
+        }
         ${
             doc.format === 'drawing'
                 ? html`<${DrawingThumb} root=${root} doc=${doc} />`
@@ -485,12 +491,37 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const hits = useSearch(root, searchQuery);
     // hrseFiles browses as the picture picker does (2026-09-29): its notebook pick and tags narrow
     // after the search, and the tiles are the list prev/next walks.
+    // A notebook published as a book (PROJECT_PLAN's Books): the switch and the hidden marks, and the
+    // tree that says which pages sit beneath a hidden section - read once here, worn by
+    // the rows, the editor's bar, and the Publish column alike.
+    const bookFacts = useBookFacts(root);
+    const bookTree = useBookTree(root, bucket, treeReload);
+    const bookOn = feat.bookColumn && isBookBucket(bookFacts.modes, bucket);
+    const book = bookOn
+        ? {
+              bucket,
+              hidden: bookFacts.hidden,
+              hiddenDocs: hiddenDocsOf(bookTree, bookFacts.hidden),
+              mark: bookFacts.mark,
+          }
+        : null;
+    // Its title page is pinned implicitly, above every pin (Curtis, 2026-10-02): the page the book is
+    // named by, and whose tags, description and date it wears, heads the list.
+    const titlePage = bookOn
+        ? titlePageOf(
+              bookTree,
+              (docs || []).filter((d) => bucketHolds(d, app, bucket) && isTextDoc(d)),
+              bookFacts.hidden,
+          )
+        : null;
+
     const ordered = orderDocs(docs, {
         app,
         bucket,
         hits,
         tags: app.everything ? [] : tagFilter,
         kind: searchKind,
+        first: titlePage,
     });
     const browse = app.everything
         ? browseFiles(ordered, { notebook, tags: tagFilter, kinds: kindFilter })
@@ -548,20 +579,6 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
         {},
         app.everything ? ['list'] : [],
     );
-    // A notebook published as a book (PROJECT_PLAN's Books): the switch and the hidden marks, and the
-    // tree that says which pages sit beneath a hidden section - read once here, worn by
-    // the rows, the editor's bar, and the Publish column alike.
-    const bookFacts = useBookFacts(root);
-    const bookTree = useBookTree(root, bucket, treeReload);
-    const bookOn = feat.bookColumn && isBookBucket(bookFacts.modes, bucket);
-    const book = bookOn
-        ? {
-              bucket,
-              hidden: bookFacts.hidden,
-              hiddenDocs: hiddenDocsOf(bookTree, bookFacts.hidden),
-              mark: bookFacts.mark,
-          }
-        : null;
 
     // Which order prev/next walks depends on what's showing: with the tree column open they read
     // it as a book (depth-first, and the tree wins when both columns are open); with it tucked or
@@ -704,6 +721,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     ${list.map(
                         (d) => html`<${NoteRow}
                                   book=${book}
+                            titlePage=${d.doc_id === titlePage}
                             key=${d.doc_id}
                             doc=${d}
                             root=${root}

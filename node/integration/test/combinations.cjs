@@ -234,7 +234,7 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             await beat(HOST_E, 'fold', eveRoot);
         });
 
-        it('[book x trusted x video x tags] the rollout mints a sealed book: the book, both pages and the video twin wear the seal; the tags union', async () => {
+        it('[book x trusted x video x tags] the rollout mints a sealed book: the book, both pages and the video twin wear the seal; the title-page tags', async () => {
             const p = await grimoire.rollout({ trusted_only: true });
             assert.equal(p.total, 2, 'two pages, the hidden one never counted');
             book = p.book;
@@ -265,8 +265,8 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
                 .sort();
             assert.deepEqual(
                 tags,
-                ['alpha', 'video'],
-                "the union of the published pages' tags, never the hidden page's - sealed, for the author",
+                ['video'],
+                "the title page's tags (ruling 11, 2026-10-02), not chapter one's - sealed, for the author",
             );
             const body = await grimoire.payload(book);
             assert.deepEqual(
@@ -697,7 +697,7 @@ describe('combinations 3: a page that was a sealed post of its own before its no
         );
     });
 
-    it('[book x publish] the open rollout adopts the standing post as a page: same id, now part of the book, off the shelf; the tags union', async () => {
+    it('[book x publish] the open rollout adopts the standing post as a page: same id, now part of the book, off the shelf; the title-page tags', async () => {
         await mixed.mode(true);
         const p = await mixed.rollout({});
         assert.equal(p.total, 2);
@@ -724,7 +724,7 @@ describe('combinations 3: a page that was a sealed post of its own before its no
             .filter((a) => a.key === 'tag')
             .map((a) => a.value)
             .sort();
-        assert.deepEqual(tags, ['loud', 'quiet']);
+        assert.deepEqual(tags, ['loud'], "the title page's tags, not the adopted page's");
     });
 
     it('[book x trusted] the book is open but the adopted page stays sealed: once sealed, always sealed', async () => {

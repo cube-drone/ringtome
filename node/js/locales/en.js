@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1411 phrases across 88 files.
+// 1415 phrases across 88 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -294,6 +294,7 @@ export default {
     'apps.notes.scheduled-to-publish': 'scheduled to publish',
     'apps.notes.published': 'published',
     'apps.notes.private': 'private',
+    'apps.notes.the-books-title-page': "the book's title page",
     'apps.notes.pinned': 'pinned',
     'apps.notes.untitled': 'untitled',
     'apps.notes.a-date-you-set-for': 'a date you set for this document (its real last edit was {p0})',
@@ -475,6 +476,8 @@ export default {
 
     // --- node/js/doc/annotations.js ---
     'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",
+    'doc.annotations.title': 'title',
+    'doc.annotations.untitled': 'untitled',
     'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
     'doc.annotations.date': 'date',
     'doc.annotations.time-optional': 'time (optional)',
@@ -496,9 +499,10 @@ export default {
     'doc.bookcol.publish': 'publish',
     'doc.bookcol.a-book-publishes-as-one': 'publishes the whole notebook as one book',
     'doc.bookcol.publish-this-entire-notebook': 'publish this entire notebook',
-    'doc.bookcol.titled': 'titled',
+    'doc.bookcol.title-page': 'title page:',
     'doc.bookcol.the-first-page-names-the': 'the first page in reading order names the book and opens it',
     'doc.bookcol.untitled---the-first-page': 'untitled - the first page in reading order will name the book',
+    'doc.bookcol.changed-since-the-last-rollout': 'changed since the last rollout',
     'doc.bookcol.since-the-last-rollout': 'since the last rollout',
     'doc.bookcol.new': 'new',
     'doc.bookcol.changed': 'changed',

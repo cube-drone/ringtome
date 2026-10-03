@@ -8,6 +8,9 @@
 // private version a rollout published, recorded by the rollout itself (slice 2) - against
 // the page's current head. Before any rollout every page is simply "new".
 
+import { SIZE_TAGS, MEDIA_TAGS } from './facets.js';
+import { DISPLAY_DATE_FIELD } from './docdate.js';
+
 export const BOOKS_KV = 'books';
 export const HIDDEN_KV = 'book_hidden';
 export const PUBLISHED_VERSION = 'published_version';
@@ -233,4 +236,24 @@ export function bookLedger(rows, hiddenDocs, hidden) {
     const out = { hidden: [], new: [], changed: [], current: [] };
     for (const r of rows || []) out[pageStanding(r, hiddenDocs, hidden)].push(r);
     return out;
+}
+
+/// Whether the title page's front matter - which page it is, its tags, its description, its claimed
+/// date - differs from what the book last carried (`front` in the book's facts, books.rs
+/// `front_matter`). The book takes all four from its title page (Curtis, 2026-10-02), and none is a
+/// page's words, so the ledger cannot see an edit there; this can. A book never rolled out has
+/// nothing to differ from. The implicit tag names never count, on either side: a row carries them
+/// for what the page holds.
+export function frontChanged(front, titleRow) {
+    if (!front || !titleRow) return false;
+    const implicit = new Set([...SIZE_TAGS, ...MEDIA_TAGS]);
+    const tags = (titleRow.tags || []).filter((tag) => !implicit.has(tag)).sort();
+    const was = (front.tags || []).filter((tag) => !implicit.has(tag)).sort();
+    const fields = titleRow.fields || {};
+    return (
+        front.page !== titleRow.doc_id ||
+        tags.join('\n') !== was.join('\n') ||
+        (fields.description || '') !== (front.description || '') ||
+        (fields[DISPLAY_DATE_FIELD] || '') !== (front.date || '')
+    );
 }

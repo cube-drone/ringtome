@@ -69,13 +69,25 @@ describe('books: a notebook rolls out as one book', function () {
             `the second words\n\n![frontispiece](/api/identity/${adaRoot}/docs/${filedPic}/body/frontispiece.png)\n`,
         );
         pages.loose = await mk('a loose page', 'unfiled words');
-        // Tags on two pages: the book's labels are their union (ruling 11).
+        // Tags on two pages; the loose page will be the title page, and the book takes ITS tags,
+        // description and date (ruling 11, 2026-10-02) - chapter one's tag stays the chapter's.
         await ada(`api/identity/${adaRoot}/docs/${pages.one}/annotations/tags/alpha`, {
             method: 'PUT',
         });
         await ada(`api/identity/${adaRoot}/docs/${pages.loose}/annotations/tags/beta`, {
             method: 'PUT',
         });
+        for (const [field, value] of [
+            ['description', 'a book of small spells'],
+            ['display_date', '2019-05-04'],
+        ]) {
+            await j(
+                ada,
+                `api/identity/${adaRoot}/docs/${pages.loose}/annotations/fields/${field}`,
+                { value },
+                'PUT',
+            );
+        }
         hiddenId = await mk('the secret page', 'never published');
         // A picture filed in the notebook is not a page (field-found 2026-09-04): it must
         // neither count nor send the rollout through the text door.
@@ -215,8 +227,20 @@ describe('books: a notebook rolls out as one book', function () {
             .sort();
         assert.deepEqual(
             tags,
-            ['alpha', 'beta'],
-            "the book's tags are the union of its pages' tags",
+            ['beta'],
+            "the book's tags are its title page's, and no implicit tag",
+        );
+        const description = (head.annotations || []).find((a) => a.key === 'description');
+        assert.equal(
+            description && description.value,
+            'a book of small spells',
+            "the book's description is its title page's",
+        );
+        // Backdated by its title page's claimed date (the rollout asked with no zone: UTC).
+        const may4 = Date.UTC(2019, 4, 4);
+        assert.ok(
+            head.published_ms >= may4 && head.published_ms < may4 + 86_400_000,
+            `the book is dated on its title page's day: ${new Date(head.published_ms).toISOString()}`,
         );
         assert.deepEqual(
             body.sections.map((s) => s.title),
@@ -245,6 +269,20 @@ describe('books: a notebook rolls out as one book', function () {
             const head = await (await ada(`api/id/${adaRoot}/posts/${p.post}`)).json();
             assert.equal(head.part_of, book, `${p.title} names its book`);
             assert.equal(head.title, p.title);
+            // A page carries no implicit tag (2026-10-02): chapter two holds a picture and every
+            // page has words, and none of them says "image" or a length.
+            const implicit = ['image', 'video', 'audio', 'micro', 'short', 'medium', 'long'];
+            const said = (head.annotations || [])
+                .filter((a) => a.key === 'tag' && implicit.includes(a.value))
+                .map((a) => a.value);
+            assert.deepEqual(said, [], `${p.title} carries no implicit tag`);
+            if (p.title === 'a loose page') {
+                const may4 = Date.UTC(2019, 4, 4);
+                assert.ok(
+                    head.published_ms >= may4 && head.published_ms < may4 + 86_400_000,
+                    'a page keeps its own claimed date',
+                );
+            }
         }
         const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
         const one = docs.find((d) => d.doc_id === pages.one);

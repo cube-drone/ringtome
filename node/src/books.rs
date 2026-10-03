@@ -31,6 +31,9 @@ struct Plan {
     settled: bool,
     #[serde(default)]
     trusted_only: bool,
+    /// The asking device's zone, for the claimed dates (the rollout route's `tz_offset_min`).
+    #[serde(default)]
+    tz_offset_min: i32,
     #[serde(default)]
     total: usize,
     #[serde(default)]
@@ -63,6 +66,11 @@ struct BookFacts {
     /// (field-found 2026-09-04: a link to a book that did not exist yet).
     #[serde(default)]
     published: bool,
+    /// What the book last said of its title page - which page, its tags, description and date
+    /// ([`front_matter`]) - so the Publish column can tell an edit there from a book that is
+    /// current: none of those is a page's words, and the ledger only sees words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    front: Option<serde_json::Value>,
 }
 
 /// The periodic pass: every agented persona, every plan that is pending or mid-flight.
@@ -340,7 +348,7 @@ async fn rollout(
             trusted_only: plan.trusted_only,
             seal_of: None, // a book and its pages wear their own author's seal
             onward: false,
-            dated_ms: None,
+            dated_ms: claimed_date(data, doc_id, plan.tz_offset_min).await?,
             part_of: Some(book_id),
             room: false,
         };
@@ -450,6 +458,12 @@ async fn rollout(
         pages: top.iter().filter_map(&page_payload).collect(),
     };
     let body = serde_json::to_string(&payload)?;
+    // The book's date is its title page's claimed date (Curtis, 2026-10-02: a book could not be
+    // backdated): re-read at every rollout, as a republish re-reads a post's.
+    let book_date = match cover_doc {
+        Some(page) => claimed_date(data, &page, plan.tz_offset_min).await?,
+        None => None,
+    };
     let parents = crate::record::documents::public_head(data.db(), &book_id)
         .await?
         .map(|h| vec![h.head])
@@ -471,7 +485,7 @@ async fn rollout(
             seal_of: None, // a book and its pages wear their own author's seal
             onward: false,
             post_key: book_key,
-            dated_ms: None,
+            dated_ms: book_date,
             part_of: None,
         },
     )
@@ -483,13 +497,18 @@ async fn rollout(
             tracing::warn!(error = ?e, "book key memo write failed");
         }
     }
-    // The book's labels (ruling 11): every tag on every page, as one union, plus the
-    // notebook as its bucket - restated the way a post's own draft labels are.
-    if let Err(e) = restate_book_labels(data, root, &minted, bucket, &pages, book_key).await {
+    // The book's labels (ruling 11): its title page's tags and description, plus the notebook
+    // as its bucket - restated the way a post's own draft labels are.
+    if let Err(e) = restate_book_labels(data, root, &minted, bucket, cover_doc, book_key).await {
         tracing::warn!(error = ?e, "the book's labels could not be restated; the book stands");
     }
-    if !facts.published {
+    let front = match cover_doc {
+        Some(page) => Some(front_matter(data, &page).await?),
+        None => None,
+    };
+    if !facts.published || facts.front != front {
         facts.published = true;
+        facts.front = front;
         data.private_registers(BOOKS_KV)
             .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
             .await?;
@@ -647,31 +666,76 @@ fn section_payload(s: &Section, page: &dyn Fn(&[u8; 16]) -> Option<PagePayload>)
 /// The union of every page's tags, said in public about the book (capped like a post's
 /// own), plus the notebook as the book's bucket; whatever was said before and is not wanted
 /// now is unsaid.
+/// A page's claimed date (PUBLISH.md's `display_date`), resolved in the asking device's zone.
+async fn claimed_date(
+    data: &store::Store,
+    page: &[u8; 16],
+    tz_offset_min: i32,
+) -> Result<Option<i64>> {
+    Ok(data.annotations().field(page, store::DISPLAY_DATE).await?.and_then(|v| {
+        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min)
+    }))
+}
+
+/// What the book takes from its title page, as the Publish column compares it (pure/books.js
+/// `frontChanged`): the page, its tags (sorted, the implicit names left out - the column's rows
+/// carry those for what a page holds, so neither side may count them), its description and its
+/// claimed date, as stored.
+async fn front_matter(data: &store::Store, page: &[u8; 16]) -> Result<serde_json::Value> {
+    let mut tags: Vec<String> = data
+        .annotations()
+        .tags(page)
+        .await?
+        .into_iter()
+        .filter(|t| !crate::record::documents::IMPLICIT_TAGS.contains(&t.as_str()))
+        .collect();
+    tags.sort();
+    let field = |v: Option<String>| v.unwrap_or_default();
+    Ok(serde_json::json!({
+        "page": hex::encode(page),
+        "tags": tags,
+        "description": field(data.annotations().field(page, "description").await?),
+        "date": field(data.annotations().field(page, store::DISPLAY_DATE).await?),
+    }))
+}
+
+/// The book's labels (ruling 11, as of 2026-10-02): the title page's tags and description - the
+/// Publish column edits them there - and the notebook as its bucket. Never an implicit tag: a
+/// book is no length and no medium.
 async fn restate_book_labels(
     data: &store::Store,
     root: &str,
     book: &[u8; 16],
     bucket: &str,
-    pages: &[[u8; 16]],
+    title_page: Option<[u8; 16]>,
     // A sealed book's labels seal under its key (ruling 7).
     book_key: Option<[u8; 32]>,
 ) -> Result<()> {
     const CAP: usize = 32;
     let root_key = crate::pubkey::decode(root).ok_or_else(|| anyhow!("bad root"))?;
     let mut desired: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut tags: BTreeSet<String> = BTreeSet::new();
-    for page in pages {
-        for tag in data.annotations().tags(page).await? {
+    if let Some(page) = title_page {
+        let mut tags: BTreeSet<String> = BTreeSet::new();
+        for tag in data.annotations().tags(&page).await? {
             let tag = tag.trim().to_string();
             if !tag.is_empty()
+                && !crate::annotations::is_emoji_tag(&tag)
                 && tag.chars().count() <= ringtome_proto::PublicAnnotation::MAX_TAG_CHARS
             {
                 tags.insert(tag);
             }
         }
-    }
-    for tag in tags.into_iter().take(CAP) {
-        desired.insert(("tag".into(), tag));
+        for tag in tags.into_iter().take(CAP) {
+            desired.insert(("tag".into(), tag));
+        }
+        if let Some(description) = data.annotations().field(&page, "description").await? {
+            let description = description.trim();
+            if !description.is_empty()
+                && description.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN
+            {
+                desired.insert(("description".into(), description.to_string()));
+            }
+        }
     }
     if bucket.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN {
         desired.insert(("bucket".into(), bucket.to_string()));

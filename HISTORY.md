@@ -16545,3 +16545,39 @@ format-only - every document rendered (marked) to the same HTML before and
 after, whitespace aside. What stays over 80 cannot wrap: 340 table rows, 71
 code-block lines, and 67 headings and lone links. `just strings-check`,
 `just ui-check`, the conventions tests and `just format-check` green.
+
+**2026-10-02 - a book wears its title page: tags, description and date.**
+Curtis: "full-book publication doesn't allow us to backdate our books", and it
+was unclear where a book's tags and description came from. They came from
+nowhere useful: the rollout minted the book and every page with no claimed date
+(so each was dated at the rollout, a page's own `display_date` ignored), gave
+the book no description, and tagged it with the union of every page's tags. Now
+the title page - the first published page in reading order, which already titled
+the book (ruling 11) - is its front matter: the book takes that page's tags
+(emoji reactions aside), its description, and its claimed date, re-read at every
+rollout, so dating the title page backdates the book. Every page publishes under
+its own claimed date. The dates resolve in the zone the rollout was asked from
+(`tz_offset_min` on the rollout request and plan, the publish door's rule). The
+Publish column holds the title page's tags, description and date - the same
+`Annotations` panel, implicit chips left out - so it is plain where they come
+from. An edit there is not a page's words, so the ledger can't see it; the
+book's facts now keep `front` (which page, its tags, description and date, as
+the last rollout read them), and `frontChanged` lights "publish the changes"
+with "changed since the last rollout" under the panel. And per Curtis, neither a
+book nor its pages carry implicit tags (image/video/audio, micro..long):
+`replicate_annotations` skips them for any post with `part_of`, and the book's
+labels never had them. A page's date changing without its words leaves that page
+as it was until its words next change - the book's own date follows at once.
+`book_posts.cjs` now claims the book's tags are its title page's, the
+description, the 2019 date on the book and on its title page, and that no page
+carries an implicit tag (checked by letting pages carry them again: that claim
+failed), and `combinations.cjs`'s two books now expect their title page's tags
+where they pinned the union. `just ci` green. Then, per Curtis, the line above
+it reads "title page:" with its link, the block wears no heading, and it edits
+the title page's title too (an opt-in first row of `Annotations`, saved on blur
+or Enter, never per keystroke: a retitle mints a version, which the ledger then
+counts as a changed page). And while a notebook is switched to publish as a
+book, its title page heads the notebook's list above every pin, an implicit pin
+wearing Phosphor's `Books` (`orderDocs`'s `first`, worked out from the tree each
+render - nothing stored, so switching the book off or reordering the tree moves
+it at once). `just strings-check` and `just ui-check` green.

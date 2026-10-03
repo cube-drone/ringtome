@@ -64,11 +64,18 @@ export const Annotations = ({ root, docId, features }) => {
     // Which annotations this app surfaces; absent = show them all (the default app).
     const showDate = !features || features.date !== false;
     const showDesc = !features || features.description !== false;
+    // The implicit chips, unless the place says they mean nothing there (a book's title page: the
+    // book carries none of them).
+    const showImplicit = !features || features.implicit !== false;
+    // The title, only where asked (a book's title page, in the Publish column): elsewhere the
+    // editor holds it, since a title is a header field and changing it mints a version.
+    const showTitle = !!(features && features.title);
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const mirrorTags = (row && row.tags) || [];
     // "image", "video", "audio": the doc carries them for what it holds, not because anyone
     // said so (Curtis, 2026-10-01) - shown with the others, with nothing to remove.
     const implicitTags = (row && row.implicit) || [];
+    const hiddenImplicit = showImplicit ? [] : implicitTags;
     const mirrorDesc = (row && row.fields && row.fields.description) || '';
     const mirrorDate = (row && row.fields && row.fields[DISPLAY_DATE_FIELD]) || '';
 
@@ -76,6 +83,34 @@ export const Annotations = ({ root, docId, features }) => {
         debounceMs: DESC_DEBOUNCE_MS,
     });
     const claimed = useClaimedDate(root, docId, mirrorDate);
+
+    // The title as typed, held until it is left (blur or Enter): every save mints a version, so
+    // it saves once per edit, never per keystroke. `null` shows the mirror's.
+    const mirrorTitle = (row && row.title) || '';
+    const [titleDraft, setTitleDraft] = useState(null);
+    useEffect(() => setTitleDraft(null), [docId]);
+    const saveTitle = async () => {
+        const title = titleDraft;
+        if (title === null) return;
+        setTitleDraft(null);
+        if (title === mirrorTitle) return;
+        try {
+            // Every list says the new title at once (pure/optimistic.js), as the reader's does.
+            await optimisticDoc(
+                root,
+                docId,
+                (r) => r && { ...r, title },
+                (r) => !!r && r.title === title,
+                () =>
+                    api(`/api/identity/${root}/docs/${docId}/title`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ title }),
+                    }),
+            );
+        } catch {
+            setTitleDraft(title); // kept, so leaving the field again retries
+        }
+    };
 
     // Tags: render the mirror set, overlaid with in-flight optimistic changes so a click shows
     // immediately. A pending entry clears once the mirror reflects it (echo arrived).
@@ -106,7 +141,7 @@ export const Annotations = ({ root, docId, features }) => {
     // stamp), and optimistic adds append at the end - so a new tag lands where you'd expect it,
     // not alphabetically reshuffled.
     const shownTags = [
-        ...mirrorTags.filter((t) => pending[t] !== 'removing'),
+        ...mirrorTags.filter((t) => pending[t] !== 'removing' && !hiddenImplicit.includes(t)),
         ...Object.entries(pending)
             .filter(([t, op]) => op === 'adding' && !mirrorTags.includes(t))
             .map(([t]) => t),
@@ -188,6 +223,20 @@ export const Annotations = ({ root, docId, features }) => {
 
     return html`
         <div class="annotations">
+            ${
+                showTitle &&
+                html`<div class="annot-row">
+                <label class="annot-label">${t('doc.annotations.title', 'title')}</label>
+                <input
+                    class="annot-title jag-field"
+                    value=${titleDraft ?? mirrorTitle}
+                    placeholder=${t('doc.annotations.untitled', 'untitled')}
+                    onInput=${(e) => setTitleDraft(e.currentTarget.value)}
+                    onBlur=${saveTitle}
+                    onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                />
+            </div>`
+            }
             ${
                 showDate &&
                 html`<div class="annot-row">

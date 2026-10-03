@@ -23,7 +23,9 @@ import {
     hiddenDocsOf,
     bookLedger,
     titlePageOf,
+    frontChanged,
 } from '../pure/books.js';
+import { Annotations } from './annotations.js';
 import { isTextDoc } from '../pure/feed.js';
 import { postHref, docHref } from '../links.js';
 
@@ -219,7 +221,11 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
         try {
             await api(`/api/identity/${root}/books/${encodeURIComponent(bucket)}/rollout`, {
                 method: 'POST',
-                body: JSON.stringify(published ? {} : wishes),
+                // The zone the title page's and the pages' claimed dates resolve in.
+                body: JSON.stringify({
+                    ...(published ? {} : wishes),
+                    tz_offset_min: new Date().getTimezoneOffset(),
+                }),
             });
             poke();
         } catch (e) {
@@ -235,6 +241,10 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
     // The book borrows its title from its first page (ruling 11) - shown, and linked.
     const titleDoc = titlePageOf(tree, pagesHere, hidden);
     const titleRow = titleDoc ? pagesHere.find((d) => d.doc_id === titleDoc) : null;
+    // The book's tags, description and date are its title page's (Curtis, 2026-10-02) - edited
+    // here, so it is plain where they come from; an edit there is a change to publish.
+    const front = published && books[bucket] ? books[bucket].front : null;
+    const frontMoved = frontChanged(front, titleRow);
     const sections = sectionsOf(tree);
     const rowsOf = (list, cls) =>
         list.map(
@@ -258,13 +268,22 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   <p class="book-title-line">
                       ${
                           titleRow
-                              ? html`${t('doc.bookcol.titled', 'titled')} <a class="book-title-link" data-settles href=${docHref(root, titleRow.doc_id)} title=${t('doc.bookcol.the-first-page-names-the', 'the first page in reading order names the book and opens it')}>${titleRow.title || t('doc.bookcol.untitled', 'untitled')}</a>`
+                              ? html`${t('doc.bookcol.title-page', 'title page:')} <a class="book-title-link" data-settles href=${docHref(root, titleRow.doc_id)} title=${t('doc.bookcol.the-first-page-names-the', 'the first page in reading order names the book and opens it')}>${titleRow.title || t('doc.bookcol.untitled', 'untitled')}</a>`
                               : t(
                                     'doc.bookcol.untitled---the-first-page',
                                     'untitled - the first page in reading order will name the book',
                                 )
                       }
                   </p>
+                  ${
+                      titleRow &&
+                      html`<div class="book-front">
+                          <${Annotations} root=${root} docId=${titleRow.doc_id} features=${{ implicit: false, title: true }} />
+                          ${frontMoved && html`<p class="book-front-moved"><${Icons.update} /> ${t('doc.bookcol.changed-since-the-last-rollout', 'changed since the last rollout')}</p>`}
+                      </div>`
+                  }
+                  </div>
+                  <div class="book-block">
                   <p class="book-ledger-head">${t('doc.bookcol.since-the-last-rollout', 'since the last rollout')}</p>
                   <dl class="book-ledger">
                       <dt><${Icons.pageNew} /> ${t('doc.bookcol.new', 'new')}</dt>
@@ -319,7 +338,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   }
                   <button
                       class="book-publish"
-                      disabled=${asking || moving || (ledger.new.length === 0 && ledger.changed.length === 0 && !!published)}
+                      disabled=${asking || moving || (ledger.new.length === 0 && ledger.changed.length === 0 && !frontMoved && !!published)}
                       title=${
                           published
                               ? t('doc.bookcol.roll-out-the-changes-the', 'publish the changes')

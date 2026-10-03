@@ -6,6 +6,7 @@
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
     Archive,
+    Books,
     PiggyBank,
     CrownSimple,
     Rss,
@@ -257,6 +258,8 @@ export const Icons = {
     // A notebook published as a book (PROJECT_PLAN's Books): the column and a hidden mark; a page never
     // rolled out wears `pageNew` above.
     book: BookOpen,
+    // A book's title page, pinned above every pin in its notebook's list (2026-10-02).
+    titlePage: Books,
     hidden: EyeSlash,
     // Rooms (CHAT.md): the app tile, and the chip a room post wears.
     chat: ChatsCircle,

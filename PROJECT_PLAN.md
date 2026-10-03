@@ -4600,8 +4600,13 @@ closed (2026-09-06).
     update, releases the notes to drafts, and forgets the id, so the next
     rollout mints a fresh book.
 11. **The title page.** The first published page in reading order titles the
-    book, its words ride the book's feed post in full ahead of the table, and
-    the book's tags are the union of its pages' tags.
+    book, and its words ride the book's feed post in full ahead of the table.
+    The book's tags, description and date are the title page's too (Curtis,
+    2026-10-02; the tags were once the union of every page's): the Publish
+    column edits them there, so it is plain where they come from, and dating the
+    title page backdates the book. Every page keeps its own claimed date.
+    Neither the book nor its pages carry implicit tags - a book is no length and
+    no medium, and a page is read inside its book.
 
 **Residuals.** Scheduling a rollout; a section published on its own.
 

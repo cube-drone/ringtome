@@ -2096,6 +2096,18 @@ pub async fn private_implicit_tags(
         .collect())
 }
 
+/// The book a public post is a page of (header key 19), off its signed header; `None` for a
+/// post that is no book's page, or one this node does not hold.
+pub async fn public_part_of(db: &Db, post_id: &[u8; 16]) -> Result<Option<[u8; 16]>, AppError> {
+    let Some(entry) = public_header_entry(db, post_id).await? else {
+        return Ok(None);
+    };
+    let Payload::Inline(payload) = &entry.entry().payload else {
+        return Ok(None);
+    };
+    Ok(DocHeaderPlain::decode(payload).ok().and_then(|h| h.part_of))
+}
+
 /// A public post's implicit tags: what its header's refs - the pictures, films and sounds it
 /// publishes, as public twins - are. Read off the post as minted, so it says what the post
 /// carries, foreign pictures copied in included.

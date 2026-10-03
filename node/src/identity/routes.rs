@@ -3606,6 +3606,10 @@ struct BookRolloutRequest {
     settled: bool,
     #[serde(default)]
     trusted_only: bool,
+    /// The asking device's zone (`Date.getTimezoneOffset()`), which the pages' and the title
+    /// page's claimed dates resolve in - the publish door's rule, carried into the background.
+    #[serde(default)]
+    tz_offset_min: i32,
 }
 
 #[derive(Serialize)]
@@ -3641,6 +3645,7 @@ async fn book_rollout_handler(
         "status": "pending",
         "settled": req.settled,
         "trusted_only": req.trusted_only,
+        "tz_offset_min": req.tz_offset_min,
         "total": 0,
         "done": 0,
     });
@@ -4987,9 +4992,14 @@ async fn replicate_annotations(
     }
     // The implicit tags (`documents::IMPLICIT_TAGS`): what the post carries, said as ordinary
     // tags - outside the cap, so a draft's own thirty-two never crowd them out. A republish that
-    // drops the last picture retracts "image" like any tag the draft stopped carrying.
-    for tag in crate::record::documents::public_implicit_tags(data.db(), post_id).await? {
-        desired.insert(("tag".into(), tag.into()));
+    // drops the last picture retracts "image" like any tag the draft stopped carrying. A book's
+    // page says none of them, nor a length (Curtis, 2026-10-02): a page is read inside its book,
+    // and the book's own tags are its title page's, chosen by hand.
+    let in_book = crate::record::documents::public_part_of(data.db(), post_id).await?.is_some();
+    if !in_book {
+        for tag in crate::record::documents::public_implicit_tags(data.db(), post_id).await? {
+            desired.insert(("tag".into(), tag.into()));
+        }
     }
     let fields = data.annotations().fields(draft_id).await?;
     // A sealed post's labels seal under its key (ruling 7): the mint left the key on the
@@ -5072,7 +5082,7 @@ async fn replicate_annotations(
                     if let Some(length) = crate::record::documents::length_tag(
                         crate::record::documents::word_count(&body),
                     )
-                    .filter(|_| reads)
+                    .filter(|_| reads && !in_book)
                     {
                         desired.insert(("tag".into(), length.into()));
                     }

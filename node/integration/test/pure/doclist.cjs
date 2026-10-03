@@ -63,6 +63,22 @@ describe('orderDocs', () => {
         assert.deepEqual(ids(out), ['01']); // 2 fails search, 3 fails scope
     });
 
+    it("puts a book's title page above every pin, an implicit pin (2026-10-02)", () => {
+        const docs = [doc(1), doc(2, { pinned: true }), doc(3), doc(4, { pinned: true })];
+        const opts = { app: journal(), bucket: 'journal' };
+        assert.deepEqual(ids(orderDocs(docs, opts)), ['04', '02', '03', '01']);
+        assert.deepEqual(
+            ids(orderDocs(docs, { ...opts, first: id(1) })),
+            ['01', '04', '02', '03'],
+            'the oldest, unpinned page heads the list',
+        );
+        assert.deepEqual(
+            ids(orderDocs(docs, { ...opts, first: id(1), tags: ['nope'] })),
+            [],
+            'first floats, it never adds what the filters left out',
+        );
+    });
+
     it('is safe on no documents at all', () => {
         assert.deepEqual(orderDocs(undefined, {}), []);
         assert.deepEqual(orderDocs([], {}), []);

@@ -16,12 +16,18 @@
     gap: 0.5rem;
 }
 
+.annot-title {
+    flex: 1;
+    min-width: 0;
+}
+
 .annot-label {
     font-size: 0.72rem;
     color: var(--muted);
     min-width: 3rem;
 }
 
+.annot-title,
 .annot-date,
 .annot-time {
     background-color: var(--surface);
@@ -34,6 +40,7 @@
     color-scheme: light;
 }
 
+.annot-title:focus,
 .annot-date:focus,
 .annot-time:focus {
     outline: none;
