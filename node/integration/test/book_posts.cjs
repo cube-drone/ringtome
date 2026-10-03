@@ -4,79 +4,155 @@
     the tree; hidden never publishes. The follower's feed shows one book post and no pages,
     and every page has a permalink that opens from the book.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch, makePng } = require("./helpers.cjs");
-const { makeFetch } = require("./fetch.cjs");
+const { makeUserFetch, makePng } = require('./helpers.cjs');
+const { makeFetch } = require('./fetch.cjs');
 const anon = makeFetch();
-const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
-const { HOST_B, HOST_C } = require("./fetch.cjs");
+const { beat, pullAndFold, shareArrives } = require('./beat.cjs');
+const { HOST_B, HOST_C } = require('./fetch.cjs');
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
-describe("books: a notebook rolls out as one book", function () {
+describe('books: a notebook rolls out as one book', function () {
     this.timeout(600000);
 
-    let ada, adaRoot, pages = {}, book, hiddenId, bea, beaRoot, filedPic;
-    const bucket = "grimoire";
-    const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
+    let ada,
+        adaRoot,
+        pages = {},
+        book,
+        hiddenId,
+        bea,
+        beaRoot,
+        filedPic;
+    const bucket = 'grimoire';
+    const j = (who, path, body, method = 'POST') =>
+        who(path, { method, body: JSON.stringify(body) });
 
     before(async () => {
-        ada = await makeUserFetch({ prefix: "bookada" });
-        adaRoot = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
-        await ada(`api/identity/${adaRoot}/serve`, { method: "POST" });
+        ada = await makeUserFetch({ prefix: 'bookada' });
+        adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
         const mk = async (title, body) => {
-            const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title, body, format: "marquee" })).json();
-            await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/${bucket}`, { method: "PUT" });
+            const d = await (
+                await j(ada, `api/identity/${adaRoot}/docs`, { title, body, format: 'marquee' })
+            ).json();
+            await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/${bucket}`, {
+                method: 'PUT',
+            });
             return d.doc_id;
         };
         // A picture uploaded into a note lives in "files", not the notebook (Curtis,
         // 2026-09-27) - and must still publish with the page that embeds it.
-        filedPic = (await (await ada(`api/identity/${adaRoot}/docs/binary?title=frontispiece`, { method: "POST", body: makePng(24, 24), file: true })).json()).doc_id;
-        await ada(`api/identity/${adaRoot}/docs/${filedPic}/buckets/files`, { method: "PUT" });
+        filedPic = (
+            await (
+                await ada(`api/identity/${adaRoot}/docs/binary?title=frontispiece`, {
+                    method: 'POST',
+                    body: makePng(24, 24),
+                    file: true,
+                })
+            ).json()
+        ).doc_id;
+        await ada(`api/identity/${adaRoot}/docs/${filedPic}/buckets/files`, { method: 'PUT' });
         for (let i = 0; i < 60; i++) {
             if ((await ada(`api/identity/${adaRoot}/docs/${filedPic}/body`)).status === 200) break;
             await new Promise((r) => setTimeout(r, 300));
         }
-        pages.one = await mk("chapter one", "the first words");
-        pages.two = await mk("chapter two", `the second words\n\n![frontispiece](/api/identity/${adaRoot}/docs/${filedPic}/body/frontispiece.png)\n`);
-        pages.loose = await mk("a loose page", "unfiled words");
+        pages.one = await mk('chapter one', 'the first words');
+        pages.two = await mk(
+            'chapter two',
+            `the second words\n\n![frontispiece](/api/identity/${adaRoot}/docs/${filedPic}/body/frontispiece.png)\n`,
+        );
+        pages.loose = await mk('a loose page', 'unfiled words');
         // Tags on two pages: the book's labels are their union (ruling 11).
-        await ada(`api/identity/${adaRoot}/docs/${pages.one}/annotations/tags/alpha`, { method: "PUT" });
-        await ada(`api/identity/${adaRoot}/docs/${pages.loose}/annotations/tags/beta`, { method: "PUT" });
-        hiddenId = await mk("the secret page", "never published");
+        await ada(`api/identity/${adaRoot}/docs/${pages.one}/annotations/tags/alpha`, {
+            method: 'PUT',
+        });
+        await ada(`api/identity/${adaRoot}/docs/${pages.loose}/annotations/tags/beta`, {
+            method: 'PUT',
+        });
+        hiddenId = await mk('the secret page', 'never published');
         // A picture filed in the notebook is not a page (field-found 2026-09-04): it must
         // neither count nor send the rollout through the text door.
-        const pic = await (await ada(`api/identity/${adaRoot}/docs/binary?title=plate`, { method: "POST", body: makePng(32, 32), file: true })).json();
-        await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/buckets/${bucket}`, { method: "PUT" });
+        const pic = await (
+            await ada(`api/identity/${adaRoot}/docs/binary?title=plate`, {
+                method: 'POST',
+                body: makePng(32, 32),
+                file: true,
+            })
+        ).json();
+        await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/buckets/${bucket}`, {
+            method: 'PUT',
+        });
         for (let i = 0; i < 60; i++) {
-            if ((await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/body`)).status === 200) break;
+            if ((await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/body`)).status === 200)
+                break;
             await new Promise((r) => setTimeout(r, 300));
         }
         // The tree: a root by title convention, one section holding two chapters.
-        const root = (await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: `wiki:${bucket}` })).json()).taxonomy_id;
-        const part = (await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "part one" })).json()).taxonomy_id;
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${part}`, {}, "PUT");
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${pages.one}`, {}, "PUT");
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${pages.two}`, {}, "PUT");
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${hiddenId}`, {}, "PUT");
+        const root = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: `wiki:${bucket}` })
+            ).json()
+        ).taxonomy_id;
+        const part = (
+            await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: 'part one' })).json()
+        ).taxonomy_id;
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${part}`, {}, 'PUT');
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${pages.one}`, {}, 'PUT');
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${pages.two}`, {}, 'PUT');
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${hiddenId}`, {}, 'PUT');
         // A hidden SECTION with a page in it, and an empty section: neither may appear in
         // the table of contents (field-found 2026-09-04).
-        const secret = await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "hidden section" })).json();
-        const behind = await mk("behind the curtain", "not for the book");
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${secret.taxonomy_id}`, {}, "PUT");
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${secret.taxonomy_id}/members/${behind}`, {}, "PUT");
-        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/sec:${secret.taxonomy_id}`, { value: "yes" }, "PUT");
-        const empty = await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "images" })).json();
-        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${empty.taxonomy_id}`, {}, "PUT");
+        const secret = await (
+            await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: 'hidden section' })
+        ).json();
+        const behind = await mk('behind the curtain', 'not for the book');
+        await j(
+            ada,
+            `api/identity/${adaRoot}/taxonomies/${root}/members/${secret.taxonomy_id}`,
+            {},
+            'PUT',
+        );
+        await j(
+            ada,
+            `api/identity/${adaRoot}/taxonomies/${secret.taxonomy_id}/members/${behind}`,
+            {},
+            'PUT',
+        );
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/book_hidden/sec:${secret.taxonomy_id}`,
+            { value: 'yes' },
+            'PUT',
+        );
+        const empty = await (
+            await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: 'images' })
+        ).json();
+        await j(
+            ada,
+            `api/identity/${adaRoot}/taxonomies/${root}/members/${empty.taxonomy_id}`,
+            {},
+            'PUT',
+        );
         // Book mode, and the secret page hidden.
-        await j(ada, `api/identity/${adaRoot}/private/kv/books/${bucket}`, { value: JSON.stringify({ mode: "book" }) }, "PUT");
-        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/doc:${hiddenId}`, { value: "yes" }, "PUT");
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/books/${bucket}`,
+            { value: JSON.stringify({ mode: 'book' }) },
+            'PUT',
+        );
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/book_hidden/doc:${hiddenId}`,
+            { value: 'yes' },
+            'PUT',
+        );
     });
 
     const plan = async () => {
@@ -85,53 +161,85 @@ describe("books: a notebook rolls out as one book", function () {
         return row ? JSON.parse(row.value) : null;
     };
 
-    it("a rollout asked for lands as a plan naming this device, and the sweep carries it out", async () => {
+    it('a rollout asked for lands as a plan naming this device, and the sweep carries it out', async () => {
         const asked = await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
         assert.equal(asked.status, 200, await asked.text());
-        assert.equal((await plan()).status, "pending");
+        assert.equal((await plan()).status, 'pending');
         let p = null;
         for (let i = 0; i < 40; i++) {
-            await beat(undefined, "book-rollout", adaRoot);
+            await beat(undefined, 'book-rollout', adaRoot);
             p = await plan();
-            if (p && (p.status === "done" || p.status === "failed")) break;
+            if (p && (p.status === 'done' || p.status === 'failed')) break;
             await new Promise((r) => setTimeout(r, 500));
         }
-        assert.ok(p, "a plan");
-        assert.equal(p.status, "done", `the rollout came to rest: ${JSON.stringify(p)}`);
-        assert.equal(p.total, 3, "three pages, the hidden one never counted");
+        assert.ok(p, 'a plan');
+        assert.equal(p.status, 'done', `the rollout came to rest: ${JSON.stringify(p)}`);
+        assert.equal(p.total, 3, 'three pages, the hidden one never counted');
         assert.equal(p.done, 3);
         book = p.book;
-        assert.ok(book, "the book has an id");
+        assert.ok(book, 'the book has an id');
     });
 
-    it("the shelf lists the book and none of its pages; the book carries the tree", async () => {
+    it('the shelf lists the book and none of its pages; the book carries the tree', async () => {
         const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
         const formats = shelf.map((p) => `${p.format}:${p.title}`);
-        assert.deepEqual(formats, ["book:a loose page"], `only the book, titled by its first page: ${formats}`);
+        assert.deepEqual(
+            formats,
+            ['book:a loose page'],
+            `only the book, titled by its first page: ${formats}`,
+        );
         // The persona page's own recent-posts read is a second shelf (field-found 2026-09-04
         // by the reader drive: the pages were listed there).
         const profile = await (await ada(`api/id/${adaRoot}/profile`)).json();
-        assert.deepEqual((profile.posts || []).map((p) => `${p.format}:${p.title}`), ["book:a loose page"], "the profile's shelf agrees");
+        assert.deepEqual(
+            (profile.posts || []).map((p) => `${p.format}:${p.title}`),
+            ['book:a loose page'],
+            "the profile's shelf agrees",
+        );
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         // The title page (ruling 11): the first page in reading order - the loose page sits
         // at the top level, before the section - names the book and rides as its cover.
-        assert.equal(body.title, "a loose page");
-        assert.ok(body.cover && body.cover.title === "a loose page", "the cover names the title page");
+        assert.equal(body.title, 'a loose page');
+        assert.ok(
+            body.cover && body.cover.title === 'a loose page',
+            'the cover names the title page',
+        );
         // Each page carries its tags in the payload (the reader's filter, 2026-09-05).
-        assert.deepEqual(body.pages[0].tags, ["beta"], "the loose page carries beta");
-        assert.deepEqual(body.sections[0].pages[0].tags, ["alpha"], "chapter one carries alpha");
+        assert.deepEqual(body.pages[0].tags, ['beta'], 'the loose page carries beta');
+        assert.deepEqual(body.sections[0].pages[0].tags, ['alpha'], 'chapter one carries alpha');
         const head = await (await ada(`api/id/${adaRoot}/posts/${book}`)).json();
-        assert.equal(head.title, "a loose page", "the book's post wears the title page's title");
-        const tags = (head.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort();
-        assert.deepEqual(tags, ["alpha", "beta"], "the book's tags are the union of its pages' tags");
-        assert.deepEqual(body.sections.map((s) => s.title), ["part one"], "a hidden section and an empty one are not listed");
-        assert.ok(!JSON.stringify(body).includes("curtain"), "nothing beneath a hidden section publishes");
-        assert.deepEqual(body.sections[0].pages.map((p) => p.title), ["chapter one", "chapter two"]);
-        assert.deepEqual(body.pages.map((p) => p.title), ["a loose page"], "the unfiled page rides at the top level");
-        assert.ok(!JSON.stringify(body).includes("secret"), "hidden never publishes");
+        assert.equal(head.title, 'a loose page', "the book's post wears the title page's title");
+        const tags = (head.annotations || [])
+            .filter((a) => a.key === 'tag')
+            .map((a) => a.value)
+            .sort();
+        assert.deepEqual(
+            tags,
+            ['alpha', 'beta'],
+            "the book's tags are the union of its pages' tags",
+        );
+        assert.deepEqual(
+            body.sections.map((s) => s.title),
+            ['part one'],
+            'a hidden section and an empty one are not listed',
+        );
+        assert.ok(
+            !JSON.stringify(body).includes('curtain'),
+            'nothing beneath a hidden section publishes',
+        );
+        assert.deepEqual(
+            body.sections[0].pages.map((p) => p.title),
+            ['chapter one', 'chapter two'],
+        );
+        assert.deepEqual(
+            body.pages.map((p) => p.title),
+            ['a loose page'],
+            'the unfiled page rides at the top level',
+        );
+        assert.ok(!JSON.stringify(body).includes('secret'), 'hidden never publishes');
     });
 
-    it("every page is a real post carrying part_of, with the version it published recorded", async () => {
+    it('every page is a real post carrying part_of, with the version it published recorded', async () => {
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         for (const p of [...body.sections[0].pages, ...body.pages]) {
             const head = await (await ada(`api/id/${adaRoot}/posts/${p.post}`)).json();
@@ -140,23 +248,39 @@ describe("books: a notebook rolls out as one book", function () {
         }
         const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
         const one = docs.find((d) => d.doc_id === pages.one);
-        assert.ok(one.fields.published_version && one.fields.published_version === one.head, "the ledger can say 'current'");
-        assert.ok(one.fields.published_as, "and the page knows its post");
+        assert.ok(
+            one.fields.published_version && one.fields.published_version === one.head,
+            "the ledger can say 'current'",
+        );
+        assert.ok(one.fields.published_as, 'and the page knows its post');
         const secret = docs.find((d) => d.doc_id === hiddenId);
-        assert.ok(!secret.fields.published_as, "the hidden page never published");
+        assert.ok(!secret.fields.published_as, 'the hidden page never published');
     });
 
-    it("a picture filed only in files rides with the page that embeds it", async () => {
+    it('a picture filed only in files rides with the page that embeds it', async () => {
         const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
-        assert.deepEqual(docs.find((d) => d.doc_id === filedPic).buckets, ["files"], "the picture is not in the notebook");
+        assert.deepEqual(
+            docs.find((d) => d.doc_id === filedPic).buckets,
+            ['files'],
+            'the picture is not in the notebook',
+        );
         const two = docs.find((d) => d.doc_id === pages.two);
         const head = await (await ada(`api/id/${adaRoot}/posts/${two.fields.published_as}`)).json();
         const twin = (head.refs || [])[0];
-        assert.ok(twin, `the page's header names its picture's public twin: ${JSON.stringify(head.refs)}`);
-        assert.equal((await ada(`id/${adaRoot}/docs/${twin}/body`)).status, 200, "and the twin serves");
+        assert.ok(
+            twin,
+            `the page's header names its picture's public twin: ${JSON.stringify(head.refs)}`,
+        );
+        assert.equal(
+            (await ada(`id/${adaRoot}/docs/${twin}/body`)).status,
+            200,
+            'and the twin serves',
+        );
         // To anyone (Curtis, 2026-09-29: a book's pictures failed to load for a reader who wasn't
         // signed in) - at the address the published words carry, as well as the old one.
-        const words = await (await anon(`id/${adaRoot}/docs/${two.fields.published_as}/body`)).text();
+        const words = await (
+            await anon(`id/${adaRoot}/docs/${two.fields.published_as}/body`)
+        ).text();
         const addr = words.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
         assert.ok(addr, `the page embeds its picture's public address: ${words}`);
         for (const path of [addr[1].slice(1), `id/${adaRoot}/docs/${twin}/body`]) {
@@ -167,151 +291,259 @@ describe("books: a notebook rolls out as one book", function () {
 
     it("a follower's feed shows one book post and no pages", async function () {
         if (!HOST_B) this.skip();
-        bea = await makeUserFetch({ prefix: "bookbea", host: HOST_B });
-        beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
+        bea = await makeUserFetch({ prefix: 'bookbea', host: HOST_B });
+        beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await bea(`api/identity/${beaRoot}/serve`, { method: 'POST' });
         const viaAda = await base58(ada);
         if ((await bea(`api/id/${adaRoot}/profile?via=${viaAda}`)).status !== 200) this.skip();
-        await j(bea, `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { value: "high" }, "PUT");
+        await j(
+            bea,
+            `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`,
+            { value: 'high' },
+            'PUT',
+        );
         let items = [];
         for (let i = 0; i < 30 && !items.some((it) => it.doc_id === book); i++) {
             await pullAndFold(HOST_B, adaRoot);
-            items = ((await (await bea(`api/identity/${beaRoot}/feed`)).json()).items || []).filter((it) => it.author === adaRoot);
-            if (!items.some((it) => it.doc_id === book)) await new Promise((r) => setTimeout(r, 300));
+            items = ((await (await bea(`api/identity/${beaRoot}/feed`)).json()).items || []).filter(
+                (it) => it.author === adaRoot,
+            );
+            if (!items.some((it) => it.doc_id === book))
+                await new Promise((r) => setTimeout(r, 300));
         }
-        assert.deepEqual(items.map((it) => `${it.format}:${it.title}`), ["book:a loose page"], `one book, no pages: ${JSON.stringify(items.map((i) => i.title))}`);
-        const page = await bea(`id/${adaRoot}/docs/${(JSON.parse(await (await bea(`id/${adaRoot}/docs/${book}/body`)).text())).pages[0].post}/body`);
-        assert.equal(page.status, 200, "a page opens from the book");
-        assert.equal(await page.text(), "unfiled words");
+        assert.deepEqual(
+            items.map((it) => `${it.format}:${it.title}`),
+            ['book:a loose page'],
+            `one book, no pages: ${JSON.stringify(items.map((i) => i.title))}`,
+        );
+        const page = await bea(
+            `id/${adaRoot}/docs/${JSON.parse(await (await bea(`id/${adaRoot}/docs/${book}/body`)).text()).pages[0].post}/body`,
+        );
+        assert.equal(page.status, 200, 'a page opens from the book');
+        assert.equal(await page.text(), 'unfiled words');
     });
 
-    it("a second rollout re-publishes changed pages, retracts a newly hidden one, and says so in one update", async () => {
+    it('a second rollout re-publishes changed pages, retracts a newly hidden one, and says so in one update', async () => {
         // Edit two pages, hide one.
         const edit = async (docId, body) => {
             const got = await (await ada(`api/identity/${adaRoot}/docs/${docId}`)).json();
-            const r = await j(ada, `api/identity/${adaRoot}/docs/${docId}`, { title: got.title, body, parents: got.heads.map((h) => h.version), format: "marquee" }, "PUT");
+            const r = await j(
+                ada,
+                `api/identity/${adaRoot}/docs/${docId}`,
+                {
+                    title: got.title,
+                    body,
+                    parents: got.heads.map((h) => h.version),
+                    format: 'marquee',
+                },
+                'PUT',
+            );
             assert.equal(r.status, 200, await r.text());
         };
-        await edit(pages.one, "the first words, revised");
-        await edit(pages.loose, "unfiled words, revised");
-        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/doc:${pages.two}`, { value: "yes" }, "PUT");
-        const twoPost = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find((d) => d.doc_id === pages.two).fields.published_as;
-        assert.ok(twoPost, "chapter two was published by the first rollout");
+        await edit(pages.one, 'the first words, revised');
+        await edit(pages.loose, 'unfiled words, revised');
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/book_hidden/doc:${pages.two}`,
+            { value: 'yes' },
+            'PUT',
+        );
+        const twoPost = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find(
+            (d) => d.doc_id === pages.two,
+        ).fields.published_as;
+        assert.ok(twoPost, 'chapter two was published by the first rollout');
         const asked = await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
         assert.equal(asked.status, 200, await asked.text());
         let p = null;
         for (let i = 0; i < 40; i++) {
-            await beat(undefined, "book-rollout", adaRoot);
+            await beat(undefined, 'book-rollout', adaRoot);
             p = await plan();
-            if (p && (p.status === "done" || p.status === "failed")) break;
+            if (p && (p.status === 'done' || p.status === 'failed')) break;
             await new Promise((r) => setTimeout(r, 500));
         }
-        assert.equal(p.status, "done", `the second rollout came to rest: ${JSON.stringify(p)}`);
-        assert.equal(p.changed, 2, "two pages re-published");
-        assert.equal(p.removed, 1, "one page retracted");
-        assert.ok(p.update, "an update post was minted");
+        assert.equal(p.status, 'done', `the second rollout came to rest: ${JSON.stringify(p)}`);
+        assert.equal(p.changed, 2, 'two pages re-published');
+        assert.equal(p.removed, 1, 'one page retracted');
+        assert.ok(p.update, 'an update post was minted');
         // The book's new version no longer names chapter two; its permalink is gone.
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
-        assert.deepEqual(body.sections[0].pages.map((x) => x.title), ["chapter one"]);
-        assert.equal((await ada(`api/id/${adaRoot}/posts/${twoPost}`)).status, 404, "the hidden page's permalink is gone");
-        const two = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find((d) => d.doc_id === pages.two);
-        assert.ok(!two.fields.published_as, "and its note is a draft again");
+        assert.deepEqual(
+            body.sections[0].pages.map((x) => x.title),
+            ['chapter one'],
+        );
+        assert.equal(
+            (await ada(`api/id/${adaRoot}/posts/${twoPost}`)).status,
+            404,
+            "the hidden page's permalink is gone",
+        );
+        const two = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find(
+            (d) => d.doc_id === pages.two,
+        );
+        assert.ok(!two.fields.published_as, 'and its note is a draft again');
         // The update: threaded under the book, naming the two changed pages and the removed one.
         const update = await (await ada(`api/id/${adaRoot}/posts/${p.update}`)).json();
         assert.equal(update.title, `${bucket} updated`);
-        assert.ok(update.reply_to && update.reply_to.doc_id === book, "threaded under the book");
+        assert.ok(update.reply_to && update.reply_to.doc_id === book, 'threaded under the book');
         const words = await (await ada(`id/${adaRoot}/docs/${p.update}/body`)).text();
-        assert.ok(words.includes("[chapter one]") && words.includes("[a loose page]"), `names the changed pages: ${words}`);
-        assert.ok(words.includes("removed:") && words.includes("chapter two"), `names the removed page: ${words}`);
+        assert.ok(
+            words.includes('[chapter one]') && words.includes('[a loose page]'),
+            `names the changed pages: ${words}`,
+        );
+        assert.ok(
+            words.includes('removed:') && words.includes('chapter two'),
+            `names the removed page: ${words}`,
+        );
         // The shelf: the book and the update, still no pages.
         const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
-        assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`).sort(), ["book:a loose page", `marquee:${bucket} updated`]);
+        assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`).sort(), [
+            'book:a loose page',
+            `marquee:${bucket} updated`,
+        ]);
     });
 
     it("a rebroadcast of a book is one pointer: the sharer's follower sees the book, no pages", async function () {
         if (!HOST_B || !HOST_C || !bea) this.skip();
-        const cal = await makeUserFetch({ prefix: "bookcal", host: HOST_C });
-        const calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
+        const cal = await makeUserFetch({ prefix: 'bookcal', host: HOST_C });
+        const calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await cal(`api/identity/${calRoot}/serve`, { method: 'POST' });
         const viaBea = await base58(bea);
         if ((await cal(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
-        await j(cal, `api/identity/${calRoot}/private/kv/contact:${beaRoot}/interest_rebroadcasts`, { value: "high" }, "PUT");
-        const shared = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: book });
+        await j(
+            cal,
+            `api/identity/${calRoot}/private/kv/contact:${beaRoot}/interest_rebroadcasts`,
+            { value: 'high' },
+            'PUT',
+        );
+        const shared = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, {
+            author: adaRoot,
+            doc_id: book,
+        });
         assert.equal(shared.status, 200, await shared.text());
         let items = [];
         for (let i = 0; i < 30 && !items.some((it) => it.doc_id === book); i++) {
             await shareArrives(HOST_C, beaRoot, adaRoot);
-            items = ((await (await cal(`api/identity/${calRoot}/feed`)).json()).items || []).filter((it) => it.author === adaRoot);
+            items = ((await (await cal(`api/identity/${calRoot}/feed`)).json()).items || []).filter(
+                (it) => it.author === adaRoot,
+            );
         }
         const seen = items.map((it) => `${it.format}:${it.title}`);
-        assert.ok(seen.includes("book:a loose page"), `the book reached cal by bea's share: ${seen}`);
+        assert.ok(
+            seen.includes('book:a loose page'),
+            `the book reached cal by bea's share: ${seen}`,
+        );
         // The book is titled after its first page now, so look past it: no PAGE item rode along.
-        assert.ok(!seen.some((s) => !s.startsWith("book:") && /chapter|loose/.test(s)), `and no page rode along on its own: ${seen}`);
+        assert.ok(
+            !seen.some((s) => !s.startsWith('book:') && /chapter|loose/.test(s)),
+            `and no page rode along on its own: ${seen}`,
+        );
     });
 
-    it("taking the book down takes the pages and the updates with it, and the next rollout is a fresh book", async () => {
+    it('taking the book down takes the pages and the updates with it, and the next rollout is a fresh book', async () => {
         const before = await plan();
         const updatePost = before && before.update;
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         const pagePosts = [...body.sections[0].pages, ...body.pages].map((p) => p.post);
-        const took = await ada(`api/identity/${adaRoot}/books/${bucket}`, { method: "DELETE" });
+        const took = await ada(`api/identity/${adaRoot}/books/${bucket}`, { method: 'DELETE' });
         const tookText = await took.text();
         assert.equal(took.status, 200, tookText);
         const report = JSON.parse(tookText);
         assert.equal(report.book, true);
-        assert.equal(report.pages, pagePosts.length, "every page the book named");
-        assert.equal(report.updates, updatePost ? 1 : 0, "the update threaded under it");
-        assert.equal((await ada(`api/id/${adaRoot}/posts/${book}`)).status, 404, "the book is gone");
-        for (const p of pagePosts) assert.equal((await ada(`api/id/${adaRoot}/posts/${p}`)).status, 404, "a page is gone");
-        if (updatePost) assert.equal((await ada(`api/id/${adaRoot}/posts/${updatePost}`)).status, 404, "the update is gone");
+        assert.equal(report.pages, pagePosts.length, 'every page the book named');
+        assert.equal(report.updates, updatePost ? 1 : 0, 'the update threaded under it');
+        assert.equal(
+            (await ada(`api/id/${adaRoot}/posts/${book}`)).status,
+            404,
+            'the book is gone',
+        );
+        for (const p of pagePosts)
+            assert.equal((await ada(`api/id/${adaRoot}/posts/${p}`)).status, 404, 'a page is gone');
+        if (updatePost)
+            assert.equal(
+                (await ada(`api/id/${adaRoot}/posts/${updatePost}`)).status,
+                404,
+                'the update is gone',
+            );
         const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
-        assert.ok(docs.filter((d) => d.buckets && d.buckets.includes(bucket)).every((d) => !d.fields.published_as), "every note is a draft again");
-        const facts = (await (await ada(`api/identity/${adaRoot}/private/kv/books`)).json()).values.find((v) => v.key === bucket);
-        assert.equal(JSON.parse(facts.value).published_as_book, undefined, "the book id is forgotten");
-        assert.deepEqual((await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [], [], "the shelf is empty");
+        assert.ok(
+            docs
+                .filter((d) => d.buckets && d.buckets.includes(bucket))
+                .every((d) => !d.fields.published_as),
+            'every note is a draft again',
+        );
+        const facts = (
+            await (await ada(`api/identity/${adaRoot}/private/kv/books`)).json()
+        ).values.find((v) => v.key === bucket);
+        assert.equal(
+            JSON.parse(facts.value).published_as_book,
+            undefined,
+            'the book id is forgotten',
+        );
+        assert.deepEqual(
+            (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [],
+            [],
+            'the shelf is empty',
+        );
         // Chapter two comes back: its picture's public copy was retracted with it (hidden, then
         // taken down), and the fresh book must carry a picture that serves - not the dead copy's
         // address (Curtis, 2026-09-29: a republished manual's pictures all 404'd).
-        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/doc:${pages.two}`, { value: "" }, "PUT");
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/book_hidden/doc:${pages.two}`,
+            { value: '' },
+            'PUT',
+        );
         // A fresh rollout mints a fresh book.
         await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
         let p = null;
         for (let i = 0; i < 40; i++) {
-            await beat(undefined, "book-rollout", adaRoot);
+            await beat(undefined, 'book-rollout', adaRoot);
             p = await plan();
-            if (p && (p.status === "done" || p.status === "failed")) break;
+            if (p && (p.status === 'done' || p.status === 'failed')) break;
             await new Promise((r) => setTimeout(r, 500));
         }
-        assert.equal(p.status, "done", JSON.stringify(p));
-        assert.notEqual(p.book, book, "a new id: a tombstone is final for the old one");
-        assert.equal((await ada(`api/id/${adaRoot}/posts/${p.book}`)).status, 200, "and it stands");
-        const twoPost = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find((d) => d.doc_id === pages.two).fields.published_as;
-        assert.ok(twoPost, "chapter two is in the fresh book");
+        assert.equal(p.status, 'done', JSON.stringify(p));
+        assert.notEqual(p.book, book, 'a new id: a tombstone is final for the old one');
+        assert.equal((await ada(`api/id/${adaRoot}/posts/${p.book}`)).status, 200, 'and it stands');
+        const twoPost = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find(
+            (d) => d.doc_id === pages.two,
+        ).fields.published_as;
+        assert.ok(twoPost, 'chapter two is in the fresh book');
         const words = await (await anon(`id/${adaRoot}/docs/${twoPost}/body`)).text();
         const addr = words.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
         assert.ok(addr, `chapter two embeds its picture: ${words}`);
         const pic = await anon(addr[1].slice(1));
-        assert.equal(pic.status, 200, `the fresh book's picture serves to anyone: ${await pic.text()}`);
+        assert.equal(
+            pic.status,
+            200,
+            `the fresh book's picture serves to anyone: ${await pic.text()}`,
+        );
 
         // A standing page whose picture was retracted out from under it - the state a book
         // published before the fix is in - heals on the next rollout, words unchanged: the page is
         // republished, its picture minted afresh, the book's address kept.
         const dead = addr[1].match(/\/doc\/([0-9a-f]{32})\//)[1];
-        assert.equal((await ada(`api/identity/${adaRoot}/posts/${dead}`, { method: "DELETE" })).status, 200);
-        assert.equal((await anon(addr[1].slice(1))).status, 404, "the picture is gone and the page still names it");
+        assert.equal(
+            (await ada(`api/identity/${adaRoot}/posts/${dead}`, { method: 'DELETE' })).status,
+            200,
+        );
+        assert.equal(
+            (await anon(addr[1].slice(1))).status,
+            404,
+            'the picture is gone and the page still names it',
+        );
         await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
         let healed = null;
         for (let i = 0; i < 40; i++) {
-            await beat(undefined, "book-rollout", adaRoot);
+            await beat(undefined, 'book-rollout', adaRoot);
             healed = await plan();
-            if (healed && (healed.status === "done" || healed.status === "failed")) break;
+            if (healed && (healed.status === 'done' || healed.status === 'failed')) break;
             await new Promise((r) => setTimeout(r, 500));
         }
-        assert.equal(healed.status, "done", JSON.stringify(healed));
-        assert.equal(healed.book, p.book, "the same book");
+        assert.equal(healed.status, 'done', JSON.stringify(healed));
+        assert.equal(healed.book, p.book, 'the same book');
         const again = await (await anon(`id/${adaRoot}/docs/${twoPost}/body`)).text();
         const fresh = again.match(/\]\((\/ringtome\/user\/[^)]+)\)/);
         assert.ok(fresh && fresh[1] !== addr[1], `the page names a fresh picture: ${again}`);
-        assert.equal((await anon(fresh[1].slice(1))).status, 200, "which serves to anyone");
+        assert.equal((await anon(fresh[1].slice(1))).status, 200, 'which serves to anyone');
     });
 });

@@ -148,10 +148,7 @@ impl MemberProof {
     ) -> Self {
         use ed25519_dalek::Signer;
         let preimage = member_proof_preimage(root, prover_endpoint, verifier_endpoint);
-        Self {
-            leaf: leaf_key.verifying_key().to_bytes(),
-            sig: leaf_key.sign(&preimage).to_bytes(),
-        }
+        Self { leaf: leaf_key.verifying_key().to_bytes(), sig: leaf_key.sign(&preimage).to_bytes() }
     }
 
     /// Verify the signature binds (root, this connection). Says nothing about whether `leaf` is
@@ -349,14 +346,7 @@ impl SyncMessage {
                     }
                     let head_hash = r.bytes_fixed::<32>()?;
                     let instance = if arity == 6 { Some(r.bytes_fixed::<16>()?) } else { None };
-                    frontiers.push(Frontier {
-                        author,
-                        service,
-                        instance,
-                        floor,
-                        head,
-                        head_hash,
-                    });
+                    frontiers.push(Frontier { author, service, instance, floor, head, head_hash });
                 }
                 let proof = match r.array()? {
                     0 => None,
@@ -521,10 +511,7 @@ mod tests {
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
             frontiers: vec![],
-            proof: Some(MemberProof {
-                leaf: [9u8; 32],
-                sig: [1u8; 64],
-            }),
+            proof: Some(MemberProof { leaf: [9u8; 32], sig: [1u8; 64] }),
             wanted: vec![],
             ceiling: 0,
             below: 0,
@@ -621,10 +608,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: String::new(),
         };
-        assert_eq!(
-            msg.encode(),
-            Err(ProtoError::BadEntry("too many wanted services"))
-        );
+        assert_eq!(msg.encode(), Err(ProtoError::BadEntry("too many wanted services")));
     }
 
     #[test]

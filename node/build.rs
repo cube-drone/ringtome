@@ -6,7 +6,8 @@
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
+    let manifest =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let root = manifest.join("../default_media");
     // A directory here is scanned whole by cargo: an added, removed or changed file reruns this.
     println!("cargo:rerun-if-changed={}", root.display());
@@ -22,7 +23,8 @@ fn main() {
         out.push_str(&format!("    ({rel:?}, include_bytes!({:?})),\n", abs.display().to_string()));
     }
     out.push_str("];\n");
-    let dest = PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join("default_media.rs");
+    let dest = PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR"))
+        .join("default_media.rs");
     std::fs::write(dest, out).expect("writing the default media table");
 }
 
@@ -44,7 +46,11 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
             println!("cargo:warning=default_media: {} is not a PNG - left out", path.display());
             continue;
         }
-        let rel = path.strip_prefix(root).expect("walked from the root").to_string_lossy().replace('\\', "/");
+        let rel = path
+            .strip_prefix(root)
+            .expect("walked from the root")
+            .to_string_lossy()
+            .replace('\\', "/");
         let abs = path.canonicalize().unwrap_or(path);
         out.push((rel, abs));
     }

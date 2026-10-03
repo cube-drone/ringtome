@@ -8,10 +8,10 @@
     no persona. A session gets the same shell. The /api/id JSON face follows the shelf rule,
     anonymously.
 */
-const assert = require("node:assert");
-const { makeFetch, sql } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat } = require("./beat.cjs");
+const assert = require('node:assert');
+const { makeFetch, sql } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat } = require('./beat.cjs');
 
 // The anonymous fetch: no cookie jar entries, just a stranger with a URL.
 const anon = makeFetch();
@@ -19,77 +19,86 @@ const anon = makeFetch();
 let owner, root, speakableAddr;
 
 before(async () => {
-    owner = await makeUserFetch({ prefix: "idface" });
-    const made = await (await owner("api/identity", { method: "POST" })).json();
+    owner = await makeUserFetch({ prefix: 'idface' });
+    const made = await (await owner('api/identity', { method: 'POST' })).json();
     root = made.root_pubkey;
     await owner(`api/identity/${root}/profile`, {
-        method: "POST",
-        body: JSON.stringify({ field: "name", value: "Idface Test Persona" }),
+        method: 'POST',
+        body: JSON.stringify({ field: 'name', value: 'Idface Test Persona' }),
     });
     await owner(`api/identity/${root}/profile`, {
-        method: "POST",
-        body: JSON.stringify({ field: "bio", value: "a persona <with> markup & edges" }),
+        method: 'POST',
+        body: JSON.stringify({ field: 'bio', value: 'a persona <with> markup & edges' }),
     });
     const prof = await (await anon(`api/id/${root}/profile`)).json();
     speakableAddr = prof.speakable;
 });
 
-describe("the /ringtome/user face (the /id face until 2026-09-28)", () => {
+describe('the /ringtome/user face (the /id face until 2026-09-28)', () => {
     it("serves a hosted persona's public face to a stranger (the shelf)", async () => {
         const resp = await anon(`ringtome/user/${root}`); // the hex escape hatch
         assert.equal(resp.status, 200);
-        assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
+        assert.equal(resp.headers.get('x-content-type-options'), 'nosniff');
         const body = await resp.text();
-        assert.ok(body.includes("<title>Idface Test Persona</title>"), "the head carries the name");
+        assert.ok(body.includes('<title>Idface Test Persona</title>'), 'the head carries the name');
         assert.ok(
-            body.includes("&lt;with&gt; markup &amp; edges"),
-            "profile text is escaped, never trusted"
+            body.includes('&lt;with&gt; markup &amp; edges'),
+            'profile text is escaped, never trusted',
         );
-        assert.ok(body.includes("app.js"), "the app takes the body (PROJECT_PLAN's The node's public face, ruling 8)");
-        assert.ok(body.includes("?via="), "the address is the full shareable form, hints and all");
         assert.ok(
-            body.indexOf("?via=") < body.indexOf("&lt;with&gt;"),
-            "the address sits above the bio"
+            body.includes('app.js'),
+            "the app takes the body (PROJECT_PLAN's The node's public face, ruling 8)",
+        );
+        assert.ok(body.includes('?via='), 'the address is the full shareable form, hints and all');
+        assert.ok(
+            body.indexOf('?via=') < body.indexOf('&lt;with&gt;'),
+            'the address sits above the bio',
         );
     });
 
-    it("a persona with no picture offers no og:image - the app draws the face", async () => {
+    it('a persona with no picture offers no og:image - the app draws the face', async () => {
         const body = await (await anon(`ringtome/user/${root}`)).text();
-        assert.ok(!body.includes("og:image"), "no picture, no image meta");
-        assert.ok(body.includes("app.js"), "the identicon is the app's, drawn from the same bytes as the console's");
+        assert.ok(!body.includes('og:image'), 'no picture, no image meta');
+        assert.ok(
+            body.includes('app.js'),
+            "the identicon is the app's, drawn from the same bytes as the console's",
+        );
     });
 
-    it("serves the same face at the speakable spelling, words verified", async () => {
+    it('serves the same face at the speakable spelling, words verified', async () => {
         const resp = await anon(`ringtome/user/${speakableAddr}`);
         assert.equal(resp.status, 200);
         const body = await resp.text();
-        assert.ok(body.includes("Idface Test Persona"));
+        assert.ok(body.includes('Idface Test Persona'));
     });
 
-    it("REFUSES lying words, loudly, with the truth in hand", async () => {
-        const key = speakableAddr.split("-")[2];
-        const trueWords = speakableAddr.split("-").slice(0, 2).join("-");
+    it('REFUSES lying words, loudly, with the truth in hand', async () => {
+        const key = speakableAddr.split('-')[2];
+        const trueWords = speakableAddr.split('-').slice(0, 2).join('-');
         const resp = await anon(`ringtome/user/pagoda-dimension-${key}`);
         assert.equal(resp.status, 400);
         const body = await resp.text();
-        assert.ok(body.includes("mangled"), "the refusal says what happened");
+        assert.ok(body.includes('mangled'), 'the refusal says what happened');
         assert.ok(body.includes(trueWords), '"did you mean" carries the true words');
     });
 
-    it("tombstones a root nobody here carries - warmly, 404", async () => {
-        const stranger = "ee".repeat(32);
+    it('tombstones a root nobody here carries - warmly, 404', async () => {
+        const stranger = 'ee'.repeat(32);
         const resp = await anon(`ringtome/user/${stranger}`);
         assert.equal(resp.status, 404);
         const body = await resp.text();
-        assert.ok(body.includes("app.js"), "the same page, under a 404 - the app says nothing is here");
-        assert.ok(body.includes("/ringtome/user/"), "it hands over the re-homeable address");
+        assert.ok(
+            body.includes('app.js'),
+            'the same page, under a 404 - the app says nothing is here',
+        );
+        assert.ok(body.includes('/ringtome/user/'), 'it hands over the re-homeable address');
     });
 
     it("hands a SESSION the SPA shell instead - the lens is the console's job", async () => {
         const resp = await owner(`ringtome/user/${root}`);
         assert.equal(resp.status, 200);
         const body = await resp.text();
-        assert.ok(body.includes("app.js"), "the SPA boots at /ringtome/user for members");
+        assert.ok(body.includes('app.js'), 'the SPA boots at /ringtome/user for members');
     });
 
     it("serves DEEP paths under a persona - the SPA's routes resolve in the client", async () => {
@@ -97,52 +106,71 @@ describe("the /ringtome/user face (the /id face until 2026-09-28)", () => {
         // its own destructuring (a 500 here was the widget gallery's first finding).
         const resp = await owner(`ringtome/user/${root}/ui-demo`);
         assert.equal(resp.status, 200);
-        assert.ok((await resp.text()).includes("app.js"), "a member gets the SPA to route it");
+        assert.ok((await resp.text()).includes('app.js'), 'a member gets the SPA to route it');
         const anonDeep = await anon(`ringtome/user/${root}/ui-demo`);
         assert.equal(anonDeep.status, 200, "a stranger gets the persona's face, not a crash");
     });
 
-    it("404s garbage that is not an address in any spelling", async () => {
-        const resp = await anon("ringtome/user/not-an-address-at-all-really");
+    it('404s garbage that is not an address in any spelling', async () => {
+        const resp = await anon('ringtome/user/not-an-address-at-all-really');
         assert.equal(resp.status, 404);
     });
 
-    it("tells the caller how to REACH this persona - itself, for one it hosts", async () => {
+    it('tells the caller how to REACH this persona - itself, for one it hosts', async () => {
         const prof = await (await anon(`api/id/${root}/profile`)).json();
-        assert.equal(prof.hosted, true, "this node serves them");
-        assert.ok(prof.via.length >= 1, "and hints itself as an entry point");
+        assert.equal(prof.hosted, true, 'this node serves them');
+        assert.ok(prof.via.length >= 1, 'and hints itself as an entry point');
         // Hints are base58 node keys - never hex, never addresses.
         assert.ok(prof.via.every((k) => /^[1-9A-HJ-NP-Za-km-z]+$/.test(k)));
     });
 
-    it("the JSON face follows the same shelf rule, anonymously", async () => {
+    it('the JSON face follows the same shelf rule, anonymously', async () => {
         const prof = await (await anon(`api/id/${root}/profile`)).json();
         assert.equal(prof.root, root);
-        assert.ok(prof.speakable.endsWith(prof.speakable.split("-")[2]));
-        assert.ok(prof.fields.some((f) => f.field === "name" && f.value === "Idface Test Persona"));
+        assert.ok(prof.speakable.endsWith(prof.speakable.split('-')[2]));
+        assert.ok(prof.fields.some((f) => f.field === 'name' && f.value === 'Idface Test Persona'));
 
-        const missing = await anon(`api/id/${"ee".repeat(32)}/profile`);
+        const missing = await anon(`api/id/${'ee'.repeat(32)}/profile`);
         assert.equal(missing.status, 404);
     });
 
     it("the address before /ringtome/ redirects to it, hints kept - and a picture's bytes never move (2026-09-28)", async () => {
         const at = async (path) => {
-            const r = await anon(path, { redirect: "manual" });
-            return [r.status, r.headers.get("location")];
+            const r = await anon(path, { redirect: 'manual' });
+            return [r.status, r.headers.get('location')];
         };
         assert.deepEqual(await at(`id/${speakableAddr}`), [307, `/ringtome/user/${speakableAddr}`]);
-        assert.deepEqual(await at(`id/${root}?via=k1,k2`), [307, `/ringtome/user/${root}?via=k1,k2`]);
-        const [doc, page] = ["0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"];
-        assert.deepEqual(await at(`id/${root}/post/${doc}`), [307, `/ringtome/user/${root}/post/${doc}`]);
-        assert.deepEqual(await at(`id/${root}/post/${doc}/${page}`), [307, `/ringtome/user/${root}/post/${doc}/page/${page}`], "a book's page, in the new spelling");
+        assert.deepEqual(await at(`id/${root}?via=k1,k2`), [
+            307,
+            `/ringtome/user/${root}?via=k1,k2`,
+        ]);
+        const [doc, page] = [
+            '0123456789abcdef0123456789abcdef',
+            'fedcba9876543210fedcba9876543210',
+        ];
+        assert.deepEqual(await at(`id/${root}/post/${doc}`), [
+            307,
+            `/ringtome/user/${root}/post/${doc}`,
+        ]);
+        assert.deepEqual(
+            await at(`id/${root}/post/${doc}/${page}`),
+            [307, `/ringtome/user/${root}/post/${doc}/page/${page}`],
+            "a book's page, in the new spelling",
+        );
         // The short form, and the app for every deeper path.
-        const short = speakableAddr.split("-")[2];
+        const short = speakableAddr.split('-')[2];
         const face = await anon(`ringtome/user/${short}`);
-        assert.equal(face.status, 200, "the bare base58 is an address");
-        assert.ok((await face.text()).includes(`/ringtome/user/${short}`), "and the head's own URL is in the short form");
+        assert.equal(face.status, 200, 'the bare base58 is an address');
+        assert.ok(
+            (await face.text()).includes(`/ringtome/user/${short}`),
+            "and the head's own URL is in the short form",
+        );
         const deep = await anon(`ringtome/user/${short}/post/${doc}`);
-        assert.ok((await deep.text()).includes("app.js"), "a post's address is the app");
-        assert.ok((await (await anon("ringtome/notes")).text()).includes("app.js"), "and so is every other /ringtome/ path");
+        assert.ok((await deep.text()).includes('app.js'), "a post's address is the app");
+        assert.ok(
+            (await (await anon('ringtome/notes')).text()).includes('app.js'),
+            'and so is every other /ringtome/ path',
+        );
     });
 });
 
@@ -157,36 +185,36 @@ describe("the /ringtome/user face (the /id face until 2026-09-28)", () => {
     the page - and one honest 404 for never-was, private, and taken-down alike, because
     "which of those" is exactly what a stranger must not be able to distinguish.
 */
-describe("the single-post read", () => {
+describe('the single-post read', () => {
     let owner, root, post, draft;
 
     before(async () => {
-        owner = await makeUserFetch({ prefix: "permalink" });
-        root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
-        await owner(`api/identity/${root}/serve`, { method: "POST" });
+        owner = await makeUserFetch({ prefix: 'permalink' });
+        root = (await (await owner('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await owner(`api/identity/${root}/serve`, { method: 'POST' });
         const made = await (
             await owner(`api/identity/${root}/docs`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({
-                    title: "the addressed post",
-                    body: "words with a home",
-                    format: "plaintext",
+                    title: 'the addressed post',
+                    body: 'words with a home',
+                    format: 'plaintext',
                 }),
             })
         ).json();
         const pub = await owner(`api/identity/${root}/docs/${made.doc_id}/publish`, {
-            method: "POST",
+            method: 'POST',
         });
         post = JSON.parse(await pub.text()).post_id;
         // A private draft, never published: its id must answer exactly like nothing.
         draft = (
             await (
                 await owner(`api/identity/${root}/docs`, {
-                    method: "POST",
+                    method: 'POST',
                     body: JSON.stringify({
-                        title: "the unspoken draft",
-                        body: "words with no public home",
-                        format: "plaintext",
+                        title: 'the unspoken draft',
+                        body: 'words with no public home',
+                        format: 'plaintext',
                     }),
                 })
             ).json()
@@ -199,40 +227,40 @@ describe("the single-post read", () => {
         await owner(`api/identity/${root}/docs`);
     });
 
-    it("serves one post, anonymously, at its own address", async () => {
+    it('serves one post, anonymously, at its own address', async () => {
         const anon = makeFetch();
         const resp = await anon(`api/id/${root}/posts/${post}`);
         assert.equal(resp.status, 200, await resp.clone().text());
         const p = await resp.json();
-        assert.equal(p.doc_id, post, "the post it asked for");
-        assert.equal(p.title, "the addressed post");
-        assert.ok(p.published_ms > 0, "dated by when it was first said");
+        assert.equal(p.doc_id, post, 'the post it asked for');
+        assert.equal(p.title, 'the addressed post');
+        assert.ok(p.published_ms > 0, 'dated by when it was first said');
     });
 
-    it("a private draft is not a post - one honest 404", async () => {
+    it('a private draft is not a post - one honest 404', async () => {
         const anon = makeFetch();
         assert.equal((await anon(`api/id/${root}/posts/${draft}`)).status, 404);
     });
 
-    it("garbage is a bad request, not a missing post", async () => {
+    it('garbage is a bad request, not a missing post', async () => {
         const anon = makeFetch();
         assert.equal((await anon(`api/id/${root}/posts/not-a-doc-id`)).status, 400);
     });
 
-    it("a takedown leaves this surface too", async () => {
-        const down = await owner(`api/identity/${root}/posts/${post}`, { method: "DELETE" });
+    it('a takedown leaves this surface too', async () => {
+        const down = await owner(`api/identity/${root}/posts/${post}`, { method: 'DELETE' });
         assert.equal(down.status, 200, await down.text());
-        await beat(undefined, "fold", root);
+        await beat(undefined, 'fold', root);
         const anon = makeFetch();
         assert.equal(
             (await anon(`api/id/${root}/posts/${post}`)).status,
             404,
-            "what was said and unsaid is not at its address any more"
+            'what was said and unsaid is not at its address any more',
         );
     });
 });
 
-const { HOST_B } = require("./fetch.cjs");
+const { HOST_B } = require('./fetch.cjs');
 
 (HOST_B ? describe : describe.skip)("fetch-and-serve (A's persona through B)", function () {
     this.timeout(30000);
@@ -240,118 +268,123 @@ const { HOST_B } = require("./fetch.cjs");
     let aOwner, bMember, aRoot, aEndpoint;
 
     before(async () => {
-        aOwner = await makeUserFetch({ prefix: "ff_a" });
-        const made = await (await aOwner("api/identity", { method: "POST" })).json();
+        aOwner = await makeUserFetch({ prefix: 'ff_a' });
+        const made = await (await aOwner('api/identity', { method: 'POST' })).json();
         aRoot = made.root_pubkey;
         await aOwner(`api/identity/${aRoot}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Faraway Fran" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Faraway Fran' }),
         });
-        aEndpoint = (await (await aOwner("api/node")).json()).endpoint_id;
-        bMember = await makeUserFetch({ prefix: "ff_b", host: HOST_B });
+        aEndpoint = (await (await aOwner('api/node')).json()).endpoint_id;
+        bMember = await makeUserFetch({ prefix: 'ff_b', host: HOST_B });
     });
 
     it("a member of B reaches A's persona through the via hint - base58-dressed", async () => {
         // Minted URLs carry node keys in base58 now; the hex escape hatch stays valid too.
-        const { toBase58 } = await import("../../js/speakable.js");
+        const { toBase58 } = await import('../../js/speakable.js');
         const resp = await bMember(`api/id/${aRoot}/profile?via=${toBase58(aEndpoint)}`);
         assert.equal(resp.status, 200);
         const prof = await resp.json();
-        assert.equal(prof.foreign, true, "marked as reached-across, not hosted");
+        assert.equal(prof.foreign, true, 'marked as reached-across, not hosted');
         assert.ok(
-            prof.fields.some((f) => f.field === "name" && f.value === "Faraway Fran"),
-            "the profile crossed the network"
+            prof.fields.some((f) => f.field === 'name' && f.value === 'Faraway Fran'),
+            'the profile crossed the network',
         );
     });
 
-    it("the fetch is member-scoped: anonymous B still tombstones the root", async () => {
+    it('the fetch is member-scoped: anonymous B still tombstones the root', async () => {
         const anonB = makeFetch(HOST_B);
         const json = await anonB(`api/id/${aRoot}/profile`);
-        assert.equal(json.status, 404, "the JSON face refuses strangers the fetch served");
+        assert.equal(json.status, 404, 'the JSON face refuses strangers the fetch served');
         const face = await anonB(`id/${aRoot}`);
-        assert.equal(face.status, 404, "the HTML face still tombstones - no durable shelf growth");
-        assert.ok((await face.text()).includes("app.js"));
+        assert.equal(face.status, 404, 'the HTML face still tombstones - no durable shelf growth');
+        assert.ok((await face.text()).includes('app.js'));
     });
 
-    it("a hintless ask about an unknown root fails honestly", async () => {
-        const resp = await bMember(`api/id/${"dd".repeat(32)}/profile`);
+    it('a hintless ask about an unknown root fails honestly', async () => {
+        const resp = await bMember(`api/id/${'dd'.repeat(32)}/profile`);
         assert.equal(resp.status, 404);
     });
 
-    it("NEVER hints itself for a persona it would tombstone", async () => {
+    it('NEVER hints itself for a persona it would tombstone', async () => {
         // B reached A's persona for its member, but B serves them to nobody - so B's answer
         // must carry A's entry point and refuse its own origin, or a shared link dead-ends.
-        const { toBase58 } = await import("../../js/speakable.js");
+        const { toBase58 } = await import('../../js/speakable.js');
         const prof = await (
             await bMember(`api/id/${aRoot}/profile?via=${toBase58(aEndpoint)}`)
         ).json();
-        assert.equal(prof.hosted, false, "B does not host them - no origin may be minted");
+        assert.equal(prof.hosted, false, 'B does not host them - no origin may be minted');
         assert.ok(prof.via.includes(toBase58(aEndpoint)), "A's endpoint is the honest hint");
-        const bEndpoint = (await (await bMember("api/node")).json()).endpoint_id;
+        const bEndpoint = (await (await bMember('api/node')).json()).endpoint_id;
         assert.ok(
             !prof.via.includes(toBase58(bEndpoint)),
-            "B must not advertise itself as a way to reach them"
+            'B must not advertise itself as a way to reach them',
         );
     });
 
-    it("adopting a fetched persona works, and clears its stranger record", async () => {
+    it('adopting a fetched persona works, and clears its stranger record', async () => {
         // A SECOND persona of A's, fetched by B and then brought over - its own subject, so
         // adopting it can't rewrite the foreign world the tests above depend on. The
         // existing public-only copy is a prefix, not an obstacle (content-addressed
         // entries, duplicate-skip, incremental fold), so nothing is deleted and the private
         // half folds on top. First run of this path, 2026-08-03.
-        const { inflateRawSync } = require("node:zlib");
+        const { inflateRawSync } = require('node:zlib');
         const decode = (c) =>
-            JSON.parse(inflateRawSync(Buffer.from(c.trim().slice(4), "base64url")).toString("utf8"));
-        const { toBase58 } = await import("../../js/speakable.js");
+            JSON.parse(
+                inflateRawSync(Buffer.from(c.trim().slice(4), 'base64url')).toString('utf8'),
+            );
+        const { toBase58 } = await import('../../js/speakable.js');
 
-        const moved = await (await aOwner("api/identity", { method: "POST" })).json();
+        const moved = await (await aOwner('api/identity', { method: 'POST' })).json();
         await aOwner(`api/identity/${moved.root_pubkey}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Moving Mo" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Moving Mo' }),
         });
         // B fetches them first - the public-only copy this test is about.
         const before = await (
             await bMember(`api/id/${moved.root_pubkey}/profile?via=${toBase58(aEndpoint)}`)
         ).json();
-        assert.equal(before.foreign, true, "a stranger, held publicly");
+        assert.equal(before.foreign, true, 'a stranger, held publicly');
 
-        const owner = await makeUserFetch({ prefix: "adopt_b", host: HOST_B });
-        const req = await (await owner("api/identity/adopt/begin", { method: "POST" })).json();
-        assert.ok(decode(req.code).leaf_pubkey, "the request code carries a leaf");
+        const owner = await makeUserFetch({ prefix: 'adopt_b', host: HOST_B });
+        const req = await (await owner('api/identity/adopt/begin', { method: 'POST' })).json();
+        assert.ok(decode(req.code).leaf_pubkey, 'the request code carries a leaf');
         const grant = await (
             await aOwner(`api/identity/${moved.root_pubkey}/nodes`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({ code: req.code }),
             })
         ).json();
-        const done = await owner("api/identity/adopt/complete", {
-            method: "POST",
+        const done = await owner('api/identity/adopt/complete', {
+            method: 'POST',
             body: JSON.stringify({ code: grant.code }),
         });
         assert.equal(done.status, 200, await done.text());
 
-        const mine = await (await owner("api/identity")).json();
-        assert.ok(mine.some((p) => p.root_pubkey === moved.root_pubkey), "B hosts them now");
+        const mine = await (await owner('api/identity')).json();
+        assert.ok(
+            mine.some((p) => p.root_pubkey === moved.root_pubkey),
+            'B hosts them now',
+        );
         const after = await (await owner(`api/id/${moved.root_pubkey}/profile`)).json();
-        assert.equal(after.hosted, true, "hosted, not foreign");
+        assert.equal(after.hosted, true, 'hosted, not foreign');
         assert.equal(after.foreign, false);
         // And B stops calling them a stranger it once fetched.
-        const rows = await sql("SELECT root_pubkey FROM foreign_fetches", HOST_B);
+        const rows = await sql('SELECT root_pubkey FROM foreign_fetches', HOST_B);
         assert.ok(
             !JSON.stringify(rows).includes(moved.root_pubkey),
-            "the fetch record is cleared when hosting begins"
+            'the fetch record is cleared when hosting begins',
         );
     });
 
-    it("the fetch is REMEMBERED: a bare hintless ask now serves from the durable registry", async () => {
+    it('the fetch is REMEMBERED: a bare hintless ask now serves from the durable registry', async () => {
         // No ?via= at all - the on-disk foreign_fetches row (freshness + last_via) is the
         // only thing that can answer this. This is the row that survives a reboot.
         const resp = await bMember(`api/id/${aRoot}/profile`);
         assert.equal(resp.status, 200);
         const prof = await resp.json();
         assert.equal(prof.foreign, true);
-        assert.ok(prof.fields.some((f) => f.value === "Faraway Fran"));
+        assert.ok(prof.fields.some((f) => f.value === 'Faraway Fran'));
     });
 });
 
@@ -362,19 +395,19 @@ const { HOST_B } = require("./fetch.cjs");
 */
 let owner2, root2, avatarDoc;
 
-describe("the avatar (public documents, tenant zero)", function () {
+describe('the avatar (public documents, tenant zero)', function () {
     this.timeout(30000);
 
     before(async () => {
-        owner2 = await makeUserFetch({ prefix: "avatar" });
-        const made = await (await owner2("api/identity", { method: "POST" })).json();
+        owner2 = await makeUserFetch({ prefix: 'avatar' });
+        const made = await (await owner2('api/identity', { method: 'POST' })).json();
         root2 = made.root_pubkey;
-        const fs = require("node:fs");
+        const fs = require('node:fs');
         const img = fs.readFileSync(`${__dirname}/../../../sample_media/polaroid.jpg`);
         const form = new FormData();
-        form.append("image", new Blob([img], { type: "image/jpeg" }), "polaroid.jpg");
+        form.append('image', new Blob([img], { type: 'image/jpeg' }), 'polaroid.jpg');
         const resp = await owner2(`api/identity/${root2}/avatar`, {
-            method: "POST",
+            method: 'POST',
             body: form,
             file: true,
         });
@@ -383,64 +416,80 @@ describe("the avatar (public documents, tenant zero)", function () {
         avatarDoc = JSON.parse(text).doc_id;
     });
 
-    it("mints a public media document and points the profile at it", async () => {
+    it('mints a public media document and points the profile at it', async () => {
         const prof = await (await anon(`api/id/${root2}/profile`)).json();
         assert.ok(
-            prof.fields.some((f) => f.field === "avatar" && f.value === avatarDoc),
-            "the register holds the pointer"
+            prof.fields.some((f) => f.field === 'avatar' && f.value === avatarDoc),
+            'the register holds the pointer',
         );
     });
 
-    it("serves the bytes anonymously under the identity-rooted path", async () => {
+    it('serves the bytes anonymously under the identity-rooted path', async () => {
         const thumb = await anon(`id/${root2}/docs/${avatarDoc}/thumb`);
         assert.equal(thumb.status, 200);
-        assert.equal(thumb.headers.get("content-type"), "image/avif");
+        assert.equal(thumb.headers.get('content-type'), 'image/avif');
         // Kept, not revalidated (2026-10-02; it was revalidation from 2026-08-06, when a re-upload
         // changed the bytes under the same address): an avatar is a media document minted fresh at
         // every upload, so its address never names new bytes - the re-upload claim below. The blob
         // hash still rides as the ETag, for whoever asks anyway.
-        assert.equal(thumb.headers.get("cache-control"), "public, max-age=31536000, s-maxage=2592000, immutable");
-        assert.ok(thumb.headers.get("etag"), "the blob hash rides as the ETag");
+        assert.equal(
+            thumb.headers.get('cache-control'),
+            'public, max-age=31536000, s-maxage=2592000, immutable',
+        );
+        assert.ok(thumb.headers.get('etag'), 'the blob hash rides as the ETag');
         const body = await anon(`id/${root2}/docs/${avatarDoc}/body`);
         assert.equal(body.status, 200);
-        assert.equal(body.headers.get("content-type"), "image/avif");
-        assert.ok((await body.arrayBuffer()).byteLength > 0, "real bytes");
+        assert.equal(body.headers.get('content-type'), 'image/avif');
+        assert.ok((await body.arrayBuffer()).byteLength > 0, 'real bytes');
     });
 
-    it("a re-uploaded avatar is a NEW address - which is what makes keeping the old one safe", async () => {
-        const fs = require("node:fs");
+    it('a re-uploaded avatar is a NEW address - which is what makes keeping the old one safe', async () => {
+        const fs = require('node:fs');
         const img = fs.readFileSync(`${__dirname}/../../../sample_media/polaroid.jpg`);
         const form = new FormData();
-        form.append("image", new Blob([img], { type: "image/jpeg" }), "polaroid.jpg");
-        const again = await owner2(`api/identity/${root2}/avatar`, { method: "POST", body: form, file: true });
+        form.append('image', new Blob([img], { type: 'image/jpeg' }), 'polaroid.jpg');
+        const again = await owner2(`api/identity/${root2}/avatar`, {
+            method: 'POST',
+            body: form,
+            file: true,
+        });
         assert.equal(again.status, 200, await again.clone().text());
         const next = (await again.json()).doc_id;
-        assert.notEqual(next, avatarDoc, "a fresh document, never new bytes under the old one");
+        assert.notEqual(next, avatarDoc, 'a fresh document, never new bytes under the old one');
         const prof = await (await anon(`api/id/${root2}/profile`)).json();
-        assert.ok(prof.fields.some((f) => f.field === "avatar" && f.value === next), "and the profile points at it");
+        assert.ok(
+            prof.fields.some((f) => f.field === 'avatar' && f.value === next),
+            'and the profile points at it',
+        );
         avatarDoc = next; // the claims below speak of the avatar the profile wears
     });
 
-    it("the face wears it", async () => {
+    it('the face wears it', async () => {
         const face = await anon(`id/${root2}`);
         assert.ok((await face.text()).includes(`/docs/${avatarDoc}/thumb`));
     });
 
-    it("a PRIVATE doc asked through the public door is a 404, never a leak", async () => {
-        const doc = await (await owner2(`api/identity/${root2}/docs`, {
-            method: "POST",
-            body: JSON.stringify({ title: "secret", body: "private words", format: "plaintext" }),
-        })).json();
+    it('a PRIVATE doc asked through the public door is a 404, never a leak', async () => {
+        const doc = await (
+            await owner2(`api/identity/${root2}/docs`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    title: 'secret',
+                    body: 'private words',
+                    format: 'plaintext',
+                }),
+            })
+        ).json();
         const resp = await anon(`id/${root2}/docs/${doc.doc_id}/body`);
         assert.equal(resp.status, 404);
     });
 
-    it("the avatar never appears in the private workspace list", async () => {
+    it('the avatar never appears in the private workspace list', async () => {
         const list = await (await owner2(`api/identity/${root2}/docs`)).json();
         const docs = Array.isArray(list) ? list : list.docs || [];
         assert.ok(
             !docs.some((d) => d.doc_id === avatarDoc),
-            "public docs have their own doors; the apps never see them"
+            'public docs have their own doors; the apps never see them',
         );
     });
 });
@@ -450,72 +499,79 @@ describe("the avatar (public documents, tenant zero)", function () {
     the page, crushed at its own larger bound to a born-public picture the `banner` register names,
     served anonymously like the avatar; cleared, the page wears its identicon tiled again.
 */
-describe("the banner (a profile field beside the avatar)", function () {
+describe('the banner (a profile field beside the avatar)', function () {
     this.timeout(30000);
     let owner, root;
-    const { makePng } = require("./helpers.cjs");
+    const { makePng } = require('./helpers.cjs');
     const upload = (bytes, type) => {
         const form = new FormData();
-        form.append("image", new Blob([bytes], { type }), "banner.png");
-        return owner(`api/identity/${root}/banner`, { method: "POST", body: form, file: true });
+        form.append('image', new Blob([bytes], { type }), 'banner.png');
+        return owner(`api/identity/${root}/banner`, { method: 'POST', body: form, file: true });
     };
-    const bannerField = async () => ((await (await anon(`api/id/${root}/profile`)).json()).fields || []).find((f) => f.field === "banner");
+    const bannerField = async () =>
+        ((await (await anon(`api/id/${root}/profile`)).json()).fields || []).find(
+            (f) => f.field === 'banner',
+        );
 
     before(async () => {
-        owner = await makeUserFetch({ prefix: "banner" });
-        root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
+        owner = await makeUserFetch({ prefix: 'banner' });
+        root = (await (await owner('api/identity', { method: 'POST' })).json()).root_pubkey;
     });
 
-    it("a wide picture becomes the banner: a public picture the profile names, served to anyone", async () => {
-        const resp = await upload(makePng(3000, 300), "image/png");
+    it('a wide picture becomes the banner: a public picture the profile names, served to anyone', async () => {
+        const resp = await upload(makePng(3000, 300), 'image/png');
         const text = await resp.text();
         assert.equal(resp.status, 200, text);
         const doc = JSON.parse(text).doc_id;
         const field = await bannerField();
-        assert.equal(field && field.value, doc, "the register holds the pointer");
+        assert.equal(field && field.value, doc, 'the register holds the pointer');
         const body = await anon(`id/${root}/docs/${doc}/body`);
         assert.equal(body.status, 200);
-        assert.equal(body.headers.get("content-type"), "image/avif");
+        assert.equal(body.headers.get('content-type'), 'image/avif');
         // ...and the byline cache carries it beside the name and picture, which is what a People
         // row reads (profiles.rs; 2026-09-28) - here through the node's own people door.
-        const { HOST } = require("./fetch.cjs");
+        const { HOST } = require('./fetch.cjs');
         let listed = null;
         for (let i = 0; i < 30 && !(listed && listed.banner === doc); i++) {
-            listed = ((await (await anon("api/node/personas")).json()).people || []).find((p) => p.root === root);
+            listed = ((await (await anon('api/node/personas')).json()).people || []).find(
+                (p) => p.root === root,
+            );
             if (!(listed && listed.banner === doc)) {
-                await beat(HOST, "fold", root);
+                await beat(HOST, 'fold', root);
                 await new Promise((r) => setTimeout(r, 200));
             }
         }
-        assert.equal(listed && listed.banner, doc, `the byline names the banner: ${JSON.stringify(listed)}`);
+        assert.equal(
+            listed && listed.banner,
+            doc,
+            `the byline names the banner: ${JSON.stringify(listed)}`,
+        );
     });
 
-    it("is a still picture or nothing", async () => {
-        const resp = await upload(Buffer.from("not a picture at all"), "application/octet-stream");
+    it('is a still picture or nothing', async () => {
+        const resp = await upload(Buffer.from('not a picture at all'), 'application/octet-stream');
         assert.equal(resp.status, 400, await resp.text());
     });
 
-    it("cleared, the field is empty and the page wears its pattern", async () => {
-        const resp = await owner(`api/identity/${root}/banner`, { method: "DELETE" });
+    it('cleared, the field is empty and the page wears its pattern', async () => {
+        const resp = await owner(`api/identity/${root}/banner`, { method: 'DELETE' });
         assert.equal(resp.status, 200, await resp.text());
         const field = await bannerField();
-        assert.ok(!field || field.value === "", `no banner named: ${JSON.stringify(field)}`);
+        assert.ok(!field || field.value === '', `no banner named: ${JSON.stringify(field)}`);
     });
 });
 
-(HOST_B ? describe : describe.skip)("foreign bodies cross with the fetch", function () {
+(HOST_B ? describe : describe.skip)('foreign bodies cross with the fetch', function () {
     this.timeout(30000);
 
     it("names AND faces: B serves A's avatar bytes after one via-hinted fetch", async () => {
         // root2's avatar was minted in the section above on A; a member of B reaches across.
-        const aEndpoint = (await (await owner2("api/node")).json()).endpoint_id;
-        const bMember = await makeUserFetch({ prefix: "face_b", host: HOST_B });
-        const prof = await (
-            await bMember(`api/id/${root2}/profile?via=${aEndpoint}`)
-        ).json();
+        const aEndpoint = (await (await owner2('api/node')).json()).endpoint_id;
+        const bMember = await makeUserFetch({ prefix: 'face_b', host: HOST_B });
+        const prof = await (await bMember(`api/id/${root2}/profile?via=${aEndpoint}`)).json();
         assert.ok(
-            prof.fields.some((f) => f.field === "avatar" && f.value === avatarDoc),
-            "the avatar pointer crossed with the profile"
+            prof.fields.some((f) => f.field === 'avatar' && f.value === avatarDoc),
+            'the avatar pointer crossed with the profile',
         );
         // The bytes crossed in the same exchange (keyless public backfill): B can serve the
         // thumbnail itself, no second trip to A.
@@ -526,8 +582,8 @@ describe("the banner (a profile field beside the avatar)", function () {
             await new Promise((r) => setTimeout(r, 400));
             thumb = await bMember(`id/${root2}/docs/${avatarDoc}/thumb`);
         }
-        assert.equal(thumb.status, 200, "the face crossed, not just the name");
-        assert.equal(thumb.headers.get("content-type"), "image/avif");
+        assert.equal(thumb.status, 200, 'the face crossed, not just the name');
+        assert.equal(thumb.headers.get('content-type'), 'image/avif');
         assert.ok((await thumb.arrayBuffer()).byteLength > 0);
     });
 });
@@ -543,17 +599,24 @@ describe("a post's own head, for the unfurlers outside", function () {
     this.timeout(30000);
     let owner, root, short;
     const publish = async (title, body, extra = {}, description = null) => {
-        const d = (await (await owner(`api/identity/${root}/docs`, {
-            method: "POST",
-            body: JSON.stringify({ title, body, format: "marquee" }),
-        })).json()).doc_id;
+        const d = (
+            await (
+                await owner(`api/identity/${root}/docs`, {
+                    method: 'POST',
+                    body: JSON.stringify({ title, body, format: 'marquee' }),
+                })
+            ).json()
+        ).doc_id;
         if (description) {
             await owner(`api/identity/${root}/docs/${d}/annotations/fields/description`, {
-                method: "PUT",
+                method: 'PUT',
                 body: JSON.stringify({ value: description }),
             });
         }
-        const pub = await owner(`api/identity/${root}/docs/${d}/publish`, { method: "POST", body: JSON.stringify(extra) });
+        const pub = await owner(`api/identity/${root}/docs/${d}/publish`, {
+            method: 'POST',
+            body: JSON.stringify(extra),
+        });
         assert.equal(pub.status, 200, await pub.clone().text());
         return { note: d, post: (await pub.json()).post_id };
     };
@@ -561,62 +624,103 @@ describe("a post's own head, for the unfurlers outside", function () {
         const r = await anon(path);
         assert.equal(r.status, 200, path);
         const html = await r.text();
-        return html.slice(0, html.indexOf("</head>"));
+        return html.slice(0, html.indexOf('</head>'));
     };
 
     before(async () => {
-        owner = await makeUserFetch({ prefix: "posthead" });
-        root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
-        await owner(`api/identity/${root}/profile`, { method: "POST", body: JSON.stringify({ field: "name", value: "Head Tester" }) });
-        short = (await import("../../js/speakable.js")).toBase58(root);
+        owner = await makeUserFetch({ prefix: 'posthead' });
+        root = (await (await owner('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await owner(`api/identity/${root}/profile`, {
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Head Tester' }),
+        });
+        short = (await import('../../js/speakable.js')).toBase58(root);
     });
 
-    it("a titled post: its title, the start of its words, an article at its own address", async () => {
-        const { post } = await publish("On Boats", "boats are **good**, actually");
+    it('a titled post: its title, the start of its words, an article at its own address', async () => {
+        const { post } = await publish('On Boats', 'boats are **good**, actually');
         const head = await headOf(`ringtome/user/${short}/post/${post}`);
-        assert.ok(head.includes("<title>On Boats - Head Tester</title>"), head);
+        assert.ok(head.includes('<title>On Boats - Head Tester</title>'), head);
         assert.ok(head.includes('property="og:title" content="On Boats"'));
         assert.ok(head.includes('property="og:type" content="article"'));
-        assert.ok(head.includes(`/ringtome/user/${short}/post/${post}"`), "its own short-form address");
-        assert.ok(head.includes('property="og:description" content="boats are good, actually"'), "the words, markup dropped");
+        assert.ok(
+            head.includes(`/ringtome/user/${short}/post/${post}"`),
+            'its own short-form address',
+        );
+        assert.ok(
+            head.includes('property="og:description" content="boats are good, actually"'),
+            'the words, markup dropped',
+        );
     });
 
     it("an untitled post is called by its first words; the author's description outranks the excerpt", async () => {
-        const untitled = await publish("", "a horse drawn quickly in the rain at dawn by the sea wall today");
+        const untitled = await publish(
+            '',
+            'a horse drawn quickly in the rain at dawn by the sea wall today',
+        );
         const bare = await headOf(`ringtome/user/${short}/post/${untitled.post}`);
-        assert.ok(bare.includes('property="og:title" content="a horse drawn quickly in the rain at dawn"'), bare);
-        const described = await publish("Soup", "the long story of the soup", {}, "a short soup summary");
+        assert.ok(
+            bare.includes(
+                'property="og:title" content="a horse drawn quickly in the rain at dawn"',
+            ),
+            bare,
+        );
+        const described = await publish(
+            'Soup',
+            'the long story of the soup',
+            {},
+            'a short soup summary',
+        );
         const head = await headOf(`ringtome/user/${short}/post/${described.post}`);
         assert.ok(head.includes('property="og:description" content="a short soup summary"'), head);
     });
 
     it("a published note's address wears its post's head", async () => {
-        const { note, post } = await publish("From A Note", "said once, in private first");
+        const { note, post } = await publish('From A Note', 'said once, in private first');
         const head = await headOf(`ringtome/user/${short}/doc/${note}`);
         assert.ok(head.includes('property="og:title" content="From A Note"'), head);
         assert.ok(head.includes(`/post/${post}"`), "and names the post's address");
     });
 
-    it("a post that is just a picture: that picture is its image - a text post has no thumbnail of its own", async function () {
+    it('a post that is just a picture: that picture is its image - a text post has no thumbnail of its own', async function () {
         this.timeout(60000);
-        const { makePng } = require("./helpers.cjs");
-        const pic = (await (await owner(`api/identity/${root}/docs/binary?title=pony`, { method: "POST", body: makePng(32, 32), file: true })).json()).doc_id;
+        const { makePng } = require('./helpers.cjs');
+        const pic = (
+            await (
+                await owner(`api/identity/${root}/docs/binary?title=pony`, {
+                    method: 'POST',
+                    body: makePng(32, 32),
+                    file: true,
+                })
+            ).json()
+        ).doc_id;
         for (let i = 0; i < 60; i++) {
             if ((await owner(`api/identity/${root}/docs/${pic}/body`)).status === 200) break;
             await new Promise((r) => setTimeout(r, 300));
         }
-        const { post } = await publish("", `![pony](/api/identity/${root}/docs/${pic}/body/pony.avif)`);
+        const { post } = await publish(
+            '',
+            `![pony](/api/identity/${root}/docs/${pic}/body/pony.avif)`,
+        );
         const head = await headOf(`ringtome/user/${short}/post/${post}`);
         const image = (head.match(/property="og:image" content="([^"]+)"/) || [])[1];
-        assert.ok(image && /\/ringtome\/user\/[A-Za-z0-9]+\/doc\/[0-9a-f]{32}\/thumb$/.test(image), `the post's picture, not the author's: ${head}`);
-        const thumb = await anon(image.replace(/^https?:\/\/[^/]+\//, "").replace(/^\//, ""));
-        assert.equal(thumb.status, 200, "and its thumbnail serves");
+        assert.ok(
+            image && /\/ringtome\/user\/[A-Za-z0-9]+\/doc\/[0-9a-f]{32}\/thumb$/.test(image),
+            `the post's picture, not the author's: ${head}`,
+        );
+        const thumb = await anon(image.replace(/^https?:\/\/[^/]+\//, '').replace(/^\//, ''));
+        assert.equal(thumb.status, 200, 'and its thumbnail serves');
     });
 
     it("a sealed post keeps the person's head - nothing of it reaches an unfurler", async () => {
-        const { post } = await publish("Only For Friends", "the secret words", { trusted_only: true });
+        const { post } = await publish('Only For Friends', 'the secret words', {
+            trusted_only: true,
+        });
         const head = await headOf(`ringtome/user/${short}/post/${post}`);
-        assert.ok(!head.includes("Only For Friends") && !head.includes("secret words"), head);
-        assert.ok(head.includes('property="og:type" content="profile"'), "the person's head instead");
+        assert.ok(!head.includes('Only For Friends') && !head.includes('secret words'), head);
+        assert.ok(
+            head.includes('property="og:type" content="profile"'),
+            "the person's head instead",
+        );
     });
 });

@@ -4,10 +4,10 @@
 // could trip remotely while every local run stayed green. One knob scales every budget:
 // RINGTOME_TEST_SETTLE_SCALE multiplies the settle loops and this ceiling together
 // (ci.yml sets it; local runs default to 1 and behave exactly as before).
-const scale = Math.max(1, parseInt(process.env.RINGTOME_TEST_SETTLE_SCALE || "1", 10) || 1);
+const scale = Math.max(1, parseInt(process.env.RINGTOME_TEST_SETTLE_SCALE || '1', 10) || 1);
 module.exports = {
-    spec: "test/**/*.cjs",
-    require: "./roothooks.cjs",
+    spec: 'test/**/*.cjs',
+    require: './roothooks.cjs',
     timeout: 5000 * scale,
     // Exit when the last test ends, whatever it left open (2026-09-29): a claim that failed while
     // holding a websocket kept mocha - and the rig and its five nodes - waiting for half an hour.

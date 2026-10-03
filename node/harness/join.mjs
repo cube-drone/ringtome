@@ -27,17 +27,32 @@ const { window } = dom;
 const doc = window.document;
 const snap = (label) => {
     const text = doc.body.textContent.replace(/\s+/g, ' ').trim().slice(0, 200);
-    console.log(`### ${label}\n    url=${window.location.pathname} hexes=${doc.querySelectorAll('.quickbar-hex').length}\n    text="${text}"`);
+    console.log(
+        `### ${label}\n    url=${window.location.pathname} hexes=${doc.querySelectorAll('.quickbar-hex').length}\n    text="${text}"`,
+    );
 };
 
-await waitFor(doc, () => [...doc.querySelectorAll('button')].find((x) => /bring your persona/.test(x.textContent)), 'the null state');
+await waitFor(
+    doc,
+    () => [...doc.querySelectorAll('button')].find((x) => /bring your persona/.test(x.textContent)),
+    'the null state',
+);
 snap('null state');
-click(window, [...doc.querySelectorAll('button')].find((x) => /bring your persona/.test(x.textContent)));
+click(
+    window,
+    [...doc.querySelectorAll('button')].find((x) => /bring your persona/.test(x.textContent)),
+);
 await waitFor(doc, () => doc.querySelector('.spare-key'), 'the request code');
 snap('join screen (request code showing)');
 const code = doc.querySelector('.spare-key').textContent.trim();
 
-const grant = await (await a.fetch(`/api/identity/${root}/nodes`, { method: 'POST', headers: J, body: JSON.stringify({ code }) })).json();
+const grant = await (
+    await a.fetch(`/api/identity/${root}/nodes`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ code }),
+    })
+).json();
 console.log('grant delivered over the wire:', grant.delivered);
 
 for (let t = 1; t <= 8; t++) {

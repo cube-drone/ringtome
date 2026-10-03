@@ -27,7 +27,7 @@ describe('removal blast radius', () => {
         assert.deepEqual(
             blastRadius(keys, [1]).map((k) => k.pubkey),
             ['phone', 'watch'],
-            'laptop takes phone and watch down; laptop itself is the target, not radius'
+            'laptop takes phone and watch down; laptop itself is the target, not radius',
         );
     });
 
@@ -35,27 +35,27 @@ describe('removal blast radius', () => {
         assert.deepEqual(blastRadius(keys, [2]), [], 'desktop has no descendants');
         assert.ok(
             !blastRadius(keys, [1]).some((k) => k.pubkey === 'desktop' || k.pubkey === 'spare'),
-            'a sibling branch and the spare are untouched'
+            'a sibling branch and the spare are untouched',
         );
     });
 
     it('does not re-kill the already-revoked', () => {
         assert.ok(
             !blastRadius(keys, [1]).some((k) => k.pubkey === 'stray'),
-            'the repudiated stray was down before the ship was'
+            'the repudiated stray was down before the ship was',
         );
     });
 
     it('the root takes everything active with it', () => {
         assert.deepEqual(
             blastRadius(keys, []).map((k) => k.pubkey),
-            ['spare', 'laptop', 'phone', 'watch', 'desktop']
+            ['spare', 'laptop', 'phone', 'watch', 'desktop'],
         );
     });
 });
 
 describe('the farewell gate', () => {
-    it('fires only on affirmative removal - never on can\'t-tell', () => {
+    it("fires only on affirmative removal - never on can't-tell", () => {
         assert.equal(isDeparted('retired'), true);
         assert.equal(isDeparted('repudiated'), true);
         assert.equal(isDeparted('invalid'), true);

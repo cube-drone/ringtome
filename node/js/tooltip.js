@@ -60,7 +60,11 @@ function borrow(el) {
             place();
         }
     };
-    if (!el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby') && el.getAttribute('title')) {
+    if (
+        !el.hasAttribute('aria-label') &&
+        !el.hasAttribute('aria-labelledby') &&
+        el.getAttribute('title')
+    ) {
         el.setAttribute('aria-label', el.getAttribute('title'));
         el.setAttribute('data-tip-label', '');
     }
@@ -85,7 +89,11 @@ function giveBack(el) {
 
 function place() {
     const r = owner.getBoundingClientRect();
-    const at = placeTip(r, { width: tip.offsetWidth, height: tip.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
+    const at = placeTip(
+        r,
+        { width: tip.offsetWidth, height: tip.offsetHeight },
+        { width: window.innerWidth, height: window.innerHeight },
+    );
     tip.style.left = `${at.left}px`;
     tip.style.top = `${at.top}px`;
 }
@@ -140,7 +148,7 @@ export function installTooltips() {
                 leave();
             }
         },
-        true
+        true,
     );
     document.addEventListener(
         'pointerout',
@@ -150,7 +158,7 @@ export function installTooltips() {
                 leave(); // out of the window altogether
             }
         },
-        true
+        true,
     );
     document.addEventListener(
         'pointerdown',
@@ -158,7 +166,7 @@ export function installTooltips() {
             if (owner) pressed = owner;
             leave();
         },
-        true
+        true,
     );
     document.addEventListener(
         'focusin',
@@ -167,7 +175,7 @@ export function installTooltips() {
             const el = titled(e.target);
             if (el && e.target.matches && e.target.matches(':focus-visible')) enter(el);
         },
-        true
+        true,
     );
     document.addEventListener('focusout', () => leave(), true);
     document.addEventListener('keydown', (e) => e.key === 'Escape' && hide(), true);

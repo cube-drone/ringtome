@@ -48,44 +48,131 @@ const CSS_DEV_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/target/css/b
 // In prod the binary is self-contained; in dev we read from the npm package on disk so that
 // adding a font during development doesn't require a Rust recompile.
 
-const FONTS_DEV_DIR: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/js/node_modules/@cube-drone/marquee-fonts/fonts"
-);
+const FONTS_DEV_DIR: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/js/node_modules/@cube-drone/marquee-fonts/fonts");
 
 /// (filename, embedded bytes) — the lookup table for prod-mode font serving.
 const EMBEDDED_FONTS: &[(&str, &[u8])] = &[
-    ("radio-canada.woff2",          include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/radio-canada.woff2")),
-    ("atkinson-hyperlegible.woff2", include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/atkinson-hyperlegible.woff2")),
-    ("lexend.woff2",                include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/lexend.woff2")),
-    ("zilla-slab.woff2",            include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/zilla-slab.woff2")),
-    ("playfair-display.woff2",      include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/playfair-display.woff2")),
-    ("cormorant.woff2",             include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/cormorant.woff2")),
-    ("im-fell-english.woff2",       include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/im-fell-english.woff2")),
-    ("uncial-antiqua.woff2",        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/uncial-antiqua.woff2")),
-    ("unifraktur.woff2",            include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/unifraktur.woff2")),
-    ("jetbrains-mono.woff2",        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/jetbrains-mono.woff2")),
-    ("vt323.woff2",                 include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/vt323.woff2")),
-    ("press-start.woff2",           include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/press-start.woff2")),
-    ("silkscreen.woff2",            include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/silkscreen.woff2")),
-    ("major-mono.woff2",            include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/major-mono.woff2")),
-    ("orbitron.woff2",              include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/orbitron.woff2")),
-    ("bungee.woff2",                include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/bungee.woff2")),
-    ("monoton.woff2",               include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/monoton.woff2")),
-    ("creepster.woff2",             include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/creepster.woff2")),
-    ("special-elite.woff2",         include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/special-elite.woff2")),
-    ("fredericka.woff2",            include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/fredericka.woff2")),
-    ("lobster.woff2",               include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/lobster.woff2")),
-    ("pacifico.woff2",              include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/pacifico.woff2")),
-    ("caveat.woff2",                include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/caveat.woff2")),
-    ("comic-neue.woff2",            include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/comic-neue.woff2")),
-    ("audiowide.woff2",             include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/audiowide.woff2")),
-    ("kablammo.woff2",              include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/kablammo.woff2")),
-    ("henny-penny.woff2",           include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/henny-penny.woff2")),
-    ("oi.woff2",                    include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/oi.woff2")),
-    ("rye.woff2",                   include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/rye.woff2")),
-    ("bitcount.woff2",              include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/bitcount.woff2")),
-    ("quicksand.woff2",             include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/quicksand.woff2")),
+    (
+        "radio-canada.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/radio-canada.woff2"),
+    ),
+    (
+        "atkinson-hyperlegible.woff2",
+        include_bytes!(
+            "../js/node_modules/@cube-drone/marquee-fonts/fonts/atkinson-hyperlegible.woff2"
+        ),
+    ),
+    (
+        "lexend.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/lexend.woff2"),
+    ),
+    (
+        "zilla-slab.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/zilla-slab.woff2"),
+    ),
+    (
+        "playfair-display.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/playfair-display.woff2"),
+    ),
+    (
+        "cormorant.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/cormorant.woff2"),
+    ),
+    (
+        "im-fell-english.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/im-fell-english.woff2"),
+    ),
+    (
+        "uncial-antiqua.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/uncial-antiqua.woff2"),
+    ),
+    (
+        "unifraktur.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/unifraktur.woff2"),
+    ),
+    (
+        "jetbrains-mono.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/jetbrains-mono.woff2"),
+    ),
+    (
+        "vt323.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/vt323.woff2"),
+    ),
+    (
+        "press-start.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/press-start.woff2"),
+    ),
+    (
+        "silkscreen.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/silkscreen.woff2"),
+    ),
+    (
+        "major-mono.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/major-mono.woff2"),
+    ),
+    (
+        "orbitron.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/orbitron.woff2"),
+    ),
+    (
+        "bungee.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/bungee.woff2"),
+    ),
+    (
+        "monoton.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/monoton.woff2"),
+    ),
+    (
+        "creepster.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/creepster.woff2"),
+    ),
+    (
+        "special-elite.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/special-elite.woff2"),
+    ),
+    (
+        "fredericka.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/fredericka.woff2"),
+    ),
+    (
+        "lobster.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/lobster.woff2"),
+    ),
+    (
+        "pacifico.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/pacifico.woff2"),
+    ),
+    (
+        "caveat.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/caveat.woff2"),
+    ),
+    (
+        "comic-neue.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/comic-neue.woff2"),
+    ),
+    (
+        "audiowide.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/audiowide.woff2"),
+    ),
+    (
+        "kablammo.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/kablammo.woff2"),
+    ),
+    (
+        "henny-penny.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/henny-penny.woff2"),
+    ),
+    ("oi.woff2", include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/oi.woff2")),
+    ("rye.woff2", include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/rye.woff2")),
+    (
+        "bitcount.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/bitcount.woff2"),
+    ),
+    (
+        "quicksand.woff2",
+        include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/quicksand.woff2"),
+    ),
 ];
 
 // ---- handlers ----
@@ -132,7 +219,11 @@ fn dev_branch() -> Option<String> {
         let pointer = std::fs::read_to_string(&dot_git).ok()?;
         let target = pointer.trim().strip_prefix("gitdir:")?.trim().to_string();
         let target = std::path::PathBuf::from(target);
-        if target.is_absolute() { target } else { std::path::Path::new(REPO_DIR).join(target) }
+        if target.is_absolute() {
+            target
+        } else {
+            std::path::Path::new(REPO_DIR).join(target)
+        }
     } else {
         dot_git
     };
@@ -145,7 +236,8 @@ fn branch_from_head(head: &str) -> Option<String> {
     let head = head.trim();
     if let Some(r) = head.strip_prefix("ref:") {
         let r = r.trim();
-        return Some(r.strip_prefix("refs/heads/").unwrap_or(r).to_string()).filter(|b| !b.is_empty());
+        return Some(r.strip_prefix("refs/heads/").unwrap_or(r).to_string())
+            .filter(|b| !b.is_empty());
     }
     (head.len() >= 7 && head.chars().all(|c| c.is_ascii_hexdigit())).then(|| head[..7].to_string())
 }
@@ -165,8 +257,13 @@ pub async fn app_js(
 
     if state.config.is_dev() {
         tracing::info!("dev mode: reloading JS from disk");
-        let contents = std::fs::read_to_string(JS_DEV_PATH)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("failed to read JS bundle from {}: {}", JS_DEV_PATH, e)))?;
+        let contents = std::fs::read_to_string(JS_DEV_PATH).map_err(|e| {
+            AppError::Internal(anyhow::anyhow!(
+                "failed to read JS bundle from {}: {}",
+                JS_DEV_PATH,
+                e
+            ))
+        })?;
         Ok(([(axum::http::header::CONTENT_TYPE, "application/javascript")], contents))
     } else {
         Ok(([(axum::http::header::CONTENT_TYPE, "application/javascript")], JS.to_string()))
@@ -178,8 +275,13 @@ pub async fn app_js(
 /// navigation and installs a changed one, so a stale cached copy would pin old behaviour.
 pub async fn service_worker(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
     let contents = if state.config.is_dev() {
-        std::fs::read_to_string(SERVICE_WORKER_DEV_PATH)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("failed to read the service worker from {}: {}", SERVICE_WORKER_DEV_PATH, e)))?
+        std::fs::read_to_string(SERVICE_WORKER_DEV_PATH).map_err(|e| {
+            AppError::Internal(anyhow::anyhow!(
+                "failed to read the service worker from {}: {}",
+                SERVICE_WORKER_DEV_PATH,
+                e
+            ))
+        })?
     } else {
         SERVICE_WORKER.to_string()
     };
@@ -195,11 +297,23 @@ pub async fn service_worker(State(state): State<AppState>) -> Result<impl IntoRe
 /// `/favicon.ico` and `/apple-touch-icon.png`: embedded, unversioned, and cached for a day - an icon
 /// changes about once a logo, and a day-stale tab icon costs nobody anything.
 pub async fn favicon() -> impl IntoResponse {
-    ([(axum::http::header::CONTENT_TYPE, "image/x-icon"), (axum::http::header::CACHE_CONTROL, "public, max-age=86400")], FAVICON)
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "image/x-icon"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        FAVICON,
+    )
 }
 
 pub async fn apple_touch_icon() -> impl IntoResponse {
-    ([(axum::http::header::CONTENT_TYPE, "image/png"), (axum::http::header::CACHE_CONTROL, "public, max-age=86400")], APPLE_TOUCH_ICON)
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "image/png"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        APPLE_TOUCH_ICON,
+    )
 }
 
 /// Serve the CSS bundle. Same versioning rules as JS.
@@ -211,8 +325,13 @@ pub async fn app_css(
 
     if state.config.is_dev() {
         tracing::info!("dev mode: reloading CSS from disk");
-        let contents = std::fs::read_to_string(CSS_DEV_PATH)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("failed to read CSS bundle from {}: {}", CSS_DEV_PATH, e)))?;
+        let contents = std::fs::read_to_string(CSS_DEV_PATH).map_err(|e| {
+            AppError::Internal(anyhow::anyhow!(
+                "failed to read CSS bundle from {}: {}",
+                CSS_DEV_PATH,
+                e
+            ))
+        })?;
         Ok(([(axum::http::header::CONTENT_TYPE, "text/css")], contents))
     } else {
         Ok(([(axum::http::header::CONTENT_TYPE, "text/css")], CSS.to_string()))
@@ -227,20 +346,36 @@ pub async fn font(
 ) -> Result<impl IntoResponse, AppError> {
     // Only serve .woff2 files — reject anything else before touching the filesystem.
     if !filename.ends_with(".woff2") {
-        return Err(AppError::NotFound(crate::msg!("ui.not-a-font-file-filename", "not a font file: {filename}", filename = filename)));
+        return Err(AppError::NotFound(crate::msg!(
+            "ui.not-a-font-file-filename",
+            "not a font file: {filename}",
+            filename = filename
+        )));
     }
 
     if state.config.is_dev() {
         let path = format!("{}/{}", FONTS_DEV_DIR, filename);
-        let bytes = std::fs::read(&path)
-            .map_err(|e| AppError::NotFound(crate::msg!("ui.font-not-found-at", "font not found at {path}: {error}", path = path, error = e)))?;
+        let bytes = std::fs::read(&path).map_err(|e| {
+            AppError::NotFound(crate::msg!(
+                "ui.font-not-found-at",
+                "font not found at {path}: {error}",
+                path = path,
+                error = e
+            ))
+        })?;
         Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2")], bytes))
     } else {
         let bytes = EMBEDDED_FONTS
             .iter()
             .find(|(name, _)| *name == filename.as_str())
             .map(|(_, data)| *data)
-            .ok_or_else(|| AppError::NotFound(crate::msg!("ui.unknown-font-filename", "unknown font: {filename}", filename = filename)))?;
+            .ok_or_else(|| {
+                AppError::NotFound(crate::msg!(
+                    "ui.unknown-font-filename",
+                    "unknown font: {filename}",
+                    filename = filename
+                ))
+            })?;
         Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2")], bytes.to_vec()))
     }
 }
@@ -249,13 +384,22 @@ pub async fn font(
 /// might still be serving a stale HTML shell that references the old version, and that's
 /// harmless. A *future* version, though, could let a malicious request poison the cache.
 fn check_version(requested: &str, current: &str) -> Result<(), AppError> {
-    let req = semver::semver_to_comparable_integer(requested)
-        .map_err(|_| AppError::BadRequest(crate::msg!("ui.invalid-version-requested", "invalid version: {requested}", requested = requested)))?;
-    let cur = semver::semver_to_comparable_integer(current)
-        .map_err(AppError::Internal)?;
+    let req = semver::semver_to_comparable_integer(requested).map_err(|_| {
+        AppError::BadRequest(crate::msg!(
+            "ui.invalid-version-requested",
+            "invalid version: {requested}",
+            requested = requested
+        ))
+    })?;
+    let cur = semver::semver_to_comparable_integer(current).map_err(AppError::Internal)?;
 
     if req > cur {
-        return Err(AppError::BadRequest(crate::msg!("ui.requested-version-requested-is-newer", "requested version {requested} is newer than running version {current}", requested = requested, current = current)));
+        return Err(AppError::BadRequest(crate::msg!(
+            "ui.requested-version-requested-is-newer",
+            "requested version {requested} is newer than running version {current}",
+            requested = requested,
+            current = current
+        )));
     }
     Ok(())
 }

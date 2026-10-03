@@ -45,7 +45,9 @@ pub const MAX_NAME_BYTES: usize = 120;
 /// MAX_NAME_BYTES, no control characters. (An unpaired surrogate cannot reach a Rust `String` at all:
 /// serde refuses the whole body, which the browser's rule keeps anyone from writing.)
 fn is_layer_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7f)
+    !name.is_empty()
+        && name.len() <= MAX_NAME_BYTES
+        && !name.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7f)
 }
 /// The layer every drawing starts with, and the one a stroke naming no layer is on.
 pub const BASE_LAYER: &str = "0000000000000000";
@@ -119,7 +121,9 @@ impl Layer {
     fn wins_over(&self, other: &Layer) -> bool {
         // Names compare by UTF-8 bytes - what `String`'s order is, and what the browser's
         // `compareUtf8` reproduces, since JavaScript's own `<` compares UTF-16 code units.
-        let key = |l: &Layer| (l.t, l.z, l.opacity, l.hidden as i64, l.n, l.name.clone().unwrap_or_default());
+        let key = |l: &Layer| {
+            (l.t, l.z, l.opacity, l.hidden as i64, l.n, l.name.clone().unwrap_or_default())
+        };
         key(self) > key(other)
     }
 }
@@ -142,7 +146,9 @@ pub struct Text {
 impl Text {
     fn wins_over(&self, other: &Text) -> bool {
         // Numbers first, then the strings by UTF-8 bytes - what `String`'s order is.
-        let key = |r: &Text| (r.t, r.size, r.x, r.y, r.text.clone(), r.font.clone(), r.color.clone(), r.align);
+        let key = |r: &Text| {
+            (r.t, r.size, r.x, r.y, r.text.clone(), r.font.clone(), r.color.clone(), r.align)
+        };
         key(self) > key(other)
     }
 }
@@ -154,13 +160,15 @@ pub const MAX_TEXT_SIZE: i64 = 400;
 
 /// Words a text can hold: at most MAX_TEXT_BYTES, no control characters but the line break.
 fn is_text_content(text: &str) -> bool {
-    text.len() <= MAX_TEXT_BYTES && !text.chars().any(|c| ((c as u32) < 0x20 && c != '\n') || c as u32 == 0x7f)
+    text.len() <= MAX_TEXT_BYTES
+        && !text.chars().any(|c| ((c as u32) < 0x20 && c != '\n') || c as u32 == 0x7f)
 }
 
 /// A font token's shape - the Marquee font list's (`sans`, `press-start`, ...), which is all the
 /// page offers; the node checks only the shape, so the body need not change when the list does.
 fn is_font_name(name: &str) -> bool {
-    (1..=40).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    (1..=40).contains(&name.len())
+        && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn as_text(v: &Value) -> Option<Text> {
@@ -177,7 +185,10 @@ fn as_text(v: &Value) -> Option<Text> {
         t: o.get("t").and_then(safe_int).filter(|t| *t >= 0)?,
         text: o.get("text")?.as_str().filter(|t| is_text_content(t))?.to_string(),
         font: o.get("font")?.as_str().filter(|f| is_font_name(f))?.to_string(),
-        size: o.get("size").and_then(safe_int).filter(|s| (MIN_TEXT_SIZE..=MAX_TEXT_SIZE).contains(s))?,
+        size: o
+            .get("size")
+            .and_then(safe_int)
+            .filter(|s| (MIN_TEXT_SIZE..=MAX_TEXT_SIZE).contains(s))?,
         color: o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string(),
         align,
         x: o.get("x").and_then(safe_int)?,
@@ -324,7 +335,9 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 size: None,
                 points: Some(points),
                 pressure: None,
-                reach: Some(o.get("reach").and_then(safe_int).filter(|r| (0..=MAX_REACH).contains(r))?),
+                reach: Some(
+                    o.get("reach").and_then(safe_int).filter(|r| (0..=MAX_REACH).contains(r))?,
+                ),
                 dx: None,
                 dy: None,
                 from: None,
@@ -409,7 +422,9 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 layer,
                 tool: kind,
                 color: Some(o.get("color")?.as_str().filter(|c| is_colour(c))?.to_string()),
-                size: Some(o.get("size").and_then(safe_int).filter(|s| (1..=MAX_SIZE).contains(s))?),
+                size: Some(
+                    o.get("size").and_then(safe_int).filter(|s| (1..=MAX_SIZE).contains(s))?,
+                ),
                 points: Some(points),
                 pressure: None,
                 reach: None,
@@ -432,7 +447,8 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
                 .map(safe_int)
                 .collect::<Option<Vec<i64>>>()
                 .filter(|p| p.len() == 2)?;
-            let side = |k: &str| o.get(k).and_then(safe_int).filter(|n| (1..=MAX_IMAGE_SIZE).contains(n));
+            let side =
+                |k: &str| o.get(k).and_then(safe_int).filter(|n| (1..=MAX_IMAGE_SIZE).contains(n));
             return Some(Stroke {
                 id,
                 t,
@@ -472,8 +488,27 @@ fn as_stroke(v: &Value) -> Option<Stroke> {
         .get("pressure")
         .and_then(Value::as_array)
         .and_then(|list| list.iter().map(safe_int).collect::<Option<Vec<i64>>>())
-        .filter(|p| p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v)));
-    Some(Stroke { id, t, layer, tool, color, size: Some(size), points: Some(points), pressure, reach: None, dx: None, dy: None, from: None, doc: None, w: None, h: None, m: None })
+        .filter(|p| {
+            p.len() == points.len() / 2 && p.iter().all(|v| (0..=MAX_PRESSURE).contains(v))
+        });
+    Some(Stroke {
+        id,
+        t,
+        layer,
+        tool,
+        color,
+        size: Some(size),
+        points: Some(points),
+        pressure,
+        reach: None,
+        dx: None,
+        dy: None,
+        from: None,
+        doc: None,
+        w: None,
+        h: None,
+        m: None,
+    })
 }
 
 fn as_layer(v: &Value) -> Option<Layer> {
@@ -481,7 +516,11 @@ fn as_layer(v: &Value) -> Option<Layer> {
     Some(Layer {
         id: o.get("id")?.as_str().filter(|s| is_hex16(s))?.to_string(),
         n: o.get("n").and_then(safe_int).filter(|n| *n >= 1)?,
-        name: o.get("name").and_then(Value::as_str).filter(|n| is_layer_name(n)).map(str::to_string),
+        name: o
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|n| is_layer_name(n))
+            .map(str::to_string),
         z: o.get("z").and_then(safe_int)?,
         opacity: o.get("opacity").and_then(safe_int).filter(|p| (0..=MAX_OPACITY).contains(p))?,
         hidden: o.get("hidden")?.as_bool()?,
@@ -526,7 +565,13 @@ pub fn read(bytes: &[u8]) -> Body {
         .filter_map(as_layer)
         .collect();
     let layers = fold_layers(entries.iter());
-    let records: Vec<Text> = o.get("texts").and_then(Value::as_array).into_iter().flatten().filter_map(as_text).collect();
+    let records: Vec<Text> = o
+        .get("texts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(as_text)
+        .collect();
     let texts = fold_texts(records.iter());
     let mut undone: Vec<String> = Vec::new();
     let mut gone: HashSet<String> = HashSet::new();
@@ -548,7 +593,9 @@ pub fn read(bytes: &[u8]) -> Body {
         strokes.push(stroke);
     }
     strokes.sort_by(order);
-    let dimension = |key: &str, fallback: i64| o.get(key).and_then(safe_int).filter(|n| *n > 0).unwrap_or(fallback);
+    let dimension = |key: &str, fallback: i64| {
+        o.get(key).and_then(safe_int).filter(|n| *n > 0).unwrap_or(fallback)
+    };
     Body {
         v: BODY_VERSION,
         width: dimension("width", CANVAS_WIDTH),
@@ -625,7 +672,8 @@ mod tests {
 
     fn vectors() -> Value {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/test-vectors/drawing-v1.json");
-        serde_json::from_str(&std::fs::read_to_string(path).expect("the drawing vectors")).expect("vectors are JSON")
+        serde_json::from_str(&std::fs::read_to_string(path).expect("the drawing vectors"))
+            .expect("vectors are JSON")
     }
 
     /// The browser's canonical form, reproduced byte for byte from any input.
@@ -636,7 +684,12 @@ mod tests {
         assert!(cases.len() >= 5);
         for case in cases {
             let input = serde_json::to_vec(&case["input"]).unwrap();
-            assert_eq!(canonical(&read(&input)), case["written"].as_str().unwrap(), "{}", case["name"]);
+            assert_eq!(
+                canonical(&read(&input)),
+                case["written"].as_str().unwrap(),
+                "{}",
+                case["name"]
+            );
         }
     }
 
@@ -672,7 +725,16 @@ mod tests {
         assert_eq!(safe_int(&serde_json::json!(5)), Some(5));
         assert_eq!(safe_int(&serde_json::json!(5.0)), Some(5), "JavaScript reads 5.0 as 5");
         assert_eq!(safe_int(&serde_json::json!(5.5)), None);
-        assert_eq!(safe_int(&serde_json::json!(9007199254740992_i64)), None, "past 2^53 the browser cannot say it");
-        assert!(is_colour("#a1b2c3") && !is_colour("#A1B2C3") && !is_colour("#a1b2c") && !is_colour("red"));
+        assert_eq!(
+            safe_int(&serde_json::json!(9007199254740992_i64)),
+            None,
+            "past 2^53 the browser cannot say it"
+        );
+        assert!(
+            is_colour("#a1b2c3")
+                && !is_colour("#A1B2C3")
+                && !is_colour("#a1b2c")
+                && !is_colour("red")
+        );
     }
 }

@@ -14,7 +14,7 @@ export function blastRadius(keys, rankPath) {
         (k) =>
             k.status === 'active' &&
             k.rank_path.length > rankPath.length &&
-            rankPath.every((r, i) => k.rank_path[i] === r)
+            rankPath.every((r, i) => k.rank_path[i] === r),
     );
 }
 

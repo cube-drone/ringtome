@@ -7,11 +7,16 @@ const J = { 'Content-Type': 'application/json' };
 const png = readFileSync(new URL('../../sample_media/bowie_comic.png', import.meta.url).pathname);
 const s = session('http://localhost:5299');
 await signUp(s, 'shelfcheck');
-const root = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
+const root = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json())
+    .root_pubkey;
 
-const queued = await (await s.fetch(`/api/identity/${root}/docs/binary?title=shelfpic`, {
-    method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: png,
-})).json();
+const queued = await (
+    await s.fetch(`/api/identity/${root}/docs/binary?title=shelfpic`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: png,
+    })
+).json();
 let media = null;
 for (let i = 0; i < 300 && !media; i++) {
     const jobs = await (await s.fetch(`/api/identity/${root}/ingest`)).json();
@@ -20,13 +25,23 @@ for (let i = 0; i < 300 && !media; i++) {
     await sleep(300);
 }
 
-const note = await (await s.fetch(`/api/identity/${root}/docs`, { method: 'POST', headers: J,
-    body: JSON.stringify({ title: 'Picture Post',
-        body: `words first\n\n![shelfpic](/api/identity/${root}/docs/${media}/body/shelfpic_1.avif)`,
-        format: 'marquee' }) })).json();
+const note = await (
+    await s.fetch(`/api/identity/${root}/docs`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({
+            title: 'Picture Post',
+            body: `words first\n\n![shelfpic](/api/identity/${root}/docs/${media}/body/shelfpic_1.avif)`,
+            format: 'marquee',
+        }),
+    })
+).json();
 let postId = null;
 for (let i = 0; i < 60 && !postId; i++) {
-    const r = await s.fetch(`/api/identity/${root}/docs/${note.doc_id}/publish`, { method: 'POST', headers: J });
+    const r = await s.fetch(`/api/identity/${root}/docs/${note.doc_id}/publish`, {
+        method: 'POST',
+        headers: J,
+    });
     const b = JSON.parse(await r.text());
     if (r.status === 200) postId = b.post_id;
     else await sleep(500);

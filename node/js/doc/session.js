@@ -92,10 +92,14 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         const { over } = overCapTargets(ast, root, EMBED_CAP);
         if (!over.size) return null;
         const note = (alt) =>
-            t('doc.session.embed-removed-over-cap', '(“{alt}” removed — one page holds {cap} embedded files)', {
-                alt,
-                cap: EMBED_CAP,
-            });
+            t(
+                'doc.session.embed-removed-over-cap',
+                '(“{alt}” removed — one page holds {cap} embedded files)',
+                {
+                    alt,
+                    cap: EMBED_CAP,
+                },
+            );
         const { source: out } = replaceTargets(source, over, note);
         try {
             if (overCapTargets(parse(out), root, EMBED_CAP).over.size > 0) return null;
@@ -204,7 +208,10 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
                 docId,
                 (r) => r && { ...r, pinned: !isPinned },
                 (r) => !!r && !!r.pinned === !isPinned,
-                () => api(`/api/identity/${root}/docs/${docId}/pin`, { method: isPinned ? 'DELETE' : 'PUT' })
+                () =>
+                    api(`/api/identity/${root}/docs/${docId}/pin`, {
+                        method: isPinned ? 'DELETE' : 'PUT',
+                    }),
             );
         } catch (e) {
             setError(e.message);
@@ -222,8 +229,12 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         if (m.timer) clearTimeout(m.timer);
         try {
             // Gone from every list at once, back if the delete fails (pure/optimistic.js).
-            await optimisticDoc(root, docId, () => null, (r) => !r, () =>
-                api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' })
+            await optimisticDoc(
+                root,
+                docId,
+                () => null,
+                (r) => !r,
+                () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
             );
             onDeleted && onDeleted();
         } catch (e) {

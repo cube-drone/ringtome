@@ -161,8 +161,13 @@ fn rollup(
         best.entry(edge.target)
             .and_modify(|held| {
                 // Higher discounted wins; then higher raw; then the stable name order.
-                let better = (candidate.0, candidate.1, std::cmp::Reverse(candidate.2), std::cmp::Reverse(candidate.3))
-                    > (held.0, held.1, std::cmp::Reverse(held.2), std::cmp::Reverse(held.3));
+                let better =
+                    (
+                        candidate.0,
+                        candidate.1,
+                        std::cmp::Reverse(candidate.2),
+                        std::cmp::Reverse(candidate.3),
+                    ) > (held.0, held.1, std::cmp::Reverse(held.2), std::cmp::Reverse(held.3));
                 if better {
                     *held = candidate;
                 }
@@ -208,7 +213,13 @@ pub async fn refresh_demand(
                 let b = i * 7;
                 format!(
                     "(?{},?{},?{},?{},?{},?{},?{})",
-                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6,
+                    b + 7
                 )
             })
             .collect();
@@ -287,9 +298,7 @@ pub async fn speculative_only(state: &AppState, root_hex: &str) -> Result<bool> 
     if hosted || crate::idface::has_fetched(&state.node_db, root_hex).await? {
         return Ok(false);
     }
-    Ok(crate::net::subscriptions::followers_of(&state.node_db, root_hex)
-        .await?
-        .is_empty())
+    Ok(crate::net::subscriptions::followers_of(&state.node_db, root_hex).await?.is_empty())
 }
 
 /// When the pass last reached this target, if it ever has - the member surfaces' question
@@ -348,10 +357,7 @@ struct AcquireCandidate {
 /// waiting on it by definition).
 fn order_acquisition(mut candidates: Vec<AcquireCandidate>) -> Vec<AcquireCandidate> {
     candidates.sort_by(|a, b| {
-        b.level
-            .cmp(&a.level)
-            .then(a.fetched_at.cmp(&b.fetched_at))
-            .then(a.target.cmp(&b.target))
+        b.level.cmp(&a.level).then(a.fetched_at.cmp(&b.fetched_at)).then(a.target.cmp(&b.target))
     });
     candidates
 }
@@ -381,10 +387,7 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
 
     let demand: Vec<(String, String, String, String)> = state
         .node_db
-        .fetch_all(
-            "SELECT target_root, introducer_root, level, depth FROM speculative_demand",
-            (),
-        )
+        .fetch_all("SELECT target_root, introducer_root, level, depth FROM speculative_demand", ())
         .await
         .context("reading the speculative demand memo")?;
     if demand.is_empty() {
@@ -405,16 +408,11 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
         .into_iter()
         .map(|(foreign, _, _)| foreign)
         .collect();
-    let member_fetched: HashSet<String> = crate::idface::fetched_roots(&state.node_db)
-        .await?
-        .into_iter()
-        .collect();
+    let member_fetched: HashSet<String> =
+        crate::idface::fetched_roots(&state.node_db).await?.into_iter().collect();
     let stamps: HashMap<String, (i64, String)> = state
         .node_db
-        .fetch_all(
-            "SELECT target_root, fetched_at_ms, depth FROM speculative_fetches",
-            (),
-        )
+        .fetch_all("SELECT target_root, fetched_at_ms, depth FROM speculative_fetches", ())
         .await?
         .into_iter()
         .map(|(target, at, held_depth): (String, i64, String)| (target, (at, held_depth)))
@@ -422,7 +420,9 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
 
     let mut by_target: HashMap<String, AcquireCandidate> = HashMap::new();
     for (target, introducer, level, depth) in demand {
-        if hosted.contains(&target) || followed.contains(&target) || member_fetched.contains(&target)
+        if hosted.contains(&target)
+            || followed.contains(&target)
+            || member_fetched.contains(&target)
         {
             continue;
         }
@@ -433,11 +433,7 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
         // The upgrade case: a mirror held at headers depth that some reader's rollup now
         // admits at posts depth is treated as never-fetched - the fuller pull should not
         // wait out a freshness clock the shallow one wound.
-        let fetched_at = if depth == "posts" && held_depth == "headers" {
-            0
-        } else {
-            fetched_at
-        };
+        let fetched_at = if depth == "posts" && held_depth == "headers" { 0 } else { fetched_at };
         if now - fetched_at < stale_ms {
             continue;
         }
@@ -473,15 +469,12 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
     // other. (The design sketch's weighted-random draw is deliberately simplified to
     // staleness round-robin at the depth-2 boundary: every introducer is a friend, and
     // oldest-first visits everyone without dice.)
-    let (posts, headers): (Vec<AcquireCandidate>, Vec<AcquireCandidate>) = by_target
-        .into_values()
-        .partition(|c| c.depth == "posts");
+    let (posts, headers): (Vec<AcquireCandidate>, Vec<AcquireCandidate>) =
+        by_target.into_values().partition(|c| c.depth == "posts");
     let mut headers = headers;
     headers.sort_by(|a, b| a.fetched_at.cmp(&b.fetched_at).then(a.target.cmp(&b.target)));
-    let mut started: Vec<AcquireCandidate> = order_acquisition(posts)
-        .into_iter()
-        .take(SPECULATIVE_FETCH_CAP)
-        .collect();
+    let mut started: Vec<AcquireCandidate> =
+        order_acquisition(posts).into_iter().take(SPECULATIVE_FETCH_CAP).collect();
     started.extend(headers.into_iter().take(HEADERS_FETCH_CAP));
     {
         let mut marks = SPECULATIVE_ATTEMPTS.lock().expect("attempt marks poisoned");
@@ -643,10 +636,7 @@ pub async fn demand_exists(node_db: &Db, target_root: &str) -> Result<bool> {
 /// chains it recorded.
 pub async fn forget_fetch(node_db: &Db, target_root: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM speculative_fetches WHERE target_root = ?1",
-            (target_root,),
-        )
+        .execute("DELETE FROM speculative_fetches WHERE target_root = ?1", (target_root,))
         .await
         .context("forgetting a speculative fetch record")?;
     Ok(())
@@ -732,19 +722,14 @@ pub async fn suggested_for(node_db: &Db, reader_root: &str) -> Result<Vec<Sugges
         }
     }
     let bylines = crate::profiles::bylines(node_db, &byline_roots).await?;
-    let band_ordinal = |word: &str| {
-        ringtome_proto::PublicEdge::BANDS
-            .iter()
-            .position(|b| *b == word)
-            .unwrap_or(0)
-    };
+    let band_ordinal =
+        |word: &str| ringtome_proto::PublicEdge::BANDS.iter().position(|b| *b == word).unwrap_or(0);
     let mut out: Vec<Suggested> = rows
         .into_iter()
         .filter_map(|(target, lane, level, introducer_root)| {
             let raw = crate::pubkey::decode(&target)?;
             let byline = bylines.get(&target).cloned().unwrap_or_default();
-            let introducer_name =
-                bylines.get(&introducer_root).and_then(|b| b.name.clone());
+            let introducer_name = bylines.get(&introducer_root).and_then(|b| b.name.clone());
             Some(Suggested {
                 speakable: crate::speakable::speakable(&raw),
                 name: byline.name,
@@ -758,9 +743,7 @@ pub async fn suggested_for(node_db: &Db, reader_root: &str) -> Result<Vec<Sugges
         })
         .collect();
     out.sort_by(|a, b| {
-        band_ordinal(&b.level)
-            .cmp(&band_ordinal(&a.level))
-            .then_with(|| a.root.cmp(&b.root))
+        band_ordinal(&b.level).cmp(&band_ordinal(&a.level)).then_with(|| a.root.cmp(&b.root))
     });
     Ok(out)
 }
@@ -816,12 +799,10 @@ mod tests {
         // Two medium paths must come out medium - if this ever reads "high", somebody
         // summed, and a thousand Sybil vouches just became worth more than one best path.
         let rows = rollup(
-            &[
-                edge("stranger", "trust", "mara", 2, 5),
-                edge("stranger", "trust", "otto", 2, 5),
-            ],
+            &[edge("stranger", "trust", "mara", 2, 5), edge("stranger", "trust", "otto", 2, 5)],
             &HashSet::new(),
-            16, HEADERS_BUDGET,
+            16,
+            HEADERS_BUDGET,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].level, 2, "MAX across introducers, never sums");
@@ -838,7 +819,8 @@ mod tests {
                 edge("gone", "trust", "collector", 2, 400),
             ],
             &HashSet::new(),
-            16, HEADERS_BUDGET,
+            16,
+            HEADERS_BUDGET,
         );
         let level = |t: &str| rows.iter().find(|r| r.target == t).map(|r| r.level);
         assert_eq!(level("close"), Some(3), "scarce vouches keep their weight");
@@ -854,7 +836,8 @@ mod tests {
                 edge("stranger", "trust", "careful", 3, 10),      // stays 3 - the best path
             ],
             &HashSet::new(),
-            16, HEADERS_BUDGET,
+            16,
+            HEADERS_BUDGET,
         );
         assert_eq!(rows[0].level, 3);
         assert_eq!(rows[0].introducer, "careful", "the memo names the winning path's introducer");

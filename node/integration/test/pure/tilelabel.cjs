@@ -5,9 +5,8 @@ const assert = require('node:assert');
 
 let tileLabel, TILE_FULL_CHARS, TILE_MIN_SCALE, TILE_MAX_CHARS;
 before(async () => {
-    ({ tileLabel, TILE_FULL_CHARS, TILE_MIN_SCALE, TILE_MAX_CHARS } = await import(
-        '../../../js/pure/tilelabel.js'
-    ));
+    ({ tileLabel, TILE_FULL_CHARS, TILE_MIN_SCALE, TILE_MAX_CHARS } =
+        await import('../../../js/pure/tilelabel.js'));
 });
 
 const rep = (n) => 'x'.repeat(n);

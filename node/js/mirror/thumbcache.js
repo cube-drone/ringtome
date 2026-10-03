@@ -31,7 +31,11 @@ export async function rememberThumb(root, docId, head, url) {
     try {
         const table = openMirror(root).drawthumbs;
         const key = `${docId}:${head}`;
-        await table.where('doc_id').equals(docId).and((r) => r.key !== key).delete();
+        await table
+            .where('doc_id')
+            .equals(docId)
+            .and((r) => r.key !== key)
+            .delete();
         await table.put({ key, doc_id: docId, url, used: Date.now() });
         const over = (await table.count()) - THUMB_CACHE_MAX;
         if (over > 0) await table.orderBy('used').limit(over).delete();

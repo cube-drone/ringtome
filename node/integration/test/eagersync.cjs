@@ -8,18 +8,18 @@
 
     Skips itself when the harness only booted one node (RINGTOME_TEST_HOST_B unset).
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { HOST_B } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { HOST_B } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
 
 /* Write a profile field and insist the node accepted it - a rejected write would otherwise
    surface as a mystifying propagation timeout. ("bio" is one of the whitelisted fields.) */
 async function setField(fetch, root, field, value) {
     const resp = await fetch(`api/identity/${root}/profile`, {
-        method: "POST",
+        method: 'POST',
         body: JSON.stringify({ field, value }),
     });
     assert.equal(resp.status, 200, `profile write refused: ${await resp.text()}`);
@@ -33,9 +33,7 @@ async function profileValue(fetch, root, field) {
 }
 
 async function kvValue(fetch, root, collection, key) {
-    const body = await (
-        await fetch(`api/identity/${root}/private/kv/${collection}`)
-    ).json();
+    const body = await (await fetch(`api/identity/${root}/private/kv/${collection}`)).json();
     const row = (body.values || []).find((v) => v.key === key);
     return row ? row.value : undefined;
 }
@@ -54,7 +52,7 @@ async function eventually(read, expected, label, timeoutMs = 30000) {
     }
 }
 
-(HOST_B ? describe : describe.skip)("eager push: unprompted propagation", function () {
+(HOST_B ? describe : describe.skip)('eager push: unprompted propagation', function () {
     // Two real nodes, real iroh, debounce windows: give the acts room.
     this.timeout(90000);
 
@@ -65,54 +63,54 @@ async function eventually(read, expected, label, timeoutMs = 30000) {
     before(async function () {
         this.timeout(60000);
         // Standard adoption ceremony (the twonode.cjs pattern) to build the two-node identity.
-        alice = await makeUserFetch({ prefix: "eager" });
-        const created = await (await alice("api/identity", { method: "POST" })).json();
+        alice = await makeUserFetch({ prefix: 'eager' });
+        const created = await (await alice('api/identity', { method: 'POST' })).json();
         root = created.root_pubkey;
 
-        aliceOnB = await makeUserFetch({ prefix: "eagerb", host: HOST_B });
+        aliceOnB = await makeUserFetch({ prefix: 'eagerb', host: HOST_B });
         const request = await (
-            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+            await aliceOnB('api/identity/adopt/begin', { method: 'POST' })
         ).json();
         const grant = await (
             await alice(`api/identity/${root}/nodes`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({ code: request.code }),
             })
         ).json();
         const adopted = await (
-            await aliceOnB("api/identity/adopt/complete", {
-                method: "POST",
+            await aliceOnB('api/identity/adopt/complete', {
+                method: 'POST',
                 body: JSON.stringify({ code: grant.code }),
             })
         ).json();
-        assert.equal(adopted.root_pubkey, root, "B agents the identity");
+        assert.equal(adopted.root_pubkey, root, 'B agents the identity');
     });
 
-    it("public and private writes on A surface on B unprompted", async function () {
-        await setField(alice, root, "bio", "never call /sync");
+    it('public and private writes on A surface on B unprompted', async function () {
+        await setField(alice, root, 'bio', 'never call /sync');
         await alice(`api/identity/${root}/private/kv/contacts/edna`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "hat enthusiast" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'hat enthusiast' }),
         });
 
         await eventually(
-            () => profileValue(aliceOnB, root, "bio"),
-            "never call /sync",
-            "public write A->B"
+            () => profileValue(aliceOnB, root, 'bio'),
+            'never call /sync',
+            'public write A->B',
         );
         await eventually(
-            () => kvValue(aliceOnB, root, "contacts", "edna"),
-            "hat enthusiast",
-            "private write A->B"
+            () => kvValue(aliceOnB, root, 'contacts', 'edna'),
+            'hat enthusiast',
+            'private write A->B',
         );
     });
 
-    it("the mesh is symmetric: a write on B reaches A unprompted", async function () {
-        await setField(aliceOnB, root, "bio", "written on B");
+    it('the mesh is symmetric: a write on B reaches A unprompted', async function () {
+        await setField(aliceOnB, root, 'bio', 'written on B');
         await eventually(
-            () => profileValue(alice, root, "bio"),
-            "written on B",
-            "public write B->A"
+            () => profileValue(alice, root, 'bio'),
+            'written on B',
+            'public write B->A',
         );
     });
 });

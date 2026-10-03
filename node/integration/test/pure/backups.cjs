@@ -11,12 +11,24 @@ before(async () => {
 
 describe('backups, as the page shows them', () => {
     it('reads the moment off the name, in UTC', () => {
-        assert.equal(backupTime('backup_20260925T183012Z.tar.gz'), Date.UTC(2026, 8, 25, 18, 30, 12));
-        assert.equal(new Date(backupTime('backup_20260925T183012Z.tar.gz')).toISOString(), '2026-09-25T18:30:12.000Z');
+        assert.equal(
+            backupTime('backup_20260925T183012Z.tar.gz'),
+            Date.UTC(2026, 8, 25, 18, 30, 12),
+        );
+        assert.equal(
+            new Date(backupTime('backup_20260925T183012Z.tar.gz')).toISOString(),
+            '2026-09-25T18:30:12.000Z',
+        );
     });
 
     it('knows no date for anything that is not an archive name', () => {
-        for (const name of ['backup_20260925T183012Z.tar.gz.partial', '.staging-20260925T183012Z', 'backup_2026.tar.gz', '', undefined]) {
+        for (const name of [
+            'backup_20260925T183012Z.tar.gz.partial',
+            '.staging-20260925T183012Z',
+            'backup_2026.tar.gz',
+            '',
+            undefined,
+        ]) {
             assert.equal(backupTime(name), null, String(name));
         }
     });

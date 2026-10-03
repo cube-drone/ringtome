@@ -22,7 +22,9 @@ export const HitCounter = () => {
     // way to read the values on that graph!").
     const [pointed, setPointed] = useState(null);
     useEffect(() => {
-        api('/api/node/census').then(setCensus).catch(() => setCensus(null));
+        api('/api/node/census')
+            .then(setCensus)
+            .catch(() => setCensus(null));
     }, []);
     // Roll up from nothing, the way a mechanical counter would be seen to turn.
     const shown = census ? census.shown : 0;
@@ -41,7 +43,8 @@ export const HitCounter = () => {
     if (!census) return null;
     const month = censusMonth(census.history, Date.now());
     // The line's points in a 300 x 80 box, a little inset so the line never touches the edge.
-    const at = (i, p) => `${(4 + (i * 292) / (month.length - 1)).toFixed(1)},${(76 - p.height * 70).toFixed(1)}`;
+    const at = (i, p) =>
+        `${(4 + (i * 292) / (month.length - 1)).toFixed(1)},${(76 - p.height * 70).toFixed(1)}`;
     return html`<div class="hit-counter">
         <button
             class="hit-counter-line"
@@ -56,8 +59,9 @@ export const HitCounter = () => {
             </span>
             ${t('census.active-users', 'active users!')}
         </button>
-        ${open &&
-        html`<div class="hit-counter-graph">
+        ${
+            open &&
+            html`<div class="hit-counter-graph">
             <div class="hit-counter-frame">
                 <span class="hit-counter-scale" aria-hidden="true">
                     <span>${Math.max(...month.map((p) => p.active))}</span>
@@ -84,9 +88,13 @@ export const HitCounter = () => {
                     const p = month[pointed ?? month.length - 1];
                     return pointed === null
                         ? t('census.readout-today', 'today so far: {n} active', { n: p.active })
-                        : t('census.readout-day', '{date}: {n} active', { date: p.date, n: p.active });
+                        : t('census.readout-day', '{date}: {n} active', {
+                              date: p.date,
+                              n: p.active,
+                          });
                 })()}
             </p>
-        </div>`}
+        </div>`
+        }
     </div>`;
 };

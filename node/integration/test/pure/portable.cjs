@@ -14,7 +14,7 @@ describe('stripSelfOrigin', () => {
     it('relativizes a pasted self-URL, markup and all', () => {
         assert.equal(
             stripSelfOrigin(`![](${O}/api/identity/aa/docs/bb/body/pic.avif)`, O),
-            '![](/api/identity/aa/docs/bb/body/pic.avif)'
+            '![](/api/identity/aa/docs/bb/body/pic.avif)',
         );
     });
 
@@ -24,14 +24,14 @@ describe('stripSelfOrigin', () => {
         assert.equal(
             stripSelfOrigin(`${post}\n![](${O}/api/identity/aa/docs/bb/body/pic.avif)`, O),
             `${post}\n![](/api/identity/aa/docs/bb/body/pic.avif)`,
-            'and a picture beside it still strips'
+            'and a picture beside it still strips',
         );
     });
 
     it('rewrites every occurrence, not just the first', () => {
         assert.equal(
             stripSelfOrigin(`${O}/api/x and ${O}/home/notes/y`, O),
-            '/api/x and /home/notes/y'
+            '/api/x and /home/notes/y',
         );
     });
 
@@ -58,29 +58,33 @@ describe('identityAddress (the minting half)', () => {
     it('mints origin + /ringtome/user/<root> + via when the operator declared a public URL', () => {
         assert.equal(
             identityAddress({ publicUrl: 'https://my-node.ca', root: ROOT, via: ['k1', 'k2'] }),
-            `https://my-node.ca/ringtome/user/${ROOT}?via=k1,k2`
+            `https://my-node.ca/ringtome/user/${ROOT}?via=k1,k2`,
         );
     });
 
     it('mints the origin-free path form when no public URL is declared', () => {
         assert.equal(
             identityAddress({ publicUrl: null, root: ROOT, via: ['k1'] }),
-            `/ringtome/user/${ROOT}?via=k1`
+            `/ringtome/user/${ROOT}?via=k1`,
         );
-        assert.equal(identityAddress({ root: ROOT }), `/ringtome/user/${ROOT}`, 'no via: no query at all');
+        assert.equal(
+            identityAddress({ root: ROOT }),
+            `/ringtome/user/${ROOT}`,
+            'no via: no query at all',
+        );
     });
 
     it('normalizes the declared URL (trailing slashes, stray whitespace)', () => {
         assert.equal(
             identityAddress({ publicUrl: ' https://my-node.ca/ ', root: ROOT }),
-            `https://my-node.ca/ringtome/user/${ROOT}`
+            `https://my-node.ca/ringtome/user/${ROOT}`,
         );
     });
 
     it('drops empty via entries rather than minting ?via= with holes', () => {
         assert.equal(
             identityAddress({ publicUrl: '', root: ROOT, via: ['', null, 'k'] }),
-            `/ringtome/user/${ROOT}?via=k`
+            `/ringtome/user/${ROOT}?via=k`,
         );
     });
 });

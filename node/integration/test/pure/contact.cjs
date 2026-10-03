@@ -7,9 +7,8 @@ const assert = require('node:assert');
 
 let BANDS, contactCollection, bandOf, bandOrdinal;
 before(async () => {
-    ({ BANDS, contactCollection, bandOf, bandOrdinal } = await import(
-        '../../../js/pure/contact.js'
-    ));
+    ({ BANDS, contactCollection, bandOf, bandOrdinal } =
+        await import('../../../js/pure/contact.js'));
 });
 
 describe('the contact dials', () => {

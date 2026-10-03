@@ -14,9 +14,8 @@ use std::sync::LazyLock;
 const B58: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 static WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    let words: Vec<&'static str> = include_str!("../wordlist/eff_short_1.txt")
-        .split_ascii_whitespace()
-        .collect();
+    let words: Vec<&'static str> =
+        include_str!("../wordlist/eff_short_1.txt").split_ascii_whitespace().collect();
     assert_eq!(words.len(), 1296, "the pinned wordlist is exactly the EFF short list");
     words
 });
@@ -118,10 +117,7 @@ pub fn parse(segment: &str) -> Option<Parsed> {
             if *a == ea && *b == eb {
                 Some(Parsed::Ok(root))
             } else {
-                Some(Parsed::Mismatch {
-                    root,
-                    expected: format!("{ea}-{eb}"),
-                })
+                Some(Parsed::Mismatch { root, expected: format!("{ea}-{eb}") })
             }
         }
         _ => None,
@@ -175,13 +171,20 @@ fn from_base58(s: &str) -> Option<[u8; 32]> {
 mod tests {
     #[test]
     fn a_short_base58_string_is_not_a_key() {
-        assert!(from_base58("undefined").is_none(), "padding a short string up to a key is a forgery of a key");
+        assert!(
+            from_base58("undefined").is_none(),
+            "padding a short string up to a key is a forgery of a key"
+        );
         assert!(from_base58("").is_none());
         let key = [0x11u8; 32];
         assert_eq!(from_base58(&to_base58(&key)), Some(key), "a real key still round-trips");
         let mut leading = [0u8; 32];
         leading[31] = 7;
-        assert_eq!(from_base58(&to_base58(&leading)), Some(leading), "leading zero bytes ride as '1's");
+        assert_eq!(
+            from_base58(&to_base58(&leading)),
+            Some(leading),
+            "leading zero bytes ride as '1's"
+        );
     }
 
     use super::*;

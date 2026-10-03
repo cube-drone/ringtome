@@ -13,7 +13,17 @@ import { PaneHead } from '../panes.js';
 import { Modal } from '../modal.js';
 import { t } from '../i18n.js';
 import { rootTitleFor } from '../pure/naming.js';
-import { BOOKS_KV, HIDDEN_KV, bookModes, bookFacts, isBookBucket, hiddenSetOf, hiddenDocsOf, bookLedger, titlePageOf } from '../pure/books.js';
+import {
+    BOOKS_KV,
+    HIDDEN_KV,
+    bookModes,
+    bookFacts,
+    isBookBucket,
+    hiddenSetOf,
+    hiddenDocsOf,
+    bookLedger,
+    titlePageOf,
+} from '../pure/books.js';
 import { isTextDoc } from '../pure/feed.js';
 import { postHref, docHref } from '../links.js';
 
@@ -110,7 +120,9 @@ export function useBookTree(root, bucket, reloadKey) {
         .filter((tx) => tx.title === rootTitleFor(bucket))
         .sort((a, b) => (a.taxonomy_id < b.taxonomy_id ? -1 : 1))[0];
     const rootId = rootRow && rootRow.taxonomy_id;
-    const fingerprint = (taxRows || []).map((tx) => `${tx.taxonomy_id}:${tx.members}:${tx.title}`).join('|');
+    const fingerprint = (taxRows || [])
+        .map((tx) => `${tx.taxonomy_id}:${tx.members}:${tx.title}`)
+        .join('|');
     const [tree, setTree] = useState(null);
     useEffect(() => {
         if (!rootId) {
@@ -167,7 +179,9 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
         setTakingDown(true);
         setAskError(null);
         try {
-            await api(`/api/identity/${root}/books/${encodeURIComponent(bucket)}`, { method: 'DELETE' });
+            await api(`/api/identity/${root}/books/${encodeURIComponent(bucket)}`, {
+                method: 'DELETE',
+            });
             refresh();
             poke();
         } catch (e) {
@@ -183,8 +197,9 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
             title=${t('doc.bookcol.take-the-book-and-every', 'take the book and every page back off the network')}
             onClick=${() => setAskingTakedown(true)}
         ><${Icons.unpublish} /> ${t('doc.bookcol.unpublish-the-book', 'unpublish the book')}</button>
-        ${askingTakedown &&
-        html`<${Modal} title=${t('doc.bookcol.take-it-down', 'take it down')} onClose=${() => !takingDown && setAskingTakedown(false)}>
+        ${
+            askingTakedown &&
+            html`<${Modal} title=${t('doc.bookcol.take-it-down', 'take it down')} onClose=${() => !takingDown && setAskingTakedown(false)}>
             <p class="feed-unpublish-warn">
                 ${t('doc.bookcol.removes-the-book-and-every', 'It may take a while to disappear everywhere. The pages stay in this notebook.')}
             </p>
@@ -196,7 +211,8 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                     ${t('doc.bookcol.keep-it', 'keep it')}
                 </button>
             </div>
-        </${Modal}>`}`;
+        </${Modal}>`
+        }`;
     const rollOut = async () => {
         setAsking(true);
         setAskError(null);
@@ -222,9 +238,11 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
     const sections = sectionsOf(tree);
     const rowsOf = (list, cls) =>
         list.map(
-            (r) => html`<button class=${`book-page ${cls}`} key=${r.doc_id} data-settles onClick=${() => onSelect && onSelect(r.doc_id)}>
+            (
+                r,
+            ) => html`<button class=${`book-page ${cls}`} key=${r.doc_id} data-settles onClick=${() => onSelect && onSelect(r.doc_id)}>
                 ${r.title || t('doc.bookcol.untitled', 'untitled')}
-            </button>`
+            </button>`,
         );
     return html`<aside class="book-column">
         <${PaneHead} icon=${Icons.book} label=${t('doc.bookcol.publish', 'publish')} onTuck=${onTuck} />
@@ -234,12 +252,18 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
             <${Icons.book} /> ${t('doc.bookcol.publish-this-entire-notebook', 'publish this entire notebook')}
         </label>
         </div>
-        ${on
-            ? html`<div class="book-block">
+        ${
+            on
+                ? html`<div class="book-block">
                   <p class="book-title-line">
-                      ${titleRow
-                          ? html`${t('doc.bookcol.titled', 'titled')} <a class="book-title-link" data-settles href=${docHref(root, titleRow.doc_id)} title=${t('doc.bookcol.the-first-page-names-the', 'the first page in reading order names the book and opens it')}>${titleRow.title || t('doc.bookcol.untitled', 'untitled')}</a>`
-                          : t('doc.bookcol.untitled---the-first-page', 'untitled - the first page in reading order will name the book')}
+                      ${
+                          titleRow
+                              ? html`${t('doc.bookcol.titled', 'titled')} <a class="book-title-link" data-settles href=${docHref(root, titleRow.doc_id)} title=${t('doc.bookcol.the-first-page-names-the', 'the first page in reading order names the book and opens it')}>${titleRow.title || t('doc.bookcol.untitled', 'untitled')}</a>`
+                              : t(
+                                    'doc.bookcol.untitled---the-first-page',
+                                    'untitled - the first page in reading order will name the book',
+                                )
+                      }
                   </p>
                   <p class="book-ledger-head">${t('doc.bookcol.since-the-last-rollout', 'since the last rollout')}</p>
                   <dl class="book-ledger">
@@ -252,18 +276,23 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                       <dt><${Icons.hidden} /> ${t('doc.bookcol.hidden', 'hidden')}</dt>
                       <dd>${ledger.hidden.length}</dd>
                   </dl>
-                  ${(ledger.new.length > 0 || ledger.changed.length > 0) &&
-                  html`<div class="book-pages">
+                  ${
+                      (ledger.new.length > 0 || ledger.changed.length > 0) &&
+                      html`<div class="book-pages">
                       ${rowsOf(ledger.new, 'book-page-new')}
                       ${rowsOf(ledger.changed, 'book-page-changed')}
-                  </div>`}
+                  </div>`
+                  }
                   </div>
-                  ${sections.length > 0 &&
-                  html`<div class="book-block">
+                  ${
+                      sections.length > 0 &&
+                      html`<div class="book-block">
                       <p class="book-ledger-head">${t('doc.bookcol.sections', 'sections')}</p>
                       <div class="book-sections">
                           ${sections.map(
-                              (s) => html`<label class="book-section" key=${s.id} style=${`padding-left: ${s.depth * 0.8}rem`}>
+                              (
+                                  s,
+                              ) => html`<label class="book-section" key=${s.id} style=${`padding-left: ${s.depth * 0.8}rem`}>
                                   <input
                                       type="checkbox"
                                       checked=${!hidden.has(`sec:${s.id}`)}
@@ -271,47 +300,77 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                                       onChange=${(e) => mark(`sec:${s.id}`, !e.currentTarget.checked)}
                                   />
                                   ${s.title || t('doc.bookcol.untitled-section', '(untitled section)')}
-                              </label>`
+                              </label>`,
                           )}
                       </div>
-                  </div>`}
+                  </div>`
+                  }
                   <div class="book-block">
-                  ${!published &&
-                  html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turn off comments')}>
+                  ${
+                      !published &&
+                      html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turn off comments')}>
                           <input type="checkbox" checked=${wishes.settled} onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))} />
                           ${t('doc.bookcol.turn-off-rebroadcast-and-comment', 'turn off comments')}
                       </label>
                       <label class="book-switch" title=${t('doc.bookcol.trusted-only-means', 'the pages go only to readers you have published trust for')}>
                           <input type="checkbox" checked=${wishes.trusted_only} onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))} />
                           ${t('doc.bookcol.trusted-only', 'trusted only')}
-                      </label>`}
+                      </label>`
+                  }
                   <button
                       class="book-publish"
                       disabled=${asking || moving || (ledger.new.length === 0 && ledger.changed.length === 0 && !!published)}
-                      title=${published
-                          ? t('doc.bookcol.roll-out-the-changes-the', 'publish the changes')
-                          : t('doc.bookcol.publish-the-whole-notebook-as', 'publish the whole notebook as one book - every page that is not hidden, and the tree')}
+                      title=${
+                          published
+                              ? t('doc.bookcol.roll-out-the-changes-the', 'publish the changes')
+                              : t(
+                                    'doc.bookcol.publish-the-whole-notebook-as',
+                                    'publish the whole notebook as one book - every page that is not hidden, and the tree',
+                                )
+                      }
                       onClick=${rollOut}
                   >${asking || moving ? html`<span class="status-spin"><${Icons.spinner} /></span>` : html`<${Icons.docPublic} />`} ${published ? t('doc.bookcol.publish-the-changes', 'publish the changes') : t('doc.bookcol.publish-the-book', 'publish the book')}</button>
-                  ${moving &&
-                  html`<p class="book-progress">
-                      ${plan.status === 'baking'
-                          ? t('doc.bookcol.preparing-a-pages-media', "preparing a page's media…")
-                          : t('doc.bookcol.rolling-out-done-of-total', 'rolling out: {done} of {total}', { done: plan.done || 0, total: plan.total || 0 })}
-                  </p>`}
+                  ${
+                      moving &&
+                      html`<p class="book-progress">
+                      ${
+                          plan.status === 'baking'
+                              ? t(
+                                    'doc.bookcol.preparing-a-pages-media',
+                                    "preparing a page's media…",
+                                )
+                              : t(
+                                    'doc.bookcol.rolling-out-done-of-total',
+                                    'rolling out: {done} of {total}',
+                                    { done: plan.done || 0, total: plan.total || 0 },
+                                )
+                      }
+                  </p>`
+                  }
                   ${rolloutFailed && html`<p class="form-error">${plan.error || t('doc.bookcol.the-rollout-failed', 'the rollout failed')}</p>`}
                   ${askError && html`<p class="form-error">${askError}</p>`}
-                  ${published &&
-                  html`<a class="book-view" data-settles href=${postHref(root, published)}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}
+                  ${
+                      published &&
+                      html`<a class="book-view" data-settles href=${postHref(root, published)}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`
+                  }
                   ${published && takedownUi}
                   </div>`
-            : html`<div class="book-block">
+                : html`<div class="book-block">
                   <p class="book-off">
-                      ${published
-                          ? t('doc.bookcol.this-notebooks-book-is-still', 'the book is still published. Switch this on to update it.')
-                          : t('doc.bookcol.this-notebook-publishes-page-by', 'publish this notebook as one book')}
+                      ${
+                          published
+                              ? t(
+                                    'doc.bookcol.this-notebooks-book-is-still',
+                                    'the book is still published. Switch this on to update it.',
+                                )
+                              : t(
+                                    'doc.bookcol.this-notebook-publishes-page-by',
+                                    'publish this notebook as one book',
+                                )
+                      }
                   </p>
                   ${published && takedownUi}
-              </div>`}
+              </div>`
+        }
     </aside>`;
 };

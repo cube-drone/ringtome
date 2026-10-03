@@ -82,7 +82,16 @@ import { Navigator, viewOf } from './navigator.js';
 import { ImagePickModal } from './imagepick.js';
 import { stickersOf, stickerCursorSize, STICKER_TAG, STICKER_MAX_PX } from '../pure/imagepick.js';
 import { togglePick } from '../pure/facets.js';
-import { frameOf, frameThrough, gripAt, gestureMatrix, paintedBox, dragBox, dragBoxAt, fitBox } from '../pure/transform.js';
+import {
+    frameOf,
+    frameThrough,
+    gripAt,
+    gestureMatrix,
+    paintedBox,
+    dragBox,
+    dragBoxAt,
+    fitBox,
+} from '../pure/transform.js';
 import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
@@ -100,7 +109,13 @@ const BACKING = 2;
 /// Paint one stroke. `points` are absolute [x, y]; `pressure` (0..100 per point) makes a pen stroke's
 /// width follow the pen - painted segment by segment, each as wide as the average of its two ends,
 /// with round caps so the joins close. Without it, one path at one width.
-function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), pressure = stroke.pressure) {
+function paintStroke(
+    ctx,
+    stroke,
+    scale,
+    points = decodePoints(stroke.points),
+    pressure = stroke.pressure,
+) {
     ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
     ctx.strokeStyle = ctx.fillStyle = stroke.tool === 'eraser' ? '#000' : stroke.color;
     ctx.lineCap = 'round';
@@ -116,7 +131,8 @@ function paintStroke(ctx, stroke, scale, points = decodePoints(stroke.points), p
         ctx.lineWidth = width(0);
         ctx.beginPath();
         ctx.moveTo(points[0][0] * scale, points[0][1] * scale);
-        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
+        for (let i = 1; i < points.length; i++)
+            ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
         ctx.stroke();
         return;
     }
@@ -174,7 +190,13 @@ const flatCopies = new Map();
 /// still picture, filed in "files" (an embed, doc/pickref.js, spells it as one).
 export async function drawingAsPicture(root, sourceId) {
     const detail = await api(`/api/identity/${root}/docs/${sourceId}`);
-    if (detail.body == null) throw new Error(t('doc.drawing.not-here-yet', 'that drawing has not reached this computer yet - try again in a moment'));
+    if (detail.body == null)
+        throw new Error(
+            t(
+                'doc.drawing.not-here-yet',
+                'that drawing has not reached this computer yet - try again in a moment',
+            ),
+        );
     const source = readBody(detail.body);
     const [width, height] = sizeOf(source);
     // Cut once per version (pure/flatcopy.js): an unchanged drawing hands back the copy it already
@@ -186,15 +208,26 @@ export async function drawingAsPicture(root, sourceId) {
     if (flatCopies.has(madeKey)) return { ...flatCopies.get(madeKey), width, height };
     const canvas = flatten(source, width, await loadPictures(root, source));
     const blob = await new Promise((resolve, reject) =>
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
+        canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))),
+            'image/png',
+        ),
     );
     const title = detail.title || t('doc.drawing.untitled', 'untitled');
-    const made = await xhrUpload(`/api/identity/${root}/docs/binary?title=${encodeURIComponent(title)}`, blob);
+    const made = await xhrUpload(
+        `/api/identity/${root}/docs/binary?title=${encodeURIComponent(title)}`,
+        blob,
+    );
     // Filed where every upload lives (pure/apps.js FILES_BUCKET), not left unfiled - and marked as
     // this drawing's copy at this version, so the next pick of it finds this one.
-    await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${FILES_BUCKET}`, { method: 'PUT' });
+    await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${FILES_BUCKET}`, {
+        method: 'PUT',
+    });
     const note = (field, value) =>
-        api(`/api/identity/${root}/docs/${made.doc_id}/annotations/fields/${field}`, { method: 'PUT', body: JSON.stringify({ value }) });
+        api(`/api/identity/${root}/docs/${made.doc_id}/annotations/fields/${field}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value }),
+        });
     await note(FLAT_FROM, sourceId);
     await note(FLAT_VERSION, version);
     flatCopies.set(madeKey, { doc: made.doc_id, title });
@@ -231,12 +264,16 @@ const LINE_HEIGHT = 1.25;
 /// The faces a drawing's texts use that the page has not loaded yet.
 function fontsWanted(drawing) {
     if (typeof document === 'undefined' || !document.fonts) return [];
-    const faces = new Set((drawing.texts || []).map((r) => familyOf(r.font)).filter((f) => !GENERIC_FAMILIES.has(f)));
+    const faces = new Set(
+        (drawing.texts || []).map((r) => familyOf(r.font)).filter((f) => !GENERIC_FAMILIES.has(f)),
+    );
     return [...faces].filter((f) => !document.fonts.check(`16px "${f}"`));
 }
 
 function loadFonts(drawing) {
-    return Promise.all(fontsWanted(drawing).map((f) => document.fonts.load(`16px "${f}"`).catch(() => null)));
+    return Promise.all(
+        fontsWanted(drawing).map((f) => document.fonts.load(`16px "${f}"`).catch(() => null)),
+    );
 }
 
 /// Paint a text layer's words: each line at its size, in its face and colour, aligned about its
@@ -247,7 +284,11 @@ function paintText(ctx, text, scale) {
     ctx.textAlign = text.align;
     ctx.textBaseline = 'top';
     ctx.font = `${text.size * scale}px ${fontStack(text.font)}`;
-    text.text.split('\n').forEach((line, i) => ctx.fillText(line, text.x * scale, (text.y + i * text.size * LINE_HEIGHT) * scale));
+    text.text
+        .split('\n')
+        .forEach((line, i) =>
+            ctx.fillText(line, text.x * scale, (text.y + i * text.size * LINE_HEIGHT) * scale),
+        );
 }
 
 /// Fetch every picture the drawing refers to, and resolve when each has arrived or failed: what a
@@ -255,7 +296,10 @@ function paintText(ctx, text, scale) {
 /// without them.
 export async function loadPictures(root, drawing) {
     // ...and every face its texts are set in: a picture made before they load would be in the wrong one.
-    await Promise.all([...imagesOf(drawing).map((doc) => fetchPicture(root, doc).promise), loadFonts(drawing)]);
+    await Promise.all([
+        ...imagesOf(drawing).map((doc) => fetchPicture(root, doc).promise),
+        loadFonts(drawing),
+    ]);
     return picturesNow(root, drawing);
 }
 
@@ -314,7 +358,15 @@ function paintShape(ctx, shape, scale) {
         ctx.lineJoin = 'miter';
         ctx.rect(l, top, r - l, bottom - top);
     } else {
-        ctx.ellipse((l + r) / 2, (top + bottom) / 2, (r - l) / 2, (bottom - top) / 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(
+            (l + r) / 2,
+            (top + bottom) / 2,
+            (r - l) / 2,
+            (bottom - top) / 2,
+            0,
+            0,
+            Math.PI * 2,
+        );
     }
     ctx.stroke();
 }
@@ -357,7 +409,13 @@ export function paintLayer(canvas, drawing, layerId, images = NO_PICTURES) {
             if (img) {
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.imageSmoothingEnabled = true;
-                ctx.drawImage(img, op.points[0] * scale, op.points[1] * scale, op.w * scale, op.h * scale);
+                ctx.drawImage(
+                    img,
+                    op.points[0] * scale,
+                    op.points[1] * scale,
+                    op.w * scale,
+                    op.h * scale,
+                );
             }
         } else if (op.tool === 'rect' || op.tool === 'ellipse') {
             paintShape(ctx, op, scale);
@@ -435,7 +493,12 @@ export function flatten(drawing, width = sizeOf(drawing)[0], images = NO_PICTURE
 export async function flattenToBlob(root, drawing) {
     const canvas = flatten(drawing, sizeOf(drawing)[0], await loadPictures(root, drawing));
     return new Promise((resolve, reject) =>
-        canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('could not make a picture of the drawing'))), 'image/webp', 0.92)
+        canvas.toBlob(
+            (blob) =>
+                blob ? resolve(blob) : reject(new Error('could not make a picture of the drawing')),
+            'image/webp',
+            0.92,
+        ),
     );
 }
 
@@ -444,9 +507,16 @@ export async function flattenToBlob(root, drawing) {
 /// at, `BACKING` pixels to a unit, and named for its title. It waits for its pictures and faces, as a
 /// publication does. Saved the way the spare key is (net.js `saveFile`).
 export async function downloadPng(root, drawing, title) {
-    const canvas = flatten(drawing, sizeOf(drawing)[0] * BACKING, await loadPictures(root, drawing));
+    const canvas = flatten(
+        drawing,
+        sizeOf(drawing)[0] * BACKING,
+        await loadPictures(root, drawing),
+    );
     const blob = await new Promise((resolve, reject) =>
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
+        canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('could not make a picture of the drawing'))),
+            'image/png',
+        ),
     );
     await saveFile(pictureFileName(title), blob);
 }
@@ -456,11 +526,19 @@ export async function downloadPng(root, drawing, title) {
 /// the new image's id. A new notebook is defined first, as a Writer notebook.
 export async function copyPictureInto(root, drawing, title, bucket, isNew) {
     if (isNew) {
-        await api(`/api/identity/${root}/buckets`, { method: 'POST', body: JSON.stringify({ name: bucket, app: 'default' }) });
+        await api(`/api/identity/${root}/buckets`, {
+            method: 'POST',
+            body: JSON.stringify({ name: bucket, app: 'default' }),
+        });
     }
     const picture = await flattenToBlob(root, drawing);
-    const made = await xhrUpload(`/api/identity/${root}/docs/binary?title=${encodeURIComponent(title || 'drawing')}`, picture);
-    await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`, { method: 'PUT' });
+    const made = await xhrUpload(
+        `/api/identity/${root}/docs/binary?title=${encodeURIComponent(title || 'drawing')}`,
+        picture,
+    );
+    await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`, {
+        method: 'PUT',
+    });
     return made.doc_id;
 }
 
@@ -482,7 +560,13 @@ export async function publishDrawing(root, docId, drawing, extra = {}) {
 export async function duplicateDrawing(root, docId) {
     const made = await api(`/api/identity/${root}/docs/copy`, {
         method: 'POST',
-        body: JSON.stringify({ author: root, doc_id: docId, bucket: 'drawing', new: false, private: true }),
+        body: JSON.stringify({
+            author: root,
+            doc_id: docId,
+            bucket: 'drawing',
+            new: false,
+            private: true,
+        }),
     });
     return made.doc_id;
 }
@@ -513,7 +597,10 @@ const TEXT_LAYER_TOOLS = ['text', 'transform', 'grab', 'crop', 'profile', 'banne
 /// picked on the profile page is. `ratio` is width to height: a square for the picture (the
 /// heptagon covers it), and the banner's own shape, the page's 800px by its 250px (person.css,
 /// `.person-card-hero`).
-const FRAMING_TOOLS = { profile: { ratio: 1, door: 'avatar' }, banner: { ratio: 800 / 250, door: 'banner' } };
+const FRAMING_TOOLS = {
+    profile: { ratio: 1, door: 'avatar' },
+    banner: { ratio: 800 / 250, door: 'banner' },
+};
 /// The longest side sent: the box at the canvas's backing, never more (the node crushes it to its
 /// own bound either way).
 const FRAMED_MAX_SIDE = 1600;
@@ -546,7 +633,7 @@ const HANDLE_PX = 9;
 const ARROW_CLOCKWISE =
     'M244,56v48a12,12,0,0,1-12,12H184a12,12,0,1,1,0-24H201.1l-19-17.38c-.13-.12-.26-.24-.38-.37A76,76,0,1,0,127,204h1a75.53,75.53,0,0,0,52.15-20.72,12,12,0,0,1,16.49,17.45A99.45,99.45,0,0,1,128,228h-1.37A100,100,0,1,1,198.51,57.06L220,76.72V56a12,12,0,0,1,24,0Z';
 const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-20 -20 296 296"><path d="${ARROW_CLOCKWISE}" fill="black" stroke="white" stroke-width="28" stroke-linejoin="round" paint-order="stroke"/></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-20 -20 296 296"><path d="${ARROW_CLOCKWISE}" fill="black" stroke="white" stroke-width="28" stroke-linejoin="round" paint-order="stroke"/></svg>`,
 )}") 12 12, crosshair`;
 
 /// The pointer over the transform frame, by what a press there would take hold of.
@@ -555,7 +642,11 @@ const GRIP_CURSORS = {
     edge: ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize'],
 };
 const gripCursor = (grip) =>
-    grip.kind === 'corner' || grip.kind === 'edge' ? GRIP_CURSORS[grip.kind][grip.i] : grip.kind === 'inside' ? 'move' : ROTATE_CURSOR;
+    grip.kind === 'corner' || grip.kind === 'edge'
+        ? GRIP_CURSORS[grip.kind][grip.i]
+        : grip.kind === 'inside'
+          ? 'move'
+          : ROTATE_CURSOR;
 
 /// The room left around the drawing when it fits the stage, in CSS pixels: its shadow shows.
 const STAGE_GAP = 16;
@@ -592,13 +683,25 @@ const StickerShelf = ({ root, chosen, onChoose }) => {
     const choose = async (doc) => {
         setError(null);
         if (doc.format !== 'drawing') {
-            onChoose({ source: doc.doc_id, doc: doc.doc_id, width: doc.media.width, height: doc.media.height, title: doc.title || '' });
+            onChoose({
+                source: doc.doc_id,
+                doc: doc.doc_id,
+                width: doc.media.width,
+                height: doc.media.height,
+                title: doc.title || '',
+            });
             return;
         }
         setBusy(doc.doc_id);
         try {
             const flat = await drawingAsPicture(root, doc.doc_id);
-            onChoose({ source: doc.doc_id, doc: flat.doc, width: flat.width, height: flat.height, title: flat.title || doc.title || '' });
+            onChoose({
+                source: doc.doc_id,
+                doc: flat.doc,
+                width: flat.width,
+                height: flat.height,
+                title: flat.title || doc.title || '',
+            });
         } catch (e) {
             setError(e.message);
         } finally {
@@ -606,19 +709,22 @@ const StickerShelf = ({ root, chosen, onChoose }) => {
         }
     };
     return html`<div class="drawing-stickers">
-        ${cloud.length > 0 &&
-        html`<div class="imagepick-tags">
+        ${
+            cloud.length > 0 &&
+            html`<div class="imagepick-tags">
             ${cloud.map(
                 ([tag, count]) => html`<button
                     key=${tag}
                     class=${tags.includes(tag) ? 'imagepick-tag active' : 'imagepick-tag'}
                     onClick=${() => setTags(togglePick(tags, tag))}
-                >${tag} <span class="imagepick-tag-count">${count}</span></button>`
+                >${tag} <span class="imagepick-tag-count">${count}</span></button>`,
             )}
-        </div>`}
-        ${stickers.length === 0
-            ? html`<p class="null-sub">${t('doc.drawing.no-stickers', 'tag a picture or a drawing "{tag}" to keep it here', { tag: STICKER_TAG })}</p>`
-            : html`<ul class="drawing-sticker-grid">
+        </div>`
+        }
+        ${
+            stickers.length === 0
+                ? html`<p class="null-sub">${t('doc.drawing.no-stickers', 'tag a picture or a drawing "{tag}" to keep it here', { tag: STICKER_TAG })}</p>`
+                : html`<ul class="drawing-sticker-grid">
                   ${stickers.map(
                       (doc) => html`<li key=${doc.doc_id}>
                           <button
@@ -630,15 +736,18 @@ const StickerShelf = ({ root, chosen, onChoose }) => {
                               onClick=${() => choose(doc)}
                           >
                               <span class="drawing-sticker-thumb drawing-floor">
-                                  ${doc.format === 'drawing'
-                                      ? html`<${DrawingThumb} root=${root} doc=${doc} />`
-                                      : doc.media.has_thumb &&
-                                        html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`}
+                                  ${
+                                      doc.format === 'drawing'
+                                          ? html`<${DrawingThumb} root=${root} doc=${doc} />`
+                                          : doc.media.has_thumb &&
+                                            html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`
+                                  }
                               </span>
                           </button>
-                      </li>`
+                      </li>`,
                   )}
-              </ul>`}
+              </ul>`
+        }
         ${error && html`<p class="form-error">${error}</p>`}
     </div>`;
 };
@@ -691,7 +800,7 @@ export const DrawingThumb = ({ root, doc, big }) => {
                     watch.disconnect();
                 }
             },
-            { rootMargin: '200px' }
+            { rootMargin: '200px' },
         );
         watch.observe(el);
         return () => watch.disconnect();
@@ -710,7 +819,10 @@ export const DrawingThumb = ({ root, doc, big }) => {
             if (detail.body == null) return;
             const body = readBody(detail.body);
             // WebP where the browser can write it (a few KB), PNG where it cannot.
-            const url = flatten(body, THUMB_WIDTH, await loadPictures(root, body)).toDataURL('image/webp', 0.85);
+            const url = flatten(body, THUMB_WIDTH, await loadPictures(root, body)).toDataURL(
+                'image/webp',
+                0.85,
+            );
             thumbCache.set(key, url);
             rememberThumb(root, doc.doc_id, doc.head, url);
             if (live) {
@@ -795,7 +907,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         return publishDrawing(root, docId, drawing, extra || {});
     };
     const row = session.row;
-    const differs = !!(row && row.fields && row.fields.published_head && row.head !== row.fields.published_head);
+    const differs = !!(
+        row &&
+        row.fields &&
+        row.fields.published_head &&
+        row.head !== row.fields.published_head
+    );
 
     const duplicate = async () => {
         setBusy(true);
@@ -869,7 +986,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // On a phone the tools column covers the canvas, so a tool whose next step is a press or the words
     // hangs that part over the canvas instead (below, `.drawing-hang`).
     const narrow = useNarrow();
-    const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], { tools: 170, layers: 170 });
+    const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], {
+        tools: 170,
+        layers: 170,
+    });
 
     // The layers (DRAWING.md, "Layers"): bottom of the stack first. The CURRENT layer is the one a
     // new stroke lands on and the opacity slider speaks for - the top one until another is picked,
@@ -930,7 +1050,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // The pictures the drawing refers to (DRAWING.md, "Images"): fetched as the drawing asks for
     // them, and a repaint when any that was missing arrives.
     useEffect(() => {
-        const missing = imagesOf(drawing).length !== picturesNow(root, drawing).size || fontsWanted(drawing).length > 0;
+        const missing =
+            imagesOf(drawing).length !== picturesNow(root, drawing).size ||
+            fontsWanted(drawing).length > 0;
         if (!missing) return undefined;
         let live = true;
         loadPictures(root, drawing).then(() => live && setPicturesArrived((n) => n + 1));
@@ -950,7 +1072,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     useEffect(() => {
         const stage = stageRef.current;
         if (!stage) return undefined;
-        const measure = () => setFit(fitSize(stage.clientWidth - STAGE_GAP, stage.clientHeight - STAGE_GAP, W, H));
+        const measure = () =>
+            setFit(fitSize(stage.clientWidth - STAGE_GAP, stage.clientHeight - STAGE_GAP, W, H));
         measure();
         const watch = new ResizeObserver(measure);
         watch.observe(stage);
@@ -988,12 +1111,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const textTool = tools.tool === 'text';
     const stickerTool = tools.tool === 'sticker';
     const shapeTool = SHAPE_TOOLS.includes(tools.tool);
-    const size = tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
+    const size =
+        tools.tool === 'eraser' ? tools.eraserSize : shapeTool ? tools.shapeSize : tools.brushSize;
 
     /// A pointer position in the drawing's own units.
     const toDrawing = (e) => {
         const rect = canvasRef.current.getBoundingClientRect();
-        return [((e.clientX - rect.left) * W) / rect.width, ((e.clientY - rect.top) * H) / rect.height];
+        return [
+            ((e.clientX - rect.left) * W) / rect.width,
+            ((e.clientY - rect.top) * H) / rect.height,
+        ];
     };
 
     // The size circle: follows the pointer, as big on screen as the tool is on the drawing.
@@ -1002,13 +1129,18 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const canvas = canvasRef.current;
         if (!cursor || !canvas) return;
         const r = canvas.getBoundingClientRect();
-        const off = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        const off =
+            e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
         // The sticker in hand IS the cursor (2026-09-28): as big as it will be stamped, no bigger
         // than a cursor may be.
         const sticker = stickerCursorRef.current;
         if (sticker) {
             if (stickerTool && tools.sticker && !off) {
-                const [w, h] = stickerCursorSize(tools.sticker.width, tools.sticker.height, r.width / W);
+                const [w, h] = stickerCursorSize(
+                    tools.sticker.width,
+                    tools.sticker.height,
+                    r.width / W,
+                );
                 sticker.style.width = `${w}px`;
                 sticker.style.height = `${h}px`;
                 sticker.style.transform = `translate(${e.clientX - r.left - w / 2}px, ${e.clientY - r.top - h / 2}px)`;
@@ -1048,7 +1180,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         // Not a press on the stage's own scrollbars.
         const stage = stageRef.current;
         const sr = stage.getBoundingClientRect();
-        if (e.clientX - sr.left >= stage.clientWidth || e.clientY - sr.top >= stage.clientHeight) return;
+        if (e.clientX - sr.left >= stage.clientWidth || e.clientY - sr.top >= stage.clientHeight)
+            return;
         // A hidden layer takes no strokes: they would land where nobody can see them. A text layer
         // takes only its own tools.
         if (current.hidden || !toolAllowed(tools.tool)) return;
@@ -1062,9 +1195,23 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (stickerTool) {
             if (!tools.sticker) return;
             const rect = canvasRef.current.getBoundingClientRect();
-            const [w, h] = stickerCursorSize(tools.sticker.width, tools.sticker.height, rect.width / W);
+            const [w, h] = stickerCursorSize(
+                tools.sticker.width,
+                tools.sticker.height,
+                rect.width / W,
+            );
             const perUnit = W / rect.width;
-            changeLayers(stampImage(drawing, tools.sticker, current.id, toDrawing(e), [w * perUnit, h * perUnit], strokeId(), Date.now()));
+            changeLayers(
+                stampImage(
+                    drawing,
+                    tools.sticker,
+                    current.id,
+                    toDrawing(e),
+                    [w * perUnit, h * perUnit],
+                    strokeId(),
+                    Date.now(),
+                ),
+            );
             return;
         }
         if (textTool) {
@@ -1073,7 +1220,15 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             // It lands holding a word (Curtis, 2026-09-27: "a clearer visual indication where the text
             // has landed"), selected in the words field so the first keystroke replaces it.
             const text = t('doc.drawing.new-text', 'horse');
-            const style = { x, y, font: tools.font, size: tools.textSize, color: tools.color, align: tools.align, text };
+            const style = {
+                x,
+                y,
+                font: tools.font,
+                size: tools.textSize,
+                color: tools.color,
+                align: tools.align,
+                text,
+            };
             changeLayers(addTextLayer(drawing, id, style, Date.now()));
             setCurrentId(id);
             focusWords.current = true;
@@ -1084,7 +1239,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             const at = toDrawing(e);
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             const grip = gripAt(frameOf(cropBox), at, reach);
-            live.current = { crop: true, grip: grip.kind === 'outside' ? { kind: 'new' } : grip, from: at, box: cropBox };
+            live.current = {
+                crop: true,
+                grip: grip.kind === 'outside' ? { kind: 'new' } : grip,
+                from: at,
+                box: cropBox,
+            };
             return;
         }
         // The transform (DRAWING.md, "Transforming"): what the press took hold of decides the drag
@@ -1093,7 +1253,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             if (!frame) return;
             const at = toDrawing(e);
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
-            live.current = { transform: true, grip: gripAt(frame, at, reach), from: at, to: at, perfect: e.shiftKey, layer: current.id };
+            live.current = {
+                transform: true,
+                grip: gripAt(frame, at, reach),
+                from: at,
+                to: at,
+                perfect: e.shiftKey,
+                layer: current.id,
+            };
             return;
         }
         // The grab tool (DRAWING.md, "Grabbing"): the drag shows the layer moving, and letting go
@@ -1138,19 +1305,44 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (!canvas || field[y * W + x] < 0) return; // dropped on a line, or off the canvas
         const before = blankCanvas(canvas.width, canvas.height);
         before.getContext('2d').drawImage(canvas, 0, 0);
-        const entry = { id: strokeId(), t: Date.now(), tool: 'bucket', color: tools.color, points: [x, y] };
+        const entry = {
+            id: strokeId(),
+            t: Date.now(),
+            tool: 'bucket',
+            color: tools.color,
+            points: [x, y],
+        };
         if (layerId !== BASE_LAYER) entry.layer = layerId;
-        const pour = { pour: true, entry, field, canvas, before, rate: pourRate(tools.pourSpeed), began: performance.now(), reach: DROP, frame: 0 };
+        const pour = {
+            pour: true,
+            entry,
+            field,
+            canvas,
+            before,
+            rate: pourRate(tools.pourSpeed),
+            began: performance.now(),
+            reach: DROP,
+            frame: 0,
+        };
         live.current = pour;
         const show = () => {
             if (live.current !== pour) return;
-            pour.reach = Math.min(MAX_REACH, DROP + (pour.rate * (performance.now() - pour.began)) / 1000);
+            pour.reach = Math.min(
+                MAX_REACH,
+                DROP + (pour.rate * (performance.now() - pour.began)) / 1000,
+            );
             const ctx = canvas.getContext('2d');
             ctx.save();
             ctx.globalCompositeOperation = 'source-over';
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(before, 0, 0);
-            paintRuns(ctx, runsOf(field, W, H, pour.reach * STEP), entry.color, [W, H], canvas.width / W);
+            paintRuns(
+                ctx,
+                runsOf(field, W, H, pour.reach * STEP),
+                entry.color,
+                [W, H],
+                canvas.width / W,
+            );
             ctx.restore();
             restack();
             pour.frame = requestAnimationFrame(show);
@@ -1173,7 +1365,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (kept && kept.body === session.body && kept.layer === current.id) return;
         keptFrame.current = null;
         const canvas = layerCanvases.current.get(current.id);
-        const box = canvas && paintedBox(canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, BACKING);
+        const box =
+            canvas &&
+            paintedBox(
+                canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data,
+                canvas.width,
+                canvas.height,
+                BACKING,
+            );
         setFrame(frameOf(box || [0, 0, W, H]));
     }, [transformTool, current && current.id, drawing, shown, picturesArrived]); // eslint-disable-line react-hooks/exhaustive-deps
     // The pointer over the frame says what a press would do; set straight on the stage and the
@@ -1210,15 +1409,26 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const cropRef = useRef(null);
     useEffect(() => {
         setCropBox(
-            !shown ? null
-            : framing ? fitBox(framing.ratio, [W, H])
-            : cropTool ? [Math.round(W * 0.1), Math.round(H * 0.1), Math.round(W * 0.9), Math.round(H * 0.9)]
-            : null
+            !shown
+                ? null
+                : framing
+                  ? fitBox(framing.ratio, [W, H])
+                  : cropTool
+                    ? [
+                          Math.round(W * 0.1),
+                          Math.round(H * 0.1),
+                          Math.round(W * 0.9),
+                          Math.round(H * 0.9),
+                      ]
+                    : null,
         );
         setFramed(null);
     }, [cropTool, framing, shown, W, H]);
     // A drag of the box, free for the crop, held to its shape for a framing tool.
-    const boxAfter = (l) => (framing ? dragBoxAt(l.box, l.grip, l.from, l.to, [W, H], framing.ratio) : dragBox(l.box, l.grip, l.from, l.to, [W, H]));
+    const boxAfter = (l) =>
+        framing
+            ? dragBoxAt(l.box, l.grip, l.from, l.to, [W, H], framing.ratio)
+            : dragBox(l.box, l.grip, l.from, l.to, [W, H]);
     const cropPath = ([l, top, r, b]) => `M0 0H${W}V${H}H0Z M${l} ${top}V${b}H${r}V${top}Z`;
     const showCrop = (box) => {
         const svg = cropRef.current;
@@ -1248,10 +1458,29 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             const flat = flatten(drawing, W * BACKING, await loadPictures(root, drawing));
             const [l, top, r, b] = cropBox.map((n) => n * BACKING);
             const scale = Math.min(1, FRAMED_MAX_SIDE / Math.max(r - l, b - top));
-            const out = blankCanvas(Math.max(1, Math.round((r - l) * scale)), Math.max(1, Math.round((b - top) * scale)));
-            out.getContext('2d').drawImage(flat, l, top, r - l, b - top, 0, 0, out.width, out.height);
+            const out = blankCanvas(
+                Math.max(1, Math.round((r - l) * scale)),
+                Math.max(1, Math.round((b - top) * scale)),
+            );
+            out.getContext('2d').drawImage(
+                flat,
+                l,
+                top,
+                r - l,
+                b - top,
+                0,
+                0,
+                out.width,
+                out.height,
+            );
             const blob = await new Promise((resolve, reject) =>
-                out.toBlob((x) => (x ? resolve(x) : reject(new Error('could not make a picture of the drawing'))), 'image/png')
+                out.toBlob(
+                    (x) =>
+                        x
+                            ? resolve(x)
+                            : reject(new Error('could not make a picture of the drawing')),
+                    'image/png',
+                ),
             );
             const form = new FormData();
             form.append('image', blob, `${door}.png`);
@@ -1275,20 +1504,24 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const frameButton =
         framing &&
         html`<button class="drawing-tool drawing-crop-go" data-settles disabled=${!cropBox || framed === 'working'} onClick=${frameNow}>
-            ${tools.tool === 'profile'
-                ? html`<${Icons.asProfile} /> ${t('doc.drawing.set-as-profile', 'Set as Profile')}`
-                : html`<${Icons.asBanner} /> ${t('doc.drawing.set-as-banner', 'Set as Banner')}`}
+            ${
+                tools.tool === 'profile'
+                    ? html`<${Icons.asProfile} /> ${t('doc.drawing.set-as-profile', 'Set as Profile')}`
+                    : html`<${Icons.asBanner} /> ${t('doc.drawing.set-as-banner', 'Set as Banner')}`
+            }
         </button>`;
     const framedNote =
         framed &&
         html`<p class=${framed === 'working' || framed === 'done' ? 'drawing-framed' : 'drawing-framed error'}>
-            ${framed === 'working'
-                ? t('doc.drawing.working-on-it', 'working on it…')
-                : framed === 'done'
-                  ? tools.tool === 'profile'
-                      ? t('doc.drawing.profile-is-set', 'your profile picture is set')
-                      : t('doc.drawing.banner-is-set', 'your banner is set')
-                  : framed}
+            ${
+                framed === 'working'
+                    ? t('doc.drawing.working-on-it', 'working on it…')
+                    : framed === 'done'
+                      ? tools.tool === 'profile'
+                          ? t('doc.drawing.profile-is-set', 'your profile picture is set')
+                          : t('doc.drawing.banner-is-set', 'your banner is set')
+                      : framed
+            }
         </p>`;
 
     // The text tool's options: the current text layer's own, or - with none current - what the next
@@ -1302,7 +1535,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             wordsRef.current.select();
         }
     });
-    const textStyle = currentText || { font: tools.font, size: tools.textSize, align: tools.align, color: tools.color };
+    const textStyle = currentText || {
+        font: tools.font,
+        size: tools.textSize,
+        align: tools.align,
+        color: tools.color,
+    };
     const changeText = (change) => {
         const remembered = {};
         if (change.font) remembered.font = change.font;
@@ -1327,7 +1565,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const before = blankCanvas(canvas.width, canvas.height);
         before.getContext('2d').drawImage(canvas, 0, 0);
         const start = toDrawing(e);
-        const base = { id: strokeId(), t: Date.now(), layer: current.id, color: tools.color, size: Math.round(size) };
+        const base = {
+            id: strokeId(),
+            t: Date.now(),
+            layer: current.id,
+            color: tools.color,
+            size: Math.round(size),
+        };
         live.current = { shape: tools.tool, start, end: start, base, canvas, before };
     };
     const showShape = (l) => {
@@ -1398,7 +1642,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             const last = l.samples[l.samples.length - 1];
             if (Math.abs(next[0] - last[0]) < 0.5 && Math.abs(next[1] - last[1]) < 0.5) continue;
             l.samples.push(next);
-            paintStroke(ctx, l.stroke, BACKING, [last, next], l.pen ? [asPressure(last), asPressure(next)] : undefined);
+            paintStroke(
+                ctx,
+                l.stroke,
+                BACKING,
+                [last, next],
+                l.pen ? [asPressure(last), asPressure(next)] : undefined,
+            );
         }
         restack();
     };
@@ -1512,7 +1762,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // A colour picked with the text tool colours the current text too.
     const pickColour = (color) => {
         setTools({ color, tool: colourTool });
-        if (textTool && currentText) changeLayers(setText(drawing, current.id, { color }, Date.now()));
+        if (textTool && currentText)
+            changeLayers(setText(drawing, current.id, { color }, Date.now()));
     };
     // The size slider speaks for whichever tool is in hand: the shapes share a line width.
     const sizeKey = tools.tool === 'eraser' ? 'eraserSize' : shapeTool ? 'shapeSize' : 'brushSize';
@@ -1549,7 +1800,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           disabled=${!toolAllowed(tool)}
                           data-settles=${tool === 'sticker' ? undefined : ''}
                           onClick=${() => setTools({ tool })}
-                      ><${icon} /></button>`
+                      ><${icon} /></button>`,
                   )}
                   ${/* With the tools: what works whatever the tool (Curtis, 2026-09-27). */ ''}
                   <button
@@ -1569,10 +1820,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       onClick=${undoStroke}
                   ><${Icons.unpublish} /></button>
               </div>
-              ${/* The tool in hand's own options, and only its own (Curtis, 2026-09-27: "tool options are
-                  contextual and live with their associated tool"). */ ''}
-              ${pourTool &&
-              html`<label class="drawing-size">
+              ${
+                  /* The tool in hand's own options, and only its own (Curtis, 2026-09-27: "tool options are
+                  contextual and live with their associated tool"). */ ''
+              }
+              ${
+                  pourTool &&
+                  html`<label class="drawing-size">
                   <span>${t('doc.drawing.pour-speed', 'pour speed')} · ${tools.pourSpeed}</span>
                   <input
                       type="range"
@@ -1581,9 +1835,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       value=${tools.pourSpeed}
                       onInput=${(e) => setTools({ pourSpeed: +e.currentTarget.value })}
                   />
-              </label>`}
-              ${SIZED_TOOLS.includes(tools.tool) &&
-              html`<label class="drawing-size">
+              </label>`
+              }
+              ${
+                  SIZED_TOOLS.includes(tools.tool) &&
+                  html`<label class="drawing-size">
                   <span>${sizeWords()} · ${size}</span>
                   <input
                       type="range"
@@ -1592,11 +1848,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       value=${size}
                       onInput=${(e) => setTools({ [sizeKey]: +e.currentTarget.value })}
                   />
-              </label>`}
-              ${textTool &&
-              html`<div class="drawing-text-options">
-                  ${currentText
-                      ? html`<textarea
+              </label>`
+              }
+              ${
+                  textTool &&
+                  html`<div class="drawing-text-options">
+                  ${
+                      currentText
+                          ? html`<textarea
                             ref=${narrow ? null : wordsRef}
                             class="drawing-text-words"
                             rows="4"
@@ -1606,12 +1865,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                             aria-label=${t('doc.drawing.words', 'words')}
                             onInput=${(e) => changeText({ text: e.currentTarget.value })}
                         ></textarea>`
-                      : html`<p class="null-sub">${t('doc.drawing.click-to-place-text', 'click the drawing to place text')}</p>`}
+                          : html`<p class="null-sub">${t('doc.drawing.click-to-place-text', 'click the drawing to place text')}</p>`
+                  }
                   <label class="drawing-size">
                       <span>${t('doc.drawing.font', 'font')}</span>
                       <select value=${textStyle.font} onChange=${(e) => changeText({ font: e.currentTarget.value })}>
                           ${Object.entries(FONTS).map(
-                              ([token, family]) => html`<option key=${token} value=${token} style=${`font-family: ${fontStack(token)}`}>${family}</option>`
+                              ([token, family]) =>
+                                  html`<option key=${token} value=${token} style=${`font-family: ${fontStack(token)}`}>${family}</option>`,
                           )}
                       </select>
                   </label>
@@ -1633,18 +1894,22 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                               title=${name}
                               aria-label=${name}
                               onClick=${() => changeText({ align })}
-                          ><${icon} /></button>`
+                          ><${icon} /></button>`,
                       )}
                   </div>
-              </div>`}
+              </div>`
+              }
               ${stickerTool && html`<${StickerShelf} root=${root} chosen=${tools.sticker} onChoose=${(sticker) => setTools({ sticker })} />`}
               ${cropTool && cropButton}
               ${framing && html`${frameButton}${framedNote}`}
-              ${COLOURED_TOOLS.includes(tools.tool) &&
-              html`<${ColourPicker} value=${textTool ? textStyle.color : tools.color} onChange=${pickColour} />
+              ${
+                  COLOURED_TOOLS.includes(tools.tool) &&
+                  html`<${ColourPicker} value=${textTool ? textStyle.color : tools.color} onChange=${pickColour} />
                   <div class="drawing-colours" aria-label=${t('doc.drawing.colour', 'colour')}>
-                      ${/* A click away: white and black always, then the last ten colours this
-                          drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''}
+                      ${
+                          /* A click away: white and black always, then the last ten colours this
+                          drawing's strokes used (Curtis, 2026-09-26) - the picker above has the rest. */ ''
+                      }
                       ${[...FIXED_COLOURS, ...recentColours(drawing, 10)].map(
                           (c) => html`<button
                               key=${c}
@@ -1652,9 +1917,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                               style=${`background: ${c}`}
                               title=${c}
                               onClick=${() => pickColour(c)}
-                          ></button>`
+                          ></button>`,
                       )}
-                  </div>`}
+                  </div>`
+              }
               <p class="drawing-count">
                   ${t('doc.drawing.strokes', '{count} strokes', { count: drawing.strokes.length })}
               </p>
@@ -1676,13 +1942,15 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         changeLayers(duplicateLayer(drawing, layerId, id, strokeId(), Date.now()));
         setCurrentId(id);
     };
-    const trashLayer = (layerId) => changeLayers(deleteLayer(drawing, layerId, strokeId(), Date.now()));
+    const trashLayer = (layerId) =>
+        changeLayers(deleteLayer(drawing, layerId, strokeId(), Date.now()));
     // A name (Curtis, 2026-09-26): typed in place of the name, kept on Enter or on leaving the field,
     // dropped on Escape. A blank name goes back to the number; one the drawing cannot keep - too long,
     // a control character - changes nothing (pure/drawing.js, `setLayer`).
     const commitName = (layer, typed) => {
         setRenaming(null);
-        if (typed.trim() !== (layer.name || '')) changeLayers(setLayer(drawing, layer.id, { name: typed }, Date.now()));
+        if (typed.trim() !== (layer.name || ''))
+            changeLayers(setLayer(drawing, layer.id, { name: typed }, Date.now()));
     };
     // A text layer with no name of its own goes by its first line.
     const layerName = (layer) => {
@@ -1705,13 +1973,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (!draggingLayer.current) return;
         e.preventDefault();
         const target = dropTarget(e, layer);
-        const same = target && dropLine && target.id === dropLine.id && target.above === dropLine.above;
-        if (!same && (target || dropLine)) setDropLine(target && { id: target.id, above: target.above });
+        const same =
+            target && dropLine && target.id === dropLine.id && target.above === dropLine.above;
+        if (!same && (target || dropLine))
+            setDropLine(target && { id: target.id, above: target.above });
     };
     const dropOnRow = (e, layer) => {
         e.preventDefault();
         const target = draggingLayer.current && dropTarget(e, layer);
-        if (target) changeLayers(moveLayer(drawing, draggingLayer.current, target.index, Date.now()));
+        if (target)
+            changeLayers(moveLayer(drawing, draggingLayer.current, target.index, Date.now()));
         draggingLayer.current = null;
         setDropLine(null);
     };
@@ -1736,8 +2007,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
         : html`${tab('layers', Icons.layers, t('doc.drawing.layers-and-map', 'layers & map'))}<aside class="drawing-layers" style=${colStyle}>
               <${PaneHead} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
-              ${shown &&
-              html`<${Navigator}
+              ${
+                  shown &&
+                  html`<${Navigator}
                   zoom=${zoom}
                   onZoom=${setZoom}
                   stageRef=${stageRef}
@@ -1746,12 +2018,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                   width=${W}
                   height=${H}
               />
-              <hr class="drawing-nav-rule" />`}
+              <hr class="drawing-nav-rule" />`
+              }
               <button class="drawing-tool" disabled=${!opened} onClick=${newLayer}>
                   <${Icons.plus} /> ${t('doc.drawing.new-layer', 'new layer')}
               </button>
-              ${current &&
-              html`<label class="drawing-size">
+              ${
+                  current &&
+                  html`<label class="drawing-size">
                   <span>${t('doc.drawing.opacity', 'opacity')} · ${current.opacity}%</span>
                   <input
                       type="range"
@@ -1761,7 +2035,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       disabled=${!opened}
                       onInput=${(e) => changeLayers(setLayer(drawing, current.id, { opacity: +e.currentTarget.value }, Date.now()))}
                   />
-              </label>`}
+              </label>`
+              }
               <ol
                   class="drawing-layer-list"
                   onDragLeave=${(e) => {
@@ -1787,23 +2062,32 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           onClick=${() => setCurrentId(layer.id)}
                       >
                           <${LayerThumb} source=${layerCanvases.current.get(layer.id)} painted=${painted} />
-                          ${renaming === layer.id
-                              ? html`<${LayerNameField} layer=${layer} onCommit=${commitName} onCancel=${() => setRenaming(null)} />`
-                              : html`<span
+                          ${
+                              renaming === layer.id
+                                  ? html`<${LayerNameField} layer=${layer} onCommit=${commitName} onCancel=${() => setRenaming(null)} />`
+                                  : html`<span
                                     class=${layer.hidden ? 'drawing-layer-name hidden' : 'drawing-layer-name'}
                                     title=${layerName(layer)}
                                     onDblClick=${(e) => {
                                         e.stopPropagation();
                                         if (opened) setRenaming(layer.id);
                                     }}
-                                >${layerName(layer)}</span>`}
+                                >${layerName(layer)}</span>`
+                          }
                           <span class="drawing-layer-acts">
                               <button
                                   class="drawing-layer-eye"
                                   title=${layer.hidden ? t('doc.drawing.show-layer', 'show this layer') : t('doc.drawing.hide-layer', 'hide this layer')}
                                   onClick=${(e) => {
                                       e.stopPropagation();
-                                      changeLayers(setLayer(drawing, layer.id, { hidden: !layer.hidden }, Date.now()));
+                                      changeLayers(
+                                          setLayer(
+                                              drawing,
+                                              layer.id,
+                                              { hidden: !layer.hidden },
+                                              Date.now(),
+                                          ),
+                                      );
                                   }}
                               ><${layer.hidden ? Icons.eyeClosed : Icons.eye} /></button>
                               <button
@@ -1835,10 +2119,15 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                       </li>`;
                   })}
               </ol>
-              ${current && current.hidden &&
-              html`<p class="null-sub">${t('doc.drawing.this-layer-is-hidden', 'this layer is hidden - show it to draw on it')}</p>`}
-              ${!layers.length &&
-              html`<p class="null-sub">${t('doc.drawing.no-layers', 'no layers - make a new one to draw on')}</p>`}
+              ${
+                  current &&
+                  current.hidden &&
+                  html`<p class="null-sub">${t('doc.drawing.this-layer-is-hidden', 'this layer is hidden - show it to draw on it')}</p>`
+              }
+              ${
+                  !layers.length &&
+                  html`<p class="null-sub">${t('doc.drawing.no-layers', 'no layers - make a new one to draw on')}</p>`
+              }
           </aside>${resizer('layers')}`;
 
     // The save chip's state, read out here: inside the template a status word would read to the
@@ -1858,23 +2147,27 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         />
         <span class="reader-chips">
             ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
-            ${onDeleted &&
-            row &&
-            !row.fields?.published_as &&
-            html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`}
+            ${
+                onDeleted &&
+                row &&
+                !row.fields?.published_as &&
+                html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`
+            }
             <${Chip}
                 icon=${Icons.copy}
                 title=${t('doc.drawing.copy-a-picture-into-a-notebook', 'copy a picture of this drawing into a notebook')}
                 onClick=${() => opened && setCopying(true)}
             />
-            ${copying &&
-            html`<${CopyIntoModal}
+            ${
+                copying &&
+                html`<${CopyIntoModal}
                 current=${{ root }}
                 source=${{ author: root, doc_id: docId, private: true }}
                 heading=${t('doc.drawing.copy-a-picture-of-it', 'copy a picture of this drawing into a notebook')}
                 copyWith=${(bucket, isNew) => copyPictureInto(root, drawing, session.title, bucket, isNew)}
                 onClose=${() => setCopying(false)}
-            />`}
+            />`
+            }
             <${Chip}
                 icon=${Icons.download}
                 title=${t('doc.drawing.download-png', 'download as a .png')}
@@ -1920,15 +2213,17 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 onPointerUp=${finishStroke}
                 onPointerCancel=${finishStroke}
             >
-                ${!shown
-                    ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
-                    : html`<div
+                ${
+                    !shown
+                        ? html`<p class="null-sub">${t('doc.drawing.opening', 'opening…')}</p>`
+                        : html`<div
                           ref=${paperRef}
                           class=${paperClass}
                           style=${paperSize}
                           onPointerLeave=${() => {
                               if (cursorRef.current) cursorRef.current.style.display = 'none';
-                              if (stickerCursorRef.current) stickerCursorRef.current.style.display = 'none';
+                              if (stickerCursorRef.current)
+                                  stickerCursorRef.current.style.display = 'none';
                           }}
                       >
                           <canvas
@@ -1939,8 +2234,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           ></canvas>
                           <span ref=${cursorRef} class=${tools.tool === 'eraser' ? 'drawing-cursor eraser' : 'drawing-cursor'}></span>
                           ${stickerTool && tools.sticker && html`<canvas ref=${stickerCursorRef} class="drawing-sticker-cursor"></canvas>`}
-                          ${cropBox &&
-                          html`<svg ref=${cropRef} class="drawing-crop" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none">
+                          ${
+                              cropBox &&
+                              html`<svg ref=${cropRef} class="drawing-crop" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none">
                               <path class="drawing-crop-shade" fill-rule="evenodd" d=${cropPath(cropBox)} />
                               <rect
                                   class="drawing-crop-edge"
@@ -1951,11 +2247,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                               />
                               ${frameOf(cropBox).map(
                                   (p, i) =>
-                                      html`<rect key=${i} class="drawing-crop-handle" x=${p[0] - handle / 2} y=${p[1] - handle / 2} width=${handle} height=${handle} />`
+                                      html`<rect key=${i} class="drawing-crop-handle" x=${p[0] - handle / 2} y=${p[1] - handle / 2} width=${handle} height=${handle} />`,
                               )}
-                          </svg>`}
-                          ${frame &&
-                          html`<svg
+                          </svg>`
+                          }
+                          ${
+                              frame &&
+                              html`<svg
                               ref=${frameRef}
                               class="drawing-frame"
                               viewBox=${`0 0 ${W} ${H}`}
@@ -1963,21 +2261,28 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           >
                               <polygon points=${framePoints(frame)} />
                               ${frame.map(
-                                  (p, i) => html`<rect key=${i} x=${p[0] - handle / 2} y=${p[1] - handle / 2} width=${handle} height=${handle} />`
+                                  (p, i) =>
+                                      html`<rect key=${i} x=${p[0] - handle / 2} y=${p[1] - handle / 2} width=${handle} height=${handle} />`,
                               )}
-                          </svg>`}
-                      </div>`}
+                          </svg>`
+                          }
+                      </div>`
+                }
             </div>
-            ${/* What a tool still needs once the column has closed onto the canvas (Curtis, 2026-10-01): on
+            ${
+                /* What a tool still needs once the column has closed onto the canvas (Curtis, 2026-10-01): on
                 a phone the text tool's words hang over the drawing while it's the tool in hand, and the
-                box tools' press - crop, set as profile, set as banner - hangs there until it is pressed. */ ''}
-            ${narrow &&
-            shown &&
-            (textTool || cropTool || framing) &&
-            html`<div class="drawing-hang jag-line">
-                ${textTool &&
-                (currentText
-                    ? html`<textarea
+                box tools' press - crop, set as profile, set as banner - hangs there until it is pressed. */ ''
+            }
+            ${
+                narrow &&
+                shown &&
+                (textTool || cropTool || framing) &&
+                html`<div class="drawing-hang jag-line">
+                ${
+                    textTool &&
+                    (currentText
+                        ? html`<textarea
                           ref=${wordsRef}
                           class="drawing-text-words"
                           rows="2"
@@ -1987,9 +2292,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           aria-label=${t('doc.drawing.words', 'words')}
                           onInput=${(e) => changeText({ text: e.currentTarget.value })}
                       ></textarea>`
-                    : html`<p class="null-sub">${t('doc.drawing.tap-to-place-text', 'tap the drawing to place text')}</p>`)}
+                        : html`<p class="null-sub">${t('doc.drawing.tap-to-place-text', 'tap the drawing to place text')}</p>`)
+                }
                 ${cropTool && cropButton}
                 ${framing && (framed && framed !== 'working' && framed !== 'done' ? html`${framedNote}${frameButton}` : framed ? framedNote : frameButton)}
-            </div>`}
+            </div>`
+            }
         </div>`;
 };

@@ -45,7 +45,10 @@ export function useDocApp(root, app, docId, bucket) {
     // Where a document, or the list, lives: the document's own address in a notebook app; the
     // everything-view's own address in Lost & Found (one document shows there beside every other,
     // and its link must keep meaning "the everything-view"); the notebook's list for no document.
-    const listHref = app.everything || !bucket || bucket === app.style ? appHref(app.id) : `${appHref(app.id)}/notebook/${slugify(bucket)}`;
+    const listHref =
+        app.everything || !bucket || bucket === app.style
+            ? appHref(app.id)
+            : `${appHref(app.id)}/notebook/${slugify(bucket)}`;
     const hrefOf = (id) => {
         if (!id) return listHref;
         if (app.everything) return `${appHref(app.id)}/${id}`;
@@ -78,7 +81,14 @@ export function useDocApp(root, app, docId, bucket) {
     };
 
     const [treeReload, setTreeReload] = useState(0);
-    return { docs, selected, select, forget, treeReload, bumpTree: () => setTreeReload((k) => k + 1) };
+    return {
+        docs,
+        selected,
+        select,
+        forget,
+        treeReload,
+        bumpTree: () => setTreeReload((k) => k + 1),
+    };
 }
 
 /**

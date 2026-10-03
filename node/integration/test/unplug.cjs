@@ -28,7 +28,7 @@
     touched, and `../roothooks.cjs` re-plugs them after every test. Belt (the `finally` inside
     `withUnplugged`) and braces (the root hook), because the braces are what survive a hang.
 */
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch } = require('./fetch.cjs');
 
 // Hosts this process has unplugged and not yet demonstrably re-plugged. The root hook drains it;
 // it stays empty for the whole suite except while a partition test is actually running, which is
@@ -53,14 +53,14 @@ async function unplug(host, opts = {}) {
     if (opts.alpns) body.alpns = opts.alpns;
     if (opts.direction) body.direction = opts.direction;
 
-    const resp = await makeFetch(host)("test/unplug", {
-        method: "POST",
+    const resp = await makeFetch(host)('test/unplug', {
+        method: 'POST',
         body: JSON.stringify(body),
     });
     if (resp.status !== 200) {
         throw new Error(
             `unplug(${host}) returned ${resp.status}: ${await resp.text()} ` +
-                `(is the node armed with RINGTOME_LOCAL_TEST?)`
+                `(is the node armed with RINGTOME_LOCAL_TEST?)`,
         );
     }
     // Recorded BEFORE anything else can throw, so a node is never unplugged unremembered.
@@ -70,7 +70,7 @@ async function unplug(host, opts = {}) {
 
 // Plug `host` back in: refuse nothing. Idempotent, and fine on a node that was never unplugged.
 async function plugIn(host) {
-    const resp = await makeFetch(host)("test/plug-in", { method: "POST" });
+    const resp = await makeFetch(host)('test/plug-in', { method: 'POST' });
     if (resp.status !== 200) {
         throw new Error(`plugIn(${host}) returned ${resp.status}: ${await resp.text()}`);
     }
@@ -80,7 +80,7 @@ async function plugIn(host) {
 
 // What `host` is refusing right now, without changing it.
 async function refusals(host) {
-    const resp = await makeFetch(host)("test/unplug");
+    const resp = await makeFetch(host)('test/unplug');
     if (resp.status !== 200) {
         throw new Error(`refusals(${host}) returned ${resp.status}: ${await resp.text()}`);
     }

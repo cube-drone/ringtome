@@ -1,15 +1,65 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated, docStatus,
-    emphasisOf, leadOf, overrunOf, heldBack, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked, REPLY_SORTS, replySortParams;
+let FEED_STYLE,
+    publishedState,
+    openDraftOf,
+    overlayPosted,
+    recentPosts,
+    mergePosts,
+    postCursor,
+    isBackdated,
+    docStatus,
+    emphasisOf,
+    leadOf,
+    overrunOf,
+    heldBack,
+    mergeFeed,
+    feedCursor,
+    postScale,
+    POST_SCALE_MIN,
+    postImageCap,
+    POST_IMAGE_MAX,
+    POST_IMAGE_MIN,
+    collapseReplyPairs,
+    FEED_SORTS,
+    isBestSort,
+    isRankedSort,
+    sortParams,
+    mergeRanked,
+    REPLY_SORTS,
+    replySortParams;
 before(async () => {
-    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated, docStatus,
-        postCursor, emphasisOf, leadOf, overrunOf, heldBack, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs, FEED_SORTS, isBestSort, isRankedSort, sortParams, mergeRanked, REPLY_SORTS, replySortParams } = await import(
-        '../../../js/pure/feed.js'
-    ));
+    ({
+        FEED_STYLE,
+        publishedState,
+        openDraftOf,
+        overlayPosted,
+        recentPosts,
+        mergePosts,
+        isBackdated,
+        docStatus,
+        postCursor,
+        emphasisOf,
+        leadOf,
+        overrunOf,
+        heldBack,
+        mergeFeed,
+        feedCursor,
+        postScale,
+        POST_SCALE_MIN,
+        postImageCap,
+        POST_IMAGE_MAX,
+        POST_IMAGE_MIN,
+        collapseReplyPairs,
+        FEED_SORTS,
+        isBestSort,
+        isRankedSort,
+        sortParams,
+        mergeRanked,
+        REPLY_SORTS,
+        replySortParams,
+    } = await import('../../../js/pure/feed.js'));
 });
 
 const draft = { fields: {} };
@@ -120,18 +170,27 @@ describe('recentPosts', () => {
 
     it('reads newest first, whatever order it arrived in', () => {
         const got = recentPosts([p('old', 100), p('new', 300), p('mid', 200)]);
-        assert.deepEqual(got.map((x) => x.doc_id), ['new', 'mid', 'old']);
+        assert.deepEqual(
+            got.map((x) => x.doc_id),
+            ['new', 'mid', 'old'],
+        );
     });
 
-    it('does not reorder the caller\'s array - the profile is not ours to shuffle', () => {
+    it("does not reorder the caller's array - the profile is not ours to shuffle", () => {
         const given = [p('old', 100), p('new', 300)];
         recentPosts(given);
-        assert.deepEqual(given.map((x) => x.doc_id), ['old', 'new']);
+        assert.deepEqual(
+            given.map((x) => x.doc_id),
+            ['old', 'new'],
+        );
     });
 
     it('sorts a post with no timestamp LAST, not to the top', () => {
         const got = recentPosts([p('nostamp'), p('real', 5)]);
-        assert.deepEqual(got.map((x) => x.doc_id), ['real', 'nostamp']);
+        assert.deepEqual(
+            got.map((x) => x.doc_id),
+            ['real', 'nostamp'],
+        );
     });
 
     it('is empty for a persona with nothing said in public', () => {
@@ -162,12 +221,18 @@ describe('paging a public shelf', () => {
 
     it('joins a page on, still newest first', () => {
         const got = mergePosts([p('c', 300), p('b', 200)], [p('a', 100)]);
-        assert.deepEqual(got.map((x) => x.doc_id), ['c', 'b', 'a']);
+        assert.deepEqual(
+            got.map((x) => x.doc_id),
+            ['c', 'b', 'a'],
+        );
     });
 
     it('DEDUPES - a re-published post can arrive on two pages', () => {
         const got = mergePosts([p('c', 300), p('b', 200)], [p('b', 200), p('a', 100)]);
-        assert.deepEqual(got.map((x) => x.doc_id), ['c', 'b', 'a']);
+        assert.deepEqual(
+            got.map((x) => x.doc_id),
+            ['c', 'b', 'a'],
+        );
     });
 
     it('keeps the first sighting, so what is on screen stays where the eye left it', () => {
@@ -177,9 +242,18 @@ describe('paging a public shelf', () => {
     });
 
     it('takes an empty or missing page without complaint', () => {
-        assert.deepEqual(mergePosts([p('a', 1)], []).map((x) => x.doc_id), ['a']);
-        assert.deepEqual(mergePosts([p('a', 1)]).map((x) => x.doc_id), ['a']);
-        assert.deepEqual(mergePosts(undefined, [p('a', 1)]).map((x) => x.doc_id), ['a']);
+        assert.deepEqual(
+            mergePosts([p('a', 1)], []).map((x) => x.doc_id),
+            ['a'],
+        );
+        assert.deepEqual(
+            mergePosts([p('a', 1)]).map((x) => x.doc_id),
+            ['a'],
+        );
+        assert.deepEqual(
+            mergePosts(undefined, [p('a', 1)]).map((x) => x.doc_id),
+            ['a'],
+        );
     });
 });
 
@@ -192,7 +266,11 @@ describe('feed emphasis and truncation', () => {
         assert.equal(emphasisOf('high'), 'high');
         assert.equal(emphasisOf('max'), 'high');
         assert.equal(emphasisOf(undefined), 'normal', 'your own posts carry no dial');
-        assert.equal(emphasisOf('75'), 'normal', 'the retired numeric scale is silence, not a weight');
+        assert.equal(
+            emphasisOf('75'),
+            'normal',
+            'the retired numeric scale is silence, not a weight',
+        );
     });
 
     it('cuts a low-interest multi-paragraph item to its first paragraph', () => {
@@ -202,27 +280,49 @@ describe('feed emphasis and truncation', () => {
     });
 
     it('draws a held-back card a little past its lead, for the fade to fall across (2026-10-02)', () => {
-        const body = 'the lead.\n\nthe second paragraph goes on for a while.\n\n![p](/a.avif)\n\nafter the picture.';
+        const body =
+            'the lead.\n\nthe second paragraph goes on for a while.\n\n![p](/a.avif)\n\nafter the picture.';
         const over = overrunOf(body, 'low');
         assert.ok(over.startsWith('the lead.\n\nthe second paragraph'), over);
-        assert.ok(!over.includes('![p]') && !over.includes('after the picture'), 'never into the next picture');
+        assert.ok(
+            !over.includes('![p]') && !over.includes('after the picture'),
+            'never into the next picture',
+        );
         assert.ok(!over.endsWith('\u2026'), 'the fade says "more", not an ellipsis');
         assert.equal(overrunOf('brief.', 'low'), 'brief.', 'nothing held back: just the lead');
-        const wall = ('word '.repeat(400)).trim();
+        const wall = 'word '.repeat(400).trim();
         const lead = leadOf(wall, 'low').lead.replace(/\u2026$/, '');
         const longer = overrunOf(wall, 'low');
-        assert.ok(longer.startsWith(lead) && longer.length > lead.length && longer.length < wall.length, 'a little past, not all');
+        assert.ok(
+            longer.startsWith(lead) && longer.length > lead.length && longer.length < wall.length,
+            'a little past, not all',
+        );
         assert.ok(/word$/.test(longer), 'and on a word boundary');
-        const linked = 'a'.repeat(10) + '\n\n' + 'see [a link with words](https://example.com/x) '.repeat(20);
+        const linked =
+            'a'.repeat(10) + '\n\n' + 'see [a link with words](https://example.com/x) '.repeat(20);
         const cut = overrunOf(linked, 'low');
-        assert.equal((cut.match(/\[/g) || []).length, (cut.match(/\)/g) || []).length, `never inside a link: ${cut}`);
+        assert.equal(
+            (cut.match(/\[/g) || []).length,
+            (cut.match(/\)/g) || []).length,
+            `never inside a link: ${cut}`,
+        );
     });
 
     it('says what a card holds back, by kind (2026-10-02)', () => {
-        const body = 'one two three.\n\n![a](/x/body/a.avif) ![b](https://e.com/b.png) ![s](/x/body/s.opus) ![v](/x/body/v-loop.webm) ![m](https://e.com/m.mp3)\n\nfour five.';
-        assert.deepEqual(heldBack(body, 'one two three.'), { words: 2, images: 2, audio: 2, videos: 1 });
+        const body =
+            'one two three.\n\n![a](/x/body/a.avif) ![b](https://e.com/b.png) ![s](/x/body/s.opus) ![v](/x/body/v-loop.webm) ![m](https://e.com/m.mp3)\n\nfour five.';
+        assert.deepEqual(heldBack(body, 'one two three.'), {
+            words: 2,
+            images: 2,
+            audio: 2,
+            videos: 1,
+        });
         assert.deepEqual(heldBack(body, body), { words: 0, images: 0, audio: 0, videos: 0 });
-        assert.deepEqual(heldBack('short', 'short and longer than the body'), { words: 0, images: 0, audio: 0, videos: 0 }, 'never negative');
+        assert.deepEqual(
+            heldBack('short', 'short and longer than the body'),
+            { words: 0, images: 0, audio: 0, videos: 0 },
+            'never negative',
+        );
     });
 
     it('leaves a short item whole whatever the interest', () => {
@@ -235,7 +335,7 @@ describe('feed emphasis and truncation', () => {
     });
 
     it('slices an unbroken low-interest wall at a word boundary', () => {
-        const wall = ('word '.repeat(200)).trim();
+        const wall = 'word '.repeat(200).trim();
         const { lead, cut } = leadOf(wall, 'low');
         assert.ok(cut);
         assert.ok(lead.length < 300);
@@ -244,17 +344,28 @@ describe('feed emphasis and truncation', () => {
 
     // Curtis, 2026-09-27: a post of dozens of the same picture showed five and then half of the
     // sixth - `![Big Fat…` - because each embed's address ate the budget as if it were words.
-    const pic = (n) => `![Big Fat Horse ${n}](/api/identity/${'a'.repeat(64)}/docs/${'b'.repeat(32)}/body/big_fat_horse.avif)`;
+    const pic = (n) =>
+        `![Big Fat Horse ${n}](/api/identity/${'a'.repeat(64)}/docs/${'b'.repeat(32)}/body/big_fat_horse.avif)`;
 
     it('always cuts at a second picture, at any interest - even when the whole would fit', () => {
         const post = `${pic(1)}\ntext text text\n${pic(2)}\nmore`;
         for (const emphasis of ['low', 'normal', 'high']) {
             const { lead, cut } = leadOf(post, emphasis);
             assert.equal(cut, true, emphasis);
-            assert.ok(lead.includes(pic(1)) && !lead.includes('Big Fat Horse 2'), `${emphasis}: the first picture, not the second`);
+            assert.ok(
+                lead.includes(pic(1)) && !lead.includes('Big Fat Horse 2'),
+                `${emphasis}: the first picture, not the second`,
+            );
         }
-        assert.equal(leadOf(`${pic(1)}\ntext text text\n${pic(2)}`, 'normal').lead, `${pic(1)}\ntext text text`);
-        assert.deepEqual(leadOf(`words\n${pic(1)}\nwords`, 'normal'), { lead: `words\n${pic(1)}\nwords`, cut: false }, 'one picture is no cut');
+        assert.equal(
+            leadOf(`${pic(1)}\ntext text text\n${pic(2)}`, 'normal').lead,
+            `${pic(1)}\ntext text text`,
+        );
+        assert.deepEqual(
+            leadOf(`words\n${pic(1)}\nwords`, 'normal'),
+            { lead: `words\n${pic(1)}\nwords`, cut: false },
+            'one picture is no cut',
+        );
     });
 
     it('never cuts a picture or a link in half, and counts neither address as words', () => {
@@ -263,12 +374,18 @@ describe('feed emphasis and truncation', () => {
         const wall = `${pic(1)}\n${'word '.repeat(176)}[a link with some length to it](https://example.com/${'p'.repeat(80)}) ${'word '.repeat(30)}`;
         const { lead, cut } = leadOf(wall, 'normal');
         assert.ok(cut);
-        assert.ok(lead.startsWith(pic(1)), 'the picture whole: its address did not spend the budget');
+        assert.ok(
+            lead.startsWith(pic(1)),
+            'the picture whole: its address did not spend the budget',
+        );
         const opens = (lead.match(/\[/g) || []).length;
         const closes = (lead.match(/\)/g) || []).length;
         assert.equal(opens, closes, `no markup left open: ${lead.slice(-80)}`);
         assert.ok(lead.endsWith('\u2026'));
-        assert.ok(!lead.includes('[a link'), 'the link, straddling the budget, is left for "see more" whole');
+        assert.ok(
+            !lead.includes('[a link'),
+            'the link, straddling the budget, is left for "see more" whole',
+        );
     });
 });
 
@@ -282,7 +399,10 @@ describe('the feed page merge', () => {
 
     it('stays strictly chronological across pages', () => {
         const merged = mergeFeed([item('a', 'x', 300)], [item('b', 'y', 500), item('a', 'z', 100)]);
-        assert.deepEqual(merged.map((i) => i.doc_id), ['y', 'x', 'z']);
+        assert.deepEqual(
+            merged.map((i) => i.doc_id),
+            ['y', 'x', 'z'],
+        );
     });
 
     it('cursors from the last item shown', () => {
@@ -375,7 +495,7 @@ describe('the share/reply pair, collapsed at render', () => {
     const parent = { author: 'ada', doc_id: 'p1', via: 'bea' };
     const reply = { author: 'bea', doc_id: 'r1', reply_to: { author: 'ada', doc_id: 'p1' } };
 
-    it('drops the pinned parent when its sharer\'s reply is on screen', () => {
+    it("drops the pinned parent when its sharer's reply is on screen", () => {
         assert.deepEqual(collapseReplyPairs([reply, parent]), [reply]);
     });
 
@@ -418,18 +538,36 @@ describe('a fresh post holds the top, and a backdated one wears its date (2026-0
         const { mergeFeed } = await import('../../../js/pure/feed.js');
         const old = { author: 'a', doc_id: 'old', published_ms: 1_000_000 };
         const fresh = { author: 'a', doc_id: 'back', published_ms: 5, fresh: true };
-        assert.deepEqual(mergeFeed([fresh], [old]).map((i) => i.doc_id), ['back', 'old']);
+        assert.deepEqual(
+            mergeFeed([fresh], [old]).map((i) => i.doc_id),
+            ['back', 'old'],
+        );
         // Without the flag (a later page load), the date rules.
-        assert.deepEqual(mergeFeed([{ ...fresh, fresh: false }], [old]).map((i) => i.doc_id), ['old', 'back']);
+        assert.deepEqual(
+            mergeFeed([{ ...fresh, fresh: false }], [old]).map((i) => i.doc_id),
+            ['old', 'back'],
+        );
     });
 
     it('isBackdated: a claim more than a minute before the mint, and nothing else', () => {
         const m = 10_000_000;
         assert.equal(isBackdated({ dated_ms: m - 86_400_000, minted_ms: m }), true);
-        assert.equal(isBackdated({ dated_ms: m - 30_000, minted_ms: m }), false, 'a bare "today" lands at the publish hour');
-        assert.equal(isBackdated({ dated_ms: m, minted_ms: m + 5_000 }), false, 'a scheduled post mints on its claim');
+        assert.equal(
+            isBackdated({ dated_ms: m - 30_000, minted_ms: m }),
+            false,
+            'a bare "today" lands at the publish hour',
+        );
+        assert.equal(
+            isBackdated({ dated_ms: m, minted_ms: m + 5_000 }),
+            false,
+            'a scheduled post mints on its claim',
+        );
         assert.equal(isBackdated({ minted_ms: m }), false, 'no claim');
-        assert.equal(isBackdated({ dated_ms: m - 86_400_000 }), false, 'a fragment row knows no mint');
+        assert.equal(
+            isBackdated({ dated_ms: m - 86_400_000 }),
+            false,
+            'a fragment row knows no mint',
+        );
         assert.equal(isBackdated(null), false);
     });
 });
@@ -440,7 +578,10 @@ describe('docStatus: the three icons (PUBLISH.md ruling 6)', () => {
         assert.equal(docStatus({}), 'private');
         assert.equal(docStatus({ fields: { published_as: 'abc' } }), 'public');
         assert.equal(docStatus({ fields: { publish_plan: '{"at":1,"by":"x"}' } }), 'scheduled');
-        assert.equal(docStatus({ fields: { published_as: 'abc', publish_plan: '{"at":1,"by":"x"}' } }), 'scheduled');
+        assert.equal(
+            docStatus({ fields: { published_as: 'abc', publish_plan: '{"at":1,"by":"x"}' } }),
+            'scheduled',
+        );
     });
 });
 
@@ -451,20 +592,38 @@ describe('the feed orders', () => {
         assert.deepEqual(FEED_SORTS, ['new', 'hot', 'day', 'week', 'month', 'year']);
         assert.equal(sortParams('new'), '');
         assert.equal(sortParams('hot'), 'sort=hot', 'hot has no window');
-        assert.ok(isRankedSort('hot') && isRankedSort('week') && !isRankedSort('new'), 'hot and best are ranked by the node');
+        assert.ok(
+            isRankedSort('hot') && isRankedSort('week') && !isRankedSort('new'),
+            'hot and best are ranked by the node',
+        );
         assert.ok(!isBestSort('hot'), 'hot is not a best window');
         assert.equal(sortParams('week'), 'sort=best&window=week');
-        assert.equal(sortParams('ever'), '', 'no best ever: an old remembered choice reads as newest');
+        assert.equal(
+            sortParams('ever'),
+            '',
+            'no best ever: an old remembered choice reads as newest',
+        );
         assert.equal(sortParams('nonsense'), '', 'an unknown order is newest');
         assert.ok(isBestSort('day') && !isBestSort('new') && !isBestSort(undefined));
     });
     it("keeps a ranked page in the node's order, deduplicating a post a moved score brought round twice", () => {
         const item = (doc, ms) => ({ author: 'a', doc_id: doc, published_ms: ms });
         const first = mergeRanked([], [item('old', 1), item('new', 9)]);
-        assert.deepEqual(first.map((i) => i.doc_id), ['old', 'new'], 'not re-sorted by date');
+        assert.deepEqual(
+            first.map((i) => i.doc_id),
+            ['old', 'new'],
+            'not re-sorted by date',
+        );
         const more = mergeRanked(first, [item('new', 9), item('mid', 5)]);
-        assert.deepEqual(more.map((i) => i.doc_id), ['old', 'new', 'mid']);
-        assert.deepEqual(mergeFeed([], [item('old', 1), item('new', 9)]).map((i) => i.doc_id), ['new', 'old'], 'where mergeFeed would have');
+        assert.deepEqual(
+            more.map((i) => i.doc_id),
+            ['old', 'new', 'mid'],
+        );
+        assert.deepEqual(
+            mergeFeed([], [item('old', 1), item('new', 9)]).map((i) => i.doc_id),
+            ['new', 'old'],
+            'where mergeFeed would have',
+        );
     });
 });
 
@@ -488,11 +647,19 @@ describe('the publish bar states its rows ahead of the stream (2026-10-01)', () 
     const row = { doc_id: 'd', head: 'h2', fields: { description: 'x' } };
     it('published: the post, and this head as its public version - settled only when the server says both', () => {
         const p = f.withPublished(row, 'post1');
-        assert.deepEqual(p.fields, { description: 'x', published_as: 'post1', published_head: 'h2' });
+        assert.deepEqual(p.fields, {
+            description: 'x',
+            published_as: 'post1',
+            published_head: 'h2',
+        });
         assert.equal(f.docStatus(p), 'public');
         const settled = f.publishedSettled('post1');
         assert.equal(settled(row), false);
-        assert.equal(settled({ ...row, fields: { published_as: 'post1', published_head: 'h1' } }), false, 'an older public version');
+        assert.equal(
+            settled({ ...row, fields: { published_as: 'post1', published_head: 'h1' } }),
+            false,
+            'an older public version',
+        );
         assert.equal(settled(p), true);
     });
     it('scheduled, taken down, unscheduled - and no row, nothing to wear it', () => {

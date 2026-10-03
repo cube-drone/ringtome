@@ -55,14 +55,27 @@ export function parseBook(text) {
         pages: Array.isArray(s && s.pages)
             ? s.pages
                   .filter((p) => p && p.post)
-                  .map((p) => ({ post: String(p.post), title: String(p.title || ''), tags: Array.isArray(p.tags) ? p.tags.map(String) : [] }))
+                  .map((p) => ({
+                      post: String(p.post),
+                      title: String(p.title || ''),
+                      tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
+                  }))
             : [],
         sections: Array.isArray(s && s.sections) ? s.sections.map(section) : [],
     });
     const top = section(raw);
     const count = (s) => s.pages.length + s.sections.reduce((n, x) => n + count(x), 0);
-    const cover = raw.cover && raw.cover.post ? { post: String(raw.cover.post), title: String(raw.cover.title || '') } : null;
-    return { title: String(raw.title || ''), cover, sections: top.sections, pages: top.pages, count: count(top) };
+    const cover =
+        raw.cover && raw.cover.post
+            ? { post: String(raw.cover.post), title: String(raw.cover.title || '') }
+            : null;
+    return {
+        title: String(raw.title || ''),
+        cover,
+        sections: top.sections,
+        pages: top.pages,
+        count: count(top),
+    };
 }
 
 /// The page a book borrows its title from (PROJECT_PLAN's Books, ruling 11): the first page in reading
@@ -70,7 +83,10 @@ export function parseBook(text) {
 /// ones skipped - else the first page of the notebook by id. Returns a doc id, or null.
 export function titlePageOf(tree, docs, hidden) {
     const hiddenDocs = hiddenDocsOf(tree, hidden || new Set());
-    const isPage = (id) => docs.some((d) => d.doc_id === id) && !hiddenDocs.has(id) && !(hidden && hidden.has(`doc:${id}`));
+    const isPage = (id) =>
+        docs.some((d) => d.doc_id === id) &&
+        !hiddenDocs.has(id) &&
+        !(hidden && hidden.has(`doc:${id}`));
     // The same order the rollout and the reader use: the tree's top-level pages, then the
     // notebook's unfiled pages (by id), then the sections depth-first.
     const filedIds = new Set();
@@ -83,16 +99,29 @@ export function titlePageOf(tree, docs, hidden) {
         }
     };
     collect(tree, new Set());
-    const top = tree ? (tree.members || []).filter((m) => !m.taxonomy && m.doc_id && isPage(m.doc_id)).map((m) => m.doc_id) : [];
+    const top = tree
+        ? (tree.members || [])
+              .filter((m) => !m.taxonomy && m.doc_id && isPage(m.doc_id))
+              .map((m) => m.doc_id)
+        : [];
     if (top.length) return top[0];
-    const loose = docs.map((d) => d.doc_id).filter((id) => !filedIds.has(id) && isPage(id)).sort();
+    const loose = docs
+        .map((d) => d.doc_id)
+        .filter((id) => !filedIds.has(id) && isPage(id))
+        .sort();
     if (loose.length) return loose[0];
     const walk = (node, seen) => {
         if (!node || seen.has(node.taxonomy_id)) return null;
         seen.add(node.taxonomy_id);
         for (const m of node.members || []) {
-            if (!m.taxonomy || !m.taxonomy.members || (hidden && hidden.has(`sec:${m.taxonomy.taxonomy_id}`))) continue;
-            for (const x of m.taxonomy.members || []) if (!x.taxonomy && x.doc_id && isPage(x.doc_id)) return x.doc_id;
+            if (
+                !m.taxonomy ||
+                !m.taxonomy.members ||
+                (hidden && hidden.has(`sec:${m.taxonomy.taxonomy_id}`))
+            )
+                continue;
+            for (const x of m.taxonomy.members || [])
+                if (!x.taxonomy && x.doc_id && isPage(x.doc_id)) return x.doc_id;
             const deeper = walk(m.taxonomy, seen);
             if (deeper) return deeper;
         }
@@ -105,8 +134,11 @@ export function titlePageOf(tree, docs, hidden) {
 /// (Curtis, 2026-09-05: listed under the table of contents, a filter over it).
 export function bookTags(book) {
     const counts = new Map();
-    for (const p of readingOrder(book)) for (const tag of p.tags || []) counts.set(tag, (counts.get(tag) || 0) + 1);
-    return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || (a.tag < b.tag ? -1 : 1));
+    for (const p of readingOrder(book))
+        for (const tag of p.tags || []) counts.set(tag, (counts.get(tag) || 0) + 1);
+    return [...counts.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count || (a.tag < b.tag ? -1 : 1));
 }
 
 /// The book with only the pages carrying EVERY selected tag (Writer's own rule), sections
@@ -117,7 +149,9 @@ export function filterBook(book, selected) {
     const prune = (section) => ({
         title: section.title,
         pages: section.pages.filter(keep),
-        sections: section.sections.map(prune).filter((s) => s.pages.length > 0 || s.sections.length > 0),
+        sections: section.sections
+            .map(prune)
+            .filter((s) => s.pages.length > 0 || s.sections.length > 0),
     });
     const top = prune({ title: '', pages: book.pages, sections: book.sections });
     return { ...book, pages: top.pages, sections: top.sections };
@@ -128,7 +162,8 @@ export function filterBook(book, selected) {
 export function readingOrder(book) {
     const out = [];
     const walk = (section, trail) => {
-        for (const p of section.pages) out.push({ post: p.post, title: p.title, tags: p.tags || [], trail });
+        for (const p of section.pages)
+            out.push({ post: p.post, title: p.title, tags: p.tags || [], trail });
         for (const s of section.sections) walk(s, [...trail, s.title]);
     };
     if (book) walk({ pages: book.pages, sections: book.sections }, []);
@@ -141,7 +176,12 @@ export function neighbours(book, post) {
     const order = readingOrder(book);
     const index = order.findIndex((p) => p.post === post);
     if (index < 0) return { index, prev: null, next: null, order };
-    return { index, prev: index > 0 ? order[index - 1] : null, next: index + 1 < order.length ? order[index + 1] : null, order };
+    return {
+        index,
+        prev: index > 0 ? order[index - 1] : null,
+        next: index + 1 < order.length ? order[index + 1] : null,
+        order,
+    };
 }
 
 /// Whether a bucket publishes as a book.
@@ -181,7 +221,8 @@ export function hiddenDocsOf(tree, hidden) {
 /// (its head moved since), or current.
 export function pageStanding(row, hiddenDocs, hidden) {
     if (!row) return 'new';
-    if ((hiddenDocs && hiddenDocs.has(row.doc_id)) || (hidden && hidden.has(`doc:${row.doc_id}`))) return 'hidden';
+    if ((hiddenDocs && hiddenDocs.has(row.doc_id)) || (hidden && hidden.has(`doc:${row.doc_id}`)))
+        return 'hidden';
     const published = row.fields && row.fields[PUBLISHED_VERSION];
     if (!published) return 'new';
     return published === row.head ? 'current' : 'changed';

@@ -168,7 +168,9 @@ fn decode_body(body: &[u8]) -> Result<Entry, ProtoError> {
             K_CHAIN => {
                 let arity = map.array()?;
                 if arity != 2 && arity != 3 {
-                    return Err(ProtoError::BadEntry("chain id must be [author, service] or [author, service, instance]"));
+                    return Err(ProtoError::BadEntry(
+                        "chain id must be [author, service] or [author, service, instance]",
+                    ));
                 }
                 let author = map.bytes_fixed::<32>()?;
                 let service = map.uint()?;
@@ -257,9 +259,7 @@ impl SignedEntry {
             return Err(ProtoError::UnsupportedVersion(u64::from(entry.v)));
         }
         if entry.chain.author != key.verifying_key().to_bytes() {
-            return Err(ProtoError::BadEntry(
-                "signing key does not match chain author",
-            ));
+            return Err(ProtoError::BadEntry("signing key does not match chain author"));
         }
         if entry.timestamp_ms < 0 {
             return Err(ProtoError::BadEntry("negative timestamp"));
@@ -430,11 +430,7 @@ mod tests {
 
         let tampered = SignedEntry::decode(&bytes).unwrap();
         assert_eq!(tampered.verify(), Err(ProtoError::BadSignature));
-        assert_ne!(
-            tampered.hash(),
-            signed.hash(),
-            "hash must move with the bytes"
-        );
+        assert_ne!(tampered.hash(), signed.hash(), "hash must move with the bytes");
     }
 
     #[test]
@@ -445,9 +441,7 @@ mod tests {
         entry.chain.author = other.verifying_key().to_bytes();
         assert_eq!(
             SignedEntry::create(&entry, &key),
-            Err(ProtoError::BadEntry(
-                "signing key does not match chain author"
-            ))
+            Err(ProtoError::BadEntry("signing key does not match chain author"))
         );
     }
 
@@ -529,10 +523,7 @@ mod tests {
         let key = test_key();
         let mut entry = test_entry(&key);
         entry.v = 1;
-        assert_eq!(
-            SignedEntry::create(&entry, &key),
-            Err(ProtoError::UnsupportedVersion(1))
-        );
+        assert_eq!(SignedEntry::create(&entry, &key), Err(ProtoError::UnsupportedVersion(1)));
     }
 
     #[test]
@@ -540,10 +531,7 @@ mod tests {
         let key = test_key();
         let mut entry = test_entry(&key);
         entry.payload = Payload::Inline(vec![0; MAX_INLINE_PAYLOAD + 1]);
-        assert!(matches!(
-            SignedEntry::create(&entry, &key),
-            Err(ProtoError::BadEntry(_))
-        ));
+        assert!(matches!(SignedEntry::create(&entry, &key), Err(ProtoError::BadEntry(_))));
     }
 
     #[test]

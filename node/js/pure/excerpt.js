@@ -9,13 +9,14 @@ export const EXCERPT_WORDS = 9;
 /// The author's own description annotation, if they wrote one - the one description.
 export function descriptionOf(annotations, author) {
     const own = (annotations || []).find(
-        (a) => a.key === 'description' && a.annotator === author && a.value && a.value.trim()
+        (a) => a.key === 'description' && a.annotator === author && a.value && a.value.trim(),
     );
     return own ? own.value.trim() : '';
 }
 
 /// A word is usable when it says something: letters or digits in it, and not an address.
-const usable = (w) => /[\p{L}\p{N}]/u.test(w) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(w) && !/^www\./i.test(w);
+const usable = (w) =>
+    /[\p{L}\p{N}]/u.test(w) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(w) && !/^www\./i.test(w);
 
 /// Strip the markup down to its words: pictures and embeds go (their caption is a label,
 /// not the post's words), a link keeps its text, code fences and inline code keep their

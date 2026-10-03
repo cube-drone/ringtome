@@ -62,10 +62,8 @@ pub async fn want(node_db: &Db, root_hex: &str, blob_hash: &[u8; 32]) -> Result<
 /// (retraction, repudiation) clear on the next look. An empty `still_missing` empties the
 /// persona's ledger. Existing rows keep their backoff state; only membership changes.
 pub async fn reconcile(node_db: &Db, root_hex: &str, still_missing: &[[u8; 32]]) -> Result<()> {
-    let quoted: Vec<String> = still_missing
-        .iter()
-        .map(|h| format!("X'{}'", hex::encode(h)))
-        .collect();
+    let quoted: Vec<String> =
+        still_missing.iter().map(|h| format!("X'{}'", hex::encode(h))).collect();
     node_db
         .execute(
             &format!(
@@ -127,10 +125,7 @@ pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::Endpoint
     let inner: Result<u64> = async {
         let rows: Vec<(Vec<u8>,)> = state
             .node_db
-            .fetch_all(
-                "SELECT blob_hash FROM missing_bodies WHERE root_pubkey = ?1",
-                (root_hex,),
-            )
+            .fetch_all("SELECT blob_hash FROM missing_bodies WHERE root_pubkey = ?1", (root_hex,))
             .await
             .context("reading wanted bodies")?;
         let mut hashes: Vec<iroh_blobs::Hash> = Vec::new();
@@ -145,10 +140,7 @@ pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::Endpoint
         if hashes.is_empty() {
             return Ok(0);
         }
-        let fetched = state
-            .files
-            .fetch_many(&state.endpoint, addr, &hashes)
-            .await as u64;
+        let fetched = state.files.fetch_many(&state.endpoint, addr, &hashes).await as u64;
         for hash in &hashes {
             if state.files.has(*hash).await {
                 state
@@ -180,9 +172,8 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
     // The deliverer rung first (2026-08-23): whoever most recently served this author's
     // fragments provably holds - or knows who holds - the bytes their headers name, and the
     // origin's own resolution ladder below can be all dark exactly when this rung matters.
-    let mut endpoints: Vec<String> = crate::fragments::deliverers_of(&state.node_db, author_root)
-        .await
-        .unwrap_or_default();
+    let mut endpoints: Vec<String> =
+        crate::fragments::deliverers_of(&state.node_db, author_root).await.unwrap_or_default();
     for c in crate::net::deliver::candidates(state, origin_root).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, origin_root, &c).await;
         if !endpoints.contains(&ep) {
@@ -212,19 +203,14 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
 /// bodies land), and mark whatever remains as tried so the backoff ladder advances.
 /// Zero the healer's backoff stamps - the test beat's "try again NOW" (test_endpoints).
 pub(crate) async fn force_due(node_db: &crate::db::Db) -> Result<()> {
-    node_db
-        .execute("UPDATE missing_bodies SET last_tried_ms = 0", ())
-        .await?;
+    node_db.execute("UPDATE missing_bodies SET last_tried_ms = 0", ()).await?;
     Ok(())
 }
 
 pub async fn sweep(state: AppState) -> Result<()> {
     let rows: Vec<(String, i64, i64)> = state
         .node_db
-        .fetch_all(
-            "SELECT DISTINCT root_pubkey, tries, last_tried_ms FROM missing_bodies",
-            (),
-        )
+        .fetch_all("SELECT DISTINCT root_pubkey, tries, last_tried_ms FROM missing_bodies", ())
         .await
         .context("reading the missing-bodies ledger")?;
     let now = now_ms();
@@ -277,10 +263,7 @@ pub async fn sweep(state: AppState) -> Result<()> {
         // origins and sharers below both resolved to one dark node while the endpoint that
         // handed over the header appeared on no list at all. Already endpoint-shaped: no
         // resolution ladder, no unresolved-key dial.
-        for ep in crate::fragments::deliverers_of(&state.node_db, &root)
-            .await
-            .unwrap_or_default()
-        {
+        for ep in crate::fragments::deliverers_of(&state.node_db, &root).await.unwrap_or_default() {
             if !candidates.contains(&ep) {
                 candidates.push(ep);
             }
@@ -292,16 +275,14 @@ pub async fn sweep(state: AppState) -> Result<()> {
         // aged forever with zero candidates and the words never arrived. Who it does have is
         // whoever handed it the pointer - who by construction holds (or knows who holds) the
         // very bytes the pointer names.
-        let mut fragment_peers = crate::fragments::origins_of(&state.node_db, &root)
-            .await
-            .unwrap_or_default();
+        let mut fragment_peers =
+            crate::fragments::origins_of(&state.node_db, &root).await.unwrap_or_default();
         // ...and every sharer of any of this author's documents that a local reader follows
         // (2026-08-15): the recorded origin is one name; the byline ledger's union is the
         // rest of the tree, and any of them holds - or knows who holds - the author's public
         // bytes. Designed resilience where origins_of gave coincidental resilience.
-        for sharer in crate::fanout::sharers_of_author(&state.node_db, &root)
-            .await
-            .unwrap_or_default()
+        for sharer in
+            crate::fanout::sharers_of_author(&state.node_db, &root).await.unwrap_or_default()
         {
             if !fragment_peers.contains(&sharer) {
                 fragment_peers.push(sharer);
@@ -379,10 +360,7 @@ pub async fn sweep(state: AppState) -> Result<()> {
 /// How many rows one persona still has on the ledger.
 async fn remaining(node_db: &Db, root_hex: &str) -> Result<u64> {
     let row: Vec<(i64,)> = node_db
-        .fetch_all(
-            "SELECT COUNT(*) FROM missing_bodies WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .fetch_all("SELECT COUNT(*) FROM missing_bodies WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("counting a persona's missing bodies")?;
     Ok(row.first().map(|(n,)| *n as u64).unwrap_or(0))

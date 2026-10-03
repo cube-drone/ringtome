@@ -27,7 +27,10 @@ export async function openIm(root, other, name) {
         method: 'POST',
         body: JSON.stringify({ title: name || '', body: cardFor(other), format: 'marquee' }),
     });
-    await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(CHAT_STYLE)}`, { method: 'PUT' });
+    await api(
+        `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(CHAT_STYLE)}`,
+        { method: 'PUT' },
+    );
     const posted = await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
         method: 'POST',
         body: JSON.stringify({

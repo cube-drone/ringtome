@@ -55,13 +55,8 @@ pub struct Account {
 /// was created with (weak and strong hashes coexist freely).
 fn hasher(fast: bool) -> Argon2<'static> {
     if fast {
-        let params = Params::new(
-            Params::MIN_M_COST,
-            Params::MIN_T_COST,
-            Params::MIN_P_COST,
-            None,
-        )
-        .expect("minimal Argon2 params are valid");
+        let params = Params::new(Params::MIN_M_COST, Params::MIN_T_COST, Params::MIN_P_COST, None)
+            .expect("minimal Argon2 params are valid");
         Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
     } else {
         Argon2::default()
@@ -96,9 +91,7 @@ pub(crate) fn check_password_len(password: &str, min: usize) -> Result<(), AppEr
 
 pub(crate) fn verify_password(password: &str, phc: &str) -> bool {
     match PasswordHash::new(phc) {
-        Ok(parsed) => Argon2::default()
-            .verify_password(password.as_bytes(), &parsed)
-            .is_ok(),
+        Ok(parsed) => Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok(),
         Err(_) => false,
     }
 }
@@ -124,20 +117,31 @@ pub fn normalize_username(input: &str) -> Result<String, AppError> {
     let name = input.trim().to_ascii_lowercase();
 
     if name.len() < USERNAME_MIN || name.len() > USERNAME_MAX {
-        return Err(AppError::BadRequest(crate::msg!("auth.username-must-be-usernamemin-usernamemax-characters", "username must be {min}-{max} characters", min = USERNAME_MIN, max = USERNAME_MAX)));
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.username-must-be-usernamemin-usernamemax-characters",
+            "username must be {min}-{max} characters",
+            min = USERNAME_MIN,
+            max = USERNAME_MAX
+        )));
     }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-    {
-        return Err(AppError::BadRequest(crate::msg!("auth.username-may-contain-only-a-z", "username may contain only a-z, 0-9, - and _")));
+    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') {
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.username-may-contain-only-a-z",
+            "username may contain only a-z, 0-9, - and _"
+        )));
     }
     // Separators can't lead, trail, or double up - keeps slugs clean and unambiguous.
     if name.starts_with(['-', '_']) || name.ends_with(['-', '_']) {
-        return Err(AppError::BadRequest(crate::msg!("auth.username-cant-start-or-end", "username can't start or end with - or _")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.username-cant-start-or-end",
+            "username can't start or end with - or _"
+        )));
     }
     if name.contains("--") || name.contains("__") || name.contains("-_") || name.contains("_-") {
-        return Err(AppError::BadRequest(crate::msg!("auth.username-cant-contain-consecutive-separators", "no double - or _")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.username-cant-contain-consecutive-separators",
+            "no double - or _"
+        )));
     }
 
     Ok(name)
@@ -177,7 +181,11 @@ pub async fn register(
 
     if let Err(e) = result {
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Err(AppError::BadRequest(crate::msg!("auth.username-username-is-taken", "username \"{username}\" is taken", username = username)));
+            return Err(AppError::BadRequest(crate::msg!(
+                "auth.username-username-is-taken",
+                "username \"{username}\" is taken",
+                username = username
+            )));
         }
         return Err(AppError::Internal(anyhow!("creating account: {e}")));
     }
@@ -198,10 +206,7 @@ pub async fn register(
         }
     }
 
-    Ok(Account {
-        id,
-        username: username.to_string(),
-    })
+    Ok(Account { id, username: username.to_string() })
 }
 
 /// A secret for one run of the desktop shell (DESKTOP.md, Stage 3): the same shape as a
@@ -228,19 +233,20 @@ pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, Ap
     // valid slug simply won't match any row - fall through to the uniform "invalid credentials".
     let lookup = username.trim().to_ascii_lowercase();
     let row: Option<(String, String)> = db
-        .fetch_optional(
-            "SELECT id, password_hash FROM accounts WHERE username = ?1",
-            (lookup,),
-        )
+        .fetch_optional("SELECT id, password_hash FROM accounts WHERE username = ?1", (lookup,))
         .await
         .context("looking up account")
         .map_err(AppError::Internal)?;
 
     // Uniform failure whether the account is missing or the password is wrong (no user enumeration).
-    let (account_id, phc) =
-        row.ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.invalid-credentials", "wrong name or password")))?;
+    let (account_id, phc) = row.ok_or_else(|| {
+        AppError::Unauthorized(crate::msg!("auth.invalid-credentials", "wrong name or password"))
+    })?;
     if !verify_password(password, &phc) {
-        return Err(AppError::Unauthorized(crate::msg!("auth.invalid-credentials-2", "wrong name or password")));
+        return Err(AppError::Unauthorized(crate::msg!(
+            "auth.invalid-credentials-2",
+            "wrong name or password"
+        )));
     }
 
     let token = generate_token();
@@ -268,17 +274,23 @@ const SESSION_RENEW_EVERY_MS: i64 = 1000 * 60 * 60 * 24;
 
 /// `account_for_token` for a request: the account, and whether the session was just renewed - in
 /// which case the caller re-sends the cookie, whose Max-Age the renewal has outgrown.
-pub async fn account_for_token_renewing(db: &Db, token: &str) -> Result<Option<(Account, bool)>, AppError> {
+pub async fn account_for_token_renewing(
+    db: &Db,
+    token: &str,
+) -> Result<Option<(Account, bool)>, AppError> {
     let Some((account, expires_at_ms)) = session_row(db, token).await? else {
         return Ok(None);
     };
     let now = now_ms();
     let due = expires_at_ms - now < SESSION_TTL_MS - SESSION_RENEW_EVERY_MS;
     if due {
-        db.execute("UPDATE sessions SET expires_at_ms = ?1 WHERE token = ?2", (now + SESSION_TTL_MS, token))
-            .await
-            .context("renewing session")
-            .map_err(AppError::Internal)?;
+        db.execute(
+            "UPDATE sessions SET expires_at_ms = ?1 WHERE token = ?2",
+            (now + SESSION_TTL_MS, token),
+        )
+        .await
+        .context("renewing session")
+        .map_err(AppError::Internal)?;
     }
     Ok(Some((account, due)))
 }
@@ -342,13 +354,10 @@ pub async fn set_password(
 ) -> Result<(), AppError> {
     check_password_len(new_password, min_password_len)?;
     let phc = hash_password(new_password, local_test).map_err(AppError::Internal)?;
-    db.execute(
-        "UPDATE accounts SET password_hash = ?1 WHERE id = ?2",
-        (phc.as_str(), account_id),
-    )
-    .await
-    .context("updating password")
-    .map_err(AppError::Internal)?;
+    db.execute("UPDATE accounts SET password_hash = ?1 WHERE id = ?2", (phc.as_str(), account_id))
+        .await
+        .context("updating password")
+        .map_err(AppError::Internal)?;
     Ok(())
 }
 
@@ -406,7 +415,8 @@ pub async fn account_by_id(db: &Db, id: &str) -> Result<Option<Account>, AppErro
         .map_err(AppError::Internal)?;
     match row {
         Some((id, username)) => {
-            let id = Uuid::parse_str(&id).map_err(|e| AppError::Internal(anyhow!("corrupt account id: {e}")))?;
+            let id = Uuid::parse_str(&id)
+                .map_err(|e| AppError::Internal(anyhow!("corrupt account id: {e}")))?;
             Ok(Some(Account { id, username }))
         }
         None => Ok(None),
@@ -416,10 +426,7 @@ pub async fn account_by_id(db: &Db, id: &str) -> Result<Option<Account>, AppErro
 pub async fn account_by_username(db: &Db, username: &str) -> Result<Option<Account>, AppError> {
     let lookup = username.trim().to_ascii_lowercase();
     let row: Option<(String, String)> = db
-        .fetch_optional(
-            "SELECT id, username FROM accounts WHERE username = ?1",
-            (lookup,),
-        )
+        .fetch_optional("SELECT id, username FROM accounts WHERE username = ?1", (lookup,))
         .await
         .context("looking up account by username")
         .map_err(AppError::Internal)?;
@@ -531,19 +538,13 @@ mod tests {
         // PHC string, so the unchanged verifier has to accept a minimal-params hash - this is the
         // property that lets weak (test) and strong (real) hashes coexist in one table.
         let phc = hash_password("hunter22hunter22", true).unwrap();
-        assert!(
-            phc.contains("m=8,t=1,p=1"),
-            "expected minimal params in {phc}"
-        );
+        assert!(phc.contains("m=8,t=1,p=1"), "expected minimal params in {phc}");
         assert!(verify_password("hunter22hunter22", &phc));
         assert!(!verify_password("wrong-password", &phc));
 
         // And the real path still produces full-strength hashes.
         let strong = hash_password("hunter22hunter22", false).unwrap();
-        assert!(
-            !strong.contains("m=8,"),
-            "default params should not be minimal: {strong}"
-        );
+        assert!(!strong.contains("m=8,"), "default params should not be minimal: {strong}");
         assert!(verify_password("hunter22hunter22", &strong));
     }
 
@@ -579,12 +580,8 @@ mod tests {
     async fn first_account_becomes_node_admin() {
         let pool = crate::db::test_node_db().await;
 
-        let first = register(&pool, "founder", "password123", 8, false, true)
-            .await
-            .unwrap();
-        let second = register(&pool, "latecomer", "password123", 8, false, true)
-            .await
-            .unwrap();
+        let first = register(&pool, "founder", "password123", 8, false, true).await.unwrap();
+        let second = register(&pool, "latecomer", "password123", 8, false, true).await.unwrap();
 
         assert!(has_tag(&pool, &first.id, TAG_NODE_ADMIN).await.unwrap());
         assert!(!has_tag(&pool, &second.id, TAG_NODE_ADMIN).await.unwrap());
@@ -599,11 +596,29 @@ mod tests {
         let first = register(&pool, "founder", "password123", 8, false, false).await.unwrap();
         assert!(!has_tag(&pool, &first.id, TAG_NODE_ADMIN).await.unwrap(), "first, but not named");
         let later = register(&pool, "named", "password123", 8, false, false).await.unwrap();
-        assert!(!promote_intended_admin(&pool, Some(intended), &hex::encode([1u8; 32]), &later.id).await.unwrap(), "some other persona");
-        assert!(promote_intended_admin(&pool, Some(intended), &hex::encode(intended), &later.id).await.unwrap());
-        assert!(has_tag(&pool, &later.id, TAG_NODE_ADMIN).await.unwrap(), "the named persona's account");
-        assert!(promote_intended_admin(&pool, Some(intended), &hex::encode(intended), &later.id).await.unwrap(), "idempotent");
-        assert!(!promote_intended_admin(&pool, None, &hex::encode(intended), &first.id).await.unwrap(), "nothing intended, nothing promoted");
+        assert!(
+            !promote_intended_admin(&pool, Some(intended), &hex::encode([1u8; 32]), &later.id)
+                .await
+                .unwrap(),
+            "some other persona"
+        );
+        assert!(promote_intended_admin(&pool, Some(intended), &hex::encode(intended), &later.id)
+            .await
+            .unwrap());
+        assert!(
+            has_tag(&pool, &later.id, TAG_NODE_ADMIN).await.unwrap(),
+            "the named persona's account"
+        );
+        assert!(
+            promote_intended_admin(&pool, Some(intended), &hex::encode(intended), &later.id)
+                .await
+                .unwrap(),
+            "idempotent"
+        );
+        assert!(
+            !promote_intended_admin(&pool, None, &hex::encode(intended), &first.id).await.unwrap(),
+            "nothing intended, nothing promoted"
+        );
     }
 
     #[tokio::test]
@@ -611,9 +626,7 @@ mod tests {
         let pool = crate::db::test_node_db().await;
 
         // Skip the admin bootstrap so this account starts with a clean tag set.
-        let account = register(&pool, "tag_tester", "password123", 8, true, true)
-            .await
-            .unwrap();
+        let account = register(&pool, "tag_tester", "password123", 8, true, true).await.unwrap();
 
         assert!(tags_for(&pool, &account.id).await.unwrap().is_empty());
 
@@ -627,10 +640,7 @@ mod tests {
         );
 
         remove_tag(&pool, &account.id, "beta").await.unwrap();
-        assert_eq!(
-            tags_for(&pool, &account.id).await.unwrap(),
-            vec!["gamma".to_string()]
-        );
+        assert_eq!(tags_for(&pool, &account.id).await.unwrap(), vec!["gamma".to_string()]);
     }
 
     #[test]

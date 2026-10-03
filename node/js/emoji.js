@@ -69,7 +69,9 @@ export const POLE_EMOJI = POLE_ROWS.flatMap((row) => row.emoji);
 // selector, so a heart said as a bare U+2764 leans the same way as the palette's.
 const bare = (glyph) => String(glyph || '').replace(/\uFE0F/g, '');
 const TONE_OF = new Map(
-    POLE_ROWS.filter((row) => row.tone !== 'plain').flatMap((row) => row.emoji.map(([, ch]) => [bare(ch), row.tone]))
+    POLE_ROWS.filter((row) => row.tone !== 'plain').flatMap((row) =>
+        row.emoji.map(([, ch]) => [bare(ch), row.tone]),
+    ),
 );
 export const toneOf = (glyph) => TONE_OF.get(bare(glyph)) || null;
 
@@ -106,12 +108,15 @@ export const glyphOf = (code) => {
 /// The picker's strip: the pole rows, each on its tone, then the whole table - every part
 /// narrowed by `hit([name, glyph])`, an emptied row left out. `chip` draws one emoji.
 export const EmojiStrip = ({ hit, chip, className = '' }) => {
-    const rows = POLE_ROWS.map((row) => ({ ...row, emoji: row.emoji.filter(hit) })).filter((row) => row.emoji.length);
+    const rows = POLE_ROWS.map((row) => ({ ...row, emoji: row.emoji.filter(hit) })).filter(
+        (row) => row.emoji.length,
+    );
     const rest = EMOJI_PALETTE.filter(hit);
     if (!rows.length && !rest.length) return '';
     return html`<span class=${`label-emoji-strip ${className}`}>
         ${rows.map(
-            (row) => html`<span class=${`label-emoji-row ${row.className}`} key=${row.tone}>${row.emoji.map(chip)}</span>`
+            (row) =>
+                html`<span class=${`label-emoji-row ${row.className}`} key=${row.tone}>${row.emoji.map(chip)}</span>`,
         )}
         ${rows.length > 0 && rest.length > 0 && html`<span class="label-emoji-pole-break"></span>`}
         ${rest.map(chip)}

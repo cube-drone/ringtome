@@ -26,7 +26,8 @@ export const personHref = (rootHex, via = []) => {
 };
 
 /// A public post, or one page of a book (`page` is the page's own post id).
-export const postHref = (rootHex, doc, page = null) => ringtomePath({ seg: seg(rootHex), kind: 'post', doc, page });
+export const postHref = (rootHex, doc, page = null) =>
+    ringtomePath({ seg: seg(rootHex), kind: 'post', doc, page });
 /// A post's history (2026-10-02): every version it has been, where its "edited" mark leads.
 export const postHistoryHref = (rootHex, doc) => `${postHref(rootHex, doc)}/history`;
 
@@ -34,7 +35,9 @@ export const postHistoryHref = (rootHex, doc) => `${postHref(rootHex, doc)}/hist
 /// and the notebook in view, the address says which notebook it was opened in when that is a
 /// question (filed in more than one: `?bucket=`, pure/naming.js `bucketHint`).
 export const docHref = (rootHex, doc, { row = null, bucket = null } = {}) =>
-    withHints(ringtomePath({ seg: seg(rootHex), kind: 'doc', doc }), { bucket: bucketHint(row, bucket) });
+    withHints(ringtomePath({ seg: seg(rootHex), kind: 'doc', doc }), {
+        bucket: bucketHint(row, bucket),
+    });
 
 /// The console (2026-09-28: `/ringtome` where `/home` was), an app in it, and the persona's pages.
 export const LAUNCHER = PREFIX;
@@ -45,7 +48,8 @@ export const personaPageHref = (page) => (page ? `${PREFIX}/persona/${page}` : `
 export const notebookHref = (bucketName, roster) => bucketHref(bucketName, roster);
 
 /// A chat room, or one line in it.
-export const roomHref = (authorHex, doc, line = null) => ringtomePath({ seg: seg(authorHex), kind: 'room', doc, line });
+export const roomHref = (authorHex, doc, line = null) =>
+    ringtomePath({ seg: seg(authorHex), kind: 'room', doc, line });
 
 // The node's declared public URL, asked once per page load.
 let publicBase = null;

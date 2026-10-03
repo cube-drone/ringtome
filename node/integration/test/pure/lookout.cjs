@@ -15,7 +15,7 @@ describe('editor lookout', () => {
                 diverged: false,
                 heads: 1,
             }),
-            false
+            false,
         );
     });
 
@@ -25,7 +25,7 @@ describe('editor lookout', () => {
                 diverged: false,
                 heads: 1,
             }),
-            true
+            true,
         );
     });
 
@@ -37,7 +37,7 @@ describe('editor lookout', () => {
                 diverged: false,
                 heads: 1,
             }),
-            true
+            true,
         );
     });
 
@@ -52,7 +52,7 @@ describe('editor lookout', () => {
                 diverged: true,
                 heads: 2,
             }),
-            true
+            true,
         );
     });
 
@@ -60,12 +60,11 @@ describe('editor lookout', () => {
         // After the reload, save_parents is every logical head - the editor now KNOWS it is
         // diverged, and the same row must not re-trigger.
         assert.equal(
-            needsReload(
-                { head: '11d72b', heads: 2, diverged: true },
-                ['11d72b', '37e284'],
-                { diverged: true, heads: 2 }
-            ),
-            false
+            needsReload({ head: '11d72b', heads: 2, diverged: true }, ['11d72b', '37e284'], {
+                diverged: true,
+                heads: 2,
+            }),
+            false,
         );
     });
 
@@ -77,7 +76,7 @@ describe('editor lookout', () => {
                 diverged: true,
                 heads: 2,
             }),
-            false
+            false,
         );
     });
 
@@ -88,34 +87,58 @@ describe('editor lookout', () => {
     // for it), and when the stream caught up it reloaded forward again. The row was only behind.
     it('sits still while the row still shows the version our own save replaced', () => {
         assert.equal(
-            needsReload({ head: 'v1', heads: 1, diverged: false }, ['v2'], { diverged: false, heads: 1 }, ['v1']),
-            false
+            needsReload(
+                { head: 'v1', heads: 1, diverged: false },
+                ['v2'],
+                { diverged: false, heads: 1 },
+                ['v1'],
+            ),
+            false,
         );
         // Two saves before the stream caught up: either replaced version is only the row lagging.
         assert.equal(
-            needsReload({ head: 'v2', heads: 1, diverged: false }, ['v3'], { diverged: false, heads: 1 }, ['v1', 'v2']),
-            false
+            needsReload(
+                { head: 'v2', heads: 1, diverged: false },
+                ['v3'],
+                { diverged: false, heads: 1 },
+                ['v1', 'v2'],
+            ),
+            false,
         );
     });
 
     it('sits still after resolving a fork, while the row still shows the tangle', () => {
         assert.equal(
-            needsReload({ head: 'a', heads: 2, diverged: true }, ['r'], { diverged: true, heads: 2 }, ['a', 'b']),
-            false
+            needsReload(
+                { head: 'a', heads: 2, diverged: true },
+                ['r'],
+                { diverged: true, heads: 2 },
+                ['a', 'b'],
+            ),
+            false,
         );
     });
 
     it('still reloads when something new arrives on top of a replaced version', () => {
         assert.equal(
-            needsReload({ head: 'v1', heads: 2, diverged: true }, ['v2'], { diverged: false, heads: 1 }, ['v1']),
+            needsReload(
+                { head: 'v1', heads: 2, diverged: true },
+                ['v2'],
+                { diverged: false, heads: 1 },
+                ['v1'],
+            ),
             true,
-            'another computer saved on v1 too: the row is not behind, it is forked'
+            'another computer saved on v1 too: the row is not behind, it is forked',
         );
         assert.equal(
-            needsReload({ head: 'v9', heads: 1, diverged: false }, ['v2'], { diverged: false, heads: 1 }, ['v1']),
+            needsReload(
+                { head: 'v9', heads: 1, diverged: false },
+                ['v2'],
+                { diverged: false, heads: 1 },
+                ['v1'],
+            ),
             true,
-            'a head we never saw is news'
+            'a head we never saw is news',
         );
     });
 });
-

@@ -33,13 +33,31 @@ function expected(tag) {
     return [
         { what: 'the Mac disk image', pattern: new RegExp(`_${v}_universal\\.dmg$`) },
         { what: 'the Mac update', pattern: /_universal\.app\.tar\.gz$/, updater: true }, // named by `publishedName`
-        { what: 'the Linux AppImage', pattern: new RegExp(`_${v}_amd64\\.AppImage$`), updater: true },
+        {
+            what: 'the Linux AppImage',
+            pattern: new RegExp(`_${v}_amd64\\.AppImage$`),
+            updater: true,
+        },
         { what: 'the Linux .deb', pattern: new RegExp(`_${v}_amd64\\.deb$`), updater: true },
         { what: 'the Linux .rpm', pattern: new RegExp(`-${v}-1\\.x86_64\\.rpm$`), updater: true },
         { what: 'the Windows .msi', pattern: new RegExp(`_${v}_x64_en-US\\.msi$`), updater: true },
-        { what: 'the Windows installer', pattern: new RegExp(`_${v}_x64-setup\\.exe$`), updater: true },
-        { what: 'the x86_64 server node', pattern: new RegExp(`^ringtome-server-${f}-linux-x86_64\\.tar\\.gz$`), updater: true, sha256: true },
-        { what: 'the aarch64 server node', pattern: new RegExp(`^ringtome-server-${f}-linux-aarch64\\.tar\\.gz$`), updater: true, sha256: true },
+        {
+            what: 'the Windows installer',
+            pattern: new RegExp(`_${v}_x64-setup\\.exe$`),
+            updater: true,
+        },
+        {
+            what: 'the x86_64 server node',
+            pattern: new RegExp(`^ringtome-server-${f}-linux-x86_64\\.tar\\.gz$`),
+            updater: true,
+            sha256: true,
+        },
+        {
+            what: 'the aarch64 server node',
+            pattern: new RegExp(`^ringtome-server-${f}-linux-aarch64\\.tar\\.gz$`),
+            updater: true,
+            sha256: true,
+        },
         { what: 'the server manifest', pattern: /^server-latest\.json$/ },
     ];
 }
@@ -119,12 +137,18 @@ export function assemble(tag, artifacts, out, notes) {
     for (const want of expected(tag)) {
         const hits = [...names].filter((n) => want.pattern.test(n));
         if (hits.length !== 1) {
-            problems.push(`${want.what}: expected one file, found ${hits.length ? hits.join(', ') : 'none'}`);
+            problems.push(
+                `${want.what}: expected one file, found ${hits.length ? hits.join(', ') : 'none'}`,
+            );
             continue;
         }
         found[want.what] = hits[0];
-        if (want.updater && !names.has(`${hits[0]}.sig`)) problems.push(`${want.what}: ${hits[0]} has no .sig (is TAURI_SIGNING_PRIVATE_KEY set?)`);
-        if (want.sha256 && !names.has(`${hits[0]}.sha256`)) problems.push(`${want.what}: ${hits[0]} has no .sha256`);
+        if (want.updater && !names.has(`${hits[0]}.sig`))
+            problems.push(
+                `${want.what}: ${hits[0]} has no .sig (is TAURI_SIGNING_PRIVATE_KEY set?)`,
+            );
+        if (want.sha256 && !names.has(`${hits[0]}.sha256`))
+            problems.push(`${want.what}: ${hits[0]} has no .sha256`);
     }
     if (problems.length) return { problems };
     const latest = latestJson(tag, out, found, notes);

@@ -6,10 +6,10 @@
     Each call to makeFetch() returns a fresh fetch with its own cookie jar, so tests don't leak
     session state into one another. The base URL is RINGTOME_TEST_HOST or localhost:5281.
 */
-const makeFetchCookie = require("fetch-cookie").default;
-const { CookieJar } = require("tough-cookie");
+const makeFetchCookie = require('fetch-cookie').default;
+const { CookieJar } = require('tough-cookie');
 
-const HOST = process.env.RINGTOME_TEST_HOST || "localhost:5281";
+const HOST = process.env.RINGTOME_TEST_HOST || 'localhost:5281';
 // A second node, when the harness boots one (two-node sync tests skip themselves otherwise).
 const HOST_B = process.env.RINGTOME_TEST_HOST_B || null;
 // A third, for daisy-chain tests (adopt B from A, then C from B).
@@ -26,12 +26,12 @@ function makeFetch(host = HOST) {
     const cookieFetch = makeFetchCookie(fetch, jar);
 
     const fn = (path, opts) => {
-        const url = `http://${host}/${path.replace(/^\//, "")}`;
+        const url = `http://${host}/${path.replace(/^\//, '')}`;
 
         // If we're sending a JSON body, set the Content-Type unless a file upload said otherwise.
         if (opts && opts.body && !opts.file) {
             opts.headers = opts.headers || {};
-            opts.headers["Content-Type"] = "application/json";
+            opts.headers['Content-Type'] = 'application/json';
         }
         if (opts && opts.file) {
             delete opts.file;
@@ -48,8 +48,8 @@ function makeFetch(host = HOST) {
 // throwing on a non-200 so tests fail loudly if the node wasn't armed with RINGTOME_LOCAL_TEST.
 async function sql(query, host = HOST) {
     const fetch = makeFetch(host);
-    const resp = await fetch("test/sql", {
-        method: "POST",
+    const resp = await fetch('test/sql', {
+        method: 'POST',
         body: JSON.stringify({ sql: query }),
     });
     if (resp.status !== 200) {

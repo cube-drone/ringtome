@@ -8,21 +8,21 @@
     The permalink read serves the author's own statements from the author's shelf, so a
     mirror-holding node answers too - which is the sync scope proven along the way.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { sql, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
-const { HOST } = require("./fetch.cjs");
+const { sql, HOST_B, HOST_C, HOST_E } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat, pullAndFold, shareArrives } = require('./beat.cjs');
+const { HOST } = require('./fetch.cjs');
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
-describe("public annotations: the wire and the mint", function () {
+describe('public annotations: the wire and the mint', function () {
     this.timeout(600000);
 
     let ada, adaRoot, post, draft, bea, beaRoot;
@@ -32,71 +32,73 @@ describe("public annotations: the wire and the mint", function () {
             .items || [];
 
     before(async () => {
-        ada = await makeUserFetch({ prefix: "annada" });
-        adaRoot = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
-        await ada(`api/identity/${adaRoot}/serve`, { method: "POST" });
+        ada = await makeUserFetch({ prefix: 'annada' });
+        adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
     });
 
     it("publishing restates the draft's annotations - tags, fields, bucket - about the post", async () => {
         const made = await (
             await ada(`api/identity/${adaRoot}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title: "labelled", body: "the words", format: "plaintext" }),
+                method: 'POST',
+                body: JSON.stringify({ title: 'labelled', body: 'the words', format: 'plaintext' }),
             })
         ).json();
         draft = made.doc_id;
-        for (const tag of ["mighty", "saucy"]) {
-            await ada(`api/identity/${adaRoot}/docs/${draft}/annotations/tags/${tag}`, { method: "PUT" });
+        for (const tag of ['mighty', 'saucy']) {
+            await ada(`api/identity/${adaRoot}/docs/${draft}/annotations/tags/${tag}`, {
+                method: 'PUT',
+            });
         }
         await ada(`api/identity/${adaRoot}/docs/${draft}/annotations/fields/description`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "a post about sauce" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'a post about sauce' }),
         });
-        await ada(`api/identity/${adaRoot}/docs/${draft}/buckets/blog`, { method: "PUT" });
-        const pub = await ada(`api/identity/${adaRoot}/docs/${draft}/publish`, { method: "POST" });
+        await ada(`api/identity/${adaRoot}/docs/${draft}/buckets/blog`, { method: 'PUT' });
+        const pub = await ada(`api/identity/${adaRoot}/docs/${draft}/publish`, { method: 'POST' });
         const text = await pub.text();
         assert.equal(pub.status, 200, text);
         post = JSON.parse(text).post_id;
 
         const said = await mine(post);
         const has = (k, v) => said.some((s) => s.key === k && s.value === v);
-        assert.ok(has("tag", "mighty") && has("tag", "saucy"), "both tags, one statement each");
-        assert.ok(has("description", "a post about sauce"), "the description");
-        assert.ok(has("bucket", "blog"), "the bucket comes too - it is the label, not a leak");
+        assert.ok(has('tag', 'mighty') && has('tag', 'saucy'), 'both tags, one statement each');
+        assert.ok(has('description', 'a post about sauce'), 'the description');
+        assert.ok(has('bucket', 'blog'), 'the bucket comes too - it is the label, not a leak');
     });
 
-    it("a statement by hand joins the same chain, and a retraction restates it absent", async () => {
+    it('a statement by hand joins the same chain, and a retraction restates it absent', async () => {
         const put = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}`, {
-            method: "PUT",
-            body: JSON.stringify({ key: "tag", value: "goopy" }),
+            method: 'PUT',
+            body: JSON.stringify({ key: 'tag', value: 'goopy' }),
         });
         assert.equal(put.status, 200, await put.text());
-        assert.ok((await mine(post)).some((s) => s.key === "tag" && s.value === "goopy"));
+        assert.ok((await mine(post)).some((s) => s.key === 'tag' && s.value === 'goopy'));
         const del = await ada(
             `api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}/tag/goopy`,
-            { method: "DELETE" }
+            { method: 'DELETE' },
         );
         assert.equal(del.status, 200, await del.text());
         assert.ok(
-            !(await mine(post)).some((s) => s.key === "tag" && s.value === "goopy"),
-            "retracted: the present set no longer names it"
+            !(await mine(post)).some((s) => s.key === 'tag' && s.value === 'goopy'),
+            'retracted: the present set no longer names it',
         );
         assert.ok(
-            (await mine(post)).some((s) => s.key === "tag" && s.value === "mighty"),
-            "and the others stand - LWW per statement, never per post"
+            (await mine(post)).some((s) => s.key === 'tag' && s.value === 'mighty'),
+            'and the others stand - LWW per statement, never per post',
         );
     });
 
-    it("a tag is 32 characters at most, and the refusal has words", async () => {
+    it('a tag is 32 characters at most, and the refusal has words', async () => {
         const put = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}`, {
-            method: "PUT",
-            body: JSON.stringify({ key: "tag", value: "x".repeat(33) }),
+            method: 'PUT',
+            body: JSON.stringify({ key: 'tag', value: 'x'.repeat(33) }),
         });
         assert.equal(put.status, 400);
         assert.match(await put.text(), /too long/);
         const ok = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}`, {
-            method: "PUT",
-            body: JSON.stringify({ key: "description", value: "y".repeat(600) }),
+            method: 'PUT',
+            body: JSON.stringify({ key: 'description', value: 'y'.repeat(600) }),
         });
         assert.equal(ok.status, 200, "a description keeps the wire's cap");
     });
@@ -104,38 +106,38 @@ describe("public annotations: the wire and the mint", function () {
     it("the permalink read carries the author's own statements", async () => {
         const head = await (await ada(`api/id/${adaRoot}/posts/${post}`)).json();
         const has = (k, v) => (head.annotations || []).some((a) => a.key === k && a.value === v);
-        assert.ok(has("tag", "mighty") && has("bucket", "blog"), "labels on the post's own read");
+        assert.ok(has('tag', 'mighty') && has('bucket', 'blog'), "labels on the post's own read");
     });
 
-    it("the shelf listing carries the labels too - tags show wherever a post shows", async () => {
+    it('the shelf listing carries the labels too - tags show wherever a post shows', async () => {
         // The person page's list reads `api/id/{root}/posts`; its rows wear the same
         // labels the permalink and feed wear (the two surfaces slice 2 missed, closed
         // 2026-08-30).
         const page = await (await ada(`api/id/${adaRoot}/posts`)).json();
         const row = (page.posts || []).find((p) => p.doc_id === post);
-        assert.ok(row, "the post is on the shelf");
+        assert.ok(row, 'the post is on the shelf');
         assert.ok(
-            (row.annotations || []).some((a) => a.key === "tag" && a.value === "mighty"),
-            "and wears its labels there"
+            (row.annotations || []).some((a) => a.key === 'tag' && a.value === 'mighty'),
+            'and wears its labels there',
         );
     });
 
-    it("the chain syncs like any public service - a mirror-holding node answers too", async function () {
+    it('the chain syncs like any public service - a mirror-holding node answers too', async function () {
         if (!HOST_B) this.skip();
-        bea = await makeUserFetch({ prefix: "annbea", host: HOST_B });
-        beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
+        bea = await makeUserFetch({ prefix: 'annbea', host: HOST_B });
+        beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await bea(`api/identity/${beaRoot}/serve`, { method: 'POST' });
         const viaAda = await base58(ada);
         if ((await bea(`api/id/${adaRoot}/profile?via=${viaAda}`)).status !== 200) this.skip();
         await bea(`api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
         });
         await pullAndFold(HOST_B, adaRoot);
         const head = await (await bea(`api/id/${adaRoot}/posts/${post}`)).json();
         assert.ok(
-            (head.annotations || []).some((a) => a.key === "tag" && a.value === "saucy"),
-            "the annotations chain crossed the wire with the rest of the persona"
+            (head.annotations || []).some((a) => a.key === 'tag' && a.value === 'saucy'),
+            'the annotations chain crossed the wire with the rest of the persona',
         );
     });
 
@@ -143,16 +145,19 @@ describe("public annotations: the wire and the mint", function () {
         if (!bea) this.skip();
         // bea follows ada; ada's post is a row in bea's feed, and the memo (folded from
         // ada's mirrored chain on bea's node) dresses it with ada's own labels.
-        await beat(HOST_B, "fold", adaRoot);
+        await beat(HOST_B, 'fold', adaRoot);
         const page = await (await bea(`api/identity/${beaRoot}/feed`)).json();
         const row = (page.items || []).find((i) => i.doc_id === post);
         assert.ok(row, "ada's post reached bea's feed");
         const labels = row.annotations || [];
         assert.ok(
-            labels.some((a) => a.annotator === adaRoot && a.key === "tag" && a.value === "mighty"),
-            "the author's tag, bylined as the author's"
+            labels.some((a) => a.annotator === adaRoot && a.key === 'tag' && a.value === 'mighty'),
+            "the author's tag, bylined as the author's",
         );
-        assert.ok(labels.some((a) => a.key === "bucket" && a.value === "blog"), "and the bucket");
+        assert.ok(
+            labels.some((a) => a.key === 'bucket' && a.value === 'blog'),
+            'and the bucket',
+        );
     });
 
     it("a friend's label arrives by subscription, with provenance - and its retraction takes it back", async function () {
@@ -161,64 +166,69 @@ describe("public annotations: the wire and the mint", function () {
         // on ada's node knows a label by bea. Never merged with ada's own: the annotator
         // rides the row. Then bea takes it back, and the row goes with the fold that saw it.
         const put = await bea(`api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}`, {
-            method: "PUT",
-            body: JSON.stringify({ key: "tag", value: "goopy" }),
+            method: 'PUT',
+            body: JSON.stringify({ key: 'tag', value: 'goopy' }),
         });
         assert.equal(put.status, 200, await put.text());
         // The tagged notice, envelope road (PROJECT_PLAN's Public annotations, slice 4): ada does not follow
         // bea yet, so the news arrives at her door - a murmur naming her post.
-        await beat(HOST_B, "outbox");
+        await beat(HOST_B, 'outbox');
         {
             const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
-            const row = (bell.items || []).find((i) => i.author === beaRoot && i.kind === "tagged");
+            const row = (bell.items || []).find((i) => i.author === beaRoot && i.kind === 'tagged');
             assert.ok(row, "the label rang ada's bell");
-            assert.equal(row.doc_id, post, "naming her post");
-            assert.equal(row.stranger, true, "by envelope - the murmur ring");
-            assert.equal(row.detail, "goopy", "and carrying the label's own words");
+            assert.equal(row.doc_id, post, 'naming her post');
+            assert.equal(row.stranger, true, 'by envelope - the murmur ring');
+            assert.equal(row.detail, 'goopy', "and carrying the label's own words");
         }
         // Read-your-writes on the annotator's OWN node, no beat (Curtis, 2026-08-31: a tag
         // on someone else's post vanished on refresh - the memo waited for a sweep): the
         // PUT's 200 means the label shows on the post's own read here.
         const mineNow = await (await bea(`api/id/${adaRoot}/posts/${post}`)).json();
         assert.ok(
-            (mineNow.annotations || []).some((a) => a.value === "goopy" && a.annotator === beaRoot),
-            "the label shows on the annotator's node before any beat"
+            (mineNow.annotations || []).some((a) => a.value === 'goopy' && a.annotator === beaRoot),
+            "the label shows on the annotator's node before any beat",
         );
         const viaBea = await base58(bea);
         if ((await ada(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
         await ada(`api/identity/${adaRoot}/private/kv/contact:${beaRoot}/interest`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
         });
-        await beat(HOST, "pull", adaRoot);
-        await beat(HOST, "fold", beaRoot);
+        await beat(HOST, 'pull', adaRoot);
+        await beat(HOST, 'fold', beaRoot);
         let head = await (await ada(`api/id/${adaRoot}/posts/${post}`)).json();
-        const goopy = (head.annotations || []).find((a) => a.value === "goopy");
+        const goopy = (head.annotations || []).find((a) => a.value === 'goopy');
         assert.ok(goopy, "bea's label reached ada's node through bea's chain");
-        assert.equal(goopy.annotator, beaRoot, "and it names bea, never ada");
+        assert.equal(goopy.annotator, beaRoot, 'and it names bea, never ada');
         // The dossier (2026-08-31): the post's forensic ledger names the road each label
         // arrived by - here bea's own chain, synced because ada follows her.
         {
             const ledger = await (await ada(`api/id/${adaRoot}/posts/${post}/dossier`)).json();
             const row = (ledger.annotations || []).find(
-                (a) => a.annotator === beaRoot && a.value === "goopy"
+                (a) => a.annotator === beaRoot && a.value === 'goopy',
             );
             assert.ok(row, "the ledger lists bea's label");
-            assert.equal(row.learned_via, "chain", "and names the road: her own synced chain");
+            assert.equal(row.learned_via, 'chain', 'and names the road: her own synced chain');
         }
         // The derived road: ada follows bea now, so the fold speaks and the delivered
         // copy yields - one row, not a stranger.
         {
             const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
-            const rows = (bell.items || []).filter((i) => i.author === beaRoot && i.kind === "tagged");
-            assert.equal(rows.length, 1, "one label notice, the roads dedupe");
-            assert.ok(!rows[0].stranger, "derived from a followed chain");
-            assert.ok((rows[0].detail || "").includes("goopy"), "the derived row says the words too");
+            const rows = (bell.items || []).filter(
+                (i) => i.author === beaRoot && i.kind === 'tagged',
+            );
+            assert.equal(rows.length, 1, 'one label notice, the roads dedupe');
+            assert.ok(!rows[0].stranger, 'derived from a followed chain');
+            assert.ok(
+                (rows[0].detail || '').includes('goopy'),
+                'the derived row says the words too',
+            );
         }
 
         const del = await bea(
             `api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}/tag/goopy`,
-            { method: "DELETE" }
+            { method: 'DELETE' },
         );
         assert.equal(del.status, 200, await del.text());
         // Bounded, because the one-beat form raced bravo's eager push: the retraction
@@ -227,7 +237,7 @@ describe("public annotations: the wire and the mint", function () {
         for (let i = 0; i < 20 && !gone; i++) {
             await pullAndFold(HOST, beaRoot);
             head = await (await ada(`api/id/${adaRoot}/posts/${post}`)).json();
-            gone = !(head.annotations || []).some((a) => a.value === "goopy");
+            gone = !(head.annotations || []).some((a) => a.value === 'goopy');
             if (!gone) await new Promise((res) => setTimeout(res, 300));
         }
         assert.ok(gone, "a retraction on bea's chain takes the memo row with it");
@@ -237,26 +247,30 @@ describe("public annotations: the wire and the mint", function () {
         if (!bea) this.skip();
         const put = (who, root, value) =>
             who(`api/identity/${root}/public-annotations/${adaRoot}/${post}`, {
-                method: "PUT",
-                body: JSON.stringify({ key: "tag", value }),
+                method: 'PUT',
+                body: JSON.stringify({ key: 'tag', value }),
             });
         const tagsBy = async (who, annotator) =>
             ((await (await who(`api/id/${adaRoot}/posts/${post}`)).json()).annotations || [])
-                .filter((a) => a.key === "tag" && a.annotator === annotator)
+                .filter((a) => a.key === 'tag' && a.annotator === annotator)
                 .map((a) => a.value)
                 .sort();
 
         // The doors (Curtis, 2026-09-27).
-        const own = await put(ada, adaRoot, "\u{1F44D}");
-        assert.equal(own.status, 400, "the author may not react to their own post");
+        const own = await put(ada, adaRoot, '\u{1F44D}');
+        assert.equal(own.status, 400, 'the author may not react to their own post');
         assert.match(await own.text(), /somebody else/);
-        assert.equal((await put(bea, beaRoot, "alpha")).status, 200);
-        assert.equal((await put(bea, beaRoot, "beta")).status, 200);
-        const third = await put(bea, beaRoot, "gamma");
+        assert.equal((await put(bea, beaRoot, 'alpha')).status, 200);
+        assert.equal((await put(bea, beaRoot, 'beta')).status, 200);
+        const third = await put(bea, beaRoot, 'gamma');
         assert.equal(third.status, 400, "a third tag of bea's on ada's post is refused");
         assert.match(await third.text(), /take one back/);
-        assert.equal((await put(bea, beaRoot, "alpha")).status, 200, "saying one of your two again is fine");
-        assert.deepEqual(await tagsBy(bea, beaRoot), ["alpha", "beta"]);
+        assert.equal(
+            (await put(bea, beaRoot, 'alpha')).status,
+            200,
+            'saying one of your two again is fine',
+        );
+        assert.deepEqual(await tagsBy(bea, beaRoot), ['alpha', 'beta']);
 
         // The reads: rows no door of ours would have let through, planted in the memo as
         // another node's labels would arrive. Bea's first two in code-point order stand -
@@ -266,31 +280,38 @@ describe("public annotations: the wire and the mint", function () {
             sql(
                 `INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
                  VALUES ('${adaRoot}', '${post}', '${annotator}', 'tag', '${value}', 1)`,
-                HOST_B
+                HOST_B,
             );
-        await plant(beaRoot, "aardvark");
-        await plant(beaRoot, "\u{1F434}");
-        await plant(adaRoot, "\u{1F4AF}");
+        await plant(beaRoot, 'aardvark');
+        await plant(beaRoot, '\u{1F434}');
+        await plant(adaRoot, '\u{1F4AF}');
         try {
-            assert.deepEqual(await tagsBy(bea, beaRoot), ["aardvark", "alpha"], "two to a person, the same two everywhere");
             assert.deepEqual(
-                (await tagsBy(bea, adaRoot)).filter((v) => v === "\u{1F4AF}"),
-                [],
-                "the author's reaction to their own post is dropped"
+                await tagsBy(bea, beaRoot),
+                ['aardvark', 'alpha'],
+                'two to a person, the same two everywhere',
             );
-            assert.ok((await tagsBy(bea, adaRoot)).includes("mighty"), "the author's words stand");
+            assert.deepEqual(
+                (await tagsBy(bea, adaRoot)).filter((v) => v === '\u{1F4AF}'),
+                [],
+                "the author's reaction to their own post is dropped",
+            );
+            assert.ok((await tagsBy(bea, adaRoot)).includes('mighty'), "the author's words stand");
         } finally {
             await sql(
                 `DELETE FROM doc_annotations WHERE target_doc = '${post}' AND noted_ms = 1`,
-                HOST_B
+                HOST_B,
             );
-            for (const v of ["alpha", "beta"]) {
-                await bea(`api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}/tag/${v}`, { method: "DELETE" });
+            for (const v of ['alpha', 'beta']) {
+                await bea(
+                    `api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}/tag/${v}`,
+                    { method: 'DELETE' },
+                );
             }
         }
     });
 
-    it("labels ride the fragment - a node holding nothing else receives them (slice 3)", async function () {
+    it('labels ride the fragment - a node holding nothing else receives them (slice 3)', async function () {
         if (!bea || !HOST_C) this.skip();
         // cal follows bea's SHARES only. bea re-tags and rebroadcasts ada's post, and the
         // labels reach cal's node - by the fragment's proofs, and on THIS topology also by
@@ -299,37 +320,37 @@ describe("public annotations: the wire and the mint", function () {
         // not the road. The PLANTED road-proof is the two-hop claim below: eve's node has
         // no vouch toward ada and no chain but cal's, so only the fragment can carry hers.
         const put = await bea(`api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}`, {
-            method: "PUT",
-            body: JSON.stringify({ key: "tag", value: "viral-goop" }),
+            method: 'PUT',
+            body: JSON.stringify({ key: 'tag', value: 'viral-goop' }),
         });
         assert.equal(put.status, 200, await put.text());
-        const cal = await makeUserFetch({ prefix: "anncal", host: HOST_C });
-        const calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
+        const cal = await makeUserFetch({ prefix: 'anncal', host: HOST_C });
+        const calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await cal(`api/identity/${calRoot}/serve`, { method: 'POST' });
         const viaBea = await base58(bea);
         if ((await cal(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
         await cal(`api/identity/${calRoot}/private/kv/contact:${beaRoot}/interest_rebroadcasts`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
         });
-        await beat(HOST_C, "fold", calRoot);
+        await beat(HOST_C, 'fold', calRoot);
         const shared = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ author: adaRoot, doc_id: post }),
         });
         assert.equal(shared.status, 200, await shared.text());
         let labels = [];
-        for (let i = 0; i < 30 && !labels.some((l) => l.value === "mighty"); i++) {
+        for (let i = 0; i < 30 && !labels.some((l) => l.value === 'mighty'); i++) {
             await shareArrives(HOST_C, beaRoot, adaRoot);
             const { rows } = await sql(
                 `SELECT annotator, value FROM doc_annotations WHERE target_doc = '${post}'`,
-                HOST_C
+                HOST_C,
             );
             labels = rows;
         }
         assert.ok(
-            labels.some((l) => l.annotator === adaRoot && l.value === "mighty"),
-            "ada's label arrived by fragment - her chain was never here"
+            labels.some((l) => l.annotator === adaRoot && l.value === 'mighty'),
+            "ada's label arrived by fragment - her chain was never here",
         );
         // Carriage is named (Curtis, 2026-08-31: the vector must be reverse-engineerable):
         // a proof that rode a fragment records WHICH peer handed it over - but on THIS
@@ -339,66 +360,66 @@ describe("public annotations: the wire and the mint", function () {
         {
             const { rows } = await sql(
                 `SELECT annotator, learned_via FROM doc_annotations WHERE target_doc = '${post}'`,
-                HOST_C
+                HOST_C,
             );
             const rode = rows.find((r) => r.annotator === adaRoot);
             assert.ok(
-                rode && (/^relay:/.test(rode.learned_via) || rode.learned_via === "chain"),
-                `the proof names its road: ${rode && rode.learned_via}`
+                rode && (/^relay:/.test(rode.learned_via) || rode.learned_via === 'chain'),
+                `the proof names its road: ${rode && rode.learned_via}`,
             );
         }
         assert.ok(
-            labels.some((l) => l.annotator === beaRoot && l.value === "viral-goop"),
-            "and bea's, provenance intact"
+            labels.some((l) => l.annotator === beaRoot && l.value === 'viral-goop'),
+            "and bea's, provenance intact",
         );
         this.test.ctx.suite = { cal, calRoot };
     });
 
-    it("and ride the NEXT fragment too - the relay serves kept proofs (slice 3)", async function () {
+    it('and ride the NEXT fragment too - the relay serves kept proofs (slice 3)', async function () {
         if (!HOST_E || !this.test.ctx.suite) this.skip();
         // eve follows cal's shares; cal re-shares. Eve's node has met NOBODY in this story
         // but cal - the labels she receives were relayed as proofs from cal's kept table,
         // each still verifying against ada and bea.
         const { cal, calRoot } = this.test.ctx.suite;
-        const eve = await makeUserFetch({ prefix: "anneve", host: HOST_E });
-        const eveRoot = (await (await eve("api/identity", { method: "POST" })).json()).root_pubkey;
+        const eve = await makeUserFetch({ prefix: 'anneve', host: HOST_E });
+        const eveRoot = (await (await eve('api/identity', { method: 'POST' })).json()).root_pubkey;
         const viaCal = await base58(cal);
         if ((await eve(`api/id/${calRoot}/profile?via=${viaCal}`)).status !== 200) this.skip();
         await eve(`api/identity/${eveRoot}/private/kv/contact:${calRoot}/interest_rebroadcasts`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
         });
-        await beat(HOST_E, "fold", eveRoot);
+        await beat(HOST_E, 'fold', eveRoot);
         const onward = await cal(`api/identity/${calRoot}/rebroadcasts`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ author: adaRoot, doc_id: post }),
         });
         assert.equal(onward.status, 200, await onward.text());
         let labels = [];
-        for (let i = 0; i < 30 && !labels.some((l) => l.value === "viral-goop"); i++) {
+        for (let i = 0; i < 30 && !labels.some((l) => l.value === 'viral-goop'); i++) {
             await shareArrives(HOST_E, calRoot, adaRoot);
             const { rows } = await sql(
                 `SELECT annotator, value FROM doc_annotations WHERE target_doc = '${post}'`,
-                HOST_E
+                HOST_E,
             );
             labels = rows;
         }
         assert.ok(
-            labels.some((l) => l.annotator === adaRoot && l.value === "mighty") &&
-                labels.some((l) => l.annotator === beaRoot && l.value === "viral-goop"),
-            "two hops out, both labels stand, each still signed by its own annotator"
+            labels.some((l) => l.annotator === adaRoot && l.value === 'mighty') &&
+                labels.some((l) => l.annotator === beaRoot && l.value === 'viral-goop'),
+            'two hops out, both labels stand, each still signed by its own annotator',
         );
         // The carrier proof (Curtis, 2026-08-31): eve's node holds no chain of ada's and
         // no vouch toward her, so the only road was the relay, and the row names the peer.
         {
             const { rows } = await sql(
                 `SELECT annotator, learned_via FROM doc_annotations WHERE target_doc = '${post}'`,
-                HOST_E
+                HOST_E,
             );
             const rode = rows.find((r) => r.annotator === adaRoot);
             assert.ok(
                 rode && /^relay:/.test(rode.learned_via),
-                `the relayed proof names its carrier: ${rode && rode.learned_via}`
+                `the relayed proof names its carrier: ${rode && rode.learned_via}`,
             );
         }
     });

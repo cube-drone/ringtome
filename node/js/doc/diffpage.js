@@ -39,7 +39,10 @@ export const DiffPage = ({ doc, current }) => {
         ])
             .then(([priv, head, publicBody]) => {
                 if (!live) return;
-                const shown = (priv.heads || []).find((h) => typeof h.body === 'string') || (priv.heads || [])[0] || {};
+                const shown =
+                    (priv.heads || []).find((h) => typeof h.body === 'string') ||
+                    (priv.heads || [])[0] ||
+                    {};
                 setWords({
                     privateTitle: priv.title || shown.title || '',
                     privateBody: shown.body || '',
@@ -86,22 +89,27 @@ export const DiffPage = ({ doc, current }) => {
             <span class="diff-page-acts">
                 <button class="publish-bar-view jag-line" onClick=${back}><${Icons.back} /> ${t('doc.diffpage.back-to-the-note', 'back to the note')}</button>
                 <a class="publish-bar-view jag-line" href=${postHref(root, postId)}><${Icons.docPublic} /> ${t('doc.diffpage.view-public', 'view public')}</a>
-                ${!same &&
-                html`<button class="publish-bar-update jag-line" disabled=${publishing} onClick=${update}>
+                ${
+                    !same &&
+                    html`<button class="publish-bar-update jag-line" disabled=${publishing} onClick=${update}>
                     <${Icons.update} /> ${publishing ? t('doc.diffpage.publishing', 'publishing…') : t('doc.diffpage.make-your-changes-public', 'make your changes public')}
-                </button>`}
+                </button>`
+                }
             </span>
             ${note && html`<p class="diff-page-note">${note}</p>`}
             ${error && html`<p class="form-error">${error}</p>`}
         </header>
-        ${same
-            ? html`<p class="diff-page-same">${t('doc.diffpage.the-public-version-says-exactly', 'the public version says exactly this - nothing to update')}</p>`
-            : html`${words.publicTitle !== null &&
-                  words.publicTitle !== words.privateTitle &&
-                  html`<p class="words-diff-title">
+        ${
+            same
+                ? html`<p class="diff-page-same">${t('doc.diffpage.the-public-version-says-exactly', 'the public version says exactly this - nothing to update')}</p>`
+                : html`${
+                      words.publicTitle !== null &&
+                      words.publicTitle !== words.privateTitle &&
+                      html`<p class="words-diff-title">
                       <span class="words-diff-del">${words.publicTitle}</span>
                       <span class="words-diff-add">${words.privateTitle}</span>
-                  </p>`}
+                  </p>`
+                  }
                   <p class="diff-page-legend">
                       <span class="words-diff-del">${t('doc.diffpage.public-only', 'public only')}</span>
                       <span class="words-diff-add">${t('doc.diffpage.private-only', 'private only')}</span>
@@ -110,8 +118,9 @@ export const DiffPage = ({ doc, current }) => {
                       (l, i) => html`<span
                           key=${i}
                           class=${l.kind === '-' ? 'words-diff-del' : l.kind === '+' ? 'words-diff-add' : 'words-diff-same'}
-                      >${l.kind} ${l.text}\n</span>`
-                  )}</pre>`}
+                      >${l.kind} ${l.text}\n</span>`,
+                  )}</pre>`
+        }
         <${BakeModal} items=${baking} />
     </section>`;
 };

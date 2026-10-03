@@ -156,15 +156,11 @@ mod tests {
         ))
         .unwrap();
         let conf: serde_json::Value = serde_json::from_str(&conf).unwrap();
-        let wrapped = conf["plugins"]["updater"]["pubkey"]
-            .as_str()
-            .expect("the desktop updater's pubkey");
-        let key_file = String::from_utf8(
-            base64::engine::general_purpose::STANDARD
-                .decode(wrapped)
-                .unwrap(),
-        )
-        .unwrap();
+        let wrapped =
+            conf["plugins"]["updater"]["pubkey"].as_str().expect("the desktop updater's pubkey");
+        let key_file =
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(wrapped).unwrap())
+                .unwrap();
         assert!(
             key_file.lines().any(|l| l.trim() == crate::config::RELEASE_PUBLIC_KEY),
             "supervisor/src/config.rs RELEASE_PUBLIC_KEY is not the key in desktop/tauri.conf.json:\n{key_file}"
@@ -180,19 +176,12 @@ mod tests {
         // Other bytes behind a matching sha256 - a manifest written to fit - still need the key.
         let tampered = b"a different node, in a tarball";
         let mut forged = download_for(&stranger, tampered);
-        let err = verify(tampered, &forged, &public_line(&key))
-            .unwrap_err()
-            .to_string();
-        assert!(
-            err.contains("does not verify"),
-            "signed by a stranger: {err}"
-        );
+        let err = verify(tampered, &forged, &public_line(&key)).unwrap_err().to_string();
+        assert!(err.contains("does not verify"), "signed by a stranger: {err}");
 
         // A correctly signed file whose bytes changed in transit fails at the sha256.
         forged = download_for(&key, bytes);
-        let err = verify(tampered, &forged, &public_line(&key))
-            .unwrap_err()
-            .to_string();
+        let err = verify(tampered, &forged, &public_line(&key)).unwrap_err().to_string();
         assert!(err.contains("sha256"), "{err}");
 
         // The right bytes and hash with a signature that is not base64 at all.
@@ -205,17 +194,10 @@ mod tests {
         assert!(is_newer("0.1.11", "0.1.10"));
         assert!(is_newer("0.2.0", "0.1.99"));
         assert!(is_newer("1.0.0", "0.9.9"));
-        assert!(
-            !is_newer("0.1.10", "0.1.10"),
-            "the same version is not an update"
-        );
+        assert!(!is_newer("0.1.10", "0.1.10"), "the same version is not an update");
         assert!(!is_newer("0.1.9", "0.1.10"), "never back");
         assert!(!is_newer("0.1.11-rc1", "0.1.10"), "nothing unparseable");
         assert!(!is_newer("0.1.11", "garbage"));
-        assert_eq!(
-            parse_version("0.10.2"),
-            Some((0, 10, 2)),
-            "numeric, not lexical"
-        );
+        assert_eq!(parse_version("0.10.2"), Some((0, 10, 2)), "numeric, not lexical");
     }
 }

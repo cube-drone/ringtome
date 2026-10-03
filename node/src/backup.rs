@@ -87,7 +87,13 @@ impl Backups {
     }
 
     fn open(&self, id: &str) -> Ticket {
-        let ticket = Ticket { id: id.to_string(), status: "running", log: Vec::new(), path: None, bytes: None };
+        let ticket = Ticket {
+            id: id.to_string(),
+            status: "running",
+            log: Vec::new(),
+            path: None,
+            bytes: None,
+        };
         let mut all = self.0.lock().expect("backups poisoned");
         all.push(ticket.clone());
         while all.len() > KEPT_TICKETS {
@@ -219,7 +225,9 @@ fn pairs(data: &Path, staging: &Path, files: &[PathBuf]) -> Result<Vec<(PathBuf,
     files
         .iter()
         .map(|f| {
-            let rel = f.strip_prefix(data).with_context(|| format!("{} is outside the data directory", f.display()))?;
+            let rel = f
+                .strip_prefix(data)
+                .with_context(|| format!("{} is outside the data directory", f.display()))?;
             Ok((f.clone(), staging.join(rel)))
         })
         .collect()
@@ -256,7 +264,9 @@ async fn copy_tree(from: &Path, to: &Path, skip: &[PathBuf]) -> Result<u64> {
                     match std::fs::copy(&path, &target) {
                         Ok(_) => copied += 1,
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(e) => return Err(e).with_context(|| format!("copying {}", path.display())),
+                        Err(e) => {
+                            return Err(e).with_context(|| format!("copying {}", path.display()))
+                        }
                     }
                 }
             }
@@ -304,7 +314,11 @@ fn utc_stamp(ms: i64) -> String {
 // The door.
 
 /// The machine itself, or a node administrator - see the module doc for the loopback caveat.
-async fn allowed(state: &AppState, ctx: &RequestContext, session: Option<&Session>) -> Result<(), AppError> {
+async fn allowed(
+    state: &AppState,
+    ctx: &RequestContext,
+    session: Option<&Session>,
+) -> Result<(), AppError> {
     if ctx.is_direct_loopback() {
         return Ok(());
     }
@@ -385,7 +399,8 @@ pub fn archives(state: &AppState) -> Result<Vec<Archive>> {
         .filter_map(|e| {
             let name = e.file_name().to_str()?.to_string();
             let meta = e.metadata().ok()?;
-            (is_archive_name(&name) && meta.is_file()).then_some(Archive { name, bytes: meta.len() })
+            (is_archive_name(&name) && meta.is_file())
+                .then_some(Archive { name, bytes: meta.len() })
         })
         .collect();
     found.sort_by(|a, b| b.name.cmp(&a.name));
@@ -401,7 +416,10 @@ fn archive_path(state: &AppState, name: &str) -> Result<PathBuf, AppError> {
 }
 
 /// GET `/api/admin/backups` - the finished archives, newest first.
-pub async fn list_handler(State(state): State<AppState>, _admin: NodeAdminSession) -> Result<Json<Vec<Archive>>, AppError> {
+pub async fn list_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+) -> Result<Json<Vec<Archive>>, AppError> {
     Ok(Json(archives(&state).map_err(AppError::Internal)?))
 }
 
@@ -436,7 +454,9 @@ pub async fn reveal_handler(
     UrlPath(name): UrlPath<String>,
 ) -> Result<StatusCode, AppError> {
     let path = archive_path(&state, &name)?;
-    if !crate::registration::is_device(&state) || !state.shell.ask(crate::shell::ShellRequest::Reveal { path }) {
+    if !crate::registration::is_device(&state)
+        || !state.shell.ask(crate::shell::ShellRequest::Reveal { path })
+    {
         return Err(AppError::NotFound(crate::msg!(
             "backup.only-the-desktop-app-shows-files",
             "only the desktop app can show a file on this computer"
@@ -480,5 +500,4 @@ mod tests {
         assert!(is_database_file(Path::new("/d/node.db-wal")));
         assert!(!is_database_file(Path::new("/d/envelope.key")));
     }
-
 }

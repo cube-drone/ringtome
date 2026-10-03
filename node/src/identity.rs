@@ -17,9 +17,9 @@ pub mod adoption;
 pub(crate) mod routes;
 pub(crate) mod serving;
 
-pub use routes::{router, BodyLimits};
 pub(crate) use routes::after_posted;
 pub(crate) use routes::restate_labels;
+pub use routes::{router, BodyLimits};
 
 use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;
@@ -102,7 +102,8 @@ pub async fn create(
     // 4. Record the identity -> account link. On the creating node, the signing key *is* the
     //    root (leaf_pubkey = root_pubkey); nodes added later sign with granted leaf keys.
     let created_at_ms = now_ms();
-    record_identity(node_db, account_id, &pubkey_hex, &pubkey_hex, created_at_ms, intended_admin).await?;
+    record_identity(node_db, account_id, &pubkey_hex, &pubkey_hex, created_at_ms, intended_admin)
+        .await?;
 
     // 5. Materialize the per-user database (opens + migrates it).
     let user_db = user_dbs
@@ -141,10 +142,7 @@ pub async fn create(
         &signing_key,
         0,
         &epoch_key,
-        &[
-            (root_pubkey, root_enc.public),
-            (recovery_pubkey, recovery_enc.public),
-        ],
+        &[(root_pubkey, root_enc.public), (recovery_pubkey, recovery_enc.public)],
     )
     .await?;
 
@@ -204,12 +202,7 @@ pub async fn record_identity(
         .execute(
             "INSERT INTO identities (root_pubkey, account_id, created_at_ms, leaf_pubkey)
          VALUES (?1, ?2, ?3, ?4)",
-            (
-                root_pubkey,
-                account_id.to_string(),
-                created_at_ms,
-                leaf_key_name,
-            ),
+            (root_pubkey, account_id.to_string(), created_at_ms, leaf_key_name),
         )
         .await
         .context("recording identity")
@@ -242,10 +235,7 @@ pub(crate) async fn adopted_identity(
         .await
         .context("checking completed adoption")
         .map_err(AppError::Internal)?;
-    Ok(row.map(|(root_pubkey, created_at_ms)| Identity {
-        root_pubkey,
-        created_at_ms,
-    }))
+    Ok(row.map(|(root_pubkey, created_at_ms)| Identity { root_pubkey, created_at_ms }))
 }
 
 /// Whether some account on this node already agents `root` with `leaf` - adoption's
@@ -324,7 +314,8 @@ pub async fn recover_password(
     new_password: &str,
     new_username: Option<&str>,
 ) -> Result<Recovery, AppError> {
-    let uniform = || AppError::Unauthorized(crate::msg!("identity.recovery-failed", "recovery failed"));
+    let uniform =
+        || AppError::Unauthorized(crate::msg!("identity.recovery-failed", "recovery failed"));
 
     let seed: [u8; 32] = hex::decode(recovery_secret_hex.trim())
         .ok()
@@ -333,9 +324,8 @@ pub async fn recover_password(
     let (recovery_key, _enc) = crate::seal::derive_recovery(&seed);
     let proven_pubkey = recovery_key.verifying_key().to_bytes();
 
-    let account_id = crate::auth::account_id_by_username(&state.node_db, username)
-        .await?
-        .ok_or_else(uniform)?;
+    let account_id =
+        crate::auth::account_id_by_username(&state.node_db, username).await?.ok_or_else(uniform)?;
     let account_uuid = Uuid::parse_str(&account_id)
         .map_err(|e| AppError::Internal(anyhow!("malformed account id: {e}")))?;
     let identities = list_for_account(&state.node_db, &account_uuid).await?;
@@ -345,11 +335,7 @@ pub async fn recover_password(
     // (presenting key K grants at most K's authority, and only the spine key carries reset).
     let mut proven: Option<String> = None;
     for identity in &identities {
-        let db = state
-            .user_dbs
-            .held(&identity.root_pubkey)
-            .await
-            .map_err(AppError::Internal)?;
+        let db = state.user_dbs.held(&identity.root_pubkey).await.map_err(AppError::Internal)?;
         let tree = crate::record::imaol::load_key_tree(&db, &identity.root_pubkey).await?;
         if designated_recovery(&tree) == Some(proven_pubkey) {
             proven = Some(identity.root_pubkey.clone());
@@ -380,7 +366,7 @@ pub async fn recover_password(
             new_password,
             state.config.password_min_len(),
             state.config.local_test,
-            state.config.admin_persona.is_none()
+            state.config.admin_persona.is_none(),
         )
         .await?;
         state
@@ -421,10 +407,7 @@ pub async fn list_for_account(node_db: &Db, account_id: &Uuid) -> Result<Vec<Ide
 
     Ok(rows
         .into_iter()
-        .map(|(root_pubkey, created_at_ms)| Identity {
-            root_pubkey,
-            created_at_ms,
-        })
+        .map(|(root_pubkey, created_at_ms)| Identity { root_pubkey, created_at_ms })
         .collect())
 }
 
@@ -443,11 +426,7 @@ pub async fn account_of(node_db: &Db, root_hex: &str) -> Result<Option<String>, 
 /// ("active", "retired", "repudiated", ...), or "unknown" when the answer can't be computed (a
 /// key or database that won't open must degrade the persona list, never fail it). What the
 /// farewell flow reads: a well-intentioned node discovers its own revocation here and lets go.
-pub async fn standing(
-    state: &crate::AppState,
-    account_id: &Uuid,
-    root_hex: &str,
-) -> &'static str {
+pub async fn standing(state: &crate::AppState, account_id: &Uuid, root_hex: &str) -> &'static str {
     let Ok(signer) = load_signing_key(&state.node_db, &state.keystore, account_id, root_hex).await
     else {
         return "unknown";
@@ -499,10 +478,7 @@ pub async fn detach(node_db: &Db, account_id: &Uuid, root_hex: &str) -> Result<(
 /// per the data-access convention, `identities` SQL lives only in this module.
 pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
     let row: Option<(i64,)> = node_db
-        .fetch_optional(
-            "SELECT 1 FROM identities WHERE root_pubkey = ?1",
-            (root_pubkey,),
-        )
+        .fetch_optional("SELECT 1 FROM identities WHERE root_pubkey = ?1", (root_pubkey,))
         .await
         .context("checking identity")
         .map_err(AppError::Internal)?;
@@ -542,10 +518,7 @@ pub async fn hosted_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
 /// our own leaf is the one hint we can vouch for absolutely.
 pub async fn leaf_hex_of(node_db: &Db, root_hex: &str) -> Result<Option<String>, AppError> {
     let row: Option<(Option<String>,)> = node_db
-        .fetch_optional(
-            "SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .fetch_optional("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("reading a hosted identity's leaf")
         .map_err(AppError::Internal)?;
@@ -554,10 +527,7 @@ pub async fn leaf_hex_of(node_db: &Db, root_hex: &str) -> Result<Option<String>,
 
 pub async fn served_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
     let rows: Vec<(String,)> = node_db
-        .fetch_all(
-            "SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL",
-            (),
-        )
+        .fetch_all("SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL", ())
         .await
         .context("listing served identities")
         .map_err(AppError::Internal)?;
@@ -584,10 +554,7 @@ pub(crate) async fn record_served(node_db: &Db, root_pubkey: &str) -> Result<(),
 /// audience-independent, unlike `require_owned` below, which asks about one account.
 pub async fn is_hosted(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
     let row: Option<(i64,)> = node_db
-        .fetch_optional(
-            "SELECT 1 FROM identities WHERE root_pubkey = ?1",
-            (root_pubkey,),
-        )
+        .fetch_optional("SELECT 1 FROM identities WHERE root_pubkey = ?1", (root_pubkey,))
         .await
         .context("checking identity hosting")
         .map_err(AppError::Internal)?;
@@ -608,7 +575,10 @@ pub async fn require_owned(
         .context("checking identity ownership")
         .map_err(AppError::Internal)?;
     if owned.is_none() {
-        return Err(AppError::NotFound(crate::msg!("identity.identity-not-found", "identity not found")));
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.identity-not-found",
+            "identity not found"
+        )));
     }
     Ok(())
 }
@@ -616,9 +586,7 @@ pub async fn require_owned(
 /// Open a named signing key from the keystore. Key files are named by their own hex pubkey,
 /// which is also bound in as the AAD, so a file can't be swapped for another key's.
 fn signing_key_named(keystore: &Keystore, key_name: &str) -> Result<SigningKey, AppError> {
-    let bytes = keystore
-        .load_key(key_name, key_name.as_bytes())
-        .map_err(AppError::Internal)?;
+    let bytes = keystore.load_key(key_name, key_name.as_bytes()).map_err(AppError::Internal)?;
     let secret: [u8; 32] = bytes
         .as_slice()
         .try_into()
@@ -643,7 +611,10 @@ pub async fn load_signing_key(
         .context("checking identity ownership")
         .map_err(AppError::Internal)?;
     let Some((leaf,)) = row else {
-        return Err(AppError::NotFound(crate::msg!("identity.identity-not-found-2", "identity not found")));
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.identity-not-found-2",
+            "identity not found"
+        )));
     };
     // Pre-M3 rows have no leaf column value; they were created when the node key was the root.
     let key_name = leaf.unwrap_or_else(|| root_pubkey.to_string());
@@ -659,10 +630,7 @@ pub async fn load_node_leaf_key(
     root_pubkey: &str,
 ) -> Result<Option<SigningKey>, AppError> {
     let row: Option<(Option<String>,)> = node_db
-        .fetch_optional(
-            "SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1",
-            (root_pubkey,),
-        )
+        .fetch_optional("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1", (root_pubkey,))
         .await
         .context("looking up identity leaf")
         .map_err(AppError::Internal)?;
@@ -702,11 +670,7 @@ pub async fn revoke_key(
     let signer = load_signing_key(&state.node_db, &state.keystore, account_id, root_hex).await?;
     let signer_pub = signer.verifying_key().to_bytes();
 
-    let db = state
-        .user_dbs
-        .held(root_hex)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(root_hex).await.map_err(AppError::Internal)?;
     let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
 
     let authorized = match disposition {
@@ -714,7 +678,10 @@ pub async fn revoke_key(
         Disposition::Repudiation => signer_pub != target && tree.is_senior(&signer_pub, &target),
     };
     if !authorized {
-        return Err(AppError::Forbidden(crate::msg!("identity.this-nodes-key-is-not", "this node's key is not senior to the target")));
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.this-nodes-key-is-not",
+            "this node's key is not senior to the target"
+        )));
     }
 
     // Anchors: our stored head of every chain the target has written (via imaol - the entries
@@ -725,22 +692,13 @@ pub async fn revoke_key(
         Cut::Now => crate::record::imaol::chain_heads_for_author(&db, target_hex)
             .await?
             .into_iter()
-            .map(|(service, instance, seq, head_hash)| Anchor {
-                service,
-                instance,
-                seq,
-                head_hash,
-            })
+            .map(|(service, instance, seq, head_hash)| Anchor { service, instance, seq, head_hash })
             .collect(),
     };
 
-    let payload = Revoke {
-        target,
-        disposition,
-        anchors,
-    }
-    .encode()
-    .map_err(|e| AppError::Internal(anyhow!("encoding revocation: {e}")))?;
+    let payload = Revoke { target, disposition, anchors }
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding revocation: {e}")))?;
     let signed = crate::record::imaol::append(
         &db,
         &signer,
@@ -785,7 +743,9 @@ pub async fn revoke_key(
     // views). An empty batch through the ordinary gate: one sweeper, no second code path.
     // Failure doesn't unwind the revocation - the next real ingest runs the same sweep.
     let root_pk = pubkey::require(root_hex, "root pubkey")?;
-    if let Err(e) = crate::net::sync::ingest_batch(&db, root_pk, Vec::new(), false, None, None).await {
+    if let Err(e) =
+        crate::net::sync::ingest_batch(&db, root_pk, Vec::new(), false, None, None).await
+    {
         tracing::error!(root = %root_hex, "post-revocation sweep failed: {e}");
     }
 

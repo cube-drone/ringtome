@@ -57,11 +57,7 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("reading profile: {e}"))?;
     let grab = |key: &str| {
-        fields
-            .iter()
-            .find(|f| f.field == key)
-            .map(|f| f.value.clone())
-            .filter(|v| !v.is_empty())
+        fields.iter().find(|f| f.field == key).map(|f| f.value.clone()).filter(|v| !v.is_empty())
     };
     let (name, avatar, banner) = (grab("name"), grab("avatar"), grab("banner"));
     let last_active = grab(crate::heartbeat::FIELD);
@@ -75,7 +71,10 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
         )
         .await
         .context("reading the byline cache")?;
-    if current.as_ref().is_some_and(|(n, a, b, l)| *n == name && *a == avatar && *b == banner && *l == last_active) {
+    if current
+        .as_ref()
+        .is_some_and(|(n, a, b, l)| *n == name && *a == avatar && *b == banner && *l == last_active)
+    {
         return Ok(());
     }
     state
@@ -107,10 +106,7 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
 /// name in the cache (PROJECT_PLAN's Discovery, slice 4).
 pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<()> {
     node_db
-        .execute(
-            "DELETE FROM persona_profiles WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .execute("DELETE FROM persona_profiles WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("forgetting an evicted byline")?;
     changed();
@@ -121,14 +117,19 @@ pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<(
 /// holds gets refreshed right now and read again. A thread or a bell must never show the
 /// speakable words for a persona whose profile sits in a database one open away (Curtis,
 /// 2026-09-05: "we have forgotten Lurk Stuck's name and profile picture").
-pub async fn bylines_healed(state: &AppState, roots: &[String]) -> Result<std::collections::BTreeMap<String, Byline>> {
+pub async fn bylines_healed(
+    state: &AppState,
+    roots: &[String],
+) -> Result<std::collections::BTreeMap<String, Byline>> {
     let mut known = bylines(&state.node_db, roots).await?;
     let mut healed = false;
     for root in roots {
         if known.contains_key(root) {
             continue;
         }
-        if matches!(state.user_dbs.get(root).await, Ok(Some(_))) && refresh(state, root).await.is_ok() {
+        if matches!(state.user_dbs.get(root).await, Ok(Some(_)))
+            && refresh(state, root).await.is_ok()
+        {
             healed = true;
         }
     }
@@ -171,7 +172,10 @@ pub async fn digest(node_db: &Db, roots: &[String]) -> [u8; 32] {
 /// One cached row: root, name, avatar, banner, last heartbeat.
 type BylineRow = (String, Option<String>, Option<String>, Option<String>, Option<String>);
 
-pub async fn bylines(node_db: &Db, roots: &[String]) -> Result<std::collections::BTreeMap<String, Byline>> {
+pub async fn bylines(
+    node_db: &Db,
+    roots: &[String],
+) -> Result<std::collections::BTreeMap<String, Byline>> {
     let mut out = std::collections::BTreeMap::new();
     if roots.is_empty() {
         return Ok(out);

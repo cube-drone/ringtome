@@ -93,10 +93,7 @@ async fn register_handler(
     ctx: RequestContext,
     Json(creds): Json<Credentials>,
 ) -> Result<Json<AccountInfo>, AppError> {
-    state
-        .rate_limiter
-        .check_ctx("register", &ctx, REGISTER_LIMIT, HOUR_MS)
-        .await?;
+    state.rate_limiter.check_ctx("register", &ctx, REGISTER_LIMIT, HOUR_MS).await?;
     // Who may sign up here at all (registration.rs): open, a shared password, or nobody new.
     crate::registration::admit(&state, creds.registration_password.as_deref()).await?;
 
@@ -106,7 +103,7 @@ async fn register_handler(
         &creds.password,
         state.config.password_min_len(),
         state.config.local_test,
-        state.config.admin_persona.is_none()
+        state.config.admin_persona.is_none(),
     )
     .await?;
     // Signed up with the password while a group is set: the account's first persona joins it, once
@@ -166,10 +163,7 @@ async fn recover_handler(
     ctx: RequestContext,
     Json(req): Json<RecoverRequest>,
 ) -> Result<Response, AppError> {
-    state
-        .rate_limiter
-        .check_ctx("recover", &ctx, RECOVER_LIMIT, HOUR_MS)
-        .await?;
+    state.rate_limiter.check_ctx("recover", &ctx, RECOVER_LIMIT, HOUR_MS).await?;
 
     let outcome = crate::identity::recover_password(
         &state,
@@ -182,16 +176,8 @@ async fn recover_handler(
 
     use crate::identity::Recovery;
     Ok(match outcome {
-        Recovery::Reset => Json(RecoverResponse {
-            ok: true,
-            rehomed: false,
-        })
-        .into_response(),
-        Recovery::Rehomed => Json(RecoverResponse {
-            ok: true,
-            rehomed: true,
-        })
-        .into_response(),
+        Recovery::Reset => Json(RecoverResponse { ok: true, rehomed: false }).into_response(),
+        Recovery::Rehomed => Json(RecoverResponse { ok: true, rehomed: true }).into_response(),
         Recovery::NeedsNewUsername => (
             StatusCode::CONFLICT,
             Json(RecoverNeedsName {
@@ -241,15 +227,16 @@ async fn logout_handler(
     }
     let name = session_cookie_name(state.config.port);
     if let Some(cookie) = jar.get(&name) {
-        delete_session(&state.node_db, cookie.value())
-            .await
-            .map_err(AppError::Internal)?;
+        delete_session(&state.node_db, cookie.value()).await.map_err(AppError::Internal)?;
     }
     // Clear the cookie regardless.
     Ok(jar.remove(Cookie::from(name)))
 }
 
-async fn whoami_handler(session: Session, State(state): State<AppState>) -> Result<Json<AccountInfo>, AppError> {
+async fn whoami_handler(
+    session: Session,
+    State(state): State<AppState>,
+) -> Result<Json<AccountInfo>, AppError> {
     let tags = crate::auth::tags_for(&state.node_db, &session.account.id).await?;
     Ok(Json(AccountInfo {
         id: session.account.id.to_string(),
@@ -275,9 +262,13 @@ async fn grant_handler(
     let db = &state.node_db;
     authorize_tag_change(db, &admin, &req.tag).await?;
 
-    let target = account_by_username(db, &req.username)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("auth.routes.no-account", "no account \"{username}\"", username = req.username)))?;
+    let target = account_by_username(db, &req.username).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "auth.routes.no-account",
+            "no account \"{username}\"",
+            username = req.username
+        ))
+    })?;
 
     add_tag(db, &target.id, &req.tag).await?;
     Ok(Json(AccountInfo {
@@ -296,9 +287,13 @@ async fn revoke_handler(
     let db = &state.node_db;
     authorize_tag_change(db, &admin, &req.tag).await?;
 
-    let target = account_by_username(db, &req.username)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("auth.routes.no-account-2", "no account \"{username}\"", username = req.username)))?;
+    let target = account_by_username(db, &req.username).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "auth.routes.no-account-2",
+            "no account \"{username}\"",
+            username = req.username
+        ))
+    })?;
 
     remove_tag(db, &target.id, &req.tag).await?;
     Ok(Json(AccountInfo {
@@ -316,7 +311,10 @@ async fn authorize_tag_change(
     tag: &str,
 ) -> Result<(), AppError> {
     if tag == TAG_NODE_ADMIN && !has_tag(db, &admin.account.id, TAG_NODE_ADMIN).await? {
-        return Err(AppError::Forbidden(crate::msg!("auth.routes.only-a-nodeadmin-may-grant", "only a node_admin may grant or revoke node_admin")));
+        return Err(AppError::Forbidden(crate::msg!(
+            "auth.routes.only-a-nodeadmin-may-grant",
+            "only a node_admin may grant or revoke node_admin"
+        )));
     }
     Ok(())
 }
@@ -334,14 +332,15 @@ async fn tags_handler(
     Query(q): Query<UsernameQuery>,
 ) -> Result<Json<TagsResponse>, AppError> {
     let db = &state.node_db;
-    let target = account_by_username(db, &q.username)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("auth.routes.no-account-3", "no account \"{username}\"", username = q.username)))?;
+    let target = account_by_username(db, &q.username).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "auth.routes.no-account-3",
+            "no account \"{username}\"",
+            username = q.username
+        ))
+    })?;
     let tags = tags_for(db, &target.id).await?;
-    Ok(Json(TagsResponse {
-        username: target.username,
-        tags,
-    }))
+    Ok(Json(TagsResponse { username: target.username, tags }))
 }
 
 /// Sample endpoints for testing the extractors: return 200 iff the caller is authorized.

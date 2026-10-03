@@ -32,7 +32,10 @@ const read = (p) => fs.readFileSync(p, 'utf8');
 /// comments legitimately discuss the very things the code must not touch (keepalive.js's module
 /// doc is four paragraphs about `fetch`). Block comments and whole-line `//` only: a conservative
 /// pair that cannot mangle a URL or a regex mid-line.
-const code = (p) => read(p).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const code = (p) =>
+    read(p)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
 
 const cssFiles = walk(JS_DIR, '.css');
 const jsFiles = walk(JS_DIR, '.js');
@@ -61,8 +64,11 @@ describe('css conventions', () => {
                 if (!allJs.includes(cls)) dead.push(`${rel(file)}: .${cls}`);
             }
         }
-        assert.deepEqual([...new Set(dead)], [],
-            'dead CSS rules (nothing in js/ mentions these):\n  ' + [...new Set(dead)].join('\n  '));
+        assert.deepEqual(
+            [...new Set(dead)],
+            [],
+            'dead CSS rules (nothing in js/ mentions these):\n  ' + [...new Set(dead)].join('\n  '),
+        );
     });
 
     it('keeps every colour literal in tokens.css', () => {
@@ -70,15 +76,20 @@ describe('css conventions', () => {
         const offenders = [];
         for (const file of cssFiles) {
             if (path.basename(file) === 'tokens.css') continue;
-            read(file).split('\n').forEach((line, i) => {
-                if (/^\s*(\/\*|\*)/.test(line)) return; // a comment may discuss a colour
-                if (/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(line)) {
-                    offenders.push(`${rel(file)}:${i + 1}: ${line.trim()}`);
-                }
-            });
+            read(file)
+                .split('\n')
+                .forEach((line, i) => {
+                    if (/^\s*(\/\*|\*)/.test(line)) return; // a comment may discuss a colour
+                    if (/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(line)) {
+                        offenders.push(`${rel(file)}:${i + 1}: ${line.trim()}`);
+                    }
+                });
         }
-        assert.deepEqual(offenders, [],
-            'colour literals outside tokens.css:\n  ' + offenders.join('\n  '));
+        assert.deepEqual(
+            offenders,
+            [],
+            'colour literals outside tokens.css:\n  ' + offenders.join('\n  '),
+        );
     });
 
     // The jagged line (Curtis, 2026-09-30: "this has proven to be kind of a reliable pain"). A clip
@@ -106,29 +117,48 @@ describe('css conventions', () => {
                     if (i > 0) decls[d.slice(0, i).trim()] = d.slice(i + 1).trim();
                 }
                 const line = text.slice(0, m.index).split('\n').length;
-                for (const sel of m[1].split(',').map((x) => x.trim()).filter(Boolean)) {
-                    if (!sel.startsWith('@')) rules.push({ sel, decls, where: `${rel(f)}:${line}` });
+                for (const sel of m[1]
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean)) {
+                    if (!sel.startsWith('@'))
+                        rules.push({ sel, decls, where: `${rel(f)}:${line}` });
                 }
             }
         }
         const listed = new Set(
-            rules.filter((r) => r.sel.endsWith('::after') && /var\(--ring/.test(r.decls['clip-path'] || '')).map((r) => r.sel.slice(0, -'::after'.length))
+            rules
+                .filter(
+                    (r) =>
+                        r.sel.endsWith('::after') && /var\(--ring/.test(r.decls['clip-path'] || ''),
+                )
+                .map((r) => r.sel.slice(0, -'::after'.length)),
         );
-        const listedNames = [...listed].map((sel) => (sel.match(/^\.([\w-]+)$/) || [])[1]).filter(Boolean);
+        const listedNames = [...listed]
+            .map((sel) => (sel.match(/^\.([\w-]+)$/) || [])[1])
+            .filter(Boolean);
         // Every class a line of markup wears, and every tag that wears it (tags span lines).
         const token = (cls) => new RegExp(`(^|[\\s'"\`])${cls}([\\s'"\`]|$)`);
         const markupLines = allJs.split('\n').filter((l) => /class/.test(l));
-        const worn = (cls, withAny) => markupLines.some((l) => token(cls).test(l) && withAny.some((w) => token(w).test(l)));
+        const worn = (cls, withAny) =>
+            markupLines.some((l) => token(cls).test(l) && withAny.some((w) => token(w).test(l)));
         const RING_CLASSES = ['jag-line', 'jag-line-2', 'jag-line-top', 'jag-field'];
         const lastClass = (sel) => (sel.match(/\.([\w-]+)(?![\w-])[^.\s]*$/) || [])[1];
         // A state strips to its box: `.note-row.selected` and `.tab:hover` are `.note-row` and `.tab`.
         const box = (sel) =>
-            sel.replace(/:(hover|focus-visible|focus-within|focus|active|disabled)\b/g, '').replace(/(\.[\w-]+)\.(active|selected|open|picked|current|drop-into)$/, '$1');
+            sel
+                .replace(/:(hover|focus-visible|focus-within|focus|active|disabled)\b/g, '')
+                .replace(/(\.[\w-]+)\.(active|selected|open|picked|current|drop-into)$/, '$1');
         // A modifier named after its box (`chip-diverged` on a `.chip`, applied through a component
         // prop no markup line shows) is that box's.
         const classed = (sel) => {
             const cls = lastClass(sel);
-            return !!cls && (RING_CLASSES.includes(cls) || worn(cls, [...RING_CLASSES, ...listedNames]) || listedNames.some((n) => cls.startsWith(`${n}-`)));
+            return (
+                !!cls &&
+                (RING_CLASSES.includes(cls) ||
+                    worn(cls, [...RING_CLASSES, ...listedNames]) ||
+                    listedNames.some((n) => cls.startsWith(`${n}-`)))
+            );
         };
         // Judged by its box, never by a state's class (`.x.active` is `.x`'s, whatever else wears `active`).
         const ringed = (sel) => listed.has(sel) || listed.has(box(sel)) || classed(box(sel));
@@ -138,26 +168,46 @@ describe('css conventions', () => {
         };
         const jagged = (d) => /var\(--jag(-1|-top|-bottom)?\)/.test(d['clip-path'] || '');
         const solid = (v) => !!v && !/transparent|none|dashed|dotted|^0$/.test(v);
-        const fieldTag = (cls) => new RegExp(`<(input|textarea|select)\\b[^>]*?[\\s'"\`]${cls}[\\s'"\`]`).test(allJs);
+        const fieldTag = (cls) =>
+            new RegExp(`<(input|textarea|select)\\b[^>]*?[\\s'"\`]${cls}[\\s'"\`]`).test(allJs);
         // Boxes that clip to a jag in their own rules, whatever their border does at rest.
         const jaggedBoxes = new Set(rules.filter((r) => jagged(r.decls)).map((r) => r.sel));
-        const dashedBoxes = new Set(rules.filter((r) => /dashed|dotted/.test(r.decls.border || '')).map((r) => r.sel));
+        const dashedBoxes = new Set(
+            rules.filter((r) => /dashed|dotted/.test(r.decls.border || '')).map((r) => r.sel),
+        );
         const wrong = [];
         for (const r of rules) {
             const d = r.decls;
             if (r.sel.endsWith('::after')) {
                 const cls = (r.sel.slice(0, -'::after'.length).match(/^\.([\w-]+)$/) || [])[1];
-                if (cls && listed.has(`.${cls}`) && fieldTag(cls)) wrong.push(`${r.where} .${cls}: a field draws no ::after - give it .jag-field`);
+                if (cls && listed.has(`.${cls}`) && fieldTag(cls))
+                    wrong.push(`${r.where} .${cls}: a field draws no ::after - give it .jag-field`);
                 continue;
             }
             if (r.sel.endsWith('::before')) continue;
             const state = box(r.sel) !== r.sel;
-            if (jagged(d) && solid(d.border) && !ringed(r.sel)) wrong.push(`${r.where} ${r.sel}: a jagged clip over a solid border cuts its corners - make it a ring`);
-            if (d['--line'] && d['--line'] !== 'transparent' && !ringed(r.sel)) wrong.push(`${r.where} ${r.sel}: --line with no ring to paint it`);
-            if (state && solid(d['border-color']) && ringed(r.sel)) wrong.push(`${r.where} ${r.sel}: recolour the ring with --line, not border-color`);
-            if (state && solid(d['border-color']) && !ringed(r.sel) && jaggedBoxes.has(box(r.sel)) && !dashedBoxes.has(box(r.sel)))
-                wrong.push(`${r.where} ${r.sel}: a state paints a real border on a jagged box - make the box a ring and recolour --line`);
-            if (d.background && fieldClassed(r.sel) && r.sel !== '.jag-field') wrong.push(`${r.where} ${r.sel}: a .jag-field paints its line as background - set background-color, not background`);
+            if (jagged(d) && solid(d.border) && !ringed(r.sel))
+                wrong.push(
+                    `${r.where} ${r.sel}: a jagged clip over a solid border cuts its corners - make it a ring`,
+                );
+            if (d['--line'] && d['--line'] !== 'transparent' && !ringed(r.sel))
+                wrong.push(`${r.where} ${r.sel}: --line with no ring to paint it`);
+            if (state && solid(d['border-color']) && ringed(r.sel))
+                wrong.push(`${r.where} ${r.sel}: recolour the ring with --line, not border-color`);
+            if (
+                state &&
+                solid(d['border-color']) &&
+                !ringed(r.sel) &&
+                jaggedBoxes.has(box(r.sel)) &&
+                !dashedBoxes.has(box(r.sel))
+            )
+                wrong.push(
+                    `${r.where} ${r.sel}: a state paints a real border on a jagged box - make the box a ring and recolour --line`,
+                );
+            if (d.background && fieldClassed(r.sel) && r.sel !== '.jag-field')
+                wrong.push(
+                    `${r.where} ${r.sel}: a .jag-field paints its line as background - set background-color, not background`,
+                );
         }
         assert.deepEqual(wrong, [], `jagged lines drawn wrong:\n  ${wrong.join('\n  ')}`);
     });
@@ -165,10 +215,15 @@ describe('css conventions', () => {
     it('imports every partial from index.css (no orphans, no missing files)', () => {
         const index = read(path.join(JS_DIR, 'index.css'));
         const imported = [...index.matchAll(/@import\s+"\.\/([^"]+)"/g)].map((m) => m[1]);
-        const onDisk = cssFiles.map(rel).filter((p) => p !== 'index.css')
+        const onDisk = cssFiles
+            .map(rel)
+            .filter((p) => p !== 'index.css')
             .map((p) => p.split(path.sep).join('/'));
-        assert.deepEqual(imported.slice().sort(), onDisk.slice().sort(),
-            'index.css is the table of contents: every partial appears exactly once');
+        assert.deepEqual(
+            imported.slice().sort(),
+            onDisk.slice().sort(),
+            'index.css is the table of contents: every partial appears exactly once',
+        );
     });
 });
 
@@ -226,7 +281,8 @@ describe('the import graph', () => {
         for (const f of jsFiles) {
             const base = rel(f);
             const src = code(f);
-            if (base !== 'net.js' && base !== 'sw.js' && /\bfetch\s*\(/.test(src)) offenders.fetch.push(base);
+            if (base !== 'net.js' && base !== 'sw.js' && /\bfetch\s*\(/.test(src))
+                offenders.fetch.push(base);
             if (base !== 'mirror.js' && /\bDexie\b/.test(src)) offenders.Dexie.push(base);
         }
         assert.deepEqual(offenders, { fetch: [], Dexie: [] });
@@ -238,7 +294,8 @@ describe('the pure core', () => {
     // boundary, the client-side echo of ringtome-proto, and membership is where a file lives. It
     // mirrors this directory - `js/pure/x.js` is tested by `test/pure/x.cjs` - so both halves of
     // the declaration are self-evident and neither can drift out of a hand-written array.
-    const PURE = fs.readdirSync(path.join(JS_DIR, 'pure'))
+    const PURE = fs
+        .readdirSync(path.join(JS_DIR, 'pure'))
         .filter((f) => f.endsWith('.js'))
         .map((f) => `pure/${f}`);
 
@@ -276,9 +333,15 @@ describe('the pure core', () => {
                     .map((m) => m[1])
                     .map((spec) =>
                         spec.startsWith('.')
-                            ? path.relative(JS_DIR, path.resolve(path.dirname(path.join(JS_DIR, name)), spec))
-                                  .split(path.sep).join('/')
-                            : spec)
+                            ? path
+                                  .relative(
+                                      JS_DIR,
+                                      path.resolve(path.dirname(path.join(JS_DIR, name)), spec),
+                                  )
+                                  .split(path.sep)
+                                  .join('/')
+                            : spec,
+                    )
                     .filter((dep) => !PURE.includes(dep));
                 assert.deepEqual(outside, [], `${name} imports outside the pure set`);
             });
@@ -293,8 +356,9 @@ describe('the pure core', () => {
                 // something has to enumerate the MODULES to catch one nobody tested. That is what
                 // js/pure/ now is.
                 const tests = fs.readdirSync(PURE_TEST_DIR).filter((f) => f.endsWith('.cjs'));
-                const covered = tests.some((t) => read(path.join(PURE_TEST_DIR, t))
-                    .includes(`/js/${name}`));
+                const covered = tests.some((t) =>
+                    read(path.join(PURE_TEST_DIR, t)).includes(`/js/${name}`),
+                );
                 assert.ok(covered, `no test in test/pure/ imports js/${name}`);
             });
         });

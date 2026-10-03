@@ -18,22 +18,21 @@
     Both are pure chain-lane properties: no shares, no fragments - the dig's posts-only
     first slice. The share lane's history is NEXT_STEPS.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { sql, HOST_C } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
-const { unplug, plugIn } = require("./unplug.cjs");
-
+const { sql, HOST_C } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat, pullAndFold } = require('./beat.cjs');
+const { unplug, plugIn } = require('./unplug.cjs');
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
-(HOST_C ? describe : describe.skip)("the history dig and the exact gap", function () {
+(HOST_C ? describe : describe.skip)('the history dig and the exact gap', function () {
     this.timeout(1200000);
 
     let author, authorRoot, cora, coraRoot;
@@ -41,12 +40,12 @@ const base58 = async (host) => {
     const publish = async (title) => {
         const made = await (
             await author(`api/identity/${authorRoot}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title, body: `${title}: the words`, format: "plaintext" }),
+                method: 'POST',
+                body: JSON.stringify({ title, body: `${title}: the words`, format: 'plaintext' }),
             })
         ).json();
         const pub = await author(`api/identity/${authorRoot}/docs/${made.doc_id}/publish`, {
-            method: "POST",
+            method: 'POST',
         });
         const text = await pub.text();
         assert.equal(pub.status, 200, text);
@@ -57,19 +56,19 @@ const base58 = async (host) => {
         const { rows } = await sql(
             `SELECT doc_id, title FROM feed_journal
              WHERE reader_root = '${coraRoot}' AND author_root = '${authorRoot}'`,
-            HOST_C
+            HOST_C,
         );
         return rows;
     };
 
     before(async function () {
-        author = await makeUserFetch({ prefix: "digauthor" });
-        authorRoot = (await (await author("api/identity", { method: "POST" })).json()).root_pubkey;
-        await author(`api/identity/${authorRoot}/serve`, { method: "POST" });
+        author = await makeUserFetch({ prefix: 'digauthor' });
+        authorRoot = (await (await author('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await author(`api/identity/${authorRoot}/serve`, { method: 'POST' });
 
-        cora = await makeUserFetch({ prefix: "digcora", host: HOST_C });
-        coraRoot = (await (await cora("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cora(`api/identity/${coraRoot}/serve`, { method: "POST" });
+        cora = await makeUserFetch({ prefix: 'digcora', host: HOST_C });
+        coraRoot = (await (await cora('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await cora(`api/identity/${coraRoot}/serve`, { method: 'POST' });
     });
 
     afterEach(async () => {
@@ -86,8 +85,8 @@ const base58 = async (host) => {
         if ((await cora(`api/id/${authorRoot}/profile?via=${viaAuthor}`)).status !== 200)
             this.skip();
         await cora(`api/identity/${coraRoot}/private/kv/contact:${authorRoot}/interest`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
         });
 
         // THE LATE FOLLOW: all 30 in the feed - the dig reached below the window. The
@@ -99,13 +98,13 @@ const base58 = async (host) => {
         // still a fold and four provable digs; the rounds are bounded, never a clock.
         let rows = [];
         for (let round = 0; round < 12 && rows.length < 30; round++) {
-            await beat(HOST_C, "fold", coraRoot);
-            for (let i = 0; i < 4; i++) await beat(HOST_C, "journal-fill");
+            await beat(HOST_C, 'fold', coraRoot);
+            for (let i = 0; i < 4; i++) await beat(HOST_C, 'journal-fill');
             rows = await feedRows();
         }
-        assert.ok(rows.length >= 30, "the history dig extended the feed to the whole held shelf");
+        assert.ok(rows.length >= 30, 'the history dig extended the feed to the whole held shelf');
         const titles = (await feedRows()).map((r) => r.title);
-        assert.ok(titles.includes("dig-1"), "the dig reached the very first post");
+        assert.ok(titles.includes('dig-1'), 'the dig reached the very first post');
 
         // THE DARK WINDOW: the reader's node sleeps through more than a page of posts...
         await unplug(HOST_C);
@@ -115,17 +114,17 @@ const base58 = async (host) => {
         // ...and the next arrival closes the exact gap. The trigger post's push carries every
         // missed entry in one exchange; the persisted mark makes the walk page down to all of
         // them, where the boot-reset mark used to cap this at the newest twenty.
-        await publish("the-trigger");
-        await beat(undefined, "fold", authorRoot);
-        await beat(undefined, "demand-push", authorRoot);
-        await beat(HOST_C, "fold", authorRoot);
-        for (let i = 0; i < 4; i++) await beat(HOST_C, "journal-fill");
+        await publish('the-trigger');
+        await beat(undefined, 'fold', authorRoot);
+        await beat(undefined, 'demand-push', authorRoot);
+        await beat(HOST_C, 'fold', authorRoot);
+        for (let i = 0; i < 4; i++) await beat(HOST_C, 'journal-fill');
         assert.ok(
             (await feedRows()).length >= 56,
-            "every post from the dark stretch journaled - the gap is exact, not one page"
+            'every post from the dark stretch journaled - the gap is exact, not one page',
         );
         const after = (await feedRows()).map((r) => r.title);
-        for (const mustHold of ["dark-1", "dark-13", "dark-25", "the-trigger"]) {
+        for (const mustHold of ['dark-1', 'dark-13', 'dark-25', 'the-trigger']) {
             assert.ok(after.includes(mustHold), `${mustHold} is in the feed - no holes`);
         }
     });

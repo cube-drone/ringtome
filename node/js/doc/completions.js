@@ -169,7 +169,11 @@ export function linkCompletions(root, bucket) {
                     },
                 };
             });
-        return { from: word.from + 1, options: [...options, ...TAG_OPTIONS, ...FONT_OPTIONS], validFor: /^[^[\]\n]*$/ };
+        return {
+            from: word.from + 1,
+            options: [...options, ...TAG_OPTIONS, ...FONT_OPTIONS],
+            validFor: /^[^[\]\n]*$/,
+        };
     };
 }
 
@@ -210,7 +214,9 @@ export function mediaCompletions(root, bucket) {
                     detail: MEDIA_KIND[d.format] || d.format,
                     apply: (view, _completion, from, to) => {
                         const slug =
-                            slugify(label).replace(/-/g, '_').replace(/\.[^.]*$/, '') || 'file';
+                            slugify(label)
+                                .replace(/-/g, '_')
+                                .replace(/\.[^.]*$/, '') || 'file';
                         // A silent animation is spelled `-loop` (pure/mediakind.js), so the
                         // renderer draws it looping rather than with a player.
                         const embed = `![${label}](/api/identity/${root}/docs/${d.doc_id}/body/${slug}${loopSuffix(d.media && d.media.animation)}.${MEDIA_EXT[d.format]})`;
@@ -272,7 +278,11 @@ export function mentionCompletions(root, also) {
             if (c.root === root || !standingFacts(c.facts)) continue;
             const nickname = (c.facts || {}).nickname;
             const known = people.get(c.root);
-            people.set(c.root, { root: c.root, name: c.name || (known && known.name) || '', label: nickname || c.name || (known && known.label) || '' });
+            people.set(c.root, {
+                root: c.root,
+                name: c.name || (known && known.name) || '',
+                label: nickname || c.name || (known && known.label) || '',
+            });
         }
         for (const d of roster) {
             if (d.root === root || people.has(d.root)) continue;
@@ -322,20 +332,46 @@ const SCHEMES = ['noir', 'terminal', 'parchment', 'hotdog-stand'];
 
 /// `head` opens it, `body` fills it, and `pick` is the part of the fill left selected.
 const blockDirectives = () => [
-    { label: ':::center', detail: t('completions.block-center', 'centre what it holds'), head: ':::center', body: 'text' },
-    { label: ':::right', detail: t('completions.block-right', 'align what it holds to the right'), head: ':::right', body: 'text' },
-    { label: ':::left', detail: t('completions.block-left', 'back to the left, inside a centre or a right'), head: ':::left', body: 'text' },
-    { label: ':::spoiler', detail: t('completions.block-spoiler', 'blur a whole passage or picture until pointed at'), head: ':::spoiler', body: 'text' },
+    {
+        label: ':::center',
+        detail: t('completions.block-center', 'centre what it holds'),
+        head: ':::center',
+        body: 'text',
+    },
+    {
+        label: ':::right',
+        detail: t('completions.block-right', 'align what it holds to the right'),
+        head: ':::right',
+        body: 'text',
+    },
+    {
+        label: ':::left',
+        detail: t('completions.block-left', 'back to the left, inside a centre or a right'),
+        head: ':::left',
+        body: 'text',
+    },
+    {
+        label: ':::spoiler',
+        detail: t('completions.block-spoiler', 'blur a whole passage or picture until pointed at'),
+        head: ':::spoiler',
+        body: 'text',
+    },
     {
         label: ':::table',
-        detail: t('completions.block-table', 'a table: a row per line, a cell per [c]…[/c], the first row as headings'),
+        detail: t(
+            'completions.block-table',
+            'a table: a row per line, a cell per [c]…[/c], the first row as headings',
+        ),
         head: ':::table header=row',
         body: '[c]heading[/c] [c]heading[/c]\n[c]cell[/c] [c]cell[/c]',
         pick: 'heading',
     },
     {
         label: ':::media',
-        detail: t('completions.block-media', 'size the picture it holds: small, medium, large, full, or pixels'),
+        detail: t(
+            'completions.block-media',
+            'size the picture it holds: small, medium, large, full, or pixels',
+        ),
         head: ':::media width=medium',
         body: 'picture',
     },
@@ -347,14 +383,19 @@ const blockDirectives = () => [
     })),
     {
         label: ':::section font=',
-        detail: t('completions.block-font', 'a passage in one font (the fonts are offered as you type)'),
+        detail: t(
+            'completions.block-font',
+            'a passage in one font (the fonts are offered as you type)',
+        ),
         head: ':::section font=serif',
         body: 'text',
         pick: 'serif',
     },
     ...Object.entries(LAYOUT_SLOTS).map(([layout, slots]) => ({
         label: `:::page layout=${layout}`,
-        detail: t('completions.block-layout', 'a page laid out in regions: {slots}', { slots: slots.join(', ') }),
+        detail: t('completions.block-layout', 'a page laid out in regions: {slots}', {
+            slots: slots.join(', '),
+        }),
         head: `:::page layout=${layout}`,
         body: slots.map((slot) => `:::section slot=${slot}\n${slot}\n:::`).join('\n'),
         pick: slots[0],
@@ -371,7 +412,10 @@ export function blockCompletions(context) {
     if (font) {
         return {
             from: context.pos - font[1].length,
-            options: Object.entries(FONTS).map(([token, family]) => ({ label: token, detail: family })),
+            options: Object.entries(FONTS).map(([token, family]) => ({
+                label: token,
+                detail: family,
+            })),
             validFor: /^[\w-]*$/,
         };
     }

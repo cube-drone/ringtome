@@ -62,10 +62,7 @@ const ASK_FRESHNESS_MS: i64 = 7 * 24 * 3600 * 1000;
 /// re-contact carries correctness - pushes were only ever latency.
 pub async fn prune_quiet_askers(node_db: &Db, now: i64) -> Result<u64> {
     node_db
-        .execute(
-            "DELETE FROM identity_demand WHERE last_asked_ms < ?1",
-            (now - ASK_FRESHNESS_MS,),
-        )
+        .execute("DELETE FROM identity_demand WHERE last_asked_ms < ?1", (now - ASK_FRESHNESS_MS,))
         .await
         .context("pruning quiet demand rows")
 }

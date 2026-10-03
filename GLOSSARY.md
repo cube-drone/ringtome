@@ -1,6 +1,6 @@
 # Glossary
 
-The project's vocabulary, grouped by layer. Terms marked *(planned)* exist in PROJECT_PLAN but
+The project's vocabulary, grouped by layer. Terms marked _(planned)_ exist in PROJECT_PLAN but
 not yet in code. The second section is the Cozyweb language mapping — which of these words users
 are ever allowed to meet, and in what costume.
 
@@ -9,8 +9,8 @@ are ever allowed to meet, and in what costume.
 - **Ringtome** — the protocol, and the reference node that speaks it (`ringtome`, `ringtome-proto`).
   Chains, identities, sync, the trust web. What another implementation would implement.
 - **Horse Drawing Tycoon 2** — the consumer application built on Ringtome: the desktop app and the UI, at
-  horsedrawingtycoon.com. What a person installs and opens. (2026-09-25; see PROJECT_PLAN's *Two
-  names*.)
+  horsedrawingtycoon.com. What a person installs and opens. (2026-09-25; see PROJECT_PLAN's _Two
+  names_.)
 - **Server / Device** — what a person calls the node when they administer it: the settings app is
   **Server** in a browser and **Device** in the desktop app (`node/js/apps/device.js`). "Node" is the
   protocol's word and stays off those screens. (2026-09-25)
@@ -18,18 +18,18 @@ are ever allowed to meet, and in what costume.
 ## Identity
 
 - **identity** — a person(a). Cryptographically: a tree of ed25519 keypairs. The root's public
-  key *is* the identity's global name, forever.
+  key _is_ the identity's global name, forever.
 - **root key** — the keypair whose pubkey names the identity. May go cold, retire, or die without
   ending the identity.
 - **key tree** — all of an identity's keys, related by signed authorizations, totally ordered by
   seniority. Computed locally from chain entries by any relying party (`proto::keytree`).
 - **leaf key** — a key held by one node to act as the identity there. A node holds only its own
   leaf, never the root or another node's leaf.
-- **recovery key** — a keypair minted at identity creation as the root's *first* child, handed to
+- **recovery key** — a keypair minted at identity creation as the root's _first_ child, handed to
   the user (the photo ceremony) and never persisted by the node. Structurally senior to every
   later key; the break-glass credential and the only reset-eligible key.
 - **rank path** — a key's position as the vector of birth indices from the root (root `[]`, first
-  child `[0]`, its second child `[0,1]`). Lexicographic comparison of rank paths *is* the
+  child `[0]`, its second child `[0,1]`). Lexicographic comparison of rank paths _is_ the
   authority order.
 - **seniority** — the entire authority relation: any senior key may revoke any junior one.
   Determined by rank path; birth order, never wall-clock time.
@@ -79,7 +79,7 @@ are ever allowed to meet, and in what costume.
   fingerprint cursor: matching cursor → live, any doubt → full snapshot. Writes never ride
   the socket (HTTP POST in, websocket out); the browser holds no keys, is never a device, and
   the cache is disposable — drop and re-stream; dropped unconditionally on logout. The
-  optimistic **shadow overlay** *(planned)* arrives with the notes editor, its first writer
+  optimistic **shadow overlay** _(planned)_ arrives with the notes editor, its first writer
   (PROJECT_PLAN, The Browser Is a View).
 - **journal** — the flat per-identity file (`journals/<root>.jnl`) of raw accepted entries,
   appended verbatim at ingest as plaintext length-prefixed frames — deliberately unencrypted,
@@ -92,27 +92,27 @@ are ever allowed to meet, and in what costume.
 ## Files & documents
 
 - **file** — content-addressed bytes in the node's blob store (iroh-blobs, BLAKE3): **immutable
-  and nameless by construction**, because the hash *is* the identity — "editing" a file can only
+  and nameless by construction**, because the hash _is_ the identity — "editing" a file can only
   mint a different file. Not the thing a user edits (that's a **document**); a file is one frozen
-  body. **Private** files are epoch-encrypted with a random nonce and addressed by *ciphertext*
+  body. **Private** files are epoch-encrypted with a random nonce and addressed by _ciphertext_
   hash; **public** files are plaintext, addressed by plaintext hash (dedup returns exactly where
   it's safe). The store is content-agnostic and **global per node** — files are identity-agnostic;
   the per-identity ledger is SQLite's job (`node/src/files.rs`).
 - **file hash** — a file's BLAKE3 name. For private files it is unforgeable and unlinkable: it
-  depends on the secret epoch key *and* a random per-file nonce, so nobody — member or not — can
+  depends on the secret epoch key _and_ a random per-file nonce, so nobody — member or not — can
   precompute a target's hash or reverse one to known content. Why serving needs no gate.
 - **document** — a stable identity whose versions form a DAG, bodies in the file
   layer. Format-agnostic: a note is a document with a text body; the same machinery versions
   anything with rolling states. **A document is a history of files wearing a name**: each version
   points at the file that is its frozen body; every edit mints a new file and repoints. What the
-  OS colloquially calls "a file" (the mutable, named, editable thing) is our *document*; our
-  *file* is invisible plumbing beneath it. Documenthood is opt-in — an image baked into a note
-  body is a file with no document (no id, no history); the same image *versioned in its own
-  right* is a document.
+  OS colloquially calls "a file" (the mutable, named, editable thing) is our _document_; our
+  _file_ is invisible plumbing beneath it. Documenthood is opt-in — an image baked into a note
+  body is a file with no document (no id, no history); the same image _versioned in its own
+  right_ is a document.
 - **doc_id** — a document's stable identity across all its versions; what taxonomies
   and publication reference — never version hashes, or every edit would shatter every reference.
 - **version** — one save: a small CBOR **header** `{doc_id, parents, file_hash,
-  title, format?, refs?}` appended to a chain. A version's identity is its entry hash. Whole-file
+title, format?, refs?}` appended to a chain. A version's identity is its entry hash. Whole-file
   snapshot, never a diff.
 - **parents** — the DAG edges: entry hashes this version was edited from. A list from
   day one (git's model): zero at genesis, one for a save, two-plus for a merge. Two saves sharing
@@ -120,7 +120,7 @@ are ever allowed to meet, and in what costume.
   capability.
 - **format** — which closed-enum interpretation the body bytes get (plaintext,
   Marquee, …). Never a free MIME string: the declared type is enforced, never trusted.
-- **refs** *(planned)* — a *derived* index of what a version's body references (file hashes,
+- **refs** _(planned)_ — a _derived_ index of what a version's body references (file hashes,
   doc-ids), extracted at save time so GC and backlinks never decrypt every body. The body stays
   the source of truth.
 - **pin** — retention machinery: `(root, blob hash)`, protecting one blob from GC on behalf of
@@ -146,30 +146,30 @@ are ever allowed to meet, and in what costume.
   the tree — interior nodes are titled sub-lists, multi-parent is allowed (a DAG), and a
   cycle never corrupts storage: `place` refuses the locally-visible one, and the tree read's
   visited set renders any merge-created loop (or a diamond's second visit) as a titled
-  stub-link. Published form *(planned)*: a taxonomy *document* — the tree folded into an
+  stub-link. Published form _(planned)_: a taxonomy _document_ — the tree folded into an
   ordered-references body at the membrane crossing (PROJECT_PLAN, Taxonomies).
 - **doc-meta chain** — the private chain (service 7) carrying annotations, tags, and
-  taxonomies: every private fact *about* documents. Its own chain, pre-graduated off
+  taxonomies: every private fact _about_ documents. Its own chain, pre-graduated off
   `general-private`, because annotation volume scales with library size and `service` is the
   only cleartext partition key on an encrypted chain.
 
 ## The network
 
 - **node** — a Rust server running this protocol, agenting identities for its users. Distinct
-  from a key: a node *holds* keys.
+  from a key: a node _holds_ keys.
 - **endpoint** — the node's iroh transport identity (its own keypair — never an identity key;
   signature domains keep the roles apart).
 - **sync** — the custom replication protocol over iroh QUIC: a **symmetric exchange** of Hello
   (frontiers) and entries, both directions, identity chains first.
 - **frontier** — a per-chain held range `[floor..head]`. A range, not a high-water mark, so
   chains can someday be held shallow (git-shallow-clone style) without a protocol break.
-- **validation gate** — the checks every arriving entry passes *before storage*: strict decode,
+- **validation gate** — the checks every arriving entry passes _before storage_: strict decode,
   signature, chain contiguity, tree membership, ceilings. Sync is the trust boundary.
 - **adoption** — the add-a-node ceremony: the joining node mints a leaf and emits a **request
   code**; the root's node authorizes it and emits a **grant code**; the joining node syncs,
   finds its authorization on-chain, and starts agenting.
 - **agenting** — holding a leaf key and acting for an identity (writing, signing). Contrast:
-- **fronting** *(planned)* — serving an identity's public data without holding any key. Serving
+- **fronting** _(planned)_ — serving an identity's public data without holding any key. Serving
   requires no authority; authoring does.
 - **serving record** — a small signed statement published under a leaf key: "this leaf serves
   root R at endpoint E." A pointer, never an authority — trust always comes from chain-to-root
@@ -184,27 +184,27 @@ are ever allowed to meet, and in what costume.
 - **monotonic memory** — a relying party never un-learns: the highest-authority statement seen
   is remembered forever, so eclipse can delay truth but not roll it back. (Implicit in the
   append-only store today; becomes an explicit component for remote identities.)
-- **the three lanes** — how visible a chain's content is, always a property of the *service
-  slot* and never a flag on an entry (**Copy, Don't Flip**): **sealed** (epoch-key ciphertext —
+- **the three lanes** — how visible a chain's content is, always a property of the _service
+  slot_ and never a flag on an entry (**Copy, Don't Flip**): **sealed** (epoch-key ciphertext —
   your private chains, and the two-party DM), **member-gated** (plaintext, served only to a peer
   presenting a member proof — a group's member lane), and **public** (served to whoever asks).
   Crossing between them is a re-sign, never a toggle.
 - **member proof** — a leaf signature over (root, its endpoint, our endpoint), channel-bound to
   the iroh connection, verified against the local key tree. What gates the sealed and
   member-gated lanes; unproven peers get neither entries nor frontiers, so cadence stays private.
-- **roster** *(planned — groups)* — a group's membership, as an LWW-element-set of member
-  identity **roots** on its member lane: plaintext (it *is* the ACL, so every serving node must
+- **roster** _(planned — groups)_ — a group's membership, as an LWW-element-set of member
+  identity **roots** on its member lane: plaintext (it _is_ the ACL, so every serving node must
   read it), but member-only (membership is not a public fact). It names identities and holds no
   keys, which is what makes ejection a computed fact rather than a minted one.
-- **invite tree** *(planned — groups)* — who admitted whom, in members' own personal keys. A
+- **invite tree** _(planned — groups)_ — who admitted whom, in members' own personal keys. A
   group's authority structure: seniority is invite depth, ties resolved by walking to the common
   ancestor — rank-path pointed at a different tree. Distinct from the group's own key tree, which
   is only its public voice.
 
-## Trust *(planned — Tier 5)*
+## Trust _(planned — Tier 5)_
 
 - **vouch** — "I met this human": the scarce, in-person-verified edge everything Sybil-resistant
-  is built on. A follow is *never* a vouch.
+  is built on. A follow is _never_ a vouch.
 - **trust / credibility / interest / taste** — the four scores; trust underlies the rest and is
   computed as joint network flow over vouch edges within a bounded horizon.
 - **contact name** — your private, never-synced-outside-your-identity label for someone; binds to
@@ -222,18 +222,18 @@ are ever allowed to meet, and in what costume.
 The UI teaches at most two or three concepts, each in domestic clothing. Everything in the left
 column is **banned from the UI permanently** (PROJECT_PLAN, The Cozyweb Surface).
 
-| engine room | the UI says |
-|---|---|
-| identity / key tree | you; your **persona**(s) — the single taught concept |
-| account (node login) | *(never a noun — "sign in", "new here?"; once a persona is open, the bar shows the persona and the username recedes)* |
-| divergence / diverged heads | a **conflict** (red chip) when edits genuinely overlap; just "merged" (green) when the read-time weave is clean; "two versions" in listings |
-| recovery key + photo ceremony | your **spare key** — "take a picture, keep it safe" |
-| adoption (request/grant codes) | "**invite this computer to be you**" (QR handshake) |
-| vouch | "**I know this person for real**" |
-| node / agenting | your computers / your places |
-| serve + publish record | **share** (sharing is what makes you findable) |
-| sync, chain, entry, seq, hash | *(invisible — no costume; they simply never surface)* |
-| repudiate | "**lock out** this computer" — the forceful door: its invitees are shut out with it, and the one question that decides the record is "was this computer you?" ("it was me until now" = anchored cut / "it was never me" = genesis cut). Status chip: "locked out" |
-| retire | "**have this computer leave**" — the voluntary door, gentle on purpose (everything it wrote stays good, invitees stay); on your own computer, "**leave this persona**". Status chip: "left". The two doors deliberately differ in *agency*, not just severity (settled 2026-07-30) |
-| standing / detach (a node discovering its own revocation) | the **farewell** (2026-07-31): "This computer has been locked out." / "This computer has left the persona." — a plain goodbye, one button ("okay - let it go"), and the node returns to "nobody lives here". Never a read-only ghost town |
-| pubkey | *(never text; rendered as the identicon)* |
+| engine room                                               | the UI says                                                                                                                                                                                                                                                                        |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| identity / key tree                                       | you; your **persona**(s) — the single taught concept                                                                                                                                                                                                                               |
+| account (node login)                                      | _(never a noun — "sign in", "new here?"; once a persona is open, the bar shows the persona and the username recedes)_                                                                                                                                                              |
+| divergence / diverged heads                               | a **conflict** (red chip) when edits genuinely overlap; just "merged" (green) when the read-time weave is clean; "two versions" in listings                                                                                                                                        |
+| recovery key + photo ceremony                             | your **spare key** — "take a picture, keep it safe"                                                                                                                                                                                                                                |
+| adoption (request/grant codes)                            | "**invite this computer to be you**" (QR handshake)                                                                                                                                                                                                                                |
+| vouch                                                     | "**I know this person for real**"                                                                                                                                                                                                                                                  |
+| node / agenting                                           | your computers / your places                                                                                                                                                                                                                                                       |
+| serve + publish record                                    | **share** (sharing is what makes you findable)                                                                                                                                                                                                                                     |
+| sync, chain, entry, seq, hash                             | _(invisible — no costume; they simply never surface)_                                                                                                                                                                                                                              |
+| repudiate                                                 | "**lock out** this computer" — the forceful door: its invitees are shut out with it, and the one question that decides the record is "was this computer you?" ("it was me until now" = anchored cut / "it was never me" = genesis cut). Status chip: "locked out"                  |
+| retire                                                    | "**have this computer leave**" — the voluntary door, gentle on purpose (everything it wrote stays good, invitees stay); on your own computer, "**leave this persona**". Status chip: "left". The two doors deliberately differ in _agency_, not just severity (settled 2026-07-30) |
+| standing / detach (a node discovering its own revocation) | the **farewell** (2026-07-31): "This computer has been locked out." / "This computer has left the persona." — a plain goodbye, one button ("okay - let it go"), and the node returns to "nobody lives here". Never a read-only ghost town                                          |
+| pubkey                                                    | _(never text; rendered as the identicon)_                                                                                                                                                                                                                                          |

@@ -63,10 +63,17 @@ fn hash64(bytes: &[u8]) -> u64 {
 /// A text's distinct three-word shingles: lowercased, everything but letters and digits a space,
 /// every overlapping run of three words. A text of one or two words is one shingle.
 pub fn shingles(text: &str) -> HashSet<u64> {
-    let normal: String = text.chars().map(|c| if c.is_alphanumeric() { c.to_lowercase().next().unwrap_or(c) } else { ' ' }).collect();
+    let normal: String = text
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c.to_lowercase().next().unwrap_or(c) } else { ' ' })
+        .collect();
     let words: Vec<&str> = normal.split_whitespace().collect();
     if words.len() < 3 {
-        return if words.is_empty() { HashSet::new() } else { HashSet::from([hash64(words.join(" ").as_bytes())]) };
+        return if words.is_empty() {
+            HashSet::new()
+        } else {
+            HashSet::from([hash64(words.join(" ").as_bytes())])
+        };
     }
     words.windows(3).map(|w| hash64(w.join(" ").as_bytes())).collect()
 }
@@ -102,7 +109,9 @@ pub fn stroke_shapes(body: &[u8]) -> HashSet<u64> {
 pub fn publication_measure(note_format: Option<Format>, body: &[u8]) -> (i64, i64) {
     match note_format {
         Some(Format::Drawing) => (0, stroke_shapes(body).len() as i64),
-        None | Some(Format::Marquee) | Some(Format::Plaintext) => (shingles(&String::from_utf8_lossy(body)).len() as i64, 0),
+        None | Some(Format::Marquee) | Some(Format::Plaintext) => {
+            (shingles(&String::from_utf8_lossy(body)).len() as i64, 0)
+        }
         Some(_) => (0, 0),
     }
 }
@@ -131,7 +140,8 @@ struct Line {
 }
 
 async fn banked(data: &Store) -> Result<HashSet<(String, String)>> {
-    let rows: Vec<(String, String)> = data.db().fetch_all("SELECT kind, source FROM bank_lines", ()).await?;
+    let rows: Vec<(String, String)> =
+        data.db().fetch_all("SELECT kind, source FROM bank_lines", ()).await?;
     Ok(rows.into_iter().collect())
 }
 
@@ -154,11 +164,22 @@ async fn bank(data: &Store, lines: Vec<Line>) -> Result<()> {
 const PUBLICATION_RULES: i64 = 2;
 
 async fn recount_stale_publications(data: &Store) -> Result<()> {
-    let rows: Vec<(String, String)> = data.db().fetch_all("SELECT source, detail FROM bank_lines WHERE kind = 'publication'", ()).await?;
+    let rows: Vec<(String, String)> = data
+        .db()
+        .fetch_all("SELECT source, detail FROM bank_lines WHERE kind = 'publication'", ())
+        .await?;
     for (source, detail) in rows {
-        let rules = serde_json::from_str::<serde_json::Value>(&detail).ok().and_then(|d| d["rules"].as_i64()).unwrap_or(1);
+        let rules = serde_json::from_str::<serde_json::Value>(&detail)
+            .ok()
+            .and_then(|d| d["rules"].as_i64())
+            .unwrap_or(1);
         if rules < PUBLICATION_RULES {
-            data.db().execute("DELETE FROM bank_lines WHERE kind = 'publication' AND source = ?1", (source,)).await?;
+            data.db()
+                .execute(
+                    "DELETE FROM bank_lines WHERE kind = 'publication' AND source = ?1",
+                    (source,),
+                )
+                .await?;
         }
     }
     Ok(())
@@ -168,11 +189,17 @@ async fn recount_stale_publications(data: &Store) -> Result<()> {
 /// meet the next poll's pass, and the next: three walks of the same shelf at once, each holding
 /// the persona's database (2026-10-01). A second caller waits for the first, then finds its work
 /// already banked.
-static CATCHING_UP: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static CATCHING_UP: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Bring the ledger up to date with what this computer holds.
 pub async fn catch_up(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
-    let lane = CATCHING_UP.lock().expect("bank lanes poisoned").entry(root_hex.to_string()).or_default().clone();
+    let lane = CATCHING_UP
+        .lock()
+        .expect("bank lanes poisoned")
+        .entry(root_hex.to_string())
+        .or_default()
+        .clone();
     let _turn = lane.lock().await;
     catch_up_now(state, data, root_hex).await
 }
@@ -183,7 +210,8 @@ const CORNER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Per persona: when the corner last caught up, and the database files' mtime just BEFORE it
 /// ran - so a write landing during the run reads as a change, and the next poll runs again.
-static CORNER_SEEN: LazyLock<Mutex<HashMap<String, (std::time::Instant, i64)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static CORNER_SEEN: LazyLock<Mutex<HashMap<String, (std::time::Instant, i64)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The corner balance's catch-up: skipped while the persona's files haven't moved since the
 /// last one and it was under a minute ago. The corner asks every ten seconds and on every
@@ -202,7 +230,10 @@ async fn catch_up_for_corner(state: &AppState, data: &Store, root_hex: &str) -> 
     }
     catch_up(state, data, root_hex).await?;
     if let Some(files) = files {
-        CORNER_SEEN.lock().expect("corner marks poisoned").insert(root_hex.to_string(), (started, files));
+        CORNER_SEEN
+            .lock()
+            .expect("corner marks poisoned")
+            .insert(root_hex.to_string(), (started, files));
     }
     Ok(())
 }
@@ -236,17 +267,33 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                 Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
                     let source = hex::encode(doc_id);
                     if v.header.parents.is_empty() && is_new("image", &source) {
-                        lines.push(Line { kind: "image", source, pennies: PER_IMAGE, at_ms: v.timestamp_ms, detail: json!({ "title": title }) });
+                        lines.push(Line {
+                            kind: "image",
+                            source,
+                            pennies: PER_IMAGE,
+                            at_ms: v.timestamp_ms,
+                            detail: json!({ "title": title }),
+                        });
                     }
                 }
                 Format::Marquee | Format::Plaintext | Format::Drawing => {
-                    let (kind, rate) = if format == Format::Drawing { ("strokes", PER_STROKE) } else { ("words", PER_WORD) };
+                    let (kind, rate) = if format == Format::Drawing {
+                        ("strokes", PER_STROKE)
+                    } else {
+                        ("words", PER_WORD)
+                    };
                     let source = hex::encode(hash);
                     if !is_new(kind, &source) {
                         continue;
                     }
                     let Some(body) = body_of(v).await else { continue };
-                    let measure = |b: &[u8]| if format == Format::Drawing { stroke_shapes(b) } else { shingles(&String::from_utf8_lossy(b)) };
+                    let measure = |b: &[u8]| {
+                        if format == Format::Drawing {
+                            stroke_shapes(b)
+                        } else {
+                            shingles(&String::from_utf8_lossy(b))
+                        }
+                    };
                     let mut before: HashSet<u64> = HashSet::new();
                     let mut readable = true;
                     for p in &v.header.parents {
@@ -262,7 +309,13 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                         continue; // a parent this computer can't read yet: a later pass
                     }
                     let added = measure(&body).difference(&before).count() as i64;
-                    lines.push(Line { kind, source, pennies: added * rate, at_ms: v.timestamp_ms, detail: json!({ "title": title, "count": added }) });
+                    lines.push(Line {
+                        kind,
+                        source,
+                        pennies: added * rate,
+                        at_ms: v.timestamp_ms,
+                        detail: json!({ "title": title, "count": added }),
+                    });
                 }
                 _ => {}
             }
@@ -293,7 +346,12 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         let note_format = note_head.map(|nv| Format::from_wire(nv.header.format));
         let body = match note_head {
             Some(nv) => body_of(nv).await,
-            None if !v.header.trusted_only => state.files.get_public(iroh_blobs::Hash::from_bytes(v.header.file_hash)).await.ok().flatten(),
+            None if !v.header.trusted_only => state
+                .files
+                .get_public(iroh_blobs::Hash::from_bytes(v.header.file_hash))
+                .await
+                .ok()
+                .flatten(),
             None => None,
         };
         let Some(body) = body else { continue };
@@ -312,7 +370,13 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     }
 
     // Heartbeats: one a day, however many computers sent one.
-    if let Ok(entries) = crate::record::imaol::entries_of_type(data.db(), ringtome_proto::registry::service::PROFILE_PUBLIC, ringtome_proto::registry::entry_type::PROFILE_SET).await {
+    if let Ok(entries) = crate::record::imaol::entries_of_type(
+        data.db(),
+        ringtome_proto::registry::service::PROFILE_PUBLIC,
+        ringtome_proto::registry::entry_type::PROFILE_SET,
+    )
+    .await
+    {
         for e in entries {
             let ringtome_proto::Payload::Inline(p) = &e.entry().payload else { continue };
             let Ok(ps) = ringtome_proto::ProfileSet::decode(p) else { continue };
@@ -320,8 +384,16 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                 continue;
             }
             let Some(day) = crate::heartbeat::day_of_date(&ps.value) else { continue };
-            if is_new("heartbeat", &ps.value) && !lines.iter().any(|l| l.kind == "heartbeat" && l.source == ps.value) {
-                lines.push(Line { kind: "heartbeat", source: ps.value, pennies: PER_HEARTBEAT, at_ms: i64::from(day) * 86_400_000, detail: json!({}) });
+            if is_new("heartbeat", &ps.value)
+                && !lines.iter().any(|l| l.kind == "heartbeat" && l.source == ps.value)
+            {
+                lines.push(Line {
+                    kind: "heartbeat",
+                    source: ps.value,
+                    pennies: PER_HEARTBEAT,
+                    at_ms: i64::from(day) * 86_400_000,
+                    detail: json!({}),
+                });
             }
         }
     }
@@ -329,46 +401,99 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // Chat: lines said, reactions given, reactions received.
     for (hash, at) in crate::chat::lines_by(&state.node_db, root_hex).await.unwrap_or_default() {
         if is_new("chat", &hash) {
-            lines.push(Line { kind: "chat", source: hash, pennies: PER_CHAT_LINE, at_ms: at, detail: json!({}) });
+            lines.push(Line {
+                kind: "chat",
+                source: hash,
+                pennies: PER_CHAT_LINE,
+                at_ms: at,
+                detail: json!({}),
+            });
         }
     }
-    for (hash, at) in crate::chat::reactions_by(&state.node_db, root_hex).await.unwrap_or_default() {
+    for (hash, at) in crate::chat::reactions_by(&state.node_db, root_hex).await.unwrap_or_default()
+    {
         if is_new("reaction", &hash) {
-            lines.push(Line { kind: "reaction", source: hash, pennies: PER_REACTION_GIVEN, at_ms: at, detail: json!({}) });
+            lines.push(Line {
+                kind: "reaction",
+                source: hash,
+                pennies: PER_REACTION_GIVEN,
+                at_ms: at,
+                detail: json!({}),
+            });
         }
     }
-    for (hash, at, who) in crate::chat::reactions_to(&state.node_db, root_hex).await.unwrap_or_default() {
+    for (hash, at, who) in
+        crate::chat::reactions_to(&state.node_db, root_hex).await.unwrap_or_default()
+    {
         if is_new("reacted", &hash) {
-            lines.push(Line { kind: "reacted", source: hash, pennies: PER_REACTION_RECEIVED, at_ms: at, detail: json!({ "by": who }) });
+            lines.push(Line {
+                kind: "reacted",
+                source: hash,
+                pennies: PER_REACTION_RECEIVED,
+                at_ms: at,
+                detail: json!({ "by": who }),
+            });
         }
     }
 
     // Post reactions: emoji said about posts, and about the persona's own.
     for a in crate::record::imaol::public_annotations(data.db()).await.unwrap_or_default() {
-        if !a.present || a.key != "tag" || !crate::annotations::is_emoji_tag(&a.value) || a.target_author == root_hex {
+        if !a.present
+            || a.key != "tag"
+            || !crate::annotations::is_emoji_tag(&a.value)
+            || a.target_author == root_hex
+        {
             continue;
         }
         let source = format!("{}:{}:{}", a.target_author, hex::encode(a.target_doc), a.value);
         if is_new("post_reaction", &source) {
-            lines.push(Line { kind: "post_reaction", source, pennies: PER_REACTION_GIVEN, at_ms: a.received_at_ms, detail: json!({ "emoji": a.value }) });
+            lines.push(Line {
+                kind: "post_reaction",
+                source,
+                pennies: PER_REACTION_GIVEN,
+                at_ms: a.received_at_ms,
+                detail: json!({ "emoji": a.value }),
+            });
         }
     }
-    for (who, doc, emoji, at) in crate::annotations::emoji_received(&state.node_db, root_hex).await.unwrap_or_default() {
+    for (who, doc, emoji, at) in
+        crate::annotations::emoji_received(&state.node_db, root_hex).await.unwrap_or_default()
+    {
         let source = format!("{who}:{doc}:{emoji}");
         if is_new("post_reacted", &source) {
-            lines.push(Line { kind: "post_reacted", source, pennies: PER_REACTION_RECEIVED, at_ms: at, detail: json!({ "by": who, "emoji": emoji }) });
+            lines.push(Line {
+                kind: "post_reacted",
+                source,
+                pennies: PER_REACTION_RECEIVED,
+                at_ms: at,
+                detail: json!({ "by": who, "emoji": emoji }),
+            });
         }
     }
 
     // Published edges, either way: once per pair, ever.
     for (subject, row) in data.public_edges().published().await.unwrap_or_default() {
         if subject != root_hex && !row.edge.is_empty() && is_new("follow", &subject) {
-            lines.push(Line { kind: "follow", source: subject.clone(), pennies: PER_FOLLOW, at_ms: row.received_at_ms, detail: json!({ "of": subject }) });
+            lines.push(Line {
+                kind: "follow",
+                source: subject.clone(),
+                pennies: PER_FOLLOW,
+                at_ms: row.received_at_ms,
+                detail: json!({ "of": subject }),
+            });
         }
     }
-    for (author, _, _) in crate::edgegraph::edges_naming(&state.node_db, root_hex).await.unwrap_or_default() {
+    for (author, _, _) in
+        crate::edgegraph::edges_naming(&state.node_db, root_hex).await.unwrap_or_default()
+    {
         if author != root_hex && is_new("followed", &author) {
-            lines.push(Line { kind: "followed", source: author.clone(), pennies: PER_FOLLOW, at_ms: crate::clock::now_ms(), detail: json!({ "by": author }) });
+            lines.push(Line {
+                kind: "followed",
+                source: author.clone(),
+                pennies: PER_FOLLOW,
+                at_ms: crate::clock::now_ms(),
+                detail: json!({ "by": author }),
+            });
         }
     }
 
@@ -386,13 +511,22 @@ pub struct Bond {
 
 /// Every instrument the persona holds, oldest first.
 pub async fn bonds(data: &Store) -> Result<Vec<Bond>> {
-    let (registers, _) = data.private_registers(INSTRUMENTS).all().await.map_err(|e| anyhow::anyhow!("reading instruments: {e}"))?;
+    let (registers, _) = data
+        .private_registers(INSTRUMENTS)
+        .all()
+        .await
+        .map_err(|e| anyhow::anyhow!("reading instruments: {e}"))?;
     let mut out: Vec<Bond> = registers
         .into_iter()
         .filter_map(|r| {
             let v: serde_json::Value = serde_json::from_str(&r.value).ok()?;
             (v["kind"] == "horsebond").then_some(())?;
-            Some(Bond { id: r.key, pennies: v["pennies"].as_str()?.parse().ok()?, bought_ms: v["bought_ms"].as_i64()?, sold_ms: v["sold_ms"].as_i64() })
+            Some(Bond {
+                id: r.key,
+                pennies: v["pennies"].as_str()?.parse().ok()?,
+                bought_ms: v["bought_ms"].as_i64()?,
+                sold_ms: v["sold_ms"].as_i64(),
+            })
         })
         .collect();
     out.sort_by_key(|b| (b.bought_ms, b.id.clone()));
@@ -407,15 +541,25 @@ async fn instruments(data: &Store) -> Result<()> {
     let have = banked(data).await?;
     let is_new = |kind: &str, source: &str| !have.contains(&(kind.to_string(), source.to_string()));
     let days: Vec<String> = {
-        let mut d: Vec<(String,)> = data.db().fetch_all("SELECT source FROM bank_lines WHERE kind = 'heartbeat'", ()).await?;
+        let mut d: Vec<(String,)> = data
+            .db()
+            .fetch_all("SELECT source FROM bank_lines WHERE kind = 'heartbeat'", ())
+            .await?;
         d.sort();
         d.into_iter().map(|(s,)| s).collect()
     };
-    let day_ms = |date: &str| i64::from(crate::heartbeat::day_of_date(date).unwrap_or(0)) * 86_400_000;
+    let day_ms =
+        |date: &str| i64::from(crate::heartbeat::day_of_date(date).unwrap_or(0)) * 86_400_000;
     let mut lines: Vec<Line> = Vec::new();
     for bond in bonds(data).await? {
         if is_new("bond", &bond.id) {
-            lines.push(Line { kind: "bond", source: bond.id.clone(), pennies: -bond.pennies, at_ms: bond.bought_ms, detail: json!({ "price": bond.pennies.to_string() }) });
+            lines.push(Line {
+                kind: "bond",
+                source: bond.id.clone(),
+                pennies: -bond.pennies,
+                at_ms: bond.bought_ms,
+                detail: json!({ "price": bond.pennies.to_string() }),
+            });
         }
         let bought_day = crate::heartbeat::utc_date(bond.bought_ms);
         // A sold bond (2026-09-30) pays no day from the day it was sold, and never matures.
@@ -427,17 +571,35 @@ async fn instruments(data: &Store) -> Result<()> {
             .collect();
         if let Some(sold) = bond.sold_ms {
             if is_new("bond_sold", &bond.id) {
-                lines.push(Line { kind: "bond_sold", source: bond.id.clone(), pennies: bond.pennies, at_ms: sold, detail: json!({ "bond": bond.id }) });
+                lines.push(Line {
+                    kind: "bond_sold",
+                    source: bond.id.clone(),
+                    pennies: bond.pennies,
+                    at_ms: sold,
+                    detail: json!({ "bond": bond.id }),
+                });
             }
         }
         for (n, date) in paying.iter().enumerate() {
             let source = format!("{}:{date}", bond.id);
             if is_new("bond_interest", &source) {
-                lines.push(Line { kind: "bond_interest", source, pennies: bond.pennies / 100, at_ms: day_ms(date), detail: json!({ "bond": bond.id, "day": n + 1 }) });
+                lines.push(Line {
+                    kind: "bond_interest",
+                    source,
+                    pennies: bond.pennies / 100,
+                    at_ms: day_ms(date),
+                    detail: json!({ "bond": bond.id, "day": n + 1 }),
+                });
             }
         }
         if bond.sold_ms.is_none() && paying.len() == BOND_DAYS && is_new("bond_matured", &bond.id) {
-            lines.push(Line { kind: "bond_matured", source: bond.id.clone(), pennies: bond.pennies, at_ms: day_ms(paying[BOND_DAYS - 1]), detail: json!({ "bond": bond.id }) });
+            lines.push(Line {
+                kind: "bond_matured",
+                source: bond.id.clone(),
+                pennies: bond.pennies,
+                at_ms: day_ms(paying[BOND_DAYS - 1]),
+                detail: json!({ "bond": bond.id }),
+            });
         }
     }
     bank(data, lines).await?;
@@ -462,13 +624,20 @@ async fn instruments(data: &Store) -> Result<()> {
         }
         // Toward zero, then held to what one line can carry (debt past 9.2 x 10^16 H$ saturates
         // until the ledger keeps true bigints).
-        let charge = (balance * i128::from(DEBT_RATE.0) / i128::from(DEBT_RATE.1)).clamp(i128::from(i64::MIN), 0) as i64;
+        let charge = (balance * i128::from(DEBT_RATE.0) / i128::from(DEBT_RATE.1))
+            .clamp(i128::from(i64::MIN), 0) as i64;
         if charge == 0 {
             continue;
         }
         let at = end - 1;
         ledger.push((at, i128::from(charge)));
-        charges.push(Line { kind: "debt_interest", source: date.clone(), pennies: charge, at_ms: at, detail: json!({ "balance": balance.to_string() }) });
+        charges.push(Line {
+            kind: "debt_interest",
+            source: date.clone(),
+            pennies: charge,
+            at_ms: at,
+            detail: json!({ "balance": balance.to_string() }),
+        });
     }
     bank(data, charges).await
 }
@@ -490,14 +659,25 @@ pub async fn buy_handler(
 ) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
     use crate::error::AppError;
     if req.kind != "horsebond" {
-        return Err(AppError::BadRequest(crate::msg!("bank.no-such-instrument", "no such instrument")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.no-such-instrument",
+            "no such instrument"
+        )));
     }
-    let pennies: i64 = req.pennies.parse().map_err(|_| AppError::BadRequest(crate::msg!("bank.not-an-amount", "that isn't an amount")))?;
+    let pennies: i64 = req.pennies.parse().map_err(|_| {
+        AppError::BadRequest(crate::msg!("bank.not-an-amount", "that isn't an amount"))
+    })?;
     if pennies < BOND_MIN {
-        return Err(AppError::BadRequest(crate::msg!("bank.a-horsebond-costs-at-least", "a hrseBond costs at least H$ 2,000")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.a-horsebond-costs-at-least",
+            "a hrseBond costs at least H$ 2,000"
+        )));
     }
     if pennies > BOND_MAX {
-        return Err(AppError::BadRequest(crate::msg!("bank.a-hrsebond-costs-at-most", "a hrseBond costs at most H$ 1,000,000")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.a-hrsebond-costs-at-most",
+            "a hrseBond costs at most H$ 1,000,000"
+        )));
     }
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     // No overdraft (Curtis, 2026-09-30: "should not allow any transaction that would spend more
@@ -505,7 +685,10 @@ pub async fn buy_handler(
     // happens - two computers buying at once, each affording it alone - and is still charged.
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
     if balance(&data).await.map_err(AppError::Internal)? < i128::from(pennies) {
-        return Err(AppError::BadRequest(crate::msg!("bank.you-cant-afford-that", "you can't afford that")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.you-cant-afford-that",
+            "you can't afford that"
+        )));
     }
     let id = {
         use rand::RngCore;
@@ -532,18 +715,29 @@ pub async fn sell_handler(
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
     if balance(&data).await.map_err(AppError::Internal)? >= 0 {
-        return Err(AppError::BadRequest(crate::msg!("bank.sell-only-in-debt", "a hrseBond can be sold only to get out of debt")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.sell-only-in-debt",
+            "a hrseBond can be sold only to get out of debt"
+        )));
     }
-    let Some(bond) = bonds(&data).await.map_err(AppError::Internal)?.into_iter().find(|b| b.id == id) else {
+    let Some(bond) =
+        bonds(&data).await.map_err(AppError::Internal)?.into_iter().find(|b| b.id == id)
+    else {
         return Err(AppError::NotFound(crate::msg!("bank.no-such-bond", "no such hrseBond")));
     };
     let matured: Option<(i64,)> = data
         .db()
-        .fetch_optional("SELECT 1 FROM bank_lines WHERE kind = 'bond_matured' AND source = ?1", (id.as_str(),))
+        .fetch_optional(
+            "SELECT 1 FROM bank_lines WHERE kind = 'bond_matured' AND source = ?1",
+            (id.as_str(),),
+        )
         .await
         .map_err(AppError::Internal)?;
     if bond.sold_ms.is_some() || matured.is_some() {
-        return Err(AppError::BadRequest(crate::msg!("bank.nothing-to-sell", "that hrseBond has nothing left to sell")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.nothing-to-sell",
+            "that hrseBond has nothing left to sell"
+        )));
     }
     let value = json!({ "kind": "horsebond", "pennies": bond.pennies.to_string(), "bought_ms": bond.bought_ms, "sold_ms": crate::clock::now_ms() }).to_string();
     data.private_registers(INSTRUMENTS).set(&id, &value).await?;
@@ -555,7 +749,17 @@ pub async fn sell_handler(
 /// or sinking one into debt, without the months of earning either would take.
 pub async fn credit_for_test(data: &Store, pennies: i64) -> Result<()> {
     let source = format!("{}", crate::clock::now_ms());
-    bank(data, vec![Line { kind: "test_credit", source, pennies, at_ms: crate::clock::now_ms(), detail: json!({}) }]).await
+    bank(
+        data,
+        vec![Line {
+            kind: "test_credit",
+            source,
+            pennies,
+            at_ms: crate::clock::now_ms(),
+            detail: json!({}),
+        }],
+    )
+    .await
 }
 
 /// The balance, in horsepennies, summed exactly.
@@ -598,7 +802,9 @@ pub async fn bank_handler(
 ) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     if q.lines == Some(0) {
-        catch_up_for_corner(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
+        catch_up_for_corner(&state, &data, &root)
+            .await
+            .map_err(crate::error::AppError::Internal)?;
         let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
         return Ok(axum::Json(json!({ "balance": total.to_string() })));
     }
@@ -616,7 +822,11 @@ pub async fn bank_handler(
         slot.0 += 1;
         slot.1 += i128::from(p);
     }
-    let month = q.month.clone().filter(|m| months.contains_key(m)).or_else(|| months.keys().next_back().cloned());
+    let month = q
+        .month
+        .clone()
+        .filter(|m| months.contains_key(m))
+        .or_else(|| months.keys().next_back().cloned());
     let (from, to) = month.as_deref().and_then(month_bounds).unwrap_or((0, 0));
     let rows: Vec<(String, String, i64, i64, String)> = data
         .db()
@@ -632,7 +842,8 @@ pub async fn bank_handler(
         .fetch_all("SELECT kind, SUM(pennies) FROM bank_lines GROUP BY kind", ())
         .await
         .map_err(crate::error::AppError::Internal)?;
-    let by_kind: BTreeMap<String, String> = kinds.into_iter().map(|(k, p)| (k, p.to_string())).collect();
+    let by_kind: BTreeMap<String, String> =
+        kinds.into_iter().map(|(k, p)| (k, p.to_string())).collect();
     let lines: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|(kind, source, pennies, at_ms, detail)| {
@@ -669,7 +880,9 @@ pub async fn bank_handler(
         .rev()
         .map(|(m, (count, pennies))| json!({ "month": m, "lines": count, "pennies": pennies.to_string() }))
         .collect();
-    Ok(axum::Json(json!({ "balance": total.to_string(), "by_kind": by_kind, "instruments": instruments, "months": months, "month": month, "lines": lines })))
+    Ok(axum::Json(
+        json!({ "balance": total.to_string(), "by_kind": by_kind, "instruments": instruments, "months": months, "month": month, "lines": lines }),
+    ))
 }
 
 #[cfg(test)]
@@ -682,7 +895,11 @@ mod tests {
     fn shingles_count_what_repetition_never_adds() {
         let once = "The quick brown fox jumps over the lazy dog.";
         assert_eq!(shingles(once).len(), 7);
-        assert_eq!(shingles(&format!("{once} {once}")).len(), 9, "the seam adds two; the second copy adds none");
+        assert_eq!(
+            shingles(&format!("{once} {once}")).len(),
+            9,
+            "the seam adds two; the second copy adds none"
+        );
         assert_eq!(shingles("THE QUICK, brown fox!"), shingles("the quick brown fox"));
         assert_eq!(shingles("two words").len(), 1);
         assert!(shingles("  ").is_empty());
@@ -713,7 +930,11 @@ mod tests {
         assert!(as_words > 100, "read as words, the JSON is a novel: {as_words}");
         assert_eq!(publication_measure(Some(Format::Drawing), body.as_bytes()), (0, 40));
         assert_eq!(publication_measure(Some(Format::Marquee), b"one two three four"), (2, 0));
-        assert_eq!(publication_measure(Some(Format::Avif), b"\x89PNG noise noise noise"), (0, 0), "a picture brings no words");
+        assert_eq!(
+            publication_measure(Some(Format::Avif), b"\x89PNG noise noise noise"),
+            (0, 0),
+            "a picture brings no words"
+        );
     }
 
     /// A month's bounds, December rolling into the next year; nonsense is nothing.

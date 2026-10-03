@@ -49,7 +49,8 @@ export const slugify = (s) =>
 
 /// Path segments (those after `/home`) as the resolver wants them: blanks dropped, percent-escapes
 /// undone. Separate so the shell and the matcher cannot disagree about what a segment is.
-export const pathSegments = (segs) => (segs || []).filter(Boolean).map((s) => decodeURIComponent(s));
+export const pathSegments = (segs) =>
+    (segs || []).filter(Boolean).map((s) => decodeURIComponent(s));
 
 /// The bucket a first segment names, or null. App ids win (their home bucket); then slugified
 /// bucket names off the roster, ties to the lowest NAME.
@@ -73,7 +74,9 @@ export const BUCKET_PREFIX = 'in';
 export function bucketHref(bucketName, roster) {
     const app = appForStyle(appTypeOf(bucketName, roster));
     if (!app) return '/ringtome';
-    return bucketName === app.style ? `/ringtome/${app.id}` : `/ringtome/${app.id}/notebook/${slugify(bucketName)}`;
+    return bucketName === app.style
+        ? `/ringtome/${app.id}`
+        : `/ringtome/${app.id}/notebook/${slugify(bucketName)}`;
 }
 
 /// Where a document opens (2026-09-28): the notebook and the app around it. The notebook the
@@ -130,8 +133,7 @@ export const bucketNameFor = (row, bucket) => {
 
 /// Does resolving this path need the bucket's tree? Only when there are middle segments to walk
 /// and the tail isn't already canonical - so the shell can skip fetching a tree it won't read.
-export const needsTree = (parts) =>
-    parts.length > 2 && !HEX_ID.test(parts[parts.length - 1]);
+export const needsTree = (parts) => parts.length > 2 && !HEX_ID.test(parts[parts.length - 1]);
 
 /// The lowest of a set of ids, which is how every tie in here breaks.
 const lowest = (ids) => ids.slice().sort()[0];
@@ -179,7 +181,7 @@ export function matchSlugPath(segs, { roster, docs, tree } = {}, { cozy = false 
             const hit = lowest(
                 (node.members || [])
                     .filter((m) => m.doc && slugify(m.doc.title || '') === last)
-                    .map((m) => m.doc_id)
+                    .map((m) => m.doc_id),
             );
             if (hit) return { appId: app.id, docId: hit };
         }
@@ -190,7 +192,7 @@ export function matchSlugPath(segs, { roster, docs, tree } = {}, { cozy = false 
         (docs || [])
             .filter((d) => (d.buckets || []).includes(bucketName))
             .filter((d) => slugify(d.title || '') === last)
-            .map((d) => d.doc_id)
+            .map((d) => d.doc_id),
     );
     return hit ? { appId: app.id, docId: hit } : null;
 }

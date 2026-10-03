@@ -30,7 +30,8 @@ import { PersonRow } from './person.js';
 const CopyChain = ({ author, annotations }) => {
     const roots = [];
     for (const a of annotations || []) {
-        if (a.key === 'provenance' && a.annotator === author && !roots.includes(a.value)) roots.push(a.value);
+        if (a.key === 'provenance' && a.annotator === author && !roots.includes(a.value))
+            roots.push(a.value);
     }
     if (roots.length === 0) return null;
     return html`<section class="copy-chain">
@@ -154,77 +155,115 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
 
     return html`
         <div class="postpage">
-            ${/* No separate byline at all: the entry below carries the author's clickable
-                profile, exactly as it does in the feed - the page is the post, alone. */ ''}
-            ${post === undefined &&
-            html`<p class="postpage-loading">${t('postpage.looking-for-the-post', 'looking for the post…')}</p>`}
-            ${post === null &&
-            html`<p class="postpage-missing">
+            ${
+                /* No separate byline at all: the entry below carries the author's clickable
+                profile, exactly as it does in the feed - the page is the post, alone. */ ''
+            }
+            ${
+                post === undefined &&
+                html`<p class="postpage-loading">${t('postpage.looking-for-the-post', 'looking for the post…')}</p>`
+            }
+            ${
+                post === null &&
+                html`<p class="postpage-missing">
                 ${t(
                     'postpage.no-such-post-is-held',
-                    'no such post is held here - it may be private, taken down, or its author unreachable'
+                    'no such post is held here - it may be private, taken down, or its author unreachable',
                 )}
-            </p>`}
-            ${/* The parent, when this post is itself a reply: the conversation it belongs
+            </p>`
+            }
+            ${
+                /* The parent, when this post is itself a reply: the conversation it belongs
                 to, one hop up (PROJECT_PLAN's Replies slice 3 - "parent context above, replies
                 below"). The card degrades to a bare "link" when the parent's header is not
-                readable here - the hollow case, honestly. */ ''}
-            ${/* The thread's root FIRST when this reply sits deeper than depth one
+                readable here - the hollow case, honestly. */ ''
+            }
+            ${
+                /* The thread's root FIRST when this reply sits deeper than depth one
                 (Curtis, 2026-08-28) - the conversation's subject, then the words these
-                answer, then the reply: reading downward like the thread itself. */ ''}
-            ${post &&
-            post.thread_root &&
-            post.reply_to &&
-            (post.thread_root.author !== post.reply_to.author ||
-                post.thread_root.doc_id !== post.reply_to.doc_id) &&
-            html`<${ParentContext} link=${post.thread_root} root=${true} />`}
+                answer, then the reply: reading downward like the thread itself. */ ''
+            }
+            ${
+                post &&
+                post.thread_root &&
+                post.reply_to &&
+                (post.thread_root.author !== post.reply_to.author ||
+                    post.thread_root.doc_id !== post.reply_to.doc_id) &&
+                html`<${ParentContext} link=${post.thread_root} root=${true} />`
+            }
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
-            ${/* A book opens as its reader (PROJECT_PLAN's Books, slice 4), and so does a page of one:
-                the book's tree beside the page, since a page is a place in a book first. */ ''}
-            ${item && isBook &&
-            html`<${BookReader} root=${root} book=${post.doc_id} page=${page || null} title=${post.title} />`}
-            ${item && !isBook && partOf &&
-            html`<${BookReader} root=${root} book=${partOf} page=${post.doc_id} />`}
-            ${item && !isBook && !partOf &&
-            html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} standalone=${true} />`}
-            ${/* The author's wish (PROJECT_PLAN's Post visibility): a settled post has no thread section and
-                no reply box - just the honest word for why. */ ''}
-            ${item &&
-            item.settled &&
-            html`<p class="thread-settled">
+            ${
+                /* A book opens as its reader (PROJECT_PLAN's Books, slice 4), and so does a page of one:
+                the book's tree beside the page, since a page is a place in a book first. */ ''
+            }
+            ${
+                item &&
+                isBook &&
+                html`<${BookReader} root=${root} book=${post.doc_id} page=${page || null} title=${post.title} />`
+            }
+            ${
+                item &&
+                !isBook &&
+                partOf &&
+                html`<${BookReader} root=${root} book=${partOf} page=${post.doc_id} />`
+            }
+            ${
+                item &&
+                !isBook &&
+                !partOf &&
+                html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} standalone=${true} />`
+            }
+            ${
+                /* The author's wish (PROJECT_PLAN's Post visibility): a settled post has no thread section and
+                no reply box - just the honest word for why. */ ''
+            }
+            ${
+                item &&
+                item.settled &&
+                html`<p class="thread-settled">
                 ${t('postpage.the-author-settled-this', 'the author turned off comments for this post')}
-            </p>`}
-            ${/* A room takes no replies (Curtis, 2026-09-18): the conversation is inside it,
-                and the card's tail shows it moving. */ ''}
-            ${item &&
-            !item.settled &&
-            !isRoom &&
-            html`<section class="thread">
+            </p>`
+            }
+            ${
+                /* A room takes no replies (Curtis, 2026-09-18): the conversation is inside it,
+                and the card's tail shows it moving. */ ''
+            }
+            ${
+                item &&
+                !item.settled &&
+                !isRoom &&
+                html`<section class="thread">
                 <h2 class="thread-head">
                     ${t('postpage.replies-known-here', 'replies known here')}
-                    ${current &&
-                    current.root &&
-                    html`<select
+                    ${
+                        current &&
+                        current.root &&
+                        html`<select
                         class="thread-order"
                         title=${t('postpage.reply-order-title', 'how each level of replies is ordered - hot and best by what the people you trust and follow liked')}
                         value=${replyOrder}
                         onChange=${(e) => moveReplyOrder(e.currentTarget.value)}
                     >
                         ${REPLY_SORTS.map((key) => html`<option value=${key} key=${key}>${REPLY_WORDS[key]()}</option>`)}
-                    </select>`}
-                    ${!item.mine &&
-                    html`<button
+                    </select>`
+                    }
+                    ${
+                        !item.mine &&
+                        html`<button
                         class="thread-refresh"
                         title=${t('postpage.ask-the-author-again', 'check for new replies')}
                         onClick=${() => setRefreshKey((k) => k + 1)}
-                    >${t('postpage.refresh', 'refresh')}</button>`}
+                    >${t('postpage.refresh', 'refresh')}</button>`
+                    }
                 </h2>
-                ${item.mine &&
-                html`<${HeldReplies}
+                ${
+                    item.mine &&
+                    html`<${HeldReplies}
                     root=${root}
                     doc=${threadDoc}
                     onNod=${() => setRefreshKey((k) => k + 1)}
-                />`}
+                />`
+                }
                 <${Thread}
                     author=${root}
                     doc=${threadDoc}
@@ -234,18 +273,23 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     refreshKey=${refreshKey}
                     order=${replyOrder}
                 />
-                ${/* The reply box comes AFTER the conversation (Curtis, 2026-08-28): you
+                ${
+                    /* The reply box comes AFTER the conversation (Curtis, 2026-08-28): you
                     read what was said, then say something - the transcript's own order,
-                    the same reason the thread reads oldest-first. */ ''}
-                ${current &&
-                current.root &&
-                html`<${ReplyBox}
+                    the same reason the thread reads oldest-first. */ ''
+                }
+                ${
+                    current &&
+                    current.root &&
+                    html`<${ReplyBox}
                     current=${current}
                     parent=${{ author: root, doc_id: threadDoc }}
                     onReplied=${(mint) => setSaid((have) => [...have, mint])}
                     sealed=${!!item.trusted_only}
-                />`}
-            </section>`}
+                />`
+                }
+            </section>`
+            }
             ${item && !isBook && html`<${CopyChain} author=${root} annotations=${post.annotations} />`}
             ${item && html`<${PostDossier} author=${root} doc=${threadDoc} reader=${viewer} />`}
         </div>
@@ -290,28 +334,34 @@ const PostDossier = ({ author, doc, reader }) => {
         <summary>${t('postpage.history-and-popularity', 'history & popularity')}</summary>
         ${data === null && open && html`<p>${t('postpage.reading-the-ledger', 'loading…')}</p>`}
         ${data === false && html`<p>${t('postpage.no-ledger-readable-here', 'no history here')}</p>`}
-        ${data &&
-        html`<pre class="post-dossier-log">${[
-            `post ${doc} by ${speakable(author)}`,
-            data.post &&
-                `  published ${iso(data.post.published_ms)} updated ${iso(data.post.updated_ms)} format ${data.post.format || '?'}`,
-            `annotations known here: ${(data.annotations || []).length}`,
-            ...(data.annotations || []).map(
-                (a) =>
-                    `  ${a.key} ${JSON.stringify(a.value)} by ${who(a.annotator, a.annotator_name)}` +
-                    ` noted ${iso(a.noted_ms)} via ${a.learned_via}${a.proof_kept ? ' [relaying onward]' : ''}`
-            ),
-            `replies known here: ${(data.replies || []).length}`,
-            ...(data.replies || []).map(
-                (r) =>
-                    `  ${r.direct ? 'reply' : 'in-tree'} ${r.doc_id} by ${who(r.author, (data.reply_names || {})[r.author])}` +
-                    ` claimed ${iso(r.claimed_ms)} noted ${iso(r.noted_ms)} via ${r.learned_via}` +
-                    (r.served === true ? ' [served]' : r.served === false ? ' [held/suppressed]' : '')
-            ),
-            ...popularityLines(pop, who),
-        ]
-            .filter(Boolean)
-            .join('\n')}</pre>`}
+        ${
+            data &&
+            html`<pre class="post-dossier-log">${[
+                `post ${doc} by ${speakable(author)}`,
+                data.post &&
+                    `  published ${iso(data.post.published_ms)} updated ${iso(data.post.updated_ms)} format ${data.post.format || '?'}`,
+                `annotations known here: ${(data.annotations || []).length}`,
+                ...(data.annotations || []).map(
+                    (a) =>
+                        `  ${a.key} ${JSON.stringify(a.value)} by ${who(a.annotator, a.annotator_name)}` +
+                        ` noted ${iso(a.noted_ms)} via ${a.learned_via}${a.proof_kept ? ' [relaying onward]' : ''}`,
+                ),
+                `replies known here: ${(data.replies || []).length}`,
+                ...(data.replies || []).map(
+                    (r) =>
+                        `  ${r.direct ? 'reply' : 'in-tree'} ${r.doc_id} by ${who(r.author, (data.reply_names || {})[r.author])}` +
+                        ` claimed ${iso(r.claimed_ms)} noted ${iso(r.noted_ms)} via ${r.learned_via}` +
+                        (r.served === true
+                            ? ' [served]'
+                            : r.served === false
+                              ? ' [held/suppressed]'
+                              : ''),
+                ),
+                ...popularityLines(pop, who),
+            ]
+                .filter(Boolean)
+                .join('\n')}</pre>`
+        }
     </details>`;
 };
 
@@ -322,14 +372,22 @@ const popularityLines = (pop, who) => {
     if (!pop) return [];
     const signed = (n) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
     const standing = (s) =>
-        s === 'you' ? 'you' : s && s.trusted ? `trusted ${s.trusted}` : s === 'followed' ? 'followed' : s === 'blocked' ? 'blocked' : 'no edge';
+        s === 'you'
+            ? 'you'
+            : s && s.trusted
+              ? `trusted ${s.trusted}`
+              : s === 'followed'
+                ? 'followed'
+                : s === 'blocked'
+                  ? 'blocked'
+                  : 'no edge';
     const names = pop.names || {};
     return [
         `popularity, as this node reckons it for you: ${(pop.parts || []).length} reaction${(pop.parts || []).length === 1 ? '' : 's'}`,
         ...(pop.parts || []).map(
             (p) =>
                 `  ${p.value} ${p.tone > 0 ? '+1' : '-1'} by ${who(p.annotator, names[p.annotator])}` +
-                ` - ${standing(p.standing)} x${p.weight.toFixed(2)} = ${signed(p.tone * p.weight)}`
+                ` - ${standing(p.standing)} x${p.weight.toFixed(2)} = ${signed(p.tone * p.weight)}`,
         ),
         `  interest in the author: ${pop.interest || 'unset'} x${pop.interest_factor.toFixed(2)}`,
         `  score ${signed(pop.score)}`,
@@ -352,13 +410,18 @@ const ParentContext = ({ link, root }) => {
         };
     }, [link.author, link.doc_id]);
     return html`<p class="postpage-parent">
-        ${root
-            ? gone
-                ? t('postpage.thread-unreadable', 'thread (no longer readable here)')
-                : t('postpage.thread', 'thread')
-            : gone
-              ? t('postpage.in-reply-to-unreadable', 'in reply to a post that is no longer readable here')
-              : t('postpage.in-reply-to', 'in reply to')}
+        ${
+            root
+                ? gone
+                    ? t('postpage.thread-unreadable', 'thread (no longer readable here)')
+                    : t('postpage.thread', 'thread')
+                : gone
+                  ? t(
+                        'postpage.in-reply-to-unreadable',
+                        'in reply to a post that is no longer readable here',
+                    )
+                  : t('postpage.in-reply-to', 'in reply to')
+        }
         <${MiniPost}
             author=${link.author}
             doc_id=${link.doc_id}
@@ -414,7 +477,7 @@ const HeldReplies = ({ root, doc, onNod }) => {
                         ${t('postpage.keep-quiet', 'keep quiet')}
                     </button>
                 </div>
-            </div>`
+            </div>`,
         )}
     </div>`;
 };
@@ -480,7 +543,7 @@ const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
             });
             await api(
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`,
-                { method: 'PUT' }
+                { method: 'PUT' },
             );
             setDraftId(made.doc_id);
         } catch (e) {
@@ -511,20 +574,27 @@ const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
     };
 
     return html`<div class="replybox">
-        ${/* A reply to a sealed post wears the author's seal (PROJECT_PLAN's Replies under
+        ${
+            /* A reply to a sealed post wears the author's seal (PROJECT_PLAN's Replies under
             the author's seal): only people the author trusts will read it, and the seal
-            is not the commenter's to choose - so no toggle, just the word. */ ''}
-        ${sealed &&
-        html`<p class="replybox-note">
+            is not the commenter's to choose - so no toggle, just the word. */ ''
+        }
+        ${
+            sealed &&
+            html`<p class="replybox-note">
             ${t('postpage.this-reply-will-wear-the-authors-seal', 'only people the author trusts will see this')}
-        </p>`}
+        </p>`
+        }
         <${BakeModal} items=${baking} />
-        ${draftId &&
-        html`<p class="replybox-note">
+        ${
+            draftId &&
+            html`<p class="replybox-note">
             ${t('postpage.replying-is-public-and-shares', 'replies are public')}
-        </p>`}
-        ${draftId
-            ? html`<${Composer}
+        </p>`
+        }
+        ${
+            draftId
+                ? html`<${Composer}
                   root=${root}
                   docId=${draftId}
                   published=${false}
@@ -535,9 +605,10 @@ const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
                       minting.current = false;
                   }}
               />`
-            : html`<button class="replybox-open" onClick=${openBox}>
+                : html`<button class="replybox-open" onClick=${openBox}>
                   ${t('postpage.write-a-reply', 'write a reply…')}
-              </button>`}
+              </button>`
+        }
         ${error && html`<p class="form-error">${error}</p>`}
     </div>`;
 };
@@ -556,7 +627,12 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
         // refreshKey > 0 is the human's deliberate re-ask: it rides `refresh=1` past the
         // node's cooldown so the door actually gets dialed again. The level's order rides along
         // (slice 3), asked as the viewer whose scores order it.
-        const params = [depth === 0 && refreshKey > 0 ? 'refresh=1' : '', replySortParams(order, viewer)].filter(Boolean).join('&');
+        const params = [
+            depth === 0 && refreshKey > 0 ? 'refresh=1' : '',
+            replySortParams(order, viewer),
+        ]
+            .filter(Boolean)
+            .join('&');
         const force = params ? `?${params}` : '';
         const look = () =>
             api(`/api/id/${author}/posts/${doc}/replies${force}`)
@@ -569,7 +645,9 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
                     if (depth === 0 && p.seeking) {
                         setTimeout(() => {
                             if (!live) return;
-                            api(`/api/id/${author}/posts/${doc}/replies${replySortParams(order, viewer) ? `?${replySortParams(order, viewer)}` : ''}`)
+                            api(
+                                `/api/id/${author}/posts/${doc}/replies${replySortParams(order, viewer) ? `?${replySortParams(order, viewer)}` : ''}`,
+                            )
                                 .then((p2) => live && setPage({ ...p2, seeking: false }))
                                 .catch(() => {});
                         }, 2500);
@@ -597,10 +675,12 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
         </p>`;
     if (!replies.length) {
         return depth === 0 && page
-            ? html`${seekingLine ||
-              html`<p class="thread-empty">
+            ? html`${
+                  seekingLine ||
+                  html`<p class="thread-empty">
                   ${t('postpage.none-known-yet', 'none known here yet')}
-              </p>`}`
+              </p>`
+              }`
             : null;
     }
     return html`<div class="thread-level">
@@ -614,7 +694,7 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
                 current=${current}
                 depth=${depth}
                 order=${order}
-            />`
+            />`,
         )}
     </div>`;
 };
@@ -666,13 +746,17 @@ const ThreadReply = ({ author, doc, byline, current, depth, order }) => {
     };
     return html`<div class="thread-reply">
         <${PostEntry} key=${post.doc_id} item=${item} current=${current} editing=${null} quote=${false} />
-        ${depth + 1 < THREAD_DEPTH_CAP &&
-        html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} order=${order} />`}
-        ${depth + 1 >= THREAD_DEPTH_CAP &&
-        html`<p class="thread-deeper">
+        ${
+            depth + 1 < THREAD_DEPTH_CAP &&
+            html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} order=${order} />`
+        }
+        ${
+            depth + 1 >= THREAD_DEPTH_CAP &&
+            html`<p class="thread-deeper">
             <a href=${postHref(author, doc)}>
                 ${t('postpage.continue-this-thread', 'continue this thread')}
             </a>
-        </p>`}
+        </p>`
+        }
     </div>`;
 };

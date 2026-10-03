@@ -75,16 +75,9 @@ struct Bucket {
 
 impl Bucket {
     fn new(per_min: f64) -> Self {
-        let per_min = if per_min.is_finite() && per_min >= 1.0 {
-            per_min
-        } else {
-            DEFAULT_RATE_PER_MIN
-        };
-        Self {
-            per_min,
-            tokens: per_min,
-            last_ms: 0,
-        }
+        let per_min =
+            if per_min.is_finite() && per_min >= 1.0 { per_min } else { DEFAULT_RATE_PER_MIN };
+        Self { per_min, tokens: per_min, last_ms: 0 }
     }
 
     fn take(&mut self, now_ms: i64) -> bool {
@@ -125,21 +118,24 @@ impl Unfurler {
     /// honest "the page has none" (cached) or a transient fetch failure (not cached, so a
     /// hiccup doesn't wear a day-long scar). `Err` is a refusal - nothing was fetched.
     pub async fn unfurl(&self, raw: &str) -> Result<Option<Summary>, Refusal> {
-        let parsed = url::Url::parse(raw.trim())
-            .map_err(|e| Refusal::BadTarget(crate::msg!("net.unfurl.not-a-url", "not a URL: {reason}", reason = e)))?;
+        let parsed = url::Url::parse(raw.trim()).map_err(|e| {
+            Refusal::BadTarget(crate::msg!(
+                "net.unfurl.not-a-url",
+                "not a URL: {reason}",
+                reason = e
+            ))
+        })?;
         if parsed.scheme() != "http" && parsed.scheme() != "https" {
-            return Err(Refusal::BadTarget(crate::msg!("net.unfurl.only-http-and-https-unfurl", "only http and https unfurl")));
+            return Err(Refusal::BadTarget(crate::msg!(
+                "net.unfurl.only-http-and-https-unfurl",
+                "only http and https unfurl"
+            )));
         }
         let key = parsed.to_string();
         if let Some(hit) = self.cache.get(&key).await {
             return Ok(hit);
         }
-        if !self
-            .bucket
-            .lock()
-            .expect("unfurl bucket poisoned")
-            .take(crate::clock::now_ms())
-        {
+        if !self.bucket.lock().expect("unfurl bucket poisoned").take(crate::clock::now_ms()) {
             return Err(Refusal::RateLimited);
         }
         match self.fetch(parsed).await {
@@ -183,24 +179,30 @@ impl Unfurler {
                     .headers()
                     .get(reqwest::header::LOCATION)
                     .and_then(|v| v.to_str().ok())
-                    .ok_or_else(|| FetchEnd::Failed(anyhow::anyhow!("redirect without location")))?;
+                    .ok_or_else(|| {
+                        FetchEnd::Failed(anyhow::anyhow!("redirect without location"))
+                    })?;
                 url = url
                     .join(location)
                     .map_err(|e| FetchEnd::Failed(anyhow::anyhow!("bad redirect target: {e}")))?;
                 if url.scheme() != "http" && url.scheme() != "https" {
-                    return Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!("net.unfurl.redirected-off-the-web", "redirected off the web"))));
+                    return Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!(
+                        "net.unfurl.redirected-off-the-web",
+                        "redirected off the web"
+                    ))));
                 }
                 continue;
             }
             if !res.status().is_success() {
                 return Err(FetchEnd::Failed(anyhow::anyhow!("status {}", res.status())));
             }
-            let body = read_capped(res, MAX_BODY_BYTES)
-                .await
-                .map_err(FetchEnd::Failed)?;
+            let body = read_capped(res, MAX_BODY_BYTES).await.map_err(FetchEnd::Failed)?;
             return Ok(parse_open_graph(&body));
         }
-        Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!("net.unfurl.too-many-redirects", "too many redirects"))))
+        Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!(
+            "net.unfurl.too-many-redirects",
+            "too many redirects"
+        ))))
     }
 }
 
@@ -222,19 +224,33 @@ async fn vetted_addr(url: &url::Url) -> Result<IpAddr, Refusal> {
         return if is_public(ip) {
             Ok(ip)
         } else {
-            Err(Refusal::BadTarget(crate::msg!("net.unfurl.address-is-not-public", "address is not public")))
+            Err(Refusal::BadTarget(crate::msg!(
+                "net.unfurl.address-is-not-public",
+                "address is not public"
+            )))
         };
     }
     let addrs: Vec<IpAddr> = tokio::net::lookup_host((host, port))
         .await
-        .map_err(|_| Refusal::BadTarget(crate::msg!("net.unfurl.host-does-not-resolve", "host does not resolve")))?
+        .map_err(|_| {
+            Refusal::BadTarget(crate::msg!(
+                "net.unfurl.host-does-not-resolve",
+                "host does not resolve"
+            ))
+        })?
         .map(|sa| sa.ip())
         .collect();
     if addrs.is_empty() {
-        return Err(Refusal::BadTarget(crate::msg!("net.unfurl.host-does-not-resolve-2", "host does not resolve")));
+        return Err(Refusal::BadTarget(crate::msg!(
+            "net.unfurl.host-does-not-resolve-2",
+            "host does not resolve"
+        )));
     }
     if addrs.iter().any(|ip| !is_public(*ip)) {
-        return Err(Refusal::BadTarget(crate::msg!("net.unfurl.address-is-not-public-2", "address is not public")));
+        return Err(Refusal::BadTarget(crate::msg!(
+            "net.unfurl.address-is-not-public-2",
+            "address is not public"
+        )));
     }
     Ok(addrs[0])
 }
@@ -375,12 +391,7 @@ async fn read_capped(res: reqwest::Response, cap: usize) -> anyhow::Result<Strin
 pub fn parse_open_graph(html: &str) -> Option<Summary> {
     let s = marquee_markup::opengraph::parse_open_graph(html)?;
     let title = s.title.filter(|t| !t.is_empty())?;
-    Some(Summary {
-        title,
-        description: s.description,
-        image: s.image,
-        site: s.site,
-    })
+    Some(Summary { title, description: s.description, image: s.image, site: s.site })
 }
 
 #[cfg(test)]

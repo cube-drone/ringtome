@@ -48,11 +48,11 @@ Three design decisions from M1 are load-bearing everywhere since:
   and puts the fast test loop where the hard tests live.
 - **COSE-style envelope, not sig-as-a-map-field.** The wire object is `[body: bstr, sig: bstr]`
   and the signature covers `domain-tag || body-bytes`, so verification slices received bytes and
-  *never re-serializes*. Re-encoding during verification is exactly where canonical-encoding bugs
+  _never re-serializes_. Re-encoding during verification is exactly where canonical-encoding bugs
   become forgery bugs; this makes the store-original-bytes rule structural, not disciplinary.
 - **Hand-rolled strict canonical CBOR subset, ~250 lines, not a serde library.** The encoder is
-  the spec (vectors promise exact bytes), and - the part libraries don't offer - the *reader
-  rejects non-canonical input*: non-minimal integer heads, indefinite lengths, unsorted keys,
+  the spec (vectors promise exact bytes), and - the part libraries don't offer - the _reader
+  rejects non-canonical input_: non-minimal integer heads, indefinite lengths, unsorted keys,
   non-NFC text, tags, floats. Entries are hostile network input; one logical value = exactly one
   accepted encoding.
 
@@ -73,20 +73,20 @@ symmetric-exchange engine with the validation gate ahead of storage: strict deco
 chain contiguity → key-tree membership → revocation ceilings. The add-a-node ceremony landed as
 request code / grant code, two copy-pastes. The exit demo became a two-node integration test:
 adopt, write-on-B-read-on-A, kill-A-and-survive, and repudiation with A's gate refusing the
-evicted key's writes ("EVIL TWIN" stays on B). *Trims:* iroh-blobs deferred (no blob producer
-existed yet), pkarr deferred. *Residuals:* manual sync triggering, root-only grants, and - the
+evicted key's writes ("EVIL TWIN" stays on B). _Trims:_ iroh-blobs deferred (no blob producer
+existed yet), pkarr deferred. _Residuals:_ manual sync triggering, root-only grants, and - the
 long-lived one - **fork evidence cannot be stored**: the entries PK means a conflicting entry is
 rejected at the gate (safe, convergent) but its bytes are dropped rather than kept as proof.
 
 **M3.5 — discovery (COMPLETE 07-07, pulled forward for `ringtome://` resolution).** Dial-by-key
 everywhere; addresses stop being our data. Signed **serving records** published under an identity
-*leaf* key (`ringtome-v0/serving-record`, test-vectored, well inside pkarr's 1000-byte budget -
+_leaf_ key (`ringtome-v0/serving-record`, test-vectored, well inside pkarr's 1000-byte budget -
 trust never comes from the record, so they are pointers and liveness only). One `Directory` trait,
 two implementations: `MainlineDirectory` over the real DHT and `LocalDirectory`, a shared-folder
-fake storing the *same signed bytes* with the same one-record-per-key and TTL semantics - also the
+fake storing the _same signed bytes_ with the same one-record-per-key and TTL semantics - also the
 future attack harness. Discovery mode selects the iroh preset too. **Publication is an act**: only
 identities explicitly marked served publish (`served_at_ms` + `POST .../serve`), never as a side
-effect of creation. The `addrs` column died. *Residual, later closed on 07-22:* Mainline mode had
+effect of creation. The `addrs` column died. _Residual, later closed on 07-22:_ Mainline mode had
 never touched the real DHT.
 
 ---
@@ -101,9 +101,9 @@ authorize, and a channel-bound `MemberProof` in the sync Hello. Node gained `sea
 sealed boxes, photo-seed recovery derivation) and `private.rs` (epoch unseal/mint/rotate,
 XChaCha record crypto, LWW register and set views). Identity creation mints the root enc key and
 epoch 0; adoption re-seals the epoch history; **every revocation rotates the epoch**; and the sync
-gate withholds private entries *and frontiers* from unproven peers in both directions. Proven by
+gate withholds private entries _and frontiers_ from unproven peers in both directions. Proven by
 `private.cjs`: a revoked node keeps reading its era while the post-rotation record never even
-reaches it. *Residuals from the day:* concurrent rotations can twin an epoch number (readers try
+reaches it. _Residuals from the day:_ concurrent rotations can twin an epoch number (readers try
 all keys, the AEAD tag disambiguates - convergent but unlovely); the epoch boundary is eventual
 under partition, by design; requesters re-offer private chains every exchange.
 
@@ -129,7 +129,7 @@ rewritten in place up through Recovery Planning (07-14). License settled: **AGPL
 
 **The file layer + CI (07-15).** `files.rs`: encrypted, content-addressed file bodies stored and
 transferred by iroh-blobs over a second ALPN on the same endpoint. A "file" is XChaCha ciphertext
-under the epoch key with a random nonce, content-addressed by the BLAKE3 of the *ciphertext* -
+under the epoch key with a random nonce, content-addressed by the BLAKE3 of the _ciphertext_ -
 unlinkable, which is why serving needs no gate: holding the hash is the capability. One
 content-agnostic layer for note bodies, posts, and media alike. Same day, CI: a GitHub Actions
 workflow that runs `just ci` verbatim, so the push gate and the local gate cannot drift.
@@ -187,11 +187,11 @@ watchers in one terminal with one Ctrl-C teardown.
 
 **Mainline field test (07-22).** The M3.5 residual closed: two nodes on one box against the real
 public DHT. A serving record published under the leaf key and resolved back out through the
-*other* node's pkarr client, the adoption ceremony, then both nodes restarted - address caches
+_other_ node's pkarr client, the adoption ceremony, then both nodes restarted - address caches
 gone, fresh UDP ports - and a re-sync driven by nothing but a bare endpoint id through iroh's N0
 discovery. Healthy runs finish in ~7 seconds; the test budgets minutes as retry ceilings for when
 infrastructure isn't healthy. Shipped as `just mainline-smoke` plus a dispatch-only GitHub action
-that uploads per-node logs win or lose. *Residuals:* only the relay-assisted path has been
+that uploads per-node logs win or lose. _Residuals:_ only the relay-assisted path has been
 observed - raw-DHT fallback is unexercised, and same-box means the NAT rung still awaits two real
 houses. Each run publishes throwaway records (and the runner's IP) to the public DHT, by design.
 
@@ -199,11 +199,11 @@ houses. Each run publishes throwaway records (and the runner's IP) to the public
 `net/resync.rs` registers two passes over the existing exchange - **eager push** (per-root
 frontier fingerprints compared across ticks, a debounce that waits for the write burst to quiet
 plus a max-latency cap, then a full exchange with every known peer) and **anti-entropy** (up to 3
-randomly chosen peers per identity, dirty or not, first pass at boot). Entries *received* re-dirty
+randomly chosen peers per identity, dirty or not, first pass at boot). Entries _received_ re-dirty
 the frontier and relay onward - epidemic spread, converging because an up-to-date exchange moves
 nothing. Privacy needed zero new logic: member proofs inside the exchange decide disclosure
 regardless of who dials. Doctrine clarified along the way: **"Rehosting: Pull, Not Push" governs
-*hosting*, not sync initiation** - hosts holding tradeable information SHOULD sync unprompted.
+_hosting_, not sync initiation** - hosts holding tradeable information SHOULD sync unprompted.
 
 The feature flushed out two latent concurrency defects, both fixed and both instructive: Turso
 connections refuse overlapping statements, a race that stayed theoretical while traffic was
@@ -292,7 +292,7 @@ name (post-proof only; count-not-names is the accepted disclosure), then the pro
 to a freshly minted account and the old account is left entirely alone. If the key was stolen, the
 victim keeps everything except the persona the stolen key already owned outright. Every unprovable
 failure is the same uniform "recovery failed"; in-place reset purges every session; 5/hour/IP.
-*Deferred and named in the plan:* browser-side challenge signing, post-use rotation, cooling-off.
+_Deferred and named in the plan:_ browser-side challenge signing, post-use rotation, cooling-off.
 
 **The password floor follows the bind address (07-24).** A node bound to loopback relaxes the
 8-character minimum to 1 ("password can't be empty" is the only refusal left), because reaching
@@ -398,7 +398,7 @@ is kept because each moral outlived its bug.
 
 - **The body lane joins both sides.** Two editors on a diverged doc kept "clearing" each other.
   Headers ride entry sync but BODIES ride iroh-blobs, and `fetch_missing_bodies` ran on the
-  *initiator's* side only - and eager push makes the WRITER the initiator, so a receiving node's
+  _initiator's_ side only - and eager push makes the WRITER the initiator, so a receiving node's
   fresh headers pointed at blobs it wouldn't hold for up to five minutes. The resolver honestly
   answered `body: null`; the editor poured null into the textarea as empty string; the user typed
   into the void and the save asserted every head as parents. Never-lose-words held at the chain
@@ -447,7 +447,7 @@ is kept because each moral outlived its bug.
 - **The lookout learns about raced resolutions.** Paired debug dumps were the diagnosis: both nodes
   in perfect agreement, only one browser showing it. Two devices each resolved the same fork,
   producing a fresh two-head fork whose display pick was one racer's own save - every watched
-  scalar identical while the head *set* rotated underneath. Second scar on the same predicate, so
+  scalar identical while the head _set_ rotated underneath. Second scar on the same predicate, so
   the judgment moved out of the component into `js/lookout.js` as a pure function carrying its scar
   record, tested by mocha without a browser. The cure is one clause: an editor that believes it is
   linear while the row says diverged has definitionally not yet presented that divergence - reload.
@@ -457,9 +457,9 @@ is kept because each moral outlived its bug.
 - **Three-plus heads merge per-hunk.** Three computers changed one paragraph and got the
   whole-document wall, because three-plus heads skipped merging entirely. The dumps showed the fix
   was well-posed: all three forked from ONE version. `fork_points_of_heads` generalizes to head
-  *sets*, and when the set shares a single fork point, `align_heads` runs an N-way line alignment -
+  _sets_, and when the set shares a single fork point, `align_heads` runs an N-way line alignment -
   each head diffed against the base, overlapping runs grouped into disputed regions, everything
-  else woven clean, one variant per *distinct* proposal labeled by its earliest head. Bonus
+  else woven clean, one variant per _distinct_ proposal labeled by its earliest head. Bonus
   correctness: three heads with disjoint edits now merge fully clean, a case the old rule falsely
   conflicted.
 
@@ -521,7 +521,7 @@ it inherits at-rest encryption **by construction** - an index is a plaintext der
 encrypted bodies and must never be less protected than they are; putting it anywhere else would
 have been the whole security question. It streams to the mirror as one more kind and the browser
 queries it locally: offline, instant, zero round-trips per keystroke. Two mechanics worth keeping:
-staleness is a fingerprint over exactly the token inputs (the head *SET* as a BLAKE3, not the
+staleness is a fingerprint over exactly the token inputs (the head _SET_ as a BLAKE3, not the
 count, because raced resolutions rotate the set invisibly - the lookout lesson, reused), and **a
 backfilled body re-indexes with no chain movement**, via a per-root `view_epochs` counter mixed
 into the stream cursor.
@@ -537,15 +537,16 @@ decision is a pure tested helper because the bug was so silent it earns a regres
 **Annotations get a UI, and a claimed date.** The annotation model had routes but nothing to set
 them with; now an annotations panel sits in the editor and the list filters by tag, stacking with
 search. The design question - bake annotations into `doc_heads`? - resolved to **join at the stream
-boundary, not merge the folds**: `doc_heads` memoizes the *notes* chain while annotations fold from
-a *different* chain, so merging them physically would couple two folds. `DocSummary` gained `tags`
-+ `fields` joined in `gather`, and staleness is free because an annotation write IS a chain write.
-Then `display_date`: the user's own asserted date, authoritative for sorting precisely because a
-human's deliberate assertion outranks any clock (PROJECT_PLAN, Displayed Time vs. Claimed Time -
-openly the most authoritative and least trustworthy date at once). The satisfying part is **zero
-backend** - it's a conventional annotation field riding the existing route onto the mirror row, so
-the whole feature is client-side pure rules (date-only parsed as LOCAL midnight so "2015-07-31"
-never displays as the 30th), amended the same day to carry an optional time.
+boundary, not merge the folds**: `doc_heads` memoizes the _notes_ chain while annotations fold from
+a _different_ chain, so merging them physically would couple two folds. `DocSummary` gained `tags`
+
+- `fields` joined in `gather`, and staleness is free because an annotation write IS a chain write.
+  Then `display_date`: the user's own asserted date, authoritative for sorting precisely because a
+  human's deliberate assertion outranks any clock (PROJECT_PLAN, Displayed Time vs. Claimed Time -
+  openly the most authoritative and least trustworthy date at once). The satisfying part is **zero
+  backend** - it's a conventional annotation field riding the existing route onto the mirror row, so
+  the whole feature is client-side pure rules (date-only parsed as LOCAL midnight so "2015-07-31"
+  never displays as the 30th), amended the same day to carry an optional time.
 
 **The console and client-side routing.** Opening a persona lands on a **console** - an application
 launcher (PROJECT_PLAN, The Client Is a Console of Applications) - with one tile today and apps
@@ -554,8 +555,8 @@ under `/home`, so back/forward, refresh, and deep links work, and the selected d
 state into the route. Two doctrine rules fell out:
 
 - **Internal URLs are session-relative and identity-free.** The moment an identity appears in a
-  URL it looks shareable, and internal URLs are not. The rule that follows: *identity-in-the-URL is
-  the signal that a thing is shareable* - so the two can never be confused, structurally rather
+  URL it looks shareable, and internal URLs are not. The rule that follows: _identity-in-the-URL is
+  the signal that a thing is shareable_ - so the two can never be confused, structurally rather
   than by carefulness.
 - **A persona slug is a publishing prerequisite, not a routing one.** Slugs become real when a
   persona or document becomes publicly addressable - a claim-your-handle moment - so nothing about
@@ -568,7 +569,7 @@ state into the route. Two doctrine rules fell out:
 **Document bucketing.** Which project(s)/notebook(s) a document belongs to. Curtis's correction
 shaped it: buckets are NOT a Taxonomy (no ordering, no ranks, no composition), they're
 **annotation-shaped** - the exact tag mechanism, in a SEPARATE collection namespace. The
-separation is the whole point: a bucket is the axis search and tags are *scoped to* ("braise" in
+separation is the whole point: a bucket is the axis search and tags are _scoped to_ ("braise" in
 the recipe book finds braised pork, never the journal), so it must not appear in the tag cloud it
 filters. No new SQL table; `DocSummary` gained `buckets` at the stream boundary like tags. The
 load-bearing test: a word used as both a bucket and a tag stays cleanly separate in both axes.
@@ -589,7 +590,7 @@ machinery. Then Curtis simplified the app↔bucket tie: **a bucket whose NAME is
 IS that type**, so every app has an eponymous bucket we just assume exists - no implicit creation,
 no `define` for the common case, registry only for user-named buckets. `DocsApp` scopes its list by
 resolved app-type with unbucketed docs belonging to the default app (the catch-all, so legacy notes
-never vanish), and search and tags filter *within* the app - the scoping the whole console rests on.
+never vanish), and search and tags filter _within_ the app - the scoping the whole console rests on.
 
 **Recipes gets its own face.** App surfaces became data: a `features` block per app over
 full-Notes defaults. Recipes overrides to a recipe book - interactive mode only, no format chip, no
@@ -608,14 +609,14 @@ trapped. Adding an app's personality is now a `features` block, not a fork of th
   stamp. No schema change - the order was in the stamp the whole time; we were throwing it away at
   the view boundary.
 - **Title edits settle on blur.** A tag is an annotation (immediate write, sub-second echo) while
-  the title is part of the document *version*, so it rode the 10s autosave and the list row lagged.
+  the title is part of the document _version_, so it rode the 10s autosave and the list row lagged.
   The title input now flushes on blur; body edits keep the debounce on purpose.
 - **Delete: a reversible tombstone.** The id joins a `deleted` LWW-element-set on the doc-meta
   chain and the document drops out of every list and search at once. The version chain is
   untouched, so `restore` brings it back whole - **a hide that syncs, not an erasure**. The filter
   is centralized in the three `Documents` read methods, so all six route surfaces are covered with
   zero route changes. The editor disarms its dirty buffer BEFORE navigating away, or the
-  doc-switch unmount flush would save a fresh version onto the doc being tombstoned. *Residuals:*
+  doc-switch unmount flush would save a fresh version onto the doc being tombstoned. _Residuals:_
   dropping the content blobs, and a visible undo surface.
 - **Pin.** The tombstone's twin: a `pinned` LWW-element-set in its own collection (never a hidden
   tag - a tag would leak into the tag cloud, the row chips, and the search index). It filters
@@ -631,7 +632,7 @@ The client acquired a house style, in a run of small units:
 - **The app becomes a fixed frame.** The bottom dock stopped being a `position: fixed` overlay:
   `.app-main` is now a full-viewport flex column holding the app region above and the footer band
   below, so neither can cover the other. The app region is a framed box with a chunky 10px `--ink`
-  border whose inner layer scrolls *inside* the border, and the notes columns scroll internally.
+  border whose inner layer scrolls _inside_ the border, and the notes columns scroll internally.
   The border isn't `border-radius` (too smooth for a retro panel) - it's two `clip-path` layers
   sharing one polygon whose corners STEP like pixels, dark outside and surface inside. No image, no
   9-slice; the jaggedness is the corner geometry itself, and only the bottom corners step, so the
@@ -662,7 +663,7 @@ The client acquired a house style, in a run of small units:
   anchors. Purely, gloriously ornamental.
 - **Console tiles: the diagonal badge.** A `::before` floods the lower-right half of the hex face
   with the border colour along the corner-to-corner diagonal - a `linear-gradient(to bottom right,
-  transparent 50%, border 50%)`, NOT a clipped triangle, because nesting a triangle clip-path
+transparent 50%, border 50%)`, NOT a clipped triangle, because nesting a triangle clip-path
   inside the hex clip-path flooded the whole tile in practice. Icon behind the fill, rotated name
   above it.
 
@@ -733,18 +734,18 @@ the tree root when a tree column exists (via a shared `ensureTreeRoot` dedupe, s
 racing on a fresh bucket still mint ONE root), and with the unfiled bin hidden, deleting a section
 re-places its pages at top level BEFORE the sections come down.
 
-**File upload, in three phases.** *Phase 1* built the house modal - the app-window language as a
+**File upload, in three phases.** _Phase 1_ built the house modal - the app-window language as a
 floating panel, pixel-cornered frame and Press-Start title band, but wearing the bold Quickbar
 teal so a modal reads as the system stepping forward - plus three doors into it from the shared
 Editor: a chip, a desktop drop (guarded on real Files, so internal row drags pass through), and a
-pasted image buffer. *Phase 2* gave it an engine: each File POSTs via XHR (fetch can't report
+pasted image buffer. _Phase 2_ gave it an engine: each File POSTs via XHR (fetch can't report
 upload progress) with a live progress bar, the 202's doc_id files into the current bucket
 immediately (membership is doc-meta, version-independent), and the modal follows the job through
 the ingest queue to done or failed. Mid-flight the name and tags are editable, and closing the
 modal abandons nothing - the transcode lands server-side on its own. Names needed a server
 addition, since the title is baked into the version when the worker CLAIMS the job: a retitle route
 for still-`pending` jobs that returns `applied: false` when it arrives too late - honest, never
-pretending. *Phase 3* planted the placeholder: all three doors route through `captureFiles`, which
+pretending. _Phase 3_ planted the placeholder: all three doors route through `captureFiles`, which
 puts `[uploading "name" …nonce]` at the CURSOR and swaps it for a real marquee embed when the
 upload lands. The extension trick: the renderer's media-kind sniff is extension-based and the body
 URL had none, so a decorative-filename route (`/docs/{doc_id}/body/{filename}` - name ignored, real
@@ -879,7 +880,7 @@ sections of the plan, then walked into shipped code and found a real hole. No fe
 protocol-adjacent bug fix and a doctrine restructure, all in PROJECT_PLAN unless noted.
 
 **Groups moved off the epoch machinery.** The sketch's tortured half was minted secrecy - every
-membership change had to mint a key while every membership *fact* was merely computed. Settled:
+membership change had to mint a key while every membership _fact_ was merely computed. Settled:
 **a group is an identity for its public face and a roster for everything else** - group content
 is plaintext on a **member lane**, served only against member proofs (confidentiality by
 refusal, not mathematics), the roster is the ACL (plaintext, member-only, never published), and
@@ -895,15 +896,16 @@ always a property of the service slot, never a bit (Copy, Don't Flip).
 membership is not a mutable object - a pair has no roster, no admission, no ejection, and its
 membership changes only through identity events the shipped machinery already handles. A DM is
 two chains interleaved at read; the key is an epoch scoped to two; you cannot add a third person
-- doing it *mints a room*, a copy-don't-flip ceremony. The Inbound Gate (Trust section) now
-states the one predicate DMs, follow receipts, and group invites all pass: above your floor and
-not muted - anti-spam, explicitly not anti-safety.
+
+- doing it _mints a room_, a copy-don't-flip ceremony. The Inbound Gate (Trust section) now
+  states the one predicate DMs, follow receipts, and group invites all pass: above your floor and
+  not muted - anti-spam, explicitly not anti-safety.
 
 **The Adult In The Room audit hit shipped code.** Re-reading the sketch's defect list against
 the implementation found the minter rule violated live (a self-retiring key minted the epoch
 excluding itself) and, worse, **self-retirement did not survive sync at all**: a revoke can
 never anchor itself, so it sits beyond its own seal - one seq past it when the chain had
-history, or as an anchorless chain's *only* entry (the adopted-leaf shape the API actually
+history, or as an anchorless chain's _only_ entry (the adopted-leaf shape the API actually
 produces) - and the gate's seal-or-nothing refusal dropped it both ways. A peer resolved
 Retired in passing, stored nothing, and un-retired the key on the next resolve: the exact
 dumpster-diver attack retirement exists to stop. Fix: `Crown::revocation_of` (proto) names the
@@ -934,11 +936,11 @@ never rotates) and `key-epoch` recipient verification, paired.
 
 The key tree's exits, in cozy clothing. Every row of "your computers" whose removal this node
 has authority over grows a quiet trash affordance; the flow behind it is the removal ceremony,
-two doors with deliberately different *agency* (not just severity): "**have this computer
+two doors with deliberately different _agency_ (not just severity): "**have this computer
 leave**" - gentle, voluntary, everything it wrote stays good and its invitees stay - versus
 "**lock this computer out**" - forceful, its invitees shut out with it. On your own row the
 voluntary door reads "**leave this persona**." Locking out asks the one question that decides
-the record - *was this computer you?* - "it was me, until now" (anchored cut, history stands)
+the record - _was this computer you?_ - "it was me, until now" (anchored cut, history stands)
 or "it was never me" (genesis cut, everything it ever signed is struck). Status chips: "left"
 and "locked out."
 
@@ -970,7 +972,7 @@ Two pieces of tooling came out of the hunt:
 
 - **eslint joins `ui-check`** (`node/js/eslint.config.js`): esbuild cannot tell a typo from a
   browser global, so an undefined identifier ships silently - `no-undef` at error level is the
-  gate (planted a violation, watched it go red). The react-hooks rules opened at *warn* with
+  gate (planted a violation, watched it go red). The react-hooks rules opened at _warn_ with
   13 findings and were paid down to zero the same day - the headline was doc/editor.js, six
   hooks below two `!loaded` early returns (a hook list that grew once the doc loaded, correct
   only by accident of monotonic growth): every hook now sits above the returns, their guards
@@ -978,7 +980,7 @@ Two pieces of tooling came out of the hunt:
   safe. The rest were split between real fixes (a `useCallback`, extracted dep expressions)
   and deliberate partial deps annotated with their reasons (the save-flush cleanup reads its
   ref at teardown time ON PURPOSE; turbolinks' `gen` counter IS the change signal for a map
-  mutated in place). Both rules now run at *error* - the cop gates.
+  mutated in place). Both rules now run at _error_ - the cop gates.
 - **The headless harness** (`node/harness/drive.mjs`): the real bundle in jsdom against a
   throwaway node - browser-global stubs, a cookie-jar fetch bridge, API pre-provisioning that
   skips the onboarding ceremony - which reproduced the exact symptom, confirmed the fix, and
@@ -1888,7 +1890,7 @@ be one question wearing two hats: how a reader materializes many writers.
 
 **Other People Live in Their Own Database** records what the code already decided and never
 stated: Greg's chains land in Greg's database, node-shared and deduplicated, because a fold
-of his chains is a property of *him*; the line that keeps it coherent is **content is
+of his chains is a property of _him_; the line that keeps it coherent is **content is
 theirs, opinions are yours** (his posts in his file, your nickname and dials on your private
 chain); what lands there is exactly what you can prove entitlement to, enforced three times
 (his node won't send, yours won't accept, you couldn't read) and generalizing without
@@ -1923,7 +1925,7 @@ opinions stay home. "The Browser Is a View", promoted one level.
 
 Cross-referenced from the Inbound Gate and Edge-Endpoint Visibility, and promoted in
 NEXT_STEPS to route step 4 - the substrate posts and feeds sit on, and the first thing that
-would make following someone actually *do* anything.
+would make following someone actually _do_ anything.
 
 ## Publication: a note becomes a post (2026-08-03)
 
@@ -2032,7 +2034,7 @@ before the click to after it.
 
 So the draft goes on screen the moment the server names it: a local overlay holds the minted
 doc_id and leads the mirror, cleared the instant the mirror agrees. This is the overlay the
-contact ledger and the tags already use, and it is *The Browser Is a View* holding rather than
+contact ledger and the tags already use, and it is _The Browser Is a View_ holding rather than
 bending - the view may run ahead of the stream so long as it never disagrees with it, which is
 guaranteed here because the thing it is ahead about is a document the server has already
 acknowledged. The editing session never needed the row anyway; it fetches by id.
@@ -2144,7 +2146,7 @@ around the words. It works for a persona this node has never carried, because th
 that named the posts brought their bodies with them.
 
 Deliberately no mirror table. Another person's public documents are not ours to keep in a local
-kind (*Other People Live in Their Own Database*), so this is one body fetch per post and a cap of
+kind (_Other People Live in Their Own Database_), so this is one body fetch per post and a cap of
 twenty in pure/feed.js - a person's page is an introduction, not an archive.
 
 Order is established here rather than trusted: the server answers newest-first, but this list can
@@ -2183,7 +2185,7 @@ test that pins it. Cheap error-shape laziness bought an expensive detour.
 
 Posting threw a 500 reading "storing entry", left the post sitting as a draft, and then stopped
 happening on its own - the signature of a race, and this one was bought three commits back, this
-morning, buying speed in this same app (*Posting stops queueing*, above). Making Post fast meant
+morning, buying speed in this same app (_Posting stops queueing_, above). Making Post fast meant
 minting the next draft ALONGSIDE the publish, and both of those author entries on the same
 chain. Every entry derives its seq from the chain head, so two appends overlapping between that
 read and the insert leaves the loser dead on the
@@ -2219,12 +2221,13 @@ Fifteen seconds of ceremony, and then nothing. The unlock's only consequence was
 item's title into a link - so an UNTITLED post, which this app has deliberately made ordinary,
 had no consequence at all. Worse where there was a title: the link pointed at `/home/feed/<id>`,
 an address Feed doesn't answer, so it fell through to the documents-app rendering of a feed post
+
 - the "clicking on one carried me into essentially the notes app" from the day the app was built,
-still standing behind a door nobody had opened for fifteen seconds.
+  still standing behind a door nobody had opened for fifteen seconds.
 
 Editing now happens where the words are. The unlock mounts the same interactive editor the
 composer runs, on the item itself, with the same save machinery and a "post the changes" button -
-which is what *edits are made using the interactive editor, in place* asked for in the first
+which is what _edits are made using the interactive editor, in place_ asked for in the first
 place, applied to the half of the app that hadn't got it yet. An item already unsealed offers a
 plain `edit` instead of the lock, and the editor mounts on demand rather than whenever an item is
 unlocked, so a stack of leftover drafts doesn't raise a live CodeMirror each on first paint. The
@@ -2457,7 +2460,7 @@ eagerly to sync someone - so `interest` becomes `eagerness` and needed no UI at 
 
 The trust half took a conversation to get right, and the record is worth keeping because I was
 wrong first. Canon says the node routes and the user ranks, and that it deliberately does NOT
-assemble trust weights, because *already-possible* and *already-assembled* are different security
+assemble trust weights, because _already-possible_ and _already-assembled_ are different security
 postures. I read Curtis's proposal as an amendment to that and pushed back; the resolution was
 better than either starting position. Only `trust_public`-consented edges are copied, which
 resolves the objection rather than overriding it: assembling statements their authors agreed may
@@ -2794,6 +2797,7 @@ exchange), pinned by a two-node test that only passes through it: the tick is te
 so the settle window expires long before a backstop could fake the event.
 
 Three changes, one shape - make events complete, make backstops cheap:
+
 - The missing ingest hook, above.
 - Backstop sweeps STAT before they OPEN (`loops::FreshnessMarks` + `db_mtime_ms`): a file's
   mtime is readable without decrypting anything, so an idle persona costs a stat, never an open,
@@ -3160,20 +3164,20 @@ resolved fork (same-height replacement by eviction) read as "nothing moved".
 The doctrine was already settled in PROJECT_PLAN ("forks are self-proving... a fork on any
 single chain condemns the key"); what was missing was mechanism, in four pieces:
 
-* **The proof crosses the wire.** missing_for_peer (send_missing's testable core): a peer
+- **The proof crosses the wire.** missing_for_peer (send_missing's testable core): a peer
   whose claimed head we hold at a different hash is sent our entry at that position - one
   entry, and the receiver holds two valid signatures at one (chain, seq). Works for unequal
   lengths too; only the exact fork POINT goes unfound, and condemnation doesn't need it.
-* **The gate records rather than stores.** The Active path's at-or-below-head skip now
+- **The gate records rather than stores.** The Active path's at-or-below-head skip now
   compares hashes; a contradiction writes both signed envelopes to `equivocations` (user db,
   gen 6) - EVIDENCE, never touched by rebuild_views. Neither branch displaces the other.
-* **Containment is presentation-level.** While evidence stands on a public content chain,
+- **Containment is presentation-level.** While evidence stands on a public content chain,
   public_docs/public_doc_ids return nothing - the shelf goes dark, and everything downstream
   follows free: /id empty, fan-out journals nothing, feed retraction sweeps delivered rows.
   Quarantine on PROOF only, never on a bare fingerprint mismatch - a hostile peer
   advertising garbage must not be able to suppress an honest persona (Unresolvable-with-
   backoff already handles the unproven case).
-* **The crown adjudicates.** ingest_batch clears evidence for any no-longer-Active author:
+- **The crown adjudicates.** ingest_batch clears evidence for any no-longer-Active author:
   the revocation's anchors decide honored history (machinery that existed), the quarantine
   lifts, the vindicated shelf returns, and losing-branch replays are the ceiling's problem.
   Plus the resync tracker fingerprint gained head_hash - same-height replacement is movement.
@@ -3196,23 +3200,23 @@ machine with fresh frontiers.
 
 What shipped, on machinery that mostly existed:
 
-* **Serving records go universal** (identity/serving.rs): every hosted identity publishes
+- **Serving records go universal** (identity/serving.rs): every hosted identity publishes
   its leaf-signed record - at creation, at adoption, and on the republish beat. "Publication
   is an act" is retired for serving records; served_at_ms remains as the HTTP-face flag.
-* **The derived peer set** (net::sync::derive_peers_for): Active crown leaves x resolved
+- **The derived peer set** (net::sync::derive_peers_for): Active crown leaves x resolved
   serving records, upserted leaf-bound into identity_peers (node gen 9 adds leaf_pubkey +
   last_resolved_ms); rows whose leaf the crown no longer credits are DELETED - revocation
   finally reaches routing. Runs at adoption and on a 600s beat (LOCAL_TEST override:
   RINGTOME_TEST_PEER_DERIVE_MS). Probed: A adopts B adopts C, kill B, write on C - the words
   reach A with the introducer dead; planted (derive no-op'd), the partition stands.
-* **Member-proven dialers are remembered**, leaf-bound from their proof, on both sides of
+- **Member-proven dialers are remembered**, leaf-bound from their proof, on both sides of
   an exchange - healing on any contact.
-* **Hints become leaves**: the /id face mints ?via= as identity leaves (own leaf first,
+- **Hints become leaves**: the /id face mints ?via= as identity leaves (own leaf first,
   then liveliest siblings by serving-record freshness; endpoint ids remain as filler and
   fallback), and fetch_foreign tries every hint as a leaf (serving record must name the
   target root - a leaf via for the wrong identity is discarded) before falling back to
   dialing it as an endpoint.
-* **Bare roots resolve** - the accident that fell out: a founding node signs with the root
+- **Bare roots resolve** - the accident that fell out: a founding node signs with the root
   AS its leaf, so its serving record lives at the root's own slot. fetch_foreign gained the
   zeroth rung (the target root as implicit hint), and a stranger node resolved a persona
   from nothing but its root, live-probed. The announce rendezvous shrinks again: needed only
@@ -3290,13 +3294,13 @@ of follows catches up ordered instead of stampeding.
 
 Two catches worth their ink, both found because plants refused to fail:
 
-* **Phase-1 scope creep**: the member-proven dialer upsert was enrolling MIRRORED personas
+- **Phase-1 scope creep**: the member-proven dialer upsert was enrolling MIRRORED personas
   into identity_peers when their devices pushed to us - and identity_peers is the device-
   mesh worklist, so every follower node was quietly running unpaced, unfollow-blind
   anti-entropy for everyone it followed. Exactly the conflation the schema comment warns
   about. Now gated to hosted personas; the wake pass is the follower-side channel, with
   presence, pacing, and the dial.
-* **QUIC patience**: a SIGSTOPPED process's UDP socket buffers the push's dial and completes
+- **QUIC patience**: a SIGSTOPPED process's UDP socket buffers the push's dial and completes
   it on thaw - a 12s nap wasn't a missed push at all, just a slow one. The probe's freeze
   now outlasts the handshake patience (45s), after which the plant finally failed honestly:
   no wake pass, post missed forever.
@@ -3343,13 +3347,13 @@ without CI noticing, because the workflow runs `just ci` verbatim and `just ci` 
 Warnings-as-errors on production code beside zero linting on the code that PROVES it is an
 odd seam, and sixteen is an afternoon, so the flag went on and the backlog went away:
 
-* **Eleven `&[x.clone()]` -> `std::slice::from_ref(&x)`** in the sync gate's tests - each was
+- **Eleven `&[x.clone()]` -> `std::slice::from_ref(&x)`** in the sync gate's tests - each was
   cloning a signed entry purely to build a one-element slice.
-* **`items after a test module`** in `request_context.rs`, where an `impl FromRequestParts`
+- **`items after a test module`** in `request_context.rs`, where an `impl FromRequestParts`
   block had drifted below `mod tests`. Clippy and the house rule (STYLE, File ordering:
   "tests at the bottom") wanted the same thing, so it moved rather than being suppressed.
-* **A stray `vec!`** where an array does, in the fan-out batching test.
-* **Two arity allows, with the reason inline** (`documents.rs`'s `save`/`save_fmt`): taking
+- **A stray `vec!`** where an array does, in the fan-out batching test.
+- **Two arity allows, with the reason inline** (`documents.rs`'s `save`/`save_fmt`): taking
   the `Save` struct's fields positionally IS what those helpers are for, at ~40 call sites,
   and handing them a struct parameter would restore exactly the verbosity they exist to
   remove. Curtis's rule for this pass - genuinely exceptional cases may carry "the lint does
@@ -3399,12 +3403,12 @@ scan). The real find was the handle cache: each node ends the 50x50 run holding 
 databases against a cache of **128**, so the back half of every run is thrash - and a miss
 was O(the identity's entire history), twice over:
 
-* `UserDbManager::open` called `all_entry_bytes` unconditionally - every entry's BLOB, off
+- `UserDbManager::open` called `all_entry_bytes` unconditionally - every entry's BLOB, off
   disk - and in the common case (journal populated, database populated) used the result for
   nothing but `is_empty()`. The bytes are needed only on the journal-backfill branch, so
   that is the only branch that fetches them now; the other asks `imaol::entries_are_empty`,
   one indexed probe.
-* `Journal::open` read the WHOLE journal file and walked every frame to apply the torn-tail
+- `Journal::open` read the WHOLE journal file and walked every frame to apply the torn-tail
   rule - a rule its own doc comment calls a one-time act ("once, here - after which appends
   proceed blindly"), which the cache quietly turned into once-per-miss. Torn tails are crash
   recovery; within a process run every byte past the first check was written here as a whole
@@ -3446,7 +3450,7 @@ a person without going through `t` — so new words cannot land silently, which 
 
 The last of those took a second pass to get right. The first cut made the call-site string the
 English and left `en.js` generated and unread, which Curtis named as a category error: "default"
-means *what you reach when a lookup fails*, not *the English locale*, and conflating them leaves
+means _what you reach when a lookup fails_, not _the English locale_, and conflating them leaves
 `en-GB` — and any copy edit that shouldn't touch code — with nowhere to live. The runtime turned
 out to already be correct (a registered `en` table beats the call-site string exactly the way `fr`
 does); what was wrong was that the generated catalog wasn't wired in, and the comments said so
@@ -3478,19 +3482,19 @@ is this" and "which sentence is this" are different questions.
 The migration is a codemod, which is why three wrong turns cost re-runs instead of rework. What it
 taught, in the order it hurt:
 
-* **Position is what separates voice from machinery.** `${busy ? 'bringing your things across…' :
-  'become me here'}` is prose; `class=${kind === 'all' ? 'search-opts-btn' : '…'}` is not. Same
+- **Position is what separates voice from machinery.** `${busy ? 'bringing your things across…' :
+'become me here'}` is prose; `class=${kind === 'all' ? 'search-opts-btn' : '…'}` is not. Same
   syntax — the only difference is whether the hole landed in a text node or an attribute. The first
   pass collapsed interpolations and silently dropped 46 real phrases, including both branches of
   idpage.js's "none of the computers its address points at answered."
-* **Idempotency is correctness, not tidiness.** Run two found the English sitting inside the `t()`
+- **Idempotency is correctness, not tidiness.** Run two found the English sitting inside the `t()`
   wrapped by run one and wrapped it again, making the outer call's key the inner call's text.
   Existing `t(...)` spans are now blanked before the choice scanner reads an expression, and
   "migrate twice, second run reports zero" is how the codemod is tested.
-* **rustfmt's trailing comma hid the longest messages.** A pattern anchored without `,?$` skipped
+- **rustfmt's trailing comma hid the longest messages.** A pattern anchored without `,?$` skipped
   exactly the constructions long enough to be broken across lines — which are the wordiest, most
   user-visible ones. Two dozen of them.
-* `let USERNAME_MIN = &value` does not bind: an ALL-CAPS name in a `let` pattern is read as a
+- `let USERNAME_MIN = &value` does not bind: an ALL-CAPS name in a `let` pattern is read as a
   constant pattern, so `msg!` stopped compiling at precisely the call sites naming a constant. The
   macro now evaluates its arguments twice and says so.
 
@@ -3937,7 +3941,7 @@ One correction to the premise on the way in, which did not save the feature: the
 on the PRIVATE chain, not the public one, so nobody else ever saw them. The growth complaint
 survived that untouched (permanent, append-only, one register per document ever read), and
 the real indictment turned out to be the TRIGGER rather than the total: marks fired from an
-IntersectionObserver at a 0.6 threshold, so *scrolling* wrote one signed, encrypted,
+IntersectionObserver at a 0.6 threshold, so _scrolling_ wrote one signed, encrypted,
 epoch-sealed, fsynced private-chain entry per post that crossed the viewport, then pushed it
 to every device the reader owns. Reading was the highest write-rate act in the application -
 in a codebase whose contact ledger already says "one private record per deliberate click,
@@ -3963,7 +3967,7 @@ benefit from seen much more than a feed does, and a button keeps the structure b
 future inbox inherits the same rule (recorded in Arrival and Attention), since a notice list
 is the other place read state genuinely earns its keep.
 
-PROJECT_PLAN's *Two cursors, not one* is now *One cursor* - delivered, node-local,
+PROJECT_PLAN's _Two cursors, not one_ is now _One cursor_ - delivered, node-local,
 disposable - with both reasons and the declined middle ground written into it, so the next
 person to think "the feed should show what's new" finds the argument instead of the absence.
 NEXT_STEPS' "Seen" item ("needs to work more reliably, use less private chain space") is
@@ -3976,7 +3980,7 @@ unseen toggle to asserting the read-state chrome is gone.
 
 The delivered half of Arrival and Attention, built. Until today every notification came from
 the DERIVED path - fold a chain you already sync - which by construction cannot carry the one
-event people most want: *someone you don't follow followed you*. There is no edge, so there is
+event people most want: _someone you don't follow followed you_. There is no edge, so there is
 no sync, so there is nothing to fold. That fact has to be carried to your door.
 
 **The wire** (`proto/src/deliver.rs`, its own `ringtome/deliver/0` ALPN because sync's own rule
@@ -3995,8 +3999,8 @@ linearizes each key's whole identity-public chain from genesis, which is what le
 usurper stamps and revocation ceilings - and shipping that means every intermediate key's
 key-epoch entries, kilobytes for a mature persona, against an envelope budget of 4 KiB (the
 number is not free: a notice is stored verbatim inside one private record, whose ciphertext
-caps at 6 KiB). So `verify_claim` asks the smaller question it actually needs - *may this leaf
-speak for this root?* - and answers it with a signature chain, each rung signed by the key the
+caps at 6 KiB). So `verify_claim` asks the smaller question it actually needs - _may this leaf
+speak for this root?_ - and answers it with a signature chain, each rung signed by the key the
 previous rung authorized. Forging it needs the root key, at which point you ARE the identity.
 What that gives up is written into the function: revocation (already accepted doctrine,
 "verifiable-modulo-revocation") and seniority (a notice grants nothing, so rank decides
@@ -4035,7 +4039,7 @@ fetching their page - so it is commented at the call site.
 ### Two failures, and a process failure worth more than either
 
 `just ci` came back red, which is how a **process** bug surfaced: every run this session was
-shaped `just ci 2>&1 | tail -N`, and bash reports the *pipeline's* status, so I had been
+shaped `just ci 2>&1 | tail -N`, and bash reports the _pipeline's_ status, so I had been
 reading `tail`'s exit code and calling it green. A stash-and-rerun proved HEAD was already
 failing `just lint` on two `clippy::type_complexity` errors from earlier today's work, both
 committed on a green I never actually checked. Runs now capture `$?` into an echo before any
@@ -4066,7 +4070,7 @@ fan-in-at-read-time mistake `feed_journal` exists to avoid.
 ## 2026-08-09 — the ring turns: chain floors as policy
 
 The retention residual, closed the same evening, because it was the load-bearing one: a
-stranger pool that refuses when full is a door a flood can shut *and leave shut* - the
+stranger pool that refuses when full is a door a flood can shut _and leave shut_ - the
 opposite of the design, where a flood can only ever rotate other strangers out.
 
 The insight that shaped the build: **retention is an admission feature wearing a deletion
@@ -4220,7 +4224,7 @@ cost is per-persona and there is a floor to bisect from; REFACTOR carries it as 
 A question about the inbox tiers ("when someone is blocked, they can't even post in the
 stranger tier?") turned up a property nobody meant to ship. Blocked was refused correctly, at
 check (5), before classification — a blocked sender has never been able to take a stranger slot.
-But the *answer* went back as `refusal::GATE`, and by 2026-08-10 that code had run out of
+But the _answer_ went back as `refusal::GATE`, and by 2026-08-10 that code had run out of
 company.
 
 `GATE` is coarse on purpose. Doctrine's line is that refusal leaks exactly one bit — "they are
@@ -4237,12 +4241,12 @@ verdict the gate can reach maps to the same wire answer — the sender is told t
 whether they were transcribed, dropped as already-pulled, or blocked. They retry nothing, which
 is what they would also do against a node that was merely offline.
 
-The doctrine took the amendment rather than an exception. *Words beat resets* is right because
+The doctrine took the amendment rather than an exception. _Words beat resets_ is right because
 a refusal tells a sender about **themselves** — too little standing, too much traffic — which
 they can act on and are entitled to know. Whether you blocked them is a fact about **you**. The
 distinction pays for the one place in this system where a node answers falsely, and it buys the
-property the block was actually for: not "you cannot reach me", which invites evasion, but *no
-signal at all*. The visible refusals that arrive with Trust report the sender's own standing
+property the block was actually for: not "you cannot reach me", which invites evasion, but _no
+signal at all_. The visible refusals that arrive with Trust report the sender's own standing
 and stay spoken aloud.
 
 The cop is written as an equality, not a mapping: `wire_answer(Blocked) == wire_answer(
@@ -4261,7 +4265,7 @@ The block-oracle fix left the delivery door with two answers and three things to
 meant the sender's business was concluded; `Refused` meant a fact about the sender or their
 envelope that they could act on; and a node whose keystore was briefly locked, or whose database
 was busy, had to pick one. It picked `Refused(GATE)` — and a refusal is retired by the sender's
-outbox forever, correctly, because retrying a refusal is what a spammer does. So *our* transient
+outbox forever, correctly, because retrying a refusal is what a spammer does. So _our_ transient
 fault silently destroyed a notice that nobody had refused, and the sender was told it was their
 own fault.
 
@@ -4274,7 +4278,7 @@ the same situation from the sender's side and always was.
 
 One behaviour changed beyond the mapping: **a busy door no longer ends the attempt.** The dial
 ladder used to return on any answer, so one unlucky machine consumed the whole try. Busy is a
-door that did not work, so the loop continues to the next candidate — the sender needs *a* node
+door that did not work, so the loop continues to the next candidate — the sender needs _a_ node
 of the recipient's, not that one — and only falls out as `Unreachable` when every door is busy or
 silent.
 
@@ -4298,7 +4302,7 @@ the very chain the envelope had been quoting. Two machines, each behaving correc
 one event.
 
 The gate enforces "a follow-edge produces no inbox row, ever" at transcription, which is the only
-moment it *can* - but the relationship outlives the moment, and nothing retired the row that was
+moment it _can_ - but the relationship outlives the moment, and nothing retired the row that was
 already correct when it was written. The handler's own doc claimed the transition already worked
 ("answering the door converts them to the derived path"): true of future notices, and nobody had
 noticed it was false of the notice that prompted the answer.
@@ -4354,7 +4358,7 @@ reader that destroys durable state cannot.
 The test had its own, independent defect, and it is the reason two CI runs produced an ambiguous
 message. `return t.includes("doomed-post") ? null : t` hands `settle` an empty array the moment
 the feed is cleared — and `[]` is truthy — so the poll latched onto the transient and reported it
-as the final answer. Both middle assertions now wait for *doomed absent AND honest present*, so a
+as the final answer. Both middle assertions now wait for _doomed absent AND honest present_, so a
 future failure means "the honest post never came back" instead of "we sampled mid-refold". The
 first and last `settle` in the same test always guarded correctly (`t.length >= 2`,
 `t.includes(...)`); these two were the only unguarded ones in the suite.
@@ -4362,7 +4366,6 @@ first and last `settle` in the same test always guarded correctly (`t.length >= 
 Recorded honestly: the failure never reproduced on this machine, so the diagnosis rests on the
 mechanism being readable in the code rather than on a red-to-green demonstration. The action is
 the verification, and the test change is what makes its next answer unambiguous.
-
 
 ## 2026-08-10 — the door starts charging, and the dial is cut before it exists
 
@@ -4378,7 +4381,7 @@ the **stamp slot has existed since the envelope was designed**, empty, waiting.
 
 The argument that had to be settled first was one I had written into the plan myself - a bullet
 titled "Why not a small always-on price". Curtis drew the distinction it was missing: that argues
-against a *significant* baseline pretending to be a defence, and says nothing about a trivial one
+against a _significant_ baseline pretending to be a defence, and says nothing about a trivial one
 whose job is to make the machinery real. **A dial you have never turned is not a dial you can turn
 confidently at 3am.**
 
@@ -4387,13 +4390,13 @@ own body with the stamp stripped - so a solved stamp is worth nothing on any oth
 other recipient, for any other kind. Calibrated rather than guessed: **19 bits, 32ms release and
 40ms debug** on an M1, against **0.28us to verify**. That asymmetry is why hashcash and not Argon2:
 memory-hard functions cost the verifier what they cost the solver, which under a flood is a CPU
-amplifier aimed at the node being flooded. The stamp check therefore runs *before* the signature
+amplifier aimed at the node being flooded. The stamp check therefore runs _before_ the signature
 checks - one hash to refuse, rather than three ed25519 verifications.
 
 **Then Curtis took the dial away, and was right to.** The question that did it: does the sender
 just pay whatever it is quoted? A malicious node could post engagement-bait, quote an enormous
 price, and farm CPU out of everyone who followed it. Two holes fell out. The sweep re-solved on
-*every* quote, so a door that simply always answers `NeedsStamp` could make a sender grind once per
+_every_ quote, so a door that simply always answers `NeedsStamp` could make a sender grind once per
 retry for three days - fixed by refusing to re-grind for a price the envelope's existing stamp
 already clears (the door is lying; `solve` is deterministic, so a second grind returns the
 identical nonce). And the protocol ceiling was doing two jobs: "no door may demand more than this"
@@ -4406,7 +4409,7 @@ That is an oblique refusal which costs the refuser nothing and the honest strang
 worse than simply saying no. So the dial went before any of it was built: no flood detector, no
 stress signal, no decay. What is left is a small fixed price, `RINGTOME_POW_REQUESTED_BITS` and
 `RINGTOME_POW_WILLING_BITS` as boot config, and no runtime adjustment anywhere. The protocol
-ceiling went with it - a ceiling only ever bounded how far a *dynamic* price could climb, and the
+ceiling went with it - a ceiling only ever bounded how far a _dynamic_ price could climb, and the
 sender's own willingness is the whole answer without help from the protocol.
 
 The knob exists for one reason and the comment says so: a price calibrated to tens of milliseconds
@@ -4446,22 +4449,22 @@ destroys the original author's ability to delete or edit that content, ever.** T
 turned out to be one the system had already found for feeds - the author's shelf is
 authoritative, everything downstream is a disposable copy that honours it - proven end-to-end
 that same morning by the repudiation work, where a disowned device's posts were swept from a
-follower's journal and its bodies un-served on nodes the author never touched. *A delivery memo
-cannot launder disproven content*, generalised one hop out.
+follower's journal and its bodies un-served on nodes the author never touched. _A delivery memo
+cannot launder disproven content_, generalised one hop out.
 
 So: **a signed pointer on your chain, plus a pinned replica your node serves. Never a copy.** The
 pointer is the durable social act (`(author, doc_id, version_seen)`, LWW, retraction by
 omission); the replica is the virality, carrying the author's own signed entry and body so no hop
 can launder provenance. **Silence preserves, speech deletes**: an author who merely goes offline
 cannot retract, so their content survives through the replicas - the availability that full-copy
-wanted - while an author who *actively* retracts is honoured by every honest node. Full-copy
+wanted - while an author who _actively_ retracts is honoured by every honest node. Full-copy
 trades the second away to get the first; this keeps both, and edits keep working too.
 
 ### What shipped, in order
 
 **The pointer** (`service::REBROADCASTS`, its own chain). Its own chain rather than an entry type
 on `posts` for a reason that bites twice: a view watermark is per `(author, service)`, so two
-folds sharing a service fight over one cursor - and the separation is the *feature*, because a
+folds sharing a service fight over one cursor - and the separation is the _feature_, because a
 reader's rebroadcast band is a different dial from their interest band. Memo-backed from birth
 rather than after the fact: the full-chain audit's rule applied before it could be broken.
 
@@ -4471,7 +4474,7 @@ retraction reachable.** A copy nobody refreshes can never learn it was withdrawn
 exactly the permanence full-copy would have handed out, arriving by the back door. So a share
 holds its author in the sync worklist past the moment every contact dial pointing at them goes to
 nothing. The test says it plainly: with no subscriptions row anywhere, one share puts the author
-in the worklist; withdrawing takes them out. It also lands cleanly on *Pull, Not Push* - a share
+in the worklist; withdrawing takes them out. It also lands cleanly on _Pull, Not Push_ - a share
 IS the accountable demand signal, so `detach` releases a departing persona's pins.
 
 **Both notice halves.** Delivered (`notice_kind::REBROADCAST`) for an author who does not follow
@@ -4504,7 +4507,7 @@ learn a number the store already knew.
 ### Four design corrections, which are the real content
 
 **Pins must never propagate with viewing.** Caught at design time, and the failure mode is
-precise: if *seeing* a share ever created a chain subscription, density does the rest - in a
+precise: if _seeing_ a share ever created a chain subscription, density does the rest - in a
 well-connected network everyone eventually sees everything once, and "pin a fragment of the
 author's chain" degrades to every public persona synced to every computer. So pins are created by
 the deliberate act of sharing, on the sharer's own node, and nowhere else. Readers hold a
@@ -4529,7 +4532,7 @@ belong together, so the fold moved instead.)
 transcode cap bounds each blob, nothing bounded how many a body referenced. The proposed fix - a
 preview tier owed by fragments, full media fetched on play - was rejected on the grounds that a
 hundred-track doc is not one post but a **Taxonomy** of them, and that viral transmission of the
-*real bytes* is what keeps the network feeling fast. The bound moved to the source instead: cap
+_real bytes_ is what keeps the network feeling fast. The bound moved to the source instead: cap
 the post, carry everything. The honest cost of the whole retraction design, recorded as a
 decision rather than discovered later: **you cannot fix a typo in a two-year-old post**, because
 the edit window freezes content and the recourse is delete-and-repost under a new id.
@@ -4588,7 +4591,7 @@ the longest and most user-visible messages". Same failure, same selection bias, 
 the fix is not just the flag:
 
 - **`unescapeRust` is now its own named rule**, because a continuation is not an ordinary escape:
-  `\` before a newline eats the newline *and* the next line's indentation, which the generic
+  `\` before a newline eats the newline _and_ the next line's indentation, which the generic
   backslash-X unescape would have got wrong even once the pattern matched.
 - **The tool no longer runs on import.** Its entry point is guarded, so loading the module has no
   side effects - which is what lets a test exercise the scanners at all. A tool that rewrites the
@@ -4612,7 +4615,7 @@ pointer shipped. A reader following a sharer holds "B shared A's document D" and
 The obvious implementation - start syncing A - is the one thing the design forbids, and the
 reason is worth restating because it is what the whole slice is shaped around: **a chain pin must
 never propagate with viewing.** In a dense network everyone eventually sees everything once, so a
-subscription created by *looking* degrades to every public persona synced to every computer.
+subscription created by _looking_ degrades to every public persona synced to every computer.
 
 So the reader gets a **fragment**: the author's exact signed entry plus its blobs, fetched from
 the ORIGIN that handed over the pointer, verified offline, and held with no sync edge to the
@@ -4622,7 +4625,7 @@ author at all.
 
 `proto::fragment` is a one-request/one-answer ALPN. Four message types where three would have
 compiled, and the fourth is the interesting one: **`Gone` and `Unknown` are different words.**
-*Gone* is a fact about the document - withdrawn, drop it. *Unknown* is a fact about the node -
+_Gone_ is a fact about the document - withdrawn, drop it. _Unknown_ is a fact about the node -
 ask somebody else. Collapsing them would make a reader delete a live share every time it asked a
 node that simply did not carry it.
 
@@ -4702,14 +4705,14 @@ pointed at its owner. Nothing here touches that.
 **Stopping impersonation was never happening.** Hiding the name does not prevent anyone from
 BEING "Bank Support" - it only makes honest strangers unreadable, while the hostile ones are
 equally unreadable and equally free to try. The legitimate case paid the entire cost. Worse for
-safety, arguably: "banana-boat followed you" gives a reader nothing to be suspicious *of*.
+safety, arguably: "banana-boat followed you" gives a reader nothing to be suspicious _of_.
 
 So the constraint to keep was **no fetch**, not **no name**, and those come apart cleanly.
 
 ### The design that was proposed, and why Curtis was right to kill it
 
 The first proposal was to carry the sender's signed `profile-set` entry as evidence - verified
-offline by the same auth-path walk, no sync - on the theory that a *published* name is
+offline by the same auth-path walk, no sync - on the theory that a _published_ name is
 accountable where a per-recipient string is not. Curtis: "does it give them accountability? they
 could just forge their whole profile chain from genesis, ending in 'Bank Support', couldn't they?"
 
@@ -4753,7 +4756,7 @@ Fixed by giving EVERY row a visible subject: a followed persona's real name (fro
 cache, read off their own chain when we synced them) unquoted in the subject position, a
 stranger's quoted, and the speakable form of the key when there is neither. Styled deliberately at
 the same weight - the difference between them is the quote marks and the stranger tag, not colour
-or boldness, because a reader should have to *notice* provenance rather than absorb it as
+or boldness, because a reader should have to _notice_ provenance rather than absorb it as
 importance.
 
 The pattern behind that mistake, and behind two others the same day (the via-line's hierarchy, the
@@ -4795,8 +4798,8 @@ design conflated it with "sync their history", and only the second is expensive.
 - **The tombstone carries deletion past the second hop.** A node that hears `Gone` drops the
   words and keeps 48 bytes of fact (`fragment_tombstones`), and answers `Gone` itself thereafter
   - the only way a node that never held the author's chain can tell the next hop anything. Memo
-  first, then forget: a crash between the two leaves a stale fragment the next sweep resolves,
-  where the other order leaves a node that lies to everyone downstream.
+    first, then forget: a crash between the two leaves a stale fragment the next sweep resolves,
+    where the other order leaves a node that lies to everyone downstream.
 - **A failed fragment fetch retries** (`fragment_wants`, the missing-bodies idiom). The share
   fold only re-runs when the sharer's chain moves, so "the pointer folded before the post
   synced" - a race measured in milliseconds - used to eat a share forever, silently. Found as
@@ -4851,9 +4854,9 @@ The other shape considered was an admin-only instruction, alongside grant/revoke
 permanent production surface for **a node that silently stops talking to its peers while `/health`
 stays green**, which is close to the worst outage this codebase could ship by accident, and it hands
 a compromised admin account a partition button. `test_endpoints` already had the better posture -
-the route is not *mounted* unless `RINGTOME_LOCAL_TEST` is set, so on a real node the path does not
+the route is not _mounted_ unless `RINGTOME_LOCAL_TEST` is set, so on a real node the path does not
 exist rather than existing-but-forbidden. `Unplugged::arm` refuses outside local-test mode anyway,
-because two locks cost one `if`. (A real operational *drain* is a legitimate future feature, and a
+because two locks cost one `if`. (A real operational _drain_ is a legitimate future feature, and a
 different design: it would withdraw serving records and refuse gracefully rather than blackhole.
 A test's convenience must not get to invent it.)
 
@@ -4869,7 +4872,7 @@ A test's convenience must not get to invent it.)
   while proving the opposite of what it says. Names resolve through the ALPN table or the request
   fails, and `Refusals` can only hold strings that came out of that table.
 - **The reset is a root hook, not a convention.** The failure worth engineering against is not a
-  spec that forgets to plug a node back in - it is a spec that *dies mid-partition*, after which
+  spec that forgets to plug a node back in - it is a spec that _dies mid-partition_, after which
   every later file fails on a network that isn't there and the diagnosis points at innocent code.
   So `withUnplugged` re-plugs in a `finally` (the belt) and `integration/roothooks.cjs` re-plugs
   anything this process touched after every test (the braces, which are what survives a hang). It
@@ -4881,7 +4884,7 @@ A test's convenience must not get to invent it.)
 ALPNs would drift the day a sixth protocol lands, leaving a gate that no longer covers the surface
 it claims to - so `p2p::ALPNS` is now the single owner and the endpoint advertises what it holds.
 
-The sharper risk is a seventh *dial site*. The gate is total only because every outbound connection
+The sharper risk is a seventh _dial site_. The gate is total only because every outbound connection
 goes through `p2p::dial`; a call that reached for `endpoint.connect` directly would leave a partition
 test passing while a whole protocol kept talking straight through the "partition" - failing silently,
 and confidently. Nothing at runtime can notice that, so
@@ -4901,14 +4904,14 @@ named in `Unplugged`'s doc and wants its own mode rather than a change to this o
 
 Also worth writing down: the gate stops the **transport**, not the directory. An unplugged node
 still resolves serving records and still knows where its peers live. A test that needs a node to
-*forget* its peers wants different scissors.
+_forget_ its peers wants different scissors.
 
 ## 2026-08-11 — three documents about what kind of application this is
 
 A conversation stretch, no code. It started as "how hard would it be to run the node behind a Godot
 game?" and ended up reopening the packaging decision, so it produced [GODOT.md](plans/GODOT.md),
 [DESKTOP.md](plans/DESKTOP.md) and [MOBILE.md](plans/MOBILE.md) rather than a commit. **Nothing is decided:**
-PROJECT_PLAN's *Delivery and Packaging* is unamended and still canon, and each new document says at
+PROJECT_PLAN's _Delivery and Packaging_ is unamended and still canon, and each new document says at
 the top whether it proposes superseding a section or merely records why an idea keeps returning.
 Registered in README's document list, which is the map.
 
@@ -4916,10 +4919,10 @@ Five findings did the work, and four of them are corrections to canon rather tha
 
 ### The Godot cost estimate was right about the renderer and wrong about the editor
 
-*The Client Story*'s strike prices a game-engine client at "a renderer for a few dozen tags, not a
+_The Client Story_'s strike prices a game-engine client at "a renderer for a few dozen tags, not a
 browser." That is literally true, better than it knew: `record/bake.rs` already parses Marquee in
 Rust for the publication media pre-pass, so a gdext client links the same crate and gets the AST
-free — the *second* implementation of the grammar in the tree, not a third.
+free — the _second_ implementation of the grammar in the tree, not a third.
 
 The editor is where the estimate misses, in the cheap direction. The intuitive objection is that a
 rich-text surface on `TextEdit` is a doomed multi-month project, and `js/doc/livemarquee.js` says
@@ -4936,7 +4939,7 @@ never a second complete client. The strike stands regardless, on its own terms.
 
 ### The Tauri rebuttal answers a question nobody asked
 
-*Desktop mode: local server + system browser, NOT Tauri* rejects Tauri because "the app is already
+_Desktop mode: local server + system browser, NOT Tauri_ rejects Tauri because "the app is already
 a full HTTP server, so Tauri's core value (bridging a webview to native Rust) is a bridge we do not
 need." Nobody picks a webview shell for the IPC bridge — they pick it for being an application:
 one signed binary, its own window and dock identity, a tray, an updater. The section answered "do we
@@ -4949,7 +4952,7 @@ it an argument for bundling Chromium rather than for shipping no shell.
 
 Corrected the same day, when the two shells were compared properly rather than one-sidedly: Tauri on
 Windows is Chromium (WebView2 is evergreen), so the exposure is macOS and Linux, not everywhere; and
-*"we develop against real browsers and that is what ships"* splits in half, because the node serves
+_"we develop against real browsers and that is what ships"_ splits in half, because the node serves
 the UI over HTTP and so day-to-day development is Chrome-at-localhost under either shell. Tauri costs
 the second half of that sentence, not the first. DESKTOP now carries the full comparison, the
 three integration shapes (Electron-sidecar, Tauri-sidecar, Tauri-in-process), and the one experiment
@@ -4959,7 +4962,7 @@ and written it down," with the cost of skipping that experiment recorded rather 
 
 ### "No background sidecar on iOS, period" is about sidecars
 
-*Phones: deferred, by design* concludes a phone "was always going to be a remote client of
+_Phones: deferred, by design_ concludes a phone "was always going to be a remote client of
 always-on nodes, not a p2p citizen." The premise is true and the inference is not: in-process
 linking lets a phone run the whole iroh stack. The conclusion survives on **background execution**
 grounds instead, and the distinction is load-bearing, because "impossible" says be a terminal while
@@ -4975,18 +4978,18 @@ There is no middle option, checked in the code: `record/imaol::append` signs on 
 A phone node up 30 minutes a day is p ≈ 0.02, so instantaneous availability needs k ≈ 150 replicas.
 Hopeless on that metric — recorded so nobody rediscovers it. It is also the wrong metric: followed
 content reads from the reader's own mirror, so phone-as-peer degrades to **staleness, not
-unavailability**, and *Rebroadcast: Pointer Plus Pinned Replica* plus *silence preserves, speech
-deletes* carry the rest. What has no mirror to hide behind: first contact, delivery to strangers
+unavailability**, and _Rebroadcast: Pointer Plus Pinned Replica_ plus _silence preserves, speech
+deletes_ carry the rest. What has no mirror to hide behind: first contact, delivery to strangers
 (whose own third mitigation assumes friends' always-on nodes), the `/id/` public web face, and push.
 
 The reframe that makes it survivable, and the reason DESKTOP matters strategically: **the always-on
 node does not have to be infrastructure anyone sets up — it can be the user's own desktop with
 autostart at login.** That is what could let the federated half of the design become opt-in, which
-*Always-on nodes are needed either way* currently rules out.
+_Always-on nodes are needed either way_ currently rules out.
 
 ### What Dexie buys a local client
 
-Of the five benefits *The Browser Is a View* claims, one is really reactivity rather than storage
+Of the five benefits _The Browser Is a View_ claims, one is really reactivity rather than storage
 (one `liveQuery` call site in `js/mirror.js`), offline reads are near-worthless when the node is
 zero hops away, instant-boot is node-side snapshot cost misattributed to the client, multi-tab
 coherence dies in a single-window app, and only "near-zero growth in bespoke read endpoints"
@@ -5035,8 +5038,8 @@ replace per kind in one `rw` transaction across seven stores, then bulkPut/bulkD
 ### Three decisions worth keeping
 
 **Decode and encode are reported separately**, because the two video failure modes are not equally
-bad and one verdict would hide the difference: no AV1 *encode* is DEGRADED (the `frames` lane is the
-designed answer; the cost is ~1.6MB becoming ~58MB), while no *decode* or no `AudioEncoder` is
+bad and one verdict would hide the difference: no AV1 _encode_ is DEGRADED (the `frames` lane is the
+designed answer; the cost is ~1.6MB becoming ~58MB), while no _decode_ or no `AudioEncoder` is
 BLOCKING (nothing can be laundered at all). On Linux the second is a live risk, because WebKitGTK's
 media stack is GStreamer and H.264 is whatever the distro installed.
 
@@ -5076,7 +5079,7 @@ Gates: nothing in the workspace moved, so `just ci` was not run. The spike build
 
 Two platforms probed (macOS 26.6.1 / WebKit 21624.4.5.11.5, and Ubuntu 26.04 LTS / WebKitGTK 2.52.3),
 both in the `http` origin mode. Curtis's call on the evidence: **Tauri is sufficient for our
-purposes.** DESKTOP's *deciding experiment* is answered and its risk paragraph amended accordingly.
+purposes.** DESKTOP's _deciding experiment_ is answered and its risk paragraph amended accordingly.
 
 **The mirror passes on both WebKit engines.** `liveQuery` fired and reacted - the disqualifying row -
 and the 8MB Blob and ArrayBuffer round-trips came back byte-identical on both, which was the specific
@@ -5098,7 +5101,7 @@ lane needs no audio tap.
 
 `LINUX.md` records `Verdict: FAIL - 1 failing: storage quota + persistence posture`, on
 `navigator.storage is undefined`. Every load-bearing row passed. The step was documented in the README
-*and in its own code comment* as informational and unable to fail a run, and was then implemented with
+_and in its own code comment_ as informational and unable to fail a run, and was then implemented with
 a `throw` - so **a category that existed only in a comment failed a probe it was written not to
 fail.** WebKitGTK 2.52.3 has no StorageManager at all, which is the engine fact worth keeping; the
 FAIL was noise on top of it.
@@ -5116,7 +5119,7 @@ probes at runtime, so the product copes - but no Linux capability can be stated 
 requirement, which is harder to document than a uniform answer would have been.
 
 **`canPlayType` is not evidence on WebKitGTK.** It answered `probably` for all seven probed types
-*including HEVC*, because it reports GStreamer's registry rather than real decode capability.
+_including HEVC_, because it reports GStreamer's registry rather than real decode capability.
 
 ### Still outstanding, and none of it blocks the shell decision
 
@@ -5147,7 +5150,7 @@ poll and most of the port-collision handling - deleted rather than solved. Packa
 Chromium CVE treadmill becomes the OS's job.
 
 **One genuinely open design question, recorded with three answers.** A shifting port drops per-origin
-state (*Caveats that apply to desktop mode regardless*), so: (a) a persisted fixed port with page and
+state (_Caveats that apply to desktop mode regardless_), so: (a) a persisted fixed port with page and
 API same-origin - **recommended, because it is the configuration the spike actually validated and it
 keeps CORS off the node's door**; (b) Tauri's custom scheme for the page with a cross-origin API,
 stable forever but needs CORS and is untested; (c) serve HTTP straight into the axum `Router` through
@@ -5165,20 +5168,20 @@ The `lib.rs` split is Stage 1 and is flagged as the one stage that can disturb t
 composition root, and `tests/conventions.rs` reasons about table ownership by file path.
 
 Knock-on edits so nothing contradicts: README's document list now describes a Tauri plan; MOBILE's
-*Tauri as the shell* section says it **converges** with desktop rather than diverging, since the
+_Tauri as the shell_ section says it **converges** with desktop rather than diverging, since the
 desktop plan now pays for the split, the in-process node and a working Tauri build on its own account -
 **a phone client becomes a port of a shipping application rather than a new project**, which is the
 biggest move in that document's estimate since it was written. MOBILE's "two shells against one UI"
 residual is struck through rather than deleted, because its disappearance is part of the argument.
 
-Outstanding editorial act, unchanged: PROJECT_PLAN's *Desktop mode: local server + system browser, NOT
-Tauri* now contradicts DESKTOP by title. Canon has not been amended.
+Outstanding editorial act, unchanged: PROJECT_PLAN's _Desktop mode: local server + system browser, NOT
+Tauri_ now contradicts DESKTOP by title. Canon has not been amended.
 
 Gates: markdown only; nothing outside `*.md` moved.
 
 ## 2026-08-11 — canon amended: desktop mode is Tauri with the node embedded
 
-PROJECT_PLAN's *Desktop mode: local server + system browser, NOT Tauri* is now **Desktop mode: Tauri,
+PROJECT_PLAN's _Desktop mode: local server + system browser, NOT Tauri_ is now **Desktop mode: Tauri,
 with the node embedded (settled 2026-08-11)**. The rename is the point: that section's title carried
 its conclusion, so a section that reversed had to lose it.
 
@@ -5189,7 +5192,7 @@ for being an application, and the section's own floor case (auto-open the browse
 the config-page shape that made this come up. The second, webview skew, was the strong one and was
 **tested rather than argued away** - `spike-tauri/`, both WebKit engines, the mirror passes.
 
-Also written into canon: in-process rather than sidecar *deletes* the orphan, readiness and
+Also written into canon: in-process rather than sidecar _deletes_ the orphan, readiness and
 port-collision problems instead of solving them; the `lib.rs` split is mechanical because `crate::`
 still resolves to the crate root inside a library, so the ~49 files using it are untouched; the
 persisted-port answer to the stable-origin warning, which also makes the live-cache WebSocket
@@ -5201,10 +5204,10 @@ install, and the loss of Electron's decade of battle-testedness, named so it can
 Renaming a section strands every cross-reference to it, so the same pass fixed the three places that
 depended on the old position:
 
-- ***The Client Story*'s desktop-delivery bullet** said the shell opens the system browser in app mode
+- **_The Client Story_'s desktop-delivery bullet** said the shell opens the system browser in app mode
   at a stable localhost port. Rewritten to one binary that is both node and window, keeping the part
   that was right (one installer, one signing identity, tray and autostart in the same executable).
-- ***Caveats that apply to desktop mode regardless*** opened by noting the caveats "would cost the same
+- _**Caveats that apply to desktop mode regardless**_ opened by noting the caveats "would cost the same
   under Tauri, so they are not arguments for it." That framing predicted its own survival correctly, so
   it is recorded as such - and two caveats now have settled answers rather than open warnings: the
   localhost-CSRF hazard is what the launch token closes, and the stable-port requirement is answered by
@@ -5218,9 +5221,9 @@ Knock-on: DESKTOP's status block flips from "canon says the opposite" to "canon 
 from "amend canon" to what remains; README's trio framing no longer claims all three documents disagree
 with canon, because one of them no longer does.
 
-**Still predating this decision, and flagged rather than rewritten:** *Phones: deferred, by design*
+**Still predating this decision, and flagged rather than rewritten:** _Phones: deferred, by design_
 (whose no-background-sidecar-on-iOS premise MOBILE corrects, and whose cost estimate this decision
-materially lowers) and *Always-on nodes are needed either way* (against DESKTOP's autostart argument).
+materially lowers) and _Always-on nodes are needed either way_ (against DESKTOP's autostart argument).
 Both are Curtis's call.
 
 Gates: markdown only; nothing outside `*.md` moved.
@@ -5231,7 +5234,7 @@ Gates: markdown only; nothing outside `*.md` moved.
 lanes. But both lanes were **policy**: `tree` asks the tree because it was told to, `fast` asks the
 author because she was there. Neither could prove the thing the share tree exists for - that a
 reader who asks the author first, and gets nothing, still ends up with the right answer. The
-fallback's code ran in every suite; the fallback's *trigger* had never once fired.
+fallback's code ran in every suite; the fallback's _trigger_ had never once fired.
 
 `/test/unplug` made the real case reachable, so the same three claims now run again with the fast
 lane on and Alice's node dark:
@@ -5243,7 +5246,7 @@ lane on and Alice's node dark:
 - **An unreachable author is not a deleted one.** Twelve seconds of sweeps - a dozen chances per
   hop to get it wrong - and the fragment, its version, and the feed row all stand, with no
   tombstone anywhere. If a failed revalidation were ever read as a takedown, closing your laptop
-  would erase your work from everyone who shared it. *Silence preserves, speech deletes*, pinned.
+  would erase your work from everyone who shared it. _Silence preserves, speech deletes_, pinned.
 - **An edit and a takedown each reach the fourth hop after their author goes dark.**
 
 ### The two-phase darkness, and why it is not theatre
@@ -5253,7 +5256,7 @@ the share tree carrying nothing at all - the sweeps run every ~1.5s here, so Cle
 simply have learned it from Alice during the window before she went dark.
 
 Alice's chain reaches Bob over the **sync** ALPN; readers ask her for documents over the
-**fragment** ALPN. So her fragment door is shut *before* the act, which makes every subsequent
+**fragment** ALPN. So her fragment door is shut _before_ the act, which makes every subsequent
 arrival provably second-hand, and her node goes fully dark before the deepest hop runs. That the
 gate is per-protocol is what makes this expressible; it was the reason not to build a gate that
 only understood the word "sync", and this is the payoff arriving one day later.
@@ -5263,10 +5266,10 @@ only understood the word "sync", and this is the payoff arriving one day later.
 Two false passes were possible here, and both were checked by making them happen rather than by
 reasoning about them:
 
-- Shutting **Bob's** fragment door as well made *an edit reaches the fourth hop* fail on exactly
+- Shutting **Bob's** fragment door as well made _an edit reaches the fourth hop_ fail on exactly
   the assertion that says the revision came from Bob. So that test measures the B→C hop, not
   Alice answering quickly.
-- Shutting **Cleo's** made *a takedown reaches the fourth hop* fail. Dana's only route to `Gone`
+- Shutting **Cleo's** made _a takedown reaches the fourth hop_ fail. Dana's only route to `Gone`
   really is Cleo's tombstone - the memo held by a node that never had Alice's chain and no longer
   has her words either.
 
@@ -5303,8 +5306,8 @@ write path and no cleanup paths to forget. It was a good argument for a design t
 The test came back with `rebroadcast_pins` **empty** on the reader's node, and the reason was
 written in the schema next to the column I had misread: `holder_root` is "the local persona whose
 share obliges this node". `rebroadcast::fold` puts it plainer still - pinning is an obligation
-hosted-only *and load-bearing*, because "fronting on a foreign persona's say-so would be push, and
-*Pull, Not Push* forbids it", while journaling is delivery and must run for foreign sharers. The two
+hosted-only _and load-bearing_, because "fronting on a foreign persona's say-so would be push, and
+_Pull, Not Push_ forbids it", while journaling is delivery and must run for foreign sharers. The two
 halves were deliberately split on 2026-08-10 after one guard was found doing both jobs. So a
 reader's node holds pins for its own personas and never for the strangers whose shares fill its
 feeds - which is the entire population of a crowd.
@@ -5375,7 +5378,7 @@ the sharer see" is what this node holds.
 ### Two findings, and the second one is the interesting one
 
 **The dial nobody set.** `follow-someone` wrote `interest` and stopped, so a persona could
-share correctly and reach *nobody* - `interest_rebroadcasts` is a separate rung, and
+share correctly and reach _nobody_ - `interest_rebroadcasts` is a separate rung, and
 `subscriptions::edge_of` reads it separately. The action would have written valid pointers
 that no other node ever journaled, and the feature would have looked broken in the data while
 being perfectly correct in the code. The follow now draws the second dial independently
@@ -5387,7 +5390,7 @@ gesture makes.
 arrived by rebroadcast, and **zero** with `via_count > 1`. A crowd needs two people a reader
 follows to land on the same document, which random picking from twenty-row feeds essentially
 never does - so the whole "Sam and four others" shape, built two days ago, would have had no
-representation in dev data at all. Half the draws now prefer an item that arrived *by* a
+representation in dev data at all. Half the draws now prefer an item that arrived _by_ a
 share. That is not a thumb on the scale for the test case: re-sharing what was passed to you
 is what virality IS, and the previous behaviour was the unrealistic one, a network where every
 post is passed along at most once.
@@ -5422,8 +5425,8 @@ Gates: `just ci`, exit 0, 635 passing.
 Every cascade test walked a deletion FORWARD, through a network where everyone hears in order.
 No real network has that property, and the direction nobody had asked about turned out to be
 broken: a sharer who slept through a takedown, offering the post back to a reader who had
-already buried it, got it accepted. `cascade.cjs` now has *a document that was buried stays
-buried*, and it failed on the first run exactly as predicted.
+already buried it, got it accepted. `cascade.cjs` now has _a document that was buried stays
+buried_, and it failed on the first run exactly as predicted.
 
 The reader ended up holding **a tombstone and a fragment at once** - privately knowing the
 document was dead while serving it to anyone one hop further out, because `answer_for` consulted
@@ -5495,7 +5498,7 @@ Gates: `just ci`, exit 0, 636 passing.
 
 ## 2026-08-13 — blooms out, cursors in: the delete-set summary loses to an empty answer
 
-Canon amended: *Retraction, edits, and what a node must remember forever* no longer specifies
+Canon amended: _Retraction, edits, and what a node must remember forever_ no longer specifies
 per-author bloom filters as the shippable delete-set summary. Retraction CURSORS replace them -
 "what died since seq N?", asked of the origins a node already dials, answered with the signed
 tombstone entries themselves.
@@ -5536,8 +5539,8 @@ moved.
 
 ## 2026-08-13 — Gone becomes signed speech: deletion proves itself like content does
 
-Slice 1 of the deletion arc (PROJECT_PLAN, *Retraction, edits, and what a node must remember
-forever*). `Have` always proved itself - the author's signed entry, verified offline at the
+Slice 1 of the deletion arc (PROJECT_PLAN, _Retraction, edits, and what a node must remember
+forever_). `Have` always proved itself - the author's signed entry, verified offline at the
 receiving edge, a relay unable to alter a byte. Its opposite was the one unauthenticated word in
 the protocol: a bare tag, taken on the answering node's say-so. Under tombstone finality (three
 days old) that had become the sharpest edge in the system - a lying origin could permanently
@@ -5637,8 +5640,8 @@ not buried, cursor advanced past it; the fourth hop hearing the batch with the a
 and the steady state costing nothing.
 
 Then the whole claim checked at once: `deaths_page` planted to answer empty, full suite run.
-Exactly the three cursor tests failed, each on its load-bearing assertion, and *the steady
-state is an empty page* correctly survived - an empty page is what the plant serves. No other
+Exactly the three cursor tests failed, each on its load-bearing assertion, and _the steady
+state is an empty page_ correctly survived - an empty page is what the plant serves. No other
 door delivered those deaths; the tests measure the cursor and nothing else. Plant removed,
 `just ci` exit 0, 640 passing.
 
@@ -5783,9 +5786,10 @@ bug in the very slice that added it is the whole argument for testing the surfac
 ### Still open, queued in NEXT_STEPS
 
 Media doesn't hop: the `media_refs` walk where the body text lands, same origin, budget-bound
+
 - and only then the media deletion story (orphan reaper, retract-the-twin, blob reaping),
-virality before deletion, per Curtis. The "shipped end to end 2026-08-11" bullet now says what
-was true: the data layer shipped then; the reader's screen was reached today.
+  virality before deletion, per Curtis. The "shipped end to end 2026-08-11" bullet now says what
+  was true: the data layer shipped then; the reader's screen was reached today.
 
 Gates: `just ci` exit 0, 642 passing.
 
@@ -5871,7 +5875,7 @@ Gates: `just ci` exit 0, 650 passing (5 new pure tests, embedcap.cjs); catalog a
 
 ## 2026-08-14 — the image rides the share: implicit rebroadcast, built
 
-The rule canon now carries (*What travels with a share*): **a share is an implicit rebroadcast
+The rule canon now carries (_What travels with a share_): **a share is an implicit rebroadcast
 of the post's media** - one pointer, one budget, one renderable whole, because nobody believes
 they shared a post minus its picture. The signed header's `refs` (yesterday's slice) made it
 buildable without parsing a byte of foreign Marquee: a post fragment's arrival obliges its
@@ -5885,7 +5889,7 @@ Deliberately NOT `fragment_wants`: the wants drain journals arrivals to the shar
 and an image is not a post - the covers table doubles as media's own retry ledger
 (`heal_covers`, on the sweep beat, skipping the entombed).
 
-Proven with real bytes end to end (`cascade.cjs`, *the image rides the share*): a webp through
+Proven with real bytes end to end (`cascade.cjs`, _the image rides the share_): a webp through
 ingest, the bake minting the public twin, the twin's fragment riding to hops three and four,
 the IMAGE BYTES serving from each reader's own node at the URL their renderer asks - and the
 takedown dropping post and image together at every hop.
@@ -6085,8 +6089,8 @@ Gates: `just ci` exit 0, 657 passing.
 
 ## 2026-08-15 — feed selectivity designed: one slider, two budgets
 
-A design conversation, no code; PROJECT_PLAN gained *Feed selectivity: one slider, two
-budgets* under the feed section. The chain of it: Curtis asked how practical trust-edge
+A design conversation, no code; PROJECT_PLAN gained _Feed selectivity: one slider, two
+budgets_ under the feed section. The chain of it: Curtis asked how practical trust-edge
 implicit rebroadcast would be against the bootstrap problem; hop-0 ("people I trust")
 died on its own selection effect - both dials live on one contact card, so
 trust-without-interest is a person the reader looked at and DECLINED, the worst pool,
@@ -6131,16 +6135,16 @@ a wire. The thing deliberately NOT proposed: syncing the journal itself - same-o
 would permit it, but it turns a disposable memo into a replicated structure with a conflict
 story, to paper over an amnesia rather than cure it.
 
-The test (*the cohort is part of the tree*, cascade.cjs): cora adopted onto a second rig node
+The test (_the cohort is part of the tree_, cascade.cjs): cora adopted onto a second rig node
 via the daisychain ceremony, the sibling asleep through a share, the last stop loaded and
 serving, author and sharer then dark forever, the sibling waking into a network where its own
 cohort is the only holder. RED demonstrated live on the named assertion - "the share's feed
 row reached the waking sibling" - then SKIPPED, deliberately: a standing red suite blocks
 every interleaved slice (green before forward), so the red is recorded here, the skip carries
 a loud unskip-me comment, and unskipping is the fix's first move. Both slices are in
-NEXT_STEPS under *Feed convergence across a persona's own nodes*.
+NEXT_STEPS under _Feed convergence across a persona's own nodes_.
 
-Also: one observed flake on the rerun ledger - *a delete reaches the fourth hop [fast]* went
+Also: one observed flake on the rerun ledger - _a delete reaches the fourth hop [fast]_ went
 red once ("Cleo dropped her copy": a fragment surviving a feed-row excise), green on the
 clean rerun that proved it a flake by the standing rule. Recorded in case it recurs; no
 mechanism identified.
@@ -6149,7 +6153,7 @@ Gates: `just ci` exit 0, 657 passing, 2 pending (the armed skip among them).
 
 ### Addendum: the simple diagnostic, and what gossip buys beyond shares
 
-Same day, second test: `cohort.cjs`, *frontier gossip: the sibling that stayed up* - the
+Same day, second test: `cohort.cjs`, _frontier gossip: the sibling that stayed up_ - the
 AM-node scenario verbatim, with the share machinery stripped out entirely. Two personas, one
 follow, one post: the sibling sleeps, the awake node journals, the author leaves forever, the
 sibling wakes into a network where its own cohort is the only holder - and the feed row never
@@ -6245,7 +6249,7 @@ attribution-key convergence stay in NEXT_STEPS.
 
 ## 2026-08-16: second-order edges - the graph assembled, the fold kept home
 
-The trust-and-discovery investigation's first built rung (PROJECT_PLAN: *Implicit edges*,
+The trust-and-discovery investigation's first built rung (PROJECT_PLAN: _Implicit edges_,
 beside the selectivity design it feeds). Two memos, one per level, and the level split IS
 the design. `edge_graph` (node.db, schema gen 24): what synced personas say publicly about
 each other, one row per published statement, assembled from each mirrored persona's
@@ -6315,8 +6319,8 @@ authoritative rule unchanged.
 
 ## 2026-08-22: DISCOVERY slice 1 - the speculative pass at posts depth
 
-The bytes gap's first working rung (DISCOVERY.md: *The pipeline*, stages 1-2, and *The
-speculative pass*): content nobody asked for, acquired because trust vouches for it. Two
+The bytes gap's first working rung (DISCOVERY.md: _The pipeline_, stages 1-2, and _The
+speculative pass_): content nobody asked for, acquired because trust vouches for it. Two
 memos and a beat, node.db gen 25:
 
 - **`speculative_demand`** - the rollup over each reader's `implicit_edges`, written by the
@@ -6966,9 +6970,10 @@ everyday case got its missing acceptance (rebroadcast.cjs: a FOLLOWED sharer's s
 arrives by the derived path, document named, no envelope crossed - the gate's
 AlreadyPulled drop plus the derived fold, the design working as designed), which also
 established that `stranger` serializes only when true. The bell now speaks the share kind
+
 - "shared one of your posts" when the row names the document (derived), "shared something
-of yours" when it cannot (a delivered murmur collapses per sender) - and its header tells
-the truth about both roads.
+  of yours" when it cannot (a delivered murmur collapses per sender) - and its header tells
+  the truth about both roads.
 
 ## 2026-08-25 (cont. 15): a murmur names its post
 
@@ -7495,8 +7500,9 @@ ada speculatively mirrored onto cal's node, and the chain fold delivers the same
 so the one-hop claim proves arrival, and the two-hop claim, where no vouch road exists,
 is the planted proof of the fragment road itself. One tooling
 scar: a blanket regex meant for the Have CONSTRUCTIONS also padded three match PATTERNS
+
 - structural edits want the sites listed, not pattern-matched blind. Node gen 32 -> 33
-(`just clean` before the next dev boot).
+  (`just clean` before the next dev boot).
 
 ## 2026-08-30 (cont. 3): the tags show on every post surface
 
@@ -9173,7 +9179,7 @@ code cites is unchanged.
 ## 2026-09-17: your personas
 
 "The UI for having a node user manage more than one persona." A new item under "your
-settings", *your personas - manage who you appear to be*: every persona the account carries
+settings", _your personas - manage who you appear to be_: every persona the account carries
 on this node as a row, the one this browser is using marked, a switch on each of the others,
 and the two doors that already existed - make a new persona (the ceremony and the naming,
 unchanged) and bring one here from another computer (the join flow, unchanged). The persona
@@ -9220,13 +9226,14 @@ a third failed on the rerun - each a single beat racing a lane, none about the s
 public annotations suite's retraction claim pulled ada's OWN root and then trusted bravo's
 eager push to have landed before one fold beat; it now pulls bea's chain, bounded. The same
 suite's carrier proof asserted "relay:" on cal's node while its own header said a second road
+
 - the speculative mirror - reaches cal too; when that road lands first the row honestly says
-"chain", so the claim accepts either and the carrier proof moved to eve, whose node has one
-road. The pins peek claim guarded "the deep post is not on the page" with "at least twenty
-held", which nineteen of the window plus the pin satisfies with the deep post on the page; it
-asks the fragment ledger's count and claims only past twenty. And the peek footprint's
-ceiling claim read a body the look was still fetching as a refusal with the wrong word; it
-waits for the body to land or the ceiling to bite, whichever the door says.
+  "chain", so the claim accepts either and the carrier proof moved to eve, whose node has one
+  road. The pins peek claim guarded "the deep post is not on the page" with "at least twenty
+  held", which nineteen of the window plus the pin satisfies with the deep post on the page; it
+  asks the fragment ledger's count and claims only past twenty. And the peek footprint's
+  ceiling claim read a body the look was still fetching as a refusal with the wrong word; it
+  waits for the body to land or the ceiling to bite, whichever the door says.
 
 ## 2026-09-17: one rollout at a time
 
@@ -9811,7 +9818,7 @@ started. CHAT.md ruling 12 writes that down, slice 11 builds it.
 
 An IM is a room (ruling 1) with the pair's rules on it, not a second chat system. The words
 of the room's post are a user card naming the other person, so the post is sealed to "the
-people mentioned" (*Contact tags*, ruling 5) with a member list of one - which also makes
+people mentioned" (_Contact tags_, ruling 5) with a member list of one - which also makes
 the mention notice that tells them the chat exists, and the feed card each of them sees. The
 header grows `im` (key 23): absent when false, carried forward on re-publication like
 `settled`, and saying THAT there is a pair without saying who, since the audience stays the
@@ -9871,7 +9878,7 @@ refusal deleted underneath it.
 
 Curtis read what the morning had built and asked the right question: "any user can start a
 chat with any other user, sight unseen, no trust relationship at all?" Yes - and the plan had
-already ruled otherwise. *The Inbound Gate: One Floor, Three Surfaces* names a DM as the first
+already ruled otherwise. _The Inbound Gate: One Floor, Three Surfaces_ names a DM as the first
 of its three surfaces, gated by "they clear your trust floor and you have not muted them", and
 `inbox.rs` says in its own words why that gate refuses nobody today: the pre-Trust classifier
 has no floor to check, so `blocked` is its only live refusal. What the IM work changed was not
@@ -10139,7 +10146,7 @@ document in this repo addressed to the operator rather than to the code.
 It starts with the free thing, because it is the one that cannot be replaced: the updater keypair is
 ours, costs nothing, and losing it means no installed copy can ever update again, since the public
 half is already baked into every binary shipped. Then Apple ($99/yr, individual enrolment, a
-*Developer ID Application* certificate - not Mac App Distribution - exported as a base64 `.p12`, plus
+_Developer ID Application_ certificate - not Mac App Distribution - exported as a base64 `.p12`, plus
 an App Store Connect API key whose `.p8` downloads exactly once). Then Azure Artifact Signing, with
 the two eligibility traps found by reading Microsoft's own docs rather than assuming: **individual
 validation is open only to developers in the United States or Canada**, and it takes its identity
@@ -10170,7 +10177,7 @@ every release gets a NAME from the same wordlist the speakable addresses and the
 use: `0.1.0-swear-slick`.
 
 Built as asked, with one split he did not ask for and should know about: **the name is not in the
-version field.** `0.1.0-swear-slick` is a semver *prerelease*, which sorts BEFORE `0.1.0`, so a mix
+version field.** `0.1.0-swear-slick` is a semver _prerelease_, which sorts BEFORE `0.1.0`, so a mix
 of decorated and undecorated versions would order releases wrongly - and macOS wants
 `CFBundleShortVersionString` to be at most three integers, which a word breaks outright. So the
 number stays strict semver everywhere a toolchain reads it and the name rides in the tag, the title
@@ -10229,7 +10236,7 @@ opens, one transaction per rung together with its stamp and its row in a new `sc
 
 - **The baseline continues the old count.** The squashed schemas became `node/0053_baseline.sql`
   and `user/0026_baseline.sql`, numbered at the generations all three releases shipped with, so
-  every database a release wrote is already on its ladder. With no ladder record, it is *adopted*
+  every database a release wrote is already on its ladder. With no ladder record, it is _adopted_
   on first open. A smaller stamp (a pre-release dev database) still gets the rebuild guidance.
 - **Refusals that remain:** a database stamped above this build's top rung (written by a newer
   build; nothing migrates down), and a rung whose text changed after this database climbed it
@@ -10261,7 +10268,7 @@ returned, before a single post had landed.
 
 The window: the first look at the author is a **peek** (identity chains now, twenty posts as
 fragments behind the page), and the follow that comes next promotes the peek to a whole fetch
-*inside the follow's own request*. Between the subscription row and that fetch's return, the pair
+_inside the follow's own request_. Between the subscription row and that fetch's return, the pair
 is already an eager follow and the author's database exists with no posts in it - and the
 free-running fill loop (one second apart in the rig) fell into it. `dig_one` read one empty page,
 which it cannot tell from an exhausted shelf, wrote `done`, and nothing reopens a finished dig,
@@ -10317,12 +10324,13 @@ driven from Rust, so the webview gets no capability and the plugins' JS surface 
 build never checks - no bundle to replace, a version that means nothing. Windows installs in
 `passive` mode (progress bar, no clicks). Untested end to end until two consecutive releases exist
 with this code in the older one; the first release carrying it is what makes the next one the test.
+
 ## 2026-09-23 (cont.): nodes on different releases can talk
 
 Curtis asked how sync copes with a field of wildly varying versions, and the honest answer was "it
 doesn't, and nothing tests it". The entry format was already built to outlive versions (a version
 tag, unknown header keys skipped and carried through, append-only type ids), but the sync
-*conversation* was not: the Hello decoded only at arities 4 through 8, exactly, and each of its four
+_conversation_ was not: the Hello decoded only at arities 4 through 8, exactly, and each of its four
 later slots had been a silent wire break - survivable only because every node was rebuilt from one
 tree on the same day. The next slot would have made every released node drop the connection with
 `unknown sync message`.
@@ -10487,8 +10495,8 @@ What is the protocol kept its name: ALPNs, signature domains, crates, the `ringt
 `RINGTOME_*` variables, test vectors, and the node's own log lines about peers. Three user-meetable
 things kept it on purpose: the bundle identifier `net.lassam.ringtome` (it names the data directory,
 the OS permission grants and the login item), the release-name seed (or every release name
-changes), and browser-storage keys (or their contents are orphaned). README, PROJECT_PLAN (*Two
-names*, under Vision), GLOSSARY, CLAUDE.md and the desktop docs say which name means what.
+changes), and browser-storage keys (or their contents are orphaned). README, PROJECT_PLAN (_Two
+names_, under Vision), GLOSSARY, CLAUDE.md and the desktop docs say which name means what.
 
 ## 2026-09-25 (cont.): the badge, said out loud
 
@@ -10672,7 +10680,7 @@ test (another port or another host spelling is another origin). The click itself
 
 ## 2026-09-25 (cont.): a P2P port you can name
 
-The first piece of packaging server nodes (NEXT_STEPS, *Server nodes*), done first because nothing
+The first piece of packaging server nodes (NEXT_STEPS, _Server nodes_), done first because nothing
 else has a workaround for it: iroh's QUIC listened on whatever UDP port the OS handed out at boot, so a
 container could not publish it and a firewall could not open it ahead of time - a containerised node
 could still talk through iroh's relays, but never directly. `RINGTOME_P2P_PORT` now names it: set, the
@@ -10684,7 +10692,7 @@ and sees it, sees a second node refused it, and sees unset left alone - red with
 
 ## 2026-09-25 (cont.): server nodes ship with the release
 
-The packaging half of NEXT_STEPS's *Server nodes*. Every release now carries, beside the desktop
+The packaging half of NEXT_STEPS's _Server nodes_. Every release now carries, beside the desktop
 installers, the server node twice: `ringtome-server-<version>-<name>-linux-{x86_64,aarch64}.tar.gz`
 (the binary, `SERVER.md`, the licence, and a sha256 beside each) and the same binaries as a multi-arch
 image, `ghcr.io/cube-drone/ringtome:<version>`, `:<version>-<name>` and `:latest`. The names keep the
@@ -10722,7 +10730,7 @@ release-notes guide and NEXT_STEPS say 2.28 now.
 
 ## 2026-09-25 (cont.): the node backs itself up, running
 
-The supervisor's precondition (NEXT_STEPS, *Server nodes*): `POST /api/admin/backup` packs the
+The supervisor's precondition (NEXT_STEPS, _Server nodes_): `POST /api/admin/backup` packs the
 running node into `backup_<UTC time>.tar.gz` in `RINGTOME_BACKUP_DIRECTORY` (default
 `<data>/backups`, left out of the backup), returning a ticket at once; `GET /api/admin/backup/{id}`
 answers 202 with the log while it runs, 200 with the path when the archive is whole, 500 with the
@@ -10873,7 +10881,7 @@ Curtis: a place for administering the node that never says "node" - **Server** i
 one door that makes accounts from outside (`/api/auth/register` asks `admit` first), readable by the
 signup screen (`GET /api/registration`), which then asks for the sign-up password or drops "new here?".
 Defaults keep what shipped: a server starts `open`, a device `closed`. This is PROJECT_PLAN's
-*Registration Modes* in a smaller shape - `password` stands in for invite tokens.
+_Registration Modes_ in a smaller shape - `password` stands in for invite tokens.
 
 **Multi-user mode**, the Device's version of that page: the owner's account (`me`, random password,
 DESKTOP.md Stage 3) gets a sign-in name and password of their choosing at the network's 8-character
@@ -10906,7 +10914,7 @@ and its two names, and for the backups page's date and size. Not run: the shell'
 The Device app's multi-user mode guessed the wrong shape. Curtis meant several people sharing one
 computer; what was built opened the app to the LAN. On reflection the concept is not shaped enough to
 build at all - what he actually wants eventually is local sign-in with a password instead of
-auto-login, and not yet (NEXT_STEPS, *Local accounts, shaped later*). So it came out: the multi-user
+auto-login, and not yet (NEXT_STEPS, _Local accounts, shaped later_). So it came out: the multi-user
 doors, the account rename, the shell's listen-on-the-network request and the `desktop-network` file,
 the LAN addresses (and the `netdev` dependency with them), and their claims in `device.cjs`. The
 desktop always binds loopback again, as before.
@@ -11106,14 +11114,15 @@ grew `layers` - entries of id, number, stack place, opacity, hidden, and when la
 stroke grew the `layer` it is on; a stroke naming none is on the base layer every drawing has. Both
 are written only when they say something, so every drawing made before layers is byte-for-byte what
 it was. Layers merge by keeping every one, the later change to a layer winning with a fixed tie-break
+
 - the same rule in `pure/drawing.js` and `drawing.rs`, held by new vector cases (red with the node's
-tie-break reversed), and `drawing.cjs` forks a layered drawing on the real node and checks its merge
-is the page's own, byte for byte. The surface paints each layer on its own canvas (so the eraser
-erases within its layer), stacks them at their opacities over the paper, and draws a stroke live onto
-its own layer and restacks - a layer above still covers it as you draw. Thumbnails, copies and
-publications are exactly what is shown: hidden layers left out. The column: opacity, new layer, and the
-stack top-first, rows dragged to reorder and clicked to draw on; a hidden layer takes no strokes.
-Nobody has drawn on layers yet; reordering by touch, and deleting or renaming a layer, are for later.
+  tie-break reversed), and `drawing.cjs` forks a layered drawing on the real node and checks its merge
+  is the page's own, byte for byte. The surface paints each layer on its own canvas (so the eraser
+  erases within its layer), stacks them at their opacities over the paper, and draws a stroke live onto
+  its own layer and restacks - a layer above still covers it as you draw. Thumbnails, copies and
+  publications are exactly what is shown: hidden layers left out. The column: opacity, new layer, and the
+  stack top-first, rows dragged to reorder and clicked to draw on; a hidden layer takes no strokes.
+  Nobody has drawn on layers yet; reordering by touch, and deleting or renaming a layer, are for later.
 
 ## 2026-09-26 (cont.): the transparency floor
 
@@ -11721,7 +11730,7 @@ is now said in plain words - formatting dropped, each embed named for what it is
 attention.rs `line_words`) - and carries its first still picture:
 
 - **`Alert.picture`** is the twin path the line was baked to (`/id/<speaker>/docs/<twin>/body/
-  media.avif`). Web Push sends it as `image`, and sw.js fetches it itself under the reader's
+media.avif`). Web Push sends it as `image`, and sw.js fetches it itself under the reader's
   session - which a sealed room's twin asks for - and hands it over as a data URL; a picture that
   will not come in 5 s means a notification without one. Chrome shows `image` on Windows, Linux
   and Android; macOS's native banners, Safari and Firefox leave it out.
@@ -11791,7 +11800,7 @@ our door would send them, the reads.
 
 ## 2026-09-27 (cont.): scores and the best orders (slice 1)
 
-PROJECT_PLAN's *Scores and sort orders*, slice 1 (Curtis's design, settled the same day): the
+PROJECT_PLAN's _Scores and sort orders_, slice 1 (Curtis's design, settled the same day): the
 feed can be read **best today / this week / this month / this year / ever** beside **newest**.
 A post's score is the reader's own: glad-row reactions +1, sour-row -1, each tag counting (a
 double-like is two), weighed by the reader's dial on whoever said it - trust linear from low
@@ -11807,7 +11816,7 @@ scaled x0.9..x1.1 by the reader's interest in the author. Starting values all, t
   `narrowed`), scored in one labels read, ranked, paged. Reckoned at read time - a change of the
   settled plan made without asking (a stored score was the design), and wrong: it read the newest
   5000 journal rows, so everything older silently fell out of best. Superseded the same day by the
-  plan's *Shape*: stored per-reader scores kept incrementally, "ever" dropped, and one SQL journal
+  plan's _Shape_: stored per-reader scores kept incrementally, "ever" dropped, and one SQL journal
   filter for every journal reader - which is how the same 5000 cap was found under the search, the
   tag cloud and the chats column. The facet counts take `window` too.
 - **The feed page**: an "order:" select beside the curiosity dial, a native one, kept in the
@@ -11827,8 +11836,8 @@ of its four claims red.
 
 ## 2026-09-27 (cont.): the journal's readers, off the 5000 cap (steps 1-2)
 
-The first two steps of rebuilding slice 1 for a million-row journal (PROJECT_PLAN's *Scores and
-sort orders*, *Shape*). Found on the way: "the newest 5000 journal rows, then filter in memory" sat
+The first two steps of rebuilding slice 1 for a million-row journal (PROJECT_PLAN's _Scores and
+sort orders_, _Shape_). Found on the way: "the newest 5000 journal rows, then filter in memory" sat
 under the search, the facet picks, the tag cloud, the search's backlog walk, the chats column and
 "chat with them" - so a room you followed and never entered left your chats column once 5000 newer
 posts arrived - and your own rooms came from your newest 500 posts.
@@ -11860,8 +11869,8 @@ and the picks' narrowing - each retired by a step still to come, and says so on 
 
 ## 2026-09-28: stored scores, the best orders on them, and a feed that streams (step 3)
 
-Step 3 of rebuilding slice 1 for a million-row journal (PROJECT_PLAN's *Scores and sort orders*,
-*Shape*): scores stored per reader and kept as reactions and dials move, and the best orders read
+Step 3 of rebuilding slice 1 for a million-row journal (PROJECT_PLAN's _Scores and sort orders_,
+_Shape_): scores stored per reader and kept as reactions and dials move, and the best orders read
 off them. "Best ever" is gone (Curtis): no window is a year.
 
 - **Node rung 0057**: `score_dials` (the dials a reader's scores were reckoned with, in
@@ -11890,7 +11899,7 @@ off them. "Best ever" is gone (Curtis): no window is a year.
     alone (3 s a page), and drove the year's scored run from the journal, rescanning every score
     per row - a page that never finished, and a disk that filled while it tried. The journal's
     reads now name their indexes (`INDEXED BY`) and, where two tables meet, which drives (`CROSS
-    JOIN`); a short window is its own range scan. fanout.rs's `the_journal_reads_walk_their_indexes`
+JOIN`); a short window is its own range scan. fanout.rs's `the_journal_reads_walk_their_indexes`
     asks the planner in the suite and fails on a sort, a lost range or a turned join - it went red
     when a pin was removed;
   - after (debug build): a feed page under a millisecond anywhere in the journal; best today
@@ -11903,9 +11912,10 @@ off them. "Best ever" is gone (Curtis): no window is a year.
 
 Also the same day: `target/` had reached 300 GB and filled the disk mid-run (the timing check's
 release builds among it). `just desktop` and `just desktop-check` now build into the root target/
+
 - locally only; CI and the release job still build in desktop/target, which release.yml collects
-the installers from - and `just tidy [days]` prunes both workspaces with cargo-sweep, or says how
-to get it and changes nothing.
+  the installers from - and `just tidy [days]` prunes both workspaces with cargo-sweep, or says how
+  to get it and changes nothing.
 
 ## 2026-09-28 (cont.): the tag cloud counts a year, cached (step 4)
 
@@ -11976,14 +11986,15 @@ old shape on another surface.
 `just test-data` seeds reactions (Curtis): `react-gladly` (weight 8) and `react-sourly` (weight 4)
 tag somebody else's post from the picker's glad or sour row - literal lists in the harness, pointing
 at js/emoji.js's `POLE_ROWS` and score.rs's `GLAD`/`SOUR`, so it stays out of the UI's module graph
+
 - a quarter of first reactions a double-like, since the score counts them. Both, and the word-tag
-action beside them, keep to two tags to a person on anybody else's post by the persona's own tally,
-rather than meeting the door's refusal. A scratch run (6 personas, 40 actions each): no reaction
-failed, and the six feeds counted 29 glad reactions and 15 sour.
+  action beside them, keep to two tags to a person on anybody else's post by the persona's own tally,
+  rather than meeting the door's refusal. A scratch run (6 personas, 40 actions each): no reaction
+  failed, and the six feeds counted 29 glad reactions and 15 sour.
 
 ## 2026-09-28 (cont.): hot (slice 2)
 
-The feed's order select gained **hot** (PROJECT_PLAN's *Scores and sort orders*, slice 2, Curtis's
+The feed's order select gained **hot** (PROJECT_PLAN's _Scores and sort orders_, slice 2, Curtis's
 design): each post at its time plus an hour for every whole like the reader's scores give it - a
 dislike an hour back - over all of time.
 
@@ -12010,7 +12021,7 @@ exactly the two posts at two likes, none in newest, and a search inside hot.
 
 ## 2026-09-28 (cont.): threads ordered oldest first, hot or best (slice 3)
 
-The last slice of PROJECT_PLAN's *Scores and sort orders* (Curtis: "organizing replies by
+The last slice of PROJECT_PLAN's _Scores and sort orders_ (Curtis: "organizing replies by
 chronological, hot, or best"). The post page's "replies known here" has an order select - oldest
 first, hot, best - kept beside the feed's order in the same private register, and each level of
 the thread orders its own replies by it:
@@ -12201,7 +12212,7 @@ Device app sections, PROJECT_PLAN's delivery table and NEXT_STEPS are brought al
 
 Curtis: the homepage is the login page again. A stranger at `/` gets the sign-in; the node's public
 feed moved to `/feed` (a new server route, and the header's feed button and title link follow it), and
-a signed-in reader at either goes on to `/home` (PROJECT_PLAN's *The node's public face*, ruling 8).
+a signed-in reader at either goes on to `/home` (PROJECT_PLAN's _The node's public face_, ruling 8).
 
 - **Three tabs**: sign in, new here?, and **import user** - the same sign-up with a note that "even if
   you have a user already on a different node, you need an account on this node to host your
@@ -12746,6 +12757,7 @@ creator's node and the speaker's own for each chain. And `push_room` pushed only
 
 CHAT.md, ruling 4 says every participant mirrors every other's chain, so the creator's node is
 the directory of record, not the only road. Now:
+
 - The directory is the creator's answer plus every speaker this node has heard in the room.
 - A chain is fetched from the creator's node, then the speaker's own, then any other
   participant's (`speaker_endpoints`, which also replaces the inline copy in `join`'s bootstrap).
@@ -12778,6 +12790,7 @@ opens their sealed labels, which asks for the key on behalf of every hosted foll
 (notifications.rs), so the first follower-only claim passed with the pass switched off. What only
 the prefetch reaches is a sealed post shared in by someone the reader follows, a reply sealed under
 its parent, a post with no sealed label, and a first ask that found the author away.
+
 - onward.cjs pins the case that matters: cal, who follows bea but whom ada has never met, finds
   ada's onward post in his feed through bea's share. His node holds no key until the prefetch asks
   bea's node, then he reads it with both ada's and bea's nodes dark.
@@ -12823,6 +12836,7 @@ built.
 
 HORSE_BASED_CURRENCIES.md is a design draft for HorseBucks and the currencies after them. Nothing is
 built. Curtis settled:
+
 - **No transfers,** so nothing needs consensus.
 - **Mantissa-and-exponent numbers,** for the economies that will be broken.
 - **Wealth gates travel with the plaintext** and are honoured by the reader's own node. No proof of
@@ -12833,6 +12847,7 @@ built. Curtis settled:
 - **Currencies beyond HorseBucks** that obey the same rules but never convert implicitly.
 
 The rest is proposal, and marked so:
+
 - A balance is a fold over the persona's own chain that may go negative and is never rolled back.
 - Interest is measured in HorseTicks, the chain's own deterministic order, since there's no shared
   clock.
@@ -12842,6 +12857,7 @@ The rest is proposal, and marked so:
 README lists the document; NEXT_STEPS points at it.
 
 The same day, Curtis set the economy's numbers, and HORSE_BASED_CURRENCIES.md records them:
+
 - **Earning rates:** words, images, strokes, follows, chat, reactions given and received, and
   heartbeats.
 - **A publication bonus:** the private amounts again, plus a size-scaled bonus from 100 words up.
@@ -12883,6 +12899,7 @@ counting up in real time off the live stream, with typing counted ahead between 
 ## 2026-09-29: heartbeats, and contacts that notice a rename
 
 **Heartbeats** (HORSE_BASED_CURRENCIES.md, step 1 of 3). One public mark per persona per day of use:
+
 - **The record:** the profile field `heartbeat`, a UTC date, never a time, and always on (Curtis's
   rulings). It sits on the profile's own chain, not the identity chain and its 10,000-entry
   ceiling. Nodes that predate it store it harmlessly, since received fields are checked for length,
@@ -12918,7 +12935,7 @@ The root hooks and the recipe's teardown still run.
 
 Step 2 of the HorseBucks road. Every node estimates the network's daily actives from the nodes it
 talks to, instead of reporting to a centre (Curtis). The front page shows it under the sign-in:
-*Now with [0 0 0 0 0 0 3] active users!*
+_Now with [0 0 0 0 0 0 3] active users!_
 
 - **The sketch** (`census.rs`): a 1,024-register HyperLogLog per UTC day, keyed by a
   domain-separated hash of the root. Linear counting keeps a young network's counts exact. Sketches
@@ -12974,6 +12991,7 @@ hold the same lines. Lines are kept, never recomputed: old chat is pruned and wi
 vanish from the node's memos, but what was earned stays earned. Amounts are horsepennies, and the
 balance is summed exactly. The sources, all read through their owning modules (new small reads in
 chat.rs and annotations.rs):
+
 - **Private work, per version, for what it added over its parents:** words are distinct
   three-word shingles (25 horsepennies each, the 5 H$ per 20 words). Strokes are distinct shapes:
   the stroke less its id, time, layer and starting point, so a stamp pressed twice is one shape.
@@ -13010,6 +13028,7 @@ unit test on a real drawing body: 40 shapes, no words, where read as words it's 
 **The ledger, grouped and by the month** (Curtis: "the ledger is quite long… we might slam these
 together, displaying multiple emoji (or 'users followed'). Past that, we might consider how we want
 to display a list that, after years, is likely to extend to tens of thousands of lines.")
+
 - **Runs collapse** (`pure/ledger.js` `groupLedger`): consecutive lines of one kind on one UTC day
   become one row with the run's total. Words and strokes group within one document ("wrote 38 new
   words in untitled · 9 saves"); reactions gather every emoji ("reacted 🧌🐴❓🥶🤮🐴 to posts"); follows
@@ -13018,19 +13037,20 @@ to display a list that, after years, is likely to extend to tens of thousands of
   lines (the newest, or `?month=YYYY-MM`, UTC). hrseBank shows each month as a row with its size
   and total; the newest opens with the page, and an older one is fetched when opened. Years of
   ledger are a few dozen month rows.
-Pinned in ledger.cjs (runs, breaks at a new document/day/kind, emoji and people, loners), a unit
-test for month bounds, and bank.cjs (the months sum to the balance, and a month asked for by name).
-The corner balance moved into the clock's own sunken box (Curtis: "in the same box as the clock in
-the bottom right - with a little separator, but lined up with the time"). `Clock` renders its
-children after the time, and `CornerBank` brings a hairline divider and the balance in the time's
-own type on its line. The divider appears only once there's a balance to show, and a click still
-opens hrseBank.
-hrseBank lost its "the ledger" heading: a plain rule separates the summary from the months (Curtis).
+  Pinned in ledger.cjs (runs, breaks at a new document/day/kind, emoji and people, loners), a unit
+  test for month bounds, and bank.cjs (the months sum to the balance, and a month asked for by name).
+  The corner balance moved into the clock's own sunken box (Curtis: "in the same box as the clock in
+  the bottom right - with a little separator, but lined up with the time"). `Clock` renders its
+  children after the time, and `CornerBank` brings a hairline divider and the balance in the time's
+  own type on its line. The divider appears only once there's a balance to show, and a click still
+  opens hrseBank.
+  hrseBank lost its "the ledger" heading: a plain rule separates the summary from the months (Curtis).
 
 ## 2026-09-29: HorseBucks, slice 4: HorseBonds, debt, and the market column
 
 Curtis: "open a column to the left of our horsebank statement (using our column logic) for
 purchasing horse-themed fictitious financial instruments."
+
 - **Purchases** are the persona's private registers (`horse_instruments`), one key per purchase and
   synced to their own computers. Two computers buying at once make two bonds, and both stand (the
   design's rule 3). `POST /bank/instruments` refuses anything under H$ 2,000 and nothing else:
@@ -13040,10 +13060,10 @@ purchasing horse-themed fictitious financial instruments."
   - 1% of it on each heartbeat day after the purchase day, for a hundred of them (simple interest,
     as settled);
   - its price back after the hundredth.
-  Then **debt**: walking the heartbeat days in order over a running balance, each day that ends
-  below zero charges 2% of it, rounded toward zero, so the charge compounds. Heartbeat days are
-  the ledger's own `heartbeat` lines: days, never a clock. Line amounts are `i64`, so debt past
-  9.2 × 10^16 H$ saturates for now (NEXT_STEPS).
+    Then **debt**: walking the heartbeat days in order over a running balance, each day that ends
+    below zero charges 2% of it, rounded toward zero, so the charge compounds. Heartbeat days are
+    the ledger's own `heartbeat` lines: days, never a clock. Line amounts are `i64`, so debt past
+    9.2 × 10^16 H$ saturates for now (NEXT_STEPS).
 - **The market column** (`apps/bank.js` Market, with the panes' column machinery: resizable,
   tucks to a rail): the HorseBond's terms, an amount, a buy button, and the persona's bonds with
   day N of 100, paid so far, and a bar. The ledger learns the new kinds, and a line keeps its own
@@ -13156,7 +13176,7 @@ symbol in the top-right corner of their user page, and it can contain… all the
 - `post_page`'s title / description / words / picture reading moved into `idface::post_words`, so
   the head and the feed say a post the same way.
 - **Autodiscovery**: a hosted persona's page head carries `<link rel="alternate"
-  type="application/rss+xml">`.
+type="application/rss+xml">`.
 - **The button**: Phosphor's Rss on a quiet jagged pill in the person card's top right corner, after
   your reach on your own page (`.person-card-corner` now holds both, and is what the banner pins).
 - `tests/conventions.rs`: `rss.rs` opens one user db, once per request.
@@ -13258,23 +13278,23 @@ with a set of vertical tabs where only one tab can be open at the same time?"
   the bank statement, the feed and the room are just "not a column".
 - Every columned place gets it: the Writer and its siblings (Files, Drawing, Lost & Found), a
   drawing's tools and layers, hrseBank, the feed's composer, chat.
-Then (Curtis: "I refreshed the page a few times and I'm not seeing the new tabs" - at innerWidth 575,
-the media query true): the hiding rule was `.panes:has(> :has(> .pane-head))`, and a :has() inside a
-:has() is invalid CSS, which drops its whole rule without a word - so the main surface never stepped
-aside and the open tab only shared the row. Now `.panes:has(> * > .pane-head)`. Found by rendering
-the Writer at 575px in headless Chrome against a scratch node (the list open, then a note chosen):
-before, the list 206px beside an 84px reader; after, the list fills the row, and choosing a note
-closes it to the note. The narrow rows' gap went from 1rem to 0.3rem while there (the note had
-259px of 575; now 315). The day's entries above had wandered to 2026-10-01; the date is 2026-09-30
-(all but rung 28's own comment, left as climbed).
-Then (Curtis: "I was hoping for vertical tabs like… they all share the same vertical space, like a
-tab divider in a work binder"): the tabs stack down one strip on the left, each as tall as its name
-(the narrow row runs downward and wraps, so the tabs fill the first column and the open tab or the
-main surface takes the full height beside them - the note went from 315px of 575 to 456), and the
-open column wears its own tab ahead of itself (`useColTucks().tab`, a `Rail` marked `active`), so
-the strip always shows every tab, the open one lifted and edged in teal, a click closing it. Every
-columned place carries the tab line: Writer's five, a drawing's two, bank's two, chat's two, the
-feed's composer. Seen at 575px in headless Chrome, list open and a note chosen.
+  Then (Curtis: "I refreshed the page a few times and I'm not seeing the new tabs" - at innerWidth 575,
+  the media query true): the hiding rule was `.panes:has(> :has(> .pane-head))`, and a :has() inside a
+  :has() is invalid CSS, which drops its whole rule without a word - so the main surface never stepped
+  aside and the open tab only shared the row. Now `.panes:has(> * > .pane-head)`. Found by rendering
+  the Writer at 575px in headless Chrome against a scratch node (the list open, then a note chosen):
+  before, the list 206px beside an 84px reader; after, the list fills the row, and choosing a note
+  closes it to the note. The narrow rows' gap went from 1rem to 0.3rem while there (the note had
+  259px of 575; now 315). The day's entries above had wandered to 2026-10-01; the date is 2026-09-30
+  (all but rung 28's own comment, left as climbed).
+  Then (Curtis: "I was hoping for vertical tabs like… they all share the same vertical space, like a
+  tab divider in a work binder"): the tabs stack down one strip on the left, each as tall as its name
+  (the narrow row runs downward and wraps, so the tabs fill the first column and the open tab or the
+  main surface takes the full height beside them - the note went from 315px of 575 to 456), and the
+  open column wears its own tab ahead of itself (`useColTucks().tab`, a `Rail` marked `active`), so
+  the strip always shows every tab, the open one lifted and edged in teal, a click closing it. Every
+  columned place carries the tab line: Writer's five, a drawing's two, bank's two, chat's two, the
+  feed's composer. Seen at 575px in headless Chrome, list open and a note chosen.
 
 The title always has its own row now, the file chips beneath it (Curtis, 2026-09-30: "between long
 titles and an ever-increasing file-chip list, I think that might just need to be how it always
@@ -13443,9 +13463,10 @@ wear (postentry.js), whose inner line bodies already drop their own. Seen in hea
 of three lines.
 The feed's tag lists no longer say "counts cover the last year" (Curtis, 2026-09-30: "kind of
 unnecessary hedging"); the best order's "counts cover this window", which says something different
+
 - only what's in view is counted - stays.
-Then (Curtis: "please remove that too"): "counts cover this window" goes as well - the feed's tag
-lists carry no note at all.
+  Then (Curtis: "please remove that too"): "counts cover this window" goes as well - the feed's tag
+  lists carry no note at all.
 
 The feed's facet rows fit their space (Curtis, 2026-09-30, after weighing a column of their own and
 dropping it - the same options sit on a person's page and the public feed, neither with columns:
@@ -13454,18 +13475,19 @@ we have almost no space, we should only display one or two, rather than expandin
 see more should add more options below the current line"). Each row (show / in / tagged) is one line
 of as many chips as its width holds, then "and n more…", which opens the rest onto the lines below
 ("fewer" folds them back); a picked chip shows whatever the fit. The chips are measured once per list
+
 - every one on the line, unseen, before the first paint - and a resize only re-does the arithmetic:
-`fitCount` in `pure/facets.js`, with tests, feeding the fold `facetSlice` already had. Seen in headless
-Chrome with twenty tags: nine and "11 more" at 1300px, three and "17 more" at 560, and opened.
-And narrow, the feed's order lives below its curiosity dial (Curtis, 2026-09-30): `.feed-top` wraps
-and is a size container, and under 640px - about what the two want side by side - the order takes
-its own line, starting where the dial does, rather than wrapping off to the right edge. Seen at 1300
-and 560px.
-And the feed's options live in a bordered box (Curtis, 2026-09-30: the zone "feels a little inchoate
-because it's got so many options in it now"): `.feed-options`, a `jag-line` ring around the dial, the
-order and the facet rows, padded; the updates slot and "the feed" stay below it. Drawn only when it
-has something in it (the public feed has no dial; a place with nothing labelled has no lists). The
-rows' fit re-reckons to the box's inner width. Seen at 1300 and 560px.
+  `fitCount` in `pure/facets.js`, with tests, feeding the fold `facetSlice` already had. Seen in headless
+  Chrome with twenty tags: nine and "11 more" at 1300px, three and "17 more" at 560, and opened.
+  And narrow, the feed's order lives below its curiosity dial (Curtis, 2026-09-30): `.feed-top` wraps
+  and is a size container, and under 640px - about what the two want side by side - the order takes
+  its own line, starting where the dial does, rather than wrapping off to the right edge. Seen at 1300
+  and 560px.
+  And the feed's options live in a bordered box (Curtis, 2026-09-30: the zone "feels a little inchoate
+  because it's got so many options in it now"): `.feed-options`, a `jag-line` ring around the dial, the
+  order and the facet rows, padded; the updates slot and "the feed" stay below it. Drawn only when it
+  has something in it (the public feed has no dial; a place with nothing labelled has no lists). The
+  rows' fit re-reckons to the box's inner width. Seen at 1300 and 560px.
 
 The bar at the bottom, narrowed (Curtis, 2026-09-30: "when narrowed, hide the clock and horsebucks"):
 under 900px - the same line the columns turn to tabs at - the clock's box, with the HorseBucks inside
@@ -13615,13 +13637,14 @@ decoding, which would prove nothing about the key), and a note still written by 
 
 The words on a solid fill have tokens now (Curtis, 2026-10-01: in witchlight "the bright yellow, if
 displayed with white text over it, isn't terribly readable"). Each solid-fill rule had picked its own words
+
 - `--dock-text`, `--paper`, `--surface`, `--bg`, `--ink` - and each was right in horse-relax by luck:
-witchlight's yellow got white words in six places (an open chip, a pinned one, the public badge, the
-picker's selection, two upload buttons), terminal's lime got lime, and two hovers that deepened the fill to
-plum kept the page's near-black. Now `--on-accent` (on `--teal` and `--sea`: light, but dark on witchlight's
-yellow and terminal's lime), `--on-danger` (on `--coral`) and `--on-peach` (dark everywhere) are set per
-colourway in tokens.css, every solid fill names the one for its fill, and a hover onto a deeper fill takes
-`--dock-text`. Seen in headless Chrome: the settings page's fills in witchlight and terminal.
+  witchlight's yellow got white words in six places (an open chip, a pinned one, the public badge, the
+  picker's selection, two upload buttons), terminal's lime got lime, and two hovers that deepened the fill to
+  plum kept the page's near-black. Now `--on-accent` (on `--teal` and `--sea`: light, but dark on witchlight's
+  yellow and terminal's lime), `--on-danger` (on `--coral`) and `--on-peach` (dark everywhere) are set per
+  colourway in tokens.css, every solid fill names the one for its fill, and a hover onto a deeper fill takes
+  `--dock-text`. Seen in headless Chrome: the settings page's fills in witchlight and terminal.
 
 **2026-10-01 - a chosen tag reads as chosen in witchlight.** Curtis: the contrast between selected and
 unselected tags was "a little bit too light". A chosen facet chip filled with `--surface-2`, which in
@@ -13847,6 +13870,7 @@ his persona waiting, not working: `time.idle` in seconds beside `time.busy` in m
 is the persona's ONE database connection, every statement queued on `stmt_lock` in arrival order - so
 anything bursty multiplies the wait of everything else, and a burst of N reads all finish together at
 the end. Four sources of the burst, each cut:
+
 - **A single-note read built the whole notes view.** The doc GET, its body, thumb and preview, copy,
   the drawing publish, `draft_mentions`, the label restatement, publish's own lookups and the embed
   checks all called `documents().all()` - fetch and thread every version of every document - to read
@@ -13866,13 +13890,13 @@ the end. Four sources of the burst, each cut:
   answers the balance alone and catches up only when the persona's files moved or a minute has passed
   (the bank page still catches up in full; a warm corner poll: 4 ms). The scheduled-publish pass built the whole view and read
   `publish_plan` of each of ~1500 documents, every minute; one query now finds the drafts with a plan.
-Also settled: turso cancellation, the `Db` doc's open hole. On a local file turso 0.7 runs a statement
-inside a single poll (measured), and its `Drop` resets a statement abandoned mid-stream - pinned on a
-disk database by `a_statement_dropped_mid_stream_leaves_the_connection_clean`; timeouts are safe. The
-same measurement means a statement holds its tokio worker for as long as it runs. Answered for
-NEXT_STEPS: other personas barely felt it (their requests averaged 15-43 ms through the window); search
-re-decrypts only notes whose fingerprint changed. Not explained from here: his server's fold costs a
-median 851 ms with nothing else in flight, against ~50 ms on a laptop over a comparable persona. `just ci` green.
+  Also settled: turso cancellation, the `Db` doc's open hole. On a local file turso 0.7 runs a statement
+  inside a single poll (measured), and its `Drop` resets a statement abandoned mid-stream - pinned on a
+  disk database by `a_statement_dropped_mid_stream_leaves_the_connection_clean`; timeouts are safe. The
+  same measurement means a statement holds its tokio worker for as long as it runs. Answered for
+  NEXT_STEPS: other personas barely felt it (their requests averaged 15-43 ms through the window); search
+  re-decrypts only notes whose fingerprint changed. Not explained from here: his server's fold costs a
+  median 851 ms with nothing else in flight, against ~50 ms on a laptop over a comparable persona. `just ci` green.
 
 **2026-10-02 - a publish outlives the request that asked for it.** Curtis: an importer bringing old
 blog posts to horsedrawingtycoon.com could not publish past about fifteen pictures - the CDN's 60 s
@@ -14087,3 +14111,22 @@ must never drain its own root" from a deadlock into a wasted run. Pinned by
 and the hold holds again after). Locally the jobs are too quick to overlap - small republishes under
 an importer ran ~100 ms with the override and without - so the server says the rest: the publish job
 now logs `publish job steps` (open, mint, after, fold, total ms) beside "fold legs". `just ci` green.
+
+**2026-10-02 - one formatter per language, and `just format`.** An agent ran a bare `cargo fmt` while
+building the media lane and rewrapped ninety-five files with rustfmt's defaults: the crate had no
+config and no single style - about a fifth of its lines disagreed with every width tried, the same
+file wrapping at 100 in one function and running to 130 in the next, as many hands had left it.
+Curtis: with a parade of agents working the codebase, a bad standard beats none. So `rustfmt.toml`
+(100 columns - 80 was measured at +19% height, and stable rustfmt can't rewrap comments, so the
+side-by-side diff would still overflow - with `use_small_heuristics = "Max"`, so what fits on a line
+stays there) and prettier for JS and Markdown (`.prettierrc.json`: 100 columns, the house's four
+spaces and single quotes, `embeddedLanguageFormatting: off` so the htm templates' text is never
+touched, `proseWrap: preserve` so editing one word never reflows a paragraph). dprint was tried on
+three files first and did worse: the same template blow-up, with the `${…}` indented wrong. Prettier's
+cost is the htm interpolations - `${cond && html`…`}` breaks onto its own lines - accepted as the price
+of one standard. `node/js/locales/` is ignored (`just strings` writes it in its own layout) and so is
+LICENSE.md. `just format` runs all three; `just format-check` asks; CLAUDE.md has the formatter run last
+before a hand-off. The pass itself: 455 files, +36k/-24k, format-only. Prettier reprints what Markdown
+parses to, which surfaced one real bug - plans/CHAT.md's sub-bullets under rulings 11-14 were indented
+three spaces under a four-column item, so they had always rendered as a top-level list; re-nested.
+`just ci` green.

@@ -70,7 +70,8 @@ impl Tally {
 /// a restart retakes it on first ask, from the measured sizes.
 /// (the files' mtime it was taken at, when it was taken, the tally)
 type Held = (i64, i64, Tally);
-static TALLIES: LazyLock<Mutex<HashMap<String, Held>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static TALLIES: LazyLock<Mutex<HashMap<String, Held>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// How many personas' tallies stay in memory; past it the oldest go (they are retaken on ask).
 const KEEP_TALLIES: usize = 256;
@@ -94,7 +95,9 @@ pub async fn tally(state: &AppState, root: &str) -> Result<Option<Tally>> {
     let tally = retake(state, &db, root, mtime).await?;
     let mut tallies = TALLIES.lock().expect("tallies poisoned");
     if tallies.len() >= KEEP_TALLIES && !tallies.contains_key(root) {
-        if let Some(oldest) = tallies.iter().min_by_key(|(_, (_, taken, _))| *taken).map(|(r, _)| r.clone()) {
+        if let Some(oldest) =
+            tallies.iter().min_by_key(|(_, (_, taken, _))| *taken).map(|(r, _)| r.clone())
+        {
             tallies.remove(&oldest);
         }
     }
@@ -103,7 +106,8 @@ pub async fn tally(state: &AppState, root: &str) -> Result<Option<Tally>> {
 }
 
 async fn retake(state: &AppState, db: &Db, root: &str, mtime: i64) -> Result<Tally> {
-    let refs = crate::record::documents::version_blobs(db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let refs =
+        crate::record::documents::version_blobs(db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     let named: HashSet<[u8; 32]> = refs.iter().map(|(_, h)| *h).collect();
     let sizes = sizes_of(state, &named).await?;
     let mut per_doc: HashMap<[u8; 16], HashSet<[u8; 32]>> = HashMap::new();
@@ -111,7 +115,10 @@ async fn retake(state: &AppState, db: &Db, root: &str, mtime: i64) -> Result<Tal
         per_doc.entry(*doc).or_default().insert(*hash);
     }
     let size = |h: &[u8; 32]| sizes.get(h).copied().unwrap_or(0);
-    let docs: BTreeMap<String, i64> = per_doc.iter().map(|(doc, hashes)| (hex::encode(doc), hashes.iter().map(size).sum())).collect();
+    let docs: BTreeMap<String, i64> = per_doc
+        .iter()
+        .map(|(doc, hashes)| (hex::encode(doc), hashes.iter().map(size).sum()))
+        .collect();
     let files_bytes: i64 = named.iter().map(size).sum();
     let db_bytes = state.user_dbs.disk_bytes(root);
     remember_names(&state.node_db, root, &named).await?;
@@ -136,10 +143,14 @@ async fn sizes_of(state: &AppState, hashes: &HashSet<[u8; 32]>) -> Result<HashMa
     let mut sizes: HashMap<[u8; 32], i64> = HashMap::new();
     for chunk in all.chunks(CHUNK) {
         let marks = vec!["?"; chunk.len()].join(", ");
-        let params: Vec<turso::Value> = chunk.iter().map(|h| turso::Value::Blob(h.to_vec())).collect();
+        let params: Vec<turso::Value> =
+            chunk.iter().map(|h| turso::Value::Blob(h.to_vec())).collect();
         let rows: Vec<(Vec<u8>, i64)> = state
             .node_db
-            .fetch_all(&format!("SELECT hash, bytes FROM blob_sizes WHERE hash IN ({marks})"), params)
+            .fetch_all(
+                &format!("SELECT hash, bytes FROM blob_sizes WHERE hash IN ({marks})"),
+                params,
+            )
             .await
             .context("reading remembered blob sizes")?;
         for (hash, bytes) in rows {
@@ -148,7 +159,8 @@ async fn sizes_of(state: &AppState, hashes: &HashSet<[u8; 32]>) -> Result<HashMa
             }
         }
     }
-    let unmeasured: Vec<[u8; 32]> = all.into_iter().filter(|h| !sizes.contains_key(h)).take(MEASURE_PER_TALLY).collect();
+    let unmeasured: Vec<[u8; 32]> =
+        all.into_iter().filter(|h| !sizes.contains_key(h)).take(MEASURE_PER_TALLY).collect();
     let mut measured: Vec<([u8; 32], i64)> = Vec::new();
     for hash in unmeasured {
         if let Some(bytes) = state.files.size_of(iroh_blobs::Hash::from_bytes(hash)).await {
@@ -157,10 +169,16 @@ async fn sizes_of(state: &AppState, hashes: &HashSet<[u8; 32]>) -> Result<HashMa
     }
     for chunk in measured.chunks(CHUNK) {
         let marks = vec!["(?, ?)"; chunk.len()].join(", ");
-        let params: Vec<turso::Value> = chunk.iter().flat_map(|(h, b)| [turso::Value::Blob(h.to_vec()), turso::Value::Integer(*b)]).collect();
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|(h, b)| [turso::Value::Blob(h.to_vec()), turso::Value::Integer(*b)])
+            .collect();
         state
             .node_db
-            .execute(&format!("INSERT OR IGNORE INTO blob_sizes (hash, bytes) VALUES {marks}"), params)
+            .execute(
+                &format!("INSERT OR IGNORE INTO blob_sizes (hash, bytes) VALUES {marks}"),
+                params,
+            )
             .await
             .context("remembering blob sizes")?;
     }
@@ -174,7 +192,8 @@ async fn remember_names(node_db: &Db, root: &str, named: &HashSet<[u8; 32]>) -> 
         .fetch_all("SELECT hash FROM persona_blobs WHERE root_pubkey = ?1", (root,))
         .await
         .context("reading what a persona names")?;
-    let had: HashSet<[u8; 32]> = rows.into_iter().filter_map(|(h,)| <[u8; 32]>::try_from(h.as_slice()).ok()).collect();
+    let had: HashSet<[u8; 32]> =
+        rows.into_iter().filter_map(|(h,)| <[u8; 32]>::try_from(h.as_slice()).ok()).collect();
     let gone: Vec<&[u8; 32]> = had.difference(named).collect();
     let new: Vec<&[u8; 32]> = named.difference(&had).collect();
     for chunk in gone.chunks(CHUNK) {
@@ -182,15 +201,24 @@ async fn remember_names(node_db: &Db, root: &str, named: &HashSet<[u8; 32]>) -> 
         let mut params: Vec<turso::Value> = vec![turso::Value::Text(root.to_string())];
         params.extend(chunk.iter().map(|h| turso::Value::Blob(h.to_vec())));
         node_db
-            .execute(&format!("DELETE FROM persona_blobs WHERE root_pubkey = ?1 AND hash IN ({marks})"), params)
+            .execute(
+                &format!("DELETE FROM persona_blobs WHERE root_pubkey = ?1 AND hash IN ({marks})"),
+                params,
+            )
             .await
             .context("forgetting blobs a persona no longer names")?;
     }
     for chunk in new.chunks(CHUNK) {
         let marks = vec!["(?, ?)"; chunk.len()].join(", ");
-        let params: Vec<turso::Value> = chunk.iter().flat_map(|h| [turso::Value::Text(root.to_string()), turso::Value::Blob(h.to_vec())]).collect();
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|h| [turso::Value::Text(root.to_string()), turso::Value::Blob(h.to_vec())])
+            .collect();
         node_db
-            .execute(&format!("INSERT OR IGNORE INTO persona_blobs (root_pubkey, hash) VALUES {marks}"), params)
+            .execute(
+                &format!("INSERT OR IGNORE INTO persona_blobs (root_pubkey, hash) VALUES {marks}"),
+                params,
+            )
             .await
             .context("remembering blobs a persona names")?;
     }
@@ -264,7 +292,8 @@ pub async fn pass(state: AppState) -> Result<()> {
         .iter()
         .filter_map(|root| {
             let mtime = state.user_dbs.db_mtime_ms(root)?;
-            (marks.get(root) != Some(&mtime)).then(|| (marks.get(root).copied().unwrap_or(0), root.clone()))
+            (marks.get(root) != Some(&mtime))
+                .then(|| (marks.get(root).copied().unwrap_or(0), root.clone()))
         })
         .collect();
     moved.sort();
@@ -299,7 +328,8 @@ pub async fn persona_handler(
     axum::extract::Path(root): axum::extract::Path<String>,
 ) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
     let _owned = crate::record::store::open(&state, &session.account.id, &root).await?;
-    let tally = tally(&state, &root).await.map_err(crate::error::AppError::Internal)?.unwrap_or_default();
+    let tally =
+        tally(&state, &root).await.map_err(crate::error::AppError::Internal)?.unwrap_or_default();
     let evict = evict_bytes(&state, &root).await.map_err(crate::error::AppError::Internal)?;
     Ok(axum::Json(serde_json::json!({
         "files_bytes": tally.files_bytes,

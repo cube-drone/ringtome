@@ -236,7 +236,10 @@ fn text_of(node: &marquee_parser::Node, out: &mut String) {
             out.push_str(slug);
             out.push(':');
         }
-        Node::Emphasis { children } | Node::Strong { children } | Node::Strikethrough { children } | Node::Span { children, .. } => {
+        Node::Emphasis { children }
+        | Node::Strong { children }
+        | Node::Strikethrough { children }
+        | Node::Span { children, .. } => {
             for child in children {
                 text_of(child, out);
             }
@@ -379,23 +382,17 @@ fn classify(target: &str, root_hex: &str, out: &mut Vec<MediaRef>) {
         return;
     }
     if target.starts_with("http://") || target.starts_with("https://") {
-        out.push(MediaRef::External {
-            target: target.to_string(),
-        });
+        out.push(MediaRef::External { target: target.to_string() });
         return;
     }
     // The picker's own minted shape: /api/identity/<root>/docs/<doc16>/body[/name.ext]
     let prefix = format!("/api/identity/{root_hex}/docs/");
     if let Some(rest) = target.strip_prefix(&prefix) {
         if let Some((doc_hex, _)) = rest.split_once("/body") {
-            if let Some(doc_id) = hex::decode(doc_hex)
-                .ok()
-                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            if let Some(doc_id) =
+                hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
             {
-                out.push(MediaRef::PrivateDoc {
-                    target: target.to_string(),
-                    doc_id,
-                });
+                out.push(MediaRef::PrivateDoc { target: target.to_string(), doc_id });
             }
         }
     }
@@ -422,13 +419,16 @@ pub fn public_links(body: &str, author_hex: &str) -> String {
     static BUCKETED: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static COZY: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let bucketed = BUCKETED.get_or_init(|| {
-        regex::Regex::new(r#"(/ringtome/user/[A-Za-z0-9-]+/doc/[0-9a-f]{32})\?([^\s)\]"'<>]*)"#).expect("a valid pattern")
+        regex::Regex::new(r#"(/ringtome/user/[A-Za-z0-9-]+/doc/[0-9a-f]{32})\?([^\s)\]"'<>]*)"#)
+            .expect("a valid pattern")
     });
     let cozy = COZY.get_or_init(|| {
-        regex::Regex::new(r"\]\((?:/home/[a-z0-9-]+|/in(?:/[a-z0-9-]+)+)/([0-9a-f]{32})\)").expect("a valid pattern")
+        regex::Regex::new(r"\]\((?:/home/[a-z0-9-]+|/in(?:/[a-z0-9-]+)+)/([0-9a-f]{32})\)")
+            .expect("a valid pattern")
     });
     let out = bucketed.replace_all(body, |c: &regex::Captures| {
-        let kept: Vec<&str> = c[2].split('&').filter(|p| !p.is_empty() && !p.starts_with("bucket=")).collect();
+        let kept: Vec<&str> =
+            c[2].split('&').filter(|p| !p.is_empty() && !p.starts_with("bucket=")).collect();
         if kept.is_empty() {
             c[1].to_string()
         } else {
@@ -505,15 +505,17 @@ pub fn public_media_target(
     animation: bool,
 ) -> String {
     let ext = format.as_str(); // avif / apng / opus / webm - the sniffable spellings
-    // A silent loop says so in its decorative name (2026-09-03): the route ignores the name,
-    // the renderer's profile reads `-loop` and draws it looping, muted, without controls.
+                               // A silent loop says so in its decorative name (2026-09-03): the route ignores the name,
+                               // the renderer's profile reads `-loop` and draws it looping, muted, without controls.
     let name = if animation { "media-loop" } else { "media" };
     // The `/ringtome/` spelling (2026-09-28), the root in its short form: recognisable at any
     // origin, rehomed by every reader. The `/id/` form it replaced still serves.
     let short = hex::decode(root_hex)
         .ok()
         .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
-        .map(|root| crate::speakable::speakable(&root).rsplit('-').next().unwrap_or_default().to_string())
+        .map(|root| {
+            crate::speakable::speakable(&root).rsplit('-').next().unwrap_or_default().to_string()
+        })
         .unwrap_or_else(|| root_hex.to_string());
     format!("/ringtome/user/{short}/doc/{}/body/{name}.{ext}", hex::encode(public_doc))
 }
@@ -554,7 +556,8 @@ impl Progress {
     }
 
     fn show(&self, done: &[BakeItem], pending: &[BakeItem]) {
-        *self.items.lock().expect("bake progress poisoned") = done.iter().chain(pending).cloned().collect();
+        *self.items.lock().expect("bake progress poisoned") =
+            done.iter().chain(pending).cloned().collect();
     }
 }
 
@@ -582,10 +585,9 @@ pub async fn publish_reporting(
 ) -> Result<Outcome, AppError> {
     let trusted_only = flags.trusted_only;
     let docs = data.documents();
-    let doc = docs
-        .one(doc_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("record.bake.no-such-document", "no such document")))?;
+    let doc = docs.one(doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!("record.bake.no-such-document", "no such document"))
+    })?;
     let format = doc
         .display_head()
         .map(|h| crate::record::documents::Format::from_wire(h.header.format))
@@ -596,14 +598,19 @@ pub async fn publish_reporting(
     }
     let resolved = docs.resolved(&doc).await?;
     let body = resolved.body.ok_or_else(|| {
-        AppError::BadRequest(crate::msg!("record.bake.this-notes-words-havent-arrived", "this note's words haven't arrived on this computer yet"))
+        AppError::BadRequest(crate::msg!(
+            "record.bake.this-notes-words-havent-arrived",
+            "this note's words haven't arrived on this computer yet"
+        ))
     })?;
     // Links to documents, made fit for the public before anything else reads the words.
     let body = public_links(&body, root_hex);
 
     let refs = media_refs(&body, root_hex);
     if refs.is_empty() {
-        return Ok(Outcome::Posted(docs.publish(doc_id, Some(body), Vec::new(), reply, flags).await?));
+        return Ok(Outcome::Posted(
+            docs.publish(doc_id, Some(body), Vec::new(), reply, flags).await?,
+        ));
     }
     // The COUNT cap, before a byte of bake work: `media_budget` below prices the bytes, this
     // prices the obligations - every ref is a fetch every sharer owes, and fifty distinct
@@ -627,7 +634,9 @@ pub async fn publish_reporting(
     // Once sealed, always sealed: a draft that already holds a key seals again whether or
     // not this request says trusted-only (the edit flow never does).
     let post_key = docs.post_key_if(doc_id, trusted_only).await?;
-    if post_key.is_some() && refs.iter().any(|r| matches!(r, MediaRef::External { .. } | MediaRef::Foreign { .. })) {
+    if post_key.is_some()
+        && refs.iter().any(|r| matches!(r, MediaRef::External { .. } | MediaRef::Foreign { .. }))
+    {
         return Err(AppError::BadRequest(crate::msg!(
             "record.bake.trusted-cant-bake-external",
             "a trusted-only post can't bake media from the open web yet - save the image and attach it directly"
@@ -658,7 +667,13 @@ pub async fn publish_reporting(
                 MediaRef::External { target } => (target, "external"),
                 MediaRef::Foreign { target, .. } => (target, "copied"),
             };
-            BakeItem { source: source.clone(), kind, status: "pending".into(), progress: None, error: None }
+            BakeItem {
+                source: source.clone(),
+                kind,
+                status: "pending".into(),
+                progress: None,
+                error: None,
+            }
         })
         .collect();
     for (at, r) in refs.iter().enumerate() {
@@ -666,7 +681,9 @@ pub async fn publish_reporting(
             progress.show(&items, &pending[at..]);
         }
         match r {
-            MediaRef::PrivateDoc { target, doc_id: media } if crate::builtin::get(media).is_none() && !held.contains(media) => {
+            MediaRef::PrivateDoc { target, doc_id: media }
+                if crate::builtin::get(media).is_none() && !held.contains(media) =>
+            {
                 missing.push(target.clone());
             }
             MediaRef::PrivateDoc { target, doc_id: media } => {
@@ -693,7 +710,10 @@ pub async fn publish_reporting(
                 // is decrypt-and-remint - milliseconds, no queue, no modal dwell.
                 match docs.bake_private_media(media, post_key, flags.seal_of, flags.onward).await {
                     Ok((public, fmt, anim)) => {
-                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, anim)));
+                        swaps.push((
+                            target.clone(),
+                            public_media_target(root_hex, &public, fmt, anim),
+                        ));
                         baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),
@@ -716,7 +736,8 @@ pub async fn publish_reporting(
                 }
             }
             MediaRef::External { target } | MediaRef::Foreign { target, .. } => {
-                let kind = if matches!(r, MediaRef::Foreign { .. }) { "copied" } else { "external" };
+                let kind =
+                    if matches!(r, MediaRef::Foreign { .. }) { "copied" } else { "external" };
                 let row = ensure_bake(&state.node_db, root_hex, target).await?;
                 match row.status.as_str() {
                     "ready" => {
@@ -734,16 +755,24 @@ pub async fn publish_reporting(
                             .unwrap_or(crate::record::documents::Format::Avif);
                         // A copied silent loop stays one (2026-09-28): its minted header says so,
                         // and the address's `-loop` is what the renderer reads.
-                        let animation = match crate::record::documents::public_header_entry(data.db(), &public).await? {
-                            Some(entry) => match &entry.entry().payload {
-                                ringtome_proto::Payload::Inline(payload) => ringtome_proto::registry::DocHeaderPlain::decode(payload)
-                                    .map(|h| h.animation)
-                                    .unwrap_or(false),
-                                _ => false,
-                            },
-                            None => false,
-                        };
-                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, animation)));
+                        let animation =
+                            match crate::record::documents::public_header_entry(data.db(), &public)
+                                .await?
+                            {
+                                Some(entry) => match &entry.entry().payload {
+                                    ringtome_proto::Payload::Inline(payload) => {
+                                        ringtome_proto::registry::DocHeaderPlain::decode(payload)
+                                            .map(|h| h.animation)
+                                            .unwrap_or(false)
+                                    }
+                                    _ => false,
+                                },
+                                None => false,
+                            };
+                        swaps.push((
+                            target.clone(),
+                            public_media_target(root_hex, &public, fmt, animation),
+                        ));
                         baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),
@@ -798,14 +827,16 @@ pub async fn publish_reporting(
         .collect();
     if !copied.is_empty() {
         let annotations = data.annotations();
-        let held = annotations.field(doc_id, crate::record::store::PROVENANCE).await?.unwrap_or_default();
+        let held =
+            annotations.field(doc_id, crate::record::store::PROVENANCE).await?.unwrap_or_default();
         let mut chain: Vec<String> = serde_json::from_str(&held).unwrap_or_default();
         for author in copied {
             if !chain.contains(&author) {
                 chain.push(author);
             }
         }
-        let value = serde_json::to_string(&chain).map_err(|e| AppError::Internal(anyhow!("provenance: {e}")))?;
+        let value = serde_json::to_string(&chain)
+            .map_err(|e| AppError::Internal(anyhow!("provenance: {e}")))?;
         annotations.set_field(doc_id, crate::record::store::PROVENANCE, &value).await?;
     }
     // The baked twin set IS the header's refs: derived post-rewrite, so it names exactly the
@@ -818,7 +849,14 @@ pub async fn publish_reporting(
         }
     }
     Ok(Outcome::Posted(
-        docs.publish(doc_id, Some(drop_embeds(&rewrite(&body, &swaps), &missing)), header_refs, reply, flags).await?,
+        docs.publish(
+            doc_id,
+            Some(drop_embeds(&rewrite(&body, &swaps), &missing)),
+            header_refs,
+            reply,
+            flags,
+        )
+        .await?,
     ))
 }
 
@@ -860,11 +898,7 @@ pub(crate) async fn media_budget(
         if !seen.insert(head.file_hash) {
             continue; // the same picture twice is one blob on every node that carries it
         }
-        total += state
-            .files
-            .size_of(head.file_hash.into())
-            .await
-            .unwrap_or(0);
+        total += state.files.size_of(head.file_hash.into()).await.unwrap_or(0);
     }
     if total > MAX_POST_MEDIA_BYTES {
         return Err(AppError::BadRequest(crate::msg!(
@@ -923,17 +957,9 @@ async fn ensure_bake(node_db: &Db, root_hex: &str, url: &str) -> Result<BakeRow,
                 .map_err(AppError::Internal)?;
             // Reported as failed THIS time (the modal shows the tombstone once); the re-armed
             // row bakes behind the next attempt.
-            Ok(BakeRow {
-                status,
-                public_doc_id,
-                error,
-            })
+            Ok(BakeRow { status, public_doc_id, error })
         }
-        Some((status, public_doc_id, error)) => Ok(BakeRow {
-            status,
-            public_doc_id,
-            error,
-        }),
+        Some((status, public_doc_id, error)) => Ok(BakeRow { status, public_doc_id, error }),
         None => {
             node_db
                 .execute(
@@ -944,11 +970,7 @@ async fn ensure_bake(node_db: &Db, root_hex: &str, url: &str) -> Result<BakeRow,
                 .await
                 .context("registering a bake")
                 .map_err(AppError::Internal)?;
-            Ok(BakeRow {
-                status: "pending".into(),
-                public_doc_id: None,
-                error: None,
-            })
+            Ok(BakeRow { status: "pending".into(), public_doc_id: None, error: None })
         }
     }
 }
@@ -1011,17 +1033,31 @@ pub async fn bake_pass(state: AppState) -> anyhow::Result<()> {
 /// a video's hover preview beside them, and the rest - format, size, length, whether it is a
 /// silent loop - off its signed header, from the author's chain when this node holds it and from
 /// the fragment ledger when a share brought it. Nothing is decoded or re-encoded.
-async fn foreign_twin(state: &AppState, author: &[u8; 32], twin: &[u8; 16]) -> Result<crate::media::Ingested, String> {
+async fn foreign_twin(
+    state: &AppState,
+    author: &[u8; 32],
+    twin: &[u8; 16],
+) -> Result<crate::media::Ingested, String> {
     use crate::record::documents::Format;
     let (author_hex, twin_hex) = (hex::encode(author), hex::encode(twin));
     let read = |thumb: bool| {
         let (author_hex, twin_hex) = (author_hex.clone(), twin_hex.clone());
         async move {
-            let response = crate::idface::public_doc_bytes(state, &None, &author_hex, &twin_hex, thumb, None, None)
-                .await
-                .map_err(|e| format!("that isn't public here: {e:?}"))?;
+            let response = crate::idface::public_doc_bytes(
+                state,
+                &None,
+                &author_hex,
+                &twin_hex,
+                thumb,
+                None,
+                None,
+            )
+            .await
+            .map_err(|e| format!("that isn't public here: {e:?}"))?;
             if !response.status().is_success() {
-                return Err::<Vec<u8>, String>("that isn't public here - it may have been taken down".into());
+                return Err::<Vec<u8>, String>(
+                    "that isn't public here - it may have been taken down".into(),
+                );
             }
             Ok(axum::body::to_bytes(response.into_body(), state.config.max_upload_bytes)
                 .await
@@ -1035,7 +1071,9 @@ async fn foreign_twin(state: &AppState, author: &[u8; 32], twin: &[u8; 16]) -> R
             .await
             .map_err(|e| format!("header: {e:?}"))?
             .and_then(|entry| match &entry.entry().payload {
-                ringtome_proto::Payload::Inline(payload) => ringtome_proto::registry::DocHeaderPlain::decode(payload).ok(),
+                ringtome_proto::Payload::Inline(payload) => {
+                    ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()
+                }
                 _ => None,
             }),
         None => None,
@@ -1075,7 +1113,12 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
         // refuses video), never downloaded from the origin it was copied at.
         Some((author, twin)) => foreign_twin(state, &author, &twin).await?,
         None => {
-            let bytes = crate::net::unfurl::fetch_media_bytes(url, state.config.max_upload_bytes, state.config.local_test).await?;
+            let bytes = crate::net::unfurl::fetch_media_bytes(
+                url,
+                state.config.max_upload_bytes,
+                state.config.local_test,
+            )
+            .await?;
             let meter = state.ingest.clone();
             let key = bake_meter_key(root, url);
             meter.set_progress(&key, 0);
@@ -1106,17 +1149,22 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
         .await
         .map_err(|e| format!("keys: {e}"))?
         .ok_or_else(|| "this node no longer agents the publisher".to_string())?;
-    let db = state
-        .user_dbs
-        .held(root)
-        .await
-        .map_err(|e| format!("db: {e}"))?;
+    let db = state.user_dbs.held(root).await.map_err(|e| format!("db: {e}"))?;
     // The source URL is the title: v1's provenance-on-the-artifact, until the public header
     // grows a real field at the next deliberate wire break (the registry row is the durable
     // record meanwhile).
-    crate::record::documents::save_public_media(&db, &leaf, &state.files, url, crushed, None, None, false)
-        .await
-        .map_err(|e| format!("minting: {e}"))
+    crate::record::documents::save_public_media(
+        &db,
+        &leaf,
+        &state.files,
+        url,
+        crushed,
+        None,
+        None,
+        false,
+    )
+    .await
+    .map_err(|e| format!("minting: {e}"))
 }
 
 #[cfg(test)]
@@ -1145,15 +1193,36 @@ mod tests {
             theirs = short(&them),
         );
         let links = doc_links(&body, &me_hex);
-        let seen: Vec<(&str, Option<&str>)> = links.iter().map(|l| (l.text.as_str(), l.doc.as_deref())).collect();
+        let seen: Vec<(&str, Option<&str>)> =
+            links.iter().map(|l| (l.text.as_str(), l.doc.as_deref())).collect();
         assert_eq!(
             seen,
-            vec![("my note", Some(a.as_str())), ("theirs", None), ("old one", Some(c.as_str())), ("web", None)],
+            vec![
+                ("my note", Some(a.as_str())),
+                ("theirs", None),
+                ("old one", Some(c.as_str())),
+                ("web", None)
+            ],
             "in order, once per target, pictures and code aside"
         );
-        assert_eq!(own_doc(&format!("https://horse.example/ringtome/user/{}/doc/{a}#top", short(&me)), &me_hex), Some(a.clone()), "at any origin");
-        assert_eq!(own_doc(&format!("/ringtome/user/{me_hex}/doc/{a}"), &me_hex), Some(a.clone()), "the root in hex");
-        assert_eq!(own_doc(&format!("/ringtome/user/{}/post/{a}", short(&me)), &me_hex), None, "a post is not a note");
+        assert_eq!(
+            own_doc(
+                &format!("https://horse.example/ringtome/user/{}/doc/{a}#top", short(&me)),
+                &me_hex
+            ),
+            Some(a.clone()),
+            "at any origin"
+        );
+        assert_eq!(
+            own_doc(&format!("/ringtome/user/{me_hex}/doc/{a}"), &me_hex),
+            Some(a.clone()),
+            "the root in hex"
+        );
+        assert_eq!(
+            own_doc(&format!("/ringtome/user/{}/post/{a}", short(&me)), &me_hex),
+            None,
+            "a post is not a note"
+        );
         assert_eq!(own_doc("/home/notes/not-an-id", &me_hex), None);
         assert!(doc_links("not [closed", &me_hex).is_empty());
     }
@@ -1165,18 +1234,33 @@ mod tests {
     fn a_public_picture_is_read_in_either_spelling_and_anothers_is_copied() {
         let (mine, theirs) = ([1u8; 32], [2u8; 32]);
         let twin = [9u8; 16];
-        let short = |r: &[u8; 32]| crate::speakable::speakable(r).rsplit('-').next().unwrap().to_string();
+        let short =
+            |r: &[u8; 32]| crate::speakable::speakable(r).rsplit('-').next().unwrap().to_string();
         let t = hex::encode(twin);
         for addr in [
             format!("/ringtome/user/{}/doc/{t}/body/media.avif", short(&theirs)),
-            format!("http://localhost:6305/ringtome/user/{}/doc/{t}/body/media.avif", short(&theirs)),
+            format!(
+                "http://localhost:6305/ringtome/user/{}/doc/{t}/body/media.avif",
+                short(&theirs)
+            ),
             format!("/id/{}/docs/{t}/body/media.avif", hex::encode(theirs)),
             format!("/id/{}/docs/{t}/body", crate::speakable::speakable(&theirs)),
         ] {
             assert_eq!(super::twin_address(&addr), Some((theirs, twin)), "{addr}");
         }
-        assert_eq!(super::twin_address(&format!("http://x.example/id/{}/docs/{t}/body", hex::encode(theirs))), None, "/id/ at an origin is anyone's");
-        assert_eq!(super::twin_address(&format!("/ringtome/user/{}/post/{t}", short(&theirs))), None, "a post is not a picture");
+        assert_eq!(
+            super::twin_address(&format!(
+                "http://x.example/id/{}/docs/{t}/body",
+                hex::encode(theirs)
+            )),
+            None,
+            "/id/ at an origin is anyone's"
+        );
+        assert_eq!(
+            super::twin_address(&format!("/ringtome/user/{}/post/{t}", short(&theirs))),
+            None,
+            "a post is not a picture"
+        );
         let body = format!(
             "![a](/ringtome/user/{}/doc/{t}/body/media.avif)\n\n![b](/id/{}/docs/{t}/body/media.avif)",
             short(&theirs),
@@ -1185,7 +1269,12 @@ mod tests {
         let refs = super::media_refs(&body, &hex::encode(mine));
         assert_eq!(refs.len(), 1, "the author's own public picture stays as it is: {refs:?}");
         assert!(matches!(&refs[0], super::MediaRef::Foreign { author, .. } if *author == theirs));
-        let minted = super::public_media_target(&hex::encode(mine), &twin, crate::record::documents::Format::Avif, false);
+        let minted = super::public_media_target(
+            &hex::encode(mine),
+            &twin,
+            crate::record::documents::Format::Avif,
+            false,
+        );
         assert_eq!(minted, format!("/ringtome/user/{}/doc/{t}/body/media.avif", short(&mine)));
     }
 
@@ -1207,11 +1296,20 @@ mod tests {
         );
         let out = super::public_links(&body, &author);
         assert!(out.contains(&format!("[soup](/ringtome/user/{short}/doc/{doc})")), "{out}");
-        assert!(out.contains(&format!("http://localhost:9/ringtome/user/{short}/doc/{doc}?via=k1\n")), "hints stay: {out}");
+        assert!(
+            out.contains(&format!("http://localhost:9/ringtome/user/{short}/doc/{doc}?via=k1\n")),
+            "hints stay: {out}"
+        );
         assert!(out.contains(&format!("[old](/ringtome/user/{short}/doc/{doc})")), "{out}");
         assert!(out.contains(&format!("[older](/ringtome/user/{short}/doc/{doc})")), "{out}");
-        assert!(out.contains("[by title](/in/cook-book/soup)"), "a title path cannot be read off the words");
-        assert!(out.contains(&format!("[a room](/home/chat/{author}/{doc})")), "a room is not a document");
+        assert!(
+            out.contains("[by title](/in/cook-book/soup)"),
+            "a title path cannot be read off the words"
+        );
+        assert!(
+            out.contains(&format!("[a room](/home/chat/{author}/{doc})")),
+            "a room is not a document"
+        );
         assert!(out.contains(&format!("/post/{doc}?via=k2")), "a post's address is not touched");
         assert!(!out.contains("bucket="), "{out}");
     }
@@ -1220,12 +1318,29 @@ mod tests {
     #[test]
     fn a_missing_picture_leaves_the_words() {
         let gone = "/api/identity/ab/docs/00/body/x.apng".to_string();
-        let words = format!("look ![a [horse]]({gone}) and ![kept](/api/identity/ab/docs/11/body/y.avif)");
-        assert_eq!(super::drop_embeds(&words, std::slice::from_ref(&gone)), "look  and ![kept](/api/identity/ab/docs/11/body/y.avif)", "brackets in the alt go too");
-        let words = format!("look ![a horse]({gone}) and ![kept](/api/identity/ab/docs/11/body/y.avif)");
-        assert_eq!(super::drop_embeds(&words, std::slice::from_ref(&gone)), "look  and ![kept](/api/identity/ab/docs/11/body/y.avif)");
-        assert_eq!(super::drop_embeds(&format!("![sticker]({gone})"), std::slice::from_ref(&gone)), "", "a lone sticker leaves nothing");
-        assert_eq!(super::drop_embeds("  as written\n", &[]), "  as written\n", "nothing missing, nothing touched");
+        let words =
+            format!("look ![a [horse]]({gone}) and ![kept](/api/identity/ab/docs/11/body/y.avif)");
+        assert_eq!(
+            super::drop_embeds(&words, std::slice::from_ref(&gone)),
+            "look  and ![kept](/api/identity/ab/docs/11/body/y.avif)",
+            "brackets in the alt go too"
+        );
+        let words =
+            format!("look ![a horse]({gone}) and ![kept](/api/identity/ab/docs/11/body/y.avif)");
+        assert_eq!(
+            super::drop_embeds(&words, std::slice::from_ref(&gone)),
+            "look  and ![kept](/api/identity/ab/docs/11/body/y.avif)"
+        );
+        assert_eq!(
+            super::drop_embeds(&format!("![sticker]({gone})"), std::slice::from_ref(&gone)),
+            "",
+            "a lone sticker leaves nothing"
+        );
+        assert_eq!(
+            super::drop_embeds("  as written\n", &[]),
+            "  as written\n",
+            "nothing missing, nothing touched"
+        );
     }
 
     #[test]
@@ -1255,10 +1370,17 @@ mod tests {
     #[test]
     fn plain_words_show_the_words_and_name_the_pictures() {
         let twin = format!("/id/{ROOT}/docs/{DOC}/body/media.avif");
-        let word = |target: &str| if target.ends_with(".avif") { "(picture)".to_string() } else { "(media)".to_string() };
+        let word = |target: &str| {
+            if target.ends_with(".avif") {
+                "(picture)".to_string()
+            } else {
+                "(media)".to_string()
+            }
+        };
         assert_eq!(plain_words(&format!("![]({twin})"), &word).as_deref(), Some("(picture)"));
         assert_eq!(
-            plain_words(&format!("look at **this** horse ![a horse]({twin}) *wow*"), &word).as_deref(),
+            plain_words(&format!("look at **this** horse ![a horse]({twin}) *wow*"), &word)
+                .as_deref(),
             Some("look at this horse (picture) wow"),
             "formatting drops, the alt text too - it is the file's name, not a caption"
         );
@@ -1267,7 +1389,10 @@ mod tests {
             Some("first\nsecond code a link")
         );
         assert_eq!(plain_words("plain words", &word).as_deref(), Some("plain words"));
-        assert_eq!(plain_words("![](/x/media.opus) ![](/x/media.avif)", &word).as_deref(), Some("(media) (picture)"));
+        assert_eq!(
+            plain_words("![](/x/media.opus) ![](/x/media.avif)", &word).as_deref(),
+            Some("(media) (picture)")
+        );
     }
 
     #[test]
@@ -1315,8 +1440,10 @@ mod tests {
 
     #[test]
     fn an_unparsable_body_yields_no_refs_rather_than_a_panic() {
-        assert!(media_refs(":::conflict\nunclosed directive soup [", ROOT).is_empty()
-            || !media_refs(":::conflict\nunclosed directive soup [", ROOT).is_empty());
+        assert!(
+            media_refs(":::conflict\nunclosed directive soup [", ROOT).is_empty()
+                || !media_refs(":::conflict\nunclosed directive soup [", ROOT).is_empty()
+        );
         // The assertion is that we got HERE: whatever the parser thinks, nothing exploded.
     }
 
@@ -1346,7 +1473,11 @@ mod tests {
         );
         assert_eq!(mentions(&body), vec![root], "one root, however it was spelled");
         let other = [3u8; 32];
-        let two = format!(":::user id=/id/{}:::\n\n:::user id=/id/{}:::\n", hex::encode(other), hex::encode(root));
+        let two = format!(
+            ":::user id=/id/{}:::\n\n:::user id=/id/{}:::\n",
+            hex::encode(other),
+            hex::encode(root)
+        );
         assert_eq!(mentions(&two), vec![other, root], "document order");
         let inline = format!("a word for [user id=/id/{}]a friend[/user] mid-sentence, and [wave]not [user id=/id/{}]again[/user][/wave]", hex::encode(other), hex::encode(other));
         assert_eq!(mentions(&inline), vec![other], "the span is the inline card, once");

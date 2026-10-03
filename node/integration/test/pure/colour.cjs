@@ -24,7 +24,17 @@ describe('colour', () => {
     });
 
     it('goes to HSV and back without drifting', () => {
-        for (const hex of ['#8a4b1f', '#1f9e90', '#7a1f6e', '#000000', '#ffffff', '#808080', '#ff0000', '#00ff00', '#0000ff']) {
+        for (const hex of [
+            '#8a4b1f',
+            '#1f9e90',
+            '#7a1f6e',
+            '#000000',
+            '#ffffff',
+            '#808080',
+            '#ff0000',
+            '#00ff00',
+            '#0000ff',
+        ]) {
             assert.equal(c.rgbToHex(c.hsvToRgb(c.rgbToHsv(c.hexToRgb(hex)))), hex, hex);
         }
         const red = c.rgbToHsv([255, 0, 0]);
@@ -34,10 +44,21 @@ describe('colour', () => {
 
     it("puts the triangle's corners at the hue, white and black", () => {
         const corners = c.triangleCorners(90, 100, 100, 50);
-        assert.ok(near(corners.hue[0], 100) && near(corners.hue[1], 150), 'the hue corner points at the hue');
+        assert.ok(
+            near(corners.hue[0], 100) && near(corners.hue[1], 150),
+            'the hue corner points at the hue',
+        );
         const at = (p) => c.pointToSv(p, corners);
-        assert.deepEqual([at(corners.hue).s, at(corners.hue).v].map((n) => +n.toFixed(6)), [1, 1], 'the pure hue');
-        assert.deepEqual([at(corners.white).s, at(corners.white).v].map((n) => +n.toFixed(6)), [0, 1], 'white');
+        assert.deepEqual(
+            [at(corners.hue).s, at(corners.hue).v].map((n) => +n.toFixed(6)),
+            [1, 1],
+            'the pure hue',
+        );
+        assert.deepEqual(
+            [at(corners.white).s, at(corners.white).v].map((n) => +n.toFixed(6)),
+            [0, 1],
+            'white',
+        );
         assert.ok(near(at(corners.black).v, 0), 'black');
     });
 
@@ -47,7 +68,10 @@ describe('colour', () => {
             for (const s of [0.1, 0.5, 0.9, 1]) {
                 for (const v of [0.2, 0.6, 1]) {
                     const back = c.pointToSv(c.svToPoint({ s, v }, corners), corners);
-                    assert.ok(near(back.s, s, 1e-9) && near(back.v, v, 1e-9), `h=${h} s=${s} v=${v} -> ${JSON.stringify(back)}`);
+                    assert.ok(
+                        near(back.s, s, 1e-9) && near(back.v, v, 1e-9),
+                        `h=${h} s=${s} v=${v} -> ${JSON.stringify(back)}`,
+                    );
                 }
             }
         }
@@ -58,7 +82,10 @@ describe('colour', () => {
         const inside = [1, 1];
         assert.deepEqual(c.clampToTriangle(inside, corners), inside, 'inside stays put');
         const far = c.clampToTriangle([100, 0], corners);
-        assert.ok(near(far[0], corners.hue[0]) && near(far[1], corners.hue[1]), 'past the hue corner is the hue corner');
+        assert.ok(
+            near(far[0], corners.hue[0]) && near(far[1], corners.hue[1]),
+            'past the hue corner is the hue corner',
+        );
         const sv = c.pointToSv([100, 0], corners);
         assert.ok(near(sv.s, 1) && near(sv.v, 1));
     });

@@ -38,12 +38,17 @@ const KINDS = {
 };
 
 /// A line's amount with its own sign: earnings rise, purchases and debt fall.
-const signed = (pennies) => (String(pennies).startsWith('-') ? formatHorseBucks(pennies) : `+${formatHorseBucks(pennies)}`);
+const signed = (pennies) =>
+    String(pennies).startsWith('-') ? formatHorseBucks(pennies) : `+${formatHorseBucks(pennies)}`;
 
 /// One grouped row (pure/ledger.js), in words: a run's count, its document, its emoji, its people.
 const RowWords = ({ row, current }) => {
-    const title = row.title ? html`<em>${row.title}</em>` : t('apps.bank.untitled', 'something untitled');
-    const people = row.people.map((root) => html`<${PersonChip} key=${root} root=${root} current=${current} size="mini" />`);
+    const title = row.title
+        ? html`<em>${row.title}</em>`
+        : t('apps.bank.untitled', 'something untitled');
+    const people = row.people.map(
+        (root) => html`<${PersonChip} key=${root} root=${root} current=${current} size="mini" />`,
+    );
     const many = row.count > 1;
     switch (row.kind) {
         case 'words':
@@ -51,21 +56,35 @@ const RowWords = ({ row, current }) => {
         case 'strokes':
             return html`${t('apps.bank.drew-n-strokes-in', 'drew {n} new strokes in', { n: row.n })} ${title}${many ? t('apps.bank.over-n-saves', ' · {count} saves', { count: row.count }) : ''}`;
         case 'image':
-            return many ? t('apps.bank.uploaded-n-pictures', 'uploaded {count} pictures', { count: row.count }) : html`${t('apps.bank.uploaded', 'uploaded')} ${title}`;
+            return many
+                ? t('apps.bank.uploaded-n-pictures', 'uploaded {count} pictures', {
+                      count: row.count,
+                  })
+                : html`${t('apps.bank.uploaded', 'uploaded')} ${title}`;
         case 'publication':
             return html`${t('apps.bank.published', 'published')} ${title}`;
         case 'heartbeat':
             return t('apps.bank.used-the-app-on', 'used the app on {date}', { date: row.source });
         case 'chat':
-            return many ? t('apps.bank.said-n-things', 'said {count} things in rooms', { count: row.count }) : t('apps.bank.said-something-in-a-room', 'said something in a room');
+            return many
+                ? t('apps.bank.said-n-things', 'said {count} things in rooms', { count: row.count })
+                : t('apps.bank.said-something-in-a-room', 'said something in a room');
         case 'reaction':
-            return many ? t('apps.bank.reacted-to-n-lines', 'reacted to {count} lines in rooms', { count: row.count }) : t('apps.bank.reacted-in-a-room', 'reacted to a line in a room');
+            return many
+                ? t('apps.bank.reacted-to-n-lines', 'reacted to {count} lines in rooms', {
+                      count: row.count,
+                  })
+                : t('apps.bank.reacted-in-a-room', 'reacted to a line in a room');
         case 'reacted':
             return html`${people} ${many ? t('apps.bank.reacted-to-your-lines', 'reacted to your lines {count} times', { count: row.count }) : t('apps.bank.reacted-to-your-line', 'reacted to your line')}`;
         case 'post_reaction':
             return many
-                ? t('apps.bank.reacted-to-posts', 'reacted {emoji} to posts', { emoji: row.emoji.join('') })
-                : t('apps.bank.reacted-to-a-post', 'reacted {emoji} to a post', { emoji: row.emoji.join('') });
+                ? t('apps.bank.reacted-to-posts', 'reacted {emoji} to posts', {
+                      emoji: row.emoji.join(''),
+                  })
+                : t('apps.bank.reacted-to-a-post', 'reacted {emoji} to a post', {
+                      emoji: row.emoji.join(''),
+                  });
         case 'post_reacted':
             return html`${people} ${t('apps.bank.reacted-to-your-posts', 'reacted {emoji} to your posts', { emoji: row.emoji.join('') })}`;
         case 'follow':
@@ -73,13 +92,23 @@ const RowWords = ({ row, current }) => {
         case 'followed':
             return html`${people} ${t('apps.bank.followed-you', 'followed you')}`;
         case 'bond':
-            return many ? t('apps.bank.bought-n-horsebonds', 'bought {count} hrseBonds', { count: row.count }) : t('apps.bank.bought-a-horsebond', 'bought a hrseBond');
+            return many
+                ? t('apps.bank.bought-n-horsebonds', 'bought {count} hrseBonds', {
+                      count: row.count,
+                  })
+                : t('apps.bank.bought-a-horsebond', 'bought a hrseBond');
         case 'bond_interest':
-            return many ? t('apps.bank.n-horsebonds-paid', '{count} hrseBonds paid their interest', { count: row.count }) : t('apps.bank.a-horsebond-paid', 'a hrseBond paid its interest');
+            return many
+                ? t('apps.bank.n-horsebonds-paid', '{count} hrseBonds paid their interest', {
+                      count: row.count,
+                  })
+                : t('apps.bank.a-horsebond-paid', 'a hrseBond paid its interest');
         case 'bond_matured':
             return t('apps.bank.a-horsebond-matured', 'a hrseBond matured, and returned its price');
         case 'bond_sold':
-            return many ? t('apps.bank.sold-n-hrsebonds', 'sold {count} hrseBonds', { count: row.count }) : t('apps.bank.sold-a-hrsebond', 'sold a hrseBond');
+            return many
+                ? t('apps.bank.sold-n-hrsebonds', 'sold {count} hrseBonds', { count: row.count })
+                : t('apps.bank.sold-a-hrsebond', 'sold a hrseBond');
         case 'debt_interest':
             return t('apps.bank.interest-on-debt', 'interest on your debt, at 2% a day');
         default:
@@ -88,7 +117,12 @@ const RowWords = ({ row, current }) => {
 };
 
 /// A month's name, as the reader's locale says it (the month itself is UTC, as the node counts).
-const monthName = (month) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const monthName = (month) =>
+    new Date(`${month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+    });
 
 /// One month of the ledger: a row saying its size and total, opening onto its grouped lines.
 const Month = ({ month, lines, open, onToggle, current }) => html`<li class="bank-month">
@@ -97,18 +131,20 @@ const Month = ({ month, lines, open, onToggle, current }) => html`<li class="ban
         <span class="bank-month-count">${t('apps.bank.n-lines', '{n} lines', { n: month.lines })}</span>
         <span class="bank-line-amount">${signed(month.pennies)}</span>
     </button>
-    ${open &&
-    (lines
-        ? html`<ul class="bank-lines">
+    ${
+        open &&
+        (lines
+            ? html`<ul class="bank-lines">
               ${groupLedger(lines).map(
                   (row) => html`<li class="bank-line" key=${row.key + row.at_ms}>
                       <span class="bank-line-what"><${RowWords} row=${row} current=${current} /></span>
                       <span class="bank-line-when">${formatWhen(row.at_ms, undefined, { time: false })}</span>
                       <span class="bank-line-amount">${signed(row.pennies)}</span>
-                  </li>`
+                  </li>`,
               )}
           </ul>`
-        : html`<p class="null-sub">${t('apps.bank.counting', 'counting…')}</p>`)}
+            : html`<p class="null-sub">${t('apps.bank.counting', 'counting…')}</p>`)
+    }
 </li>`;
 
 /// The market column (Curtis, 2026-09-29: "a column to the left of our horsebank statement… for
@@ -193,7 +229,8 @@ const Portfolio = ({ root, instruments, inDebt, onSold }) => {
         if (b.matured) return t('apps.bank.matured', 'matured');
         return t('apps.bank.day-of', 'day {days} of {of}', { days: b.days, of: b.of_days });
     };
-    if (instruments.length === 0) return html`<p class="null-sub bank-portfolio-empty">${t('apps.bank.nothing-held-yet', 'nothing held yet - the market is to the left.')}</p>`;
+    if (instruments.length === 0)
+        return html`<p class="null-sub bank-portfolio-empty">${t('apps.bank.nothing-held-yet', 'nothing held yet - the market is to the left.')}</p>`;
     return html`<ul class="bank-holdings">
         ${instruments.map(
             (b) => html`<li class="bank-holding" key=${b.id}>
@@ -202,13 +239,15 @@ const Portfolio = ({ root, instruments, inDebt, onSold }) => {
                 <span class="bank-holding-price">${formatHorseBucks(b.pennies)}</span>
                 <span class="bank-holding-paid">${t('apps.bank.paid-so-far', 'paid {amount}', { amount: formatHorseBucks(b.paid) })}</span>
                 <span class="bank-holding-bar"><span style=${`width: ${Math.round((100 * b.days) / b.of_days)}%`}></span></span>
-                ${inDebt &&
-                !b.sold &&
-                !b.matured &&
-                html`<button class="bank-sell" type="button" disabled=${busy !== null} onClick=${() => sell(b.id)}>
+                ${
+                    inDebt &&
+                    !b.sold &&
+                    !b.matured &&
+                    html`<button class="bank-sell" type="button" disabled=${busy !== null} onClick=${() => sell(b.id)}>
                     ${busy === b.id ? '…' : t('apps.bank.sell', 'sell')}
-                </button>`}
-            </li>`
+                </button>`
+                }
+            </li>`,
         )}
         ${error && html`<p class="form-error">${error}</p>`}
     </ul>`;
@@ -222,7 +261,10 @@ export const BankApp = ({ current }) => {
     const [lines, setLines] = useState({});
     const [open, setOpen] = useState(new Set());
     const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'bank');
-    const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio'], { market: 240, portfolio: 200 });
+    const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio'], {
+        market: 240,
+        portfolio: 200,
+    });
     const [asked, setAsked] = useState(0); // bumped after a purchase or a sale: ask the ledger again
     useEffect(() => {
         if (!root) return undefined;
@@ -254,14 +296,17 @@ export const BankApp = ({ current }) => {
         }
         setOpen(next);
     };
-    if (error) return html`<div class="bank-app"><div class="bank"><p class="form-error">${error}</p></div></div>`;
-    if (!bank) return html`<div class="bank-app"><div class="bank"><p class="null-sub">${t('apps.bank.counting', 'counting…')}</p></div></div>`;
+    if (error)
+        return html`<div class="bank-app"><div class="bank"><p class="form-error">${error}</p></div></div>`;
+    if (!bank)
+        return html`<div class="bank-app"><div class="bank"><p class="null-sub">${t('apps.bank.counting', 'counting…')}</p></div></div>`;
     const kinds = Object.entries(bank.by_kind || {}).filter(([, p]) => p !== '0');
     const months = bank.months || [];
     return html`<div class="bank-app"><div class="bank-columns panes" style=${colStyle}>
-        ${tucked.has('market')
-            ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
-            : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
+        ${
+            tucked.has('market')
+                ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
+                : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
                   <${PaneHead} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
                   <${Market} root=${root} balance=${bank.balance} onBought=${() => {
                       setAsked((n) => n + 1);
@@ -269,10 +314,12 @@ export const BankApp = ({ current }) => {
                       // only - a refusal is said in the market column.
                       settle();
                   }} />
-              </aside>${resizer('market')}`}
-        ${tucked.has('portfolio')
-            ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
-            : html`${tab('portfolio', Icons.bank, t('apps.bank.portfolio', 'portfolio'))}<aside class="bank-portfolio">
+              </aside>${resizer('market')}`
+        }
+        ${
+            tucked.has('portfolio')
+                ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
+                : html`${tab('portfolio', Icons.bank, t('apps.bank.portfolio', 'portfolio'))}<aside class="bank-portfolio">
                   <${PaneHead} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onTuck=${() => toggleTuck('portfolio')} />
                   <${Portfolio}
                       root=${root}
@@ -280,24 +327,28 @@ export const BankApp = ({ current }) => {
                       inDebt=${String(bank.balance).startsWith('-')}
                       onSold=${() => setAsked((n) => n + 1)}
                   />
-              </aside>${resizer('portfolio')}`}
+              </aside>${resizer('portfolio')}`
+        }
         <div class="bank">
         <p class="bank-balance">${formatHorseBucks(bank.balance)}</p>
-        ${kinds.length > 0 &&
-        html`<table class="bank-kinds">
+        ${
+            kinds.length > 0 &&
+            html`<table class="bank-kinds">
             <tbody>
                 ${kinds.map(
                     ([kind, pennies]) => html`<tr key=${kind}>
                         <th>${(KINDS[kind] || (() => kind))()}</th>
                         <td>${formatHorseBucks(pennies)}</td>
-                    </tr>`
+                    </tr>`,
                 )}
             </tbody>
-        </table>`}
+        </table>`
+        }
         <hr class="bank-rule" />
-        ${months.length === 0
-            ? html`<p class="null-sub">${t('apps.bank.nothing-yet', 'nothing earned yet - write something, draw something, say something.')}</p>`
-            : html`<ul class="bank-months">
+        ${
+            months.length === 0
+                ? html`<p class="null-sub">${t('apps.bank.nothing-yet', 'nothing earned yet - write something, draw something, say something.')}</p>`
+                : html`<ul class="bank-months">
                   ${months.map(
                       (m) => html`<${Month}
                           key=${m.month}
@@ -306,9 +357,10 @@ export const BankApp = ({ current }) => {
                           open=${open.has(m.month)}
                           onToggle=${() => toggle(m.month)}
                           current=${current}
-                      />`
+                      />`,
                   )}
-              </ul>`}
+              </ul>`
+        }
         </div>
     </div></div>`;
 };

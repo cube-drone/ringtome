@@ -24,13 +24,24 @@ const html = htm.bind(h);
 /// for every thumbnail at once.
 const PAGE = 120;
 
-export const ImagePickModal = ({ root, onPick, onClose, drawings = false, DrawingThumb = null, heading = null }) => {
+export const ImagePickModal = ({
+    root,
+    onPick,
+    onClose,
+    drawings = false,
+    DrawingThumb = null,
+    heading = null,
+}) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const [query, setQuery] = useState('');
     const [bucket, setBucket] = useState('');
     const [tags, setTags] = useState([]);
     const [shown, setShown] = useState(PAGE);
-    const { pictures, tags: cloud, buckets: holding } = pickPictures(docs || [], { query, bucket: bucket || null, tags, drawings });
+    const {
+        pictures,
+        tags: cloud,
+        buckets: holding,
+    } = pickPictures(docs || [], { query, bucket: bucket || null, tags, drawings });
     // "files" always second, after "every notebook" (Curtis, 2026-09-27) - where uploads land, so the
     // first place to look - wearing a disk rather than a book; then the notebooks holding anything.
     const buckets = [FILES_BUCKET, ...holding.filter((b) => b !== FILES_BUCKET)];
@@ -49,8 +60,13 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
         if (!file) return;
         setUpload({ phase: 'sending', pct: 0 });
         try {
-            const res = await uploadBinary(root, file, file.name, (pct) => setUpload((u) => (u ? { ...u, pct } : u)));
-            await api(`/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(FILES_BUCKET)}`, { method: 'PUT' }).catch(() => {});
+            const res = await uploadBinary(root, file, file.name, (pct) =>
+                setUpload((u) => (u ? { ...u, pct } : u)),
+            );
+            await api(
+                `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(FILES_BUCKET)}`,
+                { method: 'PUT' },
+            ).catch(() => {});
             setUpload({ phase: 'preparing', doc: res.doc_id, job: res.job_id, title: file.name });
         } catch (e) {
             setUpload({ phase: 'failed', error: e.message });
@@ -67,11 +83,24 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
         const row = (docs || []).find((d) => d.doc_id === upload.doc);
         if (!row || !row.media) return;
         if (!isPicture(row)) {
-            setUpload({ phase: 'failed', error: t('doc.imagepick.not-a-still', "that isn't a still picture - an animation becomes a video, and this wants a picture") });
+            setUpload({
+                phase: 'failed',
+                error: t(
+                    'doc.imagepick.not-a-still',
+                    "that isn't a still picture - an animation becomes a video, and this wants a picture",
+                ),
+            });
             return;
         }
         setUpload(null);
-        onPick({ doc: row.doc_id, format: row.format, width: row.media.width, height: row.media.height, animation: !!row.media.animation, title: row.title || upload.title || '' });
+        onPick({
+            doc: row.doc_id,
+            format: row.format,
+            width: row.media.width,
+            height: row.media.height,
+            animation: !!row.media.animation,
+            title: row.title || upload.title || '',
+        });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [docs, upload]);
     // ...or refused: the ingest queue says why.
@@ -80,7 +109,16 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
         const id = setInterval(async () => {
             const jobs = await api(`/api/identity/${root}/ingest`).catch(() => []);
             const job = (jobs || []).find((j) => j.job_id === upload.job);
-            if (job && job.status === 'failed') setUpload({ phase: 'failed', error: job.error || t('doc.imagepick.could-not-take-it-in', "that picture couldn't be taken in") });
+            if (job && job.status === 'failed')
+                setUpload({
+                    phase: 'failed',
+                    error:
+                        job.error ||
+                        t(
+                            'doc.imagepick.could-not-take-it-in',
+                            "that picture couldn't be taken in",
+                        ),
+                });
         }, 1500);
         return () => clearInterval(id);
     }, [upload, root]);
@@ -117,14 +155,19 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                     onInput=${(e) => narrow(setQuery)(e.currentTarget.value)}
                 />
             </div>
-            ${upload &&
-            html`<p class=${upload.phase === 'failed' ? 'form-error' : 'null-sub'}>
+            ${
+                upload &&
+                html`<p class=${upload.phase === 'failed' ? 'form-error' : 'null-sub'}>
                 ${uploadNote}
-            </p>`}
-                        ${/* The notebooks - sketchbooks too, now that drawings have them (Curtis, 2026-09-27) -
-                as a row of their own above the tags: one at a time, or every one. */ ''}
-            ${buckets.length > 0 &&
-            html`<div class="imagepick-buckets" role="group" aria-label=${t('doc.imagepick.notebook', 'notebook')}>
+            </p>`
+            }
+                        ${
+                            /* The notebooks - sketchbooks too, now that drawings have them (Curtis, 2026-09-27) -
+                as a row of their own above the tags: one at a time, or every one. */ ''
+                        }
+            ${
+                buckets.length > 0 &&
+                html`<div class="imagepick-buckets" role="group" aria-label=${t('doc.imagepick.notebook', 'notebook')}>
                 <button
                     class=${bucket ? 'imagepick-bucket' : 'imagepick-bucket active'}
                     onClick=${() => narrow(setBucket)('')}
@@ -134,27 +177,38 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                         key=${b}
                         class=${bucket === b ? 'imagepick-bucket active' : 'imagepick-bucket'}
                         onClick=${() => narrow(setBucket)(bucket === b ? '' : b)}
-                    ><${b === FILES_BUCKET ? Icons.filesBucket : Icons.notebook} /> ${b}</button>`
+                    ><${b === FILES_BUCKET ? Icons.filesBucket : Icons.notebook} /> ${b}</button>`,
                 )}
-            </div>`}
-            ${/* One line of the commonest, then "more" (facets.js, 2026-10-02): every tag at once
-                took the whole picker once an import brought some 250. */ ''}
-            ${cloud.length > 0 &&
-            html`<${FacetRow}
+            </div>`
+            }
+            ${
+                /* One line of the commonest, then "more" (facets.js, 2026-10-02): every tag at once
+                took the whole picker once an import brought some 250. */ ''
+            }
+            ${
+                cloud.length > 0 &&
+                html`<${FacetRow}
                 label=${t('doc.imagepick.tagged', 'tagged')}
                 items=${cloud.map(([value, count]) => ({ value, count }))}
                 picked=${tags}
                 out=${[]}
                 onToggle=${(tag) => narrow(setTags)(togglePick(tags, tag))}
                 titleOf=${narrowTitle}
-            />`}
-            ${pictures.length === 0
-                ? html`<p class="null-sub">
-                      ${docs && docs.length
-                          ? t('doc.imagepick.no-pictures-match', 'no pictures match.')
-                          : t('doc.imagepick.no-pictures-yet', 'no pictures yet - upload one in any notebook and it will be here.')}
+            />`
+            }
+            ${
+                pictures.length === 0
+                    ? html`<p class="null-sub">
+                      ${
+                          docs && docs.length
+                              ? t('doc.imagepick.no-pictures-match', 'no pictures match.')
+                              : t(
+                                    'doc.imagepick.no-pictures-yet',
+                                    'no pictures yet - upload one in any notebook and it will be here.',
+                                )
+                      }
                   </p>`
-                : html`<ul class="imagepick-grid">
+                    : html`<ul class="imagepick-grid">
                       ${pictures.slice(0, shown).map(
                           (doc) => html`<li key=${doc.doc_id}>
                               <button
@@ -171,20 +225,26 @@ export const ImagePickModal = ({ root, onPick, onClose, drawings = false, Drawin
                                       })}
                               >
                                   <span class="imagepick-thumb drawing-floor">
-                                      ${doc.format === 'drawing'
-                                          ? DrawingThumb && html`<${DrawingThumb} root=${root} doc=${doc} big=${true} />`
-                                          : doc.media.has_thumb &&
-                                            html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`}
+                                      ${
+                                          doc.format === 'drawing'
+                                              ? DrawingThumb &&
+                                                html`<${DrawingThumb} root=${root} doc=${doc} big=${true} />`
+                                              : doc.media.has_thumb &&
+                                                html`<img src=${`/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}`} alt="" loading="lazy" />`
+                                      }
                                   </span>
                                   <span class="imagepick-title">${doc.title || t('doc.imagepick.untitled', 'untitled')}</span>
                               </button>
-                          </li>`
+                          </li>`,
                       )}
-                  </ul>`}
-            ${pictures.length > shown &&
-            html`<button class="imagepick-more" onClick=${() => setShown((n) => n + PAGE)}>
+                  </ul>`
+            }
+            ${
+                pictures.length > shown &&
+                html`<button class="imagepick-more" onClick=${() => setShown((n) => n + PAGE)}>
                 ${t('doc.imagepick.show-more', 'show more ({left} left)', { left: pictures.length - shown })}
-            </button>`}
+            </button>`
+            }
         </div>
     </${Modal}>`;
 };

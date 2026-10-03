@@ -102,17 +102,12 @@ pub async fn evict_pass_with_grace_and_expiry(
         .collect();
     for root in corpus {
         let hosted_here = hosted.contains(&root);
-        let dialed = !crate::net::subscriptions::dialed_by(&state.node_db, &root)
-            .await?
-            .is_empty();
+        let dialed = !crate::net::subscriptions::dialed_by(&state.node_db, &root).await?.is_empty();
         // A SHARE's fragments keep a mirror; a peek's own fragments are the peek's and go
         // with it (PROJECT_PLAN's Peeks, ruling 6) - they must not make a peek immortal.
         let has_fragments = crate::fragments::any_shared_for_author(&state.node_db, &root).await?;
         let demanded = crate::speculative::demand_exists(&state.node_db, &root).await?;
-        let rested = state
-            .user_dbs
-            .db_mtime_ms(&root)
-            .is_none_or(|mt| now - mt >= grace_ms);
+        let rested = state.user_dbs.db_mtime_ms(&root).is_none_or(|mt| now - mt >= grace_ms);
         // A peek somebody looked at within the expiry keeps (PROJECT_PLAN's Peeks, ruling 6): the look is
         // the rest clock a peek is judged by, and `expire_peeks` above is its judge.
         let looked = crate::idface::looked_within(&state.node_db, &root, now, peek_expiry_ms).await;
@@ -145,7 +140,9 @@ async fn expire_peeks(state: &AppState, now: i64, expiry_ms: i64) -> Result<()> 
         if now - looked >= expiry_ms {
             match evict_one(state, &root).await {
                 Ok(()) => tracing::info!(root = %root, "evicted a peek nobody has looked at"),
-                Err(e) => tracing::warn!(root = %root, "peek eviction failed; next beat retries: {e:#}"),
+                Err(e) => {
+                    tracing::warn!(root = %root, "peek eviction failed; next beat retries: {e:#}")
+                }
             }
             continue;
         }
@@ -163,7 +160,9 @@ async fn expire_peeks(state: &AppState, now: i64, expiry_ms: i64) -> Result<()> 
                 total = total.saturating_sub(bytes.max(0) as u64);
                 tracing::info!(root = %root, "evicted the least recently looked-at peek for the budget");
             }
-            Err(e) => tracing::warn!(root = %root, "peek eviction failed; next beat retries: {e:#}"),
+            Err(e) => {
+                tracing::warn!(root = %root, "peek eviction failed; next beat retries: {e:#}")
+            }
         }
     }
     Ok(())
@@ -198,12 +197,21 @@ mod tests {
     fn every_keeper_keeps() {
         let gone = |h, d, f, de, r, l| evictable(h, d, f, de, r, l);
         assert!(gone(false, false, false, false, true, false));
-        assert!(!gone(false, false, false, false, true, true), "a peek somebody looked at keeps (PROJECT_PLAN's Peeks, ruling 6)");
+        assert!(
+            !gone(false, false, false, false, true, true),
+            "a peek somebody looked at keeps (PROJECT_PLAN's Peeks, ruling 6)"
+        );
         assert!(!gone(true, false, false, false, true, false), "hosted keeps");
         assert!(!gone(false, true, false, false, true, false), "a dial keeps");
-        assert!(!gone(false, false, true, false, true, false), "a SHARE's fragment keeps (a peek's own does not reach here)");
+        assert!(
+            !gone(false, false, true, false, true, false),
+            "a SHARE's fragment keeps (a peek's own does not reach here)"
+        );
         assert!(!gone(false, false, false, true, true, false), "demand keeps");
-        assert!(!gone(false, false, false, false, false, false), "grace keeps - the member-visit
-            protection too, since a fetch is a write and a written file is not rested");
+        assert!(
+            !gone(false, false, false, false, false, false),
+            "grace keeps - the member-visit
+            protection too, since a fetch is a write and a written file is not rested"
+        );
     }
 }

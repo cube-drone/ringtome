@@ -6,35 +6,35 @@
     addresses), and the global rate limit (refusals spend the same budget, so the 429 is
     reachable offline). The happy-path parse is pinned by Rust unit tests on fixtures.
 */
-const assert = require("node:assert");
-const { makeFetch } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const assert = require('node:assert');
+const { makeFetch } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
 
-describe("unfurl", () => {
+describe('unfurl', () => {
     let user;
     before(async () => {
-        user = await makeUserFetch({ prefix: "unfurl" });
+        user = await makeUserFetch({ prefix: 'unfurl' });
     });
 
     it("requires a session - unfurling spends the node's outbound budget", async () => {
         const anon = makeFetch();
-        const resp = await anon(`api/unfurl?url=${encodeURIComponent("https://example.com/")}`);
+        const resp = await anon(`api/unfurl?url=${encodeURIComponent('https://example.com/')}`);
         assert.equal(resp.status, 401);
     });
 
-    it("refuses non-web schemes", async () => {
-        const resp = await user(`api/unfurl?url=${encodeURIComponent("file:///etc/passwd")}`);
+    it('refuses non-web schemes', async () => {
+        const resp = await user(`api/unfurl?url=${encodeURIComponent('file:///etc/passwd')}`);
         assert.equal(resp.status, 400);
     });
 
-    it("refuses to be a periscope into its own network", async () => {
+    it('refuses to be a periscope into its own network', async () => {
         // Loopback by literal, loopback by name, and a private range: the SSRF guard
         // resolves and vets every one before any connection is made.
         for (const target of [
-            "http://127.0.0.1:8080/",
-            "http://localhost/",
-            "http://192.168.1.1/",
-            "http://[::1]/",
+            'http://127.0.0.1:8080/',
+            'http://localhost/',
+            'http://192.168.1.1/',
+            'http://[::1]/',
         ]) {
             const resp = await user(`api/unfurl?url=${encodeURIComponent(target)}`);
             assert.equal(resp.status, 400, `${target} must be refused`);
@@ -43,18 +43,18 @@ describe("unfurl", () => {
         }
     });
 
-    it("meters the global outbound budget generously but really", async function () {
+    it('meters the global outbound budget generously but really', async function () {
         this.timeout(30000);
         // Refused targets spend tokens too (the budget sits in front of the guard), which
         // makes the limit provable offline: hammer refusals until 429 appears.
         let limited = false;
         for (let i = 0; i < 40 && !limited; i++) {
             const resp = await user(
-                `api/unfurl?url=${encodeURIComponent(`http://192.168.0.${i + 1}/`)}`
+                `api/unfurl?url=${encodeURIComponent(`http://192.168.0.${i + 1}/`)}`,
             );
             if (resp.status === 429) limited = true;
             else assert.equal(resp.status, 400);
         }
-        assert.ok(limited, "a sustained hammer must eventually see 429");
+        assert.ok(limited, 'a sustained hammer must eventually see 429');
     });
 });

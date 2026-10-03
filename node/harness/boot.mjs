@@ -30,7 +30,10 @@ export function session(base) {
         constructor(url) {
             this.ws = new WsClient(url, { headers: { cookie: cookieHeader() } });
             this.ws.on('open', () => this.onopen && this.onopen());
-            this.ws.on('message', (data) => this.onmessage && this.onmessage({ data: data.toString() }));
+            this.ws.on(
+                'message',
+                (data) => this.onmessage && this.onmessage({ data: data.toString() }),
+            );
             this.ws.on('close', () => this.onclose && this.onclose());
             this.ws.on('error', (e) => (this.onerror ? this.onerror(e) : undefined));
         }
@@ -75,9 +78,21 @@ export function session(base) {
                 window.indexedDB = indexedDB; // fake-indexeddb/auto owns the global
                 window.IDBKeyRange = IDBKeyRange;
                 window.WebSocket = BridgedWebSocket;
-                window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-                window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
-                window.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
+                window.matchMedia = () => ({
+                    matches: false,
+                    addEventListener() {},
+                    removeEventListener() {},
+                });
+                window.ResizeObserver = class {
+                    observe() {}
+                    unobserve() {}
+                    disconnect() {}
+                };
+                window.IntersectionObserver = class {
+                    observe() {}
+                    unobserve() {}
+                    disconnect() {}
+                };
                 window.scrollTo = () => {};
                 window.Element.prototype.scrollIntoView = () => {}; // jsdom doesn't implement it
                 window.prompt = (msg) => {
@@ -120,9 +135,13 @@ export async function waitFor(doc, pred, what, ms = 15000) {
         if (v) return v;
         await sleep(100);
     }
-    throw new Error(`timed out waiting for ${what}\n--- body:\n${doc.body.innerHTML.slice(0, 1500)}`);
+    throw new Error(
+        `timed out waiting for ${what}\n--- body:\n${doc.body.innerHTML.slice(0, 1500)}`,
+    );
 }
 
 /// A real bubbling click.
 export const click = (window, el) =>
-    el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    el.dispatchEvent(
+        new window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+    );

@@ -17,8 +17,14 @@ import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
 import { rootTitleFor } from '../pure/naming.js';
 import { kindHolds } from '../pure/doclist.js';
-import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIdsUnder }
-    from '../pure/treewalk.js';
+import {
+    docsInsideOnly,
+    dropIndex,
+    filedDocIds,
+    flatDocs,
+    pathToDoc,
+    sectionIdsUnder,
+} from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
 import { pageStanding } from '../pure/books.js';
 import { isTextDoc } from '../pure/feed.js';
@@ -46,7 +52,10 @@ async function existingTreeRoot(root, bucket) {
 export async function fileIntoTree(root, bucket, docId) {
     const rid = await existingTreeRoot(root, bucket);
     if (!rid) return;
-    await api(`/api/identity/${root}/taxonomies/${rid}/members/${docId}`, { method: 'PUT', body: JSON.stringify({}) });
+    await api(`/api/identity/${root}/taxonomies/${rid}/members/${docId}`, {
+        method: 'PUT',
+        body: JSON.stringify({}),
+    });
 }
 
 export async function ensureTreeRoot(root, bucket) {
@@ -59,7 +68,7 @@ export async function ensureTreeRoot(root, bucket) {
             api(`/api/identity/${root}/taxonomies`, {
                 method: 'POST',
                 body: JSON.stringify({ title: rootTitleFor(bucket) }),
-            }).then((r) => r.taxonomy_id)
+            }).then((r) => r.taxonomy_id),
         );
     }
     return rootMints.get(key);
@@ -115,11 +124,13 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     // In a book, the page's standing against the last rollout colours its icon (Curtis, 2026-09-30):
     // green in the book as published, orange changed or new since, grey hidden from it. A picture
     // filed in the notebook is not a page, and a notebook that isn't a book wears nothing.
-    const standing = ops.book && live && isTextDoc(live) ? pageStanding(live, ops.book.hiddenDocs, ops.book.hidden) : null;
+    const standing =
+        ops.book && live && isTextDoc(live)
+            ? pageStanding(live, ops.book.hiddenDocs, ops.book.hidden)
+            : null;
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
     // Media pages wear their kind (image/video/audio); text pages keep the page glyph.
-    const icon =
-        formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
+    const icon = formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
     const cls = [
         'tree-row jag-line-2',
         isSelected ? 'selected' : '',
@@ -142,7 +153,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
                 e,
                 ops.root,
                 live || { doc_id: id, title, format: summary && summary.format },
-                ops.bucket
+                ops.bucket,
             );
             ops.drag.current = { kind: 'page', id, parentId: parent ? parent.taxonomy_id : null };
             setLifting(true);
@@ -292,18 +303,19 @@ const SectionNode = ({ node, parent, depth, ops }) => {
 // A node's members in list order: sections recurse, own pages render, anything else (a dangling
 // reference to a deleted doc/section, or another identity's document - representable, not yet
 // renderable) is skipped.
-const MemberList = ({ node, depth, ops }) => html`${node.members.map((m) => {
-    if (m.taxonomy) {
-        return html`<${SectionNode}
+const MemberList = ({ node, depth, ops }) =>
+    html`${node.members.map((m) => {
+        if (m.taxonomy) {
+            return html`<${SectionNode}
             key=${m.doc_id}
             node=${m.taxonomy}
             parent=${node}
             depth=${depth}
             ops=${ops}
         />`;
-    }
-    if (m.doc) {
-        return html`<${PageRow}
+        }
+        if (m.doc) {
+            return html`<${PageRow}
             key=${m.doc_id}
             id=${m.doc_id}
             summary=${m.doc}
@@ -311,9 +323,9 @@ const MemberList = ({ node, depth, ops }) => html`${node.members.map((m) => {
             ops=${ops}
             parent=${node}
         />`;
-    }
-    return null;
-})}`;
+        }
+        return null;
+    })}`;
 
 // The unfiled bin: also a drop target - dragging a page here removes it from its section
 // (pages only; a section unhooked from the tree would be an invisible orphan).
@@ -340,7 +352,8 @@ const UnfiledBin = ({ unfiled, ops }) => {
     >
         <div class="tree-unfiled-title">${t('doc.tree.unfiled', 'unfiled')}</div>
         ${unfiled.map(
-            (d) => html`<${PageRow} key=${d.doc_id} id=${d.doc_id} summary=${d} depth=${0} ops=${ops} />`
+            (d) =>
+                html`<${PageRow} key=${d.doc_id} id=${d.doc_id} summary=${d} depth=${0} ops=${ops} />`,
         )}
     </div>`;
 };
@@ -488,7 +501,7 @@ export const WikiTree = ({
             onSelect(made.doc_id);
             await api(
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
-                { method: 'PUT' }
+                { method: 'PUT' },
             );
             await api(`/api/identity/${root}/taxonomies/${pid}/members/${made.doc_id}`, {
                 method: 'PUT',
@@ -496,7 +509,12 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(t('doc.tree.couldnt-start-the', "couldn't start the {itemNoun}: {message}", { itemNoun, message: e.message }));
+            alert(
+                t('doc.tree.couldnt-start-the', "couldn't start the {itemNoun}: {message}", {
+                    itemNoun,
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -515,7 +533,11 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(t('doc.tree.couldnt-create-the-section', "couldn't create the section: {message}", { message: e.message }));
+            alert(
+                t('doc.tree.couldnt-create-the-section', "couldn't create the section: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -530,7 +552,11 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(t('doc.tree.couldnt-rename-it', "couldn't rename it: {message}", { message: e.message }));
+            alert(
+                t('doc.tree.couldnt-rename-it', "couldn't rename it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -549,7 +575,7 @@ export const WikiTree = ({
             !confirm(
                 `Delete the section “${node.title || '(untitled)'}”?` +
                     (subs ? ` Its ${subs} sub-section${subs === 1 ? '' : 's'} go too.` : '') +
-                    ` Nothing inside is deleted - it ${showUnfiled ? 'lands in unfiled' : 'moves to the top level'}.`
+                    ` Nothing inside is deleted - it ${showUnfiled ? 'lands in unfiled' : 'moves to the top level'}.`,
             )
         )
             return;
@@ -573,7 +599,11 @@ export const WikiTree = ({
             }
             refetch();
         } catch (e) {
-            alert(t('doc.tree.couldnt-delete-it', "couldn't delete it: {message}", { message: e.message }));
+            alert(
+                t('doc.tree.couldnt-delete-it', "couldn't delete it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -601,10 +631,9 @@ export const WikiTree = ({
                 // Unfiling is pages-only: a section unhooked from every parent would be an
                 // invisible orphan, so sections can't land here.
                 if (drag.kind !== 'page' || !drag.parentId) return;
-                await api(
-                    `/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`,
-                    { method: 'DELETE' }
-                );
+                await api(`/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`, {
+                    method: 'DELETE',
+                });
                 refetch();
                 return;
             }
@@ -625,14 +654,17 @@ export const WikiTree = ({
                 body: JSON.stringify(index === undefined ? {} : { index }),
             });
             if (drag.parentId && drag.parentId !== destParent) {
-                await api(
-                    `/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`,
-                    { method: 'DELETE' }
-                );
+                await api(`/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`, {
+                    method: 'DELETE',
+                });
             }
             refetch();
         } catch (e) {
-            alert(t('doc.tree.couldnt-move-that', "couldn't move that: {message}", { message: e.message }));
+            alert(
+                t('doc.tree.couldnt-move-that', "couldn't move that: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -685,11 +717,13 @@ export const WikiTree = ({
                 </button>
             </div>
             ${tree && html`<${MemberList} node=${tree} depth=${0} ops=${ops} />`}
-            ${empty &&
-            !unfiled.length &&
-            html`<p class="null-sub tree-empty">
+            ${
+                empty &&
+                !unfiled.length &&
+                html`<p class="null-sub tree-empty">
                 ${t('doc.tree.nothing-here-yet---start', 'nothing here yet - start a {itemNoun}, or a section to put them in.', { itemNoun })}
-            </p>`}
+            </p>`
+            }
             ${!!unfiled.length && html`<${UnfiledBin} unfiled=${unfiled} ops=${ops} />`}
         </aside>
     `;

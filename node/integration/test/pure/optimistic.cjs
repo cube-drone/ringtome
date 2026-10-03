@@ -24,7 +24,12 @@ const root = () => `root${++n}`; // each claim its own persona, so no hold leaks
 const frame = (db, r, rows) => {
     const sent = new Map(rows.map((x) => [x.doc_id, x]));
     for (const x of rows) db.m.set(x.doc_id, x); // what apply() put down first
-    return o.reassertHeld(r, db.docs, (id) => sent.has(id), (id) => sent.get(id));
+    return o.reassertHeld(
+        r,
+        db.docs,
+        (id) => sent.has(id),
+        (id) => sent.get(id),
+    );
 };
 const pin = (r) => r && { ...r, pinned: true };
 const pinned = (r) => !!r && r.pinned === true;
@@ -46,7 +51,11 @@ describe('optimistic doc rows (2026-10-01)', () => {
         assert.equal(db.m.get('a').pinned, true, 'still shown pinned');
         assert.equal(db.m.get('a').title, 'renamed elsewhere', 'over the newer server row');
         await frame(db, r, [{ doc_id: 'a', pinned: true, title: 'renamed elsewhere' }]);
-        assert.deepEqual(db.m.get('a'), { doc_id: 'a', pinned: true, title: 'renamed elsewhere' }, "the server's row, unmarked");
+        assert.deepEqual(
+            db.m.get('a'),
+            { doc_id: 'a', pinned: true, title: 'renamed elsewhere' },
+            "the server's row, unmarked",
+        );
         await frame(db, r, [{ doc_id: 'a', pinned: false, title: 'unpinned later' }]);
         assert.equal(db.m.get('a').pinned, false, 'released: later frames are the server, plainly');
     });
@@ -65,7 +74,7 @@ describe('optimistic doc rows (2026-10-01)', () => {
             o.optimisticDoc(db, root(), 'a', pin, pinned, async () => {
                 throw new Error('refused');
             }),
-            /refused/
+            /refused/,
         );
         assert.deepEqual(db.m.get('a'), { doc_id: 'a', pinned: false });
     });
@@ -73,23 +82,49 @@ describe('optimistic doc rows (2026-10-01)', () => {
     it('a delete is gone at once, back on failure, and settled by the frame that drops it', async () => {
         const r = root();
         const db = fakeDb([{ doc_id: 'a' }]);
-        const hold = await o.holdDoc(db, r, 'a', () => null, (x) => !x);
+        const hold = await o.holdDoc(
+            db,
+            r,
+            'a',
+            () => null,
+            (x) => !x,
+        );
         assert.equal(db.m.has('a'), false);
         await hold.revert();
         assert.deepEqual(db.m.get('a'), { doc_id: 'a' }, 'reverted');
-        await o.holdDoc(db, r, 'a', () => null, (x) => !x);
+        await o.holdDoc(
+            db,
+            r,
+            'a',
+            () => null,
+            (x) => !x,
+        );
         db.m.delete('a');
-        await o.reassertHeld(r, db.docs, () => true, () => undefined);
+        await o.reassertHeld(
+            r,
+            db.docs,
+            () => true,
+            () => undefined,
+        );
         assert.equal(db.m.has('a'), false);
     });
 
     it('a new note opens filed before the stream has it, and settles only once it is filed', async () => {
         const r = root();
         const db = fakeDb();
-        await o.holdNewDoc(db, r, { doc_id: 'n', version: 'v1' }, { title: 'untitled', format: 'marquee', bucket: 'notes' });
+        await o.holdNewDoc(
+            db,
+            r,
+            { doc_id: 'n', version: 'v1' },
+            { title: 'untitled', format: 'marquee', bucket: 'notes' },
+        );
         assert.deepEqual([db.m.get('n').head, db.m.get('n').buckets], ['v1', ['notes']]);
         await frame(db, r, [{ doc_id: 'n', head: 'v1', buckets: [] }]);
-        assert.deepEqual(db.m.get('n').buckets, ['notes'], 'created but not yet filed: still shown filed');
+        assert.deepEqual(
+            db.m.get('n').buckets,
+            ['notes'],
+            'created but not yet filed: still shown filed',
+        );
         await frame(db, r, [{ doc_id: 'n', head: 'v1', buckets: ['notes'] }]);
         assert.equal(db.m.get('n')._optimistic, undefined, 'filed: the server row');
     });
@@ -110,7 +145,11 @@ describe('optimistic doc rows (2026-10-01)', () => {
 describe('tag edits laid over a note (2026-10-02)', () => {
     it('shows every edit in flight, and settles only when the server says them all', () => {
         const ops = { bread: 'adding', sour: 'removing', rye: 'adding' };
-        assert.deepEqual(o.withTagOps(['sour', 'rye', 'old'], ops), ['rye', 'old', 'bread'], 'added after, removed gone, no twice');
+        assert.deepEqual(
+            o.withTagOps(['sour', 'rye', 'old'], ops),
+            ['rye', 'old', 'bread'],
+            'added after, removed gone, no twice',
+        );
         assert.deepEqual(o.withTagOps(undefined, { a: 'adding' }), ['a']);
         assert.equal(o.tagOpsSettled(['rye', 'old'], ops), false, 'bread not yet there');
         assert.equal(o.tagOpsSettled(['rye', 'bread'], ops), true);

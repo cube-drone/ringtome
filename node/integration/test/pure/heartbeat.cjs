@@ -27,6 +27,12 @@ describe('daysSince', () => {
 describe('byRecentActivity', () => {
     it('newest first, the never-seen last', () => {
         const rows = ['2026-09-01', null, '2026-09-29', '2025-12-31', undefined];
-        assert.deepEqual(rows.sort(byRecentActivity), ['2026-09-29', '2026-09-01', '2025-12-31', null, undefined]);
+        assert.deepEqual(rows.sort(byRecentActivity), [
+            '2026-09-29',
+            '2026-09-01',
+            '2025-12-31',
+            null,
+            undefined,
+        ]);
     });
 });

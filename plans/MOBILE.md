@@ -1,7 +1,7 @@
 # Horse Drawing Tycoon 2 — Phones
 
-**Status: a soft shape, not a plan.** Written 2026-08-11. PROJECT_PLAN's *Phones: deferred, by
-design* is canon and this does not overturn it — but one of that section's premises is factually
+**Status: a soft shape, not a plan.** Written 2026-08-11. PROJECT_PLAN's _Phones: deferred, by
+design_ is canon and this does not overturn it — but one of that section's premises is factually
 wrong in a way that changes what the phone could be, and the correction is worth having on record
 before anyone costs a phone client again.
 
@@ -12,14 +12,14 @@ that is coherent, and [GODOT.md](GODOT.md), which needs the same `lib.rs` split 
 
 ## The premise correction
 
-*Phones: deferred, by design* argues: "there is no background sidecar on iOS, period, so a phone was
+_Phones: deferred, by design_ argues: "there is no background sidecar on iOS, period, so a phone was
 always going to be a remote client of always-on nodes, not a p2p citizen."
 
 The premise is about **sidecars**, and it is true — iOS permits one process per app, so
 `fork`/`exec`/`posix_spawn` are unavailable and a spawned helper binary is not a thing that ships.
 But **in-process linking sidesteps it entirely**: a phone can run the full iroh stack inside the
 app. The conclusion survives anyway, for a different reason — iOS will not let it run in the
-*background* — and the distinction matters, because "impossible" and "foreground-only" lead to
+_background_ — and the distinction matters, because "impossible" and "foreground-only" lead to
 different designs. The first says be a terminal; the second says be an intermittent peer, which the
 sync design already accommodates.
 
@@ -45,7 +45,7 @@ plumbing. Which leaves two shapes and nothing between them:
 
 **The phone is a terminal.** No key on device, HTTP plus the live-cache WebSocket to a node with a
 `RINGTOME_PUBLIC_URL`. Zero Rust on the phone, because this is precisely what `node/js` already is —
-the PWA stopgap *Phones: deferred, by design* already commits to. What it gives up is the point: the
+the PWA stopgap _Phones: deferred, by design_ already commits to. What it gives up is the point: the
 node holds the keys and does the signing, a reachable node with TLS is required, and the phone is
 dead offline.
 
@@ -62,17 +62,17 @@ or nothing.**
 Not preference — necessity, given who is building this. The terminal shape requires a permanently
 online node, which means either the average user sets one up (they will not) or this project hosts
 public nodes. Hosting is a non-starter for a solo developer with no budget and no legal team:
-*We Trust the Node Operator* and *Moderation and Operator Liability* are precisely about the
+_We Trust the Node Operator_ and _Moderation and Operator Liability_ are precisely about the
 obligations a content-holding node takes on.
 
 So the terminal shape is a bet that users bootstrap their own federation, and that is a big bet. The
-peer shape is the one where the network never *requires* federated nodes — which would also let the
+peer shape is the one where the network never _requires_ federated nodes — which would also let the
 federated half of the design be toned down, and federation is complicated in a way that runs against
 the p2p feeling the project is chasing.
 
 ## The availability arithmetic, honestly
 
-A phone node is up while the app is open. Call it 30 minutes a day: p ≈ 0.02. For *instantaneous*
+A phone node is up while the app is open. Call it 30 minutes a day: p ≈ 0.02. For _instantaneous_
 availability with k independent replicas each up at p, availability is 1 − (1 − p)^k, so 95% needs
 k ≈ 150. At p ≈ 0.1 it is ≈ 29; at p ≈ 0.3 it is ≈ 9.
 
@@ -87,9 +87,9 @@ architecture:
   machinery plus `idface::refresh_followed_pass` mean opening someone's page hits a local copy. So
   phone-as-peer degrades to **staleness, not unavailability**, for exactly the content that matters
   most. This is the big one.
-- ***Rebroadcast: Pointer Plus Pinned Replica*** makes popularity into replication — every
+- _**Rebroadcast: Pointer Plus Pinned Replica**_ makes popularity into replication — every
   rebroadcast adds a serving node, so heat and availability track each other.
-- ***Silence preserves, speech deletes***: an offline author cannot retract, so their content
+- _**Silence preserves, speech deletes**_: an offline author cannot retract, so their content
   survives through replicas by construction.
 - **Anti-entropy plus boot catch-up converge over days.** The immediate first pass at boot is the
   catch-up (registered in `main.rs`), the eager-push doorbell batches local writes, and the
@@ -104,9 +104,9 @@ It is the vibe.
 
 The things with no mirror to hide behind:
 
-1. **First contact.** Following someone new requires reaching *them*, and there is no mirror yet.
+1. **First contact.** Following someone new requires reaching _them_, and there is no mirror yet.
    Two phone-only users may never overlap.
-2. **Delivery to strangers.** *Delivery: one door, then your own sync* is explicit that the failure
+2. **Delivery to strangers.** _Delivery: one door, then your own sync_ is explicit that the failure
    condition is "zero nodes of mine were reachable at delivery time," and its own third mitigation —
    sealed-envelope relays — is "your friends' always-on nodes as your answering service." If nobody
    is always-on, that gap has no floor.
@@ -114,9 +114,9 @@ The things with no mirror to hide behind:
    outside web can dial. Without web-public nodes the retro-web pages are visible only inside the
    app. That is a product change, not only an infrastructure one, and it deserves a deliberate
    answer.
-4. **The authored-but-never-replicated window.** *The Ordering Contract* already names this as the
+4. **The authored-but-never-replicated window.** _The Ordering Contract_ already names this as the
    genuinely fragile case; it widens considerably when the authoring device sleeps 98% of the time.
-5. **Push notifications.** Already recorded in *Phones: deferred, by design* as the one structural
+5. **Push notifications.** Already recorded in _Phones: deferred, by design_ as the one structural
    gap, with an optional push-gateway role on hosted nodes as the likely answer. Unchanged by any of
    this, and it is the one item that seems to actually require somebody's server.
 
@@ -169,15 +169,15 @@ mirror is Dexie. On a platform where WKWebView is mandatory, that is the highest
 the client. Worth asking what it is buying, and the answer is less than expected when the node is
 zero hops away.
 
-*The Browser Is a View: The Live Cache* claims five benefits. Against an in-process node:
+_The Browser Is a View: The Live Cache_ claims five benefits. Against an in-process node:
 
-| claim | on a phone with the node in-process |
-|---|---|
-| live UI, every view reactive | **Survives** — but this is `liveQuery` as a *reactivity* engine, not storage. One call site (`js/mirror.js`). Replaceable by any store with subscriptions. |
-| offline reads | **Near-worthless.** If the node is down the app is down; there is nothing to read offline *from*. |
-| instant boot from cache | **Misattributed.** On localhost the round trip is nothing; what the cache saves is the node reassembling a full snapshot, which is a node-side concern and solvable node-side. |
-| multi-tab coherence | **Gone.** One window. |
-| near-zero growth in bespoke read endpoints | **Survives completely** — but it belongs to the stream protocol, not to Dexie. Kept either way. |
+| claim                                      | on a phone with the node in-process                                                                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| live UI, every view reactive               | **Survives** — but this is `liveQuery` as a _reactivity_ engine, not storage. One call site (`js/mirror.js`). Replaceable by any store with subscriptions.                     |
+| offline reads                              | **Near-worthless.** If the node is down the app is down; there is nothing to read offline _from_.                                                                              |
+| instant boot from cache                    | **Misattributed.** On localhost the round trip is nothing; what the cache saves is the node reassembling a full snapshot, which is a node-side concern and solvable node-side. |
+| multi-tab coherence                        | **Gone.** One window.                                                                                                                                                          |
+| near-zero growth in bespoke read endpoints | **Survives completely** — but it belongs to the stream protocol, not to Dexie. Kept either way.                                                                                |
 
 So the shape to reach for is **a pluggable backing store behind the existing seam** — memory for
 local clients, Dexie for remote ones (hosted browser, PWA) — rather than deleting anything. The
@@ -191,7 +191,7 @@ document), which is localStorage-sized rather than IndexedDB-sized; and `mirror/
 document bodies, where memory-only means a reload refetches — free against a local node, though with
 a 10MB body cap it wants a small LRU rather than everything resident.
 
-**One genuine bonus:** *The Browser Is a View* owes obligations *because* the mirror persists — a
+**One genuine bonus:** _The Browser Is a View_ owes obligations _because_ the mirror persists — a
 "forget this browser" control that drops mirror and shadow wholesale, and the invariant that nothing
 is cached for an identity the session does not own. A memory-only mirror discharges both by
 construction. Nothing to forget when the process exits.
@@ -217,13 +217,13 @@ A first cut at the split:
 
 Named rather than resolved, so they do not ambush whoever picks this up:
 
-1. **Does the phone hold a leaf key at all?** *Adding a New Node* has a ceremony, and a device that
-   is lost or stolen is exactly what *Revocation* covers — but a phone is the most-lost device
+1. **Does the phone hold a leaf key at all?** _Adding a New Node_ has a ceremony, and a device that
+   is lost or stolen is exactly what _Revocation_ covers — but a phone is the most-lost device
    anyone owns, and the retirement/repudiation cost of routine loss deserves thought before we hand
    phones seats in the key tree.
 2. **App Store review risk.** A p2p network syncing arbitrary user content invites the UGC
-   guidelines' moderation requirements. Our answer — *Moderation and Operator Liability*, trust is
-   explicit and moderation is operator policy — means on-device the *user* is the operator. Whether
+   guidelines' moderation requirements. Our answer — _Moderation and Operator Liability_, trust is
+   explicit and moderation is operator policy — means on-device the _user_ is the operator. Whether
    review accepts that is unknown, and the exposure lands on a solo developer with no legal team.
    This is the risk most likely to make the whole direction moot, and it is cheap to research early.
 3. **Metered-network posture.** Anti-entropy with up to 3 random peers every `RINGTOME_RESYNC_INTERVAL_SECS`

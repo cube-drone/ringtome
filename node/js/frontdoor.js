@@ -24,12 +24,15 @@ export const defaultTaglines = () => [
     t('frontdoor.tagline-draw-and-share', 'finally, a way to draw and share pictures of horses'),
     t('frontdoor.tagline-tycoon', 'a tycoon game where you draw horses indefinitely'),
     t('frontdoor.tagline-p2p', 'a horse-themed peer-to-peer social network'),
-    t('frontdoor.tagline-least-qualified', 'a social network designed by the least qualified possible person to design a social network'),
+    t(
+        'frontdoor.tagline-least-qualified',
+        'a social network designed by the least qualified possible person to design a social network',
+    ),
     t('frontdoor.tagline-marquee', "finally a home for the internet's lost marquee element"),
     t('frontdoor.tagline-both', 'horses! drawings! both at the same time!'),
     t(
         'frontdoor.tagline-zug-zug',
-        'do you remember when you played Starcraft 2 and you clicked on a guy a few too many times and he started to say weird comedy things? anyways, zug zug.'
+        'do you remember when you played Starcraft 2 and you clicked on a guy a few too many times and he started to say weird comedy things? anyways, zug zug.',
     ),
 ];
 
@@ -73,9 +76,15 @@ export const frontName = (f) => (f && f.name) || defaultName();
 /// still to be read, and a reader who asked for less motion gets the lines standing still.
 export const Marquee = () => {
     const f = useFront();
-    const lines = (f && f.taglines && f.taglines.length ? f.taglines : defaultTaglines()).filter(Boolean);
+    const lines = (f && f.taglines && f.taglines.length ? f.taglines : defaultTaglines()).filter(
+        Boolean,
+    );
     const chars = lines.reduce((n, l) => n + l.length + 6, 0);
-    const run = (copy) => lines.map((line, i) => html`<span class="marquee-line" key=${`${copy}:${i}`} aria-hidden=${copy > 0}>${line}</span>`);
+    const run = (copy) =>
+        lines.map(
+            (line, i) =>
+                html`<span class="marquee-line" key=${`${copy}:${i}`} aria-hidden=${copy > 0}>${line}</span>`,
+        );
     return html`<p class="marquee" style=${`--marquee-seconds: ${Math.max(10, Math.round(chars * 0.14))}s`}>
         <span class="marquee-track">${run(0)}${run(1)}</span>
     </p>`;
@@ -84,11 +93,14 @@ export const Marquee = () => {
 const SuperPinToggle = ({ item }) => {
     const f = useFront();
     const [busy, setBusy] = useState(false);
-    const pinned = !!f && (f.pins || []).some((p) => p.author === item.author && p.doc_id === item.doc_id);
+    const pinned =
+        !!f && (f.pins || []).some((p) => p.author === item.author && p.doc_id === item.doc_id);
     const flip = async () => {
         setBusy(true);
         try {
-            await api(`/api/admin/super-pins/${item.author}/${item.doc_id}`, { method: pinned ? 'DELETE' : 'PUT' });
+            await api(`/api/admin/super-pins/${item.author}/${item.doc_id}`, {
+                method: pinned ? 'DELETE' : 'PUT',
+            });
             await refreshFront();
         } catch {
             /* the next click retries; the chip stays honest to what the server holds */
@@ -97,9 +109,17 @@ const SuperPinToggle = ({ item }) => {
     };
     return html`<button
         class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
-        title=${pinned
-            ? t('frontdoor.take-this-off-the-front-page', "take this off the server's front page")
-            : t('frontdoor.super-pin-this', "super-pin this to the top of the server's front page")}
+        title=${
+            pinned
+                ? t(
+                      'frontdoor.take-this-off-the-front-page',
+                      "take this off the server's front page",
+                  )
+                : t(
+                      'frontdoor.super-pin-this',
+                      "super-pin this to the top of the server's front page",
+                  )
+        }
         disabled=${busy}
         onClick=${flip}
     ><${Icons.superPin} /></button>`;
@@ -107,4 +127,5 @@ const SuperPinToggle = ({ item }) => {
 
 /// The super-pin chip, on a node administrator's cards only. The node decides what may be pinned
 /// (a public post hosted here); the card offers it on anything open.
-export const SuperPinChip = ({ item }) => (useContext(SuperPinner) ? html`<${SuperPinToggle} item=${item} />` : null);
+export const SuperPinChip = ({ item }) =>
+    useContext(SuperPinner) ? html`<${SuperPinToggle} item=${item} />` : null;

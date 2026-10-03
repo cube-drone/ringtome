@@ -69,12 +69,9 @@ fn aad_for_service(service_id: u32) -> Result<&'static [u8], AppError> {
     match service_id {
         service::GENERAL_PRIVATE => Ok(RECORD_AAD),
         service::DOC_META_PRIVATE => Ok(DOC_META_AAD),
-        _ => Err(AppError::Internal(anyhow!(
-            "service {service_id} carries no private records"
-        ))),
+        _ => Err(AppError::Internal(anyhow!("service {service_id} carries no private records"))),
     }
 }
-
 
 // ---------------------------------------------------------------------------------------------
 // Encryption keypairs in the keystore
@@ -92,10 +89,8 @@ pub fn store_enc_keypair(keystore: &Keystore, leaf_hex: &str, kp: &EncKeyPair) -
 pub fn load_enc_keypair(keystore: &Keystore, leaf_hex: &str) -> Result<EncKeyPair> {
     let name = enc_key_name(leaf_hex);
     let bytes = keystore.load_key(&name, name.as_bytes())?;
-    let secret: [u8; 32] = bytes
-        .as_slice()
-        .try_into()
-        .map_err(|_| anyhow!("encryption key wrong length"))?;
+    let secret: [u8; 32] =
+        bytes.as_slice().try_into().map_err(|_| anyhow!("encryption key wrong length"))?;
     Ok(EncKeyPair::from_secret(secret))
 }
 
@@ -114,10 +109,7 @@ pub struct EpochKeys {
 impl EpochKeys {
     /// The newest epoch we hold a key for - what new records are written under.
     pub fn current(&self) -> Option<(u64, [u8; 32])> {
-        self.keys
-            .iter()
-            .next_back()
-            .map(|(epoch, keys)| (*epoch, keys[0]))
+        self.keys.iter().next_back().map(|(epoch, keys)| (*epoch, keys[0]))
     }
 
     pub fn for_epoch(&self, epoch: u64) -> &[[u8; 32]] {
@@ -133,9 +125,7 @@ impl EpochKeys {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (u64, &[u8; 32])> {
-        self.keys
-            .iter()
-            .flat_map(|(e, keys)| keys.iter().map(move |k| (*e, k)))
+        self.keys.iter().flat_map(|(e, keys)| keys.iter().map(move |k| (*e, k)))
     }
 
     fn insert(&mut self, epoch: u64, key: [u8; 32]) {
@@ -144,7 +134,6 @@ impl EpochKeys {
             keys.push(key);
         }
     }
-
 }
 
 /// Every decodable `key-epoch` entry stored on the identity-public chains.
@@ -185,10 +174,9 @@ pub async fn unseal_epoch_keys(
                     Err(_) => tracing::warn!(epoch = key_epoch.epoch, "epoch box held a non-key"),
                 },
                 // Sealed to our leaf id but not our enc key: stale roster data. Fail closed.
-                None => tracing::warn!(
-                    epoch = key_epoch.epoch,
-                    "epoch box addressed to us won't open"
-                ),
+                None => {
+                    tracing::warn!(epoch = key_epoch.epoch, "epoch box addressed to us won't open")
+                }
             }
         }
     }
@@ -198,11 +186,7 @@ pub async fn unseal_epoch_keys(
 /// The highest epoch number anyone has published, openable by us or not - what a rotation must
 /// step past.
 pub async fn max_epoch(db: &Db) -> Result<Option<u64>, AppError> {
-    Ok(load_epoch_entries(db)
-        .await?
-        .iter()
-        .map(|key_epoch| key_epoch.epoch)
-        .max())
+    Ok(load_epoch_entries(db).await?.iter().map(|key_epoch| key_epoch.epoch).max())
 }
 
 /// Every member encryption pubkey learnable from the chain: authorize stamps (field 2) plus the
@@ -255,12 +239,9 @@ pub async fn mint_epoch(
             .map_err(|e| AppError::Internal(anyhow!("sealing epoch key: {e}")))?;
         sealed_recipients.push((*leaf, *enc_pub, sealed));
     }
-    let payload = KeyEpoch {
-        epoch,
-        recipients: sealed_recipients,
-    }
-    .encode()
-    .map_err(|e| AppError::Internal(anyhow!("encoding key-epoch: {e}")))?;
+    let payload = KeyEpoch { epoch, recipients: sealed_recipients }
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding key-epoch: {e}")))?;
     crate::record::imaol::append(
         db,
         signer,
@@ -326,9 +307,7 @@ pub async fn rotate_epoch(
     // The root's enc pubkey never appears in an authorize stamp (the root has none); it rides in
     // epoch recipient lists, so the roster covers it from epoch 0 onward.
     if recipients.is_empty() {
-        return Err(AppError::Internal(anyhow!(
-            "epoch rotation would have zero recipients"
-        )));
+        return Err(AppError::Internal(anyhow!("epoch rotation would have zero recipients")));
     }
 
     let epoch = max_epoch(db).await?.map_or(0, |e| e + 1);
@@ -351,9 +330,13 @@ pub fn encrypt_record(
     plain: &PrivatePlain,
 ) -> Result<PrivateRecord, AppError> {
     let aad = aad_for_service(service_id)?;
-    let plaintext = plain
-        .encode()
-        .map_err(|e| AppError::BadRequest(crate::msg!("record.private.invalid-private-record-e", "invalid private record: {e}", e = e)))?;
+    let plaintext = plain.encode().map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "record.private.invalid-private-record-e",
+            "invalid private record: {e}",
+            e = e
+        ))
+    })?;
     let mut nonce = [0u8; 24];
     {
         use rand::RngCore;
@@ -362,17 +345,10 @@ pub fn encrypt_record(
     let ciphertext = cipher(epoch_key)
         .encrypt(
             XNonce::from_slice(&nonce),
-            chacha20poly1305::aead::Payload {
-                msg: &plaintext,
-                aad,
-            },
+            chacha20poly1305::aead::Payload { msg: &plaintext, aad },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting private record: {e}")))?;
-    Ok(PrivateRecord {
-        epoch,
-        nonce,
-        ciphertext,
-    })
+    Ok(PrivateRecord { epoch, nonce, ciphertext })
 }
 
 /// The outcome of opening one encrypted record against a key-set. The persisted-view fold
@@ -396,10 +372,7 @@ fn open_with<T>(
     for key in keys.for_epoch(record.epoch) {
         if let Ok(plaintext) = cipher(key).decrypt(
             XNonce::from_slice(&record.nonce),
-            chacha20poly1305::aead::Payload {
-                msg: &record.ciphertext,
-                aad,
-            },
+            chacha20poly1305::aead::Payload { msg: &record.ciphertext, aad },
         ) {
             return match decode(&plaintext) {
                 Some(plain) => Opened::Plain(plain),
@@ -441,17 +414,10 @@ pub fn encrypt_notice(
     let ciphertext = cipher(epoch_key)
         .encrypt(
             XNonce::from_slice(&nonce),
-            chacha20poly1305::aead::Payload {
-                msg: envelope_bytes,
-                aad: NOTICE_AAD,
-            },
+            chacha20poly1305::aead::Payload { msg: envelope_bytes, aad: NOTICE_AAD },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting inbox notice: {e}")))?;
-    Ok(PrivateRecord {
-        epoch,
-        nonce,
-        ciphertext,
-    })
+    Ok(PrivateRecord { epoch, nonce, ciphertext })
 }
 
 /// Open one transcribed notice, yielding the sender's envelope bytes as they were delivered.
@@ -465,9 +431,7 @@ pub(crate) fn open_doc_header(
     record: &PrivateRecord,
     keys: &EpochKeys,
 ) -> Opened<ringtome_proto::DocHeaderPlain> {
-    open_with(record, keys, DOC_AAD, |p| {
-        ringtome_proto::DocHeaderPlain::decode(p).ok()
-    })
+    open_with(record, keys, DOC_AAD, |p| ringtome_proto::DocHeaderPlain::decode(p).ok())
 }
 
 /// Decrypt a record with whichever key of its epoch authenticates; `None` on no working key
@@ -492,9 +456,13 @@ pub fn encrypt_doc_header(
     epoch_key: &[u8; 32],
     plain: &ringtome_proto::DocHeaderPlain,
 ) -> Result<PrivateRecord, AppError> {
-    let plaintext = plain
-        .encode()
-        .map_err(|e| AppError::BadRequest(crate::msg!("record.private.invalid-doc-header-e", "invalid doc header: {e}", e = e)))?;
+    let plaintext = plain.encode().map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "record.private.invalid-doc-header-e",
+            "invalid doc header: {e}",
+            e = e
+        ))
+    })?;
     let mut nonce = [0u8; 24];
     {
         use rand::RngCore;
@@ -503,17 +471,10 @@ pub fn encrypt_doc_header(
     let ciphertext = cipher(epoch_key)
         .encrypt(
             XNonce::from_slice(&nonce),
-            chacha20poly1305::aead::Payload {
-                msg: &plaintext,
-                aad: DOC_AAD,
-            },
+            chacha20poly1305::aead::Payload { msg: &plaintext, aad: DOC_AAD },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting doc header: {e}")))?;
-    Ok(PrivateRecord {
-        epoch,
-        nonce,
-        ciphertext,
-    })
+    Ok(PrivateRecord { epoch, nonce, ciphertext })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -540,10 +501,7 @@ pub fn encrypt_file(
     let ciphertext = cipher(epoch_key)
         .encrypt(
             XNonce::from_slice(&nonce),
-            chacha20poly1305::aead::Payload {
-                msg: plaintext,
-                aad: FILE_AAD,
-            },
+            chacha20poly1305::aead::Payload { msg: plaintext, aad: FILE_AAD },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting file: {e}")))?;
     let mut blob = Vec::with_capacity(8 + 24 + ciphertext.len());
@@ -566,10 +524,7 @@ pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
     for key in keys.for_epoch(epoch) {
         if let Ok(plaintext) = cipher(key).decrypt(
             XNonce::from_slice(nonce),
-            chacha20poly1305::aead::Payload {
-                msg: ciphertext,
-                aad: FILE_AAD,
-            },
+            chacha20poly1305::aead::Payload { msg: ciphertext, aad: FILE_AAD },
         ) {
             return Some(plaintext);
         }
@@ -610,9 +565,8 @@ pub async fn write_record(
         AppError::Internal(anyhow!("this node holds no epoch key for the identity"))
     })?;
     let record = encrypt_record(epoch, &key, service_id, plain)?;
-    let payload = record
-        .encode()
-        .map_err(|e| AppError::Internal(anyhow!("encoding private record: {e}")))?;
+    let payload =
+        record.encode().map_err(|e| AppError::Internal(anyhow!("encoding private record: {e}")))?;
     crate::record::imaol::append(
         db,
         signer,
@@ -701,11 +655,7 @@ impl PrivateView {
             .map(|((_, e), (_, value, stamp))| {
                 (
                     stamp,
-                    SetElement {
-                        element: e.clone(),
-                        value: value.clone(),
-                        updated_at_ms: stamp.0,
-                    },
+                    SetElement { element: e.clone(), value: value.clone(), updated_at_ms: stamp.0 },
                 )
             })
             .collect();
@@ -798,9 +748,7 @@ async fn fold_record(
             .await
         }
     };
-    folded
-        .context("folding private record into view")
-        .map_err(AppError::Internal)?;
+    folded.context("folding private record into view").map_err(AppError::Internal)?;
     Ok(())
 }
 
@@ -816,10 +764,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys, service_id: u32) -> Result<u64, App
 
     let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
     for signed in entries {
-        by_author
-            .entry(hex::encode(signed.entry().chain.author))
-            .or_default()
-            .push(signed);
+        by_author.entry(hex::encode(signed.entry().chain.author)).or_default().push(signed);
     }
 
     let mut undecryptable = 0u64;
@@ -879,10 +824,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys, service_id: u32) -> Result<u64, App
 /// The drop half of rebuild (`imaol::rebuild_views`): wipe the persisted private tables; the
 /// next keyed materialize refolds them from the log.
 pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
-    for sql in [
-        "DELETE FROM private_registers",
-        "DELETE FROM private_set_elements",
-    ] {
+    for sql in ["DELETE FROM private_registers", "DELETE FROM private_set_elements"] {
         db.execute(sql, ())
             .await
             .context("clearing private view tables")
@@ -906,10 +848,7 @@ pub async fn materialize_service(
     service_id: u32,
 ) -> Result<PrivateView, AppError> {
     let undecryptable = catch_up(db, keys, service_id).await?;
-    let mut view = PrivateView {
-        undecryptable,
-        ..Default::default()
-    };
+    let mut view = PrivateView { undecryptable, ..Default::default() };
 
     fn stamp(timestamp_ms: i64, seq: i64, hash: Vec<u8>) -> Result<Stamp, AppError> {
         let hash: [u8; 32] = hash
@@ -931,10 +870,7 @@ pub async fn materialize_service(
     for (collection, key, value, timestamp_ms, seq, hash) in registers {
         view.registers.insert(
             (collection, key),
-            (
-                value.map(utf8).unwrap_or_default(),
-                stamp(timestamp_ms, seq, hash)?,
-            ),
+            (value.map(utf8).unwrap_or_default(), stamp(timestamp_ms, seq, hash)?),
         );
     }
 
@@ -950,11 +886,7 @@ pub async fn materialize_service(
     for (collection, element, present, value, timestamp_ms, seq, hash) in elements {
         view.sets.insert(
             (collection, element),
-            (
-                present != 0,
-                value.map(utf8),
-                stamp(timestamp_ms, seq, hash)?,
-            ),
+            (present != 0, value.map(utf8), stamp(timestamp_ms, seq, hash)?),
         );
     }
     Ok(view)
@@ -1016,9 +948,7 @@ pub async fn collection_registers(
         rows.into_iter()
             .map(|(key, value, timestamp_ms)| RegisterValue {
                 key,
-                value: value
-                    .map(|v| String::from_utf8_lossy(&v).into_owned())
-                    .unwrap_or_default(),
+                value: value.map(|v| String::from_utf8_lossy(&v).into_owned()).unwrap_or_default(),
                 updated_at_ms: timestamp_ms,
             })
             .collect(),
@@ -1062,10 +992,7 @@ pub async fn collection_set_elements(
     collection: &str,
 ) -> Result<(Vec<SetElement>, u64), AppError> {
     let undecryptable = catch_up(db, keys, service_id).await?;
-    Ok((
-        set_element_rows(db, service_id, collection, "ORDER BY element").await?,
-        undecryptable,
-    ))
+    Ok((set_element_rows(db, service_id, collection, "ORDER BY element").await?, undecryptable))
 }
 
 /// One collection's present set elements in LWW-stamp (insertion) order - the SQL twin of
@@ -1212,9 +1139,7 @@ mod tests {
         let enc = EncKeyPair::generate();
 
         let epoch_key = fresh_epoch_key();
-        mint_epoch(&db, &root_key, 0, &epoch_key, &[(root_leaf, enc.public)])
-            .await
-            .unwrap();
+        mint_epoch(&db, &root_key, 0, &epoch_key, &[(root_leaf, enc.public)]).await.unwrap();
 
         let keys = unseal_epoch_keys(&db, &root_leaf, &enc).await.unwrap();
         assert_eq!(keys.current(), Some((0, epoch_key)));
@@ -1251,9 +1176,7 @@ mod tests {
         let key = signer(2);
         let leaf = key.verifying_key().to_bytes();
         let enc = EncKeyPair::generate();
-        mint_epoch(&db, &key, 0, &fresh_epoch_key(), &[(leaf, enc.public)])
-            .await
-            .unwrap();
+        mint_epoch(&db, &key, 0, &fresh_epoch_key(), &[(leaf, enc.public)]).await.unwrap();
         let keys = unseal_epoch_keys(&db, &leaf, &enc).await.unwrap();
 
         let add = |k: &str| PrivatePlain {
@@ -1269,25 +1192,14 @@ mod tests {
             value: None,
         };
 
-        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("alice"))
-            .await
-            .unwrap();
-        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("bob"))
-            .await
-            .unwrap();
-        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &remove("alice"))
-            .await
-            .unwrap();
-        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("alice"))
-            .await
-            .unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("alice")).await.unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("bob")).await.unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &remove("alice")).await.unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("alice")).await.unwrap();
 
         let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
-        let elements: Vec<String> = view
-            .set_elements("follows")
-            .into_iter()
-            .map(|e| e.element)
-            .collect();
+        let elements: Vec<String> =
+            view.set_elements("follows").into_iter().map(|e| e.element).collect();
         assert_eq!(elements, vec!["alice", "bob"], "re-add after remove sticks");
     }
 
@@ -1303,15 +1215,9 @@ mod tests {
         let b_leaf = signer(4).verifying_key().to_bytes();
 
         let k0 = fresh_epoch_key();
-        mint_epoch(
-            &db,
-            &a_key,
-            0,
-            &k0,
-            &[(a_leaf, a_enc.public), (b_leaf, b_enc.public)],
-        )
-        .await
-        .unwrap();
+        mint_epoch(&db, &a_key, 0, &k0, &[(a_leaf, a_enc.public), (b_leaf, b_enc.public)])
+            .await
+            .unwrap();
         let a_keys = unseal_epoch_keys(&db, &a_leaf, &a_enc).await.unwrap();
         write_record(
             &db,
@@ -1324,15 +1230,7 @@ mod tests {
         .unwrap();
 
         // Rotation: epoch 1, B excluded.
-        mint_epoch(
-            &db,
-            &a_key,
-            1,
-            &fresh_epoch_key(),
-            &[(a_leaf, a_enc.public)],
-        )
-        .await
-        .unwrap();
+        mint_epoch(&db, &a_key, 1, &fresh_epoch_key(), &[(a_leaf, a_enc.public)]).await.unwrap();
         let a_keys = unseal_epoch_keys(&db, &a_leaf, &a_enc).await.unwrap();
         assert_eq!(a_keys.current().unwrap().0, 1);
         write_record(
@@ -1358,11 +1256,8 @@ mod tests {
         let b_keys = unseal_epoch_keys(&b_db, &b_leaf, &b_enc).await.unwrap();
         assert_eq!(b_keys.current().unwrap().0, 0);
         let b_view = materialize_service(&b_db, &b_keys, service::GENERAL_PRIVATE).await.unwrap();
-        let names: Vec<String> = b_view
-            .registers_in("contacts")
-            .into_iter()
-            .map(|r| r.key)
-            .collect();
+        let names: Vec<String> =
+            b_view.registers_in("contacts").into_iter().map(|r| r.key).collect();
         assert_eq!(names, vec!["dave"]);
         assert_eq!(b_view.undecryptable, 1);
     }
@@ -1375,15 +1270,7 @@ mod tests {
         let a_enc = EncKeyPair::generate();
 
         // Two epochs of history before the newcomer exists.
-        mint_epoch(
-            &db,
-            &a_key,
-            0,
-            &fresh_epoch_key(),
-            &[(a_leaf, a_enc.public)],
-        )
-        .await
-        .unwrap();
+        mint_epoch(&db, &a_key, 0, &fresh_epoch_key(), &[(a_leaf, a_enc.public)]).await.unwrap();
         let keys = unseal_epoch_keys(&db, &a_leaf, &a_enc).await.unwrap();
         write_record(
             &db,
@@ -1394,15 +1281,7 @@ mod tests {
         )
         .await
         .unwrap();
-        mint_epoch(
-            &db,
-            &a_key,
-            1,
-            &fresh_epoch_key(),
-            &[(a_leaf, a_enc.public)],
-        )
-        .await
-        .unwrap();
+        mint_epoch(&db, &a_key, 1, &fresh_epoch_key(), &[(a_leaf, a_enc.public)]).await.unwrap();
         let keys = unseal_epoch_keys(&db, &a_leaf, &a_enc).await.unwrap();
         write_record(
             &db,
@@ -1416,9 +1295,7 @@ mod tests {
 
         let n_enc = EncKeyPair::generate();
         let n_leaf = signer(6).verifying_key().to_bytes();
-        let resealed = reseal_epochs_to(&db, &a_key, &n_leaf, &n_enc.public, &keys)
-            .await
-            .unwrap();
+        let resealed = reseal_epochs_to(&db, &a_key, &n_leaf, &n_enc.public, &keys).await.unwrap();
         assert_eq!(resealed, 2);
 
         let n_keys = unseal_epoch_keys(&db, &n_leaf, &n_enc).await.unwrap();
@@ -1455,13 +1332,9 @@ mod tests {
     #[test]
     fn tampered_ciphertext_fails_closed() {
         let epoch_key = fresh_epoch_key();
-        let mut record = encrypt_record(
-            0,
-            &epoch_key,
-            service::GENERAL_PRIVATE,
-            &plain_register("c", "k", "v"),
-        )
-        .unwrap();
+        let mut record =
+            encrypt_record(0, &epoch_key, service::GENERAL_PRIVATE, &plain_register("c", "k", "v"))
+                .unwrap();
         let mut keys = EpochKeys::default();
         keys.insert(0, epoch_key);
 
@@ -1587,10 +1460,7 @@ mod tests {
                 vec!["after", "before"],
                 "everything openable is visible, even past the stall"
             );
-            assert_eq!(
-                view.undecryptable, 1,
-                "counted once per read, never inflated"
-            );
+            assert_eq!(view.undecryptable, 1, "counted once per read, never inflated");
             assert_eq!(
                 crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE)
                     .await,
@@ -1621,9 +1491,7 @@ mod tests {
         let key = signer(9);
         let leaf = key.verifying_key().to_bytes();
         let enc = EncKeyPair::generate();
-        mint_epoch(&db, &key, 0, &fresh_epoch_key(), &[(leaf, enc.public)])
-            .await
-            .unwrap();
+        mint_epoch(&db, &key, 0, &fresh_epoch_key(), &[(leaf, enc.public)]).await.unwrap();
         let keys = unseal_epoch_keys(&db, &leaf, &enc).await.unwrap();
 
         for (collection, k, v) in [
@@ -1665,24 +1533,18 @@ mod tests {
             .unwrap();
         }
 
-        let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE)
-            .await
-            .unwrap();
-        let as_tuples =
-            |rs: Vec<RegisterValue>| -> Vec<(String, String)> {
-                rs.into_iter().map(|r| (r.key, r.value)).collect()
-            };
+        let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
+        let as_tuples = |rs: Vec<RegisterValue>| -> Vec<(String, String)> {
+            rs.into_iter().map(|r| (r.key, r.value)).collect()
+        };
 
         let (regs, undecryptable) =
-            collection_registers(&db, &keys, service::GENERAL_PRIVATE, "config")
-                .await
-                .unwrap();
+            collection_registers(&db, &keys, service::GENERAL_PRIVATE, "config").await.unwrap();
         assert_eq!(undecryptable, 0);
         assert_eq!(as_tuples(regs), as_tuples(view.registers_in("config")));
 
-        let (elements, _) = collection_set_elements(&db, &keys, service::GENERAL_PRIVATE, "roster")
-            .await
-            .unwrap();
+        let (elements, _) =
+            collection_set_elements(&db, &keys, service::GENERAL_PRIVATE, "roster").await.unwrap();
         let names: Vec<&str> = elements.iter().map(|e| e.element.as_str()).collect();
         assert_eq!(names, vec!["aa", "zz"], "element order, removals absent");
 
@@ -1691,20 +1553,14 @@ mod tests {
                 .await
                 .unwrap();
         let ordered_names: Vec<&str> = ordered.iter().map(|e| e.element.as_str()).collect();
-        let view_names: Vec<String> = view
-            .set_elements_ordered("roster")
-            .into_iter()
-            .map(|e| e.element)
-            .collect();
+        let view_names: Vec<String> =
+            view.set_elements_ordered("roster").into_iter().map(|e| e.element).collect();
         assert_eq!(ordered_names, view_names, "same LWW-stamp insertion order");
 
-        let contacts = prefixed_registers(&db, &keys, service::GENERAL_PRIVATE, "contact:")
-            .await
-            .unwrap();
-        let rows: Vec<(String, String, String)> = contacts
-            .into_iter()
-            .map(|(c, r)| (c, r.key, r.value))
-            .collect();
+        let contacts =
+            prefixed_registers(&db, &keys, service::GENERAL_PRIVATE, "contact:").await.unwrap();
+        let rows: Vec<(String, String, String)> =
+            contacts.into_iter().map(|(c, r)| (c, r.key, r.value)).collect();
         assert_eq!(
             rows,
             vec![
@@ -1723,15 +1579,10 @@ mod tests {
             "EXPLAIN QUERY PLAN SELECT element FROM private_set_elements
              WHERE service = ?1 AND collection = ?2 AND present = 1",
         ] {
-            let plan: Vec<(i64, i64, i64, String)> = db
-                .fetch_all(sql, (i64::from(service::GENERAL_PRIVATE), "config"))
-                .await
-                .unwrap();
-            let detail: String = plan
-                .iter()
-                .map(|(_, _, _, d)| d.as_str())
-                .collect::<Vec<_>>()
-                .join(" | ");
+            let plan: Vec<(i64, i64, i64, String)> =
+                db.fetch_all(sql, (i64::from(service::GENERAL_PRIVATE), "config")).await.unwrap();
+            let detail: String =
+                plan.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
             assert!(
                 detail.contains("SEARCH") && !detail.contains("SCAN"),
                 "per-collection read must seek the index, got plan: {detail}"

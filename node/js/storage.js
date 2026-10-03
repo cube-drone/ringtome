@@ -22,7 +22,10 @@ function ask(root) {
             // once more when it may - a file still arriving at the last tally gets its size then.
             if (answer && answer.stale) {
                 clearTimeout(timers.get(root));
-                timers.set(root, setTimeout(() => ask(root), (answer.retally_ms || 15000) + 500));
+                timers.set(
+                    root,
+                    setTimeout(() => ask(root), (answer.retally_ms || 15000) + 500),
+                );
             }
         })
         .catch(() => {});
@@ -47,7 +50,10 @@ export function useStorage(root, changed) {
     useEffect(() => {
         if (!root || changed === undefined || !answers.has(root)) return;
         clearTimeout(timers.get(root));
-        timers.set(root, setTimeout(() => ask(root), SETTLE_MS));
+        timers.set(
+            root,
+            setTimeout(() => ask(root), SETTLE_MS),
+        );
     }, [root, changed]);
     return answer;
 }

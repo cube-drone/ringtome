@@ -12,7 +12,13 @@
 import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { EditorView, keymap, placeholder as cmPlaceholder, drawSelection, tooltips } from '@codemirror/view';
+import {
+    EditorView,
+    keymap,
+    placeholder as cmPlaceholder,
+    drawSelection,
+    tooltips,
+} from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
@@ -104,7 +110,7 @@ export const LiveMarquee = ({
                             const sel = u.state.selection.main;
                             hooks.current.onCursor?.(
                                 Math.min(sel.anchor, sel.head),
-                                Math.max(sel.anchor, sel.head)
+                                Math.max(sel.anchor, sel.head),
                             );
                         }
                     }),
@@ -115,7 +121,9 @@ export const LiveMarquee = ({
                     // that is one picture's address arrives as the picture (pure/portable.js) - the
                     // transform happens at paste, never under the user's cursor at save time.
                     EditorView.clipboardInputFilter.of(
-                        (text) => pastedPicture(text, window.location.origin) || stripSelfOrigin(text, window.location.origin)
+                        (text) =>
+                            pastedPicture(text, window.location.origin) ||
+                            stripSelfOrigin(text, window.location.origin),
                     ),
                 ],
             }),
@@ -162,7 +170,6 @@ export const LiveMarquee = ({
         if (v) {
             v.dispatch({ effects: marqueeConf.current.reconfigure(marquee({ profile })) });
         }
-         
     }, [profile]);
 
     return html`<div class="editor-live" ref=${host}></div>`;

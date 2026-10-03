@@ -192,18 +192,10 @@ impl Envelope {
         if self.auth_path.len() > MAX_AUTH_PATH {
             return Err(ProtoError::BadEntry("authorization path too deep"));
         }
-        if self
-            .greeting
-            .as_ref()
-            .is_some_and(|g| g.len() > MAX_GREETING_LEN)
-        {
+        if self.greeting.as_ref().is_some_and(|g| g.len() > MAX_GREETING_LEN) {
             return Err(ProtoError::BadEntry("greeting too long"));
         }
-        if self
-            .display_name
-            .as_ref()
-            .is_some_and(|n| n.len() > MAX_DISPLAY_NAME_LEN)
-        {
+        if self.display_name.as_ref().is_some_and(|n| n.len() > MAX_DISPLAY_NAME_LEN) {
             return Err(ProtoError::BadEntry("display name too long"));
         }
         Ok(())
@@ -263,10 +255,7 @@ impl Envelope {
     /// body) makes a stamp transferable to a different recipient, which is the property the
     /// binding is here to deny.
     pub fn challenge(&self) -> [u8; 32] {
-        let unstamped = Self {
-            stamp: None,
-            ..self.clone()
-        };
+        let unstamped = Self { stamp: None, ..self.clone() };
         crate::pow::challenge(&unstamped.encode_body())
     }
 
@@ -290,7 +279,8 @@ impl Envelope {
                 3 => {
                     let raw = map.uint()?;
                     kind = Some(
-                        u32::try_from(raw).map_err(|_| ProtoError::BadEntry("kind out of range"))?,
+                        u32::try_from(raw)
+                            .map_err(|_| ProtoError::BadEntry("kind out of range"))?,
                     );
                 }
                 4 => {
@@ -533,9 +523,7 @@ pub fn walk_auth_path(
         speaks_for = crate::Authorize::decode(payload)?.child;
     }
     if speaks_for != signer {
-        return Err(ProtoError::ChainViolation(
-            "authorization path does not reach the signer",
-        ));
+        return Err(ProtoError::ChainViolation("authorization path does not reach the signer"));
     }
     Ok(())
 }
@@ -554,9 +542,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
     };
     let evidence = crate::SignedEntry::decode(evidence_bytes)?;
     if evidence.entry().chain.author != envelope.signer {
-        return Err(ProtoError::ChainViolation(
-            "evidence was not signed by the envelope's signer",
-        ));
+        return Err(ProtoError::ChainViolation("evidence was not signed by the envelope's signer"));
     }
     evidence.verify()?;
 
@@ -629,14 +615,10 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             // with no link is a post, not a comment; a link to somebody else's post is
             // news for somebody else's door.
             let Some((parent_author, parent_doc)) = header.reply_to else {
-                return Err(ProtoError::ChainViolation(
-                    "the evidence header is not a reply",
-                ));
+                return Err(ProtoError::ChainViolation("the evidence header is not a reply"));
             };
             if parent_author != envelope.recipient_root {
-                return Err(ProtoError::ChainViolation(
-                    "the reply answers somebody else's post",
-                ));
+                return Err(ProtoError::ChainViolation("the reply answers somebody else's post"));
             }
             (None, None, Some(parent_doc), None)
         }
@@ -664,11 +646,8 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                 // the empty edge's rule, the withdrawn share's rule.
                 return Err(ProtoError::BadEntry("the label was withdrawn"));
             }
-            let words = if a.key == "tag" {
-                a.value.clone()
-            } else {
-                format!("{}: {}", a.key, a.value)
-            };
+            let words =
+                if a.key == "tag" { a.value.clone() } else { format!("{}: {}", a.key, a.value) };
             (None, None, Some(a.target_doc), Some(words))
         }
         notice_kind::ROOM_MENTION => {
@@ -710,9 +689,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             // The binding, twice over: the statement is about the SENDER's own post, and
             // the mentioned root is the RECIPIENT - anything else is news for another door.
             if a.target_author != envelope.sender_root {
-                return Err(ProtoError::ChainViolation(
-                    "the mention is on somebody else's post",
-                ));
+                return Err(ProtoError::ChainViolation("the mention is on somebody else's post"));
             }
             // A sealed post's mention rides the lane as ciphertext (PROJECT_PLAN's Replies
             // under the author's seal, ruling 7): the statement is sealed under the post's
@@ -722,9 +699,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             // recipient tiers it by sender like any notice. The open form checks the name.
             let sealed = a.key == "sealed";
             if !sealed && a.mentioned() != Some(envelope.recipient_root) {
-                return Err(ProtoError::ChainViolation(
-                    "the mention names somebody else",
-                ));
+                return Err(ProtoError::ChainViolation("the mention names somebody else"));
             }
             if a.is_retraction() {
                 return Err(ProtoError::BadEntry("the mention was withdrawn"));
@@ -974,11 +949,7 @@ mod tests {
     }
 
     /// The ordinary shape: a root, one authorized leaf, and a published follow of `recipient`.
-    fn honest_notice(
-        root: &SigningKey,
-        leaf: &SigningKey,
-        recipient: [u8; 32],
-    ) -> SignedEnvelope {
+    fn honest_notice(root: &SigningKey, leaf: &SigningKey, recipient: [u8; 32]) -> SignedEnvelope {
         let envelope = Envelope {
             sender_root: pubkey(root),
             signer: pubkey(leaf),
@@ -986,9 +957,7 @@ mod tests {
             kind: notice_kind::PUBLIC_EDGE,
             auth_path: vec![authorize(root, leaf, 0).bytes().to_vec()],
             evidence: Some(
-                public_edge(leaf, recipient, Some("max"), Some("high"))
-                    .bytes()
-                    .to_vec(),
+                public_edge(leaf, recipient, Some("max"), Some("high")).bytes().to_vec(),
             ),
             greeting: None,
             stamp: None,
@@ -1004,12 +973,7 @@ mod tests {
         doc_id: [u8; 16],
         version: Option<[u8; 32]>,
     ) -> SignedEntry {
-        let payload = crate::Rebroadcast {
-            author,
-            doc_id,
-            version,
-        }
-        .encode();
+        let payload = crate::Rebroadcast { author, doc_id, version }.encode();
         SignedEntry::create(
             &Entry {
                 v: ENTRY_VERSION,
@@ -1050,10 +1014,7 @@ mod tests {
     }
 
     /// One doc-header entry on `signer`'s POSTS chain, replying (or not) to a parent.
-    fn header_entry(
-        signer: &SigningKey,
-        reply_to: Option<([u8; 32], [u8; 16])>,
-    ) -> SignedEntry {
+    fn header_entry(signer: &SigningKey, reply_to: Option<([u8; 32], [u8; 16])>) -> SignedEntry {
         let payload = crate::registry::DocHeaderPlain {
             im: false,
             dated_ms: None,
@@ -1076,9 +1037,9 @@ mod tests {
             genesis_ms: Some(7),
             reply_to,
             thread_root: reply_to,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         }
         .encode()
         .unwrap();
@@ -1086,11 +1047,7 @@ mod tests {
             &Entry {
                 v: ENTRY_VERSION,
                 entry_type: entry_type::DOC_HEADER,
-                chain: ChainId {
-                    author: pubkey(signer),
-                    service: service::POSTS,
-                    instance: None,
-                },
+                chain: ChainId { author: pubkey(signer), service: service::POSTS, instance: None },
                 seq: 0,
                 prev_hash: ZERO_HASH,
                 timestamp_ms: 1_700_000_070_000,
@@ -1102,7 +1059,11 @@ mod tests {
     }
 
     /// One annotation entry on `signer`'s chain, labelling a post.
-    fn annotation_entry(signer: &SigningKey, target: ([u8; 32], [u8; 16]), present: bool) -> SignedEntry {
+    fn annotation_entry(
+        signer: &SigningKey,
+        target: ([u8; 32], [u8; 16]),
+        present: bool,
+    ) -> SignedEntry {
         statement_entry(signer, target, "tag", "goopy", present)
     }
 
@@ -1141,11 +1102,22 @@ mod tests {
         .unwrap()
     }
 
-    fn tagged_notice(root: &SigningKey, leaf: &SigningKey, recipient: [u8; 32], evidence: SignedEntry) -> SignedEnvelope {
+    fn tagged_notice(
+        root: &SigningKey,
+        leaf: &SigningKey,
+        recipient: [u8; 32],
+        evidence: SignedEntry,
+    ) -> SignedEnvelope {
         notice_of(root, leaf, recipient, notice_kind::TAGGED, evidence)
     }
 
-    fn notice_of(root: &SigningKey, leaf: &SigningKey, recipient: [u8; 32], kind: u32, evidence: SignedEntry) -> SignedEnvelope {
+    fn notice_of(
+        root: &SigningKey,
+        leaf: &SigningKey,
+        recipient: [u8; 32],
+        kind: u32,
+        evidence: SignedEntry,
+    ) -> SignedEnvelope {
         let envelope = Envelope {
             sender_root: pubkey(root),
             signer: pubkey(leaf),
@@ -1169,12 +1141,30 @@ mod tests {
         let leaf = key(2);
         let recipient = [7u8; 32];
         let post = [6u8; 16];
-        let claim = verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), true))).unwrap();
+        let claim = verify_claim(&tagged_notice(
+            &root,
+            &leaf,
+            recipient,
+            annotation_entry(&leaf, (recipient, post), true),
+        ))
+        .unwrap();
         assert_eq!(claim.kind, notice_kind::TAGGED);
         assert_eq!(claim.doc_id, Some(post));
         assert_eq!(claim.detail.as_deref(), Some("goopy"), "the words ride the claim");
-        assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, ([8u8; 32], post), true))).is_err());
-        assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), false))).is_err());
+        assert!(verify_claim(&tagged_notice(
+            &root,
+            &leaf,
+            recipient,
+            annotation_entry(&leaf, ([8u8; 32], post), true)
+        ))
+        .is_err());
+        assert!(verify_claim(&tagged_notice(
+            &root,
+            &leaf,
+            recipient,
+            annotation_entry(&leaf, (recipient, post), false)
+        ))
+        .is_err());
     }
 
     /// A mention (2026-09-06): the evidence is the sender's `mention=<recipient>` on the
@@ -1190,20 +1180,96 @@ mod tests {
         let mention = |target: [u8; 32], named: [u8; 32], present: bool| {
             statement_entry(&leaf, (target, post), "mention", &hex::encode(named), present)
         };
-        let claim = verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, recipient, true))).unwrap();
+        let claim = verify_claim(&notice_of(
+            &root,
+            &leaf,
+            recipient,
+            notice_kind::MENTIONED,
+            mention(me, recipient, true),
+        ))
+        .unwrap();
         assert_eq!(claim.kind, notice_kind::MENTIONED);
         assert_eq!(claim.doc_id, Some(post), "the card points at the SENDER's post");
         assert_eq!(claim.detail, None);
-        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, [8u8; 32], true))).is_err(), "names somebody else");
-        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention([8u8; 32], recipient, true))).is_err(), "on somebody else's post");
-        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, recipient, false))).is_err(), "withdrawn");
-        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, annotation_entry(&leaf, (me, post), true))).is_err(), "a tag is not a mention");
+        assert!(
+            verify_claim(&notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::MENTIONED,
+                mention(me, [8u8; 32], true)
+            ))
+            .is_err(),
+            "names somebody else"
+        );
+        assert!(
+            verify_claim(&notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::MENTIONED,
+                mention([8u8; 32], recipient, true)
+            ))
+            .is_err(),
+            "on somebody else's post"
+        );
+        assert!(
+            verify_claim(&notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::MENTIONED,
+                mention(me, recipient, false)
+            ))
+            .is_err(),
+            "withdrawn"
+        );
+        assert!(
+            verify_claim(&notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::MENTIONED,
+                annotation_entry(&leaf, (me, post), true)
+            ))
+            .is_err(),
+            "a tag is not a mention"
+        );
         // A sealed mention (ruling 7): the sender's word about their own sealed post.
-        let sealed = |target: [u8; 32], present: bool| statement_entry(&leaf, (target, post), "sealed", "deadbeef", present);
-        let claim = verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, sealed(me, true))).unwrap();
+        let sealed = |target: [u8; 32], present: bool| {
+            statement_entry(&leaf, (target, post), "sealed", "deadbeef", present)
+        };
+        let claim = verify_claim(&notice_of(
+            &root,
+            &leaf,
+            recipient,
+            notice_kind::MENTIONED,
+            sealed(me, true),
+        ))
+        .unwrap();
         assert_eq!(claim.doc_id, Some(post), "a sealed mention points at the sender's post");
-        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, sealed([8u8; 32], true))).is_err(), "still on somebody else's post");
-        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, sealed(me, false))).is_err(), "still withdrawn");
+        assert!(
+            verify_claim(&notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::MENTIONED,
+                sealed([8u8; 32], true)
+            ))
+            .is_err(),
+            "still on somebody else's post"
+        );
+        assert!(
+            verify_claim(&notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::MENTIONED,
+                sealed(me, false)
+            ))
+            .is_err(),
+            "still withdrawn"
+        );
     }
 
     fn comment_notice(
@@ -1302,12 +1368,8 @@ mod tests {
     fn a_withdrawn_share_is_not_announceable() {
         let (root, leaf) = (key(24), key(25));
         let author = [42u8; 32];
-        let notice = share_notice(
-            &root,
-            &leaf,
-            author,
-            rebroadcast_entry(&leaf, author, [7u8; 16], None),
-        );
+        let notice =
+            share_notice(&root, &leaf, author, rebroadcast_entry(&leaf, author, [7u8; 16], None));
         assert!(verify_claim(&notice).is_err());
     }
 
@@ -1322,28 +1384,18 @@ mod tests {
             recipient_root: recipient,
             kind: notice_kind::REBROADCAST,
             auth_path: vec![authorize(&root, &leaf, 0).bytes().to_vec()],
-            evidence: Some(
-                public_edge(&leaf, recipient, Some("max"), None)
-                    .bytes()
-                    .to_vec(),
-            ),
+            evidence: Some(public_edge(&leaf, recipient, Some("max"), None).bytes().to_vec()),
             greeting: None,
             stamp: None,
             display_name: None,
         };
         let notice = SignedEnvelope::create(&envelope, &leaf).unwrap();
-        assert!(
-            verify_claim(&notice).is_err(),
-            "a public-edge entry does not prove a rebroadcast"
-        );
+        assert!(verify_claim(&notice).is_err(), "a public-edge entry does not prove a rebroadcast");
 
         // And the reverse.
         envelope.kind = notice_kind::PUBLIC_EDGE;
-        envelope.evidence = Some(
-            rebroadcast_entry(&leaf, recipient, [7u8; 16], Some([3u8; 32]))
-                .bytes()
-                .to_vec(),
-        );
+        envelope.evidence =
+            Some(rebroadcast_entry(&leaf, recipient, [7u8; 16], Some([3u8; 32])).bytes().to_vec());
         let notice = SignedEnvelope::create(&envelope, &leaf).unwrap();
         assert!(verify_claim(&notice).is_err());
     }
@@ -1510,10 +1562,7 @@ mod tests {
     /// loses the notice silently. Cheap to pin, and the mistake it catches is invisible.
     #[test]
     fn busy_is_not_accepted_on_the_wire() {
-        assert_ne!(
-            DeliverMessage::Busy.encode(),
-            DeliverMessage::Accepted.encode()
-        );
+        assert_ne!(DeliverMessage::Busy.encode(), DeliverMessage::Accepted.encode());
     }
 
     #[test]
@@ -1725,12 +1774,9 @@ mod tests {
                 prev_hash: ZERO_HASH,
                 timestamp_ms: 1_700_000_000_000,
                 payload: Payload::Inline(
-                    crate::ProfileSet {
-                        field: "name".into(),
-                        value: "Mallory".into(),
-                    }
-                    .encode()
-                    .unwrap(),
+                    crate::ProfileSet { field: "name".into(), value: "Mallory".into() }
+                        .encode()
+                        .unwrap(),
                 ),
             },
             &leaf,

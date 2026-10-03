@@ -6,13 +6,18 @@ const assert = require('node:assert');
 
 let orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind, appForStyle, DEFAULT_STYLE;
 before(async () => {
-    ({ orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind } = await import('../../../js/pure/doclist.js'));
+    ({ orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind } =
+        await import('../../../js/pure/doclist.js'));
     ({ appForStyle, DEFAULT_STYLE } = await import('../../../js/pure/apps.js'));
 });
 
 const id = (n) => String(n).padStart(2, '0').repeat(16);
 const doc = (n, over = {}) => ({
-    doc_id: id(n), title: `doc ${n}`, buckets: ['journal'], updated_ms: 1000 * n, ...over,
+    doc_id: id(n),
+    title: `doc ${n}`,
+    buckets: ['journal'],
+    updated_ms: 1000 * n,
+    ...over,
 });
 const journal = () => appForStyle('journal');
 const ids = (list) => list.map((d) => d.doc_id.slice(0, 2));
@@ -50,7 +55,10 @@ describe('orderDocs', () => {
             doc(3, { buckets: ['other'], tags: ['x'] }),
         ];
         const out = orderDocs(docs, {
-            app: journal(), bucket: 'journal', hits: new Set([id(1), id(3)]), tags: ['x'],
+            app: journal(),
+            bucket: 'journal',
+            hits: new Set([id(1), id(3)]),
+            tags: ['x'],
         });
         assert.deepEqual(ids(out), ['01']); // 2 fails search, 3 fails scope
     });
@@ -62,12 +70,28 @@ describe('orderDocs', () => {
 
     it('the kind dial: docs vs media, and unknown kinds mean everything', () => {
         const mixed = [doc(1), doc(2, { media: { has_thumb: true } }), doc(3)];
-        assert.deepEqual(ids(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'docs' })), ['03', '01']);
-        assert.deepEqual(ids(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'media' })), ['02']);
-        assert.equal(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'all' }).length, 3);
-        assert.equal(orderDocs(mixed, { app: journal(), bucket: 'journal' }).length, 3, 'absent = all');
-        assert.equal(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'someday' }).length, 3,
-            'an unknown kind never empties the list');
+        assert.deepEqual(
+            ids(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'docs' })),
+            ['03', '01'],
+        );
+        assert.deepEqual(
+            ids(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'media' })),
+            ['02'],
+        );
+        assert.equal(
+            orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'all' }).length,
+            3,
+        );
+        assert.equal(
+            orderDocs(mixed, { app: journal(), bucket: 'journal' }).length,
+            3,
+            'absent = all',
+        );
+        assert.equal(
+            orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'someday' }).length,
+            3,
+            'an unknown kind never empties the list',
+        );
     });
 
     it('the kind dial rotates all -> docs -> media -> all', () => {
@@ -109,11 +133,18 @@ describe('byPinnedThenClaimed', () => {
 describe('tagCounts', () => {
     it('counts every tag, most-used first', () => {
         const docs = [{ tags: ['a', 'b'] }, { tags: ['b'] }, { tags: ['b', 'c'] }];
-        assert.deepEqual(tagCounts(docs), [['b', 3], ['a', 1], ['c', 1]]);
+        assert.deepEqual(tagCounts(docs), [
+            ['b', 3],
+            ['a', 1],
+            ['c', 1],
+        ]);
     });
 
     it('breaks a count tie alphabetically', () => {
-        assert.deepEqual(tagCounts([{ tags: ['z'] }, { tags: ['a'] }]), [['a', 1], ['z', 1]]);
+        assert.deepEqual(tagCounts([{ tags: ['z'] }, { tags: ['a'] }]), [
+            ['a', 1],
+            ['z', 1],
+        ]);
     });
 
     it('is safe on documents with no tags, and on nothing', () => {

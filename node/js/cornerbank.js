@@ -28,8 +28,13 @@ export const CornerBank = ({ root }) => {
     // The persona's own documents moving is the commonest earning - a new version is a new
     // newest edit - so ask again when they do.
     const docsMoved = useLive(
-        () => (root ? openMirror(root).docs.toArray().then((rows) => rows.reduce((m, d) => Math.max(m, d.updated_ms || 0), 0)) : 0),
-        [root]
+        () =>
+            root
+                ? openMirror(root)
+                      .docs.toArray()
+                      .then((rows) => rows.reduce((m, d) => Math.max(m, d.updated_ms || 0), 0))
+                : 0,
+        [root],
     );
     useEffect(() => {
         if (!root) return undefined;

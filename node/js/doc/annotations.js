@@ -137,7 +137,7 @@ export const Annotations = ({ root, docId, features }) => {
                 ops.current = left;
                 return tagOpsSettled(have, left);
             },
-            () => api(tagUrl(tag), { method: op === 'adding' ? 'PUT' : 'DELETE' })
+            () => api(tagUrl(tag), { method: op === 'adding' ? 'PUT' : 'DELETE' }),
         ).catch((e) => {
             const { [tag]: _, ...rest } = ops.current;
             ops.current = rest;
@@ -155,7 +155,12 @@ export const Annotations = ({ root, docId, features }) => {
         // emoji never goes on your own document - publish would leave it behind, and every
         // reader drops one an author says. Refused in words, so it is not mistaken for a slip.
         if (isEmojiTag(tag)) {
-            setTagRefused(t('doc.annotations.no-reacting-to-your-own', "a reaction is for somebody else's post"));
+            setTagRefused(
+                t(
+                    'doc.annotations.no-reacting-to-your-own',
+                    "a reaction is for somebody else's post",
+                ),
+            );
             return;
         }
         setTagRefused(null);
@@ -183,8 +188,9 @@ export const Annotations = ({ root, docId, features }) => {
 
     return html`
         <div class="annotations">
-            ${showDate &&
-            html`<div class="annot-row">
+            ${
+                showDate &&
+                html`<div class="annot-row">
                 <label class="annot-label" title=${t('doc.annotations.the-date-and-time-this', 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then')}>${t('doc.annotations.date', 'date')}</label>
                 <input
                     class="annot-date jag-field"
@@ -202,13 +208,16 @@ export const Annotations = ({ root, docId, features }) => {
                     disabled=${!claimed.date}
                     title=${claimed.date ? t('doc.annotations.time-optional', 'time (optional)') : t('doc.annotations.set-a-date-first', 'set a date first')}
                 />
-            </div>`}
+            </div>`
+            }
             <div class="annot-tags">
-                ${/* `tag`, never `t`: the map's parameter once shadowed the i18n t(), so the
+                ${
+                    /* `tag`, never `t`: the map's parameter once shadowed the i18n t(), so the
                     remove button's title called the TAG STRING as a function and the whole
                     panel threw the moment a tag existed - a new tag never "confirmed"
                     (Curtis, 2026-08-29; the strings migration wrapped the literal without
-                    seeing the shadow). */ ''}
+                    seeing the shadow). */ ''
+                }
                 ${shownTags.map((tag) =>
                     implicitTags.includes(tag)
                         ? html`<span
@@ -223,7 +232,7 @@ export const Annotations = ({ root, docId, features }) => {
                             title=${t('doc.annotations.remove-tag', 'remove tag')}
                             onClick=${() => removeTag(tag)}
                         >×</button>
-                    </span>`
+                    </span>`,
                 )}
                 <input
                     class="annot-tag-input"
@@ -244,15 +253,17 @@ export const Annotations = ({ root, docId, features }) => {
                 />
                 ${tagRefused && html`<span class="annot-tag-refused">${tagRefused}</span>`}
             </div>
-            ${showDesc &&
-            html`<textarea
+            ${
+                showDesc &&
+                html`<textarea
                 class="annot-desc jag-field"
                 placeholder=${t('doc.annotations.a-short-description-optional', 'a short description (optional)')}
                 value=${desc.value}
                 onInput=${desc.onInput}
                 onBlur=${desc.flush}
                 rows="2"
-            ></textarea>`}
+            ></textarea>`
+            }
         </div>
     `;
 };

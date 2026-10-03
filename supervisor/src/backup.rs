@@ -60,32 +60,22 @@ pub async fn live(client: &reqwest::Client, config: &Config) -> Result<PathBuf> 
     loop {
         tokio::time::sleep(TICKET_POLL).await;
         let response = client
-            .get(format!(
-                "{}/api/admin/backup/{}",
-                config.node_url, ticket.id
-            ))
+            .get(format!("{}/api/admin/backup/{}", config.node_url, ticket.id))
             .timeout(Duration::from_secs(30))
             .send()
             .await
             .context("checking on the backup")?;
         let status = response.status();
-        let body: Ticket = serde_json::from_slice(
-            &response
-                .bytes()
-                .await
-                .context("reading the backup ticket")?,
-        )
-        .context("reading the backup ticket")?;
+        let body: Ticket =
+            serde_json::from_slice(&response.bytes().await.context("reading the backup ticket")?)
+                .context("reading the backup ticket")?;
         match status.as_u16() {
             200 => {
                 let path = body.path.context("a finished backup with no path")?;
                 return Ok(PathBuf::from(path));
             }
             202 if Instant::now() < deadline => continue,
-            202 => bail!(
-                "the backup was still running after {}s",
-                LIVE_BACKUP_TIMEOUT.as_secs()
-            ),
+            202 => bail!("the backup was still running after {}s", LIVE_BACKUP_TIMEOUT.as_secs()),
             _ => bail!("the backup failed: {}", body.log.join(" | ")),
         }
     }
@@ -95,34 +85,23 @@ pub async fn live(client: &reqwest::Client, config: &Config) -> Result<PathBuf> 
 pub async fn stopped(config: &Config) -> Result<PathBuf> {
     let data = config.data_directory.clone();
     let out = config.backup_directory.clone();
-    tokio::task::spawn_blocking(move || pack(&data, &out))
-        .await
-        .context("the backup task died")?
+    tokio::task::spawn_blocking(move || pack(&data, &out)).await.context("the backup task died")?
 }
 
 fn pack(data: &Path, out_dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
-    let out = out_dir.join(format!(
-        "backup_{}.tar.gz",
-        stamp::utc_stamp(stamp::now_secs())
-    ));
+    let out = out_dir.join(format!("backup_{}.tar.gz", stamp::utc_stamp(stamp::now_secs())));
     let partial = out.with_extension("gz.partial");
     let file = std::fs::File::create(&partial)
         .with_context(|| format!("creating {}", partial.display()))?;
-    let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
-        file,
-        flate2::Compression::default(),
-    ));
+    let mut tar =
+        tar::Builder::new(flate2::write::GzEncoder::new(file, flate2::Compression::default()));
     tar.follow_symlinks(false);
     if data.exists() {
-        tar.append_dir_all(".", data)
-            .with_context(|| format!("archiving {}", data.display()))?;
+        tar.append_dir_all(".", data).with_context(|| format!("archiving {}", data.display()))?;
     }
     let gz = tar.into_inner().context("finishing the archive")?;
-    gz.finish()
-        .context("finishing the compression")?
-        .sync_all()
-        .context("flushing the archive")?;
+    gz.finish().context("finishing the compression")?.sync_all().context("flushing the archive")?;
     std::fs::rename(&partial, &out).with_context(|| format!("naming {}", out.display()))?;
     Ok(out)
 }
@@ -198,12 +177,7 @@ mod tests {
         std::fs::write(data.join("users").join("ada.db"), b"a persona").unwrap();
 
         let archive = pack(&data, &out).unwrap();
-        assert!(archive
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .starts_with("backup_"));
+        assert!(archive.file_name().unwrap().to_str().unwrap().starts_with("backup_"));
 
         // What a failed newer version leaves behind: a migrated database and a new file.
         std::fs::write(data.join("node.db"), b"migrated forward").unwrap();
@@ -211,14 +185,8 @@ mod tests {
 
         let aside = unpack_over(&data, &archive).unwrap();
         assert_eq!(std::fs::read(data.join("node.db")).unwrap(), b"the node");
-        assert_eq!(
-            std::fs::read(data.join("users").join("ada.db")).unwrap(),
-            b"a persona"
-        );
-        assert!(
-            !data.join("newer-only").exists(),
-            "the failed version's leftovers are gone"
-        );
+        assert_eq!(std::fs::read(data.join("users").join("ada.db")).unwrap(), b"a persona");
+        assert!(!data.join("newer-only").exists(), "the failed version's leftovers are gone");
         assert_eq!(
             std::fs::read(aside.join("node.db")).unwrap(),
             b"migrated forward",

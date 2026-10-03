@@ -27,7 +27,10 @@ export function httpSession(base) {
         for (const c of setc) {
             const pair = c.split(';')[0];
             const name = pair.split('=')[0];
-            cookies = [...cookies.split('; ').filter((x) => x && !x.startsWith(name + '=')), pair].join('; ');
+            cookies = [
+                ...cookies.split('; ').filter((x) => x && !x.startsWith(name + '=')),
+                pair,
+            ].join('; ');
         }
         return resp;
     };

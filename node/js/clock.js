@@ -17,7 +17,9 @@ const html = htm.bind(h);
 const R = 3.5;
 const C = 2 * Math.PI * R;
 
-const DayPie = ({ fraction }) => html`<svg class="quickbar-clock-pie" viewBox="0 0 16 16" aria-hidden="true">
+const DayPie = ({
+    fraction,
+}) => html`<svg class="quickbar-clock-pie" viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1" opacity="0.55" />
     <circle
         cx="8"

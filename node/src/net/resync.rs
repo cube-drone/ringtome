@@ -142,9 +142,7 @@ fn observe_state(
     }
 
     let quiesced = now_ms - st.last_changed_ms >= debounce_ms;
-    let overdue = st
-        .dirty_since_ms
-        .is_some_and(|since| now_ms - since >= max_delay_ms);
+    let overdue = st.dirty_since_ms.is_some_and(|since| now_ms - since >= max_delay_ms);
     let backing_off = st.failing && now_ms - st.last_attempt_ms < retry_ms;
     let push = dirty && (quiesced || overdue) && !backing_off;
     (st, push)
@@ -175,14 +173,8 @@ impl ResyncTracker {
         let mut map = self.0.lock().expect("resync tracker poisoned");
         let prior = map.get(root).cloned();
         let was_failing = prior.as_ref().is_some_and(|s| s.failing);
-        let (st, push) = observe_state(
-            prior,
-            fp,
-            now_ms,
-            debounce_ms,
-            MAX_PUSH_DELAY_MS,
-            FAILED_PUSH_RETRY_MS,
-        );
+        let (st, push) =
+            observe_state(prior, fp, now_ms, debounce_ms, MAX_PUSH_DELAY_MS, FAILED_PUSH_RETRY_MS);
         map.insert(root.to_string(), st);
         Decision { push, was_failing }
     }
@@ -218,18 +210,15 @@ pub async fn eager_pass(state: AppState, who: Option<String>) -> anyhow::Result<
 async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
     // Guard before user_dbs.get: get() CREATES the database if absent, and a stale peer row
     // must not mint DBs for identities this node no longer agents.
-    let agented = crate::identity::is_agented(&state.node_db, root)
-        .await
-        .map_err(|e| anyhow!("{e}"))?;
+    let agented =
+        crate::identity::is_agented(&state.node_db, root).await.map_err(|e| anyhow!("{e}"))?;
     if !agented {
         return Ok(());
     }
 
     let db = state.user_dbs.held(root).await?;
     let fp = fingerprint(sync::local_frontiers(&db, true).await?);
-    let decision = state
-        .resync
-        .observe(root, fp.clone(), now_ms(), state.config.sync_debounce_ms);
+    let decision = state.resync.observe(root, fp.clone(), now_ms(), state.config.sync_debounce_ms);
     if !decision.push {
         return Ok(());
     }
@@ -248,10 +237,7 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
         // are exactly the endpoints most likely to be alive (their records are current).
         sync::derive_peers_for(state, root).await;
         let refreshed = sync::peers_for(&state.node_db, root).await?;
-        let newcomers: Vec<String> = refreshed
-            .into_iter()
-            .filter(|p| !peers.contains(p))
-            .collect();
+        let newcomers: Vec<String> = refreshed.into_iter().filter(|p| !peers.contains(p)).collect();
         if !newcomers.is_empty() {
             tracing::info!(root = %root, newcomers = newcomers.len(),
                 "eager push found nobody home; derived fresh peers and retrying");
@@ -264,11 +250,8 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
         tracing::warn!(root = %root, peers = results.len(),
             "eager push reached no peers; backing off (anti-entropy will catch up)");
     }
-    let moved: u64 = results
-        .iter()
-        .filter_map(|r| r.stats.as_ref())
-        .map(|s| s.sent + s.received)
-        .sum();
+    let moved: u64 =
+        results.iter().filter_map(|r| r.stats.as_ref()).map(|s| s.sent + s.received).sum();
     if any_ok && moved > 0 {
         tracing::info!(root = %root, entries_moved = moved, "eager push delivered");
     }
@@ -282,9 +265,8 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
 /// relays them onward.
 pub async fn anti_entropy_pass(state: AppState) -> anyhow::Result<()> {
     for root in sync::roots_with_peers(&state.node_db).await? {
-        let agented = crate::identity::is_agented(&state.node_db, &root)
-            .await
-            .map_err(|e| anyhow!("{e}"))?;
+        let agented =
+            crate::identity::is_agented(&state.node_db, &root).await.map_err(|e| anyhow!("{e}"))?;
         if !agented {
             continue;
         }
@@ -292,10 +274,7 @@ pub async fn anti_entropy_pass(state: AppState) -> anyhow::Result<()> {
         let peers = sync::peers_for(&state.node_db, &root).await?;
         let sample: Vec<String> = {
             use rand::seq::SliceRandom;
-            peers
-                .choose_multiple(&mut rand::thread_rng(), ANTI_ENTROPY_PEERS)
-                .cloned()
-                .collect()
+            peers.choose_multiple(&mut rand::thread_rng(), ANTI_ENTROPY_PEERS).cloned().collect()
         };
         let results = sync::sync_peers(&state, &root, &sample).await?;
         for r in &results {
@@ -399,10 +378,7 @@ mod tests {
         // ...until the dirty age crosses the cap.
         now += EAGER_TICK.as_millis() as i64 * 2;
         let (_, push) = observe(Some(st), fp(head + 1), now);
-        assert!(
-            push,
-            "a continuously-written root must still push within the cap"
-        );
+        assert!(push, "a continuously-written root must still push within the cap");
     }
 
     #[test]
@@ -443,9 +419,6 @@ mod tests {
         let (st, push) = observe(Some(st), fp(3), 2_000);
         assert!(!push, "inside the debounce");
         let (_, push) = observe(Some(st), fp(3), 6_000);
-        assert!(
-            push,
-            "a chain moving DOWN (forgery eviction) must propagate too"
-        );
+        assert!(push, "a chain moving DOWN (forgery eviction) must propagate too");
     }
 }

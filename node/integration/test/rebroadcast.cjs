@@ -33,20 +33,19 @@
     Still to come here: the node-death case (kill A and B, assert C still serves from its own
     fragment), which is what turns "C can fetch it" into "the network keeps it alive".
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
-
+const { sql, HOST_B, HOST_C } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat, pullAndFold, shareArrives } = require('./beat.cjs');
 
 const createDoc = async (fetch, root, title, body) => {
     const r = await (
         await fetch(`api/identity/${root}/docs`, {
-            method: "POST",
-            body: JSON.stringify({ title, body, format: "plaintext" }),
+            method: 'POST',
+            body: JSON.stringify({ title, body, format: 'plaintext' }),
         })
     ).json();
     return { id: r.doc_id, v: r.version };
@@ -54,91 +53,91 @@ const createDoc = async (fetch, root, title, body) => {
 
 const dial = (fetcher, mine, theirs, key, value) =>
     fetcher(`api/identity/${mine}/private/kv/contact:${theirs}/${key}`, {
-        method: "PUT",
+        method: 'PUT',
         body: JSON.stringify({ value }),
     });
 
 const feedOf = async (reader, host) => {
     const { rows } = await sql(
         `SELECT author_root, via_root, title FROM feed_journal WHERE reader_root = '${reader}'`,
-        host
+        host,
     );
     return rows;
 };
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
-(HOST_B && HOST_C ? describe : describe.skip)("a share reaches past the author", function () {
+(HOST_B && HOST_C ? describe : describe.skip)('a share reaches past the author', function () {
     this.timeout(180000);
 
     let alice, aliceRoot, bob, bobRoot, cleo, cleoRoot, post;
 
     before(async function () {
-        alice = await makeUserFetch({ prefix: "rbalice" });
-        aliceRoot = (await (await alice("api/identity", { method: "POST" })).json()).root_pubkey;
-        await alice(`api/identity/${aliceRoot}/serve`, { method: "POST" });
+        alice = await makeUserFetch({ prefix: 'rbalice' });
+        aliceRoot = (await (await alice('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await alice(`api/identity/${aliceRoot}/serve`, { method: 'POST' });
         const viaAlice = await base58(alice);
 
-        bob = await makeUserFetch({ prefix: "rbbob", host: HOST_B });
-        bobRoot = (await (await bob("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bob(`api/identity/${bobRoot}/serve`, { method: "POST" });
+        bob = await makeUserFetch({ prefix: 'rbbob', host: HOST_B });
+        bobRoot = (await (await bob('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await bob(`api/identity/${bobRoot}/serve`, { method: 'POST' });
         const viaBob = await base58(bob);
 
-        cleo = await makeUserFetch({ prefix: "rbcleo", host: HOST_C });
-        cleoRoot = (await (await cleo("api/identity", { method: "POST" })).json()).root_pubkey;
+        cleo = await makeUserFetch({ prefix: 'rbcleo', host: HOST_C });
+        cleoRoot = (await (await cleo('api/identity', { method: 'POST' })).json()).root_pubkey;
 
         // Bob follows Alice the ordinary way - he has to see her post to share it.
         if ((await bob(`api/id/${aliceRoot}/profile?via=${viaAlice}`)).status !== 200) this.skip();
-        await dial(bob, bobRoot, aliceRoot, "interest", "high");
+        await dial(bob, bobRoot, aliceRoot, 'interest', 'high');
 
         // Cleo follows Bob for REBROADCASTS ONLY. No interest dial: she does not want Bob's own
         // posts, and she has never heard of Alice. This is the relationship under test.
         if ((await cleo(`api/id/${bobRoot}/profile?via=${viaBob}`)).status !== 200) this.skip();
-        await dial(cleo, cleoRoot, bobRoot, "interest_rebroadcasts", "high");
+        await dial(cleo, cleoRoot, bobRoot, 'interest_rebroadcasts', 'high');
         // Reader memos current before anything publishes (the fanout.cjs barrier).
-        await beat(HOST_B, "fold", bobRoot);
-        await beat(HOST_C, "fold", cleoRoot);
+        await beat(HOST_B, 'fold', bobRoot);
+        await beat(HOST_C, 'fold', cleoRoot);
 
         // Alice posts, and it reaches Bob.
-        const doc = await createDoc(alice, aliceRoot, "worth passing on", "words from alice");
+        const doc = await createDoc(alice, aliceRoot, 'worth passing on', 'words from alice');
         const published = await alice(`api/identity/${aliceRoot}/docs/${doc.id}/publish`, {
-            method: "POST",
+            method: 'POST',
         });
         // The PUBLIC document id, which is not the private one: publishing mints a new document
         // on the public lane (`post_id`), and the private draft keeps its own id. Sharing the
         // draft's id asks every origin for a document that exists on nobody's public shelf.
         post = JSON.parse(await published.text()).post_id;
-        assert.ok(post, "publish returned a public post id");
+        assert.ok(post, 'publish returned a public post id');
 
         await pullAndFold(HOST_B, aliceRoot);
         assert.ok(
-            (await feedOf(bobRoot, HOST_B)).some((r) => r.title === "worth passing on"),
-            "precondition: the post crossed to Bob, who follows Alice"
+            (await feedOf(bobRoot, HOST_B)).some((r) => r.title === 'worth passing on'),
+            'precondition: the post crossed to Bob, who follows Alice',
         );
     });
 
-    it("the share itself is signed, stamped and queued", async () => {
+    it('the share itself is signed, stamped and queued', async () => {
         const shared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
-            method: "POST",
-            body: JSON.stringify({ author: aliceRoot, doc_id: post, version: "00".repeat(32) }),
+            method: 'POST',
+            body: JSON.stringify({ author: aliceRoot, doc_id: post, version: '00'.repeat(32) }),
         });
         assert.equal(shared.status, 200, await shared.text());
         const listed = await (await bob(`api/identity/${bobRoot}/rebroadcasts`)).json();
         assert.ok(
             listed.items.some((i) => i.doc_id === post && i.author === aliceRoot),
-            "the sharer's own list shows what they share"
+            "the sharer's own list shows what they share",
         );
     });
 
-    it("a rebroadcast-only follower receives a post from an author they never followed", async () => {
+    it('a rebroadcast-only follower receives a post from an author they never followed', async () => {
         await shareArrives(HOST_C, bobRoot, aliceRoot);
-        const row = (await feedOf(cleoRoot, HOST_C)).find((r) => r.title === "worth passing on");
-        assert.ok(row, "the shared post reached a reader who follows only the sharer");
-        assert.equal(row.author_root, aliceRoot, "credited to its author, not to the sharer");
-        assert.equal(row.via_root, bobRoot, "and bylined with who passed it along");
+        const row = (await feedOf(cleoRoot, HOST_C)).find((r) => r.title === 'worth passing on');
+        assert.ok(row, 'the shared post reached a reader who follows only the sharer');
+        assert.equal(row.author_root, aliceRoot, 'credited to its author, not to the sharer');
+        assert.equal(row.via_root, bobRoot, 'and bylined with who passed it along');
     });
 
     it("the sharer's own posts stay out of a rebroadcast-only feed", async () => {
@@ -149,8 +148,8 @@ const base58 = async (host) => {
         // this proves absence-from-nothing today. It becomes a real contrast the moment the
         // fragment ledger lets a shared post land beside a withheld one - which is the reason
         // to write it now rather than after.
-        const doc = await createDoc(bob, bobRoot, "bobs own musings", "not a recommendation");
-        await bob(`api/identity/${bobRoot}/docs/${doc.id}/publish`, { method: "POST" });
+        const doc = await createDoc(bob, bobRoot, 'bobs own musings', 'not a recommendation');
+        await bob(`api/identity/${bobRoot}/docs/${doc.id}/publish`, { method: 'POST' });
 
         // Run the very road that delivered Bob's share above - pull Bob to Cleo's node, fold,
         // drain - so this is a real absence rather than a race won by asserting early. (It
@@ -158,29 +157,29 @@ const base58 = async (host) => {
         await shareArrives(HOST_C, bobRoot, bobRoot);
         const rows = await feedOf(cleoRoot, HOST_C);
         assert.ok(
-            !rows.some((r) => r.title === "bobs own musings"),
-            "a rebroadcast band is not a follow"
+            !rows.some((r) => r.title === 'bobs own musings'),
+            'a rebroadcast band is not a follow',
         );
     });
 
-    it("the author hears about it, across a graph they have no edge in", async () => {
+    it('the author hears about it, across a graph they have no edge in', async () => {
         // Alice does not follow Bob, so the derived fold cannot speak for her: this had to
         // arrive as a delivered envelope through the inbox (notice_kind::REBROADCAST).
-        await beat(HOST_B, "outbox"); // knock again NOW, in case the eager knock raced
+        await beat(HOST_B, 'outbox'); // knock again NOW, in case the eager knock raced
         const r = await (await alice(`api/identity/${aliceRoot}/notifications`)).json();
-        const items = (r.items || []).filter((i) => i.kind === "rebroadcast");
-        assert.ok(items.length, "the author was told their post was shared");
-        assert.equal(items[0].author, bobRoot, "by whom");
+        const items = (r.items || []).filter((i) => i.kind === 'rebroadcast');
+        assert.ok(items.length, 'the author was told their post was shared');
+        assert.equal(items[0].author, bobRoot, 'by whom');
         assert.equal(
             items[0].doc_id,
             post,
             "and WHICH post: the doc rides the envelope's own signed evidence, so even a " +
-                "murmur names its most recent share"
+                'murmur names its most recent share',
         );
         assert.equal(
             items[0].doc_title,
-            "worth passing on",
-            "the mini-card's title joins server-side - the reader's own post, their own db"
+            'worth passing on',
+            "the mini-card's title joins server-side - the reader's own post, their own db",
         );
     });
 
@@ -191,26 +190,26 @@ const base58 = async (host) => {
         // the everyday case ("my friend shared my post") and it had no acceptance until
         // 2026-08-25, when it was observed missing on a dev network running the old
         // verdict-raced fold.
-        await dial(alice, aliceRoot, bobRoot, "interest", "high");
-        await beat(undefined, "fold", aliceRoot); // her follow in the memo first
+        await dial(alice, aliceRoot, bobRoot, 'interest', 'high');
+        await beat(undefined, 'fold', aliceRoot); // her follow in the memo first
 
         const made = await (
             await alice(`api/identity/${aliceRoot}/docs`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({
-                    title: "shared by a friend",
-                    body: "words a friend passes on",
-                    format: "plaintext",
+                    title: 'shared by a friend',
+                    body: 'words a friend passes on',
+                    format: 'plaintext',
                 }),
             })
         ).json();
         const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
-            method: "POST",
+            method: 'POST',
         });
         const second = JSON.parse(await pub.text()).post_id;
         await pullAndFold(HOST_B, aliceRoot);
         const shared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ author: aliceRoot, doc_id: second }),
         });
         assert.equal(shared.status, 200, await shared.text());
@@ -218,16 +217,14 @@ const base58 = async (host) => {
         // Alice's node pulls the sharer she follows and folds: the derived road, rung.
         await pullAndFold(undefined, bobRoot);
         const page = await (await alice(`api/identity/${aliceRoot}/notifications`)).json();
-        const row = (page.items || []).find(
-            (i) => i.kind === "rebroadcast" && i.doc_id === second
-        );
+        const row = (page.items || []).find((i) => i.kind === 'rebroadcast' && i.doc_id === second);
         assert.ok(row, "the share derived into the author's bell, document named");
-        assert.equal(row.doc_title, "shared by a friend", "titled for the mini-card");
-        assert.equal(row.author, bobRoot, "credited to the sharer");
+        assert.equal(row.doc_title, 'shared by a friend', 'titled for the mini-card');
+        assert.equal(row.author, bobRoot, 'credited to the sharer');
         assert.equal(
             row.stranger,
             undefined,
-            "derived, not delivered - no envelope crossed (the flag serializes only when true)"
+            'derived, not delivered - no envelope crossed (the flag serializes only when true)',
         );
     });
 });

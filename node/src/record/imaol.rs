@@ -89,7 +89,10 @@ pub async fn append_on(
         let tree = load_key_tree(db, root_hex).await?;
         match tree.status(&author) {
             KeyStatus::Retired | KeyStatus::Repudiated | KeyStatus::Invalid => {
-                return Err(AppError::RevokedSigner(crate::msg!("record.imaol.this-computers-key-is-no", "this computer's key is no longer part of the persona")));
+                return Err(AppError::RevokedSigner(crate::msg!(
+                    "record.imaol.this-computers-key-is-no",
+                    "this computer's key is no longer part of the persona"
+                )));
             }
             KeyStatus::Active | KeyStatus::Unknown => {}
         }
@@ -100,7 +103,9 @@ pub async fn append_on(
     // where this chain ENDED - lives in the flat-file checkpoint instead (record::heads).
     let ephemeral = crate::net::sync::service_allows_suffix(service_id);
 
-    let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id, instance).await? {
+    let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id, instance)
+        .await?
+    {
         Some((head_seq, head_hash, head_ts)) => (head_seq + 1, head_hash, head_ts),
         // The database has no head. For a durable chain that means genesis; for an ephemeral
         // one it might instead mean a REBUILT database (inbox chains were never journaled, so
@@ -118,11 +123,7 @@ pub async fn append_on(
     let entry = Entry {
         v: ENTRY_VERSION,
         entry_type: type_id,
-        chain: ChainId {
-            author,
-            service: service_id,
-            instance,
-        },
+        chain: ChainId { author, service: service_id, instance },
         seq,
         prev_hash,
         // The authoring clamp: our own chain's claimed time never goes backwards, so one write
@@ -212,21 +213,19 @@ pub async fn set_profile_field(
     field: &str,
     value: &str,
 ) -> Result<SignedEntry, AppError> {
-    let payload = ProfileSet {
-        field: field.to_string(),
-        value: value.to_string(),
-    }
-    .encode()
-    .map_err(|e| AppError::BadRequest(crate::msg!("record.imaol.invalid-profile-field-e", "invalid profile field: {e}", e = e)))?;
+    let payload = ProfileSet { field: field.to_string(), value: value.to_string() }
+        .encode()
+        .map_err(|e| {
+            AppError::BadRequest(crate::msg!(
+                "record.imaol.invalid-profile-field-e",
+                "invalid profile field: {e}",
+                e = e
+            ))
+        })?;
 
-    let signed = append(
-        db,
-        key,
-        service::PROFILE_PUBLIC,
-        entry_type::PROFILE_SET,
-        Payload::Inline(payload),
-    )
-    .await?;
+    let signed =
+        append(db, key, service::PROFILE_PUBLIC, entry_type::PROFILE_SET, Payload::Inline(payload))
+            .await?;
     apply_profile_set(db, &signed).await?;
     Ok(signed)
 }
@@ -242,21 +241,11 @@ pub async fn publish_public_edge(
     trust: Option<String>,
     interest: Option<String>,
 ) -> Result<SignedEntry, AppError> {
-    let payload = PublicEdge {
-        subject: *subject,
-        trust,
-        interest,
-    }
-    .encode()
-    .map_err(|e| AppError::Internal(anyhow!("encoding public-edge: {e}")))?;
-    append(
-        db,
-        key,
-        service::FOLLOWS_PUBLIC,
-        entry_type::PUBLIC_EDGE,
-        Payload::Inline(payload),
-    )
-    .await
+    let payload = PublicEdge { subject: *subject, trust, interest }
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding public-edge: {e}")))?;
+    append(db, key, service::FOLLOWS_PUBLIC, entry_type::PUBLIC_EDGE, Payload::Inline(payload))
+        .await
 }
 
 /// Share (or withdraw) one document of someone else's: a signed pointer on this persona's own
@@ -271,20 +260,9 @@ pub async fn publish_rebroadcast(
     doc_id: &[u8; 16],
     version: Option<[u8; 32]>,
 ) -> Result<SignedEntry, AppError> {
-    let payload = ringtome_proto::Rebroadcast {
-        author: *author,
-        doc_id: *doc_id,
-        version,
-    }
-    .encode();
-    append(
-        db,
-        key,
-        service::REBROADCASTS,
-        entry_type::REBROADCAST,
-        Payload::Inline(payload),
-    )
-    .await
+    let payload =
+        ringtome_proto::Rebroadcast { author: *author, doc_id: *doc_id, version }.encode();
+    append(db, key, service::REBROADCASTS, entry_type::REBROADCAST, Payload::Inline(payload)).await
 }
 
 /// One subject's published relationship, as folded from the chains. Empty (both bands absent)
@@ -330,23 +308,14 @@ pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, 
     catch_up_published_edges(db).await?;
     type Row = (String, Option<String>, Option<String>, i64);
     let rows: Vec<Row> = db
-        .fetch_all(
-            "SELECT subject_root, trust, interest, received_at_ms FROM published_edges",
-            (),
-        )
+        .fetch_all("SELECT subject_root, trust, interest, received_at_ms FROM published_edges", ())
         .await
         .context("reading the published-edges view")
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
         .map(|(subject, trust, interest, received_at_ms)| {
-            (
-                subject,
-                PublishedRow {
-                    edge: PublishedEdge { trust, interest },
-                    received_at_ms,
-                },
-            )
+            (subject, PublishedRow { edge: PublishedEdge { trust, interest }, received_at_ms })
         })
         .collect())
 }
@@ -368,10 +337,7 @@ async fn catch_up_published_edges(db: &Db) -> Result<(), AppError> {
              WHERE e.service = ?1 AND e.entry_type = ?2
                AND e.seq > COALESCE(w.folded_seq, -1)
              ORDER BY e.author_pubkey, e.seq",
-            (
-                i64::from(service::FOLLOWS_PUBLIC),
-                i64::from(entry_type::PUBLIC_EDGE),
-            ),
+            (i64::from(service::FOLLOWS_PUBLIC), i64::from(entry_type::PUBLIC_EDGE)),
         )
         .await
         .context("reading public-edge entries past the watermark")
@@ -499,10 +465,7 @@ async fn catch_up_rebroadcasts(db: &Db) -> Result<(), AppError> {
              WHERE e.service = ?1 AND e.entry_type = ?2
                AND e.seq > COALESCE(w.folded_seq, -1)
              ORDER BY e.author_pubkey, e.seq",
-            (
-                i64::from(service::REBROADCASTS),
-                i64::from(entry_type::REBROADCAST),
-            ),
+            (i64::from(service::REBROADCASTS), i64::from(entry_type::REBROADCAST)),
         )
         .await
         .context("reading rebroadcast entries past the watermark")
@@ -697,7 +660,9 @@ pub async fn pins(db: &Db) -> Result<Vec<Pin>, AppError> {
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .filter_map(|(author, d)| Some(Pin { author, doc_id: <[u8; 16]>::try_from(d.as_slice()).ok()? }))
+        .filter_map(|(author, d)| {
+            Some(Pin { author, doc_id: <[u8; 16]>::try_from(d.as_slice()).ok()? })
+        })
         .collect())
 }
 
@@ -746,10 +711,7 @@ async fn catch_up_annotations(db: &Db) -> Result<(), AppError> {
              WHERE e.service = ?1 AND e.entry_type = ?2
                AND e.seq > COALESCE(w.folded_seq, -1)
              ORDER BY e.author_pubkey, e.seq",
-            (
-                i64::from(service::ANNOTATIONS_PUBLIC),
-                i64::from(entry_type::PUBLIC_ANNOTATION),
-            ),
+            (i64::from(service::ANNOTATIONS_PUBLIC), i64::from(entry_type::PUBLIC_ANNOTATION)),
         )
         .await
         .context("reading annotation entries past the watermark")
@@ -839,11 +801,7 @@ pub async fn prune_chain_below(
 /// How many rows one chain holds. A test instrument (production retention reads
 /// [`chain_spans`], one query for the whole service).
 #[cfg(test)]
-pub(crate) async fn chain_len(
-    db: &Db,
-    author_hex: &str,
-    service_id: u32,
-) -> Result<u64, AppError> {
+pub(crate) async fn chain_len(db: &Db, author_hex: &str, service_id: u32) -> Result<u64, AppError> {
     let row: Option<(i64,)> = db
         .fetch_optional(
             "SELECT COUNT(*) FROM entries WHERE author_pubkey = ?1 AND service = ?2",
@@ -872,7 +830,9 @@ pub async fn chain_spans(
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .map(|(author, instance, head, len)| (author, crate::db::instance_of(&instance), head as u64, len as u64))
+        .map(|(author, instance, head, len)| {
+            (author, crate::db::instance_of(&instance), head as u64, len as u64)
+        })
         .collect())
 }
 
@@ -882,9 +842,7 @@ pub async fn chain_spans(
 /// lost-update window when a rebuild replaying old entries races a live write.
 pub(crate) async fn apply_profile_set(db: &Db, signed: &SignedEntry) -> Result<(), AppError> {
     let Payload::Inline(bytes) = &signed.entry().payload else {
-        return Err(AppError::Internal(anyhow!(
-            "profile-set payload must be inline"
-        )));
+        return Err(AppError::Internal(anyhow!("profile-set payload must be inline")));
     };
     let ps = ProfileSet::decode(bytes)
         .map_err(|e| AppError::Internal(anyhow!("undecodable profile-set payload: {e}")))?;
@@ -923,20 +881,13 @@ pub struct ProfileField {
 /// The identity's current public profile, as materialized.
 pub async fn get_profile(db: &Db) -> Result<Vec<ProfileField>, AppError> {
     let rows: Vec<(String, String, i64)> = db
-        .fetch_all(
-            "SELECT field, value, updated_at_ms FROM profile_view ORDER BY field",
-            (),
-        )
+        .fetch_all("SELECT field, value, updated_at_ms FROM profile_view ORDER BY field", ())
         .await
         .context("reading profile view")
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .map(|(field, value, updated_at_ms)| ProfileField {
-            field,
-            value,
-            updated_at_ms,
-        })
+        .map(|(field, value, updated_at_ms)| ProfileField { field, value, updated_at_ms })
         .collect())
 }
 
@@ -1043,13 +994,10 @@ async fn drop_views_fed_by(
     // Exactly the lanes whose rows were just destroyed - so each refolds, and lanes nobody
     // touched keep their progress instead of replaying from genesis.
     for service_id in &dropped {
-        db.execute(
-            "DELETE FROM view_watermarks WHERE service = ?1",
-            (i64::from(*service_id),),
-        )
-        .await
-        .context("clearing view watermarks")
-        .map_err(AppError::Internal)?;
+        db.execute("DELETE FROM view_watermarks WHERE service = ?1", (i64::from(*service_id),))
+            .await
+            .context("clearing view watermarks")
+            .map_err(AppError::Internal)?;
     }
     Ok(())
 }
@@ -1103,11 +1051,7 @@ pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
             .map_err(|e| AppError::Internal(anyhow!("stored entry fails strict decode: {e}")))?;
 
         let chain_key = (author, svc, instance);
-        let prev_link = if prev_chain.as_ref() == Some(&chain_key) {
-            prev.as_ref()
-        } else {
-            None
-        };
+        let prev_link = if prev_chain.as_ref() == Some(&chain_key) { prev.as_ref() } else { None };
         // A chain STARTING above zero is legal exactly where holders prune by policy: the
         // suffix's first entry is validated standalone (signature; its prev_hash is the
         // commitment to the destroyed prefix), and the walk chains forward from it as normal.
@@ -1372,13 +1316,7 @@ pub async fn entries_page(
                 "SELECT bytes, received_at_ms FROM entries
              WHERE service = ?1 AND (timestamp_ms, seq, entry_hash) < (?2, ?3, ?4)
              ORDER BY timestamp_ms DESC, seq DESC, entry_hash DESC LIMIT ?5",
-                (
-                    i64::from(service_id),
-                    timestamp_ms,
-                    seq as i64,
-                    hash.to_vec(),
-                    i64::from(limit),
-                ),
+                (i64::from(service_id), timestamp_ms, seq as i64, hash.to_vec(), i64::from(limit)),
             )
             .await
         }
@@ -1445,14 +1383,12 @@ pub async fn chain_heads_for_author(
 
     rows.into_iter()
         .map(|(svc, instance, seq, hash)| {
-            let head_hash: [u8; 32] = hash
-                .try_into()
-                .map_err(|_| AppError::Internal(anyhow!("corrupt entry hash")))?;
+            let head_hash: [u8; 32] =
+                hash.try_into().map_err(|_| AppError::Internal(anyhow!("corrupt entry hash")))?;
             Ok((svc as u32, crate::db::instance_of(&instance), seq as u64, head_hash))
         })
         .collect()
 }
-
 
 /// Does this database hold any entry at all? The cheap half of what the journal-invariant
 /// check used to ask `all_entry_bytes` - which read every entry's BLOB off disk on EVERY
@@ -1537,12 +1473,14 @@ pub async fn entry_bytes_page(
     // The cursor advances by the last row READ, not the last row kept - filtering ephemeral
     // chains out of the payload must not make the walk step over them and loop forever.
     let next = (rows.len() as u32 == limit)
-        .then(|| rows.last().map(|(author, svc, instance, seq, _)| EntryCursor {
-            author: author.clone(),
-            service: *svc as u32,
-            instance: crate::db::instance_of(instance).map(hex::encode),
-            seq: *seq as u64,
-        }))
+        .then(|| {
+            rows.last().map(|(author, svc, instance, seq, _)| EntryCursor {
+                author: author.clone(),
+                service: *svc as u32,
+                instance: crate::db::instance_of(instance).map(hex::encode),
+                seq: *seq as u64,
+            })
+        })
         .flatten();
     Ok((
         rows.into_iter()
@@ -1574,10 +1512,7 @@ pub struct EntryCursor {
 impl EntryCursor {
     /// The instance as the table stores it (`db::instance_blob`).
     pub fn instance_blob(&self) -> Vec<u8> {
-        self.instance
-            .as_deref()
-            .and_then(|h| hex::decode(h).ok())
-            .unwrap_or_default()
+        self.instance.as_deref().and_then(|h| hex::decode(h).ok()).unwrap_or_default()
     }
 }
 
@@ -1637,19 +1572,17 @@ pub async fn list_entries(
     Ok((
         rows.into_iter()
             .take(want as usize)
-            .map(
-                |(author, svc, instance, seq, ty, ts, received, hash, bytes)| StoredEntry {
-                    author,
-                    service: svc as u32,
-                    instance: crate::db::instance_of(&instance).map(hex::encode),
-                    seq: seq as u64,
-                    entry_type: ty as u32,
-                    timestamp_ms: ts,
-                    received_at_ms: received,
-                    hash_hex: hex::encode(hash),
-                    bytes_hex: hex::encode(bytes),
-                },
-            )
+            .map(|(author, svc, instance, seq, ty, ts, received, hash, bytes)| StoredEntry {
+                author,
+                service: svc as u32,
+                instance: crate::db::instance_of(&instance).map(hex::encode),
+                seq: seq as u64,
+                entry_type: ty as u32,
+                timestamp_ms: ts,
+                received_at_ms: received,
+                hash_hex: hex::encode(hash),
+                bytes_hex: hex::encode(bytes),
+            })
             .collect(),
         more,
     ))
@@ -1672,12 +1605,8 @@ mod tests {
         let db = test_db().await;
         let key = test_key();
 
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
-        set_profile_field(&db, &key, "bio", "purveyor of hats")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
+        set_profile_field(&db, &key, "bio", "purveyor of hats").await.unwrap();
 
         let profile = get_profile(&db).await.unwrap();
         assert_eq!(profile.len(), 2);
@@ -1694,9 +1623,7 @@ mod tests {
     async fn a_refold_rung_rebuilds_its_views_from_the_chains() {
         let db = crate::db::test_user_db().await;
         let key = SigningKey::from_bytes(&[5u8; 32]);
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
 
         let mut ladder = crate::migrations::USER.to_vec();
         let top = ladder.last().unwrap().version;
@@ -1718,12 +1645,8 @@ mod tests {
         let db = test_db().await;
         let key = test_key();
 
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
-        set_profile_field(&db, &key, "name", "Hat Fan")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
+        set_profile_field(&db, &key, "name", "Hat Fan").await.unwrap();
 
         let profile = get_profile(&db).await.unwrap();
         assert_eq!(profile.len(), 1);
@@ -1749,9 +1672,8 @@ mod tests {
             .unwrap();
         }
 
-        let pruned = prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, None, 4)
-            .await
-            .unwrap();
+        let pruned =
+            prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, None, 4).await.unwrap();
         assert_eq!(pruned, 4);
         assert_eq!(chain_len(&db, &author_hex, service::INBOX_STRANGER).await.unwrap(), 2);
 
@@ -1786,7 +1708,9 @@ mod tests {
         // New statements past the watermark fold in; old rows stand.
         let bob = [6u8; 32];
         publish_public_edge(&db, &key, &bob, None, Some("low".into())).await.unwrap();
-        publish_public_edge(&db, &key, &alice, Some("max".into()), Some("max".into())).await.unwrap();
+        publish_public_edge(&db, &key, &alice, Some("max".into()), Some("max".into()))
+            .await
+            .unwrap();
         let third = published_edges(&db).await.unwrap();
         assert_eq!(third.len(), 2);
         assert_eq!(third[&hex::encode(alice)].edge.trust.as_deref(), Some("max"));
@@ -1921,14 +1845,10 @@ mod tests {
         }
 
         // Evict the PUBLIC document lane only.
-        drop_views_fed_by(&db, &[service::POSTS].into_iter().collect())
-            .await
-            .unwrap();
+        drop_views_fed_by(&db, &[service::POSTS].into_iter().collect()).await.unwrap();
 
-        let left: Vec<(i64,)> = db
-            .fetch_all("SELECT service FROM view_watermarks ORDER BY service", ())
-            .await
-            .unwrap();
+        let left: Vec<(i64,)> =
+            db.fetch_all("SELECT service FROM view_watermarks ORDER BY service", ()).await.unwrap();
         let left: Vec<u32> = left.into_iter().map(|(s,)| s as u32).collect();
         assert!(
             !left.contains(&service::POSTS) && !left.contains(&service::DOCUMENTS_PRIVATE),
@@ -1960,32 +1880,20 @@ mod tests {
         assert_eq!(published_edges(&db).await.unwrap().len(), 1);
 
         // A profile-lane eviction: the profile view is rebuilt from the surviving entries...
-        refold_after_eviction(&db, &[service::PROFILE_PUBLIC].into_iter().collect())
-            .await
-            .unwrap();
+        refold_after_eviction(&db, &[service::PROFILE_PUBLIC].into_iter().collect()).await.unwrap();
         let profile = get_profile(&db).await.unwrap();
         assert_eq!(profile.len(), 2, "the profile view came back");
         assert_eq!(profile[1].value, "Hats Ahoy");
 
         // ...and the follows lane, which lost nothing, still holds its row WITHOUT refolding.
-        let held: Option<(i64,)> = db
-            .fetch_optional("SELECT COUNT(*) FROM published_edges", ())
-            .await
-            .unwrap();
-        assert_eq!(
-            held.unwrap().0,
-            1,
-            "an unrelated lane's view is not collateral damage"
-        );
+        let held: Option<(i64,)> =
+            db.fetch_optional("SELECT COUNT(*) FROM published_edges", ()).await.unwrap();
+        assert_eq!(held.unwrap().0, 1, "an unrelated lane's view is not collateral damage");
 
         // And when the follows lane IS the evicted one, its view drops and refolds on read.
-        refold_after_eviction(&db, &[service::FOLLOWS_PUBLIC].into_iter().collect())
-            .await
-            .unwrap();
-        let after: Option<(i64,)> = db
-            .fetch_optional("SELECT COUNT(*) FROM published_edges", ())
-            .await
-            .unwrap();
+        refold_after_eviction(&db, &[service::FOLLOWS_PUBLIC].into_iter().collect()).await.unwrap();
+        let after: Option<(i64,)> =
+            db.fetch_optional("SELECT COUNT(*) FROM published_edges", ()).await.unwrap();
         assert_eq!(after.unwrap().0, 0, "dropped");
         assert_eq!(
             published_edges(&db).await.unwrap().len(),
@@ -2040,10 +1948,8 @@ mod tests {
         // chains - and a device that then minted a genesis would equivocate against its own
         // siblings. The checkpoint file is what remembers; this test is the whole reason it
         // exists.
-        let heads_path = std::env::temp_dir().join(format!(
-            "ringtome-imaol-heads-test-{}",
-            std::process::id()
-        ));
+        let heads_path =
+            std::env::temp_dir().join(format!("ringtome-imaol-heads-test-{}", std::process::id()));
         let _ = std::fs::remove_file(&heads_path);
         let heads = crate::record::heads::EphemeralHeads::open(&heads_path).unwrap();
 
@@ -2077,7 +1983,8 @@ mod tests {
         .unwrap();
         assert_eq!(continued.entry().seq, 3, "continues, never re-genesises");
         assert_eq!(
-            continued.entry().prev_hash, last_hash,
+            continued.entry().prev_hash,
+            last_hash,
             "and links onto the exact head the old database held"
         );
         assert_eq!(
@@ -2090,10 +1997,8 @@ mod tests {
 
     #[tokio::test]
     async fn ephemeral_cargo_never_touches_the_journal() {
-        let dir = std::env::temp_dir().join(format!(
-            "ringtome-imaol-journal-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir()
+            .join(format!("ringtome-imaol-journal-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let journal_path = dir.join("test.jnl");
@@ -2167,33 +2072,21 @@ mod tests {
         let doc = [1u8; 16];
         let other = [2u8; 16];
 
-        publish_rebroadcast(&db, &key, &alice, &doc, Some([9u8; 32]))
-            .await
-            .unwrap();
-        publish_rebroadcast(&db, &key, &alice, &other, Some([8u8; 32]))
-            .await
-            .unwrap();
+        publish_rebroadcast(&db, &key, &alice, &doc, Some([9u8; 32])).await.unwrap();
+        publish_rebroadcast(&db, &key, &alice, &other, Some([8u8; 32])).await.unwrap();
         // The same document again, endorsing a newer version: an update, never a second row.
-        publish_rebroadcast(&db, &key, &alice, &doc, Some([7u8; 32]))
-            .await
-            .unwrap();
+        publish_rebroadcast(&db, &key, &alice, &doc, Some([7u8; 32])).await.unwrap();
 
         let rows = rebroadcasts(&db).await.unwrap();
         assert_eq!(rows.len(), 2, "LWW per (author, doc_id) - shares do not stack");
         let doc_row = rows.iter().find(|r| r.doc_id == doc).unwrap();
-        assert_eq!(
-            doc_row.version_seen,
-            Some([7u8; 32]),
-            "the newest pointer is the share"
-        );
+        assert_eq!(doc_row.version_seen, Some([7u8; 32]), "the newest pointer is the share");
         assert_eq!(doc_row.author_root, hex::encode(alice));
         assert!(!doc_row.is_retracted());
 
         // Withdrawing keeps the row as a tombstone: a delete would let a resurrected older
         // pointer win the next time the fold saw it.
-        publish_rebroadcast(&db, &key, &alice, &doc, None)
-            .await
-            .unwrap();
+        publish_rebroadcast(&db, &key, &alice, &doc, None).await.unwrap();
         let rows = rebroadcasts(&db).await.unwrap();
         let doc_row = rows.iter().find(|r| r.doc_id == doc).unwrap();
         assert!(doc_row.is_retracted(), "a withdrawn share renders as nothing");
@@ -2209,9 +2102,8 @@ mod tests {
     async fn a_rebroadcast_entry_carries_no_content() {
         let db = test_db().await;
         let key = test_key();
-        let entry = publish_rebroadcast(&db, &key, &[5u8; 32], &[1u8; 16], Some([9u8; 32]))
-            .await
-            .unwrap();
+        let entry =
+            publish_rebroadcast(&db, &key, &[5u8; 32], &[1u8; 16], Some([9u8; 32])).await.unwrap();
         assert!(
             entry.bytes().len() < 400,
             "a pointer entry is small by construction; {} bytes suggests something got copied \
@@ -2230,9 +2122,7 @@ mod tests {
         publish_public_edge(&db, &key, &alice, Some("high".into()), Some("medium".into()))
             .await
             .unwrap();
-        publish_public_edge(&db, &key, &bob, None, Some("low".into()))
-            .await
-            .unwrap();
+        publish_public_edge(&db, &key, &bob, None, Some("low".into())).await.unwrap();
         // Alice again: the newer statement IS the published relationship.
         publish_public_edge(&db, &key, &alice, Some("max".into()), Some("max".into()))
             .await
@@ -2258,30 +2148,19 @@ mod tests {
         let db = test_db().await;
         let key = test_key();
 
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
         let year_ahead = crate::clock::now_ms() + 365 * 24 * 60 * 60 * 1000;
-        db.execute("UPDATE entries SET timestamp_ms = ?1", (year_ahead,))
-            .await
-            .unwrap();
-        db.execute("UPDATE profile_view SET updated_at_ms = ?1", (year_ahead,))
-            .await
-            .unwrap();
+        db.execute("UPDATE entries SET timestamp_ms = ?1", (year_ahead,)).await.unwrap();
+        db.execute("UPDATE profile_view SET updated_at_ms = ?1", (year_ahead,)).await.unwrap();
 
-        let renamed = set_profile_field(&db, &key, "name", "Hat Fan")
-            .await
-            .unwrap();
+        let renamed = set_profile_field(&db, &key, "name", "Hat Fan").await.unwrap();
         assert_eq!(
             renamed.entry().timestamp_ms,
             year_ahead,
             "the successor is clamped up to the head's claim, never below it"
         );
         let profile = get_profile(&db).await.unwrap();
-        assert_eq!(
-            profile[0].value, "Hat Fan",
-            "the later write wins despite the fast clock"
-        );
+        assert_eq!(profile[0].value, "Hat Fan", "the later write wins despite the fast clock");
     }
 
     #[tokio::test]
@@ -2290,9 +2169,7 @@ mod tests {
         let key = test_key();
 
         let before = crate::clock::now_ms();
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
         let after = crate::clock::now_ms();
 
         let (entries, _) = list_entries(&db, ENTRIES_PAGE, None).await.unwrap();
@@ -2323,15 +2200,9 @@ mod tests {
         let db = test_db().await;
         let key = test_key();
         for n in 0..4u8 {
-            append(
-                &db,
-                &key,
-                service::POSTS,
-                entry_type::POST,
-                Payload::Inline(vec![0xa0, n]),
-            )
-            .await
-            .unwrap();
+            append(&db, &key, service::POSTS, entry_type::POST, Payload::Inline(vec![0xa0, n]))
+                .await
+                .unwrap();
         }
         db.execute(
             "DELETE FROM entries WHERE service = ?1 AND seq < 2",
@@ -2342,11 +2213,7 @@ mod tests {
 
         let page = entries_page(&db, service::POSTS, 10, None).await.unwrap();
         let seqs: Vec<u64> = page.iter().map(|(signed, _)| signed.entry().seq).collect();
-        assert_eq!(
-            seqs,
-            vec![3, 2],
-            "newest first, no complaint about the absent prefix"
-        );
+        assert_eq!(seqs, vec![3, 2], "newest first, no complaint about the absent prefix");
     }
 
     #[tokio::test]
@@ -2354,21 +2221,13 @@ mod tests {
         let db = test_db().await;
         let key = test_key();
 
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
-        set_profile_field(&db, &key, "bio", "purveyor of hats")
-            .await
-            .unwrap();
-        set_profile_field(&db, &key, "name", "Hat Fan")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
+        set_profile_field(&db, &key, "bio", "purveyor of hats").await.unwrap();
+        set_profile_field(&db, &key, "name", "Hat Fan").await.unwrap();
 
         let before = get_profile(&db).await.unwrap();
 
-        db.execute("UPDATE profile_view SET value = 'CLOBBERED'", ())
-            .await
-            .unwrap();
+        db.execute("UPDATE profile_view SET value = 'CLOBBERED'", ()).await.unwrap();
         let replayed = rebuild_views(&db).await.unwrap();
         assert_eq!(replayed, 3);
 
@@ -2384,20 +2243,14 @@ mod tests {
         let db = test_db().await;
         let key = test_key();
 
-        set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
 
-        let (bytes,): (Vec<u8>,) = db
-            .fetch_one("SELECT bytes FROM entries LIMIT 1", ())
-            .await
-            .unwrap();
+        let (bytes,): (Vec<u8>,) =
+            db.fetch_one("SELECT bytes FROM entries LIMIT 1", ()).await.unwrap();
         let mut tampered = bytes.clone();
         let last = tampered.len() - 1;
         tampered[last] ^= 0xff;
-        db.execute("UPDATE entries SET bytes = ?1", (tampered,))
-            .await
-            .unwrap();
+        db.execute("UPDATE entries SET bytes = ?1", (tampered,)).await.unwrap();
 
         assert!(rebuild_views(&db).await.is_err());
     }
@@ -2423,15 +2276,10 @@ mod tests {
                                      AND w.service = e.service), -1)
              ORDER BY author_pubkey, seq",
         ] {
-            let rows: Vec<(i64, i64, i64, String)> = db
-                .fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), (5i64, 6i64))
-                .await
-                .unwrap();
-            let plan: String = rows
-                .iter()
-                .map(|(_, _, _, d)| d.as_str())
-                .collect::<Vec<_>>()
-                .join(" | ");
+            let rows: Vec<(i64, i64, i64, String)> =
+                db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), (5i64, 6i64)).await.unwrap();
+            let plan: String =
+                rows.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
             assert!(
                 plan.contains("entries_by_service_type"),
                 "the fold read must use its index, got: {plan}"

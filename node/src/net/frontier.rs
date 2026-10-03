@@ -30,10 +30,10 @@
 //! activity is itself private metadata (PROJECT_PLAN, Chains) and this value's whole purpose is
 //! to be compared with other nodes. The filter is `net::sync::is_private_service`, the same
 //! predicate the sync gate enforces - one definition of private, not two.
-use anyhow::{Context, Result};
 use crate::clock::now_ms;
 use crate::db::{instance_blob, instance_of, Db};
 use crate::AppState;
+use anyhow::{Context, Result};
 
 /// One chain's tip as the fingerprint sees it: `(author, service, instance, head_hash)`.
 pub type Anchor = ([u8; 32], u32, Option<[u8; 16]>, [u8; 32]);
@@ -125,10 +125,7 @@ pub async fn service_mark(node_db: &Db, root_hex: &str, service: u32) -> Result<
 /// Forget every frontier row for an evicted persona - the memo of chains no longer held.
 pub async fn forget_persona(node_db: &Db, root_hex: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM persona_frontiers WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .execute("DELETE FROM persona_frontiers WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("forgetting an evicted persona's frontiers")?;
     // The write-time memo of what this persona's chains reached (the frontier's own source):
@@ -193,9 +190,8 @@ async fn memo_public_anchors(node_db: &Db, root_hex: &str) -> Result<Vec<Anchor>
         }
         let author = crate::pubkey::decode(&author_hex)
             .ok_or_else(|| anyhow::anyhow!("corrupt author in chain_heads"))?;
-        let head: [u8; 32] = head
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("corrupt head_hash in chain_heads"))?;
+        let head: [u8; 32] =
+            head.try_into().map_err(|_| anyhow::anyhow!("corrupt head_hash in chain_heads"))?;
         out.push((author, svc as u32, instance_of(&instance), head));
     }
     Ok(out)
@@ -428,12 +424,7 @@ pub async fn held(node_db: &Db, root_hex: &str) -> Result<Vec<Held>> {
             let fp: [u8; 32] = fp
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("corrupt fingerprint in persona_frontiers"))?;
-            Ok(Held {
-                service: service as u32,
-                fp,
-                chains,
-                held_at_ms,
-            })
+            Ok(Held { service: service as u32, fp, chains, held_at_ms })
         })
         .collect()
 }
@@ -457,12 +448,7 @@ pub fn claimed_fingerprint(frontiers: &[ringtome_proto::sync::Frontier]) -> [u8;
         .into_iter()
         .map(|service| {
             let (fp, chains) = fingerprint(&anchors, service);
-            Held {
-                service,
-                fp,
-                chains,
-                held_at_ms: 0,
-            }
+            Held { service, fp, chains, held_at_ms: 0 }
         })
         .collect();
     persona_fingerprint(&rows)
@@ -523,13 +509,7 @@ pub async fn record_verdict(
         .execute(
             "UPDATE identity_peers SET chased_fp = ?1, chased_at_ms = ?2, verdict = ?3
              WHERE root_pubkey = ?4 AND endpoint_id = ?5",
-            (
-                chased.to_vec(),
-                now_ms(),
-                verdict.as_str(),
-                root_hex,
-                endpoint_id,
-            ),
+            (chased.to_vec(), now_ms(), verdict.as_str(), root_hex, endpoint_id),
         )
         .await
         .context("recording a chase verdict")?;
@@ -601,8 +581,15 @@ mod tests {
         // key's plain chain (CHAT.md slice 0).
         let plain = [anchor(1, 7, 10)];
         let room = [([1u8; 32], 7, Some([0u8; 16]), [10u8; 32])];
-        assert_ne!(fingerprint(&plain, 7).0, fingerprint(&room, 7).0, "a zero instance is not none");
-        let two_rooms = [([1u8; 32], 7, Some([0u8; 16]), [10u8; 32]), ([1u8; 32], 7, Some([1u8; 16]), [10u8; 32])];
+        assert_ne!(
+            fingerprint(&plain, 7).0,
+            fingerprint(&room, 7).0,
+            "a zero instance is not none"
+        );
+        let two_rooms = [
+            ([1u8; 32], 7, Some([0u8; 16]), [10u8; 32]),
+            ([1u8; 32], 7, Some([1u8; 16]), [10u8; 32]),
+        ];
         assert_eq!(fingerprint(&two_rooms, 7).1, 2, "two chains on one service by one key");
         let swapped = [two_rooms[1], two_rooms[0]];
         assert_eq!(fingerprint(&two_rooms, 7).0, fingerprint(&swapped, 7).0, "a set, not an order");

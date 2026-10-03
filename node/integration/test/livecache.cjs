@@ -9,38 +9,38 @@
     the point of the whole design - a write on ANOTHER NODE arrives down this node's stream
     with nobody polling anything.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
-const WebSocket = require("ws");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
+const WebSocket = require('ws');
 
-const { HOST, HOST_B } = require("./fetch.cjs");
-const { uniqueUsername } = require("./helpers.cjs");
+const { HOST, HOST_B } = require('./fetch.cjs');
+const { uniqueUsername } = require('./helpers.cjs');
 
-const PW = "test-password-123";
+const PW = 'test-password-123';
 
 // Raw fetch with an explicit Cookie header - the ws upgrade needs the cookie string itself,
 // so this file manages its session by hand instead of through makeUserFetch's hidden jar.
 async function rawLogin(host) {
-    const username = uniqueUsername("lc");
+    const username = uniqueUsername('lc');
     await fetch(`http://${host}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password: PW }),
     });
     const res = await fetch(`http://${host}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password: PW }),
     });
     assert.equal(res.status, 200);
-    const cookie = res.headers.get("set-cookie").split(";")[0];
+    const cookie = res.headers.get('set-cookie').split(';')[0];
     const authed = (path, opts = {}) =>
         fetch(`http://${host}/${path}`, {
             ...opts,
             headers: {
                 Cookie: cookie,
-                ...(opts.body ? { "Content-Type": "application/json" } : {}),
+                ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
             },
         });
     return { username, cookie, authed };
@@ -52,7 +52,7 @@ async function rawLogin(host) {
 async function heartbeatLanded(authed, root) {
     for (let i = 0; i < 50; i++) {
         const fields = await (await authed(`api/identity/${root}/profile`)).json();
-        if (fields.some((f) => f.field === "heartbeat")) return;
+        if (fields.some((f) => f.field === 'heartbeat')) return;
         await new Promise((res) => setTimeout(res, 100));
     }
     throw new Error("the persona's heartbeat never landed");
@@ -61,22 +61,22 @@ async function heartbeatLanded(authed, root) {
 // A websocket with promise-shaped reads: `await next()` yields the next JSON frame.
 function openStream(host, root, cookie, cursor) {
     const url = `ws://${host}/api/identity/${root}/stream${
-        cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""
+        cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
     }`;
     const ws = new WebSocket(url, { headers: { Cookie: cookie } });
     const queue = [];
     const waiters = [];
-    ws.on("message", (data) => {
+    ws.on('message', (data) => {
         const msg = JSON.parse(data.toString());
         const w = waiters.shift();
         if (w) w.resolve(msg);
         else queue.push(msg);
     });
     const opened = new Promise((resolve, reject) => {
-        ws.on("open", resolve);
-        ws.on("error", reject);
-        ws.on("unexpected-response", (_req, res) =>
-            reject(new Error(`upgrade refused: ${res.statusCode}`))
+        ws.on('open', resolve);
+        ws.on('error', reject);
+        ws.on('unexpected-response', (_req, res) =>
+            reject(new Error(`upgrade refused: ${res.statusCode}`)),
         );
     });
     const next = (timeoutMs = 10000) =>
@@ -85,7 +85,7 @@ function openStream(host, root, cookie, cursor) {
             if (q) return resolve(q);
             const timer = setTimeout(
                 () => reject(new Error(`no frame within ${timeoutMs}ms`)),
-                timeoutMs
+                timeoutMs,
             );
             waiters.push({
                 resolve: (m) => {
@@ -97,62 +97,66 @@ function openStream(host, root, cookie, cursor) {
     return { ws, opened, next };
 }
 
-const profileName = (msg) => (msg.profile.find((f) => f.field === "name") || {}).value;
+const profileName = (msg) => (msg.profile.find((f) => f.field === 'name') || {}).value;
 
-describe("the live cache stream", function () {
+describe('the live cache stream', function () {
     this.timeout(30000);
 
-    it("snapshots on first contact, then echoes writes as updates", async function () {
+    it('snapshots on first contact, then echoes writes as updates', async function () {
         const { cookie, authed } = await rawLogin(HOST);
-        const created = await (await authed("api/identity", { method: "POST" })).json();
+        const created = await (await authed('api/identity', { method: 'POST' })).json();
         const root = created.root_pubkey;
         await authed(`api/identity/${root}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "First" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'First' }),
         });
         await heartbeatLanded(authed, root);
 
         const stream = openStream(HOST, root, cookie);
         await stream.opened;
         const snapshot = await stream.next();
-        assert.equal(snapshot.type, "snapshot");
-        assert.ok(snapshot.cursor.match(/^[0-9a-f]{64}$/), "cursor is an opaque token");
-        assert.equal(profileName(snapshot), "First");
+        assert.equal(snapshot.type, 'snapshot');
+        assert.ok(snapshot.cursor.match(/^[0-9a-f]{64}$/), 'cursor is an opaque token');
+        assert.equal(profileName(snapshot), 'First');
         // The app's own pictures ride every snapshot (builtin.cjs); the persona's are what's counted.
-        assert.deepEqual(snapshot.docs.filter((d) => !d.builtin), [], "no documents yet");
+        assert.deepEqual(
+            snapshot.docs.filter((d) => !d.builtin),
+            [],
+            'no documents yet',
+        );
         assert.deepEqual(snapshot.taxonomies, []);
 
         // A write echoes down the stream - the mechanism that will clear shadows someday.
         await authed(`api/identity/${root}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Second" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Second' }),
         });
         const update = await stream.next();
-        assert.equal(update.type, "update");
-        assert.equal(profileName(update), "Second");
-        assert.notEqual(update.cursor, snapshot.cursor, "the cursor moved with the frontier");
+        assert.equal(update.type, 'update');
+        assert.equal(profileName(update), 'Second');
+        assert.notEqual(update.cursor, snapshot.cursor, 'the cursor moved with the frontier');
         // Updates are scoped to what moved: a profile write ships no other kind (absent
         // means "unchanged", never "empty").
-        assert.equal(update.docs, undefined, "a profile write carries no docs");
-        assert.equal(update.contacts, undefined, "nor the roster");
+        assert.equal(update.docs, undefined, 'a profile write carries no docs');
+        assert.equal(update.contacts, undefined, 'nor the roster');
 
         // Documents ride the same stream - as DELTAS: the snapshot primed this socket's
         // diff baseline, so an update names the changed row, never the whole list.
         await authed(`api/identity/${root}/docs`, {
-            method: "POST",
-            body: JSON.stringify({ title: "first note", body: "hello mirror" }),
+            method: 'POST',
+            body: JSON.stringify({ title: 'first note', body: 'hello mirror' }),
         });
         const docUpdate = await stream.next();
-        assert.equal(docUpdate.docs, undefined, "a primed socket never re-ships the list");
+        assert.equal(docUpdate.docs, undefined, 'a primed socket never re-ships the list');
         assert.equal(docUpdate.docs_changed.length, 1);
-        assert.equal(docUpdate.docs_changed[0].title, "first note");
-        assert.equal(docUpdate.profile, undefined, "a doc write carries no profile");
+        assert.equal(docUpdate.docs_changed[0].title, 'first note');
+        assert.equal(docUpdate.profile, undefined, 'a doc write carries no profile');
 
         // The search index rides the same delta: a token-bag row over title + body.
-        assert.equal(docUpdate.search_changed.length, 1, "one changed search row");
+        assert.equal(docUpdate.search_changed.length, 1, 'one changed search row');
         assert.equal(docUpdate.search_changed[0].doc_id, docUpdate.docs_changed[0].doc_id);
-        const tokens = docUpdate.search_changed[0].tokens.split(" ");
-        for (const w of ["first", "note", "hello", "mirror"]) {
+        const tokens = docUpdate.search_changed[0].tokens.split(' ');
+        for (const w of ['first', 'note', 'hello', 'mirror']) {
             assert.ok(tokens.includes(w), `search tokens include "${w}": ${tokens}`);
         }
         const firstDocId = docUpdate.docs_changed[0].doc_id;
@@ -162,75 +166,83 @@ describe("the live cache stream", function () {
         const resumed = openStream(HOST, root, cookie, docUpdate.cursor);
         await resumed.opened;
         const first = await resumed.next();
-        assert.equal(first.type, "live", "a matching cursor skips the snapshot");
+        assert.equal(first.type, 'live', 'a matching cursor skips the snapshot');
         assert.equal(first.cursor, docUpdate.cursor);
 
         // A fresh socket has no diff baseline, so a kind's FIRST movement ships whole -
         // the shape that carries removals without a baseline - and primes it.
         await authed(`api/identity/${root}/docs`, {
-            method: "POST",
-            body: JSON.stringify({ title: "second note", body: "more words" }),
+            method: 'POST',
+            body: JSON.stringify({ title: 'second note', body: 'more words' }),
         });
         const wholeAgain = await resumed.next();
-        assert.equal(wholeAgain.docs_changed, undefined, "unprimed ships whole, not delta");
-        assert.equal(wholeAgain.docs.filter((d) => !d.builtin).length, 2, "both notes, refreshed whole");
+        assert.equal(wholeAgain.docs_changed, undefined, 'unprimed ships whole, not delta');
+        assert.equal(
+            wholeAgain.docs.filter((d) => !d.builtin).length,
+            2,
+            'both notes, refreshed whole',
+        );
 
         // Now primed: a deletion arrives as a removal delta, nothing re-shipped.
-        await authed(`api/identity/${root}/docs/${firstDocId}`, { method: "DELETE" });
+        await authed(`api/identity/${root}/docs/${firstDocId}`, { method: 'DELETE' });
         const gone = await resumed.next();
-        assert.deepEqual(gone.docs_removed, [firstDocId], "the delete names the one doc");
-        assert.deepEqual(gone.search_removed, [firstDocId], "and its search row");
-        assert.equal(gone.docs_changed, undefined, "the surviving note did not change");
+        assert.deepEqual(gone.docs_removed, [firstDocId], 'the delete names the one doc');
+        assert.deepEqual(gone.search_removed, [firstDocId], 'and its search row');
+        assert.equal(gone.docs_changed, undefined, 'the surviving note did not change');
         resumed.ws.close();
 
         // A doubtful cursor gets the full snapshot: the mirror is disposable by design.
-        const doubtful = openStream(HOST, root, cookie, "not-a-cursor");
+        const doubtful = openStream(HOST, root, cookie, 'not-a-cursor');
         await doubtful.opened;
         const again = await doubtful.next();
-        assert.equal(again.type, "snapshot");
-        assert.equal(again.docs.filter((d) => !d.builtin).length, 1, "the snapshot reflects the deletion");
+        assert.equal(again.type, 'snapshot');
+        assert.equal(
+            again.docs.filter((d) => !d.builtin).length,
+            1,
+            'the snapshot reflects the deletion',
+        );
         doubtful.ws.close();
     });
 
-    it("the roster rides updates as deltas: changed rows, never the whole list", async function () {
+    it('the roster rides updates as deltas: changed rows, never the whole list', async function () {
         const { cookie, authed } = await rawLogin(HOST);
-        const created = await (await authed("api/identity", { method: "POST" })).json();
+        const created = await (await authed('api/identity', { method: 'POST' })).json();
         const root = created.root_pubkey;
         // Any root-shaped hex: the ledger records judgments, acquaintance not required.
-        const other = "ab".repeat(32);
+        const other = 'ab'.repeat(32);
         await authed(`api/identity/${root}/private/kv/contact:${other}/interest`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "medium" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'medium' }),
         });
         await heartbeatLanded(authed, root);
 
         const stream = openStream(HOST, root, cookie);
         await stream.opened;
         const snapshot = await stream.next();
-        assert.equal(snapshot.type, "snapshot");
+        assert.equal(snapshot.type, 'snapshot');
         assert.ok(
             (snapshot.contacts || []).some((c) => c.root === other),
-            "snapshots carry the roster whole"
+            'snapshots carry the roster whole',
         );
 
         // Turn one dial: the update names the one changed row, not the roster.
         await authed(`api/identity/${root}/private/kv/contact:${other}/interest`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
         });
         const update = await stream.next();
-        assert.equal(update.type, "update");
-        assert.equal(update.contacts, undefined, "updates never re-ship the roster");
-        assert.equal(update.contacts_changed.length, 1, "one row changed, one row shipped");
+        assert.equal(update.type, 'update');
+        assert.equal(update.contacts, undefined, 'updates never re-ship the roster');
+        assert.equal(update.contacts_changed.length, 1, 'one row changed, one row shipped');
         assert.equal(update.contacts_changed[0].root, other);
-        assert.equal(update.contacts_changed[0].facts.interest, "high");
-        assert.equal(update.docs, undefined, "a dial turn is not a document change");
+        assert.equal(update.contacts_changed[0].facts.interest, 'high');
+        assert.equal(update.docs, undefined, 'a dial turn is not a document change');
         stream.ws.close();
     });
 
-    it("the socket is read-only: client chatter is ignored, never honored", async function () {
+    it('the socket is read-only: client chatter is ignored, never honored', async function () {
         const { cookie, authed } = await rawLogin(HOST);
-        const created = await (await authed("api/identity", { method: "POST" })).json();
+        const created = await (await authed('api/identity', { method: 'POST' })).json();
         const root = created.root_pubkey;
 
         const stream = openStream(HOST, root, cookie);
@@ -238,26 +250,26 @@ describe("the live cache stream", function () {
         await stream.next(); // snapshot
 
         // Shout into the read-only socket, then prove it neither acted nor died.
-        stream.ws.send(JSON.stringify({ type: "set", field: "name", value: "EVIL" }));
+        stream.ws.send(JSON.stringify({ type: 'set', field: 'name', value: 'EVIL' }));
         await authed(`api/identity/${root}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Still Mine" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Still Mine' }),
         });
         const update = await stream.next();
-        assert.equal(profileName(update), "Still Mine", "the POST landed, the chatter did not");
+        assert.equal(profileName(update), 'Still Mine', 'the POST landed, the chatter did not');
         stream.ws.close();
     });
 
-    it("strangers get no socket at all", async function () {
+    it('strangers get no socket at all', async function () {
         const { cookie, authed } = await rawLogin(HOST);
-        const created = await (await authed("api/identity", { method: "POST" })).json();
+        const created = await (await authed('api/identity', { method: 'POST' })).json();
         const root = created.root_pubkey;
 
         // No cookie: refused at upgrade, before any socket exists. (`terminate()` after the
         // refusal matters: a ws client that got `unexpected-response` keeps its socket - and
         // the whole test process - alive unless destroyed. This exact leak once wedged the
         // suite at exit while every node stayed healthy.)
-        const anon = openStream(HOST, root, "");
+        const anon = openStream(HOST, root, '');
         await assert.rejects(anon.opened, /upgrade refused: 401/);
         anon.ws.terminate();
 
@@ -269,22 +281,22 @@ describe("the live cache stream", function () {
     });
 });
 
-(HOST_B ? describe : describe.skip)("the live cache across nodes", function () {
+(HOST_B ? describe : describe.skip)('the live cache across nodes', function () {
     this.timeout(60000);
 
     it("a write on another computer arrives down this node's stream", async function () {
         // Persona on A, adopted to B (in one trip), stream open on A.
         const a = await rawLogin(HOST);
-        const created = await (await a.authed("api/identity", { method: "POST" })).json();
+        const created = await (await a.authed('api/identity', { method: 'POST' })).json();
         const root = created.root_pubkey;
 
         const b = await rawLogin(HOST_B);
         const request = await (
-            await b.authed("api/identity/adopt/begin", { method: "POST" })
+            await b.authed('api/identity/adopt/begin', { method: 'POST' })
         ).json();
         const grant = await (
             await a.authed(`api/identity/${root}/nodes`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({ code: request.code }),
             })
         ).json();
@@ -297,17 +309,17 @@ describe("the live cache stream", function () {
         // Write on B. Eager push carries it to A; A's fold surfaces it; the stream sends it.
         // Nobody on this socket asked for anything.
         await b.authed(`api/identity/${root}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Written On B" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Written On B' }),
         });
         let name = null;
         const deadline = Date.now() + 30000;
         while (!name && Date.now() < deadline) {
             const msg = await stream.next(30000);
             const value = profileName(msg);
-            if (value === "Written On B") name = value;
+            if (value === 'Written On B') name = value;
         }
-        assert.equal(name, "Written On B", "the other computer's write flowed down the stream");
+        assert.equal(name, 'Written On B', "the other computer's write flowed down the stream");
         stream.ws.close();
     });
 });
@@ -321,26 +333,46 @@ describe("a contact's new name reaches the reader's open stream", function () {
 
     it("ada renames herself; bea's stream ships ada's row with the new name, bea having changed nothing", async () => {
         const bea = await rawLogin(HOST);
-        const beaRoot = (await (await bea.authed("api/identity", { method: "POST" })).json()).root_pubkey;
+        const beaRoot = (await (await bea.authed('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
         const ada = await rawLogin(HOST);
-        const adaRoot = (await (await ada.authed("api/identity", { method: "POST" })).json()).root_pubkey;
-        await ada.authed(`api/identity/${adaRoot}/profile`, { method: "POST", body: JSON.stringify({ field: "name", value: "Ada Before" }) });
-        await bea.authed(`api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { method: "PUT", body: JSON.stringify({ value: "high" }) });
+        const adaRoot = (await (await ada.authed('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        await ada.authed(`api/identity/${adaRoot}/profile`, {
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Ada Before' }),
+        });
+        await bea.authed(`api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: 'high' }),
+        });
 
         const stream = openStream(HOST, beaRoot, bea.cookie);
         // Closed however the claim ends: an open socket keeps mocha - and the rig - alive forever.
         try {
             await stream.opened;
-            const rowOf = (msg) => [...(msg.contacts || []), ...(msg.contacts_changed || [])].find((c) => c.root === adaRoot);
+            const rowOf = (msg) =>
+                [...(msg.contacts || []), ...(msg.contacts_changed || [])].find(
+                    (c) => c.root === adaRoot,
+                );
             // Drain until the roster shows ada as she was.
             let before = null;
-            for (let i = 0; i < 20 && !(before && before.name === "Ada Before"); i++) before = rowOf(await stream.next()) || before;
-            assert.equal(before && before.name, "Ada Before", "bea's roster names ada");
+            for (let i = 0; i < 20 && !(before && before.name === 'Ada Before'); i++)
+                before = rowOf(await stream.next()) || before;
+            assert.equal(before && before.name, 'Ada Before', "bea's roster names ada");
 
-            await ada.authed(`api/identity/${adaRoot}/profile`, { method: "POST", body: JSON.stringify({ field: "name", value: "Ada After" }) });
+            await ada.authed(`api/identity/${adaRoot}/profile`, {
+                method: 'POST',
+                body: JSON.stringify({ field: 'name', value: 'Ada After' }),
+            });
             let after = null;
-            for (let i = 0; i < 20 && !(after && after.name === "Ada After"); i++) after = rowOf(await stream.next()) || after;
-            assert.equal(after && after.name, "Ada After", "the new name arrived without bea touching her own ledger");
+            for (let i = 0; i < 20 && !(after && after.name === 'Ada After'); i++)
+                after = rowOf(await stream.next()) || after;
+            assert.equal(
+                after && after.name,
+                'Ada After',
+                'the new name arrived without bea touching her own ledger',
+            );
         } finally {
             stream.ws.close();
         }

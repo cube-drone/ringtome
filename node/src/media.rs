@@ -86,11 +86,13 @@ pub type Progress<'a> = &'a (dyn Fn(u8) + Sync);
 /// reports through its decode loop; video through its per-frame encoders.
 pub fn crush_with_progress(bytes: &[u8], progress: Progress) -> Result<Ingested, CrushError> {
     match image::detect(bytes) {
-        image::Detected::Still => image::crush(bytes)
-            .map(Ingested::from_image)
-            .map_err(CrushError::from_image),
+        image::Detected::Still => {
+            image::crush(bytes).map(Ingested::from_image).map_err(CrushError::from_image)
+        }
         image::Detected::Animated => crush_as_video(bytes, progress),
-        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes, progress),
+        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => {
+            crush_as_video(bytes, progress)
+        }
         image::Detected::NotImage => {
             audio::crush_with_progress(bytes, audio::CrushOpts { max_bytes: None }, progress)
                 .map(Ingested::from_audio)
@@ -112,15 +114,18 @@ pub fn crush_with_sidecar(
         return crush_with_progress(bytes, progress);
     };
     match image::detect(bytes) {
-        image::Detected::Animated => {
-            video::crush_with_progress(bytes, Some(audio), video::CrushOpts { max_frames: None }, progress)
-                .map(Ingested::from_video)
-                .map_err(CrushError::from_video)
+        image::Detected::Animated => video::crush_with_progress(
+            bytes,
+            Some(audio),
+            video::CrushOpts { max_frames: None },
+            progress,
+        )
+        .map(Ingested::from_video)
+        .map_err(CrushError::from_video),
+        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => {
+            crush_as_video(bytes, progress)
         }
-        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes, progress),
-        _ => Err(CrushError::Unsupported(
-            "an audio sidecar only rides with video frames".into(),
-        )),
+        _ => Err(CrushError::Unsupported("an audio sidecar only rides with video frames".into())),
     }
 }
 
@@ -266,17 +271,11 @@ mod tests {
         assert_eq!(webm.format, Format::WebmAv1);
         assert!(webm.duration_ms.is_some());
         // Video now fills the thumbnail slot (a poster frame) AND carries a hover-preview clip.
-        assert!(
-            webm.thumb_avif.is_some(),
-            "video carries a poster thumbnail"
-        );
+        assert!(webm.thumb_avif.is_some(), "video carries a poster thumbnail");
         assert!(webm.preview_webm.is_some(), "video carries a preview clip");
         let opaque =
             crush(&corpus("animated_color_squirrel.gif")).expect("opaque animation crushes");
         assert_eq!(opaque.format, Format::WebmAv1);
-        assert!(
-            opaque.preview_webm.is_some(),
-            "opaque animation carries a preview"
-        );
+        assert!(opaque.preview_webm.is_some(), "opaque animation carries a preview");
     }
 }

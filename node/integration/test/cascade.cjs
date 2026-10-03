@@ -33,21 +33,21 @@
     a reader who has already buried it - the direction in which "speech deletes" is a claim about
     MEMORY rather than about propagation.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { sql, HOST, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { unplug, plugIn } = require("./unplug.cjs");
-const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
+const { sql, HOST, HOST_B, HOST_C, HOST_E } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { unplug, plugIn } = require('./unplug.cjs');
+const { beat, pullAndFold, shareArrives } = require('./beat.cjs');
 
-const settle = require("./helpers.cjs").settleWith(240);
+const settle = require('./helpers.cjs').settleWith(240);
 
 const feedOf = async (reader, host) => {
     const { rows } = await sql(
         `SELECT author_root, via_root, doc_id, title FROM feed_journal WHERE reader_root = '${reader}'`,
-        host
+        host,
     );
     return rows;
 };
@@ -57,7 +57,7 @@ const feedOf = async (reader, host) => {
 const fragmentsOf = async (author, host) => {
     const { rows } = await sql(
         `SELECT doc_id, title, version FROM fragments WHERE author_root = '${author}'`,
-        host
+        host,
     );
     return rows;
 };
@@ -68,14 +68,14 @@ const fragmentsOf = async (author, host) => {
 const tombstonesOf = async (author, host) => {
     const { rows } = await sql(
         `SELECT doc_id, length(entry) AS proof_bytes FROM fragment_tombstones WHERE author_root = '${author}'`,
-        host
+        host,
     );
     return rows;
 };
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
 // What a reader's BROWSER sees: the anonymous body route on the reader's own node - the exact
@@ -90,11 +90,11 @@ const servedBody = async (author, post, host) => {
 
 const dial = (fetcher, mine, theirs, key, value) =>
     fetcher(`api/identity/${mine}/private/kv/contact:${theirs}/${key}`, {
-        method: "PUT",
+        method: 'PUT',
         body: JSON.stringify({ value }),
     });
 
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch } = require('./fetch.cjs');
 
 /// Point every revalidating node's lane the same way. Only C and D revalidate in this topology
 /// (B holds the author's chain and A is the author), but setting all four keeps the suite
@@ -102,302 +102,326 @@ const { makeFetch } = require("./fetch.cjs");
 async function setLane(mode) {
     for (const host of [undefined, HOST_B, HOST_C, HOST_E]) {
         const f = makeFetch(host);
-        const res = await f("test/revalidation", {
-            method: "POST",
+        const res = await f('test/revalidation', {
+            method: 'POST',
             body: JSON.stringify({ mode }),
         });
-        assert.equal(res.status, 200, `setting revalidation mode on ${host || "A"}`);
+        assert.equal(res.status, 200, `setting revalidation mode on ${host || 'A'}`);
     }
 }
 
-(HOST_B && HOST_C && HOST_E ? describe : describe.skip)("the share tree, four hops deep", function () {
-    this.timeout(1200000);
+(HOST_B && HOST_C && HOST_E ? describe : describe.skip)(
+    'the share tree, four hops deep',
+    function () {
+        this.timeout(1200000);
 
-    let alice, aliceRoot, bob, bobRoot, cleo, cleoRoot, dana, danaRoot;
+        let alice, aliceRoot, bob, bobRoot, cleo, cleoRoot, dana, danaRoot;
 
-    before(async function () {
-        alice = await makeUserFetch({ prefix: "cascalice" });
-        aliceRoot = (await (await alice("api/identity", { method: "POST" })).json()).root_pubkey;
-        await alice(`api/identity/${aliceRoot}/serve`, { method: "POST" });
-        const viaAlice = await base58(alice);
+        before(async function () {
+            alice = await makeUserFetch({ prefix: 'cascalice' });
+            aliceRoot = (await (await alice('api/identity', { method: 'POST' })).json())
+                .root_pubkey;
+            await alice(`api/identity/${aliceRoot}/serve`, { method: 'POST' });
+            const viaAlice = await base58(alice);
 
-        bob = await makeUserFetch({ prefix: "cascbob", host: HOST_B });
-        bobRoot = (await (await bob("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bob(`api/identity/${bobRoot}/serve`, { method: "POST" });
-        const viaBob = await base58(bob);
+            bob = await makeUserFetch({ prefix: 'cascbob', host: HOST_B });
+            bobRoot = (await (await bob('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await bob(`api/identity/${bobRoot}/serve`, { method: 'POST' });
+            const viaBob = await base58(bob);
 
-        cleo = await makeUserFetch({ prefix: "casccleo", host: HOST_C });
-        cleoRoot = (await (await cleo("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cleo(`api/identity/${cleoRoot}/serve`, { method: "POST" });
-        const viaCleo = await base58(cleo);
+            cleo = await makeUserFetch({ prefix: 'casccleo', host: HOST_C });
+            cleoRoot = (await (await cleo('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await cleo(`api/identity/${cleoRoot}/serve`, { method: 'POST' });
+            const viaCleo = await base58(cleo);
 
-        dana = await makeUserFetch({ prefix: "cascdana", host: HOST_E });
-        danaRoot = (await (await dana("api/identity", { method: "POST" })).json()).root_pubkey;
+            dana = await makeUserFetch({ prefix: 'cascdana', host: HOST_E });
+            danaRoot = (await (await dana('api/identity', { method: 'POST' })).json()).root_pubkey;
 
-        // The chain of relationships, each hop deliberately narrower than the last: Bob follows
-        // Alice outright; Cleo wants only what Bob shares; Dana only what Cleo shares. Nobody
-        // past Bob has any relationship to Alice at all.
-        if ((await bob(`api/id/${aliceRoot}/profile?via=${viaAlice}`)).status !== 200) this.skip();
-        await dial(bob, bobRoot, aliceRoot, "interest", "high");
+            // The chain of relationships, each hop deliberately narrower than the last: Bob follows
+            // Alice outright; Cleo wants only what Bob shares; Dana only what Cleo shares. Nobody
+            // past Bob has any relationship to Alice at all.
+            if ((await bob(`api/id/${aliceRoot}/profile?via=${viaAlice}`)).status !== 200)
+                this.skip();
+            await dial(bob, bobRoot, aliceRoot, 'interest', 'high');
 
-        if ((await cleo(`api/id/${bobRoot}/profile?via=${viaBob}`)).status !== 200) this.skip();
-        await dial(cleo, cleoRoot, bobRoot, "interest_rebroadcasts", "high");
+            if ((await cleo(`api/id/${bobRoot}/profile?via=${viaBob}`)).status !== 200) this.skip();
+            await dial(cleo, cleoRoot, bobRoot, 'interest_rebroadcasts', 'high');
 
-        if ((await dana(`api/id/${cleoRoot}/profile?via=${viaCleo}`)).status !== 200) this.skip();
-        await dial(dana, danaRoot, cleoRoot, "interest_rebroadcasts", "high");
+            if ((await dana(`api/id/${cleoRoot}/profile?via=${viaCleo}`)).status !== 200)
+                this.skip();
+            await dial(dana, danaRoot, cleoRoot, 'interest_rebroadcasts', 'high');
 
-        // Reader memos current before any publish - the fanout.cjs barrier, per cast.
-        await beat(HOST_B, "fold", bobRoot);
-        await beat(HOST_C, "fold", cleoRoot);
-        await beat(HOST_E, "fold", danaRoot);
-    });
-
-    /// The first three hops: Alice publishes, Bob shares, and the return value arrives only once
-    /// Cleo holds a fragment. Split out from `seed` so a scenario can stop the chain HERE and
-    /// change the world before the fourth hop runs (the author-dark tests below do exactly that:
-    /// the last hop has to happen with Alice's node already gone).
-    async function seedToCleo(title) {
-        const made = await (
-            await alice(`api/identity/${aliceRoot}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title, body: `${title}: the words`, format: "plaintext" }),
-            })
-        ).json();
-        const published = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
-            method: "POST",
+            // Reader memos current before any publish - the fanout.cjs barrier, per cast.
+            await beat(HOST_B, 'fold', bobRoot);
+            await beat(HOST_C, 'fold', cleoRoot);
+            await beat(HOST_E, 'fold', danaRoot);
         });
-        const pubBody = await published.text();
-        assert.equal(published.status, 200, pubBody);
-        const post = JSON.parse(pubBody).post_id;
 
-        await pullAndFold(HOST_B, aliceRoot);
-        assert.ok(
-            (await feedOf(bobRoot, HOST_B)).some((r) => r.doc_id === post),
-            `seed(${title}): the post reached Bob`
-        );
-        const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
-            method: "POST",
-            body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+        /// The first three hops: Alice publishes, Bob shares, and the return value arrives only once
+        /// Cleo holds a fragment. Split out from `seed` so a scenario can stop the chain HERE and
+        /// change the world before the fourth hop runs (the author-dark tests below do exactly that:
+        /// the last hop has to happen with Alice's node already gone).
+        async function seedToCleo(title) {
+            const made = await (
+                await alice(`api/identity/${aliceRoot}/docs`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        title,
+                        body: `${title}: the words`,
+                        format: 'plaintext',
+                    }),
+                })
+            ).json();
+            const published = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
+                method: 'POST',
+            });
+            const pubBody = await published.text();
+            assert.equal(published.status, 200, pubBody);
+            const post = JSON.parse(pubBody).post_id;
+
+            await pullAndFold(HOST_B, aliceRoot);
+            assert.ok(
+                (await feedOf(bobRoot, HOST_B)).some((r) => r.doc_id === post),
+                `seed(${title}): the post reached Bob`,
+            );
+            const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
+                method: 'POST',
+                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+            });
+            assert.equal(bobShared.status, 200, await bobShared.text());
+
+            await shareArrives(HOST_C, bobRoot, aliceRoot);
+            assert.ok(
+                (await feedOf(cleoRoot, HOST_C)).some(
+                    (r) => r.doc_id === post && r.via_root === bobRoot,
+                ),
+                `seed(${title}): Bob's share reached Cleo as a fragment`,
+            );
+            await beat(HOST_C, 'fragment-sweep', aliceRoot);
+            await beat(HOST_C, 'body-heal', aliceRoot);
+            await beat(HOST_C, 'bodies-sweep');
+            const cleoWords = await servedBody(aliceRoot, post, HOST_C);
+            assert.ok(
+                cleoWords && cleoWords.includes(title),
+                `seed(${title}): Cleo's own node serves the words to her browser`,
+            );
+            return { post, draft: made.doc_id, version: made.version };
+        }
+
+        /// The fourth hop: Cleo shares onward, and Dana holds a fragment whose origin is Cleo.
+        async function shareOnwardToDana(post, label) {
+            const cleoShared = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
+                method: 'POST',
+                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+            });
+            assert.equal(cleoShared.status, 200, await cleoShared.text());
+
+            await shareArrives(HOST_E, cleoRoot, aliceRoot);
+            assert.ok(
+                (await feedOf(danaRoot, HOST_E)).some(
+                    (r) => r.doc_id === post && r.via_root === cleoRoot,
+                ),
+                `seed(${label}): Cleo's share reached Dana - the fourth hop`,
+            );
+            await beat(HOST_E, 'fragment-sweep', aliceRoot);
+            await beat(HOST_E, 'body-heal', aliceRoot);
+            await beat(HOST_E, 'bodies-sweep');
+            const danaWords = await servedBody(aliceRoot, post, HOST_E);
+            assert.ok(
+                danaWords && danaWords.includes(label),
+                `seed(${label}): the end device serves the words - the pipeline reaches the screen`,
+            );
+        }
+
+        /// One document, pushed through the whole chain. Every scenario starts here, with its own
+        /// document, so the scenarios cannot contaminate each other.
+        async function seed(title) {
+            const seeded = await seedToCleo(title);
+            await shareOnwardToDana(seeded.post, title);
+            return seeded;
+        }
+
+        /// Edit the draft and republish, returning the new private version for chained edits.
+        async function editAndRepublish(draft, parents, title) {
+            const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title,
+                    body: `${title}: the words`,
+                    parents: [parents],
+                    format: 'plaintext',
+                }),
+            });
+            const putBody = await put.text();
+            assert.equal(put.status, 200, putBody);
+            const version = JSON.parse(putBody).version;
+            const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, {
+                method: 'POST',
+            });
+            const repBody = await rep.text();
+            assert.equal(rep.status, 200, repBody);
+            return version;
+        }
+
+        /// One deterministic round of the tree's whole propagation machinery, A through D:
+        /// Bob pulls the author's chain and folds, then each deeper hop revalidates NOW
+        /// (the beat forces due-ness). Safe with the author dark - the pull is a bounded
+        /// no-op and the sweeps walk their fallback ladders, which is the point.
+        async function ringTheTree() {
+            await pullAndFold(HOST_B, aliceRoot);
+            await beat(HOST_C, 'fragment-sweep', aliceRoot);
+            await beat(HOST_E, 'fragment-sweep', aliceRoot);
+        }
+
+        /// The four shapes, shared verbatim between the two lanes: the asserted STATES are identical
+        /// - what differs is who answered, and each lane's describe pins that in its own before().
+        function scenarios(tag) {
+            it(`an edit reaches the fourth hop [${tag}]`, async () => {
+                const { post, draft, version } = await seed(`edit-once-${tag}`);
+                await editAndRepublish(draft, version, `edit-once-${tag}, revised`);
+
+                await ringTheTree();
+                const row = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
+                assert.ok(
+                    row && row.title.includes('revised'),
+                    'the revision travelled A->B by sync, B->C and C->D by revalidation',
+                );
+                assert.equal(row.author_root, aliceRoot, "still Alice's words");
+                assert.equal(row.via_root, cleoRoot, 'still bylined via Cleo');
+                await beat(HOST_E, 'body-heal', aliceRoot);
+                await beat(HOST_E, 'bodies-sweep');
+                const revised = await servedBody(aliceRoot, post, HOST_E);
+                assert.ok(
+                    revised && revised.includes('revised'),
+                    'and the SERVED words at the end device are the revision, not a stale blob',
+                );
+            });
+
+            it(`edits stack: the fourth hop converges on the newest [${tag}]`, async () => {
+                const { post, draft, version } = await seed(`edit-twice-${tag}`);
+                const v2 = await editAndRepublish(
+                    draft,
+                    version,
+                    `edit-twice-${tag}, second thoughts`,
+                );
+                await ringTheTree();
+                assert.ok(
+                    (await feedOf(danaRoot, HOST_E)).find(
+                        (x) => x.doc_id === post && x.title.includes('second thoughts'),
+                    ),
+                    'the first revision arrived before the second was made',
+                );
+                await editAndRepublish(draft, v2, `edit-twice-${tag}, final say`);
+
+                await ringTheTree();
+                assert.ok(
+                    (await feedOf(danaRoot, HOST_E)).find(
+                        (x) => x.doc_id === post && x.title.includes('final say'),
+                    ),
+                    'the fourth hop converges on the newest version, not whichever arrived',
+                );
+            });
+
+            it(`a delete reaches the fourth hop, and the tombstone is what carries it [${tag}]`, async () => {
+                const { post, draft } = await seed(`doomed-${tag}`);
+
+                // Deleting the DRAFT is housekeeping and must not travel: the post stands.
+                const draftGone = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(draftGone.status, 200, await draftGone.text());
+                // Ring the machinery that would wrongly carry it - stronger than any sleep.
+                await ringTheTree();
+                assert.ok(
+                    (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                    'deleting the draft left the published post standing at hop four',
+                );
+
+                // Unpublishing is the public act, and it walks the tree.
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(down.status, 200, await down.text());
+
+                await ringTheTree();
+                assert.ok(
+                    !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                    'the takedown reached the fourth hop',
+                );
+                // The mechanism, not just the outcome: C dropped the words and kept the FACT, and that
+                // memo is the only thing that can have told D - C never held Alice's chain, and with
+                // the fast lane off, D can only ever ask C.
+                assert.equal(
+                    (await fragmentsOf(aliceRoot, HOST_C)).filter((r) => r.doc_id === post).length,
+                    0,
+                    'Cleo dropped her copy',
+                );
+                const cleoTomb = (await tombstonesOf(aliceRoot, HOST_C)).filter(
+                    (r) => r.doc_id === post,
+                );
+                assert.equal(cleoTomb.length, 1, 'and kept the fact of the deletion');
+                assert.ok(
+                    cleoTomb[0].proof_bytes > 0,
+                    "and the fact is the author's own signed retraction, not Cleo's say-so",
+                );
+                assert.equal(
+                    (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                    0,
+                    'Dana dropped hers',
+                );
+                assert.equal(
+                    (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                    1,
+                    'and can answer for it to a fifth hop that does not exist yet',
+                );
+            });
+
+            it(`an edit followed by a delete lands as deleted, everywhere [${tag}]`, async () => {
+                const { post, draft, version } = await seed(`edited-then-doomed-${tag}`);
+                await editAndRepublish(draft, version, `edited-then-doomed-${tag}, revised`);
+                await ringTheTree();
+                assert.ok(
+                    (await feedOf(danaRoot, HOST_E)).find(
+                        (x) => x.doc_id === post && x.title.includes('revised'),
+                    ),
+                    'the edit landed at hop four first',
+                );
+
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(down.status, 200, await down.text());
+                await ringTheTree();
+                assert.ok(
+                    !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                    'and then the takedown overtook it',
+                );
+                assert.equal(
+                    (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                    1,
+                    'the tombstone stands at the deepest hop',
+                );
+            });
+        }
+
+        describe('through the tree alone (fast lane off)', function () {
+            // The fallback's lane, proven on purpose: a fallback never exercised has rotted by the
+            // time the author goes dark. Deletion here can only travel via C's tombstone - C never
+            // held Alice's chain, and D can only ever ask C.
+            before(() => setLane('tree'));
+            scenarios('tree');
         });
-        assert.equal(bobShared.status, 200, await bobShared.text());
 
-        await shareArrives(HOST_C, bobRoot, aliceRoot);
-        assert.ok(
-            (await feedOf(cleoRoot, HOST_C)).some(
-                (r) => r.doc_id === post && r.via_root === bobRoot
-            ),
-            `seed(${title}): Bob's share reached Cleo as a fragment`
-        );
-        await beat(HOST_C, "fragment-sweep", aliceRoot);
-        await beat(HOST_C, "body-heal", aliceRoot);
-        await beat(HOST_C, "bodies-sweep");
-        const cleoWords = await servedBody(aliceRoot, post, HOST_C);
-        assert.ok(
-            cleoWords && cleoWords.includes(title),
-            `seed(${title}): Cleo's own node serves the words to her browser`
-        );
-        return { post, draft: made.doc_id, version: made.version };
-    }
-
-    /// The fourth hop: Cleo shares onward, and Dana holds a fragment whose origin is Cleo.
-    async function shareOnwardToDana(post, label) {
-        const cleoShared = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
-            method: "POST",
-            body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+        describe("with the fast lane on (production's shape)", function () {
+            // The same four shapes, revalidating author-first. Same asserted states - Gone still
+            // entombs, edits still land - but the answers come from Alice directly, which is what
+            // every real reader does while the author is reachable.
+            before(() => setLane('fast'));
+            after(() => setLane('default'));
+            scenarios('fast');
         });
-        assert.equal(cleoShared.status, 200, await cleoShared.text());
 
-        await shareArrives(HOST_E, cleoRoot, aliceRoot);
-        assert.ok(
-            (await feedOf(danaRoot, HOST_E)).some(
-                (r) => r.doc_id === post && r.via_root === cleoRoot
-            ),
-            `seed(${label}): Cleo's share reached Dana - the fourth hop`
-        );
-        await beat(HOST_E, "fragment-sweep", aliceRoot);
-        await beat(HOST_E, "body-heal", aliceRoot);
-        await beat(HOST_E, "bodies-sweep");
-        const danaWords = await servedBody(aliceRoot, post, HOST_E);
-        assert.ok(
-            danaWords && danaWords.includes(label),
-            `seed(${label}): the end device serves the words - the pipeline reaches the screen`
-        );
-    }
-
-    /// One document, pushed through the whole chain. Every scenario starts here, with its own
-    /// document, so the scenarios cannot contaminate each other.
-    async function seed(title) {
-        const seeded = await seedToCleo(title);
-        await shareOnwardToDana(seeded.post, title);
-        return seeded;
-    }
-
-    /// Edit the draft and republish, returning the new private version for chained edits.
-    async function editAndRepublish(draft, parents, title) {
-        const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
-            method: "PUT",
-            body: JSON.stringify({ title, body: `${title}: the words`, parents: [parents], format: "plaintext" }),
-        });
-        const putBody = await put.text();
-        assert.equal(put.status, 200, putBody);
-        const version = JSON.parse(putBody).version;
-        const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, {
-            method: "POST",
-        });
-        const repBody = await rep.text();
-        assert.equal(rep.status, 200, repBody);
-        return version;
-    }
-
-    /// One deterministic round of the tree's whole propagation machinery, A through D:
-    /// Bob pulls the author's chain and folds, then each deeper hop revalidates NOW
-    /// (the beat forces due-ness). Safe with the author dark - the pull is a bounded
-    /// no-op and the sweeps walk their fallback ladders, which is the point.
-    async function ringTheTree() {
-        await pullAndFold(HOST_B, aliceRoot);
-        await beat(HOST_C, "fragment-sweep", aliceRoot);
-        await beat(HOST_E, "fragment-sweep", aliceRoot);
-    }
-
-    /// The four shapes, shared verbatim between the two lanes: the asserted STATES are identical
-    /// - what differs is who answered, and each lane's describe pins that in its own before().
-    function scenarios(tag) {
-    it(`an edit reaches the fourth hop [${tag}]`, async () => {
-        const { post, draft, version } = await seed(`edit-once-${tag}`);
-        await editAndRepublish(draft, version, `edit-once-${tag}, revised`);
-
-        await ringTheTree();
-        const row = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
-        assert.ok(
-            row && row.title.includes("revised"),
-            "the revision travelled A->B by sync, B->C and C->D by revalidation"
-        );
-        assert.equal(row.author_root, aliceRoot, "still Alice's words");
-        assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
-        await beat(HOST_E, "body-heal", aliceRoot);
-        await beat(HOST_E, "bodies-sweep");
-        const revised = await servedBody(aliceRoot, post, HOST_E);
-        assert.ok(
-            revised && revised.includes("revised"),
-            "and the SERVED words at the end device are the revision, not a stale blob"
-        );
-    });
-
-    it(`edits stack: the fourth hop converges on the newest [${tag}]`, async () => {
-        const { post, draft, version } = await seed(`edit-twice-${tag}`);
-        const v2 = await editAndRepublish(draft, version, `edit-twice-${tag}, second thoughts`);
-        await ringTheTree();
-        assert.ok(
-            (await feedOf(danaRoot, HOST_E)).find(
-                (x) => x.doc_id === post && x.title.includes("second thoughts")
-            ),
-            "the first revision arrived before the second was made"
-        );
-        await editAndRepublish(draft, v2, `edit-twice-${tag}, final say`);
-
-        await ringTheTree();
-        assert.ok(
-            (await feedOf(danaRoot, HOST_E)).find(
-                (x) => x.doc_id === post && x.title.includes("final say")
-            ),
-            "the fourth hop converges on the newest version, not whichever arrived"
-        );
-    });
-
-    it(`a delete reaches the fourth hop, and the tombstone is what carries it [${tag}]`, async () => {
-        const { post, draft } = await seed(`doomed-${tag}`);
-
-        // Deleting the DRAFT is housekeeping and must not travel: the post stands.
-        const draftGone = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
-            method: "DELETE",
-        });
-        assert.equal(draftGone.status, 200, await draftGone.text());
-        // Ring the machinery that would wrongly carry it - stronger than any sleep.
-        await ringTheTree();
-        assert.ok(
-            (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
-            "deleting the draft left the published post standing at hop four"
-        );
-
-        // Unpublishing is the public act, and it walks the tree.
-        const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
-        assert.equal(down.status, 200, await down.text());
-
-        await ringTheTree();
-        assert.ok(
-            !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
-            "the takedown reached the fourth hop"
-        );
-        // The mechanism, not just the outcome: C dropped the words and kept the FACT, and that
-        // memo is the only thing that can have told D - C never held Alice's chain, and with
-        // the fast lane off, D can only ever ask C.
-        assert.equal(
-            (await fragmentsOf(aliceRoot, HOST_C)).filter((r) => r.doc_id === post).length,
-            0,
-            "Cleo dropped her copy"
-        );
-        const cleoTomb = (await tombstonesOf(aliceRoot, HOST_C)).filter((r) => r.doc_id === post);
-        assert.equal(cleoTomb.length, 1, "and kept the fact of the deletion");
-        assert.ok(
-            cleoTomb[0].proof_bytes > 0,
-            "and the fact is the author's own signed retraction, not Cleo's say-so"
-        );
-        assert.equal(
-            (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-            0,
-            "Dana dropped hers"
-        );
-        assert.equal(
-            (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-            1,
-            "and can answer for it to a fifth hop that does not exist yet"
-        );
-    });
-
-    it(`an edit followed by a delete lands as deleted, everywhere [${tag}]`, async () => {
-        const { post, draft, version } = await seed(`edited-then-doomed-${tag}`);
-        await editAndRepublish(draft, version, `edited-then-doomed-${tag}, revised`);
-        await ringTheTree();
-        assert.ok(
-            (await feedOf(danaRoot, HOST_E)).find(
-                (x) => x.doc_id === post && x.title.includes("revised")
-            ),
-            "the edit landed at hop four first"
-        );
-
-        const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
-        assert.equal(down.status, 200, await down.text());
-        await ringTheTree();
-        assert.ok(
-            !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
-            "and then the takedown overtook it"
-        );
-        assert.equal(
-            (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-            1,
-            "the tombstone stands at the deepest hop"
-        );
-    });
-    }
-
-    describe("through the tree alone (fast lane off)", function () {
-        // The fallback's lane, proven on purpose: a fallback never exercised has rotted by the
-        // time the author goes dark. Deletion here can only travel via C's tombstone - C never
-        // held Alice's chain, and D can only ever ask C.
-        before(() => setLane("tree"));
-        scenarios("tree");
-    });
-
-    describe("with the fast lane on (production's shape)", function () {
-        // The same four shapes, revalidating author-first. Same asserted states - Gone still
-        // entombs, edits still land - but the answers come from Alice directly, which is what
-        // every real reader does while the author is reachable.
-        before(() => setLane("fast"));
-        after(() => setLane("default"));
-        scenarios("fast");
-    });
-
-    /*
+        /*
         The author actually goes away.
 
         The two lanes above are policy: `tree` asks the tree because it was TOLD to, which proves
@@ -417,163 +441,190 @@ async function setLane(mode) {
         and her node then goes fully dark before the deepest hop. What is asserted after that point
         happened with the author's node answering nobody, about anything.
     */
-    describe("with the author's node dark (the fallback's real case)", function () {
-        before(() => setLane("fast"));
-        after(() => setLane("default"));
+        describe("with the author's node dark (the fallback's real case)", function () {
+            before(() => setLane('fast'));
+            after(() => setLane('default'));
 
-        // Belt; `roothooks.cjs` is the braces. A test that dies mid-partition must not leave alpha
-        // dark for the rest of the suite.
-        afterEach(() => plugIn(HOST));
+            // Belt; `roothooks.cjs` is the braces. A test that dies mid-partition must not leave alpha
+            // dark for the rest of the suite.
+            afterEach(() => plugIn(HOST));
 
-        it("a share is served onward while the author is dark", async () => {
-            // The plainest form of the claim: a reader who has NEVER held this document gets a
-            // complete, verified copy of it at a moment when its author is unreachable. Nothing
-            // here is preserved-by-inertia - the fragment Dana ends up with did not exist when
-            // Alice went dark, so the chain did not merely keep its copies, it served a new one.
-            const { post } = await seedToCleo("dark-serve");
+            it('a share is served onward while the author is dark', async () => {
+                // The plainest form of the claim: a reader who has NEVER held this document gets a
+                // complete, verified copy of it at a moment when its author is unreachable. Nothing
+                // here is preserved-by-inertia - the fragment Dana ends up with did not exist when
+                // Alice went dark, so the chain did not merely keep its copies, it served a new one.
+                const { post } = await seedToCleo('dark-serve');
 
-            await unplug(HOST);
-            await shareOnwardToDana(post, "dark-serve");
+                await unplug(HOST);
+                await shareOnwardToDana(post, 'dark-serve');
 
-            const row = (await feedOf(danaRoot, HOST_E)).find((r) => r.doc_id === post);
-            assert.ok(row, "the fourth hop landed with the author's node dark");
-            assert.equal(row.author_root, aliceRoot, "still credited to Alice, who never answered");
-            assert.equal(row.via_root, cleoRoot, "and bylined via the node that actually served it");
-
-            // The words themselves, not just a feed row pointing at them: Dana holds the author's
-            // own signed entry, verified against a delegation path that travelled with it.
-            const held = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
-            assert.ok(held, "Dana holds the fragment itself");
-            assert.equal(held.title, "dark-serve", "with the author's title intact");
-            // And her BROWSER can read them, from her own node, with the author dark: the
-            // whole point of holding a copy is that the screen shows it when nobody answers.
-            await beat(HOST_E, "body-heal", aliceRoot);
-            await beat(HOST_E, "bodies-sweep");
-            const darkWords = await servedBody(aliceRoot, post, HOST_E);
-            assert.ok(
-                darkWords && darkWords.includes("dark-serve"),
-                "the words are served to the end device while the author is unreachable"
-            );
-            assert.equal(
-                (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-                0,
-                "an author who cannot be reached has not deleted anything"
-            );
-        });
-
-        it("an unreachable author is not a deleted one", async () => {
-            // The safety property the whole design rests on, and the one whose failure would be a
-            // catastrophe rather than a bug: if a failed revalidation were read as a takedown,
-            // closing your laptop would erase your work from everyone who shared it. Silence
-            // preserves, speech deletes (fragments::sweep).
-            const { post } = await seed("dark-survives");
-            const before = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
-            assert.ok(before, "precondition: Dana holds it");
-
-            await unplug(HOST);
-            // Forced revalidation rounds at both hops: each beat provably asks, provably gets
-            // silence, and provably must not read it as a takedown - stronger than the wall
-            // clock ever was, because every chance to get it wrong is guaranteed to run.
-            for (let i = 0; i < 4; i++) {
-                await beat(HOST_C, "fragment-sweep", aliceRoot);
-                await beat(HOST_E, "fragment-sweep", aliceRoot);
-            }
-
-            const after = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
-            assert.ok(after, "Dana still holds the fragment after the author stopped answering");
-            assert.equal(after.version, before.version, "and it is the same version, not a refetch");
-            assert.ok(
-                (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
-                "and it is still in her feed"
-            );
-            for (const [who, host] of [["Cleo", HOST_C], ["Dana", HOST_E]]) {
+                const row = (await feedOf(danaRoot, HOST_E)).find((r) => r.doc_id === post);
+                assert.ok(row, "the fourth hop landed with the author's node dark");
                 assert.equal(
-                    (await tombstonesOf(aliceRoot, host)).filter((r) => r.doc_id === post).length,
-                    0,
-                    `${who} did not entomb a post whose author merely went offline`
+                    row.author_root,
+                    aliceRoot,
+                    'still credited to Alice, who never answered',
                 );
-            }
+                assert.equal(
+                    row.via_root,
+                    cleoRoot,
+                    'and bylined via the node that actually served it',
+                );
+
+                // The words themselves, not just a feed row pointing at them: Dana holds the author's
+                // own signed entry, verified against a delegation path that travelled with it.
+                const held = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
+                assert.ok(held, 'Dana holds the fragment itself');
+                assert.equal(held.title, 'dark-serve', "with the author's title intact");
+                // And her BROWSER can read them, from her own node, with the author dark: the
+                // whole point of holding a copy is that the screen shows it when nobody answers.
+                await beat(HOST_E, 'body-heal', aliceRoot);
+                await beat(HOST_E, 'bodies-sweep');
+                const darkWords = await servedBody(aliceRoot, post, HOST_E);
+                assert.ok(
+                    darkWords && darkWords.includes('dark-serve'),
+                    'the words are served to the end device while the author is unreachable',
+                );
+                assert.equal(
+                    (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                    0,
+                    'an author who cannot be reached has not deleted anything',
+                );
+            });
+
+            it('an unreachable author is not a deleted one', async () => {
+                // The safety property the whole design rests on, and the one whose failure would be a
+                // catastrophe rather than a bug: if a failed revalidation were read as a takedown,
+                // closing your laptop would erase your work from everyone who shared it. Silence
+                // preserves, speech deletes (fragments::sweep).
+                const { post } = await seed('dark-survives');
+                const before = (await fragmentsOf(aliceRoot, HOST_E)).find(
+                    (r) => r.doc_id === post,
+                );
+                assert.ok(before, 'precondition: Dana holds it');
+
+                await unplug(HOST);
+                // Forced revalidation rounds at both hops: each beat provably asks, provably gets
+                // silence, and provably must not read it as a takedown - stronger than the wall
+                // clock ever was, because every chance to get it wrong is guaranteed to run.
+                for (let i = 0; i < 4; i++) {
+                    await beat(HOST_C, 'fragment-sweep', aliceRoot);
+                    await beat(HOST_E, 'fragment-sweep', aliceRoot);
+                }
+
+                const after = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
+                assert.ok(
+                    after,
+                    'Dana still holds the fragment after the author stopped answering',
+                );
+                assert.equal(
+                    after.version,
+                    before.version,
+                    'and it is the same version, not a refetch',
+                );
+                assert.ok(
+                    (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                    'and it is still in her feed',
+                );
+                for (const [who, host] of [
+                    ['Cleo', HOST_C],
+                    ['Dana', HOST_E],
+                ]) {
+                    assert.equal(
+                        (await tombstonesOf(aliceRoot, host)).filter((r) => r.doc_id === post)
+                            .length,
+                        0,
+                        `${who} did not entomb a post whose author merely went offline`,
+                    );
+                }
+            });
+
+            it('an edit reaches the fourth hop after the author goes dark', async () => {
+                const { post, draft, version } = await seed('dark-edit');
+
+                // Phase one: Alice can still sync her chain to Bob, but answers no fragment asks - so
+                // anything Cleo or Dana learn from here on came through the tree.
+                await unplug(HOST, { alpns: ['fragment'] });
+                await editAndRepublish(draft, version, 'dark-edit, revised');
+
+                await pullAndFold(HOST_B, aliceRoot);
+                await beat(HOST_C, 'fragment-sweep', aliceRoot);
+                assert.ok(
+                    (await feedOf(cleoRoot, HOST_C)).find(
+                        (x) => x.doc_id === post && x.title.includes('revised'),
+                    ),
+                    'the revision crossed A->B by chain sync and B->C by revalidation, not from Alice',
+                );
+
+                // Phase two: the author's node is gone entirely. The last hop is on its own.
+                await unplug(HOST);
+                await beat(HOST_E, 'fragment-sweep', aliceRoot);
+                const row = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
+                assert.ok(
+                    row && row.title.includes('revised'),
+                    "the revision reached the fourth hop with the author's node dark",
+                );
+                assert.equal(row.author_root, aliceRoot, "still Alice's words");
+                assert.equal(row.via_root, cleoRoot, 'still bylined via Cleo');
+                assert.equal(
+                    (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post).title,
+                    'dark-edit, revised',
+                    "and Dana's stored copy is the new one, not just her feed row's title",
+                );
+            });
+
+            it('a takedown reaches the fourth hop after the author goes dark', async () => {
+                // The hardest direction, and the one an author most needs to work: a retraction has to
+                // outrun its own author's disappearance. Bob holds Alice's chain and so can say `Gone`
+                // on her behalf; Cleo, who holds no chain at all, can only pass on the TOMBSTONE - and
+                // that memo is the sole thing Dana can ever hear it from once Alice is unreachable.
+                const { post } = await seed('dark-delete');
+
+                await unplug(HOST, { alpns: ['fragment'] });
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(down.status, 200, await down.text());
+
+                await pullAndFold(HOST_B, aliceRoot);
+                await beat(HOST_C, 'fragment-sweep', aliceRoot);
+                assert.ok(
+                    !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post) &&
+                        (await tombstonesOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
+                    "Cleo heard `Gone` from Bob, who holds the author's chain - and kept the fact",
+                );
+
+                await unplug(HOST);
+                await beat(HOST_E, 'fragment-sweep', aliceRoot);
+                assert.ok(
+                    !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                    "the takedown reached the fourth hop with the author's node dark",
+                );
+                assert.equal(
+                    (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                    0,
+                    'Dana dropped the words',
+                );
+                const danaTomb = (await tombstonesOf(aliceRoot, HOST_E)).filter(
+                    (r) => r.doc_id === post,
+                );
+                assert.equal(
+                    danaTomb.length,
+                    1,
+                    'and kept the fact, so a fifth hop could still be told',
+                );
+                // The strongest form of the whole slice's claim: Dana's proof arrived through Cleo,
+                // a node that never held Alice's chain - the author's signature crossed a relay that
+                // could not have minted it, while the author was unreachable.
+                assert.ok(
+                    danaTomb[0].proof_bytes > 0,
+                    "and the fact at the deepest hop is the author's signed word, relayed intact",
+                );
+            });
         });
 
-        it("an edit reaches the fourth hop after the author goes dark", async () => {
-            const { post, draft, version } = await seed("dark-edit");
-
-            // Phase one: Alice can still sync her chain to Bob, but answers no fragment asks - so
-            // anything Cleo or Dana learn from here on came through the tree.
-            await unplug(HOST, { alpns: ["fragment"] });
-            await editAndRepublish(draft, version, "dark-edit, revised");
-
-            await pullAndFold(HOST_B, aliceRoot);
-            await beat(HOST_C, "fragment-sweep", aliceRoot);
-            assert.ok(
-                (await feedOf(cleoRoot, HOST_C)).find(
-                    (x) => x.doc_id === post && x.title.includes("revised")
-                ),
-                "the revision crossed A->B by chain sync and B->C by revalidation, not from Alice"
-            );
-
-            // Phase two: the author's node is gone entirely. The last hop is on its own.
-            await unplug(HOST);
-            await beat(HOST_E, "fragment-sweep", aliceRoot);
-            const row = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
-            assert.ok(
-                row && row.title.includes("revised"),
-                "the revision reached the fourth hop with the author's node dark"
-            );
-            assert.equal(row.author_root, aliceRoot, "still Alice's words");
-            assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
-            assert.equal(
-                (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post).title,
-                "dark-edit, revised",
-                "and Dana's stored copy is the new one, not just her feed row's title"
-            );
-        });
-
-        it("a takedown reaches the fourth hop after the author goes dark", async () => {
-            // The hardest direction, and the one an author most needs to work: a retraction has to
-            // outrun its own author's disappearance. Bob holds Alice's chain and so can say `Gone`
-            // on her behalf; Cleo, who holds no chain at all, can only pass on the TOMBSTONE - and
-            // that memo is the sole thing Dana can ever hear it from once Alice is unreachable.
-            const { post } = await seed("dark-delete");
-
-            await unplug(HOST, { alpns: ["fragment"] });
-            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
-            assert.equal(down.status, 200, await down.text());
-
-            await pullAndFold(HOST_B, aliceRoot);
-            await beat(HOST_C, "fragment-sweep", aliceRoot);
-            assert.ok(
-                !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post) &&
-                    (await tombstonesOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
-                "Cleo heard `Gone` from Bob, who holds the author's chain - and kept the fact"
-            );
-
-            await unplug(HOST);
-            await beat(HOST_E, "fragment-sweep", aliceRoot);
-            assert.ok(
-                !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
-                "the takedown reached the fourth hop with the author's node dark"
-            );
-            assert.equal(
-                (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-                0,
-                "Dana dropped the words"
-            );
-            const danaTomb = (await tombstonesOf(aliceRoot, HOST_E)).filter(
-                (r) => r.doc_id === post
-            );
-            assert.equal(danaTomb.length, 1, "and kept the fact, so a fifth hop could still be told");
-            // The strongest form of the whole slice's claim: Dana's proof arrived through Cleo,
-            // a node that never held Alice's chain - the author's signature crossed a relay that
-            // could not have minted it, while the author was unreachable.
-            assert.ok(
-                danaTomb[0].proof_bytes > 0,
-                "and the fact at the deepest hop is the author's signed word, relayed intact"
-            );
-        });
-    });
-
-    /*
+        /*
         The delete travelling forward is only half of "speech deletes". The other half is that it
         has to STAY deleted at a node that already heard it - and every test above walks the
         cascade in one direction, through a network where everyone hears in order.
@@ -583,85 +634,87 @@ async function setLane(mode) {
         reader who has already buried the thing. The reader's tombstone is the only thing in the
         system that knows better.
     */
-    describe("a document that was buried stays buried", function () {
-        before(() => setLane("fast"));
-        after(() => setLane("default"));
+        describe('a document that was buried stays buried', function () {
+            before(() => setLane('fast'));
+            after(() => setLane('default'));
 
-        // Two nodes get partitioned here, so both come back. Belt; roothooks is the braces.
-        afterEach(async () => {
-            await plugIn(HOST);
-            await plugIn(HOST_C);
-        });
-
-        it("a stale sharer cannot resurrect a document its reader has entombed", async () => {
-            const { post } = await seed("revenant");
-
-            // The stale sharer, modelled precisely: Cleo's OUTBOUND fragment door shuts, so no
-            // revalidation can ever tell her the post died - "silence preserves" keeps her copy
-            // exactly as it should. Her inbound door stays open, so she will still hand it to
-            // anyone who asks. That asymmetry is the whole population this test is about, and it
-            // is why the gate takes a direction.
-            await unplug(HOST_C, { alpns: ["fragment"], direction: "outbound" });
-
-            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
-            assert.equal(down.status, 200, await down.text());
-
-            await pullAndFold(HOST_B, aliceRoot);
-            await beat(HOST_E, "fragment-sweep", aliceRoot);
-            assert.ok(
-                !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post) &&
-                    (await tombstonesOf(aliceRoot, HOST_E)).some((r) => r.doc_id === post),
-                "Dana heard the takedown and buried it"
-            );
-
-            // The precondition that makes the rest mean anything: Cleo genuinely never heard.
-            assert.ok(
-                (await fragmentsOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
-                "precondition: the stale sharer still holds the words she was never told about"
-            );
-
-            // And now the author cannot speak either. Without this, Dana's next sweep would ask
-            // Alice, hear `Gone` a second time and quietly re-bury it - so the test would pass on
-            // the author's availability rather than on Dana's memory, which is the opposite of
-            // what it claims. From here, Dana's tombstone is the only thing standing.
-            await unplug(HOST, { alpns: ["fragment"] });
-
-            const again = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
-                method: "POST",
-                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+            // Two nodes get partitioned here, so both come back. Belt; roothooks is the braces.
+            afterEach(async () => {
+                await plugIn(HOST);
+                await plugIn(HOST_C);
             });
-            assert.equal(again.status, 200, await again.text());
 
-            // Ring every road the corpse could ride back in: the share fold from Cleo's
-            // chain, the fragment machinery, and the journal fill - each provably ran, and
-            // each provably had to lose the argument with the tombstone.
-            await shareArrives(HOST_E, cleoRoot, aliceRoot);
-            await beat(HOST_E, "journal-fill");
+            it('a stale sharer cannot resurrect a document its reader has entombed', async () => {
+                const { post } = await seed('revenant');
 
-            // All three facts in one assertion, on purpose: they fail in different combinations
-            // and the combination is the diagnosis. A fragment back WITHOUT the feed row means
-            // Dana is silently serving a corpse to a fifth hop; the feed row back as well means
-            // a deleted post is on a reader's screen. Asserting them one at a time would report
-            // whichever came first and hide the rest.
-            assert.deepEqual(
-                {
-                    knows_it_is_dead:
-                        (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post)
-                            .length === 1,
-                    took_the_words_back:
-                        (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post)
-                            .length > 0,
-                    back_in_her_feed: (await feedOf(danaRoot, HOST_E)).some(
-                        (r) => r.doc_id === post
-                    ),
-                },
-                { knows_it_is_dead: true, took_the_words_back: false, back_in_her_feed: false },
-                "a tombstone must outrank a sharer who never heard about the deletion"
-            );
+                // The stale sharer, modelled precisely: Cleo's OUTBOUND fragment door shuts, so no
+                // revalidation can ever tell her the post died - "silence preserves" keeps her copy
+                // exactly as it should. Her inbound door stays open, so she will still hand it to
+                // anyone who asks. That asymmetry is the whole population this test is about, and it
+                // is why the gate takes a direction.
+                await unplug(HOST_C, { alpns: ['fragment'], direction: 'outbound' });
+
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(down.status, 200, await down.text());
+
+                await pullAndFold(HOST_B, aliceRoot);
+                await beat(HOST_E, 'fragment-sweep', aliceRoot);
+                assert.ok(
+                    !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post) &&
+                        (await tombstonesOf(aliceRoot, HOST_E)).some((r) => r.doc_id === post),
+                    'Dana heard the takedown and buried it',
+                );
+
+                // The precondition that makes the rest mean anything: Cleo genuinely never heard.
+                assert.ok(
+                    (await fragmentsOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
+                    'precondition: the stale sharer still holds the words she was never told about',
+                );
+
+                // And now the author cannot speak either. Without this, Dana's next sweep would ask
+                // Alice, hear `Gone` a second time and quietly re-bury it - so the test would pass on
+                // the author's availability rather than on Dana's memory, which is the opposite of
+                // what it claims. From here, Dana's tombstone is the only thing standing.
+                await unplug(HOST, { alpns: ['fragment'] });
+
+                const again = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
+                    method: 'POST',
+                    body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+                });
+                assert.equal(again.status, 200, await again.text());
+
+                // Ring every road the corpse could ride back in: the share fold from Cleo's
+                // chain, the fragment machinery, and the journal fill - each provably ran, and
+                // each provably had to lose the argument with the tombstone.
+                await shareArrives(HOST_E, cleoRoot, aliceRoot);
+                await beat(HOST_E, 'journal-fill');
+
+                // All three facts in one assertion, on purpose: they fail in different combinations
+                // and the combination is the diagnosis. A fragment back WITHOUT the feed row means
+                // Dana is silently serving a corpse to a fifth hop; the feed row back as well means
+                // a deleted post is on a reader's screen. Asserting them one at a time would report
+                // whichever came first and hide the rest.
+                assert.deepEqual(
+                    {
+                        knows_it_is_dead:
+                            (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post)
+                                .length === 1,
+                        took_the_words_back:
+                            (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post)
+                                .length > 0,
+                        back_in_her_feed: (await feedOf(danaRoot, HOST_E)).some(
+                            (r) => r.doc_id === post,
+                        ),
+                    },
+                    { knows_it_is_dead: true, took_the_words_back: false, back_in_her_feed: false },
+                    'a tombstone must outrank a sharer who never heard about the deletion',
+                );
+            });
         });
-    });
 
-    /*
+        /*
         The retraction cursor: "what died since N?" asked of a peer, answered with a page of
         signed proofs. The per-document sweep revalidates one dial at a time behind a politeness
         cap, so deletion latency used to grow linearly with the shelf; the cursor covers a peer's
@@ -669,155 +722,158 @@ async function setLane(mode) {
         (`/test/revalidation` mode "none") before killing anything - so whatever arrives
         afterwards provably came by the batch, not the queue.
     */
-    describe("the death cursor: one ask covers the shelf", function () {
-        const setLaneOn = async (host, mode) => {
-            const res = await makeFetch(host)("test/revalidation", {
-                method: "POST",
-                body: JSON.stringify({ mode }),
+        describe('the death cursor: one ask covers the shelf', function () {
+            const setLaneOn = async (host, mode) => {
+                const res = await makeFetch(host)('test/revalidation', {
+                    method: 'POST',
+                    body: JSON.stringify({ mode }),
+                });
+                assert.equal(res.status, 200, `setting revalidation mode on ${host}`);
+            };
+            const reapOn = async (host) => {
+                const res = await makeFetch(host)('test/reap', { method: 'POST' });
+                assert.equal(res.status, 200, `ringing the reap on ${host}`);
+            };
+
+            afterEach(async () => {
+                await setLaneOn(HOST_C, 'default');
+                await setLaneOn(HOST_E, 'default');
+                await plugIn(HOST);
             });
-            assert.equal(res.status, 200, `setting revalidation mode on ${host}`);
-        };
-        const reapOn = async (host) => {
-            const res = await makeFetch(host)("test/reap", { method: "POST" });
-            assert.equal(res.status, 200, `ringing the reap on ${host}`);
-        };
 
-        afterEach(async () => {
-            await setLaneOn(HOST_C, "default");
-            await setLaneOn(HOST_E, "default");
-            await plugIn(HOST);
-        });
+            it('three deletions arrive by the batch, not by the queue', async () => {
+                const seeded = [];
+                for (const title of ['reaped-one', 'reaped-two', 'reaped-three']) {
+                    seeded.push((await seedToCleo(title)).post);
+                }
 
-        it("three deletions arrive by the batch, not by the queue", async () => {
-            const seeded = [];
-            for (const title of ["reaped-one", "reaped-two", "reaped-three"]) {
-                seeded.push((await seedToCleo(title)).post);
-            }
+                // Park Cleo's per-document revalidation BEFORE anything dies: from here, her only
+                // road to a deletion is the cursor.
+                await setLaneOn(HOST_C, 'none');
+                for (const post of seeded) {
+                    const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                        method: 'DELETE',
+                    });
+                    assert.equal(down.status, 200, await down.text());
+                }
 
-            // Park Cleo's per-document revalidation BEFORE anything dies: from here, her only
-            // road to a deletion is the cursor.
-            await setLaneOn(HOST_C, "none");
-            for (const post of seeded) {
+                // Bob holds Alice's chain, so his death log grows by the fold's mirror - the rows
+                // Cleo's one ask will read.
+                await pullAndFold(HOST_B, aliceRoot);
+                {
+                    const rows = await tombstonesOf(aliceRoot, HOST_B);
+                    assert.ok(
+                        seeded.every((p) => rows.some((r) => r.doc_id === p)),
+                        "Bob's log carries all three deaths, proofs attached",
+                    );
+                }
+
+                await reapOn(HOST_C);
+                const tombs = (await tombstonesOf(aliceRoot, HOST_C)).filter((r) =>
+                    seeded.includes(r.doc_id),
+                );
+                assert.equal(
+                    tombs.length,
+                    3,
+                    'one ask buried all three - no per-document dials ran',
+                );
+                assert.ok(
+                    tombs.every((r) => r.proof_bytes > 0),
+                    "each with the author's signed word for it",
+                );
+                for (const post of seeded) {
+                    assert.ok(
+                        !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post),
+                        'and the feed rows went with them',
+                    );
+                }
+            });
+
+            it('a death you never held is not your funeral', async () => {
+                // Cleo holds something of Alice's via Bob, so Bob is a peer her reap will ask.
+                await seedToCleo('reap-bystander');
+
+                // A post that reaches Bob's feed but is never SHARED - Cleo never holds it.
+                const made = await (
+                    await alice(`api/identity/${aliceRoot}/docs`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            title: 'unshared',
+                            body: 'unshared: the words',
+                            format: 'plaintext',
+                        }),
+                    })
+                ).json();
+                const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
+                    method: 'POST',
+                });
+                const post = JSON.parse(await pub.text()).post_id;
                 const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
-                    method: "DELETE",
+                    method: 'DELETE',
                 });
                 assert.equal(down.status, 200, await down.text());
-            }
 
-            // Bob holds Alice's chain, so his death log grows by the fold's mirror - the rows
-            // Cleo's one ask will read.
-            await pullAndFold(HOST_B, aliceRoot);
-            {
-                const rows = await tombstonesOf(aliceRoot, HOST_B);
+                await pullAndFold(HOST_B, aliceRoot);
                 assert.ok(
-                    seeded.every((p) => rows.some((r) => r.doc_id === p)),
-                    "Bob's log carries all three deaths, proofs attached"
+                    (await tombstonesOf(aliceRoot, HOST_B)).some((r) => r.doc_id === post),
+                    "Bob's log carries the death",
                 );
-            }
 
-            await reapOn(HOST_C);
-            const tombs = (await tombstonesOf(aliceRoot, HOST_C)).filter((r) =>
-                seeded.includes(r.doc_id)
-            );
-            assert.equal(tombs.length, 3, "one ask buried all three - no per-document dials ran");
-            assert.ok(
-                tombs.every((r) => r.proof_bytes > 0),
-                "each with the author's signed word for it"
-            );
-            for (const post of seeded) {
+                await reapOn(HOST_C);
+                // The reap consumed Bob's log - the cursor moved - and still kept nothing: a log
+                // names every death its keeper heard, and burying them all would grow the
+                // forever-set with every deletion anyone ever relayed, about documents never held.
+                const { rows: cursors } = await sql(
+                    `SELECT cursor FROM death_cursors WHERE origin_root = '${bobRoot}'`,
+                    HOST_C,
+                );
                 assert.ok(
-                    !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post),
-                    "and the feed rows went with them"
+                    cursors.length === 1 && cursors[0].cursor > 0,
+                    'the cursor advanced past it',
                 );
-            }
+                assert.ok(
+                    !(await tombstonesOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
+                    'no tombstone grew for a document Cleo never carried',
+                );
+            });
+
+            it('the fourth hop hears the batch, with the author dark', async () => {
+                const { post } = await seed('reap-depth');
+
+                await setLaneOn(HOST_C, 'none');
+                await setLaneOn(HOST_E, 'none');
+                // Her fragment door first - every arrival after this is provably second-hand -
+                // then the takedown, then full darkness before the deep hops move.
+                await unplug(HOST, { alpns: ['fragment'] });
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(down.status, 200, await down.text());
+                await pullAndFold(HOST_B, aliceRoot);
+                assert.ok(
+                    (await tombstonesOf(aliceRoot, HOST_B)).some((r) => r.doc_id === post),
+                    "Bob's log carries the death",
+                );
+                await unplug(HOST);
+
+                await reapOn(HOST_C); // Cleo reads Bob's log
+                await reapOn(HOST_E); // Dana reads Cleo's - rows Cleo just buried, proofs relayed
+                const danaTomb = (await tombstonesOf(aliceRoot, HOST_E)).filter(
+                    (r) => r.doc_id === post,
+                );
+                assert.equal(danaTomb.length, 1, 'two asks walked the death to the fourth hop');
+                assert.ok(
+                    danaTomb[0].proof_bytes > 0,
+                    "with the unreachable author's own signature intact at the deepest hop",
+                );
+                assert.ok(
+                    !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                    "and out of Dana's feed",
+                );
+            });
         });
 
-        it("a death you never held is not your funeral", async () => {
-            // Cleo holds something of Alice's via Bob, so Bob is a peer her reap will ask.
-            await seedToCleo("reap-bystander");
-
-            // A post that reaches Bob's feed but is never SHARED - Cleo never holds it.
-            const made = await (
-                await alice(`api/identity/${aliceRoot}/docs`, {
-                    method: "POST",
-                    body: JSON.stringify({
-                        title: "unshared",
-                        body: "unshared: the words",
-                        format: "plaintext",
-                    }),
-                })
-            ).json();
-            const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
-                method: "POST",
-            });
-            const post = JSON.parse(await pub.text()).post_id;
-            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
-                method: "DELETE",
-            });
-            assert.equal(down.status, 200, await down.text());
-
-            await pullAndFold(HOST_B, aliceRoot);
-            assert.ok(
-                (await tombstonesOf(aliceRoot, HOST_B)).some((r) => r.doc_id === post),
-                "Bob's log carries the death"
-            );
-
-            await reapOn(HOST_C);
-            // The reap consumed Bob's log - the cursor moved - and still kept nothing: a log
-            // names every death its keeper heard, and burying them all would grow the
-            // forever-set with every deletion anyone ever relayed, about documents never held.
-            const { rows: cursors } = await sql(
-                `SELECT cursor FROM death_cursors WHERE origin_root = '${bobRoot}'`,
-                HOST_C
-            );
-            assert.ok(
-                cursors.length === 1 && cursors[0].cursor > 0,
-                "the cursor advanced past it"
-            );
-            assert.ok(
-                !(await tombstonesOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
-                "no tombstone grew for a document Cleo never carried"
-            );
-        });
-
-        it("the fourth hop hears the batch, with the author dark", async () => {
-            const { post } = await seed("reap-depth");
-
-            await setLaneOn(HOST_C, "none");
-            await setLaneOn(HOST_E, "none");
-            // Her fragment door first - every arrival after this is provably second-hand -
-            // then the takedown, then full darkness before the deep hops move.
-            await unplug(HOST, { alpns: ["fragment"] });
-            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
-                method: "DELETE",
-            });
-            assert.equal(down.status, 200, await down.text());
-            await pullAndFold(HOST_B, aliceRoot);
-            assert.ok(
-                (await tombstonesOf(aliceRoot, HOST_B)).some((r) => r.doc_id === post),
-                "Bob's log carries the death"
-            );
-            await unplug(HOST);
-
-            await reapOn(HOST_C); // Cleo reads Bob's log
-            await reapOn(HOST_E); // Dana reads Cleo's - rows Cleo just buried, proofs relayed
-            const danaTomb = (await tombstonesOf(aliceRoot, HOST_E)).filter(
-                (r) => r.doc_id === post
-            );
-            assert.equal(danaTomb.length, 1, "two asks walked the death to the fourth hop");
-            assert.ok(
-                danaTomb[0].proof_bytes > 0,
-                "with the unreachable author's own signature intact at the deepest hop"
-            );
-            assert.ok(
-                !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
-                "and out of Dana's feed"
-            );
-        });
-
-    });
-
-    /*
+        /*
         The implicit rebroadcast: a share covers the post AS SEEN - one pointer, one budget,
         one renderable whole. The post's signed header names what it embeds (`refs`), so a
         post fragment's arrival obliges the media too, from the same origin, and a post
@@ -825,248 +881,290 @@ async function setLane(mode) {
         through ingest, the bake minting the public twin, the twin riding the tree, and the
         reader's BROWSER getting the image from the reader's own node.
     */
-    describe("the image rides the share", function () {
-        const fs = require("node:fs");
-        const path = require("node:path");
-        const webp = fs.readFileSync(
-            path.join(__dirname, "..", "..", "..", "sample_media", "its_webp.webp")
-        );
-
-        it("a shared post's image travels, serves, and dies with it", async function () {
-            // 1. A real image through the ingest door, waited to readiness.
-            const up = await alice(
-                `api/identity/${aliceRoot}/docs/binary?title=cat&parents=`,
-                { method: "POST", body: webp }
-            );
-            const upText = await up.text();
-            // 200 or 202: the door answers with the doc id while the transcode runs, and the
-            // poll below is what waits for readiness either way.
-            assert.ok(up.status === 200 || up.status === 202, upText);
-            const mediaId = JSON.parse(upText).doc_id;
-            assert.ok(mediaId, upText);
-            assert.ok(
-                await settle(async () => {
-                    const r = await alice(`api/identity/${aliceRoot}/docs/${mediaId}`);
-                    return r.status === 200 ? true : null;
-                }),
-                "the upload transcoded and the private media doc exists"
+        describe('the image rides the share', function () {
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const webp = fs.readFileSync(
+                path.join(__dirname, '..', '..', '..', 'sample_media', 'its_webp.webp'),
             );
 
-            // 2. A note embedding it, published - the bake mints the public twin and the
-            //    signed header's refs name it.
-            const made = await (
-                await alice(`api/identity/${aliceRoot}/docs`, {
-                    method: "POST",
-                    body: JSON.stringify({
-                        title: "cat post",
-                        body: `behold:\n\n![cat](/api/identity/${aliceRoot}/docs/${mediaId}/body/cat.webp)\n`,
-                        format: "marquee",
-                    }),
-                })
-            ).json();
-            const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
-                method: "POST",
-            });
-            const pubText = await pub.text();
-            assert.equal(pub.status, 200, pubText);
-            const post = JSON.parse(pubText).post_id;
-            assert.ok(post, `the private twin bakes inline: ${pubText}`);
-
-            // 3. Bob shares; the post reaches Cleo as a fragment, words servable (the
-            //    established claims), and the SERVED body names the public twin.
-            await pullAndFold(HOST_B, aliceRoot);
-            assert.ok(
-                (await feedOf(bobRoot, HOST_B)).some((r) => r.doc_id === post),
-                "the post reached Bob"
-            );
-            const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
-                method: "POST",
-                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
-            });
-            assert.equal(bobShared.status, 200, await bobShared.text());
-            await shareArrives(HOST_C, bobRoot, aliceRoot);
-            await beat(HOST_C, "body-heal", aliceRoot);
-            await beat(HOST_C, "bodies-sweep");
-            const served = await servedBody(aliceRoot, post, HOST_C);
-            assert.ok(
-                served && /\/docs?\//.test(served),
-                "Cleo's node serves the shared post's words"
-            );
-            const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
-            assert.ok(twin, `the served body names the baked twin: ${served}`);
-            assert.notEqual(twin, post, "the twin is its own public document");
-
-            // 4. The implicit rebroadcast: the twin's FRAGMENT arrived with the post's, and
-            //    the IMAGE BYTES serve from Cleo's own node - the reader's renderer asks this
-            //    exact URL.
-            await beat(HOST_C, "fragment-sweep", aliceRoot);
-            assert.ok(
-                (await fragmentsOf(aliceRoot, HOST_C)).some((r) => r.doc_id === twin),
-                "the media twin rode the share as its own fragment"
-            );
-            await beat(HOST_C, "body-heal", aliceRoot);
-            await beat(HOST_C, "bodies-sweep");
-            assert.equal(
-                (await makeFetch(HOST_C)(`id/${aliceRoot}/docs/${twin}/body`)).status,
-                200,
-                "and the image bytes serve from Cleo's node, to Cleo's browser"
-            );
-
-            // 5. The fourth hop: Cleo shares onward; Dana's node ends up serving the image
-            //    too, having heard of it only through the tree.
-            const onward = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
-                method: "POST",
-                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
-            });
-            assert.equal(onward.status, 200, await onward.text());
-            await shareArrives(HOST_E, cleoRoot, aliceRoot);
-            await beat(HOST_E, "body-heal", aliceRoot);
-            await beat(HOST_E, "bodies-sweep");
-            assert.equal(
-                (await makeFetch(HOST_E)(`id/${aliceRoot}/docs/${twin}/body`)).status,
-                200,
-                "the image serves at the deepest hop"
-            );
-
-            // The twin's BYTES, by hash, before anything dies - and a control: some other
-            // live fragment's body, which the reaper must NOT touch.
-            const { rows: tw } = await sql(
-                `SELECT hex(body_hash) AS h FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${twin}'`,
-                HOST_C
-            );
-            const twinBlob = tw[0].h.toLowerCase();
-            const { rows: ctl } = await sql(
-                `SELECT hex(body_hash) AS h FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id NOT IN ('${post}', '${twin}') LIMIT 1`,
-                HOST_C
-            );
-            const controlBlob = ctl[0].h.toLowerCase();
-            const blobAt = async (host, hash) => {
-                const res = await makeFetch(host)(`test/blob/${hash}`);
-                return res.status === 200 ? (await res.json()).present : null;
-            };
-            assert.equal(await blobAt(HOST_C, twinBlob), true, "precondition: the image bytes are held");
-
-            // 6. The takedown: the post dies, and the image fragment - covered by nothing
-            //    else - goes with it. The cover refcount running at every hop.
-            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
-                method: "DELETE",
-            });
-            assert.equal(down.status, 200, await down.text());
-            await pullAndFold(HOST_B, aliceRoot);
-            await beat(HOST_C, "fragment-sweep", aliceRoot);
-            await beat(HOST_E, "fragment-sweep", aliceRoot);
-            for (const [who, host] of [["Cleo", HOST_C], ["Dana", HOST_E]]) {
-                const rows = await fragmentsOf(aliceRoot, host);
+            it("a shared post's image travels, serves, and dies with it", async function () {
+                // 1. A real image through the ingest door, waited to readiness.
+                const up = await alice(`api/identity/${aliceRoot}/docs/binary?title=cat&parents=`, {
+                    method: 'POST',
+                    body: webp,
+                });
+                const upText = await up.text();
+                // 200 or 202: the door answers with the doc id while the transcode runs, and the
+                // poll below is what waits for readiness either way.
+                assert.ok(up.status === 200 || up.status === 202, upText);
+                const mediaId = JSON.parse(upText).doc_id;
+                assert.ok(mediaId, upText);
                 assert.ok(
-                    !rows.some((r) => r.doc_id === post) && !rows.some((r) => r.doc_id === twin),
-                    `${who} dropped the post AND the image it alone justified`
+                    await settle(async () => {
+                        const r = await alice(`api/identity/${aliceRoot}/docs/${mediaId}`);
+                        return r.status === 200 ? true : null;
+                    }),
+                    'the upload transcoded and the private media doc exists',
                 );
-            }
 
-            // 7. And the BYTES follow: the rows died above, so the next reaper round (2s on
-            //    the rig) collects the blobs nothing references any more - the "clear deleted
-            //    media from the intermediary filesystems" half. The control blob, referenced
-            //    by a live fragment, must survive every one of those rounds.
-            assert.ok(
-                await settle(async () => {
-                    return (await blobAt(HOST_C, twinBlob)) === false ? true : null;
-                }),
-                "the image's bytes were reaped from Cleo's filesystem"
-            );
-            assert.equal(
-                await blobAt(HOST_C, controlBlob),
-                true,
-                "and a live document's bytes were not"
-            );
+                // 2. A note embedding it, published - the bake mints the public twin and the
+                //    signed header's refs name it.
+                const made = await (
+                    await alice(`api/identity/${aliceRoot}/docs`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            title: 'cat post',
+                            body: `behold:\n\n![cat](/api/identity/${aliceRoot}/docs/${mediaId}/body/cat.webp)\n`,
+                            format: 'marquee',
+                        }),
+                    })
+                ).json();
+                const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
+                    method: 'POST',
+                });
+                const pubText = await pub.text();
+                assert.equal(pub.status, 200, pubText);
+                const post = JSON.parse(pubText).post_id;
+                assert.ok(post, `the private twin bakes inline: ${pubText}`);
+
+                // 3. Bob shares; the post reaches Cleo as a fragment, words servable (the
+                //    established claims), and the SERVED body names the public twin.
+                await pullAndFold(HOST_B, aliceRoot);
+                assert.ok(
+                    (await feedOf(bobRoot, HOST_B)).some((r) => r.doc_id === post),
+                    'the post reached Bob',
+                );
+                const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
+                    method: 'POST',
+                    body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+                });
+                assert.equal(bobShared.status, 200, await bobShared.text());
+                await shareArrives(HOST_C, bobRoot, aliceRoot);
+                await beat(HOST_C, 'body-heal', aliceRoot);
+                await beat(HOST_C, 'bodies-sweep');
+                const served = await servedBody(aliceRoot, post, HOST_C);
+                assert.ok(
+                    served && /\/docs?\//.test(served),
+                    "Cleo's node serves the shared post's words",
+                );
+                const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
+                assert.ok(twin, `the served body names the baked twin: ${served}`);
+                assert.notEqual(twin, post, 'the twin is its own public document');
+
+                // 4. The implicit rebroadcast: the twin's FRAGMENT arrived with the post's, and
+                //    the IMAGE BYTES serve from Cleo's own node - the reader's renderer asks this
+                //    exact URL.
+                await beat(HOST_C, 'fragment-sweep', aliceRoot);
+                assert.ok(
+                    (await fragmentsOf(aliceRoot, HOST_C)).some((r) => r.doc_id === twin),
+                    'the media twin rode the share as its own fragment',
+                );
+                await beat(HOST_C, 'body-heal', aliceRoot);
+                await beat(HOST_C, 'bodies-sweep');
+                assert.equal(
+                    (await makeFetch(HOST_C)(`id/${aliceRoot}/docs/${twin}/body`)).status,
+                    200,
+                    "and the image bytes serve from Cleo's node, to Cleo's browser",
+                );
+
+                // 5. The fourth hop: Cleo shares onward; Dana's node ends up serving the image
+                //    too, having heard of it only through the tree.
+                const onward = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
+                    method: 'POST',
+                    body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+                });
+                assert.equal(onward.status, 200, await onward.text());
+                await shareArrives(HOST_E, cleoRoot, aliceRoot);
+                await beat(HOST_E, 'body-heal', aliceRoot);
+                await beat(HOST_E, 'bodies-sweep');
+                assert.equal(
+                    (await makeFetch(HOST_E)(`id/${aliceRoot}/docs/${twin}/body`)).status,
+                    200,
+                    'the image serves at the deepest hop',
+                );
+
+                // The twin's BYTES, by hash, before anything dies - and a control: some other
+                // live fragment's body, which the reaper must NOT touch.
+                const { rows: tw } = await sql(
+                    `SELECT hex(body_hash) AS h FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${twin}'`,
+                    HOST_C,
+                );
+                const twinBlob = tw[0].h.toLowerCase();
+                const { rows: ctl } = await sql(
+                    `SELECT hex(body_hash) AS h FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id NOT IN ('${post}', '${twin}') LIMIT 1`,
+                    HOST_C,
+                );
+                const controlBlob = ctl[0].h.toLowerCase();
+                const blobAt = async (host, hash) => {
+                    const res = await makeFetch(host)(`test/blob/${hash}`);
+                    return res.status === 200 ? (await res.json()).present : null;
+                };
+                assert.equal(
+                    await blobAt(HOST_C, twinBlob),
+                    true,
+                    'precondition: the image bytes are held',
+                );
+
+                // 6. The takedown: the post dies, and the image fragment - covered by nothing
+                //    else - goes with it. The cover refcount running at every hop.
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: 'DELETE',
+                });
+                assert.equal(down.status, 200, await down.text());
+                await pullAndFold(HOST_B, aliceRoot);
+                await beat(HOST_C, 'fragment-sweep', aliceRoot);
+                await beat(HOST_E, 'fragment-sweep', aliceRoot);
+                for (const [who, host] of [
+                    ['Cleo', HOST_C],
+                    ['Dana', HOST_E],
+                ]) {
+                    const rows = await fragmentsOf(aliceRoot, host);
+                    assert.ok(
+                        !rows.some((r) => r.doc_id === post) &&
+                            !rows.some((r) => r.doc_id === twin),
+                        `${who} dropped the post AND the image it alone justified`,
+                    );
+                }
+
+                // 7. And the BYTES follow: the rows died above, so the next reaper round (2s on
+                //    the rig) collects the blobs nothing references any more - the "clear deleted
+                //    media from the intermediary filesystems" half. The control blob, referenced
+                //    by a live fragment, must survive every one of those rounds.
+                assert.ok(
+                    await settle(async () => {
+                        return (await blobAt(HOST_C, twinBlob)) === false ? true : null;
+                    }),
+                    "the image's bytes were reaped from Cleo's filesystem",
+                );
+                assert.equal(
+                    await blobAt(HOST_C, controlBlob),
+                    true,
+                    "and a live document's bytes were not",
+                );
+            });
         });
-    });
 
-    /*
+        /*
         Posts edit forever (Curtis, 2026-10-02; they froze a day after genesis from 2026-08-15). What
         the day still bounds is keeping COPIES current: a node holding only a rebroadcast copy re-asks
         for a fresh post on the sweep's beat, and stops once it is a day old - then the copy may go
         stale until someone opens the post, which asks the author in the background. The window is
         runtime-overridable per node (/test/fresh-window), set per test, never boot-wide.
     */
-    describe("posts edit forever; copies are kept current for a day, then on a visit", function () {
-        const setWindowOn = async (host, ms) => {
-            const res = await makeFetch(host)("test/fresh-window", {
-                method: "POST",
-                body: JSON.stringify({ ms }),
-            });
-            assert.equal(res.status, 200, `setting the fresh window on ${host || "A"}`);
-        };
-        const revise = async (draft, version, words) => {
-            const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
-                method: "PUT",
-                body: JSON.stringify({ title: words, body: `${words}: the words`, parents: [version], format: "plaintext" }),
-            });
-            assert.equal(put.status, 200, await put.clone().text());
-            const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, { method: "POST" });
-            assert.equal(rep.status, 200, `past the day, the author's door takes the edit: ${await rep.clone().text()}`);
-        };
-
-        afterEach(async () => {
-            await setWindowOn(undefined, 0);
-            await setWindowOn(HOST_C, 0);
-        });
-
-        it("past the day the edit is taken, the post says it was edited, and its history holds both", async () => {
-            const { post, draft, version } = await seedToCleo("forever");
-            await setWindowOn(undefined, 1000);
-            await new Promise((r) => setTimeout(r, 1600));
-            await revise(draft, version, "forever, revised");
-
-            const body = await servedBody(aliceRoot, post);
-            assert.ok(body && body.includes("forever, revised: the words"), `the new words, served: ${body}`);
-            const head = await (await alice(`api/id/${aliceRoot}/posts/${post}?as=${aliceRoot}`)).json();
-            assert.ok(head.updated_ms > head.minted_ms, "edited after it went out - what the card's mark reads");
-            assert.equal(head.edit_window_open, undefined, "and no window to report");
-
-            const history = await (await alice(`api/id/${aliceRoot}/posts/${post}/versions`)).json();
-            const versions = history.versions || [];
-            assert.equal(versions.length, 2, JSON.stringify(versions));
-            assert.ok(versions[0].words.includes("forever, revised"), "newest first");
-            assert.ok(versions[1].words.includes("forever: the words"), "and what it said before, kept");
-            assert.ok(versions.every((v) => v.held), "every version's words held");
-        });
-
-        it("a copy past its day leaves the sweep - and opening the post brings the edit to it", async () => {
-            const { post, draft, version } = await seedToCleo("visited");
-            const checkedOf = async () => {
-                const { rows } = await sql(
-                    `SELECT checked_ms FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${post}'`,
-                    HOST_C
-                );
-                return rows.length ? rows[0].checked_ms : null;
+        describe('posts edit forever; copies are kept current for a day, then on a visit', function () {
+            const setWindowOn = async (host, ms) => {
+                const res = await makeFetch(host)('test/fresh-window', {
+                    method: 'POST',
+                    body: JSON.stringify({ ms }),
+                });
+                assert.equal(res.status, 200, `setting the fresh window on ${host || 'A'}`);
             };
-            await setWindowOn(HOST_C, 1000);
-            await setWindowOn(undefined, 1000);
-            await new Promise((r) => setTimeout(r, 1600));
-            const stale = await checkedOf();
-            await new Promise((r) => setTimeout(r, 3000));
-            assert.equal(await checkedOf(), stale, "past its day, the sweep no longer visits the copy");
+            const revise = async (draft, version, words) => {
+                const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        title: words,
+                        body: `${words}: the words`,
+                        parents: [version],
+                        format: 'plaintext',
+                    }),
+                });
+                assert.equal(put.status, 200, await put.clone().text());
+                const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, {
+                    method: 'POST',
+                });
+                assert.equal(
+                    rep.status,
+                    200,
+                    `past the day, the author's door takes the edit: ${await rep.clone().text()}`,
+                );
+            };
 
-            await revise(draft, version, "visited, revised");
-            await beat(HOST_C, "fragment-sweep", aliceRoot);
-            const before = await servedBody(aliceRoot, post, HOST_C);
-            assert.ok(before && before.includes("visited: the words"), `the copy is stale, as allowed: ${before}`);
-
-            // Cleo opens the post: the page's read of it is the visit. (What the page shows may come
-            // by another road - a look at Alice can fetch her whole chain - but the COPY, which
-            // Cleo's feed cards read, is what the visit has to freshen.)
-            await cleo(`api/id/${aliceRoot}/posts/${post}`);
-            const fresh = await settle(async () => {
-                await beat(HOST_C, "body-heal", aliceRoot);
-                await beat(HOST_C, "bodies-sweep");
-                const words = await servedBody(aliceRoot, post, HOST_C);
-                return words && words.includes("visited, revised") ? words : null;
+            afterEach(async () => {
+                await setWindowOn(undefined, 0);
+                await setWindowOn(HOST_C, 0);
             });
-            assert.ok(fresh, "the visit asked the author, and the copy took the edit");
-        });
-    });
 
-    /*
+            it('past the day the edit is taken, the post says it was edited, and its history holds both', async () => {
+                const { post, draft, version } = await seedToCleo('forever');
+                await setWindowOn(undefined, 1000);
+                await new Promise((r) => setTimeout(r, 1600));
+                await revise(draft, version, 'forever, revised');
+
+                const body = await servedBody(aliceRoot, post);
+                assert.ok(
+                    body && body.includes('forever, revised: the words'),
+                    `the new words, served: ${body}`,
+                );
+                const head = await (
+                    await alice(`api/id/${aliceRoot}/posts/${post}?as=${aliceRoot}`)
+                ).json();
+                assert.ok(
+                    head.updated_ms > head.minted_ms,
+                    "edited after it went out - what the card's mark reads",
+                );
+                assert.equal(head.edit_window_open, undefined, 'and no window to report');
+
+                const history = await (
+                    await alice(`api/id/${aliceRoot}/posts/${post}/versions`)
+                ).json();
+                const versions = history.versions || [];
+                assert.equal(versions.length, 2, JSON.stringify(versions));
+                assert.ok(versions[0].words.includes('forever, revised'), 'newest first');
+                assert.ok(
+                    versions[1].words.includes('forever: the words'),
+                    'and what it said before, kept',
+                );
+                assert.ok(
+                    versions.every((v) => v.held),
+                    "every version's words held",
+                );
+            });
+
+            it('a copy past its day leaves the sweep - and opening the post brings the edit to it', async () => {
+                const { post, draft, version } = await seedToCleo('visited');
+                const checkedOf = async () => {
+                    const { rows } = await sql(
+                        `SELECT checked_ms FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${post}'`,
+                        HOST_C,
+                    );
+                    return rows.length ? rows[0].checked_ms : null;
+                };
+                await setWindowOn(HOST_C, 1000);
+                await setWindowOn(undefined, 1000);
+                await new Promise((r) => setTimeout(r, 1600));
+                const stale = await checkedOf();
+                await new Promise((r) => setTimeout(r, 3000));
+                assert.equal(
+                    await checkedOf(),
+                    stale,
+                    'past its day, the sweep no longer visits the copy',
+                );
+
+                await revise(draft, version, 'visited, revised');
+                await beat(HOST_C, 'fragment-sweep', aliceRoot);
+                const before = await servedBody(aliceRoot, post, HOST_C);
+                assert.ok(
+                    before && before.includes('visited: the words'),
+                    `the copy is stale, as allowed: ${before}`,
+                );
+
+                // Cleo opens the post: the page's read of it is the visit. (What the page shows may come
+                // by another road - a look at Alice can fetch her whole chain - but the COPY, which
+                // Cleo's feed cards read, is what the visit has to freshen.)
+                await cleo(`api/id/${aliceRoot}/posts/${post}`);
+                const fresh = await settle(async () => {
+                    await beat(HOST_C, 'body-heal', aliceRoot);
+                    await beat(HOST_C, 'bodies-sweep');
+                    const words = await servedBody(aliceRoot, post, HOST_C);
+                    return words && words.includes('visited, revised') ? words : null;
+                });
+                assert.ok(fresh, 'the visit asked the author, and the copy took the edit');
+            });
+        });
+
+        /*
         Multi-origin resilience: the row remembers ONE origin (first server wins), the
         feed_shares ledger knows every sharer a local reader follows - and until 2026-08-15
         only the reap ever consulted the ledger. These tests are built on the cases where a
@@ -1077,248 +1175,258 @@ async function setLane(mode) {
         outcome: with the author's fragment door and the recorded origin both provably dark,
         the second sharer is the only body in the universe that can carry the goods.
     */
-    describe("any sharer will do: the ledger outlives the recorded origin", function () {
-        this.timeout(1200000);
-        const fs = require("node:fs");
-        const path = require("node:path");
-        const webp = fs.readFileSync(
-            path.join(__dirname, "..", "..", "..", "sample_media", "its_webp.webp")
-        );
+        describe('any sharer will do: the ledger outlives the recorded origin', function () {
+            this.timeout(1200000);
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const webp = fs.readFileSync(
+                path.join(__dirname, '..', '..', '..', 'sample_media', 'its_webp.webp'),
+            );
 
-        let ally, allyRoot, bo, boRoot, sam, samRoot, rae, raeRoot;
+            let ally, allyRoot, bo, boRoot, sam, samRoot, rae, raeRoot;
 
-        before(async function () {
-            // Two sharers on DIFFERENT nodes - or dark-Bob is dark-Sam - and a reader who
-            // follows both for rebroadcasts.
-            ally = await makeUserFetch({ prefix: "morigally" });
-            allyRoot = (await (await ally("api/identity", { method: "POST" })).json()).root_pubkey;
-            await ally(`api/identity/${allyRoot}/serve`, { method: "POST" });
-            const viaAlly = await base58(ally);
+            before(async function () {
+                // Two sharers on DIFFERENT nodes - or dark-Bob is dark-Sam - and a reader who
+                // follows both for rebroadcasts.
+                ally = await makeUserFetch({ prefix: 'morigally' });
+                allyRoot = (await (await ally('api/identity', { method: 'POST' })).json())
+                    .root_pubkey;
+                await ally(`api/identity/${allyRoot}/serve`, { method: 'POST' });
+                const viaAlly = await base58(ally);
 
-            bo = await makeUserFetch({ prefix: "morigbo", host: HOST_B });
-            boRoot = (await (await bo("api/identity", { method: "POST" })).json()).root_pubkey;
-            await bo(`api/identity/${boRoot}/serve`, { method: "POST" });
-            const viaBo = await base58(bo);
+                bo = await makeUserFetch({ prefix: 'morigbo', host: HOST_B });
+                boRoot = (await (await bo('api/identity', { method: 'POST' })).json()).root_pubkey;
+                await bo(`api/identity/${boRoot}/serve`, { method: 'POST' });
+                const viaBo = await base58(bo);
 
-            sam = await makeUserFetch({ prefix: "morigsam", host: HOST_C });
-            samRoot = (await (await sam("api/identity", { method: "POST" })).json()).root_pubkey;
-            await sam(`api/identity/${samRoot}/serve`, { method: "POST" });
-            const viaSam = await base58(sam);
+                sam = await makeUserFetch({ prefix: 'morigsam', host: HOST_C });
+                samRoot = (await (await sam('api/identity', { method: 'POST' })).json())
+                    .root_pubkey;
+                await sam(`api/identity/${samRoot}/serve`, { method: 'POST' });
+                const viaSam = await base58(sam);
 
-            rae = await makeUserFetch({ prefix: "morigrae", host: HOST_E });
-            raeRoot = (await (await rae("api/identity", { method: "POST" })).json()).root_pubkey;
+                rae = await makeUserFetch({ prefix: 'morigrae', host: HOST_E });
+                raeRoot = (await (await rae('api/identity', { method: 'POST' })).json())
+                    .root_pubkey;
 
-            if ((await bo(`api/id/${allyRoot}/profile?via=${viaAlly}`)).status !== 200) this.skip();
-            await dial(bo, boRoot, allyRoot, "interest", "high");
-            if ((await sam(`api/id/${allyRoot}/profile?via=${viaAlly}`)).status !== 200) this.skip();
-            await dial(sam, samRoot, allyRoot, "interest", "high");
-            if ((await rae(`api/id/${boRoot}/profile?via=${viaBo}`)).status !== 200) this.skip();
-            await dial(rae, raeRoot, boRoot, "interest_rebroadcasts", "high");
-            if ((await rae(`api/id/${samRoot}/profile?via=${viaSam}`)).status !== 200) this.skip();
-            await dial(rae, raeRoot, samRoot, "interest_rebroadcasts", "high");
+                if ((await bo(`api/id/${allyRoot}/profile?via=${viaAlly}`)).status !== 200)
+                    this.skip();
+                await dial(bo, boRoot, allyRoot, 'interest', 'high');
+                if ((await sam(`api/id/${allyRoot}/profile?via=${viaAlly}`)).status !== 200)
+                    this.skip();
+                await dial(sam, samRoot, allyRoot, 'interest', 'high');
+                if ((await rae(`api/id/${boRoot}/profile?via=${viaBo}`)).status !== 200)
+                    this.skip();
+                await dial(rae, raeRoot, boRoot, 'interest_rebroadcasts', 'high');
+                if ((await rae(`api/id/${samRoot}/profile?via=${viaSam}`)).status !== 200)
+                    this.skip();
+                await dial(rae, raeRoot, samRoot, 'interest_rebroadcasts', 'high');
 
-            await beat(HOST_B, "fold", boRoot);
-            await beat(HOST_C, "fold", samRoot);
-            await beat(HOST_E, "fold", raeRoot);
-        });
-
-        const setLaneOn = async (host, mode) => {
-            const res = await makeFetch(host)("test/revalidation", {
-                method: "POST",
-                body: JSON.stringify({ mode }),
+                await beat(HOST_B, 'fold', boRoot);
+                await beat(HOST_C, 'fold', samRoot);
+                await beat(HOST_E, 'fold', raeRoot);
             });
-            assert.equal(res.status, 200, `setting revalidation mode on ${host}`);
-        };
 
-        afterEach(async () => {
-            await plugIn(HOST);
-            await plugIn(HOST_B);
-            await plugIn(HOST_C);
-            await setLaneOn(HOST_E, "default");
-        });
+            const setLaneOn = async (host, mode) => {
+                const res = await makeFetch(host)('test/revalidation', {
+                    method: 'POST',
+                    body: JSON.stringify({ mode }),
+                });
+                assert.equal(res.status, 200, `setting revalidation mode on ${host}`);
+            };
 
-        /// Publish (optionally with an embedded image), have BOB share first - settled, so the
-        /// fragment's recorded origin is deterministically his - then SAM. Ends by pinning the
-        /// premise in SQL: the row remembers one, the ledger knows two. Without that pin the
-        /// suite proves nothing - if the origin happened to be Sam, darkening Bob tests the
-        /// happy path.
-        async function seedDual(title, { image = false } = {}) {
-            let body = `${title}: the words`;
-            if (image) {
-                const up = await ally(
-                    `api/identity/${allyRoot}/docs/binary?title=pic&parents=`,
-                    { method: "POST", body: webp }
-                );
-                const upText = await up.text();
-                assert.ok(up.status === 200 || up.status === 202, upText);
-                const mediaId = JSON.parse(upText).doc_id;
+            afterEach(async () => {
+                await plugIn(HOST);
+                await plugIn(HOST_B);
+                await plugIn(HOST_C);
+                await setLaneOn(HOST_E, 'default');
+            });
+
+            /// Publish (optionally with an embedded image), have BOB share first - settled, so the
+            /// fragment's recorded origin is deterministically his - then SAM. Ends by pinning the
+            /// premise in SQL: the row remembers one, the ledger knows two. Without that pin the
+            /// suite proves nothing - if the origin happened to be Sam, darkening Bob tests the
+            /// happy path.
+            async function seedDual(title, { image = false } = {}) {
+                let body = `${title}: the words`;
+                if (image) {
+                    const up = await ally(
+                        `api/identity/${allyRoot}/docs/binary?title=pic&parents=`,
+                        { method: 'POST', body: webp },
+                    );
+                    const upText = await up.text();
+                    assert.ok(up.status === 200 || up.status === 202, upText);
+                    const mediaId = JSON.parse(upText).doc_id;
+                    assert.ok(
+                        await settle(async () => {
+                            const r = await ally(`api/identity/${allyRoot}/docs/${mediaId}`);
+                            return r.status === 200 ? true : null;
+                        }),
+                        `seedDual(${title}): the upload transcoded`,
+                    );
+                    body = `${title}: the words\n\n![pic](/api/identity/${allyRoot}/docs/${mediaId}/body/pic.webp)\n`;
+                }
+                const made = await (
+                    await ally(`api/identity/${allyRoot}/docs`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            title,
+                            body,
+                            format: image ? 'marquee' : 'plaintext',
+                        }),
+                    })
+                ).json();
+                const pub = await ally(`api/identity/${allyRoot}/docs/${made.doc_id}/publish`, {
+                    method: 'POST',
+                });
+                const pubText = await pub.text();
+                assert.equal(pub.status, 200, pubText);
+                const post = JSON.parse(pubText).post_id;
+
+                await pullAndFold(HOST_B, allyRoot);
+                await pullAndFold(HOST_C, allyRoot);
+                for (const [who, root, host] of [
+                    ['Bo', boRoot, HOST_B],
+                    ['Sam', samRoot, HOST_C],
+                ]) {
+                    assert.ok(
+                        (await feedOf(root, host)).some((r) => r.doc_id === post),
+                        `seedDual(${title}): the post reached ${who}'s chain copy`,
+                    );
+                }
+
+                const boShared = await bo(`api/identity/${boRoot}/rebroadcasts`, {
+                    method: 'POST',
+                    body: JSON.stringify({ author: allyRoot, doc_id: post }),
+                });
+                assert.equal(boShared.status, 200, await boShared.text());
+                await shareArrives(HOST_E, boRoot, allyRoot);
                 assert.ok(
-                    await settle(async () => {
-                        const r = await ally(`api/identity/${allyRoot}/docs/${mediaId}`);
-                        return r.status === 200 ? true : null;
-                    }),
-                    `seedDual(${title}): the upload transcoded`
+                    (await fragmentsOf(allyRoot, HOST_E)).some((r) => r.doc_id === post),
+                    `seedDual(${title}): Rae holds the fragment via Bo`,
                 );
-                body = `${title}: the words\n\n![pic](/api/identity/${allyRoot}/docs/${mediaId}/body/pic.webp)\n`;
+
+                const samShared = await sam(`api/identity/${samRoot}/rebroadcasts`, {
+                    method: 'POST',
+                    body: JSON.stringify({ author: allyRoot, doc_id: post }),
+                });
+                assert.equal(samShared.status, 200, await samShared.text());
+                await shareArrives(HOST_E, samRoot, allyRoot);
+                {
+                    const { rows } = await sql(
+                        `SELECT via_root FROM feed_shares WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
+                        HOST_E,
+                    );
+                    const vias = rows.map((r) => r.via_root);
+                    assert.ok(
+                        vias.includes(boRoot) && vias.includes(samRoot),
+                        `seedDual(${title}): the ledger knows both sharers`,
+                    );
+                }
+
+                // THE PREMISE, pinned: one recorded origin (Bo, deterministically - he served
+                // first), two known sharers.
+                const { rows: frows } = await sql(
+                    `SELECT origin_root FROM fragments WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
+                    HOST_E,
+                );
+                assert.equal(frows[0].origin_root, boRoot, 'the row remembers exactly one origin');
+
+                return { post, draft: made.doc_id, version: made.version };
             }
-            const made = await (
-                await ally(`api/identity/${allyRoot}/docs`, {
-                    method: "POST",
+
+            it('an edit arrives from the OTHER sharer when the recorded origin is dark', async () => {
+                const { post, draft, version } = await seedDual('anyorigin-edit');
+                // Words settled at Rae first, so the edit assertion below is a CHANGE, not a first
+                // arrival.
+                await beat(HOST_E, 'fragment-sweep', allyRoot);
+                await beat(HOST_E, 'body-heal', allyRoot);
+                await beat(HOST_E, 'bodies-sweep');
+                {
+                    const body = await servedBody(allyRoot, post, HOST_E);
+                    assert.ok(
+                        body && body.includes('anyorigin-edit'),
+                        "precondition: the original words serve at Rae's node",
+                    );
+                }
+
+                // The choreography that forces the mechanism: the author's FRAGMENT door shuts
+                // (her sync door stays open - Sam's chain copy must keep updating), the recorded
+                // origin goes fully dark. Sam is now the only body in the universe holding v2
+                // that Rae can reach.
+                await unplug(HOST, { alpns: ['fragment'] });
+                await unplug(HOST_B);
+
+                const put = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
+                    method: 'PUT',
                     body: JSON.stringify({
-                        title,
-                        body,
-                        format: image ? "marquee" : "plaintext",
+                        title: 'anyorigin-edit, revised',
+                        body: 'anyorigin-edit, revised: the words',
+                        parents: [version],
+                        format: 'plaintext',
                     }),
-                })
-            ).json();
-            const pub = await ally(`api/identity/${allyRoot}/docs/${made.doc_id}/publish`, {
-                method: "POST",
+                });
+                assert.equal(put.status, 200, await put.text());
+                const rep = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
+                    method: 'POST',
+                });
+                assert.equal(rep.status, 200, await rep.text());
+
+                // Sam's chain copy learns v2 first - his door is the only one left standing.
+                await pullAndFold(HOST_C, allyRoot);
+                // Three forced rounds: one revalidation can mint a want the NEXT drain satisfies,
+                // so the ladder (author dark -> origin dark -> the other sharer) gets full walks.
+                for (let i = 0; i < 3; i++) {
+                    await beat(HOST_E, 'fragment-sweep', allyRoot);
+                    await beat(HOST_E, 'body-heal', allyRoot);
+                    await beat(HOST_E, 'bodies-sweep');
+                }
+                {
+                    const r = (await fragmentsOf(allyRoot, HOST_E)).find((x) => x.doc_id === post);
+                    assert.ok(
+                        r && r.title.includes('revised'),
+                        'the revision reached Rae - only Sam could have carried it',
+                    );
+                    const body = await servedBody(allyRoot, post, HOST_E);
+                    assert.ok(
+                        body && body.includes('revised'),
+                        'and the revised WORDS serve - the blob walked the same fallback',
+                    );
+                }
             });
-            const pubText = await pub.text();
-            assert.equal(pub.status, 200, pubText);
-            const post = JSON.parse(pubText).post_id;
 
-            await pullAndFold(HOST_B, allyRoot);
-            await pullAndFold(HOST_C, allyRoot);
-            for (const [who, root, host] of [["Bo", boRoot, HOST_B], ["Sam", samRoot, HOST_C]]) {
+            it('the words and the image arrive when the origin dies between header and body', async () => {
+                // Bo's BLOB door shuts before he shares: every entry arrives from him (fragment
+                // ALPN, open), every byte is refused (blob ALPN) - the wants ledger fills with a
+                // candidate that then goes fully dark. Sam holds every blob one hop away.
+                await unplug(HOST_B, { alpns: ['blob'] });
+                const { post } = await seedDual('anyorigin-bytes', { image: true });
+                await unplug(HOST_B);
+
+                for (let i = 0; i < 3; i++) {
+                    await beat(HOST_E, 'fragment-sweep', allyRoot);
+                    await beat(HOST_E, 'body-heal', allyRoot);
+                    await beat(HOST_E, 'bodies-sweep');
+                }
+                const served = await servedBody(allyRoot, post, HOST_E);
                 assert.ok(
-                    (await feedOf(root, host)).some((r) => r.doc_id === post),
-                    `seedDual(${title}): the post reached ${who}'s chain copy`
+                    served && served.includes('anyorigin-bytes'),
+                    "the post's words healed from the other sharer",
                 );
-            }
-
-            const boShared = await bo(`api/identity/${boRoot}/rebroadcasts`, {
-                method: "POST",
-                body: JSON.stringify({ author: allyRoot, doc_id: post }),
+                const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
+                assert.ok(twin, `the served body names the twin: ${served}`);
+                await beat(HOST_E, 'fragment-sweep', allyRoot);
+                await beat(HOST_E, 'body-heal', allyRoot);
+                await beat(HOST_E, 'bodies-sweep');
+                assert.equal(
+                    (await makeFetch(HOST_E)(`id/${allyRoot}/docs/${twin}/body`)).status,
+                    200,
+                    "and the image's bytes healed from the other sharer too",
+                );
             });
-            assert.equal(boShared.status, 200, await boShared.text());
-            await shareArrives(HOST_E, boRoot, allyRoot);
-            assert.ok(
-                (await fragmentsOf(allyRoot, HOST_E)).some((r) => r.doc_id === post),
-                `seedDual(${title}): Rae holds the fragment via Bo`
-            );
 
-            const samShared = await sam(`api/identity/${samRoot}/rebroadcasts`, {
-                method: "POST",
-                body: JSON.stringify({ author: allyRoot, doc_id: post }),
-            });
-            assert.equal(samShared.status, 200, await samShared.text());
-            await shareArrives(HOST_E, samRoot, allyRoot);
-            {
-                const { rows } = await sql(
-                    `SELECT via_root FROM feed_shares WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
-                    HOST_E
-                );
-                const vias = rows.map((r) => r.via_root);
-                assert.ok(
-                    vias.includes(boRoot) && vias.includes(samRoot),
-                    `seedDual(${title}): the ledger knows both sharers`
-                );
-            }
-
-            // THE PREMISE, pinned: one recorded origin (Bo, deterministically - he served
-            // first), two known sharers.
-            const { rows: frows } = await sql(
-                `SELECT origin_root FROM fragments WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
-                HOST_E
-            );
-            assert.equal(frows[0].origin_root, boRoot, "the row remembers exactly one origin");
-
-            return { post, draft: made.doc_id, version: made.version };
-        }
-
-        it("an edit arrives from the OTHER sharer when the recorded origin is dark", async () => {
-            const { post, draft, version } = await seedDual("anyorigin-edit");
-            // Words settled at Rae first, so the edit assertion below is a CHANGE, not a first
-            // arrival.
-            await beat(HOST_E, "fragment-sweep", allyRoot);
-            await beat(HOST_E, "body-heal", allyRoot);
-            await beat(HOST_E, "bodies-sweep");
-            {
-                const body = await servedBody(allyRoot, post, HOST_E);
-                assert.ok(
-                    body && body.includes("anyorigin-edit"),
-                    "precondition: the original words serve at Rae's node"
-                );
-            }
-
-            // The choreography that forces the mechanism: the author's FRAGMENT door shuts
-            // (her sync door stays open - Sam's chain copy must keep updating), the recorded
-            // origin goes fully dark. Sam is now the only body in the universe holding v2
-            // that Rae can reach.
-            await unplug(HOST, { alpns: ["fragment"] });
-            await unplug(HOST_B);
-
-            const put = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                    title: "anyorigin-edit, revised",
-                    body: "anyorigin-edit, revised: the words",
-                    parents: [version],
-                    format: "plaintext",
-                }),
-            });
-            assert.equal(put.status, 200, await put.text());
-            const rep = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
-                method: "POST",
-            });
-            assert.equal(rep.status, 200, await rep.text());
-
-            // Sam's chain copy learns v2 first - his door is the only one left standing.
-            await pullAndFold(HOST_C, allyRoot);
-            // Three forced rounds: one revalidation can mint a want the NEXT drain satisfies,
-            // so the ladder (author dark -> origin dark -> the other sharer) gets full walks.
-            for (let i = 0; i < 3; i++) {
-                await beat(HOST_E, "fragment-sweep", allyRoot);
-                await beat(HOST_E, "body-heal", allyRoot);
-                await beat(HOST_E, "bodies-sweep");
-            }
-            {
-                const r = (await fragmentsOf(allyRoot, HOST_E)).find((x) => x.doc_id === post);
-                assert.ok(
-                    r && r.title.includes("revised"),
-                    "the revision reached Rae - only Sam could have carried it"
-                );
-                const body = await servedBody(allyRoot, post, HOST_E);
-                assert.ok(
-                    body && body.includes("revised"),
-                    "and the revised WORDS serve - the blob walked the same fallback"
-                );
-            }
-        });
-
-        it("the words and the image arrive when the origin dies between header and body", async () => {
-            // Bo's BLOB door shuts before he shares: every entry arrives from him (fragment
-            // ALPN, open), every byte is refused (blob ALPN) - the wants ledger fills with a
-            // candidate that then goes fully dark. Sam holds every blob one hop away.
-            await unplug(HOST_B, { alpns: ["blob"] });
-            const { post } = await seedDual("anyorigin-bytes", { image: true });
-            await unplug(HOST_B);
-
-            for (let i = 0; i < 3; i++) {
-                await beat(HOST_E, "fragment-sweep", allyRoot);
-                await beat(HOST_E, "body-heal", allyRoot);
-                await beat(HOST_E, "bodies-sweep");
-            }
-            const served = await servedBody(allyRoot, post, HOST_E);
-            assert.ok(
-                served && served.includes("anyorigin-bytes"),
-                "the post's words healed from the other sharer"
-            );
-            const twin = (served.match(/\/docs?\/([0-9a-f]{32})\/body/) || [])[1];
-            assert.ok(twin, `the served body names the twin: ${served}`);
-            await beat(HOST_E, "fragment-sweep", allyRoot);
-            await beat(HOST_E, "body-heal", allyRoot);
-            await beat(HOST_E, "bodies-sweep");
-            assert.equal(
-                (await makeFetch(HOST_E)(`id/${allyRoot}/docs/${twin}/body`)).status,
-                200,
-                "and the image's bytes healed from the other sharer too"
-            );
-        });
-
-        it("an old version cannot roll a newer one back", async () => {
-            /*
+            it('an old version cannot roll a newer one back', async () => {
+                /*
                 The out-of-order construction, deterministic by ALPN: Bo's SYNC door freezes
                 his chain knowledge at v2 while his FRAGMENT door keeps answering; the world
                 moves to v3; the author goes dark; Rae's revalidation now consults a fossil
@@ -1328,128 +1436,135 @@ async function setLane(mode) {
                 The desired property, asserted and RED until the ordering fix lands: an
                 arriving version older by the author's own numbers changes nothing.
             */
-            // Fast lane on Rae's node: the rig boots tree-only, where she could never reach
-            // v3 at all with her origin fossilized - which the pre-fix run demonstrated by
-            // failing at the ARRIVAL stage. The rollback claim needs v3 in hand first.
-            await setLaneOn(HOST_E, "fast");
-            const { post, draft, version } = await seedDual("rollback-one");
+                // Fast lane on Rae's node: the rig boots tree-only, where she could never reach
+                // v3 at all with her origin fossilized - which the pre-fix run demonstrated by
+                // failing at the ARRIVAL stage. The rollback claim needs v3 in hand first.
+                await setLaneOn(HOST_E, 'fast');
+                const { post, draft, version } = await seedDual('rollback-one');
 
-            // v2, converged everywhere - including Bo, whose copy is about to fossilize.
-            const put2 = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                    title: "rollback-two",
-                    body: "rollback-two: the words",
-                    parents: [version],
-                    format: "plaintext",
-                }),
-            });
-            const put2Text = await put2.text();
-            assert.equal(put2.status, 200, put2Text);
-            const v2 = JSON.parse(put2Text).version;
-            const rep2 = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
-                method: "POST",
-            });
-            assert.equal(rep2.status, 200, await rep2.text());
-            await pullAndFold(HOST_B, allyRoot);
-            await beat(HOST_E, "fragment-sweep", allyRoot); // fast lane: straight from the author
-            for (const [who, root, host] of [["Bo", boRoot, HOST_B], ["Rae", raeRoot, HOST_E]]) {
+                // v2, converged everywhere - including Bo, whose copy is about to fossilize.
+                const put2 = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        title: 'rollback-two',
+                        body: 'rollback-two: the words',
+                        parents: [version],
+                        format: 'plaintext',
+                    }),
+                });
+                const put2Text = await put2.text();
+                assert.equal(put2.status, 200, put2Text);
+                const v2 = JSON.parse(put2Text).version;
+                const rep2 = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
+                    method: 'POST',
+                });
+                assert.equal(rep2.status, 200, await rep2.text());
+                await pullAndFold(HOST_B, allyRoot);
+                await beat(HOST_E, 'fragment-sweep', allyRoot); // fast lane: straight from the author
+                for (const [who, root, host] of [
+                    ['Bo', boRoot, HOST_B],
+                    ['Rae', raeRoot, HOST_E],
+                ]) {
+                    assert.ok(
+                        (await feedOf(root, host)).find(
+                            (x) => x.doc_id === post && x.title === 'rollback-two',
+                        ),
+                        `v2 reached ${who}`,
+                    );
+                }
+
+                // Bo's chain knowledge fossilizes: sync refused, fragment door still answering.
+                await unplug(HOST_B, { alpns: ['sync'] });
+
+                // v3, which Bo can never learn of.
+                const put3 = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        title: 'rollback-three',
+                        body: 'rollback-three: the words',
+                        parents: [v2],
+                        format: 'plaintext',
+                    }),
+                });
+                assert.equal(put3.status, 200, await put3.text());
+                const rep3 = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
+                    method: 'POST',
+                });
+                assert.equal(rep3.status, 200, await rep3.text());
+                await beat(HOST_E, 'fragment-sweep', allyRoot);
                 assert.ok(
-                    (await feedOf(root, host)).find(
-                        (x) => x.doc_id === post && x.title === "rollback-two"
+                    (await fragmentsOf(allyRoot, HOST_E)).find(
+                        (x) => x.doc_id === post && x.title === 'rollback-three',
                     ),
-                    `v2 reached ${who}`
+                    'Rae reached v3 straight from the author',
                 );
-            }
-
-            // Bo's chain knowledge fossilizes: sync refused, fragment door still answering.
-            await unplug(HOST_B, { alpns: ["sync"] });
-
-            // v3, which Bo can never learn of.
-            const put3 = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                    title: "rollback-three",
-                    body: "rollback-three: the words",
-                    parents: [v2],
-                    format: "plaintext",
-                }),
-            });
-            assert.equal(put3.status, 200, await put3.text());
-            const rep3 = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
-                method: "POST",
-            });
-            assert.equal(rep3.status, 200, await rep3.text());
-            await beat(HOST_E, "fragment-sweep", allyRoot);
-            assert.ok(
-                (await fragmentsOf(allyRoot, HOST_E)).find(
-                    (x) => x.doc_id === post && x.title === "rollback-three"
-                ),
-                "Rae reached v3 straight from the author"
-            );
-            // The staleness pin: Bo provably still believes v2.
-            const boRows = await feedOf(boRoot, HOST_B);
-            assert.equal(
-                boRows.find((x) => x.doc_id === post).title,
-                "rollback-two",
-                "precondition: the fossil is a fossil"
-            );
-
-            // The author goes dark; the fossil answers every revalidation from here.
-            await unplug(HOST, { alpns: ["fragment"] });
-
-            // The property: across many revalidations against Bo serving v2, Rae's copy never
-            // goes backward. Each beat FORCES one - so every iteration is a guaranteed chance
-            // to get it wrong, and one sighting of v2 is the defect demonstrated.
-            for (let i = 0; i < 8; i++) {
-                await beat(HOST_E, "fragment-sweep", allyRoot);
-                const rows = await fragmentsOf(allyRoot, HOST_E);
-                const r = rows.find((x) => x.doc_id === post);
-                assert.ok(r, "the fragment stands throughout");
+                // The staleness pin: Bo provably still believes v2.
+                const boRows = await feedOf(boRoot, HOST_B);
                 assert.equal(
-                    r.title,
-                    "rollback-three",
-                    `sample ${i}: an old version arriving late must change nothing - ` +
-                        "the author's own numbers order the author's own document"
+                    boRows.find((x) => x.doc_id === post).title,
+                    'rollback-two',
+                    'precondition: the fossil is a fossil',
                 );
-            }
+
+                // The author goes dark; the fossil answers every revalidation from here.
+                await unplug(HOST, { alpns: ['fragment'] });
+
+                // The property: across many revalidations against Bo serving v2, Rae's copy never
+                // goes backward. Each beat FORCES one - so every iteration is a guaranteed chance
+                // to get it wrong, and one sighting of v2 is the defect demonstrated.
+                for (let i = 0; i < 8; i++) {
+                    await beat(HOST_E, 'fragment-sweep', allyRoot);
+                    const rows = await fragmentsOf(allyRoot, HOST_E);
+                    const r = rows.find((x) => x.doc_id === post);
+                    assert.ok(r, 'the fragment stands throughout');
+                    assert.equal(
+                        r.title,
+                        'rollback-three',
+                        `sample ${i}: an old version arriving late must change nothing - ` +
+                            "the author's own numbers order the author's own document",
+                    );
+                }
+            });
+
+            it('every source dark is silence, not loss - and not overreach', async () => {
+                const { post } = await seedDual('anyorigin-silence');
+                await beat(HOST_E, 'fragment-sweep', allyRoot);
+                await beat(HOST_E, 'body-heal', allyRoot);
+                await beat(HOST_E, 'bodies-sweep');
+                {
+                    const body = await servedBody(allyRoot, post, HOST_E);
+                    assert.ok(
+                        body && body.includes('anyorigin-silence'),
+                        'precondition: fully arrived before the world goes dark',
+                    );
+                }
+                const before = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
+
+                await unplug(HOST, { alpns: ['fragment'] });
+                await unplug(HOST_B);
+                await unplug(HOST_C);
+                // Forced beats: every candidate the fallback walk could try provably refuses,
+                // every round, and exhaustion must still not be news.
+                for (let i = 0; i < 4; i++) {
+                    await beat(HOST_E, 'fragment-sweep', allyRoot);
+                }
+
+                const after = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
+                assert.ok(after, 'the fragment stands');
+                assert.equal(
+                    after.version,
+                    before.version,
+                    'same version - exhaustion is not news',
+                );
+                assert.equal(
+                    (await tombstonesOf(allyRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                    0,
+                    'and silence buried nothing',
+                );
+            });
         });
 
-        it("every source dark is silence, not loss - and not overreach", async () => {
-            const { post } = await seedDual("anyorigin-silence");
-            await beat(HOST_E, "fragment-sweep", allyRoot);
-            await beat(HOST_E, "body-heal", allyRoot);
-            await beat(HOST_E, "bodies-sweep");
-            {
-                const body = await servedBody(allyRoot, post, HOST_E);
-                assert.ok(
-                    body && body.includes("anyorigin-silence"),
-                    "precondition: fully arrived before the world goes dark"
-                );
-            }
-            const before = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
-
-            await unplug(HOST, { alpns: ["fragment"] });
-            await unplug(HOST_B);
-            await unplug(HOST_C);
-            // Forced beats: every candidate the fallback walk could try provably refuses,
-            // every round, and exhaustion must still not be news.
-            for (let i = 0; i < 4; i++) {
-                await beat(HOST_E, "fragment-sweep", allyRoot);
-            }
-
-            const after = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
-            assert.ok(after, "the fragment stands");
-            assert.equal(after.version, before.version, "same version - exhaustion is not news");
-            assert.equal(
-                (await tombstonesOf(allyRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-                0,
-                "and silence buried nothing"
-            );
-        });
-    });
-
-    /*
+        /*
         The last-stop hole (design conversation 2026-08-15): a persona's own nodes are not
         part of the share tree. Node A holds a share complete - chain, fragment, blobs, all
         behind doors that answer anyone - and when the sharer and author go dark for good,
@@ -1462,167 +1577,171 @@ async function setLane(mode) {
         blocks every interleaved slice - green before forward); unskipped the same day as
         the cohort-as-candidate slice's first move. Green means the share lane holds.
     */
-    describe("the cohort is part of the tree", function () {
-        this.timeout(1200000);
+        describe('the cohort is part of the tree', function () {
+            this.timeout(1200000);
 
-        let author, authorRoot, sharer, sharerRoot, cora, coraRoot;
+            let author, authorRoot, sharer, sharerRoot, cora, coraRoot;
 
-        before(async function () {
-            author = await makeUserFetch({ prefix: "lastauthor" });
-            authorRoot = (await (await author("api/identity", { method: "POST" })).json()).root_pubkey;
-            await author(`api/identity/${authorRoot}/serve`, { method: "POST" });
-            const viaAuthor = await base58(author);
+            before(async function () {
+                author = await makeUserFetch({ prefix: 'lastauthor' });
+                authorRoot = (await (await author('api/identity', { method: 'POST' })).json())
+                    .root_pubkey;
+                await author(`api/identity/${authorRoot}/serve`, { method: 'POST' });
+                const viaAuthor = await base58(author);
 
-            sharer = await makeUserFetch({ prefix: "lastsharer", host: HOST_B });
-            sharerRoot = (await (await sharer("api/identity", { method: "POST" })).json()).root_pubkey;
-            await sharer(`api/identity/${sharerRoot}/serve`, { method: "POST" });
-            const viaSharer = await base58(sharer);
+                sharer = await makeUserFetch({ prefix: 'lastsharer', host: HOST_B });
+                sharerRoot = (await (await sharer('api/identity', { method: 'POST' })).json())
+                    .root_pubkey;
+                await sharer(`api/identity/${sharerRoot}/serve`, { method: 'POST' });
+                const viaSharer = await base58(sharer);
 
-            cora = await makeUserFetch({ prefix: "lastcora", host: HOST_C });
-            coraRoot = (await (await cora("api/identity", { method: "POST" })).json()).root_pubkey;
-            await cora(`api/identity/${coraRoot}/serve`, { method: "POST" });
+                cora = await makeUserFetch({ prefix: 'lastcora', host: HOST_C });
+                coraRoot = (await (await cora('api/identity', { method: 'POST' })).json())
+                    .root_pubkey;
+                await cora(`api/identity/${coraRoot}/serve`, { method: 'POST' });
 
-            if ((await sharer(`api/id/${authorRoot}/profile?via=${viaAuthor}`)).status !== 200)
-                this.skip();
-            await dial(sharer, sharerRoot, authorRoot, "interest", "high");
-            if ((await cora(`api/id/${sharerRoot}/profile?via=${viaSharer}`)).status !== 200)
-                this.skip();
-            await dial(cora, coraRoot, sharerRoot, "interest_rebroadcasts", "high");
-            await beat(HOST_B, "fold", sharerRoot);
-            await beat(HOST_C, "fold", coraRoot);
+                if ((await sharer(`api/id/${authorRoot}/profile?via=${viaAuthor}`)).status !== 200)
+                    this.skip();
+                await dial(sharer, sharerRoot, authorRoot, 'interest', 'high');
+                if ((await cora(`api/id/${sharerRoot}/profile?via=${viaSharer}`)).status !== 200)
+                    this.skip();
+                await dial(cora, coraRoot, sharerRoot, 'interest_rebroadcasts', 'high');
+                await beat(HOST_B, 'fold', sharerRoot);
+                await beat(HOST_C, 'fold', coraRoot);
 
-            // Cora's SECOND node: a fresh account on echo adopts the persona (the daisychain
-            // ceremony), and the ledger sync carries the rebroadcast-follow across - settle
-            // until echo's own subscriptions memo knows it, proving the cohort input paths
-            // work before any darkness.
-            const coraOnE = await makeUserFetch({ prefix: "lastcorae", host: HOST_E });
-            const request = await (
-                await coraOnE("api/identity/adopt/begin", { method: "POST" })
-            ).json();
-            const granted = await cora(`api/identity/${coraRoot}/nodes`, {
-                method: "POST",
-                body: JSON.stringify({ code: request.code }),
+                // Cora's SECOND node: a fresh account on echo adopts the persona (the daisychain
+                // ceremony), and the ledger sync carries the rebroadcast-follow across - settle
+                // until echo's own subscriptions memo knows it, proving the cohort input paths
+                // work before any darkness.
+                const coraOnE = await makeUserFetch({ prefix: 'lastcorae', host: HOST_E });
+                const request = await (
+                    await coraOnE('api/identity/adopt/begin', { method: 'POST' })
+                ).json();
+                const granted = await cora(`api/identity/${coraRoot}/nodes`, {
+                    method: 'POST',
+                    body: JSON.stringify({ code: request.code }),
+                });
+                assert.equal(granted.status, 200, await granted.text());
+                await pullAndFold(HOST_E, coraRoot);
+                {
+                    const { rows } = await sql(
+                        `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${sharerRoot}' AND rebroadcast IS NOT NULL`,
+                        HOST_E,
+                    );
+                    assert.ok(
+                        rows.length,
+                        'the sibling learned the rebroadcast-follow from the synced ledger',
+                    );
+                }
             });
-            assert.equal(granted.status, 200, await granted.text());
-            await pullAndFold(HOST_E, coraRoot);
-            {
-                const { rows } = await sql(
-                    `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${sharerRoot}' AND rebroadcast IS NOT NULL`,
-                    HOST_E
-                );
+
+            afterEach(async () => {
+                await plugIn(HOST);
+                await plugIn(HOST_B);
+                await plugIn(HOST_E);
+            });
+
+            it('a share held only by a sibling reaches the waking node', async () => {
+                // The sibling sleeps through everything.
+                await unplug(HOST_E);
+
+                const made = await (
+                    await author(`api/identity/${authorRoot}/docs`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            title: 'laststop',
+                            body: 'laststop: the words',
+                            format: 'plaintext',
+                        }),
+                    })
+                ).json();
+                const pub = await author(`api/identity/${authorRoot}/docs/${made.doc_id}/publish`, {
+                    method: 'POST',
+                });
+                const pubText = await pub.text();
+                assert.equal(pub.status, 200, pubText);
+                const post = JSON.parse(pubText).post_id;
+
+                await pullAndFold(HOST_B, authorRoot);
                 assert.ok(
-                    rows.length,
-                    "the sibling learned the rebroadcast-follow from the synced ledger"
+                    (await feedOf(sharerRoot, HOST_B)).some((r) => r.doc_id === post),
+                    'the post reached the sharer',
                 );
-            }
+                const shared = await sharer(`api/identity/${sharerRoot}/rebroadcasts`, {
+                    method: 'POST',
+                    body: JSON.stringify({ author: authorRoot, doc_id: post }),
+                });
+                assert.equal(shared.status, 200, await shared.text());
+
+                // The last stop loads up: charlie holds the row, the fragment, the words.
+                await shareArrives(HOST_C, sharerRoot, authorRoot);
+                await beat(HOST_C, 'body-heal', authorRoot);
+                await beat(HOST_C, 'bodies-sweep');
+                {
+                    const body = await servedBody(authorRoot, post, HOST_C);
+                    assert.ok(
+                        body && body.includes('laststop'),
+                        'the awake node holds and serves the share',
+                    );
+                }
+
+                // The rest of the world leaves, forever.
+                await unplug(HOST);
+                await unplug(HOST_B);
+
+                // The sibling wakes into a network where its own cohort is the only holder.
+                await plugIn(HOST_E);
+
+                // THE PROPERTY: the share reaches the sibling - feed row, fragment, served
+                // words - with charlie the only live source. Today every candidate list points
+                // at the departed, and this settle times out.
+                // The wake, rung by hand: the sibling pulls the followed sharer's chain (the
+                // candidate walk is where the cohort lane earns its keep - everyone else is
+                // gone), folds, and heals the fragment and the bytes from the same cohort.
+                await pullAndFold(HOST_E, sharerRoot);
+                for (let i = 0; i < 3; i++) {
+                    await beat(HOST_E, 'fragment-sweep', authorRoot);
+                    await beat(HOST_E, 'body-heal', authorRoot);
+                    await beat(HOST_E, 'bodies-sweep');
+                }
+                assert.ok(
+                    (await feedOf(coraRoot, HOST_E)).some((r) => r.doc_id === post),
+                    "the share's feed row reached the waking sibling",
+                );
+                {
+                    const body = await servedBody(authorRoot, post, HOST_E);
+                    assert.ok(
+                        body && body.includes('laststop'),
+                        'and the sibling serves the words its cohort preserved',
+                    );
+                }
+            });
         });
 
-        afterEach(async () => {
-            await plugIn(HOST);
-            await plugIn(HOST_B);
-            await plugIn(HOST_E);
-        });
-
-        it("a share held only by a sibling reaches the waking node", async () => {
-            // The sibling sleeps through everything.
-            await unplug(HOST_E);
-
-            const made = await (
-                await author(`api/identity/${authorRoot}/docs`, {
-                    method: "POST",
-                    body: JSON.stringify({
-                        title: "laststop",
-                        body: "laststop: the words",
-                        format: "plaintext",
-                    }),
-                })
-            ).json();
-            const pub = await author(`api/identity/${authorRoot}/docs/${made.doc_id}/publish`, {
-                method: "POST",
-            });
-            const pubText = await pub.text();
-            assert.equal(pub.status, 200, pubText);
-            const post = JSON.parse(pubText).post_id;
-
-            await pullAndFold(HOST_B, authorRoot);
-            assert.ok(
-                (await feedOf(sharerRoot, HOST_B)).some((r) => r.doc_id === post),
-                "the post reached the sharer"
-            );
-            const shared = await sharer(`api/identity/${sharerRoot}/rebroadcasts`, {
-                method: "POST",
-                body: JSON.stringify({ author: authorRoot, doc_id: post }),
-            });
-            assert.equal(shared.status, 200, await shared.text());
-
-            // The last stop loads up: charlie holds the row, the fragment, the words.
-            await shareArrives(HOST_C, sharerRoot, authorRoot);
-            await beat(HOST_C, "body-heal", authorRoot);
-            await beat(HOST_C, "bodies-sweep");
-            {
-                const body = await servedBody(authorRoot, post, HOST_C);
-                assert.ok(
-                    body && body.includes("laststop"),
-                    "the awake node holds and serves the share"
-                );
-            }
-
-            // The rest of the world leaves, forever.
-            await unplug(HOST);
-            await unplug(HOST_B);
-
-            // The sibling wakes into a network where its own cohort is the only holder.
-            await plugIn(HOST_E);
-
-            // THE PROPERTY: the share reaches the sibling - feed row, fragment, served
-            // words - with charlie the only live source. Today every candidate list points
-            // at the departed, and this settle times out.
-            // The wake, rung by hand: the sibling pulls the followed sharer's chain (the
-            // candidate walk is where the cohort lane earns its keep - everyone else is
-            // gone), folds, and heals the fragment and the bytes from the same cohort.
-            await pullAndFold(HOST_E, sharerRoot);
-            for (let i = 0; i < 3; i++) {
-                await beat(HOST_E, "fragment-sweep", authorRoot);
-                await beat(HOST_E, "body-heal", authorRoot);
-                await beat(HOST_E, "bodies-sweep");
-            }
-            assert.ok(
-                (await feedOf(coraRoot, HOST_E)).some((r) => r.doc_id === post),
-                "the share's feed row reached the waking sibling"
-            );
-            {
-                const body = await servedBody(authorRoot, post, HOST_E);
-                assert.ok(
-                    body && body.includes("laststop"),
-                    "and the sibling serves the words its cohort preserved"
-                );
-            }
-        });
-    });
-
-    describe("the death cursor: the steady state", function () {
-        const reapOn = async (host) => {
-            const res = await makeFetch(host)("test/reap", { method: "POST" });
-            assert.equal(res.status, 200, `ringing the reap on ${host}`);
-        };
-
-        it("the steady state is an empty page", async () => {
-            await seedToCleo("reap-quiet");
-            await reapOn(HOST_C);
-            const cursorOf = async () => {
-                const { rows } = await sql(
-                    `SELECT cursor FROM death_cursors WHERE origin_root = '${bobRoot}'`,
-                    HOST_C
-                );
-                return rows.length ? rows[0].cursor : 0;
+        describe('the death cursor: the steady state', function () {
+            const reapOn = async (host) => {
+                const res = await makeFetch(host)('test/reap', { method: 'POST' });
+                assert.equal(res.status, 200, `ringing the reap on ${host}`);
             };
-            const settled = await cursorOf();
-            await reapOn(HOST_C);
-            assert.equal(
-                await cursorOf(),
-                settled,
-                "asking again when nothing died moves nothing - the whole argument for cursors"
-            );
+
+            it('the steady state is an empty page', async () => {
+                await seedToCleo('reap-quiet');
+                await reapOn(HOST_C);
+                const cursorOf = async () => {
+                    const { rows } = await sql(
+                        `SELECT cursor FROM death_cursors WHERE origin_root = '${bobRoot}'`,
+                        HOST_C,
+                    );
+                    return rows.length ? rows[0].cursor : 0;
+                };
+                const settled = await cursorOf();
+                await reapOn(HOST_C);
+                assert.equal(
+                    await cursorOf(),
+                    settled,
+                    'asking again when nothing died moves nothing - the whole argument for cursors',
+                );
+            });
         });
-    });
-});
+    },
+);

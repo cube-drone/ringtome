@@ -23,7 +23,7 @@ describe('a person, rendered', () => {
     it('orders nickname, self-name, words - your word for them wins', () => {
         assert.deepEqual(
             displayNames({ nickname: 'Jerry', name: 'PhazerBean', words: 'point-cheer' }),
-            ['Jerry', 'PhazerBean', 'point-cheer']
+            ['Jerry', 'PhazerBean', 'point-cheer'],
         );
     });
 
@@ -51,7 +51,10 @@ describe('the signal bars', () => {
     });
 
     it('the ladder IS the bars: none/low/medium/high/max -> 0..4', () => {
-        assert.deepEqual(['none', 'low', 'medium', 'high', 'max'].map(signalLevel), [0, 1, 2, 3, 4]);
+        assert.deepEqual(
+            ['none', 'low', 'medium', 'high', 'max'].map(signalLevel),
+            [0, 1, 2, 3, 4],
+        );
     });
 
     it('silence and garbage show no bars (the tooltip words carry the difference)', () => {

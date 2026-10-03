@@ -33,7 +33,6 @@ export function useShadowValue(mirrorValue, { save, debounceMs, key } = {}) {
 
     useEffect(() => {
         if (!dirty.current) setValue(mirrorValue);
-         
     }, [mirrorValue]);
 
     const flush = async () => {
@@ -64,8 +63,8 @@ export function useShadowValue(mirrorValue, { save, debounceMs, key } = {}) {
             if (timer.current) clearTimeout(timer.current);
             if (dirty.current) flush();
         },
-         
-        [key]
+
+        [key],
     );
 
     return { value, set, flush, onInput: (e) => set(e.currentTarget.value) };

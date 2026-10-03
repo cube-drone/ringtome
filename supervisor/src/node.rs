@@ -53,9 +53,7 @@ pub fn spawn(config: &Config, binary: &Path, version: &str) -> Result<Node> {
             Ok(())
         });
     }
-    let child = command
-        .spawn()
-        .with_context(|| format!("starting {}", binary.display()))?;
+    let child = command.spawn().with_context(|| format!("starting {}", binary.display()))?;
     let pid_file = config.pid_file();
     if let Some(pid) = child.id() {
         if let Err(e) = std::fs::write(&pid_file, format!("{pid}\n")) {
@@ -63,12 +61,7 @@ pub fn spawn(config: &Config, binary: &Path, version: &str) -> Result<Node> {
         }
     }
     tracing::info!(version, pid = child.id(), "node started");
-    Ok(Node {
-        child,
-        version: version.to_string(),
-        started: Instant::now(),
-        pid_file,
-    })
+    Ok(Node { child, version: version.to_string(), started: Instant::now(), pid_file })
 }
 
 /// Does the node at `node_url` answer `/health` with 200 right now?
@@ -123,10 +116,7 @@ impl Node {
             tokio::time::sleep(HEALTH_POLL).await;
         }
         if !is_healthy(client, node_url).await {
-            bail!(
-                "it answered /health, then stopped answering within {}s",
-                probation.as_secs()
-            );
+            bail!("it answered /health, then stopped answering within {}s", probation.as_secs());
         }
         Ok(())
     }

@@ -12,7 +12,11 @@ describe('the private words against the public ones (PUBLISH.md slice 3)', () =>
         assert.equal(maskMedia(priv), 'hello\n\n![cat](…)');
         assert.equal(sameWords(priv, pub), true);
         assert.equal(sameWords(priv + ' and more', pub), false);
-        assert.equal(sameWords('![cat](x)', '![dog](y)'), false, 'a re-captioned picture is a change');
+        assert.equal(
+            sameWords('![cat](x)', '![dog](y)'),
+            false,
+            'a re-captioned picture is a change',
+        );
         assert.equal(sameWords('a\n', 'a'), true, 'trailing whitespace is not a change');
     });
 
@@ -25,6 +29,9 @@ describe('the private words against the public ones (PUBLISH.md slice 3)', () =>
             { kind: '+', text: 'd' },
         ]);
         assert.deepEqual(lineDiff('', ''), [{ kind: ' ', text: '' }]);
-        assert.deepEqual(lineDiff('x', ''), [{ kind: '-', text: 'x' }, { kind: '+', text: '' }]);
+        assert.deepEqual(lineDiff('x', ''), [
+            { kind: '-', text: 'x' },
+            { kind: '+', text: '' },
+        ]);
     });
 });

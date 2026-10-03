@@ -53,7 +53,12 @@ pub fn parse(list: &str) -> Result<Vec<Starter>> {
         }
         out.push(Starter {
             root,
-            via: via.split(',').map(str::trim).filter(|v| !v.is_empty()).map(str::to_string).collect(),
+            via: via
+                .split(',')
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+                .collect(),
             trust: trust.to_string(),
             interest: interest.to_string(),
             rebroadcasts: rebroadcasts.to_string(),
@@ -85,7 +90,13 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
             for a in list {
                 let Some(root) = crate::pubkey::decode(&a.root) else { continue };
                 starters.retain(|s| s.root != root);
-                starters.push(Starter { root, via: a.via, trust: a.trust, interest: a.interest, rebroadcasts: a.rebroadcasts });
+                starters.push(Starter {
+                    root,
+                    via: a.via,
+                    trust: a.trust,
+                    interest: a.interest,
+                    rebroadcasts: a.rebroadcasts,
+                });
             }
         }
         Err(e) => tracing::warn!(error = ?e, "could not read the operator's auto-follow list"),
@@ -101,7 +112,11 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
         }
         let collection = format!("contact:{them}");
         let register = data.private_registers(&collection);
-        for (key, value) in [("trust", &s.trust), ("interest", &s.interest), ("interest_rebroadcasts", &s.rebroadcasts)] {
+        for (key, value) in [
+            ("trust", &s.trust),
+            ("interest", &s.interest),
+            ("interest_rebroadcasts", &s.rebroadcasts),
+        ] {
             if let Err(e) = register.set(key, value).await {
                 tracing::warn!(error = ?e, starter = %them, key, "a starter's dial did not take");
             }
@@ -149,7 +164,12 @@ pub async fn auto_follow(db: &crate::db::Db) -> Result<Vec<AutoFollow>, crate::e
         .map(|(root, via, trust, interest, rebroadcasts, added_ms)| AutoFollow {
             name: names.get(&root).and_then(|b| b.name.clone()),
             root,
-            via: via.split(',').map(str::trim).filter(|v| !v.is_empty()).map(str::to_string).collect(),
+            via: via
+                .split(',')
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+                .collect(),
             trust,
             interest,
             rebroadcasts,
@@ -190,11 +210,19 @@ pub async fn add_auto_follow(
     rebroadcasts: &str,
 ) -> Result<(), crate::error::AppError> {
     use crate::error::AppError;
-    let (root, via) = parse_address(address)
-        .ok_or_else(|| AppError::BadRequest(crate::msg!("starters.not-an-address", "that isn't a person's address")))?;
+    let (root, via) = parse_address(address).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "starters.not-an-address",
+            "that isn't a person's address"
+        ))
+    })?;
     for band in [trust, interest, rebroadcasts] {
         if !ringtome_proto::PublicEdge::BANDS.contains(&band) && band != "none" {
-            return Err(AppError::BadRequest(crate::msg!("starters.not-a-dial", "not a dial's word: {band}", band = band)));
+            return Err(AppError::BadRequest(crate::msg!(
+                "starters.not-a-dial",
+                "not a dial's word: {band}",
+                band = band
+            )));
         }
     }
     db.execute(
@@ -208,7 +236,10 @@ pub async fn add_auto_follow(
     Ok(())
 }
 
-pub async fn remove_auto_follow(db: &crate::db::Db, root_hex: &str) -> Result<(), crate::error::AppError> {
+pub async fn remove_auto_follow(
+    db: &crate::db::Db,
+    root_hex: &str,
+) -> Result<(), crate::error::AppError> {
     db.execute("DELETE FROM auto_follow WHERE root_pubkey = ?1", (root_hex,))
         .await
         .map_err(crate::error::AppError::Internal)?;
@@ -239,7 +270,8 @@ pub async fn add_handler(
     _admin: crate::auth::NodeAdminSession,
     axum::Json(req): axum::Json<AddAutoFollow>,
 ) -> Result<axum::Json<Vec<AutoFollow>>, crate::error::AppError> {
-    add_auto_follow(&state.node_db, &req.address, &req.trust, &req.interest, &req.rebroadcasts).await?;
+    add_auto_follow(&state.node_db, &req.address, &req.trust, &req.interest, &req.rebroadcasts)
+        .await?;
     Ok(axum::Json(auto_follow(&state.node_db).await?))
 }
 
@@ -264,15 +296,28 @@ mod tests {
     fn the_starters_are_the_two_and_only_where_meant() {
         let two = parse(BUILT_IN).expect("the built-in list parses");
         assert_eq!(two.len(), 3, "HDT2, Cube Drone, and Tom");
-        assert_eq!((two[2].trust.as_str(), two[2].interest.as_str(), two[2].rebroadcasts.as_str()), ("low", "low", "low"), "Tom: there, and quiet");
-        assert_eq!((two[0].trust.as_str(), two[0].interest.as_str(), two[0].rebroadcasts.as_str()), ("medium", "medium", "medium"));
-        assert_eq!((two[1].trust.as_str(), two[1].interest.as_str(), two[1].rebroadcasts.as_str()), ("medium", "low", "low"));
+        assert_eq!(
+            (two[2].trust.as_str(), two[2].interest.as_str(), two[2].rebroadcasts.as_str()),
+            ("low", "low", "low"),
+            "Tom: there, and quiet"
+        );
+        assert_eq!(
+            (two[0].trust.as_str(), two[0].interest.as_str(), two[0].rebroadcasts.as_str()),
+            ("medium", "medium", "medium")
+        );
+        assert_eq!(
+            (two[1].trust.as_str(), two[1].interest.as_str(), two[1].rebroadcasts.as_str()),
+            ("medium", "low", "low")
+        );
         assert_eq!(two[0].via, vec!["9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX".to_string()]);
         assert_eq!(configured(None, true, false).unwrap().len(), 3, "a prod node");
         assert!(configured(None, false, false).unwrap().is_empty(), "a dev node");
         assert!(configured(None, true, true).unwrap().is_empty(), "the test rig");
         assert!(configured(Some("none"), true, false).unwrap().is_empty(), "turned off");
-        assert!(parse("EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:v:fond:low:low").is_err(), "not a dial's word");
+        assert!(
+            parse("EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:v:fond:low:low").is_err(),
+            "not a dial's word"
+        );
         assert!(parse("nope:v:low:low:low").is_err(), "not an address");
     }
 }

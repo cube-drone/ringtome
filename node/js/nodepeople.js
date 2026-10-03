@@ -25,16 +25,20 @@ export const NodePeople = ({ current, searchQuery }) => {
         };
     }, []);
     const q = (searchQuery || '').trim().toLowerCase();
-    const shown = (people || []).filter((p) => !q || (p.name || '').toLowerCase().includes(q) || (p.speakable || '').includes(q));
+    const shown = (people || []).filter(
+        (p) => !q || (p.name || '').toLowerCase().includes(q) || (p.speakable || '').includes(q),
+    );
     return html`
         <div class="people-inner node-people">
             <div class="people-shelf-head">
                 <span class="people-shelf-title">${t('apps.nodepeople.hosted-here', 'hosted here')}</span>
             </div>
             ${people === undefined && html`<p class="null-sub">${t('apps.nodepeople.loading', 'looking…')}</p>`}
-            ${people !== undefined &&
-            shown.length === 0 &&
-            html`<p class="null-sub">${t('apps.nodepeople.nobody-listed', 'nobody is listed on this node.')}</p>`}
+            ${
+                people !== undefined &&
+                shown.length === 0 &&
+                html`<p class="null-sub">${t('apps.nodepeople.nobody-listed', 'nobody is listed on this node.')}</p>`
+            }
             <div class="people-list">
                 ${shown.map(
                     (p) => html`<${PersonRow}
@@ -43,7 +47,7 @@ export const NodePeople = ({ current, searchQuery }) => {
                         current=${current || null}
                         profile=${bylineProfile(p)}
                         aside=${p.slug ? `@${p.slug}` : p.speakable || ''}
-                    />`
+                    />`,
                 )}
             </div>
         </div>

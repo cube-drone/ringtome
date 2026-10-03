@@ -13,12 +13,23 @@ export const FLAT_VERSION = 'flattened_version';
 /// A drawing's version, as its flat copy remembers it: every head it had when read, in order - the
 /// same heads are the same merged drawing, and so the same picture.
 export function flatVersion(detail) {
-    return [...((detail && (detail.save_parents || detail.heads)) || [])].map(String).sort().join(',');
+    return [...((detail && (detail.save_parents || detail.heads)) || [])]
+        .map(String)
+        .sort()
+        .join(',');
 }
 
 /// The flat copy already made of drawing `sourceId` at `version`, among `docs` (the mirror's rows),
 /// or null. A deleted copy is not in the rows, so a deleted one is never handed back.
 export function findFlatCopy(docs, sourceId, version) {
     if (!version) return null;
-    return (docs || []).find((d) => d && d.fields && d.fields[FLAT_FROM] === sourceId && d.fields[FLAT_VERSION] === version) || null;
+    return (
+        (docs || []).find(
+            (d) =>
+                d &&
+                d.fields &&
+                d.fields[FLAT_FROM] === sourceId &&
+                d.fields[FLAT_VERSION] === version,
+        ) || null
+    );
 }

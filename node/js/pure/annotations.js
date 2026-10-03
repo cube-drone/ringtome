@@ -68,7 +68,9 @@ export function boundedTags(labels, { author }) {
 export function mayTag(labels, { author, me, value }) {
     if (!me) return false;
     if (me === author) return !isEmojiTag(value);
-    const mine = new Set((labels || []).filter((a) => a.key === 'tag' && a.annotator === me).map((a) => a.value));
+    const mine = new Set(
+        (labels || []).filter((a) => a.key === 'tag' && a.annotator === me).map((a) => a.value),
+    );
     return mine.has(value) || mine.size < MAX_TAGS_PER_LABELLER;
 }
 
@@ -76,7 +78,9 @@ export function mayTag(labels, { author, me, value }) {
 export function tagsLeft(labels, { author, me }) {
     if (!me) return 0;
     if (me === author) return Infinity;
-    const mine = new Set((labels || []).filter((a) => a.key === 'tag' && a.annotator === me).map((a) => a.value));
+    const mine = new Set(
+        (labels || []).filter((a) => a.key === 'tag' && a.annotator === me).map((a) => a.value),
+    );
     return Math.max(0, MAX_TAGS_PER_LABELLER - mine.size);
 }
 
@@ -110,7 +114,8 @@ export function groupLabels(labels, { author }) {
  * text, and "asshole 100" all fail - Emoji_Component is deliberately not used, because it
  * would bless bare digits.
  */
-const ONE_EMOJI = /^\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*$/u;
+const ONE_EMOJI =
+    /^\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*$/u;
 /// A tag's length, in characters - `PublicAnnotation::MAX_TAG_CHARS` on the wire, which is
 /// the authority; this is the client's copy, so an input can stop at the same place the
 /// door would refuse (Curtis, 2026-09-20). A Rust test pins the two equal.

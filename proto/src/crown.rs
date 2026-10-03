@@ -175,10 +175,7 @@ impl Crown {
                 continue;
             }
             e.verify()?;
-            by_author
-                .entry(e.entry().chain.author)
-                .or_default()
-                .insert(*e.hash(), e);
+            by_author.entry(e.entry().chain.author).or_default().insert(*e.hash(), e);
         }
 
         let mut tree = Crown {
@@ -324,10 +321,7 @@ impl Crown {
                     revocation: None,
                 },
             );
-            self.children
-                .entry(*author)
-                .or_default()
-                .push(authorization.child);
+            self.children.entry(*author).or_default().push(authorization.child);
             usurpers.insert(authorization.child, authorization.usurpers);
         }
     }
@@ -403,10 +397,8 @@ impl Crown {
             }
 
             let Some(target_node) = self.nodes.get(&revocation.target) else {
-                self.rejected.push(Rejected {
-                    entry_hash,
-                    reason: "revoke targets an unknown key",
-                });
+                self.rejected
+                    .push(Rejected { entry_hash, reason: "revoke targets an unknown key" });
                 continue;
             };
 
@@ -419,10 +411,8 @@ impl Crown {
                 Disposition::Repudiation => signer != revocation.target && strictly_senior,
             };
             if !authorized {
-                self.rejected.push(Rejected {
-                    entry_hash,
-                    reason: "revoker is not senior to its target",
-                });
+                self.rejected
+                    .push(Rejected { entry_hash, reason: "revoker is not senior to its target" });
                 continue;
             }
 
@@ -443,13 +433,7 @@ impl Crown {
                 Disposition::Repudiation => KeyStatus::Repudiated,
             };
             target_node.revocation = Some(entry_hash);
-            for Anchor {
-                service: svc,
-                instance,
-                seq,
-                head_hash,
-            } in &revocation.anchors
-            {
+            for Anchor { service: svc, instance, seq, head_hash } in &revocation.anchors {
                 self.ceilings.insert(
                     (revocation.target, *svc, *instance),
                     Ceiling {
@@ -486,26 +470,27 @@ impl Crown {
     ) {
         let held = chains.get(target).map_or(&[][..], Vec::as_slice);
         let child_list = self.children.get(target).cloned().unwrap_or_default();
-        let doomed: Vec<Pubkey> = match self.ceilings.get(&(*target, service::IDENTITY_PUBLIC, None)) {
-            Some(c) => match seal_state(held, c) {
-                Seal::Sealed => {
-                    let final_seq = c.final_seq;
-                    child_list
-                        .into_iter()
-                        .filter(|ch| self.nodes[ch].birth_seq > final_seq)
-                        .collect()
-                }
-                Seal::Contradicted(entry_hash) => {
-                    self.rejected.push(Rejected {
-                        entry_hash,
-                        reason: "identity chain contradicts the revocation anchor",
-                    });
-                    child_list
-                }
-                Seal::Incomplete => child_list,
-            },
-            None => child_list,
-        };
+        let doomed: Vec<Pubkey> =
+            match self.ceilings.get(&(*target, service::IDENTITY_PUBLIC, None)) {
+                Some(c) => match seal_state(held, c) {
+                    Seal::Sealed => {
+                        let final_seq = c.final_seq;
+                        child_list
+                            .into_iter()
+                            .filter(|ch| self.nodes[ch].birth_seq > final_seq)
+                            .collect()
+                    }
+                    Seal::Contradicted(entry_hash) => {
+                        self.rejected.push(Rejected {
+                            entry_hash,
+                            reason: "identity chain contradicts the revocation anchor",
+                        });
+                        child_list
+                    }
+                    Seal::Incomplete => child_list,
+                },
+                None => child_list,
+            };
         // Structurally void the phantom subtrees now; the final propagate_invalidity pass would
         // reach the descendants too, but too late for the revoke checks above.
         let mut stack = doomed;
@@ -535,10 +520,7 @@ impl Crown {
     }
 
     fn reject(&mut self, e: &SignedEntry, reason: &'static str) {
-        self.rejected.push(Rejected {
-            entry_hash: *e.hash(),
-            reason,
-        });
+        self.rejected.push(Rejected { entry_hash: *e.hash(), reason });
     }
 
     // -------------------------------------------------------------------------------------
@@ -615,7 +597,12 @@ impl Crown {
     }
 
     /// Validity ceiling for one chain `(key, service, instance)`, if a revocation sealed it.
-    pub fn ceiling_of(&self, key: &Pubkey, service_id: u32, instance: Option<[u8; 16]>) -> Option<Ceiling> {
+    pub fn ceiling_of(
+        &self,
+        key: &Pubkey,
+        service_id: u32,
+        instance: Option<[u8; 16]>,
+    ) -> Option<Ceiling> {
         self.ceilings.get(&(*key, service_id, instance)).copied()
     }
 
@@ -714,13 +701,9 @@ mod tests {
             stamp.extend(self.children.iter().copied());
 
             let child = TestKey::new(child_seed, stamp.clone());
-            let payload = Authorize {
-                child: child.pk(),
-                usurpers: stamp,
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap();
+            let payload = Authorize { child: child.pk(), usurpers: stamp, enc_pubkey: None }
+                .encode()
+                .unwrap();
             let entry = self.append(entry_type::AUTHORIZE, payload);
             self.children.push(child.pk());
             (child, entry)
@@ -732,13 +715,7 @@ mod tests {
             disposition: Disposition,
             anchors: Vec<Anchor>,
         ) -> SignedEntry {
-            let payload = Revoke {
-                target,
-                disposition,
-                anchors,
-            }
-            .encode()
-            .unwrap();
+            let payload = Revoke { target, disposition, anchors }.encode().unwrap();
             self.append(entry_type::REVOKE, payload)
         }
 
@@ -783,11 +760,7 @@ mod tests {
             assert_eq!(tree.compare(&root.pk(), &junior), Some(Less));
         }
         assert_eq!(tree.compare(&recovery.pk(), &laptop.pk()), Some(Less));
-        assert_eq!(
-            tree.compare(&recovery.pk(), &phone.pk()),
-            Some(Less),
-            "senior branch wins"
-        );
+        assert_eq!(tree.compare(&recovery.pk(), &phone.pk()), Some(Less), "senior branch wins");
         assert_eq!(tree.compare(&laptop.pk(), &phone.pk()), Some(Less));
 
         // Everyone is Active; a stranger is Unknown.
@@ -819,22 +792,15 @@ mod tests {
         // Root authorizes a second child but the stamp claims it is the *first* (hiding the
         // recovery key) - the truncated-lineage forgery.
         let liar = TestKey::new(3, vec![]);
-        let bad_stamp = Authorize {
-            child: liar.pk(),
-            usurpers: vec![root.pk()],
-            enc_pubkey: None,
-        } // missing recovery
-        .encode()
-        .unwrap();
+        let bad_stamp = Authorize { child: liar.pk(), usurpers: vec![root.pk()], enc_pubkey: None } // missing recovery
+            .encode()
+            .unwrap();
         let e1 = root.append(entry_type::AUTHORIZE, bad_stamp);
 
         let tree = Crown::build(root.pk(), &[e0, e1]).unwrap();
         assert_eq!(tree.status(&liar.pk()), KeyStatus::Unknown);
         assert_eq!(tree.rejected().len(), 1);
-        assert_eq!(
-            tree.rejected()[0].reason,
-            "usurper stamp does not match parent history"
-        );
+        assert_eq!(tree.rejected()[0].reason, "usurper stamp does not match parent history");
     }
 
     #[test]
@@ -851,23 +817,11 @@ mod tests {
         let tree_ba = Crown::build(root_pk, &[eb, ea]).unwrap();
 
         // Same winner regardless of arrival order: the lowest child pubkey.
-        let winner = if child_a.pk() < child_b.pk() {
-            child_a.pk()
-        } else {
-            child_b.pk()
-        };
-        let loser = if winner == child_a.pk() {
-            child_b.pk()
-        } else {
-            child_a.pk()
-        };
+        let winner = if child_a.pk() < child_b.pk() { child_a.pk() } else { child_b.pk() };
+        let loser = if winner == child_a.pk() { child_b.pk() } else { child_a.pk() };
         for tree in [&tree_ab, &tree_ba] {
             assert_eq!(tree.status(&winner), KeyStatus::Active);
-            assert_eq!(
-                tree.status(&loser),
-                KeyStatus::Unknown,
-                "losing fork never enters"
-            );
+            assert_eq!(tree.status(&loser), KeyStatus::Unknown, "losing fork never enters");
             assert_eq!(tree.forks().len(), 1);
             assert_eq!(tree.forks()[0].author, root_pk);
         }
@@ -943,11 +897,7 @@ mod tests {
         let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Retired);
         assert_eq!(tree.status(&phone.pk()), KeyStatus::Active);
-        assert_eq!(
-            tree.status(&phantom.pk()),
-            KeyStatus::Invalid,
-            "a post-seal mint is a phantom"
-        );
+        assert_eq!(tree.status(&phantom.pk()), KeyStatus::Invalid, "a post-seal mint is a phantom");
     }
 
     #[test]
@@ -970,21 +920,11 @@ mod tests {
             Disposition::Retirement,
             vec![
                 anchor,
-                Anchor {
-                    service: service::POSTS,
-                    instance: None,
-                    seq: 7,
-                    head_hash: [0xEE; 32],
-                },
+                Anchor { service: service::POSTS, instance: None, seq: 7, head_hash: [0xEE; 32] },
             ],
         );
 
-        let winner_hash = *if forged.hash() < honest.hash() {
-            &forged
-        } else {
-            &honest
-        }
-        .hash();
+        let winner_hash = *if forged.hash() < honest.hash() { &forged } else { &honest }.hash();
 
         let mut ab = entries.clone();
         ab.extend([honest.clone(), forged.clone()]);
@@ -1015,11 +955,7 @@ mod tests {
 
         let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
-        assert_eq!(
-            tree.status(&phone.pk()),
-            KeyStatus::Invalid,
-            "the subtree dies"
-        );
+        assert_eq!(tree.status(&phone.pk()), KeyStatus::Invalid, "the subtree dies");
         assert_eq!(tree.status(&recovery.pk()), KeyStatus::Active);
         assert_eq!(tree.status(&root.pk()), KeyStatus::Active);
     }
@@ -1086,10 +1022,12 @@ mod tests {
         let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&recovery.pk()), KeyStatus::Active);
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
-        assert!(tree.rejected().iter().any(|r| r.reason
-            == "revoke signed by a repudiated or invalid key"
-            || r.reason == "revoke lies beyond the signer's own ceiling"
-            || r.reason == "revoker is not senior to its target"));
+        assert!(tree
+            .rejected()
+            .iter()
+            .any(|r| r.reason == "revoke signed by a repudiated or invalid key"
+                || r.reason == "revoke lies beyond the signer's own ceiling"
+                || r.reason == "revoker is not senior to its target"));
     }
 
     /// `usurper_stamp_for_new_child` must agree with the stamp the validator recomputes - for
@@ -1124,13 +1062,8 @@ mod tests {
         // ...and at depth 2 (C → D), the full daisy chain, stamp from the crown itself.
         let stamp = tree.usurper_stamp_for_new_child(&leaf_c.pk()).unwrap();
         let d = TestKey::new(5, stamp.clone());
-        let payload = Authorize {
-            child: d.pk(),
-            usurpers: stamp,
-            enc_pubkey: None,
-        }
-        .encode()
-        .unwrap();
+        let payload =
+            Authorize { child: d.pk(), usurpers: stamp, enc_pubkey: None }.encode().unwrap();
         entries.push(leaf_c.append(entry_type::AUTHORIZE, payload));
         let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&d.pk()), KeyStatus::Active);
@@ -1149,9 +1082,7 @@ mod tests {
         for seed in 0..25u64 {
             let mut state = seed.wrapping_mul(2654435761).wrapping_add(1);
             let mut next = |bound: usize| -> usize {
-                state = state
-                    .wrapping_mul(6364136223846793005)
-                    .wrapping_add(1442695040888963407);
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                 ((state >> 33) as usize) % bound
             };
 
@@ -1183,11 +1114,7 @@ mod tests {
                     let ab = tree.compare(a, b).expect("members are always comparable");
                     let ba = tree.compare(b, a).unwrap();
                     assert_eq!(ab, ba.reverse(), "seed {seed}: antisymmetry");
-                    assert_eq!(
-                        ab == Ordering::Equal,
-                        a == b,
-                        "seed {seed}: equality iff same key"
-                    );
+                    assert_eq!(ab == Ordering::Equal, a == b, "seed {seed}: equality iff same key");
                     for c in &pks {
                         let bc = tree.compare(b, c).unwrap();
                         if ab == Ordering::Less && bc == Ordering::Less {
@@ -1243,11 +1170,7 @@ mod tests {
         honest.push(retire.clone());
         let tree = Crown::build(root.pk(), &honest).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Retired);
-        assert_eq!(
-            tree.status(&phone.pk()),
-            KeyStatus::Active,
-            "sealed history is honored"
-        );
+        assert_eq!(tree.status(&phone.pk()), KeyStatus::Active, "sealed history is honored");
 
         // The fresh/late-syncing node's view: the attacker (still holding laptop's key)
         // replaced laptop's chain wholesale with a prefix minting a phantom child.
@@ -1366,13 +1289,7 @@ mod tests {
         let (phantom, forged_e) = forged_laptop.authorize(9);
         entries.push(forged_e); // forks laptop's chain at seq 0
 
-        let keys = [
-            root.pk(),
-            recovery.pk(),
-            laptop.pk(),
-            phone.pk(),
-            phantom.pk(),
-        ];
+        let keys = [root.pk(), recovery.pk(), laptop.pk(), phone.pk(), phantom.pk()];
         let baseline = Crown::build(root.pk(), &entries).unwrap();
         for perm in 0..entries.len() {
             let mut shuffled = entries.clone();
@@ -1395,11 +1312,7 @@ mod tests {
         // And the attack failed in every ordering: whichever branch won the fork, the phantom
         // was never credited (fork loser -> Unknown; fork winner -> disproven by the anchor).
         assert_ne!(baseline.status(&phantom.pk()), KeyStatus::Active);
-        assert_eq!(
-            baseline.forks().len(),
-            1,
-            "the equivocation is on the record"
-        );
+        assert_eq!(baseline.forks().len(), 1, "the equivocation is on the record");
     }
 
     #[test]
@@ -1418,9 +1331,7 @@ mod tests {
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
         assert_eq!(tree.status(&phone.pk()), KeyStatus::Invalid);
         assert_eq!(
-            tree.ceiling(&laptop.pk(), service::IDENTITY_PUBLIC)
-                .unwrap()
-                .disposition,
+            tree.ceiling(&laptop.pk(), service::IDENTITY_PUBLIC).unwrap().disposition,
             Disposition::Repudiation
         );
     }

@@ -20,7 +20,10 @@ export function tipDelay(now, hiddenAt) {
 /// above }, in the same pixels.
 export function placeTip(anchor, size, viewport, gap = 6, margin = 8) {
     const centre = (anchor.left + anchor.right) / 2;
-    const left = Math.max(margin, Math.min(viewport.width - size.width - margin, centre - size.width / 2));
+    const left = Math.max(
+        margin,
+        Math.min(viewport.width - size.width - margin, centre - size.width / 2),
+    );
     const over = anchor.top - gap - size.height;
     const above = over >= margin;
     return { left, top: above ? over : anchor.bottom + gap, above };

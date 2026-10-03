@@ -5,11 +5,17 @@ import { session, signUp, sleep } from './boot.mjs';
 const J = { 'Content-Type': 'application/json' };
 const s = session('http://localhost:5299');
 await signUp(s, 'editboth');
-const me = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
+const me = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json())
+    .root_pubkey;
 
 // A published post of my own, via the API (title + body land, then publish).
-const d = await (await s.fetch(`/api/identity/${me}/docs`, { method: 'POST', headers: J,
-    body: JSON.stringify({ title: 'Editable', body: 'original words', format: 'marquee' }) })).json();
+const d = await (
+    await s.fetch(`/api/identity/${me}/docs`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ title: 'Editable', body: 'original words', format: 'marquee' }),
+    })
+).json();
 await s.fetch(`/api/identity/${me}/docs/${d.doc_id}/buckets/feed`, { method: 'PUT', headers: J });
 await s.fetch(`/api/identity/${me}/docs/${d.doc_id}/publish`, { method: 'POST', headers: J });
 await sleep(2500);
@@ -18,7 +24,11 @@ const ceremony = async (dom, doc, where) => {
     const click = (el) => el?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let t = 0; t < 240 && !doc.querySelector('.feed-entry'); t++) await sleep(50);
     // Own item: wait for the edit wiring (the mirror must answer before the lock appears).
-    for (let t = 0; t < 120 && !doc.querySelector('.feed-entry .journal-lock, .feed-entry .feed-edit'); t++)
+    for (
+        let t = 0;
+        t < 120 && !doc.querySelector('.feed-entry .journal-lock, .feed-entry .feed-edit');
+        t++
+    )
         await sleep(50);
     const entry = doc.querySelector('.feed-entry');
     const lock = entry?.querySelector('.journal-lock');
@@ -27,28 +37,37 @@ const ceremony = async (dom, doc, where) => {
     if (lock) {
         click(lock);
         for (let t = 0; t < 60 && !entry.querySelector('.journal-unlock-bar'); t++) await sleep(50);
-        entry.querySelector('.journal-unlock-bar')
+        entry
+            .querySelector('.journal-unlock-bar')
             ?.dispatchEvent(new dom.window.Event('animationend', { bubbles: true }));
     } else if (editBtn) {
         click(editBtn);
     }
     for (let t = 0; t < 240 && !entry.querySelector('.cm-editor'); t++) await sleep(50);
-    console.log(`RESULT ${where}: editor opens in place=${!!entry.querySelector('.cm-editor')}`,
-        '| holds the words:', !!entry.querySelector('.cm-content')?.textContent?.includes('words'),
-        '| offers:', JSON.stringify(entry.querySelector('.feed-post')?.textContent));
+    console.log(
+        `RESULT ${where}: editor opens in place=${!!entry.querySelector('.cm-editor')}`,
+        '| holds the words:',
+        !!entry.querySelector('.cm-content')?.textContent?.includes('words'),
+        '| offers:',
+        JSON.stringify(entry.querySelector('.feed-post')?.textContent),
+    );
     // CHANGE something before posting: retitle via the composer's own input (a plain field,
     // typeable in jsdom where the CodeMirror body is not).
     const titleBox = entry.querySelector('.feed-title');
     const setter = Object.getOwnPropertyDescriptor(
-        dom.window.HTMLInputElement.prototype, 'value').set;
+        dom.window.HTMLInputElement.prototype,
+        'value',
+    ).set;
     setter.call(titleBox, `Amended in the ${where}`);
     titleBox.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     await sleep(300);
     click(entry.querySelector('.feed-post'));
     for (let t = 0; t < 240 && entry.querySelector('.cm-editor'); t++) await sleep(50);
-    console.log(`RESULT ${where}: re-posting closes the editor=${!entry.querySelector('.cm-editor')}`,
+    console.log(
+        `RESULT ${where}: re-posting closes the editor=${!entry.querySelector('.cm-editor')}`,
         '| the card wears the NEW title with no reload:',
-        JSON.stringify(entry.querySelector('.feed-entry-title')?.textContent));
+        JSON.stringify(entry.querySelector('.feed-entry-title')?.textContent),
+    );
 };
 
 // Home one: the feed.

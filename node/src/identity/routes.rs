@@ -6,7 +6,9 @@
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
+use axum::http::header::{
+    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS,
+};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -35,10 +37,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity", post(create_handler))
         .route("/api/identity", get(list_handler))
         .route("/api/identity/{root}/detach", post(detach_handler))
-        .route(
-            "/api/identity/{root}/profile",
-            get(get_profile_handler).post(set_profile_handler),
-        )
+        .route("/api/identity/{root}/profile", get(get_profile_handler).post(set_profile_handler))
         .route("/api/identity/{root}/rebuild", post(rebuild_handler))
         .route("/api/identity/{root}/entries", get(entries_handler))
         .route("/api/identity/{root}/keys", get(keys_handler))
@@ -46,7 +45,8 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
         .route(
             "/api/identity/{root}/docs/{doc_id}/publish/drawing",
-            post(publish_drawing_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
+            post(publish_drawing_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
         )
         .route("/api/identity/{root}/books/{bucket}/rollout", post(book_rollout_handler))
         .route("/api/identity/{root}/books/{bucket}", delete(book_takedown_handler))
@@ -111,41 +111,23 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/feed", get(feed_handler))
         .route("/api/identity/{root}/feed/labels", get(feed_labels_handler))
         .route("/api/identity/{root}/docs/copy", post(docs_copy_handler))
-        .route(
-            "/api/identity/{root}/notifications",
-            get(notifications_handler),
-        )
+        .route("/api/identity/{root}/notifications", get(notifications_handler))
         // Web Push (webpush.rs): the node's public key, and this browser's subscription.
         .route("/api/identity/{root}/push", get(push_key_handler).post(push_subscribe_handler))
         .route("/api/identity/{root}/push/forget", post(push_forget_handler))
         .route("/api/identity/{root}/push/test", post(push_test_handler))
         .route("/api/identity/{root}/serve", post(serve_handler))
-        .route(
-            "/api/identity/{root}/keys/{target}/revoke",
-            post(revoke_key_handler),
-        )
+        .route("/api/identity/{root}/keys/{target}/revoke", post(revoke_key_handler))
         // Private chains: the member-only KV + set store (encrypted at rest, synced only to the
         // identity's own nodes).
         // The implicit set: what this persona's friends vouch for, composed with their own
         // dials (edgegraph). Raw per-introducer rows - rollup and discounts are the UI's.
-        .route(
-            "/api/identity/{root}/implicit",
-            get(implicit_list_handler),
-        )
+        .route("/api/identity/{root}/implicit", get(implicit_list_handler))
         // The People page's suggested shelf: the demand rollup filtered to landed mirrors,
         // bylines attached (speculative::suggested_for - "reading is not serving").
-        .route(
-            "/api/identity/{root}/suggested",
-            get(suggested_list_handler),
-        )
-        .route(
-            "/api/identity/{root}/private/kv/{collection}",
-            get(private_kv_list_handler),
-        )
-        .route(
-            "/api/identity/{root}/private/kv/{collection}/{key}",
-            put(private_kv_put_handler),
-        )
+        .route("/api/identity/{root}/suggested", get(suggested_list_handler))
+        .route("/api/identity/{root}/private/kv/{collection}", get(private_kv_list_handler))
+        .route("/api/identity/{root}/private/kv/{collection}/{key}", put(private_kv_put_handler))
         .route(
             "/api/identity/{root}/private/set/{collection}",
             get(private_set_list_handler).post(private_set_add_handler),
@@ -174,16 +156,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         )
         // Rename without touching content: a media-safe retitle (a new version reusing the
         // head's blobs). The rename path for processed uploads; sound for text docs too.
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/title",
-            patch(docs_retitle_handler),
-        )
+        .route("/api/identity/{root}/docs/{doc_id}/title", patch(docs_retitle_handler))
         // Pin a document to the top of its list (PUT) or release it (DELETE) - a doc-meta flag,
         // like delete but opposite in effect.
-        .route(
-            "/api/identity/{root}/posts/{post_id}/replies",
-            get(own_post_replies_handler),
-        )
+        .route("/api/identity/{root}/posts/{post_id}/replies", get(own_post_replies_handler))
         .route(
             "/api/identity/{root}/docs/{doc_id}/pin",
             put(pin_put_handler).delete(pin_delete_handler),
@@ -208,41 +184,20 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/{doc_id}/binary",
             put(docs_save_binary_handler).layer(DefaultBodyLimit::max(limits.upload)),
         )
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/body",
-            get(docs_body_handler),
-        )
+        .route("/api/identity/{root}/docs/{doc_id}/body", get(docs_body_handler))
         // The same bytes under a decorative filename: a marquee embed target needs an
         // EXTENSION for the renderer's media-kind sniff (`![t](.../body/photo.avif)`); the
         // name is ignored, the response's real Content-Type (nosniff-pinned) is authoritative.
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/body/{filename}",
-            get(docs_body_named_handler),
-        )
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/thumb",
-            get(docs_thumb_handler),
-        )
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/preview",
-            get(docs_preview_handler),
-        )
+        .route("/api/identity/{root}/docs/{doc_id}/body/{filename}", get(docs_body_named_handler))
+        .route("/api/identity/{root}/docs/{doc_id}/thumb", get(docs_thumb_handler))
+        .route("/api/identity/{root}/docs/{doc_id}/preview", get(docs_preview_handler))
         // Media ingest progress: the owner's transcode queue for this identity.
-        .route(
-            "/api/identity/{root}/ingest",
-            get(docs_ingest_status_handler),
-        )
+        .route("/api/identity/{root}/ingest", get(docs_ingest_status_handler))
         // Rename a still-queued upload (the title is baked into the version at transcode).
-        .route(
-            "/api/identity/{root}/ingest/{job_id}",
-            patch(ingest_retitle_handler),
-        )
+        .route("/api/identity/{root}/ingest/{job_id}", patch(ingest_retitle_handler))
         // Annotations: private facts about documents - per-doc fields (LWW registers) and tags
         // (LWW set-elements) on the doc-meta chain, read/written through the store handle.
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/annotations",
-            get(annotations_get_handler),
-        )
+        .route("/api/identity/{root}/docs/{doc_id}/annotations", get(annotations_get_handler))
         .route(
             "/api/identity/{root}/docs/{doc_id}/annotations/fields/{field}",
             put(annotation_field_put_handler).delete(annotation_field_delete_handler),
@@ -253,10 +208,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         )
         // The inverted read: this identity's documents currently carrying a tag, in the docs-list
         // per-doc shape. (`tagged` is a static segment, so it never shadows a 32-hex doc_id.)
-        .route(
-            "/api/identity/{root}/docs/tagged/{tag}",
-            get(docs_by_tag_handler),
-        )
+        .route("/api/identity/{root}/docs/tagged/{tag}", get(docs_by_tag_handler))
         // Buckets: which project(s)/notebook(s) a document belongs to - the tag mechanism in
         // its own namespace, the axis search and tags are scoped to.
         .route(
@@ -271,10 +223,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/buckets/{bucket}",
             axum::routing::delete(bucket_undefine_handler),
         )
-        .route(
-            "/api/identity/{root}/docs/bucketed/{bucket}",
-            get(docs_by_bucket_handler),
-        )
+        .route("/api/identity/{root}/docs/bucketed/{bucket}", get(docs_by_bucket_handler))
         // Taxonomies: user-defined ordered lists of document references on the doc-meta chain.
         // Rename/describe ride the annotations routes above (a taxonomy id is annotatable like
         // any doc id); membership and order live here.
@@ -297,10 +246,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // TEMPORARY debug surface (2026-07-25, field-testing the merge machinery): the whole
         // version DAG of one document, bodies included, owner-gated like everything else.
         // Slated for removal once the thorny-merge era ends.
-        .route(
-            "/api/identity/{root}/docs/{doc_id}/debug",
-            get(docs_debug_handler),
-        )
+        .route("/api/identity/{root}/docs/{doc_id}/debug", get(docs_debug_handler))
 }
 
 #[derive(Serialize)]
@@ -315,11 +261,7 @@ struct IdentityInfo {
 
 impl IdentityInfo {
     fn new(i: super::Identity, standing: &'static str) -> Self {
-        Self {
-            root_pubkey: i.root_pubkey,
-            created_at_ms: i.created_at_ms,
-            standing,
-        }
+        Self { root_pubkey: i.root_pubkey, created_at_ms: i.created_at_ms, standing }
     }
 }
 
@@ -346,7 +288,7 @@ async fn create_handler(
         &state.user_dbs,
         &session.account.id,
         &state.config.node_name,
-        state.config.admin_persona
+        state.config.admin_persona,
     )
     .await?;
     // Participation implies locatability (the discoverability doctrine): a newborn identity
@@ -471,11 +413,7 @@ async fn rebuild_handler(
         return Err(AppError::NotFound(crate::msg!("identity.routes.not-found", "not found")));
     }
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let db = state
-        .user_dbs
-        .held(&root)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let entries_replayed = imaol::rebuild_views(&db).await?;
     Ok(Json(RebuildResponse { entries_replayed }))
 }
@@ -506,11 +444,7 @@ async fn entries_handler(
     axum::extract::Query(q): axum::extract::Query<EntriesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let db = state
-        .user_dbs
-        .held(&root)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let after = match (q.after_author, q.after_service, q.after_seq) {
         (Some(author), Some(service), Some(seq)) => Some(imaol::EntryCursor {
             author,
@@ -520,12 +454,8 @@ async fn entries_handler(
         }),
         _ => None,
     };
-    let (items, more) = imaol::list_entries(
-        &db,
-        q.limit.unwrap_or(imaol::ENTRIES_PAGE),
-        after.as_ref(),
-    )
-    .await?;
+    let (items, more) =
+        imaol::list_entries(&db, q.limit.unwrap_or(imaol::ENTRIES_PAGE), after.as_ref()).await?;
     let next = items.last().map(|e| imaol::EntryCursor {
         author: e.author.clone(),
         service: e.service,
@@ -570,8 +500,7 @@ async fn authorize_node_handler(
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<GrantResponse>, AppError> {
     crate::auth::keys::identity_by_browser(&session)?;
-    let request: super::adoption::RequestCode =
-        super::adoption::unpack(&req.code, "request code")?;
+    let request: super::adoption::RequestCode = super::adoption::unpack(&req.code, "request code")?;
     let (requester_endpoint, requester_addrs) =
         (request.endpoint_id.clone(), request.addrs.clone());
     let grant =
@@ -642,12 +571,10 @@ async fn sync_handler(
     Path(root): Path<String>,
 ) -> Result<Json<Vec<crate::net::sync::PeerSyncResult>>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let peers = crate::net::sync::peers_for(&state.node_db, &root)
-        .await
-        .map_err(AppError::Internal)?;
-    let results = crate::net::sync::sync_peers(&state, &root, &peers)
-        .await
-        .map_err(AppError::Internal)?;
+    let peers =
+        crate::net::sync::peers_for(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    let results =
+        crate::net::sync::sync_peers(&state, &root, &peers).await.map_err(AppError::Internal)?;
     Ok(Json(results))
 }
 
@@ -835,11 +762,14 @@ struct Sharer {
 
 /// The kind of each journal row (search.rs KINDS): a share by its via, a book by its
 /// format, a reply by its link, a post otherwise. One links read for the whole set.
-async fn feed_kinds(state: &AppState, rows: &[crate::fanout::FeedRow]) -> Result<Vec<&'static str>, AppError> {
-    let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let links = crate::replies::links_for(&state.node_db, &pairs)
-        .await
-        .map_err(AppError::Internal)?;
+async fn feed_kinds(
+    state: &AppState,
+    rows: &[crate::fanout::FeedRow],
+) -> Result<Vec<&'static str>, AppError> {
+    let pairs: Vec<(String, String)> =
+        rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+    let links =
+        crate::replies::links_for(&state.node_db, &pairs).await.map_err(AppError::Internal)?;
     Ok(rows
         .iter()
         .map(|r| {
@@ -860,7 +790,11 @@ async fn feed_kinds(state: &AppState, rows: &[crate::fanout::FeedRow]) -> Result
 
 /// The journal rows this reader may see: a trusted-only post stays unless the author
 /// publishes trust for the reader (or is the reader). Shared by the page and the facets.
-async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanout::FeedRow>) -> Vec<crate::fanout::FeedRow> {
+async fn readable_feed_rows(
+    state: &AppState,
+    root: &str,
+    rows: Vec<crate::fanout::FeedRow>,
+) -> Vec<crate::fanout::FeedRow> {
     // A sealed reply to a sealed parent wears the PARENT's seal (PROJECT_PLAN's Replies under
     // the author's seal): the parent's author is the one whose trust opens it. One links
     // read for the sealed rows names their parents.
@@ -874,7 +808,8 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
     } else {
         crate::replies::links_for(&state.node_db, &sealed_pairs).await.unwrap_or_default()
     };
-    let mut trusted_here: std::collections::HashMap<(String, String, String), bool> = Default::default();
+    let mut trusted_here: std::collections::HashMap<(String, String, String), bool> =
+        Default::default();
     let mut keep = Vec::with_capacity(rows.len());
     for r in rows {
         if !r.trusted_only {
@@ -904,7 +839,8 @@ async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanou
         let ok = match trusted_here.get(&at) {
             Some(v) => *v,
             None => {
-                let v = crate::idface::seal_lists(state, &at.0, &at.1, root, r.via_root.as_deref()).await;
+                let v = crate::idface::seal_lists(state, &at.0, &at.1, root, r.via_root.as_deref())
+                    .await;
                 trusted_here.insert(at, v);
                 v
             }
@@ -998,7 +934,9 @@ struct RoomItem {
 /// still in (`joined_ms`), and a room left (`left_ms`) - kept on the register rather than
 /// dropped, so the column can list what was left beneath what is active, and a look at a
 /// left room does not quietly rejoin it.
-async fn rooms_by_standing(data: &store::Store) -> Result<(Vec<(String, String)>, Vec<(String, String)>), AppError> {
+async fn rooms_by_standing(
+    data: &store::Store,
+) -> Result<(Vec<(String, String)>, Vec<(String, String)>), AppError> {
     let (rows, _) = data.private_registers(ROOMS_JOINED).all().await?;
     let mut joined = Vec::new();
     let mut left = Vec::new();
@@ -1048,19 +986,26 @@ async fn im_find_handler(
     // node's own, which is why my side is the cheap side to ask.
     for p in crate::record::documents::public_rooms(data.db()).await? {
         let doc_hex = hex::encode(p.doc_id);
-        if crate::chat::im_other(&state, &root, &root, &p.doc_id).await.as_deref() == Some(other.as_str()) {
+        if crate::chat::im_other(&state, &root, &root, &p.doc_id).await.as_deref()
+            == Some(other.as_str())
+        {
             return Ok(Json(serde_json::json!({ "author": root, "doc_id": doc_hex })));
         }
     }
     // Then theirs, addressed to me: the chat they opened with me, as my inbox holds it - which
     // is how it reaches a persona that does not follow them (2026-09-25: a trusted, unfollowed
     // opener's chat was missed here, and "chat with them" minted a second chat for the pair).
-    if let Some((author, doc)) = ims_addressed_to(&state, &data, &root).await?.into_iter().find(|(a, _)| *a == other) {
+    if let Some((author, doc)) =
+        ims_addressed_to(&state, &data, &root).await?.into_iter().find(|(a, _)| *a == other)
+    {
         return Ok(Json(serde_json::json!({ "author": author, "doc_id": doc })));
     }
     // Then theirs by any other road: a room of theirs, marked an IM, that this persona can see
     // at all - an IM is sealed to one person, so seeing it IS being the other half of it.
-    let rooms = crate::fanout::JournalFilter { formats: &["room"], ..crate::fanout::JournalFilter::feed(&root) };
+    let rooms = crate::fanout::JournalFilter {
+        formats: &["room"],
+        ..crate::fanout::JournalFilter::feed(&root)
+    };
     let rows = crate::fanout::journal_all(&state.node_db, &rooms)
         .await
         .map_err(AppError::Internal)?
@@ -1070,22 +1015,15 @@ async fn im_find_handler(
     // Through the feed's own gate, as the chats column reads it: a room this persona could
     // not open is not their chat, and landing them in a refusal would be worse than minting
     // one of their own.
-    let mut theirs: Vec<String> = readable_feed_rows(&state, &root, rows)
-        .await
-        .into_iter()
-        .map(|r| r.doc_id)
-        .collect();
+    let mut theirs: Vec<String> =
+        readable_feed_rows(&state, &root, rows).await.into_iter().map(|r| r.doc_id).collect();
     let (joined, left) = rooms_by_standing(&data).await?;
-    theirs.extend(
-        joined
-            .into_iter()
-            .chain(left)
-            .filter(|(a, _)| *a == other)
-            .map(|(_, d)| d),
-    );
+    theirs.extend(joined.into_iter().chain(left).filter(|(a, _)| *a == other).map(|(_, d)| d));
     theirs.dedup();
     for doc_hex in theirs {
-        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+            continue;
+        };
         if !crate::chat::is_im(&state, &other, &doc).await {
             continue;
         }
@@ -1116,7 +1054,11 @@ pub(crate) async fn ims_addressed_to(
             continue;
         }
         let (Some(doc), Some(author)) = (n.doc_id.clone(), n.detail.clone()) else { continue };
-        if author.len() != 64 || doc.len() != 32 || author == root || out.contains(&(author.clone(), doc.clone())) {
+        if author.len() != 64
+            || doc.len() != 32
+            || author == root
+            || out.contains(&(author.clone(), doc.clone()))
+        {
             continue;
         }
         let Some(h) = held_public_header(state, &author, &doc).await? else { continue };
@@ -1168,10 +1110,12 @@ async fn rooms_handler(
         });
     }
     // The rooms my feed carries, through the feed's own gate.
-    let rooms = crate::fanout::JournalFilter { formats: &["room"], ..crate::fanout::JournalFilter::feed(&root) };
-    let rows: Vec<crate::fanout::FeedRow> = crate::fanout::journal_all(&state.node_db, &rooms)
-        .await
-        .map_err(AppError::Internal)?;
+    let rooms = crate::fanout::JournalFilter {
+        formats: &["room"],
+        ..crate::fanout::JournalFilter::feed(&root)
+    };
+    let rows: Vec<crate::fanout::FeedRow> =
+        crate::fanout::journal_all(&state.node_db, &rooms).await.map_err(AppError::Internal)?;
     let mut readable = readable_feed_rows(&state, &root, rows.clone()).await;
     // A private chat is judged the way its DOOR judges it (Curtis, 2026-09-20, having
     // opened a chat the other side never saw): the author's node is the only one that
@@ -1180,19 +1124,28 @@ async fn rooms_handler(
     // its audience being noted, and is sitting on a ten-minute refusal. So for the room
     // rows this reader could not judge, and only those the header marks an IM, the key
     // lane is asked once; the lane's own refusal memo is what keeps "once" honest.
-    let judged: std::collections::HashSet<String> = readable.iter().map(|r| r.doc_id.clone()).collect();
+    let judged: std::collections::HashSet<String> =
+        readable.iter().map(|r| r.doc_id.clone()).collect();
     for r in rows {
         if judged.contains(&r.doc_id) {
             continue;
         }
-        let Ok(Ok(doc)) = hex::decode(&r.doc_id).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&r.doc_id).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+            continue;
+        };
         if !crate::chat::is_im(&state, &r.author_root, &doc).await {
             continue;
         }
-        if crate::postkeys::refused(&state.node_db, &r.author_root, &r.doc_id, &root).await.unwrap_or(false) {
+        if crate::postkeys::refused(&state.node_db, &r.author_root, &r.doc_id, &root)
+            .await
+            .unwrap_or(false)
+        {
             continue;
         }
-        if crate::idface::key_for(&state, &r.author_root, &doc, &root, r.via_root.as_deref()).await.is_some() {
+        if crate::idface::key_for(&state, &r.author_root, &doc, &root, r.via_root.as_deref())
+            .await
+            .is_some()
+        {
             readable.push(r);
         }
     }
@@ -1272,7 +1225,8 @@ async fn rooms_handler(
     // shows nowhere, and the block stays home: it is read here off this reader's own ledger.
     // A sealed room's labels open for a reader the seal admits and stay shut for everyone
     // else, as every label does.
-    let pairs: Vec<(String, String)> = items.iter().map(|i| (i.author.clone(), i.doc_id.clone())).collect();
+    let pairs: Vec<(String, String)> =
+        items.iter().map(|i| (i.author.clone(), i.doc_id.clone())).collect();
     let labels = crate::annotations::for_posts(&state, &pairs, Some(&root))
         .await
         .map_err(AppError::Internal)?;
@@ -1336,7 +1290,10 @@ async fn rooms_handler(
     // person is - the room's author when it is theirs, the one person the seal admits when
     // it is this persona's own. The column needs both to file and to title them.
     for item in items.iter_mut() {
-        let Ok(Ok(doc)) = hex::decode(&item.doc_id).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&item.doc_id).map(|b| <[u8; 16]>::try_from(b.as_slice()))
+        else {
+            continue;
+        };
         if let Some(other) = crate::chat::im_other(&state, &root, &item.author, &doc).await {
             item.im = true;
             // A chat from somebody this persona has no relationship with is a REQUEST
@@ -1348,9 +1305,8 @@ async fn rooms_handler(
     }
     // Bylines, one lookup for everyone named.
     let authors: Vec<String> = items.iter().map(|i| i.author.clone()).collect();
-    let bylines = crate::profiles::bylines(&state.node_db, &authors)
-        .await
-        .map_err(AppError::Internal)?;
+    let bylines =
+        crate::profiles::bylines(&state.node_db, &authors).await.map_err(AppError::Internal)?;
     for item in items.iter_mut() {
         if let Some(b) = bylines.get(&item.author) {
             item.author_name = b.name.clone();
@@ -1409,10 +1365,16 @@ async fn room_enter_handler(
         )));
     };
     if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.that-post-is-not-a-room",
+            "that post is not a room"
+        )));
     }
     let via = crate::fanout::introducer(&state.node_db, &root, &author, &doc).await;
-    if h.trusted_only && author != root && !room_seal_admits(&state, &root, &author, &doc, &doc_id, via.as_deref()).await {
+    if h.trusted_only
+        && author != root
+        && !room_seal_admits(&state, &root, &author, &doc, &doc_id, via.as_deref()).await
+    {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.this-room-is-sealed",
             "this room is sealed - its author shares it only with people they trust"
@@ -1445,7 +1407,9 @@ async fn room_enter_handler(
     // persona left it (Curtis, 2026-09-19): a look at a left room is a look, not a rejoin,
     // and the room stays unsynced until the rejoin door is asked.
     if !is_left && !request {
-        crate::chat::open_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+        crate::chat::open_room(&state.node_db, &root, &author, &doc)
+            .await
+            .map_err(AppError::Internal)?;
     }
     Ok(Json(serde_json::json!({
         "author": author,
@@ -1488,12 +1452,21 @@ async fn room_archive_handler(
     Path((root, author, doc)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
-    if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await? {
-        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this computer's owner can do that")));
+    if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN)
+        .await?
+    {
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.routes.only-the-nodes-operator-archives",
+            "only this computer's owner can do that"
+        )));
     }
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    crate::chat::set_archived(&state.node_db, &author, &doc, true).await.map_err(AppError::Internal)?;
-    let pulled = crate::chat::archive_pull(&state, &root, &author, &doc_id).await.map_err(AppError::Internal)?;
+    crate::chat::set_archived(&state.node_db, &author, &doc, true)
+        .await
+        .map_err(AppError::Internal)?;
+    let pulled = crate::chat::archive_pull(&state, &root, &author, &doc_id)
+        .await
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "archived": true, "pulled": pulled })))
 }
 
@@ -1503,10 +1476,17 @@ async fn room_unarchive_handler(
     Path((root, author, doc)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
-    if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await? {
-        return Err(AppError::Forbidden(crate::msg!("identity.routes.only-the-nodes-operator-archives", "only this computer's owner can do that")));
+    if !crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN)
+        .await?
+    {
+        return Err(AppError::Forbidden(crate::msg!(
+            "identity.routes.only-the-nodes-operator-archives",
+            "only this computer's owner can do that"
+        )));
     }
-    crate::chat::set_archived(&state.node_db, &author, &doc, false).await.map_err(AppError::Internal)?;
+    crate::chat::set_archived(&state.node_db, &author, &doc, false)
+        .await
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "archived": false })))
 }
 
@@ -1527,7 +1507,9 @@ async fn room_leave_handler(
             .set(&key, &serde_json::json!({ "left_ms": crate::clock::now_ms() }).to_string())
             .await?;
     }
-    crate::chat::close_room(&state.node_db, &root, &author, &doc).await.map_err(AppError::Internal)?;
+    crate::chat::close_room(&state.node_db, &root, &author, &doc)
+        .await
+        .map_err(AppError::Internal)?;
     if let Ok(doc_id) = hex_fixed::<16>(&doc, "doc id") {
         crate::chat::leave_live(&state, &doc_id);
     }
@@ -1585,7 +1567,10 @@ async fn set_mute(
     }
     let subject = hex_fixed::<32>(&who, "persona root")?;
     if who == root {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.you-cant-mute-yourself", "you can't mute yourself")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.you-cant-mute-yourself",
+            "you can't mute yourself"
+        )));
     }
     // A deputy's badge does not reach the creator, nor another deputy: the creator hands it
     // out and the creator takes it back, and a mute war between deputies is not moderation.
@@ -1637,7 +1622,9 @@ async fn room_search_handler(
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
-    let items = crate::chat::search(&state, &root, q.q.as_deref().unwrap_or(""), q.limit.unwrap_or(30)).await?;
+    let items =
+        crate::chat::search(&state, &root, q.q.as_deref().unwrap_or(""), q.limit.unwrap_or(30))
+            .await?;
     Ok(Json(serde_json::json!({ "items": items })))
 }
 
@@ -1696,7 +1683,10 @@ async fn set_deputy(
     }
     let subject = hex_fixed::<32>(&who, "persona root")?;
     if who == root {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.you-are-the-creator", "you are the room's creator")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.you-are-the-creator",
+            "you are the room's creator"
+        )));
     }
     say_label(
         &state,
@@ -1750,7 +1740,20 @@ async fn say_label(
     // Plain English on purpose: this is the fallback a reader that does not know the notice
     // kind shows, and a reader that does says the act in its own words.
     let said = format!("{word} {}", crate::speakable::speakable(&subject));
-    crate::chat::say(state, data, root, author, doc_id, &said, None, false, None, None, Some((notice, subject))).await?;
+    crate::chat::say(
+        state,
+        data,
+        root,
+        author,
+        doc_id,
+        &said,
+        None,
+        false,
+        None,
+        None,
+        Some((notice, subject)),
+    )
+    .await?;
     let _ = doc;
     Ok(())
 }
@@ -1781,7 +1784,10 @@ async fn accept_room(
 ) -> Result<(), AppError> {
     if author != root {
         data.private_registers(ROOMS_JOINED)
-            .set(&format!("{author}:{doc}"), &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string())
+            .set(
+                &format!("{author}:{doc}"),
+                &serde_json::json!({ "joined_ms": crate::clock::now_ms() }).to_string(),
+            )
             .await?;
     }
     crate::chat::open_room(&state.node_db, root, author, doc).await.map_err(AppError::Internal)?;
@@ -1801,9 +1807,13 @@ async fn room_live_handler(
 ) -> Result<Response, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    let live = crate::chat::join(&state, &root, &author, &doc_id)
-        .await
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.the-room-could-not-go-live", "the room could not go live: {why}", why = e)))?;
+    let live = crate::chat::join(&state, &root, &author, &doc_id).await.map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.the-room-could-not-go-live",
+            "the room could not go live: {why}",
+            why = e
+        ))
+    })?;
     Ok(ws.on_upgrade(move |socket| async move {
         if let Err(e) = serve_room_live(socket, state, root, doc_id, live).await {
             tracing::debug!(room = %doc, "room live socket ended: {e:#}");
@@ -1900,7 +1910,12 @@ async fn room_seal_admits(
     crate::idface::key_for(state, author, doc_id, root, via).await.is_some()
 }
 
-async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> Result<[u8; 16], AppError> {
+async fn room_admits(
+    state: &AppState,
+    root: &str,
+    author: &str,
+    doc: &str,
+) -> Result<[u8; 16], AppError> {
     let doc_id = hex_fixed::<16>(doc, "doc id")?;
     hex_fixed::<32>(author, "author root")?;
     let Some((h, _)) = crate::chat::room_head(state, author, &doc_id).await else {
@@ -1910,13 +1925,19 @@ async fn room_admits(state: &AppState, root: &str, author: &str, doc: &str) -> R
         )));
     };
     if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.that-post-is-not-a-room", "that post is not a room")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.that-post-is-not-a-room",
+            "that post is not a room"
+        )));
     }
     // The onward hop (Contact tags, ruling 7): a room reached through somebody's share is
     // admitted on their trust, one hop, exactly as the body door admits a shared post. The
     // sharer is the feed journal's byline - a room has no card to carry a `via`.
     let via = crate::fanout::introducer(&state.node_db, root, author, doc).await;
-    if h.trusted_only && author != root && !room_seal_admits(state, root, author, doc, &doc_id, via.as_deref()).await {
+    if h.trusted_only
+        && author != root
+        && !room_seal_admits(state, root, author, doc, &doc_id, via.as_deref()).await
+    {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.this-room-is-sealed",
             "this room is sealed - its author shares it only with people they trust"
@@ -1975,7 +1996,20 @@ async fn room_say_handler(
         Some(h) => Some(hex_fixed::<32>(h, "message hash")?),
         None => None,
     };
-    let (seq, said_ms) = crate::chat::say(&state, &data, &root, &author, &doc_id, &req.words, reacts_to, req.retract.unwrap_or(false), edits, deletes, None).await?;
+    let (seq, said_ms) = crate::chat::say(
+        &state,
+        &data,
+        &root,
+        &author,
+        &doc_id,
+        &req.words,
+        reacts_to,
+        req.retract.unwrap_or(false),
+        edits,
+        deletes,
+        None,
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "seq": seq, "said_ms": said_ms })))
 }
 
@@ -2030,14 +2064,18 @@ async fn room_chatters_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     room_admits(&state, &root, &author, &doc).await?;
-    let mut rows = crate::chat::chatters(&state.node_db, &author, &doc).await.map_err(AppError::Internal)?;
+    let mut rows =
+        crate::chat::chatters(&state.node_db, &author, &doc).await.map_err(AppError::Internal)?;
     // Muted last (Curtis, 2026-09-20), still named: moderation is a public act, and the
     // creator unmutes from this list.
     let muted = crate::chat::muted_in(&state, &root, &author, &doc).await;
     let deputies = crate::chat::deputies_in(&state, &root, &author, &doc).await;
-    rows.sort_by(|a, b| muted.contains(&a.0).cmp(&muted.contains(&b.0)).then_with(|| b.1.cmp(&a.1)));
+    rows.sort_by(|a, b| {
+        muted.contains(&a.0).cmp(&muted.contains(&b.0)).then_with(|| b.1.cmp(&a.1))
+    });
     let roots: Vec<String> = rows.iter().map(|(r, _)| r.clone()).collect();
-    let bylines = crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
+    let bylines =
+        crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
     let items: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|(root, last_ms)| {
@@ -2064,7 +2102,9 @@ async fn room_sync_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
     let doc_id = room_admits(&state, &root, &author, &doc).await?;
-    let n = crate::chat::sync_room(&state, &root, &author, &doc_id).await.map_err(AppError::Internal)?;
+    let n = crate::chat::sync_room(&state, &root, &author, &doc_id)
+        .await
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "exchanged": n })))
 }
 
@@ -2096,7 +2136,9 @@ async fn feed_labels_handler(
     let facts: crate::selectivity::Facts = owned.contacts().await?.into_iter().collect();
     let stop = q.stop.as_deref().filter(|s| !s.is_empty() && *s != "explorer");
     let levels = match stop {
-        Some(_) => crate::speculative::levels_for(&state.node_db, &root).await.map_err(AppError::Internal)?,
+        Some(_) => crate::speculative::levels_for(&state.node_db, &root)
+            .await
+            .map_err(AppError::Internal)?,
         None => Default::default(),
     };
     let filter = crate::fanout::JournalFilter {
@@ -2105,7 +2147,8 @@ async fn feed_labels_handler(
         stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
         ..crate::fanout::JournalFilter::feed(&root)
     };
-    let mut rows = crate::fanout::journal_all(&state.node_db, &filter).await.map_err(AppError::Internal)?;
+    let mut rows =
+        crate::fanout::journal_all(&state.node_db, &filter).await.map_err(AppError::Internal)?;
     // Searching inside the cloud: the words' posts off the inverted index, when they are few
     // enough to name, meet the year here - and the words are then settled, not asked again of
     // every post's bag. Commoner words fall to the per-post judgment below.
@@ -2138,9 +2181,16 @@ async fn feed_labels_handler(
         .await
         .map_err(AppError::Internal)?;
     let unpicked = crate::search::Narrow { terms: narrow.terms.clone(), ..Default::default() };
-    let whole = crate::search::facets_json_with(&state, &candidates, &unpicked, Some(&root), 0, Some(&known))
-        .await
-        .map_err(AppError::Internal)?;
+    let whole = crate::search::facets_json_with(
+        &state,
+        &candidates,
+        &unpicked,
+        Some(&root),
+        0,
+        Some(&known),
+    )
+    .await
+    .map_err(AppError::Internal)?;
     // A pick past THINNING_CAP posts leaves the lists unthinned (Curtis: a glad emoji picked
     // could be a bastard of an expensive time) - the pick's size read off the whole counts
     // before any work: a tag's count, the smallest among tags picked together, the sum among
@@ -2175,7 +2225,8 @@ fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Opt
     let mut sizes: Vec<i64> = Vec::new();
     // Each tag family is a row of its own (search::tag_family).
     for family in 0..3 {
-        let picked: Vec<&String> = narrow.tags.iter().filter(|t| crate::search::tag_family(t) == family).collect();
+        let picked: Vec<&String> =
+            narrow.tags.iter().filter(|t| crate::search::tag_family(t) == family).collect();
         if !picked.is_empty() {
             sizes.push(picked.iter().map(|t| count("tags", t)).sum());
         }
@@ -2224,11 +2275,12 @@ async fn feed_handler(
         // Hot (PROJECT_PLAN's Scores and sort orders, slice 2): each post at its time plus an hour a
         // like, all of time, the dials brought up to date first as best's are.
         let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
-        crate::score::refresh_dials(&state, &root, &facts)
-            .await
-            .map_err(AppError::Internal)?;
-        let filter = feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
-        let mut ranked: Vec<(crate::score::HotRank, crate::fanout::FeedRow, i64)> = if narrow.is_empty() {
+        crate::score::refresh_dials(&state, &root, &facts).await.map_err(AppError::Internal)?;
+        let filter =
+            feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
+        let mut ranked: Vec<(crate::score::HotRank, crate::fanout::FeedRow, i64)> = if narrow
+            .is_empty()
+        {
             let cursor = q.after.as_deref().and_then(crate::score::HotRank::parse);
             crate::fanout::hot_page(&state.node_db, &filter, cursor, page + 1)
                 .await
@@ -2236,18 +2288,30 @@ async fn feed_handler(
         } else {
             // A search or the picks inside hot: narrowed off the indexes, ordered by hot key.
             let all = narrowed(&state, &root, &filter, &narrow).await?;
-            let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+            let pairs: Vec<(String, String)> =
+                all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
             let scores = crate::score::stored_for(&state.node_db, &root, &pairs)
                 .await
                 .map_err(AppError::Internal)?;
             let mut ranked: Vec<_> = all
                 .into_iter()
                 .map(|r| {
-                    let milli = scores.get(&(r.author_root.clone(), r.doc_id.clone())).copied().unwrap_or(0);
-                    (crate::score::HotRank { hot_ms: crate::score::hot_of(r.published_ms, milli), doc_id: r.doc_id.clone() }, r, milli)
+                    let milli = scores
+                        .get(&(r.author_root.clone(), r.doc_id.clone()))
+                        .copied()
+                        .unwrap_or(0);
+                    (
+                        crate::score::HotRank {
+                            hot_ms: crate::score::hot_of(r.published_ms, milli),
+                            doc_id: r.doc_id.clone(),
+                        },
+                        r,
+                        milli,
+                    )
                 })
                 .collect();
-            ranked.sort_by(|(a, _, _), (b, _, _)| (b.hot_ms, &b.doc_id).cmp(&(a.hot_ms, &a.doc_id)));
+            ranked
+                .sort_by(|(a, _, _), (b, _, _)| (b.hot_ms, &b.doc_id).cmp(&(a.hot_ms, &a.doc_id)));
             ranked
         };
         let more = narrow.is_empty() && ranked.len() as i64 > page;
@@ -2268,9 +2332,7 @@ async fn feed_handler(
         // the reader's dials as they are now - a dial moved on any device, a block included, is
         // in this page - then read in score order, off the indexes.
         let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
-        crate::score::refresh_dials(&state, &root, &facts)
-            .await
-            .map_err(AppError::Internal)?;
+        crate::score::refresh_dials(&state, &root, &facts).await.map_err(AppError::Internal)?;
         let since = crate::clock::now_ms() - crate::score::window_ms(q.window.as_deref());
         let own = wants_own(&q.me);
         if narrow.is_empty() {
@@ -2300,17 +2362,29 @@ async fn feed_handler(
         } else {
             // A search or the picks inside best: narrowed off the indexes, then ordered by the
             // stored scores.
-            let filter = feed_filter(&state, &facts, &root, own, Some(since), q.stop.as_deref()).await?;
+            let filter =
+                feed_filter(&state, &facts, &root, own, Some(since), q.stop.as_deref()).await?;
             let all = narrowed(&state, &root, &filter, &narrow).await?;
-            let pairs: Vec<(String, String)> = all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+            let pairs: Vec<(String, String)> =
+                all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
             let scores = crate::score::stored_for(&state.node_db, &root, &pairs)
                 .await
                 .map_err(AppError::Internal)?;
             let mut ranked: Vec<(crate::score::Rank, crate::fanout::FeedRow)> = all
                 .into_iter()
                 .map(|r| {
-                    let milli = scores.get(&(r.author_root.clone(), r.doc_id.clone())).copied().unwrap_or(0);
-                    (crate::score::Rank { milli, published_ms: r.published_ms, doc_id: r.doc_id.clone() }, r)
+                    let milli = scores
+                        .get(&(r.author_root.clone(), r.doc_id.clone()))
+                        .copied()
+                        .unwrap_or(0);
+                    (
+                        crate::score::Rank {
+                            milli,
+                            published_ms: r.published_ms,
+                            doc_id: r.doc_id.clone(),
+                        },
+                        r,
+                    )
                 })
                 .collect();
             ranked.sort_by(|(a, _), (b, _)| {
@@ -2325,15 +2399,17 @@ async fn feed_handler(
             (ranked.into_iter().map(|(_, r)| r).collect(), false)
         }
     } else if narrow.is_empty() {
-        let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1, wants_own(&q.me))
-            .await
-            .map_err(AppError::Internal)?;
+        let mut rows =
+            crate::fanout::feed_page(&state.node_db, &root, before, page + 1, wants_own(&q.me))
+                .await
+                .map_err(AppError::Internal)?;
         let more = rows.len() as i64 > page;
         rows.truncate(page as usize);
         (rows, more)
     } else {
         let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
-        let filter = feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
+        let filter =
+            feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
         (narrowed(&state, &root, &filter, &narrow).await?, false)
     };
 
@@ -2355,34 +2431,24 @@ async fn feed_handler(
     // page-scoped node.db reads, the sharers read's discipline (never per row).
     let reply_links = crate::replies::links_for(
         &state.node_db,
-        &rows
-            .iter()
-            .map(|r| (r.author_root.clone(), r.doc_id.clone()))
-            .collect::<Vec<_>>(),
+        &rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect::<Vec<_>>(),
     )
     .await
     .map_err(AppError::Internal)?;
     // Parents and roots alike get the journal's dressing, one read for both.
-    let parents: Vec<(String, String)> = reply_links
-        .values()
-        .flat_map(|l| [l.parent.clone(), l.root.clone()])
-        .collect();
+    let parents: Vec<(String, String)> =
+        reply_links.values().flat_map(|l| [l.parent.clone(), l.root.clone()]).collect();
     let parent_cards = crate::fanout::journal_cards(&state.node_db, &root, &parents)
         .await
         .map_err(AppError::Internal)?;
-    let page_pairs: Vec<(String, String)> = rows
-        .iter()
-        .map(|r| (r.author_root.clone(), r.doc_id.clone()))
-        .collect();
+    let page_pairs: Vec<(String, String)> =
+        rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
     let known_labels = crate::annotations::for_posts(&state, &page_pairs, Some(&root))
         .await
         .map_err(AppError::Internal)?;
     let reply_counts = crate::replies::known_counts(
         &state.node_db,
-        &rows
-            .iter()
-            .map(|r| (r.author_root.clone(), r.doc_id.clone()))
-            .collect::<Vec<_>>(),
+        &rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect::<Vec<_>>(),
     )
     .await
     .map_err(AppError::Internal)?;
@@ -2392,24 +2458,17 @@ async fn feed_handler(
     // sharers ride the same lookup for the same reason - a hover list of twelve faces must not
     // become twelve queries.
     let mut authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
-    authors.extend(
-        reply_links
-            .values()
-            .flat_map(|l| [l.parent.0.clone(), l.root.0.clone()]),
-    );
+    authors.extend(reply_links.values().flat_map(|l| [l.parent.0.clone(), l.root.0.clone()]));
     authors.extend(known_labels.values().flatten().map(|a| a.annotator.clone()));
     authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     authors.extend(rows.iter().filter_map(|r| r.suggested_via.clone()));
     authors.extend(sharers.values().flatten().cloned());
-    let bylines = crate::profiles::bylines(&state.node_db, &authors)
-        .await
-        .map_err(AppError::Internal)?;
+    let bylines =
+        crate::profiles::bylines(&state.node_db, &authors).await.map_err(AppError::Internal)?;
     // The path bands, only when a page actually carries suggested rows - the common page
     // costs nothing new.
     let levels = if rows.iter().any(|r| r.suggested_via.is_some()) {
-        crate::speculative::levels_for(&state.node_db, &root)
-            .await
-            .map_err(AppError::Internal)?
+        crate::speculative::levels_for(&state.node_db, &root).await.map_err(AppError::Internal)?
     } else {
         Default::default()
     };
@@ -2418,7 +2477,9 @@ async fn feed_handler(
     // dressing below, which is not async.
     let mut own_audiences: std::collections::HashMap<String, String> = Default::default();
     for r in rows.iter().filter(|r| r.trusted_only && r.author_root == root) {
-        if let Ok(Some(tag)) = crate::postkeys::audience(&state.node_db, &r.author_root, &r.doc_id).await {
+        if let Ok(Some(tag)) =
+            crate::postkeys::audience(&state.node_db, &r.author_root, &r.doc_id).await
+        {
             own_audiences.insert(r.doc_id.clone(), tag);
         }
     }
@@ -2441,18 +2502,14 @@ async fn feed_handler(
             // deciding so is a question for the retraction rules rather than for this handler -
             // until then, how it reached you is the truest thing left to say about it.
             let crowd = sharers.get(&(r.author_root.clone(), r.doc_id.clone()));
-            let lead = crowd
-                .and_then(|list| list.first())
-                .or(r.via_root.as_ref())
-                .cloned();
+            let lead = crowd.and_then(|list| list.first()).or(r.via_root.as_ref()).cloned();
             let via_byline = lead.as_ref().and_then(|v| bylines.get(v));
             let via_name = via_byline.and_then(|b| b.name.clone());
             let via_avatar = via_byline.and_then(|b| b.avatar.clone());
             // Everyone but the lead. The count is what is actually shown plus the lead, so the
             // number and the names can never disagree.
-            let others: Vec<&String> = crowd
-                .map(|list| list.iter().skip(1).collect())
-                .unwrap_or_default();
+            let others: Vec<&String> =
+                crowd.map(|list| list.iter().skip(1).collect()).unwrap_or_default();
             let via_count = match (&lead, others.len()) {
                 (Some(_), n) if n > 0 => Some(n + 1),
                 _ => None,
@@ -2462,22 +2519,13 @@ async fn feed_handler(
                 .take(crate::fanout::VIA_OTHERS_CAP)
                 .map(|holder| {
                     let b = bylines.get(holder).cloned().unwrap_or_default();
-                    Sharer {
-                        root: holder.clone(),
-                        name: b.name,
-                        avatar: b.avatar,
-                    }
+                    Sharer { root: holder.clone(), name: b.name, avatar: b.avatar }
                 })
                 .collect();
-            let suggested_via_name = r
-                .suggested_via
-                .as_ref()
-                .and_then(|v| bylines.get(v))
-                .and_then(|b| b.name.clone());
-            let suggested_level = r
-                .suggested_via
-                .as_ref()
-                .and_then(|_| levels.get(&r.author_root).cloned());
+            let suggested_via_name =
+                r.suggested_via.as_ref().and_then(|v| bylines.get(v)).and_then(|b| b.name.clone());
+            let suggested_level =
+                r.suggested_via.as_ref().and_then(|_| levels.get(&r.author_root).cloned());
             let replies = reply_counts
                 .get(&(r.author_root.clone(), r.doc_id.clone()))
                 .copied()
@@ -2507,9 +2555,7 @@ async fn feed_handler(
                 .unwrap_or_default();
             let links = reply_links.get(&(r.author_root.clone(), r.doc_id.clone()));
             let reply_to = links.map(|l| dress(&l.parent));
-            let thread_root = links
-                .filter(|l| l.root != l.parent)
-                .map(|l| dress(&l.root));
+            let thread_root = links.filter(|l| l.root != l.parent).map(|l| dress(&l.root));
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
@@ -2564,7 +2610,9 @@ async fn feed_filter<'a>(
 ) -> Result<crate::fanout::JournalFilter<'a>, AppError> {
     let stop = stop.filter(|s| !s.is_empty() && *s != "explorer");
     let levels = match stop {
-        Some(_) => crate::speculative::levels_for(&state.node_db, root).await.map_err(AppError::Internal)?,
+        Some(_) => crate::speculative::levels_for(&state.node_db, root)
+            .await
+            .map_err(AppError::Internal)?,
         None => Default::default(),
     };
     Ok(crate::fanout::JournalFilter {
@@ -2594,7 +2642,10 @@ async fn narrowed(
         crate::search::index_head(state, root).await.map_err(AppError::Internal)?;
     }
     let mut sets: Vec<std::collections::HashSet<(String, String)>> = Vec::new();
-    if let Some(found) = crate::search::posts_with_terms(db, &narrow.terms, SET_CAP).await.map_err(AppError::Internal)? {
+    if let Some(found) = crate::search::posts_with_terms(db, &narrow.terms, SET_CAP)
+        .await
+        .map_err(AppError::Internal)?
+    {
         sets.push(found);
     }
     // Any of a row's "only" picks (2026-10-01, OR within every row): a set only if every one of
@@ -2605,7 +2656,10 @@ async fn narrowed(
         }
         let mut any: Option<std::collections::HashSet<(String, String)>> = Some(Default::default());
         for value in picks {
-            match crate::annotations::posts_labelled(db, key, value, SET_CAP).await.map_err(AppError::Internal)? {
+            match crate::annotations::posts_labelled(db, key, value, SET_CAP)
+                .await
+                .map_err(AppError::Internal)?
+            {
                 Some(found) => {
                     if let Some(set) = any.as_mut() {
                         set.extend(found);
@@ -2619,14 +2673,19 @@ async fn narrowed(
     sets.sort_by_key(|s| s.len());
     let mut out: Vec<crate::fanout::FeedRow> = Vec::new();
     if let Some((first, rest)) = sets.split_first() {
-        let posts: Vec<(String, String)> = first.iter().filter(|p| rest.iter().all(|s| s.contains(*p))).cloned().collect();
-        let mut rows = crate::fanout::journal_rows_for(db, filter, &posts).await.map_err(AppError::Internal)?;
+        let posts: Vec<(String, String)> =
+            first.iter().filter(|p| rest.iter().all(|s| s.contains(*p))).cloned().collect();
+        let mut rows = crate::fanout::journal_rows_for(db, filter, &posts)
+            .await
+            .map_err(AppError::Internal)?;
         rows.sort_by(|a, b| (b.published_ms, &b.doc_id).cmp(&(a.published_ms, &a.doc_id)));
         judge(state, root, rows, narrow, &mut out).await?;
     } else {
         let mut cursor: Option<(i64, String)> = None;
         loop {
-            let page = crate::fanout::journal_page(db, filter, cursor.clone(), 500).await.map_err(AppError::Internal)?;
+            let page = crate::fanout::journal_page(db, filter, cursor.clone(), 500)
+                .await
+                .map_err(AppError::Internal)?;
             let full = page.len() == 500;
             cursor = page.last().map(|r| (r.published_ms, r.doc_id.clone()));
             judge(state, root, page, narrow, &mut out).await?;
@@ -2659,11 +2718,12 @@ async fn judge(
             kind,
         })
         .collect();
-    let keep: std::collections::HashSet<usize> = crate::search::matching(state, &candidates, narrow, Some(root))
-        .await
-        .map_err(AppError::Internal)?
-        .into_iter()
-        .collect();
+    let keep: std::collections::HashSet<usize> =
+        crate::search::matching(state, &candidates, narrow, Some(root))
+            .await
+            .map_err(AppError::Internal)?
+            .into_iter()
+            .collect();
     out.extend(rows.into_iter().enumerate().filter(|(i, _)| keep.contains(i)).map(|(_, r)| r));
     Ok(())
 }
@@ -2743,9 +2803,13 @@ async fn push_key_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
-    let endpoints = crate::webpush::endpoints(&state.node_db, &root).await.map_err(AppError::Internal)?;
-    Ok(Json(serde_json::json!({ "public_key": state.webpush.public_key(), "endpoints": endpoints })))
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+        .await?;
+    let endpoints =
+        crate::webpush::endpoints(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    Ok(Json(
+        serde_json::json!({ "public_key": state.webpush.public_key(), "endpoints": endpoints }),
+    ))
 }
 
 /// POST `/api/identity/{root}/push` - this browser's push subscription, as
@@ -2756,10 +2820,15 @@ async fn push_subscribe_handler(
     Path(root): Path<String>,
     Json(sub): Json<crate::webpush::Subscription>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
-    crate::webpush::subscribe(&state, &root, &sub)
-        .await
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.not-a-push-subscription", "not a push subscription this node can use: {e}", e = e)))?;
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+        .await?;
+    crate::webpush::subscribe(&state, &root, &sub).await.map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.not-a-push-subscription",
+            "not a push subscription this node can use: {e}",
+            e = e
+        ))
+    })?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -2770,7 +2839,8 @@ async fn push_test_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+        .await?;
     let report = crate::webpush::push_test(&state, &root).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "deliveries": report })))
 }
@@ -2787,7 +2857,8 @@ async fn push_forget_handler(
     Path(root): Path<String>,
     Json(req): Json<PushForget>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    crate::identity::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+        .await?;
     crate::webpush::unsubscribe(&state, &root, &req.endpoint).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -2805,11 +2876,12 @@ async fn notifications_handler(
     // one exception is a mention (2026-09-06), whose doc is the AUTHOR's post: the client's
     // card asks the author's shelf for its title itself, the way a reply's parent does.
     for item in items.iter_mut().filter(|i| {
-        !i.doc_id.is_empty() && i.kind != crate::notifications::KIND_MENTIONED && i.kind != crate::notifications::KIND_ROOM_MENTION
+        !i.doc_id.is_empty()
+            && i.kind != crate::notifications::KIND_MENTIONED
+            && i.kind != crate::notifications::KIND_ROOM_MENTION
     }) {
-        let Some(doc_id) = hex::decode(&item.doc_id)
-            .ok()
-            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        let Some(doc_id) =
+            hex::decode(&item.doc_id).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
         else {
             continue;
         };
@@ -2821,7 +2893,10 @@ async fn notifications_handler(
     // A room mention's room, by name (Curtis, 2026-09-19): the room post's public title off
     // whatever this node holds of its author; a sealed room's title travels with its words,
     // and the bell's link asks the body door for it instead.
-    for item in items.iter_mut().filter(|i| i.kind == crate::notifications::KIND_ROOM_MENTION && !i.doc_id.is_empty()) {
+    for item in items
+        .iter_mut()
+        .filter(|i| i.kind == crate::notifications::KIND_ROOM_MENTION && !i.doc_id.is_empty())
+    {
         let Some(author) = item.detail.clone() else { continue };
         if let Ok(Some(h)) = held_public_header(&state, &author, &item.doc_id).await {
             if !h.title.trim().is_empty() {
@@ -2841,10 +2916,16 @@ async fn notifications_handler(
 /// room this persona is in - their own, or entered and not left - since they last looked
 /// at it (the `rooms_seen` register); a room never looked at counts whole. Off the node's
 /// room memo, so a room nobody here holds counts nothing, honestly.
-async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
+async fn unseen_chat_count(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+) -> Result<u64, AppError> {
     let mut total = 0u64;
     for (author, doc, since) in chat_rooms_with_seen(state, data, root).await? {
-        total += crate::chat::unseen_in(state, &author, &doc, since, root).await.map_err(AppError::Internal)?;
+        total += crate::chat::unseen_in(state, &author, &doc, since, root)
+            .await
+            .map_err(AppError::Internal)?;
     }
     Ok(total)
 }
@@ -2854,10 +2935,16 @@ async fn unseen_chat_count(state: &AppState, data: &store::Store, root: &str) ->
 /// you have placed is yours to hear, joined or not) - each with when the persona last looked at
 /// it (`rooms_seen`; 0 for never). One list for the badge and the alerts (attention.rs), so the
 /// two can never disagree about which rooms speak.
-pub(crate) async fn chat_rooms_with_seen(state: &AppState, data: &store::Store, root: &str) -> Result<Vec<(String, String, i64)>, AppError> {
+pub(crate) async fn chat_rooms_with_seen(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+) -> Result<Vec<(String, String, i64)>, AppError> {
     let mut rooms: Vec<(String, String)> = Vec::new();
     for p in crate::record::documents::public_docs(data.db(), None, 500).await? {
-        if crate::record::documents::Format::from_wire(p.format) == crate::record::documents::Format::Room {
+        if crate::record::documents::Format::from_wire(p.format)
+            == crate::record::documents::Format::Room
+        {
             rooms.push((root.to_string(), hex::encode(p.doc_id)));
         }
     }
@@ -2906,11 +2993,9 @@ async fn unread_count(state: &AppState, data: &store::Store, root: &str) -> Resu
 /// machinery itself writes when it pulls a room - nothing but the person writes it.
 async fn placed(data: &store::Store, other: &str) -> Result<bool, AppError> {
     let said = |v: Option<&String>| v.is_some_and(|v| !v.trim().is_empty() && v.trim() != "none");
-    Ok(data
-        .contacts()
-        .await?
-        .into_iter()
-        .any(|(root, facts)| root == other && (said(facts.get("trust")) || said(facts.get("interest")))))
+    Ok(data.contacts().await?.into_iter().any(|(root, facts)| {
+        root == other && (said(facts.get("trust")) || said(facts.get("interest")))
+    }))
 }
 
 /// Is this room a chat REQUEST for this persona (Curtis, 2026-09-20)? An IM somebody they
@@ -2927,9 +3012,13 @@ async fn chat_request(
     if author == root {
         return Ok(false);
     }
-    let Ok(doc_id) = hex::decode(doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return Ok(false) };
+    let Ok(doc_id) = hex::decode(doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+        return Ok(false);
+    };
     let Ok(doc_id) = doc_id else { return Ok(false) };
-    let Some(other) = crate::chat::im_other(state, root, author, &doc_id).await else { return Ok(false) };
+    let Some(other) = crate::chat::im_other(state, root, author, &doc_id).await else {
+        return Ok(false);
+    };
     let (joined, _left) = rooms_by_standing(data).await?;
     if joined.iter().any(|(a, d)| a == author && d == doc) {
         return Ok(false);
@@ -2948,16 +3037,12 @@ pub(crate) async fn notification_items(
     let delivered = data.inbox().page(NOTIFICATIONS_PAGE).await?;
 
     let (regs, _) = data.private_registers("notifications_seen").all().await?;
-    let watermark: i64 = regs
-        .iter()
-        .find(|r| r.key == "watermark")
-        .and_then(|r| r.value.parse().ok())
-        .unwrap_or(0);
+    let watermark: i64 =
+        regs.iter().find(|r| r.key == "watermark").and_then(|r| r.value.parse().ok()).unwrap_or(0);
 
     let authors: Vec<String> = derived.iter().map(|r| r.author_root.clone()).collect();
-    let bylines = crate::profiles::bylines(&state.node_db, &authors)
-        .await
-        .map_err(AppError::Internal)?;
+    let bylines =
+        crate::profiles::bylines(&state.node_db, &authors).await.map_err(AppError::Internal)?;
 
     let mut items: Vec<NotificationItem> = derived
         .into_iter()
@@ -3015,9 +3100,10 @@ pub(crate) async fn notification_items(
             known.insert(n.sender_root.clone());
         }
     }
-    let known_bylines = crate::profiles::bylines_healed(state, &known.iter().cloned().collect::<Vec<_>>())
-        .await
-        .map_err(AppError::Internal)?;
+    let known_bylines =
+        crate::profiles::bylines_healed(state, &known.iter().cloned().collect::<Vec<_>>())
+            .await
+            .map_err(AppError::Internal)?;
     items.extend(delivered_unowned.into_iter().map(|n| NotificationItem {
         seen: n.timestamp_ms <= watermark,
         stranger: !known.contains(&n.sender_root),
@@ -3095,10 +3181,8 @@ fn undelivered_twice(
     derived: &[NotificationItem],
     delivered: Vec<crate::inbox::Notice>,
 ) -> Vec<crate::inbox::Notice> {
-    let known: std::collections::HashSet<(&str, &str)> = derived
-        .iter()
-        .map(|i| (i.author.as_str(), i.kind.as_str()))
-        .collect();
+    let known: std::collections::HashSet<(&str, &str)> =
+        derived.iter().map(|i| (i.author.as_str(), i.kind.as_str())).collect();
     delivered
         .into_iter()
         .filter(|n| !known.contains(&(n.sender_root.as_str(), n.kind.as_str())))
@@ -3143,7 +3227,11 @@ async fn revoke_key_handler(
         "retirement" => ringtome_proto::Disposition::Retirement,
         "repudiation" => ringtome_proto::Disposition::Repudiation,
         other => {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-disposition-other-retirement-repudiation", "unknown disposition {other:?} (retirement | repudiation)", other = other)));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.unknown-disposition-other-retirement-repudiation",
+                "unknown disposition {other:?} (retirement | repudiation)",
+                other = other
+            )));
         }
     };
     let cut = match (req.cut.as_deref(), disposition) {
@@ -3151,10 +3239,17 @@ async fn revoke_key_handler(
         (Some("genesis"), ringtome_proto::Disposition::Repudiation) => super::Cut::Genesis,
         (Some("genesis"), ringtome_proto::Disposition::Retirement) => {
             // A retirement IS the honoring of history - "it was never me" contradicts it.
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.cut-genesis-only-applies-to", "cut \"genesis\" only applies to repudiation")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.cut-genesis-only-applies-to",
+                "cut \"genesis\" only applies to repudiation"
+            )));
         }
         (Some(other), _) => {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-cut-other-now-genesis", "unknown cut {other:?} (now | genesis)", other = other)));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.unknown-cut-other-now-genesis",
+                "unknown cut {other:?} (now | genesis)",
+                other = other
+            )));
         }
     };
     let entry_hash =
@@ -3320,10 +3415,9 @@ pub(crate) async fn after_posted(
         // stays quiet when the parent's author owns the root too (Curtis,
         // 2026-08-29: answering someone's reply in their own thread rang them
         // twice - "replied" and "shared" - for one act).
-        for (author, doc, announce) in [
-            (parent.0, parent.1, false),
-            (root_link.0, root_link.1, root_link.0 != parent.0),
-        ] {
+        for (author, doc, announce) in
+            [(parent.0, parent.1, false), (root_link.0, root_link.1, root_link.0 != parent.0)]
+        {
             if author == self_root || (announce && (author, doc) == parent) {
                 continue;
             }
@@ -3353,13 +3447,9 @@ pub(crate) async fn after_posted(
                         .await
                     {
                         Ok(envelope) => {
-                            if let Err(e) = crate::outbox::queue(
-                                &state.node_db,
-                                &root,
-                                &parent_hex,
-                                &envelope,
-                            )
-                            .await
+                            if let Err(e) =
+                                crate::outbox::queue(&state.node_db, &root, &parent_hex, &envelope)
+                                    .await
                             {
                                 tracing::warn!(author = %parent_hex, error = ?e,
                                     "could not queue a comment notice");
@@ -3369,9 +3459,9 @@ pub(crate) async fn after_posted(
                             "could not seal a comment notice"),
                     }
                 }
-                Ok(None) => tracing::warn!(
-                    "the reply's own header is not readable; no comment notice"
-                ),
+                Ok(None) => {
+                    tracing::warn!("the reply's own header is not readable; no comment notice")
+                }
                 Err(e) => tracing::warn!(error = ?e,
                     "could not read the reply's header for its comment notice"),
             }
@@ -3392,48 +3482,54 @@ pub(crate) async fn after_posted(
     // the request left the fresh twin an edit re-baked with no key memo - the picture
     // 404'd for its own author (Curtis, 2026-09-03; the twins acceptance now edits).
     if let Ok(Some(k)) = data.annotations().field(&doc_id, store::TRUSTED_KEY).await {
-        if let Some(key) = hex::decode(&k)
-            .ok()
-            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        if let Some(key) =
+            hex::decode(&k).ok().and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
         {
-            if let Err(e) = crate::postkeys::remember(
-                &state.node_db,
-                &root,
-                &hex::encode(post_id),
-                &key,
-            )
-            .await
+            if let Err(e) =
+                crate::postkeys::remember(&state.node_db, &root, &hex::encode(post_id), &key).await
             {
                 tracing::warn!(error = ?e, "post key memo write failed");
             }
             // The audience beside the key (Contact tags, ruling 4): the draft's tag, or none.
             // "Onward" (ruling 7) is no audience - the header carries it, and the gate's
             // list is the trust list as for any plain sealed post.
-            let audience = data
-                .annotations()
-                .field(&doc_id, store::AUDIENCE)
-                .await
-                .ok()
-                .flatten()
-                .filter(|a| !a.trim().is_empty() && a.trim() != crate::postkeys::ONWARD_AUDIENCE);
-            if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(post_id), audience.as_deref()).await {
+            let audience =
+                data.annotations().field(&doc_id, store::AUDIENCE).await.ok().flatten().filter(
+                    |a| !a.trim().is_empty() && a.trim() != crate::postkeys::ONWARD_AUDIENCE,
+                );
+            if let Err(e) = crate::postkeys::set_audience(
+                &state.node_db,
+                &root,
+                &hex::encode(post_id),
+                audience.as_deref(),
+            )
+            .await
+            {
                 tracing::warn!(error = ?e, "post audience memo write failed");
             }
             // The post's own audience (ruling 5): the people its user cards name, minus the
             // author, noted for the post and for every twin the door may be asked about.
-            let members: Vec<String> = if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
-                draft_mentions(data, &doc_id)
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(hex::encode)
-                    .filter(|m| m != &root)
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let members: Vec<String> =
+                if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
+                    draft_mentions(data, &doc_id)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(hex::encode)
+                        .filter(|m| m != &root)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
             if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
-                if let Err(e) = crate::postkeys::set_members(&state.node_db, &root, &hex::encode(post_id), &members).await {
+                if let Err(e) = crate::postkeys::set_members(
+                    &state.node_db,
+                    &root,
+                    &hex::encode(post_id),
+                    &members,
+                )
+                .await
+                {
                     tracing::warn!(error = ?e, "post audience members memo write failed");
                 }
             }
@@ -3456,11 +3552,25 @@ pub(crate) async fn after_posted(
                             {
                                 tracing::warn!(error = ?e, "twin key memo write failed");
                             }
-                            if let Err(e) = crate::postkeys::set_audience(&state.node_db, &root, &hex::encode(r), audience.as_deref()).await {
+                            if let Err(e) = crate::postkeys::set_audience(
+                                &state.node_db,
+                                &root,
+                                &hex::encode(r),
+                                audience.as_deref(),
+                            )
+                            .await
+                            {
                                 tracing::warn!(error = ?e, "twin audience memo write failed");
                             }
                             if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) {
-                                if let Err(e) = crate::postkeys::set_members(&state.node_db, &root, &hex::encode(r), &members).await {
+                                if let Err(e) = crate::postkeys::set_members(
+                                    &state.node_db,
+                                    &root,
+                                    &hex::encode(r),
+                                    &members,
+                                )
+                                .await
+                                {
                                     tracing::warn!(error = ?e, "twin audience members memo write failed");
                                 }
                             }
@@ -3474,7 +3584,9 @@ pub(crate) async fn after_posted(
     // slice 1) - best-effort, like the pins: a label must not unsay the words.
     {
         let self_root = hex_fixed::<32>(&root, "root")?;
-        match replicate_annotations(&state, data, &self_root, &doc_id, &post_id, flags.seal_of).await {
+        match replicate_annotations(&state, data, &self_root, &doc_id, &post_id, flags.seal_of)
+            .await
+        {
             Ok(mentions) => mention_notices(&state, data, &root, mentions).await,
             Err(e) => tracing::warn!(error = ?e, "annotation replication failed; the post stands"),
         }
@@ -3532,9 +3644,7 @@ async fn book_rollout_handler(
         "total": 0,
         "done": 0,
     });
-    data.private_registers(crate::books::ROLLOUT_KV)
-        .set(&bucket, &plan.to_string())
-        .await?;
+    data.private_registers(crate::books::ROLLOUT_KV).set(&bucket, &plan.to_string()).await?;
     Ok(Json(BookRolloutResponse { status: "pending" }))
 }
 
@@ -3545,15 +3655,16 @@ async fn book_takedown_handler(
     Path((root, bucket)): Path<(String, String)>,
 ) -> Result<Json<crate::books::Takedown>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let took = crate::books::take_down(&state, &data, &root, &bucket)
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("no published book") {
-                AppError::BadRequest(crate::msg!("identity.routes.this-notebook-has-no-published", "this notebook has no published book"))
-            } else {
-                AppError::Internal(e)
-            }
-        })?;
+    let took = crate::books::take_down(&state, &data, &root, &bucket).await.map_err(|e| {
+        if e.to_string().contains("no published book") {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.this-notebook-has-no-published",
+                "this notebook has no published book"
+            ))
+        } else {
+            AppError::Internal(e)
+        }
+    })?;
     Ok(Json(took))
 }
 
@@ -3566,7 +3677,11 @@ async fn book_takedown_handler(
 /// The parent's key when the parent is sealed (PROJECT_PLAN's Replies under the author's
 /// seal): from the memo, else over the key lane; a sealed parent this node cannot open
 /// refuses the reply. `None` for an open parent.
-async fn sealed_parent_key(state: &AppState, parent: &([u8; 32], [u8; 16]), replier_hex: &str) -> Result<Option<[u8; 32]>, AppError> {
+async fn sealed_parent_key(
+    state: &AppState,
+    parent: &([u8; 32], [u8; 16]),
+    replier_hex: &str,
+) -> Result<Option<[u8; 32]>, AppError> {
     let (author, doc) = parent;
     let author_hex = hex::encode(author);
     if crate::idface::sealed_here(state, &author_hex, doc).await != Some(true) {
@@ -3683,10 +3798,9 @@ async fn publish_drawing_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let docs = data.documents();
-    let doc = docs
-        .one(&doc_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing")))?;
+    let doc = docs.one(&doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing"))
+    })?;
     if doc.display_head().map(|h| Format::from_wire(h.header.format)) != Some(Format::Drawing) {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.only-a-drawing-publishes-here",
@@ -3698,11 +3812,9 @@ async fn publish_drawing_handler(
 
     // The date, resolved as Writer's publish resolves it (PUBLISH.md): a claim in the past dates
     // the post; a future one is a schedule, which drawings do not have.
-    let dated_ms = data
-        .annotations()
-        .field(&doc_id, store::DISPLAY_DATE)
-        .await?
-        .and_then(|v| crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), req.tz_offset_min));
+    let dated_ms = data.annotations().field(&doc_id, store::DISPLAY_DATE).await?.and_then(|v| {
+        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), req.tz_offset_min)
+    });
     if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.a-drawing-cant-be-scheduled",
@@ -3715,10 +3827,17 @@ async fn publish_drawing_handler(
 
     // The same laundering every picture gets - decode, re-encode, never trust the bytes.
     let bytes = picture.to_vec();
-    let ingested = tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("drawing crush task: {e}")))?
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.that-picture-didnt-work", "that picture didn't work: {e}", e = e)))?;
+    let ingested =
+        tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("drawing crush task: {e}")))?
+            .map_err(|e| {
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.that-picture-didnt-work",
+                    "that picture didn't work: {e}",
+                    e = e
+                ))
+            })?;
     if ingested.format != Format::Avif {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.a-drawing-is-a-still-picture",
@@ -3726,15 +3845,29 @@ async fn publish_drawing_handler(
         )));
     }
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
-    let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
+    let signer =
+        super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+            .await?;
     // Held still while the twin, the post and its labels land - one fold for the lot (fold::hold).
     let held = crate::fold::hold(&root);
-    let twin = crate::record::documents::save_public_media(&db, &signer, &state.files, &title, ingested, post_key, None, false).await?;
+    let twin = crate::record::documents::save_public_media(
+        &db,
+        &signer,
+        &state.files,
+        &title,
+        ingested,
+        post_key,
+        None,
+        false,
+    )
+    .await?;
 
     // The alt text is the title, kept to what Marquee's `![...]` holds without a question.
-    let alt: String = title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')' | '\n' | '\r')).collect();
+    let alt: String =
+        title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')' | '\n' | '\r')).collect();
     let target = crate::record::bake::public_media_target(&root, &twin, Format::Avif, false);
-    let body = format!("![{}]({target})\n", if alt.trim().is_empty() { "a drawing" } else { alt.trim() });
+    let body =
+        format!("![{}]({target})\n", if alt.trim().is_empty() { "a drawing" } else { alt.trim() });
     let flags = crate::record::documents::PublishFlags {
         settled: req.settled,
         trusted_only: post_key.is_some(),
@@ -3785,14 +3918,13 @@ async fn publish_handler(
         let a = a.trim().to_lowercase();
         data.annotations().set_field(&doc_id, store::AUDIENCE, &a).await?;
     }
-    let audience = data
-        .annotations()
-        .field(&doc_id, store::AUDIENCE)
-        .await?
-        .filter(|a| !a.trim().is_empty());
+    let audience =
+        data.annotations().field(&doc_id, store::AUDIENCE).await?.filter(|a| !a.trim().is_empty());
     // "Only show to the people mentioned" (Contact tags, ruling 5) needs somebody mentioned:
     // a room with nobody in it is a mistake, not a post.
-    if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE) && draft_mentions(&data, &doc_id).await?.is_empty() {
+    if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE)
+        && draft_mentions(&data, &doc_id).await?.is_empty()
+    {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.mention-someone-first",
             "mention someone first - a post for the people mentioned needs a user card in the words"
@@ -3835,11 +3967,9 @@ async fn publish_handler(
     // the request's timezone offset - re-read at every publish, so a changed date re-sorts the
     // post everywhere.
     let tz_offset_min = req.as_ref().and_then(|b| b.tz_offset_min).unwrap_or(0);
-    let dated_ms = data
-        .annotations()
-        .field(&doc_id, store::DISPLAY_DATE)
-        .await?
-        .and_then(|v| crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min));
+    let dated_ms = data.annotations().field(&doc_id, store::DISPLAY_DATE).await?.and_then(|v| {
+        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min)
+    });
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
@@ -3862,7 +3992,10 @@ async fn publish_handler(
             .map(hex::encode)
             .filter(|m| m != &root)
             .collect();
-        if !room || audience.as_deref() != Some(crate::postkeys::MENTIONED_AUDIENCE) || named.len() != 1 {
+        if !room
+            || audience.as_deref() != Some(crate::postkeys::MENTIONED_AUDIENCE)
+            || named.len() != 1
+        {
             return Err(AppError::BadRequest(crate::msg!(
                 "identity.routes.an-im-is-a-room-for-two",
                 "a private chat is a room for two - sealed to one other person, and nobody else"
@@ -3877,7 +4010,16 @@ async fn publish_handler(
             "a private chat can't be closed - stop talking, or block them"
         )));
     }
-    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None, seal_of, onward, room, im };
+    let flags = crate::record::documents::PublishFlags {
+        settled,
+        trusted_only,
+        dated_ms,
+        part_of: None,
+        seal_of,
+        onward,
+        room,
+        im,
+    };
     // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
     // until the day. The plan lives on the draft's private meta - device-durable - naming
     // this device's leaf as the one that mints, and the sweep does the rest.
@@ -3889,9 +4031,7 @@ async fn publish_handler(
                 "settled": settled,
                 "trusted_only": trusted_only,
             });
-            data.annotations()
-                .set_field(&doc_id, store::PUBLISH_PLAN, &plan.to_string())
-                .await?;
+            data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, &plan.to_string()).await?;
             return Ok(Json(PublishResponse {
                 post_id: None,
                 scheduled_for: Some(at),
@@ -3918,19 +4058,29 @@ async fn publish_handler(
         let held = crate::fold::hold(&root);
         let t_open = t0.elapsed();
         let t = std::time::Instant::now();
-        match crate::record::bake::publish_reporting(&state, &data, &root, &doc_id, reply, flags, Some(&progress)).await? {
+        match crate::record::bake::publish_reporting(
+            &state,
+            &data,
+            &root,
+            &doc_id,
+            reply,
+            flags,
+            Some(&progress),
+        )
+        .await?
+        {
             crate::record::bake::Outcome::Posted(post_id) => {
                 let t_mint = t.elapsed();
                 let t = std::time::Instant::now();
                 after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
                 let t_after = t.elapsed();
                 drop(held); // before the drain: under its own hold it would fold the burst half-written
-                // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
-                // user card still listed the mention on the very next read): the restated
-                // statements reach the memo through the fold lane, which nothing else rings
-                // for this append. Drain it here - the label doors' read-your-writes idiom.
-                // The sweeps that also mint (books, schedules) answer nobody and leave it to
-                // the beat.
+                            // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
+                            // user card still listed the mention on the very next read): the restated
+                            // statements reach the memo through the fold lane, which nothing else rings
+                            // for this append. Drain it here - the label doors' read-your-writes idiom.
+                            // The sweeps that also mint (books, schedules) answer nobody and leave it to
+                            // the beat.
                 let t = std::time::Instant::now();
                 crate::fold::fold_now(&state, &root).await;
                 tracing::debug!(
@@ -4093,9 +4243,7 @@ async fn unpublish_handler(
     // reading, confirmed the day the take-it-down button became reachable). Cleared, the note
     // is honestly a draft again and the next publish mints the fresh id finality requires.
     if let Some(note) = data.annotations().note_claiming(&post_id).await? {
-        data.annotations()
-            .clear_field(&note, crate::record::store::PUBLISHED_AS)
-            .await?;
+        data.annotations().clear_field(&note, crate::record::store::PUBLISHED_AS).await?;
     }
     // The public lane moved: `retract_vanished` reconciles every reader's journal against the
     // shelf this post has just left, and every fragment holder hears `Gone` when they next ask.
@@ -4159,9 +4307,8 @@ async fn share_one(
     doc_id: [u8; 16],
     announce: bool,
 ) -> Result<(), AppError> {
-    let version = crate::fragments::current_version(state, &author, &doc_id)
-        .await
-        .ok_or_else(|| {
+    let version =
+        crate::fragments::current_version(state, &author, &doc_id).await.ok_or_else(|| {
             AppError::BadRequest(crate::msg!(
                 "identity.routes.this-computer-doesnt-have-that-post-2",
                 "this computer doesn't have that post yet - it can't share what it hasn't read"
@@ -4191,7 +4338,9 @@ async fn share_one(
                     tracing::warn!(author = %author_hex, error = ?e, "could not queue a share notice");
                 }
             }
-            Err(e) => tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice"),
+            Err(e) => {
+                tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice")
+            }
         }
     }
     crate::fanout::backfill_share(state, root, &author_hex, &doc_id).await;
@@ -4226,12 +4375,16 @@ async fn rebroadcast_handler(
     } else {
         match req.version.as_deref() {
             Some(v) => Some(hex_fixed::<32>(v, "version hash")?),
-            None => Some(crate::fragments::current_version(&state, &author, &doc_id).await.ok_or_else(|| {
-                AppError::BadRequest(crate::msg!(
+            None => {
+                Some(crate::fragments::current_version(&state, &author, &doc_id).await.ok_or_else(
+                    || {
+                        AppError::BadRequest(crate::msg!(
                     "identity.routes.this-computer-doesnt-have-that-post",
                     "this computer doesn't have that post yet - it can't share what it hasn't read"
                 ))
-            })?),
+                    },
+                )?)
+            }
         }
     };
     // A sealed post is not passed along (Curtis, 2026-09-08): a share moves the pointer and
@@ -4256,7 +4409,8 @@ async fn rebroadcast_handler(
                 )));
             }
             if h.trusted_only {
-                if crate::idface::key_for(&state, &author_hex, &doc_id, &root, None).await.is_none() {
+                if crate::idface::key_for(&state, &author_hex, &doc_id, &root, None).await.is_none()
+                {
                     return Err(AppError::BadRequest(crate::msg!(
                         "identity.routes.onward-needs-the-key",
                         "you can only pass along words you can read"
@@ -4423,7 +4577,9 @@ async fn public_annotation_put_handler(
                     }
                 })
                 .collect();
-            if !said.iter().any(|v| v == value) && said.len() >= crate::annotations::MAX_TAGS_PER_LABELLER {
+            if !said.iter().any(|v| v == value)
+                && said.len() >= crate::annotations::MAX_TAGS_PER_LABELLER
+            {
                 return Err(AppError::BadRequest(crate::msg!(
                     "routes.two-tags-to-a-person",
                     "you can put {cap} tags on somebody else's post - take one back first",
@@ -4435,14 +4591,13 @@ async fn public_annotation_put_handler(
     let (key, value) = match seal {
         Some((_, post_key)) => (
             crate::annotations::SEALED_KEY.to_string(),
-            crate::annotations::seal_statement(&post_key, req.key.trim(), req.value.trim()).map_err(AppError::Internal)?,
+            crate::annotations::seal_statement(&post_key, req.key.trim(), req.value.trim())
+                .map_err(AppError::Internal)?,
         ),
         None => (req.key.trim().to_string(), req.value.trim().to_string()),
     };
-    let signed = data
-        .public_annotations()
-        .say(&target_author, &target_doc, &key, &value, true)
-        .await?;
+    let signed =
+        data.public_annotations().say(&target_author, &target_doc, &key, &value, true).await?;
     // The 200 means the label SHOWS (Curtis, 2026-08-31: a tag on someone else's post
     // vanished on refresh): the memo every surface reads is fed by the fold lane, and
     // nothing rang it for this append - the memo waited for the frontier sweep. Drain it
@@ -4464,7 +4619,9 @@ async fn public_annotation_put_handler(
             .await
         {
             Ok(envelope) => {
-                if let Err(e) = crate::outbox::queue(&state.node_db, &root, &author, &envelope).await {
+                if let Err(e) =
+                    crate::outbox::queue(&state.node_db, &root, &author, &envelope).await
+                {
                     tracing::warn!(author = %author, error = ?e, "could not queue a tagged notice");
                 }
                 let eager = state.clone();
@@ -4474,7 +4631,9 @@ async fn public_annotation_put_handler(
                     }
                 });
             }
-            Err(e) => tracing::warn!(author = %author, error = ?e, "could not seal a tagged notice"),
+            Err(e) => {
+                tracing::warn!(author = %author, error = ?e, "could not seal a tagged notice")
+            }
         }
     }
     Ok(Json(PrivateWriteResponse {
@@ -4522,7 +4681,9 @@ fn dialled(facts: &crate::selectivity::Facts, root: &str) -> bool {
     if f.get("blocked").map(String::as_str) == Some("yes") {
         return false;
     }
-    let at = |k: &str| crate::selectivity::band_ordinal(f.get(k).map(String::as_str)).is_some_and(|o| o >= 1);
+    let at = |k: &str| {
+        crate::selectivity::band_ordinal(f.get(k).map(String::as_str)).is_some_and(|o| o >= 1)
+    };
     at("trust") || at("interest")
 }
 
@@ -4542,14 +4703,17 @@ async fn followers_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
-    let at_least_low = |band: &Option<String>| crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1);
-    let exact: std::collections::HashSet<String> = crate::edgegraph::edges_naming(&state.node_db, &root)
-        .await
-        .map_err(AppError::Internal)?
-        .into_iter()
-        .filter(|(_, _, interest)| at_least_low(interest))
-        .map(|(a, _, _)| a)
-        .collect();
+    let at_least_low = |band: &Option<String>| {
+        crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1)
+    };
+    let exact: std::collections::HashSet<String> =
+        crate::edgegraph::edges_naming(&state.node_db, &root)
+            .await
+            .map_err(AppError::Internal)?
+            .into_iter()
+            .filter(|(_, _, interest)| at_least_low(interest))
+            .map(|(a, _, _)| a)
+            .collect();
     let you_know = exact.iter().filter(|p| dialled(&facts, p)).count();
     let told_you: std::collections::HashSet<String> = data
         .inbox()
@@ -4564,11 +4728,12 @@ async fn followers_handler(
         })
         .map(|n| n.sender_root)
         .collect();
-    let devices: std::collections::HashSet<String> = crate::net::sync::peers_for(&state.node_db, &root)
-        .await
-        .map_err(AppError::Internal)?
-        .into_iter()
-        .collect();
+    let devices: std::collections::HashSet<String> =
+        crate::net::sync::peers_for(&state.node_db, &root)
+            .await
+            .map_err(AppError::Internal)?
+            .into_iter()
+            .collect();
     let computers = crate::net::demand::askers_of(&state.node_db, &root, 100_000)
         .await
         .map_err(AppError::Internal)?
@@ -4596,8 +4761,15 @@ async fn known_followers_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     hex_fixed::<32>(&subject, "subject root")?;
     let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
-    let at_least_low = |band: &Option<String>| crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1);
-    let my_trust = |p: &str| crate::selectivity::band_ordinal(facts.get(p).and_then(|f| f.get("trust")).map(String::as_str)).unwrap_or(0);
+    let at_least_low = |band: &Option<String>| {
+        crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1)
+    };
+    let my_trust = |p: &str| {
+        crate::selectivity::band_ordinal(
+            facts.get(p).and_then(|f| f.get("trust")).map(String::as_str),
+        )
+        .unwrap_or(0)
+    };
     let (mut trusted, mut followed): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
     for (p, trust, interest) in crate::edgegraph::edges_naming(&state.node_db, &subject)
         .await
@@ -4612,7 +4784,9 @@ async fn known_followers_handler(
             followed.push(p);
         }
     }
-    let rank = |list: &mut Vec<String>| list.sort_by(|a, b| my_trust(b).cmp(&my_trust(a)).then_with(|| a.cmp(b)));
+    let rank = |list: &mut Vec<String>| {
+        list.sort_by(|a, b| my_trust(b).cmp(&my_trust(a)).then_with(|| a.cmp(b)))
+    };
     rank(&mut trusted);
     rank(&mut followed);
     let group = |list: &[String]| serde_json::json!({ "people": list.iter().take(6).collect::<Vec<_>>(), "count": list.len() });
@@ -4630,25 +4804,27 @@ async fn public_annotation_delete_handler(
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
     // A sealed label is retracted by the ciphertext it was said as (ruling 7): find it by
     // opening what this persona said about the post.
-    let (key, value) = match crate::idface::seal_key_for(&state, &author, &target_doc, &root).await? {
-        Some((_, post_key)) => {
-            let said = data.public_annotations().of(&author, &target_doc).await?;
-            let sealed = said
-                .into_iter()
-                .filter(|r| r.key == crate::annotations::SEALED_KEY)
-                .find(|r| crate::annotations::open_statement(&r.value, &post_key).is_some_and(|(k, v)| k == key && v == value))
-                .map(|r| r.value);
-            match sealed {
-                Some(sealed) => (crate::annotations::SEALED_KEY.to_string(), sealed),
-                None => (key, value),
+    let (key, value) =
+        match crate::idface::seal_key_for(&state, &author, &target_doc, &root).await? {
+            Some((_, post_key)) => {
+                let said = data.public_annotations().of(&author, &target_doc).await?;
+                let sealed = said
+                    .into_iter()
+                    .filter(|r| r.key == crate::annotations::SEALED_KEY)
+                    .find(|r| {
+                        crate::annotations::open_statement(&r.value, &post_key)
+                            .is_some_and(|(k, v)| k == key && v == value)
+                    })
+                    .map(|r| r.value);
+                match sealed {
+                    Some(sealed) => (crate::annotations::SEALED_KEY.to_string(), sealed),
+                    None => (key, value),
+                }
             }
-        }
-        None => (key, value),
-    };
-    let signed = data
-        .public_annotations()
-        .say(&target_author, &target_doc, &key, &value, false)
-        .await?;
+            None => (key, value),
+        };
+    let signed =
+        data.public_annotations().say(&target_author, &target_doc, &key, &value, false).await?;
     crate::fold::fold_now(&state, &root).await; // the retraction shows on the same 200
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
@@ -4676,7 +4852,10 @@ const REPLICATED_TAGS_CAP: usize = 32;
 /// cards mints none and rings nobody twice.
 /// The roots a draft's user cards name (`bake::mentions`), for a post sealed to the people
 /// mentioned (Contact tags, ruling 5). Marquee only: plain text has no cards.
-async fn draft_mentions(data: &store::Store, draft_id: &[u8; 16]) -> Result<Vec<[u8; 32]>, AppError> {
+async fn draft_mentions(
+    data: &store::Store,
+    draft_id: &[u8; 16],
+) -> Result<Vec<[u8; 32]>, AppError> {
     let docs = data.documents();
     let Some(doc) = docs.one(draft_id).await? else { return Ok(Vec::new()) };
     let format = doc
@@ -4729,12 +4908,17 @@ pub(crate) async fn restate_labels(
                     continue;
                 }
                 let sealed = seal_statement(&key, k, v).map_err(AppError::Internal)?;
-                let signed = data.public_annotations().say(self_root, target, SEALED_KEY, &sealed, true).await?;
+                let signed = data
+                    .public_annotations()
+                    .say(self_root, target, SEALED_KEY, &sealed, true)
+                    .await?;
                 fresh.push((k.clone(), v.clone(), signed));
             }
             for (kv, sealed) in &opened {
                 if !desired.contains(kv) {
-                    data.public_annotations().say(self_root, target, SEALED_KEY, sealed, false).await?;
+                    data.public_annotations()
+                        .say(self_root, target, SEALED_KEY, sealed, false)
+                        .await?;
                 }
             }
             for (k, v) in &plain {
@@ -4784,12 +4968,19 @@ async fn replicate_annotations(
     let mut desired: std::collections::BTreeSet<(String, String)> = Default::default();
     let tags = data.annotations().tags(draft_id).await?;
     if tags.len() > REPLICATED_TAGS_CAP {
-        tracing::warn!(cap = REPLICATED_TAGS_CAP, have = tags.len(),
-            "a draft carries more tags than publish replicates; the rest stay private");
+        tracing::warn!(
+            cap = REPLICATED_TAGS_CAP,
+            have = tags.len(),
+            "a draft carries more tags than publish replicates; the rest stay private"
+        );
     }
     // A reaction is for somebody else's post (2026-09-27): an emoji tag on your own draft
     // stays private, since every reader would drop it (annotations.rs `bounded`).
-    for tag in tags.iter().filter(|t| !crate::annotations::is_emoji_tag(t.trim())).take(REPLICATED_TAGS_CAP) {
+    for tag in tags
+        .iter()
+        .filter(|t| !crate::annotations::is_emoji_tag(t.trim()))
+        .take(REPLICATED_TAGS_CAP)
+    {
         if !tag.trim().is_empty() && fits("tag", tag) {
             desired.insert(("tag".into(), tag.clone()));
         }
@@ -4812,9 +5003,9 @@ async fn replicate_annotations(
     // room can open it and see why they are there, and nobody else can read it at all. A
     // contact-tag audience says nothing - the tag is the author's private business.
     if post_key.is_some()
-        && fields
-            .iter()
-            .any(|(f, v)| f.as_str() == store::AUDIENCE && v.trim() == crate::postkeys::MENTIONED_AUDIENCE)
+        && fields.iter().any(|(f, v)| {
+            f.as_str() == store::AUDIENCE && v.trim() == crate::postkeys::MENTIONED_AUDIENCE
+        })
     {
         desired.insert((store::AUDIENCE.into(), crate::postkeys::MENTIONED_AUDIENCE.into()));
     }
@@ -4868,12 +5059,28 @@ async fn replicate_annotations(
             if format.is_mergeable_text() {
                 if let Some(body) = docs.resolved(&doc).await?.body {
                     // A post's length; a room is a place to talk, not a read, so it has none.
-                    let post_format = crate::record::documents::public_head(data.db(), post_id).await?.map(|h| crate::record::documents::Format::from_wire(h.format));
-                    let reads = matches!(post_format, Some(crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext));
-                    if let Some(length) = crate::record::documents::length_tag(crate::record::documents::word_count(&body)).filter(|_| reads) {
+                    let post_format = crate::record::documents::public_head(data.db(), post_id)
+                        .await?
+                        .map(|h| crate::record::documents::Format::from_wire(h.format));
+                    let reads = matches!(
+                        post_format,
+                        Some(
+                            crate::record::documents::Format::Marquee
+                                | crate::record::documents::Format::Plaintext
+                        )
+                    );
+                    if let Some(length) = crate::record::documents::length_tag(
+                        crate::record::documents::word_count(&body),
+                    )
+                    .filter(|_| reads)
+                    {
                         desired.insert(("tag".into(), length.into()));
                     }
-                    let cards = if format == crate::record::documents::Format::Marquee { crate::record::bake::mentions(&body) } else { Vec::new() };
+                    let cards = if format == crate::record::documents::Format::Marquee {
+                        crate::record::bake::mentions(&body)
+                    } else {
+                        Vec::new()
+                    };
                     for named in cards {
                         if &named != self_root {
                             desired.insert((
@@ -4896,8 +5103,14 @@ async fn replicate_annotations(
             .map(|(a, d)| (hex::encode(a), hex::encode(d)))
             .unwrap_or_else(|| (self_hex.clone(), hex::encode(post_id)));
         // The seal's audience if it has one (Contact tags, ruling 4), else the holder's trust.
-        let members = match crate::postkeys::audience(&state.node_db, &holder_hex, &key_doc_hex).await.ok().flatten() {
-            Some(tag) => crate::idface::audience_members(state, &holder_hex, &key_doc_hex, &tag).await,
+        let members = match crate::postkeys::audience(&state.node_db, &holder_hex, &key_doc_hex)
+            .await
+            .ok()
+            .flatten()
+        {
+            Some(tag) => {
+                crate::idface::audience_members(state, &holder_hex, &key_doc_hex, &tag).await
+            }
             None => {
                 let edges = if holder_hex == self_hex {
                     crate::record::imaol::published_edges(data.db()).await.ok()
@@ -4908,7 +5121,12 @@ async fn replicate_annotations(
                     }
                 };
                 edges
-                    .map(|e| e.into_iter().filter(|(_, v)| v.edge.trust.is_some()).map(|(k, _)| k).collect())
+                    .map(|e| {
+                        e.into_iter()
+                            .filter(|(_, v)| v.edge.trust.is_some())
+                            .map(|(k, _)| k)
+                            .collect()
+                    })
                     .unwrap_or_default()
             }
         };
@@ -4942,7 +5160,14 @@ async fn mention_notices(
     root: &str,
     mentions: Vec<(String, ringtome_proto::SignedEntry)>,
 ) {
-    crate::outbox::queue_notices(state, data, root, mentions, ringtome_proto::deliver::notice_kind::MENTIONED).await;
+    crate::outbox::queue_notices(
+        state,
+        data,
+        root,
+        mentions,
+        ringtome_proto::deliver::notice_kind::MENTIONED,
+    )
+    .await;
 }
 
 #[derive(serde::Serialize)]
@@ -4967,7 +5192,10 @@ async fn peers_handler(
     // transport keys that serving records publish anyway. A root we don't host has no
     // honest answer here.
     if !super::is_hosted(&state.node_db, &root).await? {
-        return Err(AppError::NotFound(crate::msg!("identity.routes.this-node-doesnt-host-that", "not here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.routes.this-node-doesnt-host-that",
+            "not here"
+        )));
     }
     let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 16).await?;
     Ok(Json(PeersResponse { peers }))
@@ -4979,11 +5207,7 @@ async fn keys_handler(
     Path(root): Path<String>,
 ) -> Result<Json<CrownResponse>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let db = state
-        .user_dbs
-        .held(&root)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let tree = imaol::load_key_tree(&db, &root).await?;
 
     // Device names, best-effort: the labels are decoration on this response, so a store that
@@ -4995,10 +5219,11 @@ async fn keys_handler(
 
     // This node's own leaf, best-effort for the same reason: without it, keys render with no
     // removal affordance rather than failing the screen.
-    let this_leaf = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
-        .await
-        .ok()
-        .map(|k| k.verifying_key().to_bytes());
+    let this_leaf =
+        super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+            .await
+            .ok()
+            .map(|k| k.verifying_key().to_bytes());
 
     let mut keys: Vec<KeyInfo> = tree
         .members()
@@ -5028,11 +5253,7 @@ async fn keys_handler(
     // every key screen, decided once here.
     keys.sort_by(|a, b| a.rank_path.cmp(&b.rank_path));
 
-    Ok(Json(CrownResponse {
-        root_pubkey: root,
-        keys,
-        forks: tree.forks().len(),
-    }))
+    Ok(Json(CrownResponse { root_pubkey: root, keys, forks: tree.forks().len() }))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -5057,10 +5278,7 @@ async fn private_kv_put_handler(
     Json(req): Json<PrivateKvPut>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let signed = data
-        .private_registers(&collection)
-        .set(&key, &req.value)
-        .await?;
+    let signed = data.private_registers(&collection).set(&key, &req.value).await?;
     // A contact dial's 200 means the dial COUNTS (2026-08-25): the memo derives from this
     // write asynchronously (the nudged sweep), and "follow, then open your feed" raced it -
     // on a slow machine a publish could fire into a follower list that did not yet name the
@@ -5093,8 +5311,12 @@ async fn private_kv_put_handler(
                 crate::idface::promote_peek(&task_state, &task_foreign).await
             });
             match tokio::time::timeout(std::time::Duration::from_millis(2500), &mut fetch).await {
-                Ok(done) => tracing::info!(foreign = %foreign, promoted = ?done.ok(), "a dial promoted a peek"),
-                Err(_) => tracing::info!(foreign = %foreign, "a dial's fetch still in flight - detached"),
+                Ok(done) => {
+                    tracing::info!(foreign = %foreign, promoted = ?done.ok(), "a dial promoted a peek")
+                }
+                Err(_) => {
+                    tracing::info!(foreign = %foreign, "a dial's fetch still in flight - detached")
+                }
             }
         }
     }
@@ -5127,9 +5349,7 @@ async fn implicit_list_handler(
     Path(root): Path<String>,
 ) -> Result<Json<ImplicitListResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let edges = crate::edgegraph::implicit_of(data.db())
-        .await
-        .map_err(AppError::Internal)?;
+    let edges = crate::edgegraph::implicit_of(data.db()).await.map_err(AppError::Internal)?;
     Ok(Json(ImplicitListResponse { edges }))
 }
 
@@ -5160,10 +5380,7 @@ async fn private_kv_list_handler(
 ) -> Result<Json<PrivateKvListResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let (values, undecryptable) = data.private_registers(&collection).all().await?;
-    Ok(Json(PrivateKvListResponse {
-        values,
-        undecryptable,
-    }))
+    Ok(Json(PrivateKvListResponse { values, undecryptable }))
 }
 
 #[derive(Deserialize)]
@@ -5181,10 +5398,7 @@ async fn private_set_add_handler(
     Json(req): Json<PrivateSetAdd>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let signed = data
-        .private_set(&collection)
-        .add(&req.element, req.value)
-        .await?;
+    let signed = data.private_set(&collection).add(&req.element, req.value).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -5209,10 +5423,14 @@ async fn private_set_remove_handler(
 // Versioned documents (the notes app).
 
 fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
-    hex::decode(s)
-        .ok()
-        .and_then(|b| <[u8; N]>::try_from(b).ok())
-        .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-what-expected-hex-chars", "bad {what} (expected {chars} hex chars)", what = what, chars = N * 2)))
+    hex::decode(s).ok().and_then(|b| <[u8; N]>::try_from(b).ok()).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.bad-what-expected-hex-chars",
+            "bad {what} (expected {chars} hex chars)",
+            what = what,
+            chars = N * 2
+        ))
+    })
 }
 
 /// Parse the wire `format` string ("plaintext" | "marquee"), defaulting to plaintext when absent.
@@ -5220,7 +5438,11 @@ fn parse_format(s: &Option<String>) -> Result<crate::record::documents::Format, 
     match s {
         None => Ok(crate::record::documents::Format::Plaintext),
         Some(s) => crate::record::documents::Format::parse(s).ok_or_else(|| {
-            AppError::BadRequest(crate::msg!("identity.routes.unknown-format-s-plaintext-marquee", "unknown format {s:?} (plaintext | marquee)", s = s))
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.unknown-format-s-plaintext-marquee",
+                "unknown format {s:?} (plaintext | marquee)",
+                s = s
+            ))
         }),
     }
 }
@@ -5281,17 +5503,38 @@ async fn read_public_source(
     doc_hex: &str,
     doc_id: &[u8; 16],
 ) -> Result<PublicSource, AppError> {
-    let head = match crate::fragments::serving_header(&state.node_db, author_hex, doc_id).await.ok().flatten() {
+    let head = match crate::fragments::serving_header(&state.node_db, author_hex, doc_id)
+        .await
+        .ok()
+        .flatten()
+    {
         Some(h) => Some((h.title, h.format, h.trusted_only)),
-        None => held_public_header(state, author_hex, doc_hex).await?.map(|h| (h.title, h.format, h.trusted_only)),
+        None => held_public_header(state, author_hex, doc_hex)
+            .await?
+            .map(|h| (h.title, h.format, h.trusted_only)),
     };
     let Some((title, format, sealed)) = head else {
-        return Err(AppError::NotFound(crate::msg!("identity.routes.no-such-post-to-copy", "no such post to copy")));
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.routes.no-such-post-to-copy",
+            "no such post to copy"
+        )));
     };
     let format = crate::record::documents::Format::from_wire(format);
-    let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, doc_hex, false, None, None).await?;
+    let resp = crate::idface::public_doc_bytes(
+        state,
+        &Some(session.clone()),
+        author_hex,
+        doc_hex,
+        false,
+        None,
+        None,
+    )
+    .await?;
     if resp.status() != StatusCode::OK {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.those-words-arent-readable-here", "those words aren't readable here yet")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.those-words-arent-readable-here",
+            "those words aren't readable here yet"
+        )));
     }
     // A sealed post's title rides beside its words (ruling 5): take it for the copy.
     let title = resp
@@ -5310,15 +5553,22 @@ async fn read_public_source(
     let known = crate::annotations::for_post_admitted(state, author_hex, doc_hex)
         .await
         .map_err(AppError::Internal)?;
-    let own: Vec<&crate::annotations::KnownAnnotation> = known.iter().filter(|a| a.annotator == author_hex).collect();
+    let own: Vec<&crate::annotations::KnownAnnotation> =
+        known.iter().filter(|a| a.annotator == author_hex).collect();
     let tags = own.iter().filter(|a| a.key == "tag").map(|a| a.value.clone()).collect();
-    let inherited = own.iter().filter(|a| a.key == store::PROVENANCE).map(|a| a.value.clone()).collect();
+    let inherited =
+        own.iter().filter(|a| a.key == store::PROVENANCE).map(|a| a.value.clone()).collect();
     Ok(PublicSource { title, body, format, tags, inherited, sealed })
 }
 
 /// The chain a copy carries: the source's author when that is somebody else, then everyone
 /// the source descended from - each once, never yourself.
-fn provenance_chain(root: &str, author_hex: &str, inherited: &[String], extra: &[String]) -> Vec<String> {
+fn provenance_chain(
+    root: &str,
+    author_hex: &str,
+    inherited: &[String],
+    extra: &[String],
+) -> Vec<String> {
     let mut chain: Vec<String> = Vec::new();
     if author_hex != root {
         chain.push(author_hex.to_string());
@@ -5361,7 +5611,16 @@ async fn mint_copy(
         let mut swaps: Vec<(String, String)> = Vec::new();
         for (target, twin) in crate::record::bake::public_media_refs(&text, author_hex) {
             let twin_hex = hex::encode(twin);
-            let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, &twin_hex, false, None, None).await?;
+            let resp = crate::idface::public_doc_bytes(
+                state,
+                &Some(session.clone()),
+                author_hex,
+                &twin_hex,
+                false,
+                None,
+                None,
+            )
+            .await?;
             if resp.status() != StatusCode::OK {
                 continue;
             }
@@ -5392,7 +5651,10 @@ async fn mint_copy(
                 .split_once("/body")
                 .map(|(_, t)| format!("/body{t}"))
                 .unwrap_or_else(|| "/body".to_string());
-            swaps.push((target.clone(), format!("/api/identity/{root}/docs/{}{tail}", hex::encode(media_doc))));
+            swaps.push((
+                target.clone(),
+                format!("/api/identity/{root}/docs/{}{tail}", hex::encode(media_doc)),
+            ));
         }
         if !swaps.is_empty() {
             body = crate::record::bake::rewrite(&text, &swaps).into_bytes();
@@ -5467,7 +5729,11 @@ async fn copy_page(
         }
     };
     let chain = provenance_chain(root, author_hex, &src.inherited, book_chain);
-    let note = mint_copy(state, session, data, root, author_hex, &src.title, src.body, src.format, &src.tags, &chain, src.sealed, bucket, true).await?;
+    let note = mint_copy(
+        state, session, data, root, author_hex, &src.title, src.body, src.format, &src.tags,
+        &chain, src.sealed, bucket, true,
+    )
+    .await?;
     data.taxonomies().place(parent, self_root, &note, None).await?;
     Ok(())
 }
@@ -5490,10 +5756,16 @@ fn copy_section<'a>(
         let node = data.taxonomies().create(&section.title).await?;
         data.taxonomies().place(parent, self_root, &node, None).await?;
         for page in &section.pages {
-            copy_page(state, session, data, root, self_root, author_hex, page, bucket, &node, book_chain).await?;
+            copy_page(
+                state, session, data, root, self_root, author_hex, page, bucket, &node, book_chain,
+            )
+            .await?;
         }
         for sub in &section.sections {
-            copy_section(state, session, data, root, self_root, author_hex, sub, bucket, &node, book_chain).await?;
+            copy_section(
+                state, session, data, root, self_root, author_hex, sub, bucket, &node, book_chain,
+            )
+            .await?;
         }
         Ok(())
     })
@@ -5524,13 +5796,18 @@ async fn docs_copy_handler(
     let doc_id = hex_fixed::<16>(&doc_hex, "doc id")?;
     if req.private {
         if author_hex != root {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.a-private-note-is-your-own", "a private note to copy must be one of your own")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.a-private-note-is-your-own",
+                "a private note to copy must be one of your own"
+            )));
         }
         let docs = data.documents();
-        let doc = docs
-            .one(&doc_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-note-to-copy", "no such note to copy")))?;
+        let doc = docs.one(&doc_id).await?.ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "identity.routes.no-such-note-to-copy",
+                "no such note to copy"
+            ))
+        })?;
         let format = doc
             .display_head()
             .map(|h| crate::record::documents::Format::from_wire(h.header.format))
@@ -5543,12 +5820,18 @@ async fn docs_copy_handler(
                 | crate::record::documents::Format::Plaintext
                 | crate::record::documents::Format::Drawing
         ) {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.only-words-copy",
+                "only a post of words copies into notes"
+            )));
         }
         let resolved = docs.resolved(&doc).await?;
-        let body = resolved
-            .body
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.those-words-havent-arrived", "those words haven't arrived on this computer yet")))?;
+        let body = resolved.body.ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.those-words-havent-arrived",
+                "those words haven't arrived on this computer yet"
+            ))
+        })?;
         let tags = data.annotations().tags(&doc_id).await?;
         let inherited = data
             .annotations()
@@ -5565,7 +5848,22 @@ async fn docs_copy_handler(
             data.buckets().define(&req.bucket, "default").await?;
         }
         let chain = provenance_chain(&root, &author_hex, &inherited, &[]);
-        let new_doc = mint_copy(&state, &session, &data, &root, &author_hex, &resolved.title, body.into_bytes(), format, &tags, &chain, sealed, &req.bucket, false).await?;
+        let new_doc = mint_copy(
+            &state,
+            &session,
+            &data,
+            &root,
+            &author_hex,
+            &resolved.title,
+            body.into_bytes(),
+            format,
+            &tags,
+            &chain,
+            sealed,
+            &req.bucket,
+            false,
+        )
+        .await?;
         return Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }));
     }
     let src = read_public_source(&state, &session, &author_hex, &doc_hex, &doc_id).await?;
@@ -5578,7 +5876,10 @@ async fn docs_copy_handler(
     }
     if src.format == crate::record::documents::Format::Book {
         if !req.new {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.a-book-copies-into-a-fresh", "a book copies whole into a fresh notebook - name a new one")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.a-book-copies-into-a-fresh",
+                "a book copies whole into a fresh notebook - name a new one"
+            )));
         }
         let table: TableIn = serde_json::from_slice(&src.body)
             .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the book's table: {e}")))?;
@@ -5589,13 +5890,49 @@ async fn docs_copy_handler(
         let mut seen: std::collections::HashSet<String> = Default::default();
         if let Some(cover) = &table.cover {
             seen.insert(cover.post.clone());
-            copy_page(&state, &session, &data, &root, &self_root, &author_hex, cover, &req.bucket, &tree, &book_chain).await?;
+            copy_page(
+                &state,
+                &session,
+                &data,
+                &root,
+                &self_root,
+                &author_hex,
+                cover,
+                &req.bucket,
+                &tree,
+                &book_chain,
+            )
+            .await?;
         }
         for page in table.pages.iter().filter(|p| seen.insert(p.post.clone())) {
-            copy_page(&state, &session, &data, &root, &self_root, &author_hex, page, &req.bucket, &tree, &book_chain).await?;
+            copy_page(
+                &state,
+                &session,
+                &data,
+                &root,
+                &self_root,
+                &author_hex,
+                page,
+                &req.bucket,
+                &tree,
+                &book_chain,
+            )
+            .await?;
         }
         for section in &table.sections {
-            copy_section(&state, &session, &data, &root, &self_root, &author_hex, section, &req.bucket, &tree, &book_chain).await?;
+            copy_section(
+                &state,
+                &session,
+                &data,
+                &root,
+                &self_root,
+                &author_hex,
+                section,
+                &req.bucket,
+                &tree,
+                &book_chain,
+            )
+            .await?;
         }
         data.private_registers(crate::books::BOOKS_KV)
             .set(&req.bucket, &serde_json::json!({ "mode": "book" }).to_string())
@@ -5603,14 +5940,35 @@ async fn docs_copy_handler(
         let _ = table.title;
         return Ok(Json(DocCreated { doc_id: hex::encode(tree), version: String::new() }));
     }
-    if !matches!(src.format, crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext) {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
+    if !matches!(
+        src.format,
+        crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext
+    ) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.only-words-copy",
+            "only a post of words copies into notes"
+        )));
     }
     if req.new {
         data.buckets().define(&req.bucket, "default").await?;
     }
     let chain = provenance_chain(&root, &author_hex, &src.inherited, &[]);
-    let new_doc = mint_copy(&state, &session, &data, &root, &author_hex, &src.title, src.body, src.format, &src.tags, &chain, src.sealed, &req.bucket, true).await?;
+    let new_doc = mint_copy(
+        &state,
+        &session,
+        &data,
+        &root,
+        &author_hex,
+        &src.title,
+        src.body,
+        src.format,
+        &src.tags,
+        &chain,
+        src.sealed,
+        &req.bucket,
+        true,
+    )
+    .await?;
     Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }))
 }
 
@@ -5622,14 +5980,9 @@ async fn docs_create_handler(
 ) -> Result<Json<DocCreated>, AppError> {
     let format = parse_format(&req.format)?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let (doc_id, version) = data
-        .documents()
-        .create(&req.title, req.body.as_bytes(), format)
-        .await?;
-    Ok(Json(DocCreated {
-        doc_id: hex::encode(doc_id),
-        version: hex::encode(version),
-    }))
+    let (doc_id, version) =
+        data.documents().create(&req.title, req.body.as_bytes(), format).await?;
+    Ok(Json(DocCreated { doc_id: hex::encode(doc_id), version: hex::encode(version) }))
 }
 
 #[derive(Deserialize)]
@@ -5675,9 +6028,7 @@ async fn docs_save_handler(
             refs: Vec::new(), // derived in Store::save, never client-asserted
         })
         .await?;
-    Ok(Json(DocSaved {
-        version: hex::encode(version),
-    }))
+    Ok(Json(DocSaved { version: hex::encode(version) }))
 }
 
 #[derive(Deserialize)]
@@ -5697,9 +6048,7 @@ async fn docs_retitle_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let version = data.documents().retitle(&doc_id, &req.title).await?;
-    Ok(Json(DocSaved {
-        version: hex::encode(version),
-    }))
+    Ok(Json(DocSaved { version: hex::encode(version) }))
 }
 
 /// Delete a document: a tombstone on the doc-meta chain (an LWW set-add) that hides it from
@@ -5726,7 +6075,10 @@ async fn docs_delete_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     if crate::builtin::get(&doc_id).is_some() {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.builtin-cant-be-deleted", "that picture comes with the app - it can't be deleted")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.builtin-cant-be-deleted",
+            "that picture comes with the app - it can't be deleted"
+        )));
     }
     let signed = data.documents().delete(&doc_id).await?;
     Ok(Json(PrivateWriteResponse {
@@ -5823,23 +6175,34 @@ async fn docs_create_video_handler(
     store::open(&state, &session.account.id, &root).await?;
     let mut video: Option<Bytes> = None;
     let mut audio: Option<Bytes> = None;
-    while let Some(field) = parts
-        .next_field()
-        .await
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-body-e", "bad multipart body: {e}", e = e)))?
-    {
+    while let Some(field) = parts.next_field().await.map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.bad-multipart-body-e",
+            "bad multipart body: {e}",
+            e = e
+        ))
+    })? {
         let name = field.name().unwrap_or("").to_string();
-        let bytes = field
-            .bytes()
-            .await
-            .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-part-name-e", "bad multipart part {name:?}: {e}", name = name, e = e)))?;
+        let bytes = field.bytes().await.map_err(|e| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.bad-multipart-part-name-e",
+                "bad multipart part {name:?}: {e}",
+                name = name,
+                e = e
+            ))
+        })?;
         match name.as_str() {
             "video" => video = Some(bytes),
             "audio" => audio = Some(bytes),
             _ => {} // unknown parts are ignored, not fatal
         }
     }
-    let video = video.ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.missing-video-part", "missing `video` part")))?;
+    let video = video.ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.missing-video-part",
+            "missing `video` part"
+        ))
+    })?;
     let doc_id = crate::record::documents::new_doc_id();
     let job_id = state
         .ingest
@@ -5858,11 +6221,7 @@ async fn docs_create_video_handler(
         .await?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(DocQueued {
-            doc_id: hex::encode(doc_id),
-            job_id,
-            status: "pending",
-        }),
+        Json(DocQueued { doc_id: hex::encode(doc_id), job_id, status: "pending" }),
     ))
 }
 
@@ -5884,44 +6243,70 @@ async fn set_avatar_handler(
 ) -> Result<Json<AvatarResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let mut image: Option<Bytes> = None;
-    while let Some(field) = parts
-        .next_field()
-        .await
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-body-e-2", "bad multipart body: {e}", e = e)))?
-    {
+    while let Some(field) = parts.next_field().await.map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.bad-multipart-body-e-2",
+            "bad multipart body: {e}",
+            e = e
+        ))
+    })? {
         if field.name().unwrap_or("") == "image" {
             image = Some(field.bytes().await.map_err(|e| {
-                AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-part-image-e", "bad multipart part `image`: {e}", e = e))
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.bad-multipart-part-image-e",
+                    "bad multipart part `image`: {e}",
+                    e = e
+                ))
             })?);
         }
     }
-    let image = image.ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.missing-image-part", "missing `image` part")))?;
+    let image = image.ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.missing-image-part",
+            "missing `image` part"
+        ))
+    })?;
 
     // The same laundering every upload gets - decode, re-encode, never trust the bytes.
     let bytes = image.to_vec();
-    let ingested = tokio::task::spawn_blocking(move || {
-        crate::media::crush_with_progress(&bytes, &|_| {})
-    })
-    .await
-    .map_err(|e| AppError::Internal(anyhow::anyhow!("avatar crush task: {e}")))?
-    .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.that-doesnt-work-as-an", "that doesn't work as an avatar: {e}", e = e)))?;
+    let ingested =
+        tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("avatar crush task: {e}")))?
+            .map_err(|e| {
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.that-doesnt-work-as-an",
+                    "that doesn't work as an avatar: {e}",
+                    e = e
+                ))
+            })?;
     if !matches!(
         ingested.format,
         crate::record::documents::Format::Avif | crate::record::documents::Format::Apng
     ) {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.an-avatar-should-be-a", "an avatar should be a picture - a still image or a small animation")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.an-avatar-should-be-a",
+            "an avatar should be a picture - a still image or a small animation"
+        )));
     }
 
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
-    let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
-        .await?;
-    let doc_id =
-        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested, None, None, false)
+    let signer =
+        super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
             .await?;
+    let doc_id = crate::record::documents::save_public_media(
+        &db,
+        &signer,
+        &state.files,
+        "avatar",
+        ingested,
+        None,
+        None,
+        false,
+    )
+    .await?;
     data.profile().set("avatar", &hex::encode(doc_id)).await?;
-    Ok(Json(AvatarResponse {
-        doc_id: hex::encode(doc_id),
-    }))
+    Ok(Json(AvatarResponse { doc_id: hex::encode(doc_id) }))
 }
 
 /// POST - the profile's banner (Curtis, 2026-09-28): a still picture across the top of your page,
@@ -5936,30 +6321,62 @@ async fn set_banner_handler(
 ) -> Result<Json<AvatarResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let mut image: Option<Bytes> = None;
-    while let Some(field) = parts
-        .next_field()
-        .await
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-body-e-2", "bad multipart body: {e}", e = e)))?
-    {
+    while let Some(field) = parts.next_field().await.map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.bad-multipart-body-e-2",
+            "bad multipart body: {e}",
+            e = e
+        ))
+    })? {
         if field.name().unwrap_or("") == "image" {
             image = Some(field.bytes().await.map_err(|e| {
-                AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-part-image-e", "bad multipart part `image`: {e}", e = e))
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.bad-multipart-part-image-e",
+                    "bad multipart part `image`: {e}",
+                    e = e
+                ))
             })?);
         }
     }
-    let image = image.ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.missing-image-part", "missing `image` part")))?;
+    let image = image.ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.missing-image-part",
+            "missing `image` part"
+        ))
+    })?;
     let bytes = image.to_vec();
-    let ingested = tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("banner crush task: {e}")))?
-        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.that-doesnt-work-as-a-banner", "that doesn't work as a banner: {e}", e = e)))?;
+    let ingested =
+        tokio::task::spawn_blocking(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("banner crush task: {e}")))?
+            .map_err(|e| {
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.that-doesnt-work-as-a-banner",
+                    "that doesn't work as a banner: {e}",
+                    e = e
+                ))
+            })?;
     if ingested.format != crate::record::documents::Format::Avif {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.a-banner-is-a-still-picture", "a banner is a still picture")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-banner-is-a-still-picture",
+            "a banner is a still picture"
+        )));
     }
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
-    let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root).await?;
-    let doc_id =
-        crate::record::documents::save_public_media(&db, &signer, &state.files, "banner", ingested, None, None, false).await?;
+    let signer =
+        super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+            .await?;
+    let doc_id = crate::record::documents::save_public_media(
+        &db,
+        &signer,
+        &state.files,
+        "banner",
+        ingested,
+        None,
+        None,
+        false,
+    )
+    .await?;
     data.profile().set("banner", &hex::encode(doc_id)).await?;
     Ok(Json(AvatarResponse { doc_id: hex::encode(doc_id) }))
 }
@@ -6020,11 +6437,7 @@ async fn queue_upload(
         .await?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(DocQueued {
-            doc_id: hex::encode(doc_id),
-            job_id,
-            status: "pending",
-        }),
+        Json(DocQueued { doc_id: hex::encode(doc_id), job_id, status: "pending" }),
     ))
 }
 
@@ -6036,9 +6449,12 @@ async fn docs_ingest_status_handler(
     Path(root): Path<String>,
 ) -> Result<Json<Vec<crate::ingest::JobStatus>>, AppError> {
     store::open(&state, &session.account.id, &root).await?;
-    let jobs =
-        crate::ingest::jobs_for_account(&state.node_db, &state.ingest, &session.account.id.to_string())
-            .await?;
+    let jobs = crate::ingest::jobs_for_account(
+        &state.node_db,
+        &state.ingest,
+        &session.account.id.to_string(),
+    )
+    .await?;
     Ok(Json(jobs))
 }
 
@@ -6119,15 +6535,19 @@ async fn docs_body_impl(
         return version_less_body_status(&state, &session.account.id.to_string(), doc_id).await;
     };
 
-    let head = doc
-        .display_head()
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-readable-head", "document has no readable head")))?;
+    let head = doc.display_head().ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-has-no-readable-head",
+            "document has no readable head"
+        ))
+    })?;
     let format = crate::record::documents::Format::from_wire(head.header.format);
-    let bytes = data
-        .documents()
-        .body(head)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.body-not-on-this-node", "body not on this node yet")))?;
+    let bytes = data.documents().body(head).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.body-not-on-this-node",
+            "body not on this node yet"
+        ))
+    })?;
     Ok((
         [
             (CONTENT_TYPE, format.mime()),
@@ -6158,7 +6578,9 @@ async fn version_less_body_status(
             // as a stutter in front of a sentence that already explains itself, and breaks that
             // equality. The words themselves are not translatable from here; they are stored
             // prose, and making stored prose translatable is a data-format question.
-            Some(reason) => crate::msg!("identity.routes.upload-tombstone", "{reason}", reason = reason),
+            Some(reason) => {
+                crate::msg!("identity.routes.upload-tombstone", "{reason}", reason = reason)
+            }
             None => crate::msg!(
                 "identity.routes.upload-could-not-be-processed",
                 "upload could not be processed"
@@ -6166,7 +6588,10 @@ async fn version_less_body_status(
         })),
         // A 'done' job always has its version (so it's in the view above, not here); anything else,
         // or no job at all, is genuinely not found.
-        _ => Err(AppError::NotFound(crate::msg!("identity.routes.document-not-found", "document not found"))),
+        _ => Err(AppError::NotFound(crate::msg!(
+            "identity.routes.document-not-found",
+            "document not found"
+        ))),
     }
 }
 
@@ -6183,22 +6608,30 @@ async fn docs_thumb_handler(
     if let Some(b) = crate::builtin::get(&doc_id) {
         return Ok(builtin_bytes(b));
     }
-    let doc = data.documents()
-        .one(&doc_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-2", "document not found")))?;
-    let head = doc
-        .display_head()
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-readable-head-2", "document has no readable head")))?;
-    let thumb_hash = head
-        .header
-        .thumb_hash
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-thumbnail", "document has no thumbnail")))?;
-    let bytes = data
-        .documents()
-        .blob(thumb_hash)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.thumbnail-not-on-this-node", "thumbnail not on this node yet")))?;
+    let doc = data.documents().one(&doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-not-found-2",
+            "document not found"
+        ))
+    })?;
+    let head = doc.display_head().ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-has-no-readable-head-2",
+            "document has no readable head"
+        ))
+    })?;
+    let thumb_hash = head.header.thumb_hash.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-has-no-thumbnail",
+            "document has no thumbnail"
+        ))
+    })?;
+    let bytes = data.documents().blob(thumb_hash).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.thumbnail-not-on-this-node",
+            "thumbnail not on this node yet"
+        ))
+    })?;
     Ok((
         [
             (CONTENT_TYPE, crate::record::documents::Format::Avif.mime()),
@@ -6225,28 +6658,33 @@ async fn docs_preview_handler(
 ) -> Result<impl IntoResponse, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let doc = data.documents()
-        .one(&doc_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-3", "document not found")))?;
-    let head = doc
-        .display_head()
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-readable-head-3", "document has no readable head")))?;
-    let preview_hash = head
-        .header
-        .preview_hash
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-preview-clip", "document has no preview clip")))?;
-    let bytes = data
-        .documents()
-        .blob(preview_hash)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.preview-not-on-this-node", "preview not on this node yet")))?;
+    let doc = data.documents().one(&doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-not-found-3",
+            "document not found"
+        ))
+    })?;
+    let head = doc.display_head().ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-has-no-readable-head-3",
+            "document has no readable head"
+        ))
+    })?;
+    let preview_hash = head.header.preview_hash.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-has-no-preview-clip",
+            "document has no preview clip"
+        ))
+    })?;
+    let bytes = data.documents().blob(preview_hash).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.preview-not-on-this-node",
+            "preview not on this node yet"
+        ))
+    })?;
     Ok((
         [
-            (
-                CONTENT_TYPE,
-                crate::record::documents::Format::WebmAv1.mime(),
-            ),
+            (CONTENT_TYPE, crate::record::documents::Format::WebmAv1.mime()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (CONTENT_SECURITY_POLICY, "sandbox"),
         ],
@@ -6370,11 +6808,15 @@ fn summarize(
     let is_pinned = pinned.contains(&row.doc_id);
     let implicit = implicit.get(&row.doc_id).cloned().unwrap_or_default();
     let doc_id = hex::encode(row.doc_id);
-    let (mut tags, fields) = annots
-        .get(&doc_id)
-        .map(|a| (a.tags.clone(), a.fields.clone()))
-        .unwrap_or_default();
-    tags.extend(implicit.iter().filter(|t| !tags.iter().any(|o| o == *t)).map(|t| t.to_string()).collect::<Vec<_>>());
+    let (mut tags, fields) =
+        annots.get(&doc_id).map(|a| (a.tags.clone(), a.fields.clone())).unwrap_or_default();
+    tags.extend(
+        implicit
+            .iter()
+            .filter(|t| !tags.iter().any(|o| o == *t))
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>(),
+    );
     let buckets = buckets.get(&doc_id).cloned().unwrap_or_default();
     DocSummary {
         media: MediaInfo::of_row(&row),
@@ -6405,7 +6847,9 @@ fn with_builtins(
     buckets: &std::collections::BTreeMap<String, Vec<String>>,
     pinned: &std::collections::BTreeSet<[u8; 16]>,
 ) -> Vec<DocSummary> {
-    docs.retain(|d| hex_fixed::<16>(&d.doc_id, "doc id").ok().and_then(|id| crate::builtin::get(&id)).is_none());
+    docs.retain(|d| {
+        hex_fixed::<16>(&d.doc_id, "doc id").ok().and_then(|id| crate::builtin::get(&id)).is_none()
+    });
     docs.extend(crate::builtin::all().iter().map(|b| builtin_row(b, annots, buckets, pinned)));
     docs
 }
@@ -6417,12 +6861,24 @@ fn builtin_row(
     pinned: &std::collections::BTreeSet<[u8; 16]>,
 ) -> DocSummary {
     let doc_id = hex::encode(b.id);
-    let (own_tags, fields) = annots.get(&doc_id).map(|a| (a.tags.clone(), a.fields.clone())).unwrap_or_default();
+    let (own_tags, fields) =
+        annots.get(&doc_id).map(|a| (a.tags.clone(), a.fields.clone())).unwrap_or_default();
     let mut tags = b.tags.clone();
     tags.extend(own_tags.into_iter().filter(|t| !b.tags.contains(t)));
     // A built-in is a picture like any other (`documents::media_tag`).
-    let implicit = crate::record::documents::media_tag(crate::record::documents::Format::Apng.to_wire(), b.animation).into_iter().collect::<Vec<_>>();
-    tags.extend(implicit.iter().filter(|t| !tags.iter().any(|o| o == *t)).map(|t| t.to_string()).collect::<Vec<_>>());
+    let implicit = crate::record::documents::media_tag(
+        crate::record::documents::Format::Apng.to_wire(),
+        b.animation,
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
+    tags.extend(
+        implicit
+            .iter()
+            .filter(|t| !tags.iter().any(|o| o == *t))
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>(),
+    );
     DocSummary {
         title: b.title.clone(),
         head: hex::encode(b.head),
@@ -6444,7 +6900,14 @@ fn builtin_row(
 }
 
 fn builtin_media(b: &crate::builtin::BuiltIn) -> MediaInfo {
-    MediaInfo { width: Some(b.width), height: Some(b.height), duration_ms: None, has_thumb: true, has_preview: false, animation: b.animation }
+    MediaInfo {
+        width: Some(b.width),
+        height: Some(b.height),
+        duration_ms: None,
+        has_thumb: true,
+        has_preview: false,
+        animation: b.animation,
+    }
 }
 
 /// Serve a built-in's PNG - the body and the thumb alike (they are small, and already a picture).
@@ -6465,13 +6928,7 @@ fn builtin_bytes(b: &crate::builtin::BuiltIn) -> Response {
 async fn annotation_map(
     data: &store::Store,
 ) -> Result<std::collections::BTreeMap<String, crate::record::store::AnnotationRow>, AppError> {
-    Ok(data
-        .annotations()
-        .all()
-        .await?
-        .into_iter()
-        .map(|a| (a.doc_id.clone(), a))
-        .collect())
+    Ok(data.annotations().all().await?.into_iter().map(|a| (a.doc_id.clone(), a)).collect())
 }
 
 /// Each document's bucket memberships, keyed by doc_id hex - the other `summarize` join input.
@@ -6500,7 +6957,8 @@ async fn docs_list_handler(
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
     let implicit = data.documents().implicit_tags().await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
+    let docs =
+        rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
     Ok(Json(DocListResponse {
         docs: with_builtins(docs, &annots, &buckets, &pinned),
         undecryptable,
@@ -6561,15 +7019,22 @@ async fn docs_get_handler(
             title: b.title.clone(),
             body: None,
             resolution: "single",
-            heads: vec![DocHead { version: hex::encode(b.head), title: b.title.clone(), timestamp_ms: 0, body: None }],
+            heads: vec![DocHead {
+                version: hex::encode(b.head),
+                title: b.title.clone(),
+                timestamp_ms: 0,
+                body: None,
+            }],
             save_parents: Vec::new(),
             builtin: true,
         }));
     }
-    let doc = data.documents()
-        .one(&doc_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-4", "document not found")))?;
+    let doc = data.documents().one(&doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-not-found-4",
+            "document not found"
+        ))
+    })?;
 
     // Media facts for the display head. Its presence also decides body inlining: a media body is
     // opaque bytes served via `/body`, never UTF-8-mangled into this JSON (a webp is not a string).
@@ -6582,10 +7047,7 @@ async fn docs_get_handler(
             continue;
         };
         let body = if inline_bodies {
-            data.documents()
-                .body(version)
-                .await?
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
+            data.documents().body(version).await?.map(|b| String::from_utf8_lossy(&b).into_owned())
         } else {
             None
         };
@@ -6664,10 +7126,7 @@ async fn annotation_field_put_handler(
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let signed = data
-        .annotations()
-        .set_field(&doc_id, &field, &req.value)
-        .await?;
+    let signed = data.annotations().set_field(&doc_id, &field, &req.value).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -6747,7 +7206,11 @@ async fn docs_by_tag_handler(
         None | Some("modified") => Order::Modified,
         Some("created") => Order::Created,
         Some(other) => {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-order-other-modified-created", "unknown order {other:?} (modified | created)", other = other)));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.unknown-order-other-modified-created",
+                "unknown order {other:?} (modified | created)",
+                other = other
+            )));
         }
     };
     let data = store::open(&state, &session.account.id, &root).await?;
@@ -6755,7 +7218,13 @@ async fn docs_by_tag_handler(
     // An implicit tag is nobody's statement, so no annotation index holds it: its documents are
     // the ones whose media says so.
     let implicit = data.documents().implicit_tags().await?;
-    doc_ids.extend(implicit.iter().filter(|(id, tags)| tags.contains(&tag.as_str()) && !doc_ids.contains(id)).map(|(id, _)| *id).collect::<Vec<_>>());
+    doc_ids.extend(
+        implicit
+            .iter()
+            .filter(|(id, tags)| tags.contains(&tag.as_str()) && !doc_ids.contains(id))
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+    );
     let mut rows = data.documents().summaries_for(&doc_ids).await?;
     rows.sort_by_key(|r| {
         (
@@ -6769,7 +7238,8 @@ async fn docs_by_tag_handler(
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
+    let docs =
+        rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
     let mut docs = with_builtins(docs, &annots, &buckets, &pinned);
     docs.retain(|d| !d.builtin || d.tags.contains(&tag));
     Ok(Json(TaggedDocsResponse { docs }))
@@ -6833,11 +7303,7 @@ async fn buckets_roster_handler(
         .roster()
         .await?
         .into_iter()
-        .map(|b| BucketRow {
-            name: b.name,
-            app: b.app,
-            members: b.members,
-        })
+        .map(|b| BucketRow { name: b.name, app: b.app, members: b.members })
         .collect();
     Ok(Json(BucketRosterResponse { buckets }))
 }
@@ -6894,24 +7360,28 @@ async fn docs_by_bucket_handler(
         None | Some("modified") => false,
         Some("created") => true,
         Some(other) => {
-            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-order-other-modified-created-2", "unknown order {other:?} (modified | created)", other = other)));
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.unknown-order-other-modified-created-2",
+                "unknown order {other:?} (modified | created)",
+                other = other
+            )));
         }
     };
     let data = store::open(&state, &session.account.id, &root).await?;
     let doc_ids = data.buckets().own_docs_in(&bucket).await?;
     let mut rows = data.documents().summaries_for(&doc_ids).await?;
     rows.sort_by_key(|r| {
-        (
-            std::cmp::Reverse(if by_created { r.genesis_ms } else { r.head_ms }),
-            r.doc_id,
-        )
+        (std::cmp::Reverse(if by_created { r.genesis_ms } else { r.head_ms }), r.doc_id)
     });
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
     let pinned = data.documents().pinned().await?;
     let implicit = data.documents().implicit_tags().await?;
     Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect(),
+        docs: rows
+            .into_iter()
+            .map(|r| summarize(r, &annots, &buckets, &pinned, &implicit))
+            .collect(),
     }))
 }
 
@@ -6936,9 +7406,7 @@ async fn taxonomy_create_handler(
 ) -> Result<Json<TaxonomyCreateResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let taxonomy_id = data.taxonomies().create(&req.title).await?;
-    Ok(Json(TaxonomyCreateResponse {
-        taxonomy_id: hex::encode(taxonomy_id),
-    }))
+    Ok(Json(TaxonomyCreateResponse { taxonomy_id: hex::encode(taxonomy_id) }))
 }
 
 #[derive(Serialize)]
@@ -7007,8 +7475,9 @@ async fn taxonomy_get_handler(
 ) -> Result<Json<TaxonomyResponse>, AppError> {
     let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let own_root = crate::pubkey::decode(&root)
-        .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey", "bad root pubkey")))?;
+    let own_root = crate::pubkey::decode(&root).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey", "bad root pubkey"))
+    })?;
 
     let tree = data.taxonomies().tree(&taxonomy_id).await?;
 
@@ -7106,16 +7575,21 @@ async fn taxonomy_member_put_handler(
     let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let member_root = match &req.member_root {
-        Some(hex) => crate::pubkey::decode(hex)
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-member-root-pubkey", "bad member root pubkey")))?,
-        None => crate::pubkey::decode(&root)
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey-2", "bad root pubkey")))?,
+        Some(hex) => crate::pubkey::decode(hex).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.bad-member-root-pubkey",
+                "bad member root pubkey"
+            ))
+        })?,
+        None => crate::pubkey::decode(&root).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.bad-root-pubkey-2",
+                "bad root pubkey"
+            ))
+        })?,
     };
     let data = store::open(&state, &session.account.id, &root).await?;
-    let signed = data
-        .taxonomies()
-        .place(&taxonomy_id, &member_root, &doc_id, req.index)
-        .await?;
+    let signed = data.taxonomies().place(&taxonomy_id, &member_root, &doc_id, req.index).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -7138,16 +7612,21 @@ async fn taxonomy_member_delete_handler(
     let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let member_root = match &query.member_root {
-        Some(hex) => crate::pubkey::decode(hex)
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-member-root-pubkey-2", "bad member root pubkey")))?,
-        None => crate::pubkey::decode(&root)
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey-3", "bad root pubkey")))?,
+        Some(hex) => crate::pubkey::decode(hex).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.bad-member-root-pubkey-2",
+                "bad member root pubkey"
+            ))
+        })?,
+        None => crate::pubkey::decode(&root).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.bad-root-pubkey-3",
+                "bad root pubkey"
+            ))
+        })?,
     };
     let data = store::open(&state, &session.account.id, &root).await?;
-    let signed = data
-        .taxonomies()
-        .remove(&taxonomy_id, &member_root, &doc_id)
-        .await?;
+    let signed = data.taxonomies().remove(&taxonomy_id, &member_root, &doc_id).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -7168,10 +7647,7 @@ async fn private_set_list_handler(
 ) -> Result<Json<PrivateSetListResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let (elements, undecryptable) = data.private_set(&collection).elements().await?;
-    Ok(Json(PrivateSetListResponse {
-        elements,
-        undecryptable,
-    }))
+    Ok(Json(PrivateSetListResponse { elements, undecryptable }))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -7217,10 +7693,12 @@ async fn docs_debug_handler(
 ) -> Result<Json<DebugDump>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let doc = data.documents()
-        .one(&doc_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-5", "document not found")))?;
+    let doc = data.documents().one(&doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "identity.routes.document-not-found-5",
+            "document not found"
+        ))
+    })?;
     let names = data.devices().all().await.unwrap_or_default();
 
     let mut versions = Vec::new();
@@ -7250,10 +7728,7 @@ async fn docs_debug_handler(
     versions.sort_by_key(|v| (v.timestamp_ms, v.hash.clone()));
 
     let fork_points_of_logical_heads = if doc.logical_heads.len() >= 2 {
-        doc.fork_points_of_heads(&doc.logical_heads)
-            .iter()
-            .map(hex::encode)
-            .collect()
+        doc.fork_points_of_heads(&doc.logical_heads).iter().map(hex::encode).collect()
     } else {
         Vec::new()
     };
@@ -7399,12 +7874,7 @@ struct StreamStamp {
 impl StreamStamp {
     fn token(&self) -> String {
         let mut hasher = blake3::Hasher::new();
-        for part in [
-            &self.profile,
-            &self.documents,
-            &self.organizers,
-            &self.contacts,
-        ] {
+        for part in [&self.profile, &self.documents, &self.organizers, &self.contacts] {
             hasher.update(part);
         }
         // The app's own pictures move with the build, not with any chain.
@@ -7413,11 +7883,14 @@ impl StreamStamp {
     }
 }
 
-async fn stream_stamp(db: &crate::db::Db, view_epoch: u64, roster: [u8; 32]) -> Result<StreamStamp, AppError> {
+async fn stream_stamp(
+    db: &crate::db::Db,
+    view_epoch: u64,
+    roster: [u8; 32],
+) -> Result<StreamStamp, AppError> {
     use ringtome_proto::registry::service;
-    let mut frontiers = crate::net::sync::local_frontiers(db, true)
-        .await
-        .map_err(AppError::Internal)?;
+    let mut frontiers =
+        crate::net::sync::local_frontiers(db, true).await.map_err(AppError::Internal)?;
     frontiers.sort_by_key(|f| (f.author, f.service));
     // Which groups one service's movement can influence - CONSERVATIVE by construction:
     // identity chains and unknown services touch everything (a key-epoch entry can unlock
@@ -7504,12 +7977,7 @@ struct Moved {
 
 impl Moved {
     fn all() -> Self {
-        Moved {
-            profile: true,
-            documents: true,
-            organizers: true,
-            contacts: true,
-        }
+        Moved { profile: true, documents: true, organizers: true, contacts: true }
     }
 
     fn since(prev: &StreamStamp, now: &StreamStamp) -> Self {
@@ -7525,20 +7993,16 @@ impl Moved {
 /// The reader's contacts' byline rows, digested (profiles.rs `digest`, 2026-09-29): the contacts
 /// stamp's stand-in for a contact's name, picture, banner or heartbeat changing.
 async fn roster_digest(state: &AppState, data: &store::Store) -> [u8; 32] {
-    let roots: Vec<String> = data.contacts().await.unwrap_or_default().into_iter().map(|(root, _)| root).collect();
+    let roots: Vec<String> =
+        data.contacts().await.unwrap_or_default().into_iter().map(|(root, _)| root).collect();
     crate::profiles::digest(&state.node_db, &roots).await
 }
 
 /// The roster as the stream ships it.
-async fn contact_rows(
-    state: &AppState,
-    data: &store::Store,
-) -> Result<Vec<ContactRow>, AppError> {
+async fn contact_rows(state: &AppState, data: &store::Store) -> Result<Vec<ContactRow>, AppError> {
     let ledger = data.contacts().await?;
     let roots: Vec<String> = ledger.iter().map(|(root, _)| root.clone()).collect();
-    let bylines = crate::profiles::bylines(&state.node_db, &roots)
-        .await
-        .unwrap_or_default();
+    let bylines = crate::profiles::bylines(&state.node_db, &roots).await.unwrap_or_default();
     Ok(ledger
         .into_iter()
         .map(|(root, facts)| {
@@ -7597,11 +8061,8 @@ fn ship_kind<T: Serialize>(
     let ship = match baseline.take() {
         None => KindShip::Whole(keyed.into_iter().map(|(_, _, row)| row).collect()),
         Some(prev) => {
-            let removed: Vec<String> = prev
-                .keys()
-                .filter(|key| !next.contains_key(*key))
-                .cloned()
-                .collect();
+            let removed: Vec<String> =
+                prev.keys().filter(|key| !next.contains_key(*key)).cloned().collect();
             let changed: Vec<T> = keyed
                 .into_iter()
                 .filter(|(key, hash, _)| prev.get(key) != Some(hash))
@@ -7641,10 +8102,8 @@ async fn gather(
         let buckets = bucket_map(data).await?;
         let pinned = data.documents().pinned().await?;
         let implicit = data.documents().implicit_tags().await?;
-        let docs: Vec<DocSummary> = rows
-            .into_iter()
-            .map(|r| summarize(r, &annots, &buckets, &pinned, &implicit))
-            .collect();
+        let docs: Vec<DocSummary> =
+            rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
         let docs = with_builtins(docs, &annots, &buckets, &pinned);
         match ship_kind(&mut baselines.docs, docs, |d| d.doc_id.clone())? {
             KindShip::Whole(rows) => msg.docs = Some(rows),
@@ -7680,11 +8139,7 @@ async fn gather(
                 .roster()
                 .await?
                 .into_iter()
-                .map(|b| BucketRow {
-                    name: b.name,
-                    app: b.app,
-                    members: b.members,
-                })
+                .map(|b| BucketRow { name: b.name, app: b.app, members: b.members })
                 .collect(),
         );
     }
@@ -7712,8 +8167,7 @@ async fn stream_handler(
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let account_id = session.account.id;
     Ok(ws.on_upgrade(move |socket| async move {
-        if let Err(e) = serve_stream(socket, state, account_id, root.clone(), query.cursor).await
-        {
+        if let Err(e) = serve_stream(socket, state, account_id, root.clone(), query.cursor).await {
             tracing::debug!(%root, "live-cache stream ended: {e:#}");
         }
     }))
@@ -7738,9 +8192,10 @@ async fn serve_stream(
         .await
         .map_err(|e| anyhow::anyhow!("opening db for stream: {e}"))?;
 
-    let mut stamp = stream_stamp(&db, state.view_epochs.get(&root), roster_digest(&state, &data).await)
-        .await
-        .map_err(anyhow::Error::new)?;
+    let mut stamp =
+        stream_stamp(&db, state.view_epochs.get(&root), roster_digest(&state, &data).await)
+            .await
+            .map_err(anyhow::Error::new)?;
     // This socket's per-row fingerprints of what it last shipped, per keyed kind. Fresh
     // sockets start unprimed on purpose - a kind's first movement ships whole (see
     // `Baselines`), which is what keeps removals sound across a "live" reconnect without
@@ -7751,30 +8206,18 @@ async fn serve_stream(
     let mut first = if client_cursor.as_deref() == Some(stamp.token().as_str()) {
         StreamMessage::quiet("live", stamp.token())
     } else {
-        gather(
-            &state,
-            &data,
-            "snapshot",
-            stamp.token(),
-            Moved::all(),
-            &mut baselines,
-        )
-        .await
-        .map_err(anyhow::Error::new)?
+        gather(&state, &data, "snapshot", stamp.token(), Moved::all(), &mut baselines)
+            .await
+            .map_err(anyhow::Error::new)?
     };
     // The badge's number rides the first frame whatever its kind: a reconnect whose
     // cursor still holds has no snapshot, but its badge may be stale.
-    let mut last_unread = unread_count(&state, &data, &root)
-        .await
-        .map_err(anyhow::Error::new)?;
+    let mut last_unread = unread_count(&state, &data, &root).await.map_err(anyhow::Error::new)?;
     first.unread = Some(last_unread);
-    let mut last_chat = unseen_chat_count(&state, &data, &root)
-        .await
-        .map_err(anyhow::Error::new)?;
+    let mut last_chat =
+        unseen_chat_count(&state, &data, &root).await.map_err(anyhow::Error::new)?;
     first.unread_chat = Some(last_chat);
-    socket
-        .send(Message::Text(serde_json::to_string(&first)?.into()))
-        .await?;
+    socket.send(Message::Text(serde_json::to_string(&first)?.into())).await?;
 
     // A local write pings the write-nudge bus (Db::nudge_sync), so a save reflects in every
     // open browser in a round-trip instead of up to a full tick later. The tick stays as the
@@ -7815,19 +8258,16 @@ async fn serve_stream(
             }
         }
         // Reached after a guarded tick or a nudge: re-stamp, and push only what moved.
-        let now = stream_stamp(&db, state.view_epochs.get(&root), roster_digest(&state, &data).await)
-            .await
-            .map_err(anyhow::Error::new)?;
+        let now =
+            stream_stamp(&db, state.view_epochs.get(&root), roster_digest(&state, &data).await)
+                .await
+                .map_err(anyhow::Error::new)?;
         // The badge recounts on every wake - the derived fold's nudge is a wake with no
         // stamp change behind it, and the watermark write is a wake with one.
-        let unread = unread_count(&state, &data, &root)
-            .await
-            .map_err(anyhow::Error::new)?;
+        let unread = unread_count(&state, &data, &root).await.map_err(anyhow::Error::new)?;
         let unread_changed = unread != last_unread;
         last_unread = unread;
-        let chat = unseen_chat_count(&state, &data, &root)
-            .await
-            .map_err(anyhow::Error::new)?;
+        let chat = unseen_chat_count(&state, &data, &root).await.map_err(anyhow::Error::new)?;
         let chat_changed = chat != last_chat;
         last_chat = chat;
         if now != stamp {
@@ -7842,9 +8282,7 @@ async fn serve_stream(
             if chat_changed {
                 update.unread_chat = Some(chat);
             }
-            socket
-                .send(Message::Text(serde_json::to_string(&update)?.into()))
-                .await?;
+            socket.send(Message::Text(serde_json::to_string(&update)?.into())).await?;
         } else if unread_changed || chat_changed {
             let mut quiet = StreamMessage::quiet("live", stamp.token());
             if unread_changed {
@@ -7853,9 +8291,7 @@ async fn serve_stream(
             if chat_changed {
                 quiet.unread_chat = Some(chat);
             }
-            socket
-                .send(Message::Text(serde_json::to_string(&quiet)?.into()))
-                .await?;
+            socket.send(Message::Text(serde_json::to_string(&quiet)?.into())).await?;
         }
     }
 }
@@ -7903,8 +8339,8 @@ mod media_info_tests {
                 reply_to: None,
                 thread_root: None,
                 sealed_title: None,
-            seal_of: None,
-            onward: false,
+                seal_of: None,
+                onward: false,
             },
         }
     }
@@ -7921,14 +8357,7 @@ mod media_info_tests {
     /// A still image (the AVIF lane): dimensions and a thumbnail, no duration, no preview.
     #[test]
     fn still_image_facts() {
-        let v = header(
-            Some(doc_format::AVIF),
-            Some(800),
-            Some(600),
-            None,
-            Some([1u8; 32]),
-            None,
-        );
+        let v = header(Some(doc_format::AVIF), Some(800), Some(600), None, Some([1u8; 32]), None);
         let m = MediaInfo::of(&v).expect("image is media");
         assert_eq!((m.width, m.height), (Some(800), Some(600)));
         assert_eq!(m.duration_ms, None);
@@ -7939,14 +8368,7 @@ mod media_info_tests {
     /// Audio (the Opus lane): a duration and a waveform thumbnail, but no dimensions and no preview.
     #[test]
     fn audio_facts() {
-        let v = header(
-            Some(doc_format::OGG_OPUS),
-            None,
-            None,
-            Some(90_000),
-            Some([2u8; 32]),
-            None,
-        );
+        let v = header(Some(doc_format::OGG_OPUS), None, None, Some(90_000), Some([2u8; 32]), None);
         let m = MediaInfo::of(&v).expect("audio is media");
         assert_eq!((m.width, m.height), (None, None), "audio has no dimensions");
         assert_eq!(m.duration_ms, Some(90_000));
@@ -7968,10 +8390,7 @@ mod media_info_tests {
         let m = MediaInfo::of(&v).expect("video is media");
         assert_eq!(m.duration_ms, Some(12_000));
         assert!(m.has_thumb, "video fills the thumbnail slot with a poster");
-        assert!(
-            m.has_preview,
-            "WebM-output video carries a hover-preview clip"
-        );
+        assert!(m.has_preview, "WebM-output video carries a hover-preview clip");
     }
 
     /// A self-animating APNG (transparent silent animation): a poster, but never a preview clip.
@@ -7987,10 +8406,7 @@ mod media_info_tests {
         );
         let m = MediaInfo::of(&v).expect("apng is media");
         assert!(m.has_thumb, "the APNG lane still produces a poster");
-        assert!(
-            !m.has_preview,
-            "APNG animates itself; no separate preview clip"
-        );
+        assert!(!m.has_preview, "APNG animates itself; no separate preview clip");
     }
 }
 

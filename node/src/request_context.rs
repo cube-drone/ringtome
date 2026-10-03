@@ -55,22 +55,14 @@ where
     type Rejection = (axum::http::StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let remote_ip = parts
-            .extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map(|ci| ci.0.ip())
-            .ok_or((
+        let remote_ip =
+            parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|ci| ci.0.ip()).ok_or((
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "missing ConnectInfo<SocketAddr>",
             ))?;
 
         let header = |name: &str, fallback: &'static str| -> String {
-            parts
-                .headers
-                .get(name)
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or(fallback)
-                .to_string()
+            parts.headers.get(name).and_then(|h| h.to_str().ok()).unwrap_or(fallback).to_string()
         };
 
         let forwarded_for = header("x-forwarded-for", NOT_FORWARDED);
@@ -82,12 +74,7 @@ where
         span.record("remote_ip", tracing::field::display(&remote_ip));
         span.record("forwarded_for", tracing::field::display(&forwarded_for));
 
-        Ok(RequestContext {
-            remote_ip,
-            forwarded_for,
-            user_agent,
-            correlation_id,
-        })
+        Ok(RequestContext { remote_ip, forwarded_for, user_agent, correlation_id })
     }
 }
 

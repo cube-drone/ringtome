@@ -51,7 +51,10 @@ async fn choices(state: &AppState) -> Result<Choices, AppError> {
 async fn pinned(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
     state
         .node_db
-        .fetch_all("SELECT author_root, doc_id FROM super_pins ORDER BY pinned_ms DESC LIMIT ?1", (PINS_SHOWN,))
+        .fetch_all(
+            "SELECT author_root, doc_id FROM super_pins ORDER BY pinned_ms DESC LIMIT ?1",
+            (PINS_SHOWN,),
+        )
         .await
         .context("reading the super-pins")
         .map_err(AppError::Internal)
@@ -59,18 +62,25 @@ async fn pinned(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
 
 /// GET `/api/node/front`: what the front page needs beyond its feed - the name, the taglines
 /// (each null for the app's own), and the super-pinned posts as feed cards, newest pin first.
-pub async fn front_handler(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn front_handler(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let choices = choices(&state).await?;
     let mut rows = Vec::new();
     if !crate::registration::is_device(&state) {
         for (author, doc) in pinned(&state).await? {
-            if let Some(row) = crate::nodeshelf::post_row(&state.node_db, &author, &doc).await.map_err(AppError::Internal)? {
+            if let Some(row) = crate::nodeshelf::post_row(&state.node_db, &author, &doc)
+                .await
+                .map_err(AppError::Internal)?
+            {
                 rows.push(row);
             }
         }
     }
     let pins = crate::nodeface::feed_items(&state, rows).await?;
-    Ok(Json(serde_json::json!({ "name": choices.name, "taglines": choices.taglines, "pins": pins })))
+    Ok(Json(
+        serde_json::json!({ "name": choices.name, "taglines": choices.taglines, "pins": pins }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -84,15 +94,27 @@ pub struct SetFront {
 }
 
 /// PUT `/api/admin/front`: the Server app's *server customization*.
-pub async fn set_handler(State(state): State<AppState>, _admin: NodeAdminSession, Json(req): Json<SetFront>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn set_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+    Json(req): Json<SetFront>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let name = req.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     if name.as_ref().is_some_and(|n| n.chars().count() > NAME_MAX) {
-        return Err(AppError::BadRequest(crate::msg!("frontdoor.name-too-long", "that name is longer than a header can hold")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "frontdoor.name-too-long",
+            "that name is longer than a header can hold"
+        )));
     }
-    let taglines: Option<Vec<String>> = req.taglines.map(|lines| lines.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect());
+    let taglines: Option<Vec<String>> = req.taglines.map(|lines| {
+        lines.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    });
     if let Some(lines) = &taglines {
         if lines.len() > TAGLINES_MAX || lines.iter().any(|l| l.chars().count() > TAGLINE_MAX) {
-            return Err(AppError::BadRequest(crate::msg!("frontdoor.too-many-taglines", "at most a hundred taglines, each under 500 characters")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "frontdoor.too-many-taglines",
+                "at most a hundred taglines, each under 500 characters"
+            )));
         }
     }
     let taglines_json = taglines.as_ref().map(|l| serde_json::to_string(l).unwrap_or_default());
@@ -110,12 +132,26 @@ pub async fn set_handler(State(state): State<AppState>, _admin: NodeAdminSession
 }
 
 /// PUT `/api/admin/super-pins/{author}/{doc}`: pin a public post hosted here to the front page.
-pub async fn pin_handler(State(state): State<AppState>, _admin: NodeAdminSession, Path((author, doc)): Path<(String, String)>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn pin_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+    Path((author, doc)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
     if crate::registration::is_device(&state) {
-        return Err(AppError::BadRequest(crate::msg!("frontdoor.only-a-server", "only a server has a front page to pin to")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "frontdoor.only-a-server",
+            "only a server has a front page to pin to"
+        )));
     }
-    if crate::nodeshelf::post_row(&state.node_db, &author, &doc).await.map_err(AppError::Internal)?.is_none() {
-        return Err(AppError::BadRequest(crate::msg!("frontdoor.only-public-posts-here", "only a public post hosted here can go on the front page")));
+    if crate::nodeshelf::post_row(&state.node_db, &author, &doc)
+        .await
+        .map_err(AppError::Internal)?
+        .is_none()
+    {
+        return Err(AppError::BadRequest(crate::msg!(
+            "frontdoor.only-public-posts-here",
+            "only a public post hosted here can go on the front page"
+        )));
     }
     state
         .node_db
@@ -130,10 +166,17 @@ pub async fn pin_handler(State(state): State<AppState>, _admin: NodeAdminSession
 }
 
 /// DELETE `/api/admin/super-pins/{author}/{doc}`: take it back off.
-pub async fn unpin_handler(State(state): State<AppState>, _admin: NodeAdminSession, Path((author, doc)): Path<(String, String)>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn unpin_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+    Path((author, doc)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
     state
         .node_db
-        .execute("DELETE FROM super_pins WHERE author_root = ?1 AND doc_id = ?2", (author.as_str(), doc.as_str()))
+        .execute(
+            "DELETE FROM super_pins WHERE author_root = ?1 AND doc_id = ?2",
+            (author.as_str(), doc.as_str()),
+        )
         .await
         .context("unpinning a post")
         .map_err(AppError::Internal)?;

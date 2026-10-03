@@ -97,7 +97,10 @@ static WRITES: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::
 
 async fn registers_of(node_db: &crate::db::Db, day: u32) -> Vec<u8> {
     node_db
-        .fetch_optional::<(Vec<u8>,)>("SELECT registers FROM census_days WHERE day = ?1", (i64::from(day),))
+        .fetch_optional::<(Vec<u8>,)>(
+            "SELECT registers FROM census_days WHERE day = ?1",
+            (i64::from(day),),
+        )
         .await
         .ok()
         .flatten()
@@ -170,7 +173,10 @@ async fn recent_sketches(state: &AppState) -> Vec<(u32, Vec<u8>)> {
 // The gossip
 
 /// The fragment lane's answer: merge what the asker brought, hand back the merged days it named.
-pub async fn answer(state: &AppState, theirs: Vec<(u32, Vec<u8>)>) -> ringtome_proto::fragment::FragmentMessage {
+pub async fn answer(
+    state: &AppState,
+    theirs: Vec<(u32, Vec<u8>)>,
+) -> ringtome_proto::fragment::FragmentMessage {
     merge(state, &theirs).await;
     let mut out = Vec::new();
     for (day, _) in theirs.iter().take(MAX_CENSUS_DAYS) {
@@ -180,7 +186,8 @@ pub async fn answer(state: &AppState, theirs: Vec<(u32, Vec<u8>)>) -> ringtome_p
 }
 
 /// Each peer's last ask, and whether it refused the question.
-static ASKED: LazyLock<Mutex<HashMap<String, (i64, bool)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static ASKED: LazyLock<Mutex<HashMap<String, (i64, bool)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// One pass: swap sketches with a few peers this node has talked to lately.
 pub async fn pass(state: AppState) -> Result<()> {
@@ -203,7 +210,11 @@ async fn swap(state: AppState, paced: bool) -> Result<()> {
         .await
         .into_iter()
         .chain(crate::net::demand::recent_askers(&state.node_db, since).await.unwrap_or_default())
-        .chain(crate::net::sync::recently_synced_endpoints(&state.node_db, since).await.unwrap_or_default())
+        .chain(
+            crate::net::sync::recently_synced_endpoints(&state.node_db, since)
+                .await
+                .unwrap_or_default(),
+        )
         .chain(crate::fragments::recent_deliverers(&state.node_db, since).await.unwrap_or_default())
     {
         if !peers.contains(&ep) {
@@ -218,7 +229,9 @@ async fn swap(state: AppState, paced: bool) -> Result<()> {
             .filter(|ep| {
                 !paced
                     || match asked.get(ep) {
-                        Some((at, refused)) => now - at > if *refused { REFUSED_REST_MS } else { ASK_EVERY_MS },
+                        Some((at, refused)) => {
+                            now - at > if *refused { REFUSED_REST_MS } else { ASK_EVERY_MS }
+                        }
                         None => true,
                     }
             })
@@ -238,7 +251,10 @@ async fn swap(state: AppState, paced: bool) -> Result<()> {
     let cutoff = i64::from(day_of(now).saturating_sub(KEEP_REGISTERS_DAYS));
     let _ = state
         .node_db
-        .execute("UPDATE census_days SET registers = x'' WHERE day < ?1 AND length(registers) > 0", (cutoff,))
+        .execute(
+            "UPDATE census_days SET registers = x'' WHERE day < ?1 AND length(registers) > 0",
+            (cutoff,),
+        )
         .await;
     Ok(())
 }
@@ -249,7 +265,9 @@ async fn swap(state: AppState, paced: bool) -> Result<()> {
 /// GET `/api/node/census` - this node's estimate of the network's daily actives: the number to
 /// show (the larger of today-so-far and yesterday), both days, and every day's estimate for the
 /// graph, oldest first. Public: it names nobody.
-pub async fn census_handler(axum::extract::State(state): axum::extract::State<AppState>) -> axum::Json<serde_json::Value> {
+pub async fn census_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::Json<serde_json::Value> {
     let today = day_of(crate::clock::now_ms());
     let rows: Vec<(i64, i64)> = state
         .node_db
@@ -263,7 +281,9 @@ pub async fn census_handler(axum::extract::State(state): axum::extract::State<Ap
         .rev()
         .map(|(day, e)| serde_json::json!({ "date": crate::heartbeat::utc_date(day * DAY_MS), "active": e }))
         .collect();
-    axum::Json(serde_json::json!({ "shown": now.max(before), "today": now, "yesterday": before, "history": history }))
+    axum::Json(
+        serde_json::json!({ "shown": now.max(before), "today": now, "yesterday": before, "history": history }),
+    )
 }
 
 #[cfg(test)]

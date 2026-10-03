@@ -111,7 +111,9 @@ pub async fn rollout_due(state: &AppState, only_root: Option<&str>) -> Result<us
         let my_leaf = data.leaf_hex();
         for reg in plans {
             let Ok(mut plan) = serde_json::from_str::<Plan>(&reg.value) else { continue };
-            if plan.by != my_leaf || !matches!(plan.status.as_str(), "pending" | "running" | "baking") {
+            if plan.by != my_leaf
+                || !matches!(plan.status.as_str(), "pending" | "running" | "baking")
+            {
                 continue;
             }
             touched += 1;
@@ -170,7 +172,10 @@ struct BookPayload {
 /// stand at the top level of the tree and must not be taken for the cover - field-found
 /// 2026-09-05, when the acceptance's hidden page named nothing and the book fell back to
 /// its notebook's name.)
-fn first_section_page(ordered: &Ordered, published: &BTreeMap<[u8; 16], String>) -> Option<[u8; 16]> {
+fn first_section_page(
+    ordered: &Ordered,
+    published: &BTreeMap<[u8; 16], String>,
+) -> Option<[u8; 16]> {
     fn in_section(s: &Section, published: &BTreeMap<[u8; 16], String>) -> Option<[u8; 16]> {
         s.pages
             .iter()
@@ -203,27 +208,19 @@ async fn rollout(
         .filter(|(_, names)| names.iter().any(|n| n == bucket))
         .map(|(id, _)| id)
         .filter(|id| {
-            view.docs
-                .get(id)
-                .and_then(|d| d.display_head())
-                .is_some_and(|h| crate::record::documents::Format::from_wire(h.header.format).is_mergeable_text())
+            view.docs.get(id).and_then(|d| d.display_head()).is_some_and(|h| {
+                crate::record::documents::Format::from_wire(h.header.format).is_mergeable_text()
+            })
         })
         .collect();
     in_bucket.sort();
     let (hidden_rows, _) = data.private_registers(HIDDEN_KV).all().await?;
-    let hidden: BTreeSet<String> = hidden_rows
-        .into_iter()
-        .filter(|r| r.value.trim() == "yes")
-        .map(|r| r.key)
-        .collect();
+    let hidden: BTreeSet<String> =
+        hidden_rows.into_iter().filter(|r| r.value.trim() == "yes").map(|r| r.key).collect();
     // The tree, for the payload's shape and for hidden-by-section.
     let root_title = format!("wiki:{bucket}");
     let roster = data.taxonomies().all().await?;
-    let root_tax = roster
-        .iter()
-        .filter(|t| t.title == root_title)
-        .map(|t| t.taxonomy_id)
-        .min();
+    let root_tax = roster.iter().filter(|t| t.title == root_title).map(|t| t.taxonomy_id).min();
     let tree = match root_tax {
         Some(id) => Some(data.taxonomies().tree(&id).await?),
         None => None,
@@ -237,7 +234,9 @@ async fn rollout(
     let pages: Vec<[u8; 16]> = in_bucket
         .iter()
         .copied()
-        .filter(|id| !hidden_docs.contains(id) && !hidden.contains(&format!("doc:{}", hex::encode(id))))
+        .filter(|id| {
+            !hidden_docs.contains(id) && !hidden.contains(&format!("doc:{}", hex::encode(id)))
+        })
         .collect();
     plan.total = pages.len();
     plan.status = "running".into();
@@ -252,7 +251,12 @@ async fn rollout(
     if facts.mode != "book" {
         return Err(anyhow!("this notebook is not switched to publish as a book"));
     }
-    let book_id: [u8; 16] = match facts.published_as_book.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| b.try_into().ok()) {
+    let book_id: [u8; 16] = match facts
+        .published_as_book
+        .as_deref()
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|b| b.try_into().ok())
+    {
         Some(id) => id,
         None => {
             let id = crate::record::documents::new_doc_id();
@@ -265,7 +269,12 @@ async fn rollout(
     };
     plan.book = Some(hex::encode(book_id));
     let book_key: Option<[u8; 32]> = if plan.trusted_only {
-        match facts.key.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok()) {
+        match facts
+            .key
+            .as_deref()
+            .and_then(|h| hex::decode(h).ok())
+            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        {
             Some(k) => Some(k),
             None => {
                 let mut k = [0u8; 32];
@@ -308,14 +317,18 @@ async fn rollout(
             .and_then(|d| d.display_head())
             .map(|h| hex::encode(h.hash))
             .unwrap_or_default();
-        let already = data.annotations().field(doc_id, PUBLISHED_VERSION).await?.unwrap_or_default();
-        let post_hex = data.annotations().field(doc_id, store::PUBLISHED_AS).await?.unwrap_or_default();
+        let already =
+            data.annotations().field(doc_id, PUBLISHED_VERSION).await?.unwrap_or_default();
+        let post_hex =
+            data.annotations().field(doc_id, store::PUBLISHED_AS).await?.unwrap_or_default();
         // Unchanged words skip - unless a picture the page names has been retracted since, which
         // left the published page embedding an address that 404s (2026-09-29).
-        let stands = match hex::decode(&post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
-            Some(post) => crate::record::documents::refs_stand(data.db(), &post).await?,
-            None => true,
-        };
+        let stands =
+            match hex::decode(&post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            {
+                Some(post) => crate::record::documents::refs_stand(data.db(), &post).await?,
+                None => true,
+            };
         if already == head_hex && !post_hex.is_empty() && stands {
             done += 1;
             published.insert(*doc_id, post_hex);
@@ -333,12 +346,16 @@ async fn rollout(
         };
         match crate::record::bake::publish(state, data, root, doc_id, None, flags).await? {
             crate::record::bake::Outcome::Posted(post_id) => {
-                if let Err(e) = crate::identity::after_posted(state, data, root, doc_id, post_id, None, flags).await {
+                if let Err(e) =
+                    crate::identity::after_posted(state, data, root, doc_id, post_id, None, flags)
+                        .await
+                {
                     tracing::warn!(root = %root, error = ?e, "a page's after-mint duties failed; the page stands");
                 }
                 data.annotations().set_field(doc_id, PUBLISHED_VERSION, &head_hex).await?;
                 published.insert(*doc_id, hex::encode(post_id));
-                changed.push((hex::encode(post_id), titles.get(doc_id).cloned().unwrap_or_default()));
+                changed
+                    .push((hex::encode(post_id), titles.get(doc_id).cloned().unwrap_or_default()));
                 done += 1;
                 plan.done = done;
             }
@@ -369,7 +386,9 @@ async fn rollout(
         if now_published.contains(post_hex) {
             continue;
         }
-        let Some(post_id) = hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else {
+        let Some(post_id) =
+            hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        else {
             continue;
         };
         if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
@@ -458,7 +477,9 @@ async fn rollout(
     )
     .await?;
     if let Some(key) = book_key {
-        if let Err(e) = crate::postkeys::remember(&state.node_db, root, &hex::encode(minted), &key).await {
+        if let Err(e) =
+            crate::postkeys::remember(&state.node_db, root, &hex::encode(minted), &key).await
+        {
             tracing::warn!(error = ?e, "book key memo write failed");
         }
     }
@@ -485,7 +506,8 @@ async fn rollout(
         if !changed.is_empty() {
             body.push_str(&format!("{bucket} updated:\n\n"));
             for (post, title) in &changed {
-                let shown = if title.is_empty() { "untitled page".to_string() } else { title.clone() };
+                let shown =
+                    if title.is_empty() { "untitled page".to_string() } else { title.clone() };
                 body.push_str(&format!("- [{shown}](/id/{root}/post/{post})\n"));
             }
         }
@@ -495,7 +517,8 @@ async fn rollout(
             }
             body.push_str("removed:\n\n");
             for title in &removed {
-                let shown = if title.is_empty() { "untitled page".to_string() } else { title.clone() };
+                let shown =
+                    if title.is_empty() { "untitled page".to_string() } else { title.clone() };
                 body.push_str(&format!("- {shown}\n"));
             }
         }
@@ -515,8 +538,8 @@ async fn rollout(
                 reply: Some((target, target)),
                 settled: plan.settled,
                 trusted_only: plan.trusted_only,
-            seal_of: None, // a book and its pages wear their own author's seal
-            onward: false,
+                seal_of: None, // a book and its pages wear their own author's seal
+                onward: false,
                 post_key: book_key,
                 dated_ms: None,
                 part_of: None,
@@ -524,7 +547,9 @@ async fn rollout(
         )
         .await?;
         if let Some(key) = book_key {
-            if let Err(e) = crate::postkeys::remember(&state.node_db, root, &hex::encode(update), &key).await {
+            if let Err(e) =
+                crate::postkeys::remember(&state.node_db, root, &hex::encode(update), &key).await
+            {
                 tracing::warn!(error = ?e, "update key memo write failed");
             }
         }
@@ -553,7 +578,11 @@ struct Section {
     sections: Vec<Section>,
 }
 
-fn walk_tree(tree: Option<&store::TaxonomyNode>, hidden: &BTreeSet<String>, in_bucket: &[[u8; 16]]) -> (Ordered, BTreeSet<[u8; 16]>) {
+fn walk_tree(
+    tree: Option<&store::TaxonomyNode>,
+    hidden: &BTreeSet<String>,
+    in_bucket: &[[u8; 16]],
+) -> (Ordered, BTreeSet<[u8; 16]>) {
     let mut hidden_docs = BTreeSet::new();
     let mut filed = BTreeSet::new();
     let members: BTreeSet<[u8; 16]> = in_bucket.iter().copied().collect();
@@ -571,7 +600,8 @@ fn walk_tree(tree: Option<&store::TaxonomyNode>, hidden: &BTreeSet<String>, in_b
         if !seen.insert(node.taxonomy_id) {
             return (sections, pages);
         }
-        let here = under_hidden || hidden.contains(&format!("sec:{}", hex::encode(node.taxonomy_id)));
+        let here =
+            under_hidden || hidden.contains(&format!("sec:{}", hex::encode(node.taxonomy_id)));
         for m in node.members.as_deref().unwrap_or(&[]) {
             if let Some(sub) = &m.taxonomy {
                 if sub.members.is_none() {
@@ -580,7 +610,8 @@ fn walk_tree(tree: Option<&store::TaxonomyNode>, hidden: &BTreeSet<String>, in_b
                 // The CHILD's own mark decides whether it is listed (field-found 2026-09-04:
                 // a hidden section stayed in the table of contents, emptied); and a section
                 // with nothing to read beneath it - pictures only, or nothing - is left out.
-                let child_hidden = here || hidden.contains(&format!("sec:{}", hex::encode(sub.taxonomy_id)));
+                let child_hidden =
+                    here || hidden.contains(&format!("sec:{}", hex::encode(sub.taxonomy_id)));
                 let (ss, ps) = walk(sub, child_hidden, hidden, members, hidden_docs, filed, seen);
                 if !child_hidden && !(ps.is_empty() && ss.is_empty()) {
                     sections.push(Section { title: sub.title.clone(), pages: ps, sections: ss });
@@ -597,7 +628,9 @@ fn walk_tree(tree: Option<&store::TaxonomyNode>, hidden: &BTreeSet<String>, in_b
         (sections, pages)
     }
     let (sections, pages) = match tree {
-        Some(t) => walk(t, false, hidden, &members, &mut hidden_docs, &mut filed, &mut BTreeSet::new()),
+        Some(t) => {
+            walk(t, false, hidden, &members, &mut hidden_docs, &mut filed, &mut BTreeSet::new())
+        }
         None => (Vec::new(), Vec::new()),
     };
     (Ordered { sections, pages, filed }, hidden_docs)
@@ -630,7 +663,9 @@ async fn restate_book_labels(
     for page in pages {
         for tag in data.annotations().tags(page).await? {
             let tag = tag.trim().to_string();
-            if !tag.is_empty() && tag.chars().count() <= ringtome_proto::PublicAnnotation::MAX_TAG_CHARS {
+            if !tag.is_empty()
+                && tag.chars().count() <= ringtome_proto::PublicAnnotation::MAX_TAG_CHARS
+            {
                 tags.insert(tag);
             }
         }
@@ -659,7 +694,8 @@ async fn previous_payload(
     let Some(head) = crate::record::documents::public_head(data.db(), book_id).await? else {
         return Ok(None);
     };
-    let Some(bytes) = state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await? else {
+    let Some(bytes) = state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await?
+    else {
         return Ok(None);
     };
     let plain = match book_key {
@@ -677,7 +713,10 @@ fn collect_pages(node: &serde_json::Value, out: &mut BTreeMap<String, String>) {
     if let Some(pages) = node.get("pages").and_then(|p| p.as_array()) {
         for p in pages {
             if let Some(post) = p.get("post").and_then(|x| x.as_str()) {
-                out.insert(post.to_string(), p.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string());
+                out.insert(
+                    post.to_string(),
+                    p.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+                );
             }
         }
     }
@@ -699,7 +738,11 @@ mod tests {
         store::TreeMember {
             root: [0u8; 32],
             doc_id: [id; 16],
-            taxonomy: Some(store::TaxonomyNode { taxonomy_id: [id; 16], title: title.into(), members: Some(members) }),
+            taxonomy: Some(store::TaxonomyNode {
+                taxonomy_id: [id; 16],
+                title: title.into(),
+                members: Some(members),
+            }),
         }
     }
 
@@ -716,10 +759,14 @@ mod tests {
                 section(6, "empty", vec![]),
             ]),
         };
-        let hidden: BTreeSet<String> = [format!("sec:{}", hex::encode([3u8; 16]))].into_iter().collect();
+        let hidden: BTreeSet<String> =
+            [format!("sec:{}", hex::encode([3u8; 16]))].into_iter().collect();
         let members: Vec<[u8; 16]> = [10u8, 11, 12, 13].iter().map(|b| [*b; 16]).collect();
         let (ordered, hidden_docs) = walk_tree(Some(&tree), &hidden, &members);
-        assert_eq!(ordered.sections.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(), vec!["chapter one"]);
+        assert_eq!(
+            ordered.sections.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(),
+            vec!["chapter one"]
+        );
         assert_eq!(ordered.pages, vec![[10u8; 16]]);
         assert_eq!(hidden_docs, [[12u8; 16], [13u8; 16]].into_iter().collect::<BTreeSet<_>>());
         assert!(ordered.filed.contains(&[11u8; 16]) && ordered.filed.contains(&[12u8; 16]));
@@ -739,7 +786,12 @@ pub struct Takedown {
 /// the bucket's book facts forget the id (a tombstone is final for it - the next rollout
 /// mints a fresh book) and the pending plan, if any, is dropped. The fold is drained so the
 /// author's next read is already true - the takedown's own idiom.
-pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket: &str) -> Result<Takedown> {
+pub async fn take_down(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    bucket: &str,
+) -> Result<Takedown> {
     let held = crate::fold::hold(root); // every retraction lands, then one fold (fold::hold)
     let (facts_json, _) = data.private_registers(BOOKS_KV).all().await?;
     let mut facts: BookFacts = facts_json
@@ -747,17 +799,30 @@ pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket
         .find(|r| r.key == bucket)
         .and_then(|r| serde_json::from_str(&r.value).ok())
         .unwrap_or_default();
-    let Some(book_id) = facts.published_as_book.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else {
+    let Some(book_id) = facts
+        .published_as_book
+        .as_deref()
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+    else {
         return Err(anyhow!("this notebook has no published book"));
     };
-    let book_key = facts.key.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
+    let book_key = facts
+        .key
+        .as_deref()
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
     let mut took = Takedown::default();
     // The pages, off the book's last payload.
     if let Some(previous) = previous_payload(state, data, &book_id, book_key).await? {
         let mut named = BTreeMap::new();
         collect_pages(&previous, &mut named);
         for post_hex in named.keys() {
-            let Some(post_id) = hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else { continue };
+            let Some(post_id) =
+                hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            else {
+                continue;
+            };
             if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
                 continue;
             }

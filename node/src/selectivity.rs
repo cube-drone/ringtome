@@ -69,18 +69,27 @@ pub fn visible_at(stop: &str, row: &RowView<'_>, facts: &Facts) -> bool {
 /// without either, a suggestion's path level (`levels`: author -> band word, the reader's
 /// `speculative::levels_for`). The reader's own rows are the caller's to let through.
 /// fanout.rs's tests hold it to [`visible_at`], case by case.
-pub fn stop_rule(stop: &str, facts: &Facts, levels: &std::collections::HashMap<String, String>) -> Option<StopRule> {
+pub fn stop_rule(
+    stop: &str,
+    facts: &Facts,
+    levels: &std::collections::HashMap<String, String>,
+) -> Option<StopRule> {
     let dialled = |key: &str, min: usize| -> Vec<String> {
         facts
             .iter()
-            .filter(|(root, f)| is_root_hex(root) && band_ordinal(f.get(key).map(String::as_str)).is_some_and(|o| o >= min))
+            .filter(|(root, f)| {
+                is_root_hex(root)
+                    && band_ordinal(f.get(key).map(String::as_str)).is_some_and(|o| o >= min)
+            })
             .map(|(root, _)| root.clone())
             .collect()
     };
     let levelled = |min: usize| -> Vec<String> {
         levels
             .iter()
-            .filter(|(root, band)| is_root_hex(root) && band_ordinal(Some(band.as_str())).is_some_and(|o| o >= min))
+            .filter(|(root, band)| {
+                is_root_hex(root) && band_ordinal(Some(band.as_str())).is_some_and(|o| o >= min)
+            })
             .map(|(root, _)| root.clone())
             .collect()
     };
@@ -152,14 +161,20 @@ fn is_in(column: &str, roots: &[String]) -> String {
     if roots.is_empty() {
         return "0".to_string();
     }
-    format!("{column} IN ({})", roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(","))
+    format!(
+        "{column} IN ({})",
+        roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(",")
+    )
 }
 
 fn not_in(column: &str, roots: &[String]) -> String {
     if roots.is_empty() {
         return "1".to_string();
     }
-    format!("{column} NOT IN ({})", roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(","))
+    format!(
+        "{column} NOT IN ({})",
+        roots.iter().map(|r| format!("'{r}'")).collect::<Vec<_>>().join(",")
+    )
 }
 
 #[cfg(test)]
@@ -168,7 +183,10 @@ mod tests {
 
     fn facts(root: &str, pairs: &[(&str, &str)]) -> Facts {
         let mut f = Facts::new();
-        f.insert(root.to_string(), pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect());
+        f.insert(
+            root.to_string(),
+            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        );
         f
     }
     const A: &str = "a";
@@ -187,11 +205,21 @@ mod tests {
     /// The pure suite's cases (integration/test/pure/selectivity.cjs), transcribed.
     #[test]
     fn precedence_author_then_sharer_then_path() {
-        assert_eq!(effective_interest(&shared(), &facts(A, &[("interest", "medium")])), (true, Some(2)));
-        assert_eq!(effective_interest(&shared(), &facts(B, &[("interest_rebroadcasts", "high")])), (true, Some(3)));
+        assert_eq!(
+            effective_interest(&shared(), &facts(A, &[("interest", "medium")])),
+            (true, Some(2))
+        );
+        assert_eq!(
+            effective_interest(&shared(), &facts(B, &[("interest_rebroadcasts", "high")])),
+            (true, Some(3))
+        );
         assert_eq!(effective_interest(&suggested(Some("high")), &Facts::new()), (false, Some(3)));
         assert_eq!(effective_interest(&real(), &Facts::new()), (false, None));
-        assert_eq!(effective_interest(&shared(), &facts(A, &[])), (false, None), "an unset dial is no opinion");
+        assert_eq!(
+            effective_interest(&shared(), &facts(A, &[])),
+            (false, None),
+            "an unset dial is no opinion"
+        );
     }
 
     #[test]
@@ -213,6 +241,9 @@ mod tests {
         assert!(visible_at("highly-speculative", &suggested(Some("medium")), &Facts::new()));
         assert!(!visible_at("highly-speculative", &suggested(Some("low")), &Facts::new()));
         assert!(visible_at("explorer", &suggested(Some("low")), &Facts::new()));
-        assert!(visible_at("nonsense", &suggested(None), &Facts::new()), "an unknown stop reads as Explorer");
+        assert!(
+            visible_at("nonsense", &suggested(None), &Facts::new()),
+            "an unknown stop reads as Explorer"
+        );
     }
 }

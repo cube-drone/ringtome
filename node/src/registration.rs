@@ -92,7 +92,10 @@ pub async fn set(state: &AppState, mode: Mode, password: Option<&str>) -> Result
     let password_hash = match (mode, password.filter(|p| !p.is_empty())) {
         (_, Some(password)) => {
             crate::auth::check_password_len(password, SIGNUP_PASSWORD_MIN)?;
-            Some(crate::auth::hash_password(password, state.config.local_test).map_err(AppError::Internal)?)
+            Some(
+                crate::auth::hash_password(password, state.config.local_test)
+                    .map_err(AppError::Internal)?,
+            )
         }
         (Mode::Password, None) if !current.has_password() => {
             return Err(AppError::BadRequest(crate::msg!(
@@ -159,7 +162,10 @@ pub struct Limits {
 pub async fn limits(state: &AppState) -> Result<Limits, AppError> {
     let row: Option<(Option<i64>, Option<i64>, Option<String>)> = state
         .node_db
-        .fetch_optional("SELECT max_accounts, disk_max_pct, group_name FROM registration_limits WHERE id = 1", ())
+        .fetch_optional(
+            "SELECT max_accounts, disk_max_pct, group_name FROM registration_limits WHERE id = 1",
+            (),
+        )
         .await
         .context("reading the registration limits")
         .map_err(AppError::Internal)?;
@@ -184,15 +190,24 @@ pub async fn group_now(state: &AppState) -> Result<Option<String>, AppError> {
 
 pub async fn set_limits(state: &AppState, limits: &Limits) -> Result<(), AppError> {
     if limits.max_accounts.is_some_and(|n| n < 1) {
-        return Err(AppError::BadRequest(crate::msg!("registration.max-accounts-at-least-one", "a limit on accounts is at least one")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "registration.max-accounts-at-least-one",
+            "a limit on accounts is at least one"
+        )));
     }
     if limits.disk_max_pct.is_some_and(|p| !(1..=100).contains(&p)) {
-        return Err(AppError::BadRequest(crate::msg!("registration.disk-pct-range", "a disk limit is a percentage, 1 to 100")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "registration.disk-pct-range",
+            "a disk limit is a percentage, 1 to 100"
+        )));
     }
     let group = limits.group_name.as_deref().map(str::trim).filter(|g| !g.is_empty());
     // A group's name is the tag it wears in everyone's People list, so it is a tag's length.
     if group.is_some_and(|g| g.chars().count() > crate::groups::TAG_MAX) {
-        return Err(AppError::BadRequest(crate::msg!("registration.group-name-too-long", "a group's name is at most 32 letters")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "registration.group-name-too-long",
+            "a group's name is at most 32 letters"
+        )));
     }
     state
         .node_db
@@ -226,7 +241,10 @@ pub async fn admit(state: &AppState, offered: Option<&str>) -> Result<(), AppErr
     let limits = limits(state).await?;
     if let Some(max) = limits.max_accounts {
         if crate::auth::account_count(&state.node_db).await? >= max {
-            return Err(AppError::Forbidden(crate::msg!("registration.this-place-is-full", "this place is full - it isn't taking new sign-ups")));
+            return Err(AppError::Forbidden(crate::msg!(
+                "registration.this-place-is-full",
+                "this place is full - it isn't taking new sign-ups"
+            )));
         }
     }
     if let (Some(max), Some(used)) = (limits.disk_max_pct, disk_used_pct(state)) {

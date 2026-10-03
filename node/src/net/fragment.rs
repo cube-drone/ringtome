@@ -46,12 +46,8 @@ const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 async fn write_frame(send: &mut SendStream, msg: &FragmentMessage) -> Result<()> {
     let body = msg.encode();
     let len = u32::try_from(body.len()).map_err(|_| anyhow!("fragment frame too large"))?;
-    send.write_all(&len.to_be_bytes())
-        .await
-        .context("writing fragment frame length")?;
-    send.write_all(&body)
-        .await
-        .context("writing fragment frame body")?;
+    send.write_all(&len.to_be_bytes()).await.context("writing fragment frame length")?;
+    send.write_all(&body).await.context("writing fragment frame body")?;
     Ok(())
 }
 
@@ -65,12 +61,10 @@ async fn read_frame(recv: &mut RecvStream) -> Result<Option<FragmentMessage>> {
         return Err(anyhow!("fragment frame of {len} bytes exceeds limit"));
     }
     let mut body = vec![0u8; len];
-    recv.read_exact(&mut body)
-        .await
-        .context("reading fragment frame body")?;
-    Ok(Some(FragmentMessage::decode(&body).map_err(|e| {
-        anyhow!("undecodable fragment frame: {e}")
-    })?))
+    recv.read_exact(&mut body).await.context("reading fragment frame body")?;
+    Ok(Some(
+        FragmentMessage::decode(&body).map_err(|e| anyhow!("undecodable fragment frame: {e}"))?,
+    ))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -97,18 +91,36 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantRoom { author, doc_id, for_root, key_proof }) => {
             crate::chat::answer_room(&state, &conn, &author, &doc_id, &for_root, key_proof).await
         }
-        Some(FragmentMessage::WantCensus { sketches }) => crate::census::answer(&state, sketches).await,
-        Some(FragmentMessage::WantRoomReach { author, doc_id, for_root, key_proof }) => {
-            crate::chat::answer_room_reach(&state, &conn, &author, &doc_id, &for_root, key_proof).await
+        Some(FragmentMessage::WantCensus { sketches }) => {
+            crate::census::answer(&state, sketches).await
         }
-        Some(FragmentMessage::WantRoomHistory { author, doc_id, for_root, before_ms, limit, key_proof }) => {
+        Some(FragmentMessage::WantRoomReach { author, doc_id, for_root, key_proof }) => {
+            crate::chat::answer_room_reach(&state, &conn, &author, &doc_id, &for_root, key_proof)
+                .await
+        }
+        Some(FragmentMessage::WantRoomHistory {
+            author,
+            doc_id,
+            for_root,
+            before_ms,
+            limit,
+            key_proof,
+        }) => {
             // Streamed (CHAT.md, ruling 6): a page of history is more than one frame holds,
             // so the answer is a run of small frames ended by an empty one.
-            let (items, total) = crate::chat::answer_room_history(&state, &conn, &author, &doc_id, &for_root, before_ms, limit, key_proof).await;
+            let (items, total) = crate::chat::answer_room_history(
+                &state, &conn, &author, &doc_id, &for_root, before_ms, limit, key_proof,
+            )
+            .await;
             for chunk in items.chunks(ringtome_proto::fragment::MAX_ROOM_HISTORY_ITEMS) {
-                write_frame(&mut send, &FragmentMessage::RoomHistory { items: chunk.to_vec(), total }).await?;
+                write_frame(
+                    &mut send,
+                    &FragmentMessage::RoomHistory { items: chunk.to_vec(), total },
+                )
+                .await?;
             }
-            write_frame(&mut send, &FragmentMessage::RoomHistory { items: Vec::new(), total }).await?;
+            write_frame(&mut send, &FragmentMessage::RoomHistory { items: Vec::new(), total })
+                .await?;
             send.finish().ok();
             conn.closed().await;
             return Ok(());
@@ -126,7 +138,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             .await;
             FragmentMessage::Replies { proofs, cursor }
         }
-        Some(FragmentMessage::WantShelf { author, limit }) => shelf_for(&state, &author, limit).await,
+        Some(FragmentMessage::WantShelf { author, limit }) => {
+            shelf_for(&state, &author, limit).await
+        }
         _ => return Err(anyhow!("expected a Want, WantDeaths, WantReplies, or WantShelf")),
     };
     write_frame(&mut send, &answer).await?;
@@ -151,8 +165,7 @@ async fn answer_key(
     let refused = FragmentMessage::Key { key: Vec::new() };
     let author_hex = hex::encode(author);
     let doc_hex = hex::encode(doc_id);
-    let Ok(Some(key)) = crate::postkeys::lookup(&state.node_db, &author_hex, &doc_hex).await
-    else {
+    let Ok(Some(key)) = crate::postkeys::lookup(&state.node_db, &author_hex, &doc_hex).await else {
         return refused;
     };
     let dialer = conn.remote_id().to_string();
@@ -162,7 +175,8 @@ async fn answer_key(
     // everyone the author publishes trust for.
     let mut allowed_roots = vec![author_hex.clone()];
     match crate::postkeys::audience(&state.node_db, &author_hex, &doc_hex).await.ok().flatten() {
-        Some(tag) => allowed_roots.extend(crate::idface::audience_members(state, &author_hex, &doc_hex, &tag).await),
+        Some(tag) => allowed_roots
+            .extend(crate::idface::audience_members(state, &author_hex, &doc_hex, &tag).await),
         None => {
             if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
                 if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
@@ -184,9 +198,19 @@ async fn answer_key(
     // the post along, and publishes trust for the asker - this is the sharer's node, and
     // the author asked that the sharer's trust open the seal one hop further.
     if !admitted {
-        for sharer in crate::postkeys::grantees(&state.node_db, &author_hex, &doc_hex).await.unwrap_or_default() {
+        for sharer in crate::postkeys::grantees(&state.node_db, &author_hex, &doc_hex)
+            .await
+            .unwrap_or_default()
+        {
             if crate::identity::is_hosted(&state.node_db, &sharer).await.unwrap_or(false)
-                && crate::idface::onward_sharer_admits(state, &author_hex, &doc_hex, &sharer, &for_hex).await
+                && crate::idface::onward_sharer_admits(
+                    state,
+                    &author_hex,
+                    &doc_hex,
+                    &sharer,
+                    &for_hex,
+                )
+                .await
             {
                 admitted = true;
                 break;
@@ -226,7 +250,11 @@ async fn answer_key(
 /// directory of record. An empty list is "nobody yet" and "not for you" alike.
 /// Swap census sketches (census.rs, 2026-09-29): ours out, the peer's merged answer back. An `Err`
 /// from a node that predates the question leaves it alone for a day.
-pub async fn fetch_census(state: &AppState, endpoint_id: &str, sketches: Vec<(u32, Vec<u8>)>) -> Result<Vec<(u32, Vec<u8>)>> {
+pub async fn fetch_census(
+    state: &AppState,
+    endpoint_id: &str,
+    sketches: Vec<(u32, Vec<u8>)>,
+) -> Result<Vec<(u32, Vec<u8>)>> {
     let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
     let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
         .await
@@ -234,7 +262,9 @@ pub async fn fetch_census(state: &AppState, endpoint_id: &str, sketches: Vec<(u3
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
     write_frame(&mut send, &FragmentMessage::WantCensus { sketches }).await?;
     send.finish().ok();
-    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("census timed out")??;
+    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv))
+        .await
+        .context("census timed out")??;
     conn.close(0u8.into(), b"done");
     match answer {
         Some(FragmentMessage::Census { sketches }) => Ok(sketches),
@@ -268,7 +298,9 @@ pub async fn fetch_room_reach(
     )
     .await?;
     send.finish().ok();
-    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room reach timed out")??;
+    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv))
+        .await
+        .context("room reach timed out")??;
     conn.close(0u8.into(), b"done");
     match answer {
         Some(FragmentMessage::RoomReach { speakers }) => Ok(speakers),
@@ -300,7 +332,9 @@ pub async fn fetch_room(
     )
     .await?;
     send.finish().ok();
-    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room directory timed out")??;
+    let answer = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv))
+        .await
+        .context("room directory timed out")??;
     conn.close(0u8.into(), b"done");
     match answer {
         Some(FragmentMessage::Room { participants }) => Ok(participants),
@@ -343,7 +377,9 @@ pub async fn fetch_room_history(
     let mut out = Vec::new();
     let mut total = 0u64;
     loop {
-        let frame = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv)).await.context("room history timed out")??;
+        let frame = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv))
+            .await
+            .context("room history timed out")??;
         match frame {
             Some(FragmentMessage::RoomHistory { items, total: t }) => {
                 total = total.max(t);
@@ -377,11 +413,7 @@ async fn ask_key(
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
     write_frame(
         &mut send,
-        &FragmentMessage::WantKey {
-            author: *author,
-            doc_id: *doc_id,
-            for_root: *for_root,
-        },
+        &FragmentMessage::WantKey { author: *author, doc_id: *doc_id, for_root: *for_root },
     )
     .await?;
     send.finish().ok();
@@ -415,7 +447,8 @@ pub async fn fetch_key(
                 endpoints.push(ep);
             }
         }
-        for ep in crate::net::sync::peers_for(&state.node_db, sharer_hex).await.unwrap_or_default() {
+        for ep in crate::net::sync::peers_for(&state.node_db, sharer_hex).await.unwrap_or_default()
+        {
             if !endpoints.contains(&ep) {
                 endpoints.push(ep);
             }
@@ -442,10 +475,7 @@ pub async fn fetch_key(
             endpoints.push(ep);
         }
     }
-    for ep in crate::net::sync::peers_for(&state.node_db, &author_hex)
-        .await
-        .unwrap_or_default()
-    {
+    for ep in crate::net::sync::peers_for(&state.node_db, &author_hex).await.unwrap_or_default() {
         if !endpoints.contains(&ep) {
             endpoints.push(ep);
         }
@@ -463,9 +493,8 @@ pub async fn fetch_key(
     // record on demand, and the key lane walks the same ladder.
     if endpoints.is_empty() {
         crate::net::sync::derive_peers_for(state, &author_hex).await;
-        endpoints = crate::net::sync::peers_for(&state.node_db, &author_hex)
-            .await
-            .unwrap_or_default();
+        endpoints =
+            crate::net::sync::peers_for(&state.node_db, &author_hex).await.unwrap_or_default();
     }
     for candidate in crate::net::deliver::candidates(state, &author_hex).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, &author_hex, &candidate).await;
@@ -476,18 +505,37 @@ pub async fn fetch_key(
     tracing::debug!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
     let mut refused_by_someone = false;
     for endpoint_id in endpoints {
-        match tokio::time::timeout(FETCH_TIMEOUT, ask_key(state, &endpoint_id, author, doc_id, for_root))
-            .await
+        match tokio::time::timeout(
+            FETCH_TIMEOUT,
+            ask_key(state, &endpoint_id, author, doc_id, for_root),
+        )
+        .await
         {
             Ok(Ok(Some(key))) => {
-                if let Err(e) =
-                    crate::postkeys::remember(&state.node_db, &author_hex, &hex::encode(doc_id), &key)
-                        .await
+                if let Err(e) = crate::postkeys::remember(
+                    &state.node_db,
+                    &author_hex,
+                    &hex::encode(doc_id),
+                    &key,
+                )
+                .await
                 {
                     tracing::debug!(error = ?e, "fetched key not remembered");
                 }
-                let _ = crate::postkeys::grant(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex).await;
-                let _ = crate::postkeys::unrefuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex).await;
+                let _ = crate::postkeys::grant(
+                    &state.node_db,
+                    &author_hex,
+                    &hex::encode(doc_id),
+                    &for_hex,
+                )
+                .await;
+                let _ = crate::postkeys::unrefuse(
+                    &state.node_db,
+                    &author_hex,
+                    &hex::encode(doc_id),
+                    &for_hex,
+                )
+                .await;
                 return Some(key);
             }
             Ok(Ok(None)) => {
@@ -502,7 +550,9 @@ pub async fn fetch_key(
     // the key and would not give it to this one - remember that, so the feed and the shelf
     // stop showing a card the door would refuse. A transport failure remembers nothing.
     if refused_by_someone {
-        let _ = crate::postkeys::refuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex).await;
+        let _ =
+            crate::postkeys::refuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex)
+                .await;
     }
     None
 }
@@ -516,20 +566,16 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
         Ok(rows) => rows,
         Err(e) => {
             tracing::debug!(error = ?e, "death log read failed");
-            return FragmentMessage::Deaths {
-                proofs: Vec::new(),
-                cursor: since,
-            };
+            return FragmentMessage::Deaths { proofs: Vec::new(), cursor: since };
         }
     };
     let mut cursor = since;
     let mut proofs = Vec::new();
     for row in rows {
         cursor = row.id as u64;
-        let (Some(author), Ok(doc_bytes)) = (
-            crate::pubkey::decode(&row.author_root),
-            hex::decode(&row.doc_id),
-        ) else {
+        let (Some(author), Ok(doc_bytes)) =
+            (crate::pubkey::decode(&row.author_root), hex::decode(&row.doc_id))
+        else {
             continue;
         };
         let Ok(doc_id) = <[u8; 16]>::try_from(doc_bytes.as_slice()) else {
@@ -578,9 +624,8 @@ async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentM
                     .collect();
                 // The author's pins (PROJECT_PLAN's Peeks, ruling 13): named first, so a peek fetches
                 // them ahead of the window however deep they sit.
-                let pinned = crate::record::imaol::pinned_docs(&db, &author_hex)
-                    .await
-                    .unwrap_or_default();
+                let pinned =
+                    crate::record::imaol::pinned_docs(&db, &author_hex).await.unwrap_or_default();
                 (posts, pinned)
             }
         }
@@ -612,11 +657,7 @@ async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> F
     answer
 }
 
-async fn answer_inner(
-    state: &AppState,
-    author_hex: &str,
-    doc_id: &[u8; 16],
-) -> FragmentMessage {
+async fn answer_inner(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> FragmentMessage {
     match from_held_chain(state, author_hex, doc_id).await {
         Ok(Some(answer)) => return answer,
         Ok(None) => {}
@@ -657,11 +698,7 @@ async fn answer_inner(
     if let Ok(Some((entry, auth_path))) =
         crate::fragments::relayable(&state.node_db, author_hex, doc_id).await
     {
-        return FragmentMessage::Have {
-            entry,
-            auth_path,
-            annotations: Vec::new(),
-        };
+        return FragmentMessage::Have { entry, auth_path, annotations: Vec::new() };
     }
     FragmentMessage::Unknown
 }
@@ -843,10 +880,7 @@ pub async fn revalidate(
     // Endpoint-addressed rather than root-addressed, because the sibling is not a persona in
     // this document's tree; it is our own household, reached by the addresses the ceremony
     // already bound.
-    for endpoint in crate::net::sync::cohort_endpoints(state)
-        .await
-        .unwrap_or_default()
-    {
+    for endpoint in crate::net::sync::cohort_endpoints(state).await.unwrap_or_default() {
         let asked =
             tokio::time::timeout(FETCH_TIMEOUT, ask(state, &endpoint, author, doc_id)).await;
         match asked {
@@ -875,10 +909,7 @@ pub async fn fetch(
     // Housemates: the origin is one of ours, so the answer is a function call rather than a
     // connection. `net::deliver` does the same, for the same reason - iroh has no cause to make
     // a self-dial work, and the judgment is identical either way.
-    if crate::identity::is_agented(&state.node_db, origin_root)
-        .await
-        .unwrap_or(false)
-    {
+    if crate::identity::is_agented(&state.node_db, origin_root).await.unwrap_or(false) {
         return match answer_for(state, author, doc_id).await {
             FragmentMessage::Have { entry, auth_path, .. } => {
                 match verify_fragment(*author, *doc_id, &entry, &auth_path) {
@@ -893,7 +924,9 @@ pub async fn fetch(
                 // Our own stored proof still passes through the verifier - the mirror of "our
                 // own fragment failed its own proof" above, and for the same reason: a row
                 // corrupted on disk must not act, however it got here.
-                match ringtome_proto::fragment::verify_retraction(*author, *doc_id, &entry, &auth_path) {
+                match ringtome_proto::fragment::verify_retraction(
+                    *author, *doc_id, &entry, &auth_path,
+                ) {
                     Ok(()) => Fetched::Gone { entry, auth_path },
                     Err(e) => {
                         tracing::warn!(error = ?e, "our own tombstone failed its own proof");
@@ -906,13 +939,9 @@ pub async fn fetch(
     }
 
     for candidate in crate::net::deliver::candidates(state, origin_root).await {
-        let endpoint_id =
-            crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
-        let asked = tokio::time::timeout(
-            FETCH_TIMEOUT,
-            ask(state, &endpoint_id, author, doc_id),
-        )
-        .await;
+        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
+        let asked =
+            tokio::time::timeout(FETCH_TIMEOUT, ask(state, &endpoint_id, author, doc_id)).await;
         match asked {
             Ok(Ok(answer)) => return answer,
             Ok(Err(e)) => {
@@ -973,13 +1002,9 @@ pub async fn fetch_deaths(
     since: u64,
 ) -> Option<(Vec<ringtome_proto::fragment::DeathProof>, u64, usize)> {
     for candidate in crate::net::deliver::candidates(state, origin_root).await {
-        let endpoint_id =
-            crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
-        let asked = tokio::time::timeout(
-            FETCH_TIMEOUT,
-            ask_deaths(state, &endpoint_id, since),
-        )
-        .await;
+        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
+        let asked =
+            tokio::time::timeout(FETCH_TIMEOUT, ask_deaths(state, &endpoint_id, since)).await;
         match asked {
             Ok(Ok(answer)) => return Some(answer),
             Ok(Err(e)) => {
@@ -1057,11 +1082,7 @@ async fn ask_replies(
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
     write_frame(
         &mut send,
-        &FragmentMessage::WantReplies {
-            author: *parent_author,
-            doc_id: *parent_doc,
-            since,
-        },
+        &FragmentMessage::WantReplies { author: *parent_author, doc_id: *parent_doc, since },
     )
     .await?;
     send.finish().ok();
@@ -1145,14 +1166,7 @@ async fn ask(
         .await
         .map_err(|e| anyhow!("dialing {endpoint_id} for a fragment: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
-    write_frame(
-        &mut send,
-        &FragmentMessage::Want {
-            author: *author,
-            doc_id: *doc_id,
-        },
-    )
-    .await?;
+    write_frame(&mut send, &FragmentMessage::Want { author: *author, doc_id: *doc_id }).await?;
     send.finish().ok();
     let answer = read_frame(&mut recv).await?;
     conn.close(0u8.into(), b"done");
@@ -1166,13 +1180,9 @@ async fn ask(
             // The labels that rode along, each verified against ITS annotator and exactly
             // this post, folded into the memo and kept for the next hop (slice 3). After
             // the words' own proof: a forged fragment must not get its labels believed.
-            crate::annotations::learn_proofs(state, author, doc_id, &annotations, endpoint_id).await;
-            Ok(Fetched::Have(
-                Box::new(verified),
-                entry,
-                auth_path,
-                Some(endpoint_id.to_string()),
-            ))
+            crate::annotations::learn_proofs(state, author, doc_id, &annotations, endpoint_id)
+                .await;
+            Ok(Fetched::Have(Box::new(verified), entry, auth_path, Some(endpoint_id.to_string())))
         }
         Some(FragmentMessage::Gone { entry, auth_path }) => {
             // The same edge, the darker direction - and the erring side is chosen by what each

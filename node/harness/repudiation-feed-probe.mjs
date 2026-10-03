@@ -10,26 +10,46 @@ const decodeCode = (code) => {
     return JSON.parse(inflateRawSync(Buffer.from(t.slice(4), 'base64url')).toString('utf8'));
 };
 const settle = async (fn, tries = 120) => {
-    for (let i = 0; i < tries; i++) { const got = await fn(); if (got) return got; await sleep(250); }
+    for (let i = 0; i < tries; i++) {
+        const got = await fn();
+        if (got) return got;
+        await sleep(250);
+    }
     return null;
 };
 
 const a = session('http://localhost:5298');
 await signUp(a, 'strike-senior');
-const root = (await (await a.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
+const root = (await (await a.fetch('/api/identity', { method: 'POST', headers: J })).json())
+    .root_pubkey;
 
 const b = session('http://localhost:5299');
 await signUp(b, 'strike-device');
-const request = await (await b.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })).json();
+const request = await (
+    await b.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })
+).json();
 const leaf = decodeCode(request.code).leaf_pubkey;
-const grant = await (await a.fetch(`/api/identity/${root}/nodes`, { method: 'POST', headers: J,
-    body: JSON.stringify({ code: request.code }) })).json();
-await b.fetch('/api/identity/adopt/complete', { method: 'POST', headers: J,
-    body: JSON.stringify({ code: grant.code }) });
+const grant = await (
+    await a.fetch(`/api/identity/${root}/nodes`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ code: request.code }),
+    })
+).json();
+await b.fetch('/api/identity/adopt/complete', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ code: grant.code }),
+});
 
 const post = async (s, title, body) => {
-    const d = await (await s.fetch(`/api/identity/${root}/docs`, { method: 'POST', headers: J,
-        body: JSON.stringify({ title, body, format: 'plaintext' }) })).json();
+    const d = await (
+        await s.fetch(`/api/identity/${root}/docs`, {
+            method: 'POST',
+            headers: J,
+            body: JSON.stringify({ title, body, format: 'plaintext' }),
+        })
+    ).json();
     await s.fetch(`/api/identity/${root}/docs/${d.doc_id}/publish`, { method: 'POST', headers: J });
 };
 await post(a, 'honest-post', 'always mine');
@@ -46,8 +66,11 @@ const both = await settle(async () => {
 });
 console.log('RESULT before the strike:', JSON.stringify(both));
 
-const struck = await a.fetch(`/api/identity/${root}/keys/${leaf}/revoke`, { method: 'POST', headers: J,
-    body: JSON.stringify({ disposition: 'repudiation', cut: 'genesis' }) });
+const struck = await a.fetch(`/api/identity/${root}/keys/${leaf}/revoke`, {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ disposition: 'repudiation', cut: 'genesis' }),
+});
 console.log('RESULT strike status    :', struck.status);
 
 const after = await settle(async () => {

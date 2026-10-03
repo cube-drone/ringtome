@@ -9,8 +9,10 @@ before(async () => {
 });
 
 const GOLDENS = {
-    "93ad0ddd9dd2022bf2ac21664b386965e0eeffecaff6e49b71039db5f1cf53f3": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 5 5\" shape-rendering=\"crispEdges\"><rect width=\"5\" height=\"5\" fill=\"hsl(213, 34%, 92%)\"/><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\" fill=\"hsl(213, 62%, 42%)\"/><rect x=\"4\" y=\"0\" width=\"1\" height=\"1\" fill=\"hsl(213, 62%, 42%)\"/><rect x=\"0\" y=\"2\" width=\"1\" height=\"1\" fill=\"hsl(213, 62%, 42%)\"/><rect x=\"4\" y=\"2\" width=\"1\" height=\"1\" fill=\"hsl(213, 62%, 42%)\"/><rect x=\"0\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"4\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"0\" y=\"4\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"4\" y=\"4\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"1\" y=\"2\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"3\" y=\"2\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"1\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"3\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"1\" y=\"4\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"3\" y=\"4\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/><rect x=\"2\" y=\"4\" width=\"1\" height=\"1\" fill=\"hsl(255, 68%, 58%)\"/></svg>",
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 5 5\" shape-rendering=\"crispEdges\"><rect width=\"5\" height=\"5\" fill=\"hsl(330, 34%, 92%)\"/><rect x=\"0\" y=\"1\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"4\" y=\"1\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"0\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"4\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"1\" y=\"0\" width=\"1\" height=\"1\" fill=\"hsl(12, 68%, 58%)\"/><rect x=\"3\" y=\"0\" width=\"1\" height=\"1\" fill=\"hsl(12, 68%, 58%)\"/><rect x=\"1\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"3\" y=\"3\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"2\" y=\"0\" width=\"1\" height=\"1\" fill=\"hsl(330, 62%, 42%)\"/><rect x=\"2\" y=\"2\" width=\"1\" height=\"1\" fill=\"hsl(12, 68%, 58%)\"/></svg>"
+    '93ad0ddd9dd2022bf2ac21664b386965e0eeffecaff6e49b71039db5f1cf53f3':
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" shape-rendering="crispEdges"><rect width="5" height="5" fill="hsl(213, 34%, 92%)"/><rect x="0" y="0" width="1" height="1" fill="hsl(213, 62%, 42%)"/><rect x="4" y="0" width="1" height="1" fill="hsl(213, 62%, 42%)"/><rect x="0" y="2" width="1" height="1" fill="hsl(213, 62%, 42%)"/><rect x="4" y="2" width="1" height="1" fill="hsl(213, 62%, 42%)"/><rect x="0" y="3" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="4" y="3" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="0" y="4" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="4" y="4" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="1" y="2" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="3" y="2" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="1" y="3" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="3" y="3" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="1" y="4" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="3" y="4" width="1" height="1" fill="hsl(255, 68%, 58%)"/><rect x="2" y="4" width="1" height="1" fill="hsl(255, 68%, 58%)"/></svg>',
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" shape-rendering="crispEdges"><rect width="5" height="5" fill="hsl(330, 34%, 92%)"/><rect x="0" y="1" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="4" y="1" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="0" y="3" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="4" y="3" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="1" y="0" width="1" height="1" fill="hsl(12, 68%, 58%)"/><rect x="3" y="0" width="1" height="1" fill="hsl(12, 68%, 58%)"/><rect x="1" y="3" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="3" y="3" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="2" y="0" width="1" height="1" fill="hsl(330, 62%, 42%)"/><rect x="2" y="2" width="1" height="1" fill="hsl(12, 68%, 58%)"/></svg>',
 };
 
 describe('the identicon', () => {
@@ -32,7 +34,7 @@ describe('the identicon', () => {
         for (const [x, y] of cells) {
             assert.ok(
                 cells.some(([mx, my]) => mx === 4 - x && my === y),
-                `cell ${x},${y} has no mirror`
+                `cell ${x},${y} has no mirror`,
             );
         }
     });
@@ -43,7 +45,7 @@ describe('the identicon', () => {
         assert.ok(cells > 0 && cells < 25, `patterned key drew ${cells} cells`);
     });
 
-    it('wears the persona\'s own hue - the identicon and the ring are one object', () => {
+    it("wears the persona's own hue - the identicon and the ring are one object", () => {
         const root = Object.keys(GOLDENS)[0];
         assert.ok(identiconSvg(root).includes('hsl(213,'), 'ground and ink share the hue');
     });

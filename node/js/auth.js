@@ -54,7 +54,11 @@ export function useSession() {
     const register = async (username, password, registrationPassword) => {
         await api('/api/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ username, password, registration_password: registrationPassword || null }),
+            body: JSON.stringify({
+                username,
+                password,
+                registration_password: registrationPassword || null,
+            }),
         });
         await login(username, password);
     };
@@ -98,8 +102,8 @@ function useAvailability(username, enabled) {
                     setState(
                         r.available
                             ? { ok: true, note: 'available!' }
-                            : { ok: false, note: 'someone already has that name here' }
-                    )
+                            : { ok: false, note: 'someone already has that name here' },
+                    ),
                 )
                 // 400 means the name isn't a valid slug; the server message says why.
                 .catch((e) => setState({ ok: false, note: e.message }));
@@ -177,20 +181,28 @@ const DownloadPanel = () => {
         : [];
     return html`<div class="welcome-download">
         ${!found && html`<p class="null-sub">${t('auth.download-looking', 'looking for the newest release…')}</p>`}
-        ${systems.length > 0 &&
-        html`<div class="download-buttons">
+        ${
+            systems.length > 0 &&
+            html`<div class="download-buttons">
             ${systems.map(
-                ([href, Icon, name]) => html`<a class="download-button" key=${name} href=${href} title=${found.tag || ''}>
+                ([
+                    href,
+                    Icon,
+                    name,
+                ]) => html`<a class="download-button" key=${name} href=${href} title=${found.tag || ''}>
                     <${Icon} /><span>${name}</span>
-                </a>`
+                </a>`,
             )}
-        </div>`}
-        ${found &&
-        systems.length === 0 &&
-        html`<p class="field-note">
+        </div>`
+        }
+        ${
+            found &&
+            systems.length === 0 &&
+            html`<p class="field-note">
             ${t('auth.download-none-found', "the downloads couldn't be found just now.")}
             ${' '}<a href=${found.releases} target="_blank" rel="noopener">${t('auth.download-every-release', 'every release is here')}</a>
-        </p>`}
+        </p>`
+        }
         <p class="download-server">
             ${t('auth.this-server-is-running', 'this server is running')}${' '}<${Version} className="download-version" />
         </p>
@@ -307,8 +319,9 @@ export const Welcome = ({ session }) => {
                             required
                         />
                     </label>
-                    ${needsNewName &&
-                    html`<label>
+                    ${
+                        needsNewName &&
+                        html`<label>
                         ${t('auth.new-sign-in-name', 'new sign-in name')}
                         <input
                             class="jag-field"
@@ -319,10 +332,13 @@ export const Welcome = ({ session }) => {
                             required
                         />
                     </label>
-                    ${newNameAvailability &&
-                    html`<p class=${newNameAvailability.ok ? 'field-note ok' : 'field-note bad'}>
+                    ${
+                        newNameAvailability &&
+                        html`<p class=${newNameAvailability.ok ? 'field-note ok' : 'field-note bad'}>
                         ${newNameAvailability.note}
-                    </p>`}`}
+                    </p>`
+                    }`
+                    }
                     ${error && html`<p class="form-error">${error}</p>`}
                     <button class="welcome-go" type="submit" disabled=${busy}>
                         ${busy ? '…' : needsNewName ? t('auth.move-me-in', 'move me in') : t('auth.let-me-back-in', 'let me back in')}
@@ -350,33 +366,40 @@ export const Welcome = ({ session }) => {
                     class=${mode === 'login' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('login')}
                 ><${Icons.signIn} /> ${t('auth.sign-in', 'sign in')}</button>
-                ${!signupsClosed &&
-                html`<button
+                ${
+                    !signupsClosed &&
+                    html`<button
                     class=${mode === 'register' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('register')}
                 ><${Icons.newHere} /> ${t('auth.new-here', 'new here?')}</button>
                     <button
                         class=${importing ? 'tab active' : 'tab'}
                         onClick=${() => switchMode('import')}
-                    ><${Icons.importUser} /> ${t('auth.import-user', 'import user')}</button>`}
+                    ><${Icons.importUser} /> ${t('auth.import-user', 'import user')}</button>`
+                }
                 ${/* The desktop app is already downloaded. */ ''}
-                ${!isDevice() &&
-                html`<button
+                ${
+                    !isDevice() &&
+                    html`<button
                     class=${mode === 'download' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('download')}
-                ><${Icons.download} /> ${t('auth.download', 'download')}</button>`}
+                ><${Icons.download} /> ${t('auth.download', 'download')}</button>`
+                }
             </div>
             ${mode === 'download' && html`<${DownloadPanel} />`}
-            ${importing &&
-            html`<p class="welcome-note">
+            ${
+                importing &&
+                html`<p class="welcome-note">
                 ${t(
                     'auth.an-account-here-to-host',
                     'Even if you have a user already on a different node, you need an account on this node to host your user.',
                 )}
-            </p>`}
+            </p>`
+            }
 
-            ${mode !== 'download' &&
-            html`<form class="welcome-form" onSubmit=${submit}>
+            ${
+                mode !== 'download' &&
+                html`<form class="welcome-form" onSubmit=${submit}>
                 <label>
                     ${t('auth.name-2', 'name')}
                     <input
@@ -389,10 +412,13 @@ export const Welcome = ({ session }) => {
                         required
                     />
                 </label>
-                ${registering && availability &&
-                html`<p class=${availability.ok ? 'field-note ok' : 'field-note bad'}>
+                ${
+                    registering &&
+                    availability &&
+                    html`<p class=${availability.ok ? 'field-note ok' : 'field-note bad'}>
                     ${availability.note}
-                </p>`}
+                </p>`
+                }
                 <label>
                     ${t('auth.password', 'password')}
                     <input
@@ -405,8 +431,10 @@ export const Welcome = ({ session }) => {
                     />
                 </label>
 
-                ${registering && askSignupPassword &&
-                html`<label>
+                ${
+                    registering &&
+                    askSignupPassword &&
+                    html`<label>
                     ${t('auth.sign-up-password', 'sign-up password')}
                     <input
                         class="jag-field"
@@ -417,20 +445,24 @@ export const Welcome = ({ session }) => {
                         required
                     />
                 </label>
-                <p class="field-note">${t('auth.whoever-invited-you-has-it', 'whoever invited you has it')}</p>`}
+                <p class="field-note">${t('auth.whoever-invited-you-has-it', 'whoever invited you has it')}</p>`
+                }
 
                 ${error && html`<p class="form-error">${error}</p>`}
 
                 <button class="welcome-go" type="submit" disabled=${busy}>
                     ${busy ? '…' : registering ? t('auth.make-an-account', 'make an account') : t('auth.come-in', 'come in')}
                 </button>
-                ${!registering &&
-                html`<button
+                ${
+                    !registering &&
+                    html`<button
                     type="button"
                     class="skip-link"
                     onClick=${() => switchMode('recover')}
-                >${t('auth.lost-your-password', 'lost your password?')}</button>`}
-            </form>`}
+                >${t('auth.lost-your-password', 'lost your password?')}</button>`
+                }
+            </form>`
+            }
             </div>
         </div>
     `;

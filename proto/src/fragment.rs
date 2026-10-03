@@ -34,8 +34,8 @@
 //! which is exactly what revalidation against the origin is for.
 
 use crate::cbor::{Reader, Writer};
-use crate::error::ProtoError;
 use crate::entry::MAX_ENTRY_BYTES;
+use crate::error::ProtoError;
 use crate::registry::{entry_type, service};
 use crate::{DocHeaderPlain, Payload, SignedEntry};
 
@@ -72,17 +72,30 @@ pub enum FragmentMessage {
     /// `for_root` (2026-09-14): the PERSONA asking, not just the node - a node hosts many,
     /// and the seal admits people, not machines. The answering node checks both: the
     /// persona is admitted, and the dialing endpoint serves that persona.
-    WantKey { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32] },
+    WantKey {
+        author: [u8; 32],
+        doc_id: [u8; 16],
+        for_root: [u8; 32],
+    },
     /// The answer: 32 key bytes, or empty for "not here" and "not for you" alike - a
     /// refusal deliberately indistinguishable from absence.
-    Key { key: Vec<u8> },
-    Want { author: [u8; 32], doc_id: [u8; 16] },
+    Key {
+        key: Vec<u8>,
+    },
+    Want {
+        author: [u8; 32],
+        doc_id: [u8; 16],
+    },
     /// The words' proof - and, riding beside it, every annotation proof the answering node
     /// chose to attach (PROJECT_PLAN's Public annotations, slice 3): the author's labels and third parties'
     /// alike, each the ANNOTATOR's own signed statement with its delegation path, verified
     /// at the receiving edge against its annotator. The label set is best-effort and
     /// budget-capped - a fragment with no labels is still the fragment.
-    Have { entry: Vec<u8>, auth_path: Vec<Vec<u8>>, annotations: Vec<AnnotationProof> },
+    Have {
+        entry: Vec<u8>,
+        auth_path: Vec<Vec<u8>>,
+        annotations: Vec<AnnotationProof>,
+    },
     /// The author took it back - and here is the author SAYING so (added 2026-08-13). A bare
     /// `Gone` was the one unauthenticated word in the protocol: `Have` proves itself with the
     /// author's signature, while its opposite was taken on the answering node's word - so any
@@ -91,38 +104,59 @@ pub enum FragmentMessage {
     /// delegation path that ties its signing key to their root, verified offline exactly as a
     /// fragment is: deletion becomes as unforgeable as content, at every hop, however far from
     /// the author it is relayed.
-    Gone { entry: Vec<u8>, auth_path: Vec<Vec<u8>> },
+    Gone {
+        entry: Vec<u8>,
+        auth_path: Vec<Vec<u8>>,
+    },
     Unknown,
     /// The batch question (added 2026-08-13, the retraction-cursor slice): everything you have
     /// heard die since `since`, which is YOUR log's cursor - opaque to the asker, monotonic to
     /// you. The steady-state answer is an empty page, which is the whole argument for cursors
     /// over summaries: "nothing happened" costs one round trip and zero bytes of payload.
-    WantDeaths { since: u64 },
+    WantDeaths {
+        since: u64,
+    },
     /// One page of deaths, each carrying the same proof a single `Gone` does - the author's own
     /// signed retraction plus its delegation path, verified per-proof at the receiving edge. The
     /// page names its authors explicitly because a log mixes them: an origin relays every death
     /// it has heard, and each one proves itself against ITS author, not against the origin.
     /// `cursor` is where the next ask resumes; a page shorter than the server's page size means
     /// the log is drained.
-    Deaths { proofs: Vec<DeathProof>, cursor: u64 },
+    Deaths {
+        proofs: Vec<DeathProof>,
+        cursor: u64,
+    },
     /// The author's thread door (PROJECT_PLAN's Replies slice 6): every reply anywhere announces
     /// itself to its parent's author - by sync or by envelope - so the author's node is
     /// structurally the best-informed about the thread, and serves a reply INDEX to anyone
     /// who asks. The death-cursor idiom verbatim: `since` is the SERVER's opaque monotonic
     /// cursor, and the steady-state answer is an empty page.
-    WantReplies { author: [u8; 32], doc_id: [u8; 16], since: u64 },
+    WantReplies {
+        author: [u8; 32],
+        doc_id: [u8; 16],
+        since: u64,
+    },
     /// One page of the index: the repliers' own SIGNED evidence - each proof is the
     /// replier's doc-header entry naming the parent, with the delegation path that ties its
     /// signer to their root, verifiable offline exactly as a fragment is. Claims, never
     /// words: the asker fetches the words through the ordinary `Want` machinery. A page
     /// shorter than the server's page size means the index is drained.
-    Replies { proofs: Vec<ReplyProof>, cursor: u64 },
+    Replies {
+        proofs: Vec<ReplyProof>,
+        cursor: u64,
+    },
     /// The shelf question (PROJECT_PLAN's Peeks, slice 2): the author's newest `limit` post ids, and the
     /// ids they have pinned (slice 4 fills that; empty until then). Ids only, on purpose -
     /// each post then travels the ordinary `Want`/`Have` road, proving itself and carrying
     /// its own labels, so the shelf answer stays kilobytes whatever the history's size.
-    WantShelf { author: [u8; 32], limit: u64 },
-    Shelf { posts: Vec<[u8; 16]>, pinned: Vec<[u8; 16]> },
+    WantShelf {
+        author: [u8; 32],
+        limit: u64,
+    },
+    Shelf {
+        posts: Vec<[u8; 16]>,
+        pinned: Vec<[u8; 16]>,
+    },
     /// The room's directory (CHAT.md, ruling 4): who has spoken in `(author, doc_id)`, as
     /// the answering node holds their room chains - the creator's node is the directory of
     /// record, archiving every participant's chain. `for_root` is the persona asking; a
@@ -130,31 +164,56 @@ pub enum FragmentMessage {
     /// `key_proof` (2026-09-20) answers an onward room's door with the room's key rather
     /// than with a persona, as the sync Hello's does: `sync::room_key_proof` over this
     /// connection's two endpoints. Absent when the asker holds no key.
-    WantRoom { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], key_proof: Option<[u8; 32]> },
+    WantRoom {
+        author: [u8; 32],
+        doc_id: [u8; 16],
+        for_root: [u8; 32],
+        key_proof: Option<[u8; 32]>,
+    },
     /// The participants' roots. Empty for "nobody yet" and "not for you" alike.
-    Room { participants: Vec<[u8; 32]> },
+    Room {
+        participants: Vec<[u8; 32]>,
+    },
     /// The room's directory WITH where to reach each speaker (2026-09-29): the same question
     /// and the same door as `WantRoom`, for a newcomer who holds none of the speakers' key trees
     /// and so could not find their nodes from their roots alone - the reason a newcomer with the
     /// creator's node dark had nobody to ask. A node that predates it drops the stream on the
     /// unknown tag, and the asker falls back to `WantRoom`.
-    WantRoomReach { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], key_proof: Option<[u8; 32]> },
+    WantRoomReach {
+        author: [u8; 32],
+        doc_id: [u8; 16],
+        for_root: [u8; 32],
+        key_proof: Option<[u8; 32]>,
+    },
     /// The room's most recent speakers, newest first, each with the endpoints the answering node
     /// knows serve them (at most `MAX_REACH_ENDPOINTS`). Empty as `Room` is.
-    RoomReach { speakers: Vec<([u8; 32], Vec<[u8; 32]>)> },
+    RoomReach {
+        speakers: Vec<([u8; 32], Vec<[u8; 32]>)>,
+    },
     /// The network's daily actives, estimated (HORSE_BASED_CURRENCIES.md, 2026-09-29): the asker's
     /// HyperLogLog sketches for recent UTC days (days since 1970-01-01), each `CENSUS_REGISTERS`
     /// bytes. The answerer merges them into its own - per-register maximum, so it's commutative
     /// and idempotent - and answers with the merged sketches for the same days, so one round trip
     /// spreads what both nodes knew. A sketch holds register maxima of root hashes, never roots.
-    WantCensus { sketches: Vec<(u32, Vec<u8>)> },
+    WantCensus {
+        sketches: Vec<(u32, Vec<u8>)>,
+    },
     /// The merged sketches, for the days the asker named.
-    Census { sketches: Vec<(u32, Vec<u8>)> },
+    Census {
+        sketches: Vec<(u32, Vec<u8>)>,
+    },
     /// The archive's history (CHAT.md, ruling 6): the room's messages said before
     /// `before_ms`, newest first, at most `limit` - asked of the creator's node, which keeps
     /// the room whole, by a reader whose own node keeps only the budget. `for_root` is the
     /// persona asking; a sealed room answers only a dialer serving a persona its seal admits.
-    WantRoomHistory { author: [u8; 32], doc_id: [u8; 16], for_root: [u8; 32], before_ms: u64, limit: u64, key_proof: Option<[u8; 32]> },
+    WantRoomHistory {
+        author: [u8; 32],
+        doc_id: [u8; 16],
+        for_root: [u8; 32],
+        before_ms: u64,
+        limit: u64,
+        key_proof: Option<[u8; 32]>,
+    },
     /// One frame of the answer: `(speaker root, signed entry)` pairs, a few per frame under
     /// the frame cap, newest first; the answer is a run of these ended by an EMPTY one. Each
     /// entry proves itself; the root beside it is the archive's attribution, which the
@@ -385,7 +444,11 @@ impl FragmentMessage {
             }
             Self::WantCensus { sketches } | Self::Census { sketches } => {
                 w.array(2);
-                w.uint(if matches!(self, Self::WantCensus { .. }) { TAG_WANT_CENSUS } else { TAG_CENSUS });
+                w.uint(if matches!(self, Self::WantCensus { .. }) {
+                    TAG_WANT_CENSUS
+                } else {
+                    TAG_CENSUS
+                });
                 w.array(sketches.len() as u64);
                 for (day, registers) in sketches {
                     w.array(2);
@@ -459,10 +522,9 @@ impl FragmentMessage {
         }
         let tag = r.uint()?;
         let out = match (tag, len) {
-            (TAG_WANT, 3) => Self::Want {
-                author: r.bytes_fixed::<32>()?,
-                doc_id: r.bytes_fixed::<16>()?,
-            },
+            (TAG_WANT, 3) => {
+                Self::Want { author: r.bytes_fixed::<32>()?, doc_id: r.bytes_fixed::<16>()? }
+            }
             (TAG_HAVE, 4) => {
                 let (entry, auth_path) = Self::entry_and_path(&mut r)?;
                 let count = r.array()?;
@@ -476,27 +538,18 @@ impl FragmentMessage {
                     }
                     let annotator = r.bytes_fixed::<32>()?;
                     let (entry, auth_path) = Self::entry_and_path(&mut r)?;
-                    annotations.push(AnnotationProof {
-                        annotator,
-                        entry,
-                        auth_path,
-                    });
+                    annotations.push(AnnotationProof { annotator, entry, auth_path });
                 }
-                Self::Have {
-                    entry,
-                    auth_path,
-                    annotations,
-                }
+                Self::Have { entry, auth_path, annotations }
             }
             (TAG_GONE, 3) => {
                 let (entry, auth_path) = Self::entry_and_path(&mut r)?;
                 Self::Gone { entry, auth_path }
             }
             (TAG_UNKNOWN, 1) => Self::Unknown,
-            (TAG_WANT_SHELF, 3) => Self::WantShelf {
-                author: r.bytes_fixed::<32>()?,
-                limit: r.uint()?,
-            },
+            (TAG_WANT_SHELF, 3) => {
+                Self::WantShelf { author: r.bytes_fixed::<32>()?, limit: r.uint()? }
+            }
             (TAG_SHELF, 3) => {
                 let mut lists: [Vec<[u8; 16]>; 2] = [Vec::new(), Vec::new()];
                 for list in lists.iter_mut() {
@@ -525,17 +578,9 @@ impl FragmentMessage {
                     let author = r.bytes_fixed::<32>()?;
                     let doc_id = r.bytes_fixed::<16>()?;
                     let (entry, auth_path) = Self::entry_and_path(&mut r)?;
-                    proofs.push(DeathProof {
-                        author,
-                        doc_id,
-                        entry,
-                        auth_path,
-                    });
+                    proofs.push(DeathProof { author, doc_id, entry, auth_path });
                 }
-                Self::Deaths {
-                    proofs,
-                    cursor: r.uint()?,
-                }
+                Self::Deaths { proofs, cursor: r.uint()? }
             }
             (TAG_WANT_KEY, 4) => Self::WantKey {
                 author: r.bytes_fixed::<32>()?,
@@ -580,7 +625,9 @@ impl FragmentMessage {
                 let mut speakers = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     if r.array()? != 2 {
-                        return Err(ProtoError::BadEntry("a reach row is a root and its endpoints"));
+                        return Err(ProtoError::BadEntry(
+                            "a reach row is a root and its endpoints",
+                        ));
                     }
                     let root = r.bytes_fixed::<32>()?;
                     let n = r.array()?;
@@ -603,16 +650,25 @@ impl FragmentMessage {
                 let mut sketches = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     if r.array()? != 2 {
-                        return Err(ProtoError::BadEntry("a census sketch is a day and its registers"));
+                        return Err(ProtoError::BadEntry(
+                            "a census sketch is a day and its registers",
+                        ));
                     }
-                    let day = u32::try_from(r.uint()?).map_err(|_| ProtoError::BadEntry("census day out of range"))?;
+                    let day = u32::try_from(r.uint()?)
+                        .map_err(|_| ProtoError::BadEntry("census day out of range"))?;
                     let registers = r.bytes()?.to_vec();
                     if registers.len() != CENSUS_REGISTERS {
-                        return Err(ProtoError::BadEntry("a census sketch is exactly its registers"));
+                        return Err(ProtoError::BadEntry(
+                            "a census sketch is exactly its registers",
+                        ));
                     }
                     sketches.push((day, registers));
                 }
-                if tag == TAG_WANT_CENSUS { Self::WantCensus { sketches } } else { Self::Census { sketches } }
+                if tag == TAG_WANT_CENSUS {
+                    Self::WantCensus { sketches }
+                } else {
+                    Self::Census { sketches }
+                }
             }
             (TAG_WANT_ROOM_HISTORY, arity @ 6..=7) => Self::WantRoomHistory {
                 author: r.bytes_fixed::<32>()?,
@@ -659,16 +715,9 @@ impl FragmentMessage {
                     }
                     let replier = r.bytes_fixed::<32>()?;
                     let (entry, auth_path) = Self::entry_and_path(&mut r)?;
-                    proofs.push(ReplyProof {
-                        replier,
-                        entry,
-                        auth_path,
-                    });
+                    proofs.push(ReplyProof { replier, entry, auth_path });
                 }
-                Self::Replies {
-                    proofs,
-                    cursor: r.uint()?,
-                }
+                Self::Replies { proofs, cursor: r.uint()? }
             }
             _ => return Err(ProtoError::BadEntry("unknown fragment message")),
         };
@@ -728,9 +777,7 @@ pub fn verify_fragment(
     let entry = signed.entry();
 
     if entry.chain.service != service::POSTS || entry.entry_type != entry_type::DOC_HEADER {
-        return Err(ProtoError::ChainViolation(
-            "a fragment must be a public document header",
-        ));
+        return Err(ProtoError::ChainViolation("a fragment must be a public document header"));
     }
     // The chain's author is the identity's root only for a root-signed chain; in general the
     // chain author IS the signing leaf, and the path below is what ties it to the root.
@@ -790,9 +837,7 @@ pub fn verify_annotation(
     if entry.chain.service != service::ANNOTATIONS_PUBLIC
         || entry.entry_type != entry_type::PUBLIC_ANNOTATION
     {
-        return Err(ProtoError::ChainViolation(
-            "an annotation proof must be a public annotation",
-        ));
+        return Err(ProtoError::ChainViolation("an annotation proof must be a public annotation"));
     }
     crate::deliver::walk_auth_path(annotator, auth_path, entry.chain.author)?;
     let Payload::Inline(payload) = &entry.payload else {
@@ -819,9 +864,7 @@ pub fn verify_reply(
     let entry = signed.entry();
 
     if entry.chain.service != service::POSTS || entry.entry_type != entry_type::DOC_HEADER {
-        return Err(ProtoError::ChainViolation(
-            "a reply proof must be a doc header",
-        ));
+        return Err(ProtoError::ChainViolation("a reply proof must be a doc header"));
     }
     crate::deliver::walk_auth_path(replier, auth_path, entry.chain.author)?;
 
@@ -851,9 +894,7 @@ pub fn verify_retraction(
     let entry = signed.entry();
 
     if entry.chain.service != service::POSTS || entry.entry_type != entry_type::POST_RETRACT {
-        return Err(ProtoError::ChainViolation(
-            "a gone-proof must be a post retraction",
-        ));
+        return Err(ProtoError::ChainViolation("a gone-proof must be a post retraction"));
     }
     crate::deliver::walk_auth_path(author, auth_path, entry.chain.author)?;
 
@@ -887,9 +928,12 @@ mod tests {
             assert!(bytes.len() <= MAX_FRAGMENT_FRAME_BYTES);
             assert_eq!(FragmentMessage::decode(&bytes).unwrap(), message);
         }
-        let many = FragmentMessage::Census { sketches: vec![(1, vec![0u8; CENSUS_REGISTERS]); MAX_CENSUS_DAYS + 1] };
+        let many = FragmentMessage::Census {
+            sketches: vec![(1, vec![0u8; CENSUS_REGISTERS]); MAX_CENSUS_DAYS + 1],
+        };
         assert!(FragmentMessage::decode(&many.encode()).is_err(), "past the day cap");
-        let short = FragmentMessage::Census { sketches: vec![(1, vec![0u8; CENSUS_REGISTERS - 1])] };
+        let short =
+            FragmentMessage::Census { sketches: vec![(1, vec![0u8; CENSUS_REGISTERS - 1])] };
         assert!(FragmentMessage::decode(&short.encode()).is_err(), "not a sketch's size");
     }
 
@@ -897,20 +941,41 @@ mod tests {
     /// either cap is refused.
     #[test]
     fn room_reach_round_trips_fits_a_frame_and_refuses_too_much() {
-        let full = FragmentMessage::RoomReach { speakers: vec![([7u8; 32], vec![[8u8; 32]; MAX_REACH_ENDPOINTS]); MAX_ROOM_REACH] };
+        let full = FragmentMessage::RoomReach {
+            speakers: vec![([7u8; 32], vec![[8u8; 32]; MAX_REACH_ENDPOINTS]); MAX_ROOM_REACH],
+        };
         for message in [
-            FragmentMessage::WantRoomReach { author: [1u8; 32], doc_id: [2u8; 16], for_root: [3u8; 32], key_proof: None },
-            FragmentMessage::WantRoomReach { author: [1u8; 32], doc_id: [2u8; 16], for_root: [3u8; 32], key_proof: Some([4u8; 32]) },
-            FragmentMessage::RoomReach { speakers: vec![([5u8; 32], vec![[6u8; 32]]), ([9u8; 32], Vec::new())] },
+            FragmentMessage::WantRoomReach {
+                author: [1u8; 32],
+                doc_id: [2u8; 16],
+                for_root: [3u8; 32],
+                key_proof: None,
+            },
+            FragmentMessage::WantRoomReach {
+                author: [1u8; 32],
+                doc_id: [2u8; 16],
+                for_root: [3u8; 32],
+                key_proof: Some([4u8; 32]),
+            },
+            FragmentMessage::RoomReach {
+                speakers: vec![([5u8; 32], vec![[6u8; 32]]), ([9u8; 32], Vec::new())],
+            },
             FragmentMessage::RoomReach { speakers: Vec::new() },
             full.clone(),
         ] {
             assert_eq!(FragmentMessage::decode(&message.encode()).unwrap(), message);
         }
-        assert!(full.encode().len() <= MAX_FRAGMENT_FRAME_BYTES, "fifty speakers, four endpoints each, in one frame");
-        let many = FragmentMessage::RoomReach { speakers: vec![([7u8; 32], Vec::new()); MAX_ROOM_REACH + 1] };
+        assert!(
+            full.encode().len() <= MAX_FRAGMENT_FRAME_BYTES,
+            "fifty speakers, four endpoints each, in one frame"
+        );
+        let many = FragmentMessage::RoomReach {
+            speakers: vec![([7u8; 32], Vec::new()); MAX_ROOM_REACH + 1],
+        };
         assert!(FragmentMessage::decode(&many.encode()).is_err(), "past the speaker cap");
-        let wide = FragmentMessage::RoomReach { speakers: vec![([7u8; 32], vec![[8u8; 32]; MAX_REACH_ENDPOINTS + 1])] };
+        let wide = FragmentMessage::RoomReach {
+            speakers: vec![([7u8; 32], vec![[8u8; 32]; MAX_REACH_ENDPOINTS + 1])],
+        };
         assert!(FragmentMessage::decode(&wide.encode()).is_err(), "past the endpoint cap");
     }
 
@@ -924,17 +989,17 @@ mod tests {
             let bytes = message.encode();
             assert_eq!(FragmentMessage::decode(&bytes).unwrap(), message);
         }
-        let long = FragmentMessage::Shelf { posts: vec![[9u8; 16]; MAX_SHELF_IDS + 1], pinned: Vec::new() };
+        let long = FragmentMessage::Shelf {
+            posts: vec![[9u8; 16]; MAX_SHELF_IDS + 1],
+            pinned: Vec::new(),
+        };
         assert!(FragmentMessage::decode(&long.encode()).is_err(), "a list past the cap is refused");
     }
 
     #[test]
     fn messages_round_trip() {
         for message in [
-            FragmentMessage::Want {
-                author: [1u8; 32],
-                doc_id: [2u8; 16],
-            },
+            FragmentMessage::Want { author: [1u8; 32], doc_id: [2u8; 16] },
             FragmentMessage::Have {
                 entry: vec![3, 4, 5],
                 auth_path: vec![vec![6, 7], vec![8]],
@@ -949,20 +1014,10 @@ mod tests {
                 auth_path: Vec::new(),
                 annotations: Vec::new(),
             },
-            FragmentMessage::Gone {
-                entry: vec![10, 11],
-                auth_path: vec![vec![12]],
-            },
-            FragmentMessage::Gone {
-                entry: Vec::new(),
-                auth_path: Vec::new(),
-            },
+            FragmentMessage::Gone { entry: vec![10, 11], auth_path: vec![vec![12]] },
+            FragmentMessage::Gone { entry: Vec::new(), auth_path: Vec::new() },
             FragmentMessage::Unknown,
-            FragmentMessage::WantReplies {
-                author: [1u8; 32],
-                doc_id: [2u8; 16],
-                since: 99,
-            },
+            FragmentMessage::WantReplies { author: [1u8; 32], doc_id: [2u8; 16], since: 99 },
             FragmentMessage::Replies {
                 proofs: vec![ReplyProof {
                     replier: [3u8; 32],
@@ -971,16 +1026,10 @@ mod tests {
                 }],
                 cursor: 12,
             },
-            FragmentMessage::Replies {
-                proofs: Vec::new(),
-                cursor: 0,
-            },
+            FragmentMessage::Replies { proofs: Vec::new(), cursor: 0 },
             FragmentMessage::WantDeaths { since: 0 },
             FragmentMessage::WantDeaths { since: 4_321 },
-            FragmentMessage::Deaths {
-                proofs: Vec::new(),
-                cursor: 7,
-            },
+            FragmentMessage::Deaths { proofs: Vec::new(), cursor: 7 },
             FragmentMessage::Deaths {
                 proofs: vec![
                     DeathProof {
@@ -999,10 +1048,7 @@ mod tests {
                 cursor: 99,
             },
         ] {
-            assert_eq!(
-                FragmentMessage::decode(&message.encode()).unwrap(),
-                message
-            );
+            assert_eq!(FragmentMessage::decode(&message.encode()).unwrap(), message);
         }
     }
 
@@ -1027,11 +1073,7 @@ mod tests {
     #[test]
     fn gone_and_unknown_are_different_on_the_wire() {
         assert_ne!(
-            FragmentMessage::Gone {
-                entry: Vec::new(),
-                auth_path: Vec::new(),
-            }
-            .encode(),
+            FragmentMessage::Gone { entry: Vec::new(), auth_path: Vec::new() }.encode(),
             FragmentMessage::Unknown.encode()
         );
     }
@@ -1097,9 +1139,9 @@ mod tests {
             genesis_ms: Some(9),
             reply_to,
             thread_root: reply_to,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         let entry = crate::Entry {
             v: crate::ENTRY_VERSION,
@@ -1235,11 +1277,7 @@ mod tests {
         let entry = crate::Entry {
             v: crate::ENTRY_VERSION,
             entry_type: entry_type::DOC_HEADER,
-            chain: crate::ChainId {
-                author,
-                service: service::POSTS,
-                instance: None,
-            },
+            chain: crate::ChainId { author, service: service::POSTS, instance: None },
             seq: 4,
             prev_hash: crate::ZERO_HASH,
             timestamp_ms: 1_700_000_000_000,
@@ -1256,13 +1294,9 @@ mod tests {
         let key = author_key();
         let stranger = crate::SigningKey::from_bytes(&[9u8; 32]);
         let proof = retraction_entry(&key, [3u8; 16]);
-        assert!(verify_retraction(
-            stranger.verifying_key().to_bytes(),
-            [3u8; 16],
-            &proof,
-            &[]
-        )
-        .is_err());
+        assert!(
+            verify_retraction(stranger.verifying_key().to_bytes(), [3u8; 16], &proof, &[]).is_err()
+        );
     }
 
     #[test]

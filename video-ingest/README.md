@@ -4,8 +4,8 @@ Browser-side JS that normalizes an **arbitrary user video** into one of two
 **intermediary formats** that a memory-safe Rust server can safely re-decode.
 
 This is a **proof of concept** (a library, not a UI) built to answer one
-question — *can the client do the hostile video work so the server never has
-to?* — and the answer is **yes, proven end-to-end in real Chromium**, with the
+question — _can the client do the hostile video work so the server never has
+to?_ — and the answer is **yes, proven end-to-end in real Chromium**, with the
 sad-path output cross-checked against the actual Rust `image` decoder. Keep this
 directory: it's the reference implementation for the eventual upload UI, and its
 findings define the Rust video pipeline's input contract.
@@ -16,14 +16,14 @@ findings define the Rust video pipeline's input contract.
 
 Two independent reasons, both pointing the same way:
 
-1. **Rust can't decode the codec zoo.** There is no production-grade *pure-Rust*
+1. **Rust can't decode the codec zoo.** There is no production-grade _pure-Rust_
    decoder for H.264 or HEVC — the codecs every phone on earth records — and none
    for VP9. Rust can decode **AV1** (`rav1d`) and still-image frames
    (PNG/WebP/APNG via the `image` crate), and that's about it. So a Rust server
    simply cannot read most real-world video.
 2. **Patents + memory-safety.** The universal decoder for that zoo is FFmpeg — a
    huge C/C++ library with a long hostile-input CVE history (see CVE-2023-4863,
-   the libwebp zero-click), plus patent-licensing baggage for H.264/HEVC *decode*
+   the libwebp zero-click), plus patent-licensing baggage for H.264/HEVC _decode_
    distribution. Bundling and sandboxing it is exactly the mess we're avoiding.
 
 So we **never let the server decode the user's arbitrary input.** Instead:
@@ -31,10 +31,10 @@ So we **never let the server decode the user's arbitrary input.** Instead:
 1. The **hostile decode** happens in the **browser's hardened, already-licensed,
    hardware-accelerated decoder** (the `<video>` element / WebCodecs).
 2. The browser **re-emits** the content in a format the server can re-decode in
-   **memory-safe Rust**. This *launders* the input — the server (and every peer
+   **memory-safe Rust**. This _launders_ the input — the server (and every peer
    that later replicates it) only ever sees our-encoder bytes, never the
    attacker's crafted bitstream. The viewer's browser is then the last line, but
-   we're no longer relying on it as the *only* line.
+   we're no longer relying on it as the _only_ line.
 
 This is the video analog of the AVIF image path (browser can't be trusted; decode
 in memory-safe Rust). The discipline is the same: **every byte from the network
@@ -42,12 +42,12 @@ is hostile, and we only decode what we can decode safely.**
 
 ---
 
-## Why *two* intermediary formats
+## Why _two_ intermediary formats
 
 Because of a codec asymmetry that turns out to be the whole ballgame:
 
-> **AV1 *decode* is universal** (every modern browser plays it), but
-> **AV1 *encode* is not** — Chromium does it; Safari and older/some Firefox don't.
+> **AV1 _decode_ is universal** (every modern browser plays it), but
+> **AV1 _encode_ is not** — Chromium does it; Safari and older/some Firefox don't.
 
 So:
 
@@ -59,12 +59,12 @@ So:
   frames with the `image` crate.
 
 The fallback is the floor nobody falls through. It is bandwidth-heavy (no
-inter-frame compression — see findings) but it *always works*.
+inter-frame compression — see findings) but it _always works_.
 
-| Lane | Emitted | Server decodes with | When |
-|------|---------|---------------------|------|
-| `av1` (happy path) | **AV1-in-WebM** (AV1 + Opus, muxed) | `rav1d` (video) + Opus | browser can *encode* AV1 |
-| `frames` (fallback) | **320p APNG** + separate **Ogg Opus** | `image` crate (frames) + Opus | any browser |
+| Lane                | Emitted                               | Server decodes with           | When                     |
+| ------------------- | ------------------------------------- | ----------------------------- | ------------------------ |
+| `av1` (happy path)  | **AV1-in-WebM** (AV1 + Opus, muxed)   | `rav1d` (video) + Opus        | browser can _encode_ AV1 |
+| `frames` (fallback) | **320p APNG** + separate **Ogg Opus** | `image` crate (frames) + Opus | any browser              |
 
 Both lanes downscale so the **longest side ≤ 320px**, cap frame rate to **~20fps**,
 and target short-form clips.
@@ -87,9 +87,9 @@ of it away.** The server's entire video decode surface is `rav1d` + the `image`
 crate + Opus handling: small, pure-Rust, memory-safe. That constrained-input
 guarantee is the thing this spike buys.
 
-(The server still *validates* — codec allowlist, dimension/duration/size bounds,
+(The server still _validates_ — codec allowlist, dimension/duration/size bounds,
 structural parse — because a modified client could upload anything. It just never
-has to decode an untrusted *foreign* codec.)
+has to decode an untrusted _foreign_ codec.)
 
 ---
 
@@ -156,12 +156,12 @@ crate for the APNG):
 - **Size reality** (20 s of 4K source → 320p): the `av1` lane produces **~1.6 MB**;
   the `frames` lane produces **~58 MB** of APNG. The fallback is a safety net, not
   a peer — no inter-frame compression, every frame a full still. This bounds the
-  *intermediary upload* (later crushed on the server) and reinforces short-form.
+  _intermediary upload_ (later crushed on the server) and reinforces short-form.
 - **Some audio codecs can't be decoded by the browser at all** — notably **AC-3 /
   DTS** (Dolby, not web codecs). When the source audio is undecodable, the browser
   can't launder it, so the audio is **dropped** (video-only output) rather than
   failing the whole ingest. Real-world content (phones/web = AAC) decodes fine.
-- **Feature-detection lesson (a bug we hit):** probe the *exact* encoder a lane
+- **Feature-detection lesson (a bug we hit):** probe the _exact_ encoder a lane
   uses. Firefox reports WebCodecs `VideoEncoder` av01 support but its
   `MediaRecorder` can't mux av01 — detecting via WebCodecs while encoding via
   MediaRecorder mis-routed Firefox into a lane that then threw. Detection now
@@ -171,14 +171,14 @@ crate for the APNG):
 
 ## Improvements for the production version
 
-- **Progress bars — mandatory.** Both lanes are slow, and `frames` is *much*
+- **Progress bars — mandatory.** Both lanes are slow, and `frames` is _much_
   slower. The UI must show progress (per-frame for `frames`, elapsed/real-time for
   `av1`) or it reads as hung.
 - **A faster AV1 pipeline — the big one.** The `av1` lane uses `MediaRecorder`,
   which records at **playback speed** (a 3-minute clip takes 3 minutes). Rebuild
   it on **WebCodecs `VideoEncoder`** (decode → downscale → encode av01 → WebM mux).
   This fixes two things at once: (1) **faster-than-realtime** encode, and (2)
-  **wider browser coverage** — Firefox *can* WebCodecs-encode av01 even though its
+  **wider browser coverage** — Firefox _can_ WebCodecs-encode av01 even though its
   MediaRecorder can't, so more browsers would get the compact lane instead of the
   58 MB fallback. Cost: a real WebM muxer (the one piece MediaRecorder gave us
   free).
@@ -230,14 +230,14 @@ shows a `<video controls>` preview — hit play to hear the muxed audio.
 ## Honest limitations (it's a spike)
 
 - **`av1` lane records at playback speed** (MediaRecorder). See improvements.
-- **`ImageDecoder`** (used only by the *test* to count APNG frames) is
+- **`ImageDecoder`** (used only by the _test_ to count APNG frames) is
   Chromium-only. The APNG itself is standard — Firefox/Safari render it, and the
   Rust `image` crate decodes it.
 - **Only Chromium was auto-tested here.** The `frames` fallback uses standards-only
-  APIs and *should* work in Firefox/Safari, but that wants real-browser
+  APIs and _should_ work in Firefox/Safari, but that wants real-browser
   confirmation (headless Firefox couldn't be driven from this box — snap
   confinement, not a code issue).
 - **AAC decode** couldn't be confirmed on this box's Chromium build (open-source
-  Chromium may ship without proprietary codecs); real Chrome/Firefox decode AAC
-  fine, and the audio *machinery* is proven with real signal regardless.
+Chromium may ship without proprietary codecs); real Chrome/Firefox decode AAC
+fine, and the audio _machinery_ is proven with real signal regardless.
 </content>

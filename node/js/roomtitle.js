@@ -9,8 +9,10 @@ import { Icons } from './icons.js';
 
 const html = htm.bind(h);
 
-export const RoomTitle = ({ children }) => html`<span class="room-title"><span class="room-hash" aria-hidden="true">#</span>${children}</span>`;
+export const RoomTitle = ({ children }) =>
+    html`<span class="room-title"><span class="room-hash" aria-hidden="true">#</span>${children}</span>`;
 
 /// A book's title, marked as a book (Curtis, 2026-09-28): the book icon before it, as a room wears
 /// its hash - in the feed and on a book's link card.
-export const BookTitle = ({ children }) => html`<span class="book-title"><${Icons.book} />${children}</span>`;
+export const BookTitle = ({ children }) =>
+    html`<span class="book-title"><${Icons.book} />${children}</span>`;

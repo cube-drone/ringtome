@@ -439,21 +439,17 @@ pub async fn fetch_post(
     }
     match crate::net::fragment::fetch(state, origin_root, author, doc_id).await {
         crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
-            if let Err(e) = remember(
-                &state.node_db,
-                origin_root,
-                &author_root,
-                &verified,
-                &entry,
-                &auth_path,
-            )
-            .await
+            if let Err(e) =
+                remember(&state.node_db, origin_root, &author_root, &verified, &entry, &auth_path)
+                    .await
             {
                 tracing::debug!(author = %author_root, error = ?e,
                     "could not store a door-learned reply");
                 return;
             }
-            let _ = crate::net::bodies::want(&state.node_db, &author_root, &verified.header.file_hash).await;
+            let _ =
+                crate::net::bodies::want(&state.node_db, &author_root, &verified.header.file_hash)
+                    .await;
             if let Some(ep) = &served_by {
                 let _ = note_deliverer(&state.node_db, &author_root, ep).await;
             }
@@ -485,15 +481,9 @@ async fn fetch_cover(
     let media_hex = hex::encode(media);
     match crate::net::fragment::fetch(state, origin_root, &author, media).await {
         crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
-            if let Err(e) = remember(
-                &state.node_db,
-                origin_root,
-                author_root,
-                &verified,
-                &entry,
-                &auth_path,
-            )
-            .await
+            if let Err(e) =
+                remember(&state.node_db, origin_root, author_root, &verified, &entry, &auth_path)
+                    .await
             {
                 tracing::warn!(author = %author_root, media = %media_hex, error = ?e,
                     "could not store a covered media fragment");
@@ -649,10 +639,7 @@ pub struct LoggedDeath {
 /// at one, so zero reads their whole history, which is exactly right for first contact.
 pub async fn death_cursor(node_db: &Db, origin_root: &str) -> Result<i64> {
     let row: Option<(i64,)> = node_db
-        .fetch_optional(
-            "SELECT cursor FROM death_cursors WHERE origin_root = ?1",
-            (origin_root,),
-        )
+        .fetch_optional("SELECT cursor FROM death_cursors WHERE origin_root = ?1", (origin_root,))
         .await
         .context("reading a death cursor")?;
     Ok(row.map(|(c,)| c).unwrap_or(0))
@@ -695,11 +682,8 @@ pub async fn mirror_retractions(state: &crate::AppState, author_root: &str) {
 }
 
 async fn mirror_retractions_inner(state: &crate::AppState, author_root: &str) -> Result<()> {
-    let Some(db) = state
-        .user_dbs
-        .get(author_root)
-        .await
-        .context("opening the author's database")?
+    let Some(db) =
+        state.user_dbs.get(author_root).await.context("opening the author's database")?
     else {
         return Ok(());
     };
@@ -711,10 +695,7 @@ async fn mirror_retractions_inner(state: &crate::AppState, author_root: &str) ->
     }
     let known: Vec<(String,)> = state
         .node_db
-        .fetch_all(
-            "SELECT doc_id FROM fragment_tombstones WHERE author_root = ?1",
-            (author_root,),
-        )
+        .fetch_all("SELECT doc_id FROM fragment_tombstones WHERE author_root = ?1", (author_root,))
         .await
         .context("diffing the death log")?;
     let known: std::collections::HashSet<String> = known.into_iter().map(|(d,)| d).collect();
@@ -770,18 +751,12 @@ pub async fn reap(state: &crate::AppState) -> Result<()> {
         if !seen.insert(peer.clone()) {
             continue;
         }
-        if crate::identity::is_agented(&state.node_db, &peer)
-            .await
-            .unwrap_or(false)
-        {
+        if crate::identity::is_agented(&state.node_db, &peer).await.unwrap_or(false) {
             continue;
         }
         drain_death_log(state, ReapDoor::Origin(&peer)).await?;
     }
-    for endpoint in crate::net::sync::cohort_endpoints(state)
-        .await
-        .unwrap_or_default()
-    {
+    for endpoint in crate::net::sync::cohort_endpoints(state).await.unwrap_or_default() {
         drain_death_log(state, ReapDoor::Cohort(&endpoint)).await?;
     }
     Ok(())
@@ -844,10 +819,7 @@ async fn drain_death_log(state: &crate::AppState, door: ReapDoor<'_>) -> Result<
 /// The memo-then-forget order is the sweep's own: a crash between the two leaves a tombstone
 /// and a stale fragment, which the next pass resolves - never a node that forgot both the
 /// words and the reason.
-pub async fn apply_death(
-    node_db: &Db,
-    p: &ringtome_proto::fragment::DeathProof,
-) -> Result<bool> {
+pub async fn apply_death(node_db: &Db, p: &ringtome_proto::fragment::DeathProof) -> Result<bool> {
     let author_hex = hex::encode(p.author);
     let doc_hex = hex::encode(p.doc_id);
     if held(node_db, &author_hex, &doc_hex).await?.is_none() {
@@ -1043,10 +1015,7 @@ pub async fn forget_peek(node_db: &Db, author_root: &str) -> Result<u64> {
 /// longer holds are no longer heal candidates for anything.
 pub async fn forget_deliverers(node_db: &Db, author_root: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM fragment_deliverers WHERE author_root = ?1",
-            (author_root,),
-        )
+        .execute("DELETE FROM fragment_deliverers WHERE author_root = ?1", (author_root,))
         .await
         .context("forgetting an evicted author's deliverers")?;
     Ok(())
@@ -1056,10 +1025,7 @@ pub async fn forget_deliverers(node_db: &Db, author_root: &str) -> Result<()> {
 /// asking, and eviction is the decision that nobody is owed the answer.
 pub async fn forget_wants(node_db: &Db, author_root: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM fragment_wants WHERE author_root = ?1",
-            (author_root,),
-        )
+        .execute("DELETE FROM fragment_wants WHERE author_root = ?1", (author_root,))
         .await
         .context("forgetting an evicted author's wants")?;
     Ok(())
@@ -1215,7 +1181,10 @@ pub async fn shelf_of(
 /// ledger and serves its bytes - the face and the banner still show - it is only never LISTED.
 fn on_shelf(doc: &crate::record::documents::PublicDoc) -> bool {
     use ringtome_proto::registry::doc_format;
-    matches!(doc.format, None | Some(doc_format::MARQUEE) | Some(doc_format::BOOK) | Some(doc_format::ROOM))
+    matches!(
+        doc.format,
+        None | Some(doc_format::MARQUEE) | Some(doc_format::BOOK) | Some(doc_format::ROOM)
+    )
 }
 
 /// One fragment in the public shelf's shape, with the header's refs (its media twins)
@@ -1278,7 +1247,11 @@ pub async fn held(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Optio
 
 /// The held fragment's signed entry, whole - for a reader that needs the entry's own stamp
 /// beside its header (the room's close, CHAT.md ruling 10).
-pub async fn held_entry(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Option<ringtome_proto::SignedEntry>> {
+pub async fn held_entry(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<Option<ringtome_proto::SignedEntry>> {
     let row: Option<(Vec<u8>,)> = node_db
         .fetch_optional(
             "SELECT entry FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
@@ -1332,8 +1305,8 @@ pub fn unpack_path(packed: &[u8]) -> Vec<Vec<u8>> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while i + 4 <= packed.len() {
-        let len = u32::from_be_bytes([packed[i], packed[i + 1], packed[i + 2], packed[i + 3]])
-            as usize;
+        let len =
+            u32::from_be_bytes([packed[i], packed[i + 1], packed[i + 2], packed[i + 3]]) as usize;
         i += 4;
         if i + len > packed.len() {
             break; // truncated: return what parsed, and the fragment simply fails re-verification
@@ -1343,7 +1316,6 @@ pub fn unpack_path(packed: &[u8]) -> Vec<Vec<u8>> {
     }
     out
 }
-
 
 /// What version of somebody else's document this node currently holds - the head from their
 /// chain if we sync them, otherwise the fragment we fetched.
@@ -1455,15 +1427,9 @@ pub async fn journalable(
     };
     match fetched {
         crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
-            if let Err(e) = remember(
-                &state.node_db,
-                origin_root,
-                author_root,
-                &verified,
-                &entry,
-                &auth_path,
-            )
-            .await
+            if let Err(e) =
+                remember(&state.node_db, origin_root, author_root, &verified, &entry, &auth_path)
+                    .await
             {
                 tracing::warn!(author = %author_root, error = ?e, "could not store a fragment");
                 return None;
@@ -1571,17 +1537,11 @@ fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
     }
 }
 
-
 /// Note that a share's content could not be fetched, so the sweep keeps trying.
 ///
 /// Idempotent, and it never resets an existing row's backoff - the same discipline as
 /// `bodies::want`, for the same reason.
-async fn note_want(
-    node_db: &Db,
-    author_root: &str,
-    doc_id: &str,
-    origin_root: &str,
-) -> Result<()> {
+async fn note_want(node_db: &Db, author_root: &str, doc_id: &str, origin_root: &str) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO fragment_wants (author_root, doc_id, origin_root, first_noted_ms)
@@ -1630,9 +1590,8 @@ const REVALIDATE_AFTER_MS: i64 = 30 * 60 * 1000;
 /// shorten it with `RINGTOME_TEST_REVALIDATE_MS`, exactly as it shrinks the inbox tiers.
 fn revalidate_after_ms() -> i64 {
     if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
-        if let Some(n) = std::env::var("RINGTOME_TEST_REVALIDATE_MS")
-            .ok()
-            .and_then(|v| v.parse::<i64>().ok())
+        if let Some(n) =
+            std::env::var("RINGTOME_TEST_REVALIDATE_MS").ok().and_then(|v| v.parse::<i64>().ok())
         {
             return n.max(0);
         }
@@ -1692,12 +1651,15 @@ async fn revalidate_due_fragments(state: &crate::AppState) -> Result<()> {
 
 /// Ask the origin about ONE held copy, and take what it says: a newer version re-stored wholesale,
 /// a withdrawal entombed, silence only stamped. The sweep's per-copy work, and the visit's.
-async fn revalidate_one(state: &crate::AppState, author_hex: &str, doc_hex: &str, origin_root: &str) -> Result<()> {
+async fn revalidate_one(
+    state: &crate::AppState,
+    author_hex: &str,
+    doc_hex: &str,
+    origin_root: &str,
+) -> Result<()> {
     let (Some(author), Some(doc_id)) = (
         crate::pubkey::decode(author_hex),
-        hex::decode(doc_hex)
-            .ok()
-            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
+        hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
     ) else {
         return Ok(());
     };
@@ -1722,15 +1684,8 @@ async fn revalidate_one(state: &crate::AppState, author_hex: &str, doc_hex: &str
             // version, new title, new body hash. The feed row's title is refreshed from the
             // same write, and the new body is noted as wanted - an edited post whose words
             // have not arrived renders as "still arriving", which the feed already knows.
-            remember(
-                &state.node_db,
-                origin_root,
-                author_hex,
-                &verified,
-                &entry,
-                &auth_path,
-            )
-            .await?;
+            remember(&state.node_db, origin_root, author_hex, &verified, &entry, &auth_path)
+                .await?;
             crate::fanout::retitle_shared(
                 &state.node_db,
                 author_hex,
@@ -1738,20 +1693,16 @@ async fn revalidate_one(state: &crate::AppState, author_hex: &str, doc_hex: &str
                 &verified.header.title,
             )
             .await?;
-            let _ = crate::net::bodies::want(
-                &state.node_db,
-                author_hex,
-                &verified.header.file_hash,
-            )
-            .await;
+            let _ =
+                crate::net::bodies::want(&state.node_db, author_hex, &verified.header.file_hash)
+                    .await;
             if let Some(ep) = &served_by {
                 let _ = note_deliverer(&state.node_db, author_hex, ep).await;
             }
             heal_soon(state, author_hex, origin_root);
             // An edit can change what a post embeds; the reconcile inside drops covers
             // the new refs no longer name and releases orphaned media.
-            cover_refs(state, origin_root, author_hex, doc_hex, &verified.header.refs)
-                .await;
+            cover_refs(state, origin_root, author_hex, doc_hex, &verified.header.refs).await;
         }
         crate::net::fragment::Fetched::Gone { entry, auth_path } => {
             tracing::info!(
@@ -1780,8 +1731,9 @@ async fn revalidate_one(state: &crate::AppState, author_hex: &str, doc_hex: &str
 }
 
 /// Copies being refreshed for a visit right now, so a page opened ten times asks once.
-static REFRESHING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> =
-    std::sync::LazyLock::new(Default::default);
+static REFRESHING: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<(String, String)>>,
+> = std::sync::LazyLock::new(Default::default);
 
 /// Someone opened a post this node holds only a copy of (Curtis, 2026-10-02): past its fresh day the
 /// sweep no longer keeps it current - "maybe if you visit the post directly, the server could then
@@ -1823,10 +1775,7 @@ pub(crate) async fn force_due(node_db: &Db, author_root: Option<&str>) -> Result
     match author_root {
         Some(author) => {
             node_db
-                .execute(
-                    "UPDATE fragments SET checked_ms = 0 WHERE author_root = ?1",
-                    (author,),
-                )
+                .execute("UPDATE fragments SET checked_ms = 0 WHERE author_root = ?1", (author,))
                 .await?;
             node_db
                 .execute(
@@ -1837,9 +1786,7 @@ pub(crate) async fn force_due(node_db: &Db, author_root: Option<&str>) -> Result
         }
         None => {
             node_db.execute("UPDATE fragments SET checked_ms = 0", ()).await?;
-            node_db
-                .execute("UPDATE fragment_wants SET last_tried_ms = 0", ())
-                .await?;
+            node_db.execute("UPDATE fragment_wants SET last_tried_ms = 0", ()).await?;
         }
     }
     Ok(())
@@ -1916,9 +1863,7 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
 
         let (Some(author), Some(doc_id)) = (
             crate::pubkey::decode(&author_hex),
-            hex::decode(&doc_hex)
-                .ok()
-                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
+            hex::decode(&doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
         ) else {
             settle_want(&state.node_db, &author_hex, &doc_hex).await?;
             continue;
@@ -1946,8 +1891,7 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                     let _ = note_deliverer(&state.node_db, &author_hex, ep).await;
                 }
                 heal_soon(state, &author_hex, &origin_root);
-                cover_refs(state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
-                    .await;
+                cover_refs(state, &origin_root, &author_hex, &doc_hex, &verified.header.refs).await;
                 settle_want(&state.node_db, &author_hex, &doc_hex).await?;
                 tracing::info!(author = %author_hex, doc = %doc_hex, "a wanted fragment arrived");
                 crate::fanout::journal_late_share(
@@ -2007,10 +1951,17 @@ mod tests {
             dated_ms: None,
             part_of: None,
         };
-        for words in [None, Some(doc_format::MARQUEE), Some(doc_format::BOOK), Some(doc_format::ROOM)] {
+        for words in
+            [None, Some(doc_format::MARQUEE), Some(doc_format::BOOK), Some(doc_format::ROOM)]
+        {
             assert!(super::on_shelf(&doc(words)), "{words:?}");
         }
-        for media in [Some(doc_format::AVIF), Some(doc_format::APNG), Some(doc_format::OGG_OPUS), Some(doc_format::WEBM_AV1)] {
+        for media in [
+            Some(doc_format::AVIF),
+            Some(doc_format::APNG),
+            Some(doc_format::OGG_OPUS),
+            Some(doc_format::WEBM_AV1),
+        ] {
             assert!(!super::on_shelf(&doc(media)), "{media:?}");
         }
     }
@@ -2018,11 +1969,9 @@ mod tests {
 
     #[test]
     fn a_path_round_trips_through_its_column() {
-        for path in [
-            Vec::new(),
-            vec![vec![1u8, 2, 3]],
-            vec![vec![1u8; 40], vec![2u8; 7], vec![3u8; 100]],
-        ] {
+        for path in
+            [Vec::new(), vec![vec![1u8, 2, 3]], vec![vec![1u8; 40], vec![2u8; 7], vec![3u8; 100]]]
+        {
             assert_eq!(unpack_path(&pack_path(&path)), path);
         }
     }
@@ -2074,9 +2023,9 @@ mod tests {
                 genesis_ms,
                 reply_to: None,
                 thread_root: None,
-            sealed_title: None,
-            seal_of: None,
-            onward: false,
+                sealed_title: None,
+                seal_of: None,
+                onward: false,
             },
         }
     }
@@ -2093,9 +2042,7 @@ mod tests {
         let doc = [3u8; 16];
         let doc_hex = hex::encode(doc);
 
-        remember(&db, &"b".repeat(64), &author, &verified(doc), &[1, 2, 3], &[])
-            .await
-            .unwrap();
+        remember(&db, &"b".repeat(64), &author, &verified(doc), &[1, 2, 3], &[]).await.unwrap();
         assert!(
             held(&db, &author, &doc_hex).await.unwrap().is_some(),
             "precondition: it arrived the ordinary way first"
@@ -2108,18 +2055,13 @@ mod tests {
         forget(&db, &author, &doc_hex).await.unwrap();
 
         // And now somebody who never heard offers it back, from a different origin.
-        remember(&db, &"c".repeat(64), &author, &verified(doc), &[1, 2, 3], &[])
-            .await
-            .unwrap();
+        remember(&db, &"c".repeat(64), &author, &verified(doc), &[1, 2, 3], &[]).await.unwrap();
 
         assert!(
             held(&db, &author, &doc_hex).await.unwrap().is_none(),
             "a tombstone outranks a stale sharer, however well signed their copy is"
         );
-        assert!(
-            entombed(&db, &author, &doc).await.unwrap(),
-            "and the fact survives the attempt"
-        );
+        assert!(entombed(&db, &author, &doc).await.unwrap(), "and the fact survives the attempt");
         assert_eq!(
             tomb_proof(&db, &author, &doc).await.unwrap(),
             Some((vec![9, 9, 9], vec![vec![8]])),
@@ -2177,9 +2119,7 @@ mod tests {
         let held_doc = [1u8; 16];
         let stranger_doc = [2u8; 16];
 
-        remember(&db, &"b".repeat(64), &alice, &verified(held_doc), &[1], &[])
-            .await
-            .unwrap();
+        remember(&db, &"b".repeat(64), &alice, &verified(held_doc), &[1], &[]).await.unwrap();
 
         let death = |doc| ringtome_proto::fragment::DeathProof {
             author: crate::pubkey::decode(&alice).unwrap(),
@@ -2285,7 +2225,11 @@ mod tests {
         let mut late = verified_at(doc, 1_000 + day * 400, Some(1_000));
         late.header.title = "years later".into();
         remember(&db, &bob, &alice, &late, &[3], &[]).await.unwrap();
-        assert_eq!(held(&db, &alice, &doc_hex).await.unwrap().unwrap().title, "years later", "a post edits forever");
+        assert_eq!(
+            held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
+            "years later",
+            "a post edits forever"
+        );
 
         // A moved genesis is refused.
         let mut drifted = verified_at(doc, day * 401, Some(day + 2_000));
@@ -2326,10 +2270,7 @@ mod tests {
                 timestamp_ms: ts,
                 payload: ringtome_proto::Payload::Inline(vec![0xa0]),
             };
-            ringtome_proto::SignedEntry::create(&entry, key)
-                .unwrap()
-                .bytes()
-                .to_vec()
+            ringtome_proto::SignedEntry::create(&entry, key).unwrap().bytes().to_vec()
         };
         let titled = |title: &str, ts: i64| {
             let mut v = verified_at(doc, ts, Some(100));
@@ -2343,9 +2284,16 @@ mod tests {
         remember(&db, &bob, &alice, &titled("v-held", 500), &entry_bytes(&key_one, 5, 500), &[])
             .await
             .unwrap();
-        remember(&db, &bob, &alice, &titled("v-rollback", 900), &entry_bytes(&key_one, 4, 900), &[])
-            .await
-            .unwrap();
+        remember(
+            &db,
+            &bob,
+            &alice,
+            &titled("v-rollback", 900),
+            &entry_bytes(&key_one, 4, 900),
+            &[],
+        )
+        .await
+        .unwrap();
         assert_eq!(
             held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
             "v-held",

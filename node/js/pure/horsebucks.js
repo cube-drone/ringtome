@@ -9,7 +9,18 @@ import { WORDS } from './words.js';
 
 const SMALL = ['m', 'b', 'tr', 'quadr', 'quint', 'sext', 'sept', 'oct', 'non'];
 const UNITS = ['', 'un', 'duo', 'tre', 'quattuor', 'quin', 'sex', 'septen', 'octo', 'novem'];
-const TENS = ['', 'dec', 'vigint', 'trigint', 'quadragint', 'quinquagint', 'sexagint', 'septuagint', 'octogint', 'nonagint'];
+const TENS = [
+    '',
+    'dec',
+    'vigint',
+    'trigint',
+    'quadragint',
+    'quinquagint',
+    'sexagint',
+    'septuagint',
+    'octogint',
+    'nonagint',
+];
 
 /// The name of 10^(3n + 3): million is n = 1, centillion n = 100, and past it the jillions.
 export function magnitudeName(n) {
@@ -20,7 +31,9 @@ export function magnitudeName(n) {
     const j = n - 101; // acidjillion is the first past centillion
     const word = (k) => WORDS[(799 * k) % WORDS.length];
     // Past the list's length, two words: the next word before the first, the way odometers carry.
-    return j < WORDS.length ? `${word(j)}jillion` : `${word(Math.floor(j / WORDS.length) - 1)}${word(j % WORDS.length)}jillion`;
+    return j < WORDS.length
+        ? `${word(j)}jillion`
+        : `${word(Math.floor(j / WORDS.length) - 1)}${word(j % WORDS.length)}jillion`;
 }
 
 const grouped = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');

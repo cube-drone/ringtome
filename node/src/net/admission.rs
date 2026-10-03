@@ -281,7 +281,10 @@ mod tests {
         let mut by_bytes = Budget::new(100, 25);
         assert!(by_bytes.take(20));
         assert!(!by_bytes.take(10), "twenty-five bytes cannot carry thirty");
-        assert!(!by_bytes.take(1), "and the first refusal sticks, even for an entry that would fit");
+        assert!(
+            !by_bytes.take(1),
+            "and the first refusal sticks, even for an entry that would fit"
+        );
     }
 
     #[test]

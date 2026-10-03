@@ -47,7 +47,13 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
         if (!name || busy) return;
         // A reserved name is no notebook: a copy filed there could not be found from Writer.
         if (RESERVED_BUCKETS.has(name)) {
-            setError(t('copyinto.name-is-reserved', '"{name}" is kept for another app - choose another name', { name }));
+            setError(
+                t(
+                    'copyinto.name-is-reserved',
+                    '"{name}" is kept for another app - choose another name',
+                    { name },
+                ),
+            );
             return;
         }
         setBusy(true);
@@ -58,7 +64,13 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
                 : (
                       await api(`/api/identity/${root}/docs/copy`, {
                           method: 'POST',
-                          body: JSON.stringify({ author: source.author, doc_id: source.doc_id, bucket: name, new: !!isNew, private: !!source.private }),
+                          body: JSON.stringify({
+                              author: source.author,
+                              doc_id: source.doc_id,
+                              bucket: name,
+                              new: !!isNew,
+                              private: !!source.private,
+                          }),
                       })
                   ).doc_id;
             // Into the notebook's tree as well as the notebook (2026-09-30), as a new note goes; a book
@@ -72,19 +84,24 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
         setBusy(false);
     };
     return html`<${Modal} title=${heading || t('copyinto.copy-into-private-notes', 'copy into private notes')} onClose=${onClose}>
-        ${done
-            ? html`<p class="copy-done">
+        ${
+            done
+                ? html`<p class="copy-done">
                   ${t('copyinto.copied-into', 'copied into {bucket}', { bucket: done.bucket })}
                   ${' '}<a href=${book || done.bucket === 'feed' ? bucketHref(done.bucket) : docHref(current.root, done.doc_id)}>${t('copyinto.open-the-copy', 'open the copy')}</a>
               </p>`
-            : html`<div class="copy-buckets">
+                : html`<div class="copy-buckets">
                   ${book && html`<p class="null-sub">${t('copyinto.a-book-copies-whole-into', 'a book copies whole into a fresh notebook')}</p>`}
-                  ${!book &&
-                  names.map(
-                      (name) => html`<button key=${name} class="copy-bucket" disabled=${busy} onClick=${() => copy(name, false)}>
+                  ${
+                      !book &&
+                      names.map(
+                          (
+                              name,
+                          ) => html`<button key=${name} class="copy-bucket" disabled=${busy} onClick=${() => copy(name, false)}>
                           ${name}
-                      </button>`
-                  )}
+                      </button>`,
+                      )
+                  }
                   <form
                       class="copy-new-bucket"
                       onSubmit=${(e) => {
@@ -101,7 +118,8 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
                       <button class="copy-bucket" disabled=${busy || !fresh.trim()}>${t('copyinto.copy', 'copy')}</button>
                   </form>
                   ${error && html`<p class="form-error">${error}</p>`}
-              </div>`}
+              </div>`
+        }
     <//>`;
 };
 
@@ -113,10 +131,12 @@ export const CopyButton = ({ item, current }) => {
             title=${t('copyinto.copy-this-into-your-private', 'copy this into your private notes')}
             onClick=${() => setOpen(true)}
         ><${Icons.copy} /></button>
-        ${open &&
-        html`<${CopyIntoModal}
+        ${
+            open &&
+            html`<${CopyIntoModal}
             current=${current}
             source=${{ author: item.author, doc_id: item.doc_id, private: !!item.private_doc, format: item.format }}
             onClose=${() => setOpen(false)}
-        />`}`;
+        />`
+        }`;
 };

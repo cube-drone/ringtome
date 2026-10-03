@@ -1,7 +1,7 @@
 # Horse Drawing Tycoon 2 for the desktop
 
 The consumer application, with the Ringtome node linked in (the protocol keeps its name; see the
-root README's *Two names*).
+root README's _Two names_).
 
 One window, one process, the node inside it. [`../DESKTOP.md`](../plans/DESKTOP.md) is the design and the
 staging; this is how to run what exists.
@@ -30,7 +30,7 @@ prerequisite and the thing to install before following [SIGNING.md](../plans/SIG
 
 It is **an embedder**. It decides the three things that belong to whoever hosts a node - where the
 data lives, which port to ask for, and that a window exists - and then calls
-`ringtome_node::bind`. Everything about what a node *is* lives in the library, where `just ci`
+`ringtome_node::bind`. Everything about what a node _is_ lives in the library, where `just ci`
 tests it, and a cop (`the_binary_assembles_no_node_of_its_own`) keeps the other entry point honest
 about the same rule. If this file ever grows an `AppState` or a route, there are two nodes.
 

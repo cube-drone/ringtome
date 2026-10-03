@@ -2,10 +2,10 @@
 
 **Two names, one repository** (2026-09-25):
 
-- **Ringtome** is the *protocol*: signed append-only chains, roaming key-tree identities, sync over
+- **Ringtome** is the _protocol_: signed append-only chains, roaming key-tree identities, sync over
   [iroh](https://iroh.computer/), the trust web. The `ringtome` node, the `ringtome-proto` crate, the
   wire (`ringtome/sync/0`), the signature domains and the test vectors all keep the name.
-- **Horse Drawing Tycoon 2** is the *consumer application* built on it - the desktop app, the UI people
+- **Horse Drawing Tycoon 2** is the _consumer application_ built on it - the desktop app, the UI people
   actually use, at [horsedrawingtycoon.com](https://horsedrawingtycoon.com). The sequel to a
   tycoon game about drawing horses, built on a bar bet eleven years ago; the social network lives
   inside the dumb game, which is exactly where it should live.
@@ -22,7 +22,7 @@ federated, unapologetically Old Internet.
 > This README is the **map**. The full design — with every decision's reasoning — is
 > [`PROJECT_PLAN.md`](PROJECT_PLAN.md), which is canon; if the two disagree, this file is the one
 > that's wrong. Don't read the plan cover-to-cover: grep its headers and read the sections you
-> need (see *The documents*, below).
+> need (see _The documents_, below).
 
 ## The documents
 
@@ -73,13 +73,13 @@ federated, unapologetically Old Internet.
   draft (2026-09-30); nothing built.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
   surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
-  canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match
+  canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri, with the node embedded_ was rewritten to match
   it on 2026-08-11), while MOBILE and GODOT still **disagree with canon on purpose** — the first
-  correcting a premise in *Phones: deferred, by design*, the second recording why an idea *The Client
-  Story* struck keeps returning. Read them together; they constrain each other.
+  correcting a premise in _Phones: deferred, by design_, the second recording why an idea _The Client
+  Story_ struck keeps returning. Read them together; they constrain each other.
   - [`DESKTOP.md`](plans/DESKTOP.md) — a Tauri shell with the node **linked in-process**, one binary, plus
     the rollout and the recurring signing costs. The decision itself is canon as of 2026-08-11
-    (*Desktop mode: Tauri, with the node embedded*); this document is the execution plan, and it keeps
+    (_Desktop mode: Tauri, with the node embedded_); this document is the execution plan, and it keeps
     the Electron comparison as the record of how the decision was made.
   - [`SIGNING.md`](plans/SIGNING.md) — the paperwork DESKTOP.md's Stage 4 waits on, and the only document
     here addressed to the operator rather than the code: what to enrol in (Apple, Azure Artifact
@@ -88,14 +88,14 @@ federated, unapologetically Old Internet.
     the container image, the settings, HTTPS (the operator's own proxy), the peer-to-peer port, the
     data directory that IS the node, and why every upgrade takes a backup first.
   - [`MOBILE.md`](plans/MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
-    deliberately narrow UI. Corrects a factual premise in *Phones: deferred, by design* and
+    deliberately narrow UI. Corrects a factual premise in _Phones: deferred, by design_ and
     carries the availability arithmetic for a network with no always-on infrastructure.
-  - [`GODOT.md`](plans/GODOT.md) — the game-engine client, still struck from the roadmap by *The Client
-    Story*, with the properly-costed argument for the day a gamey product layer asks for it.
+  - [`GODOT.md`](plans/GODOT.md) — the game-engine client, still struck from the roadmap by _The Client
+    Story_, with the properly-costed argument for the day a gamey product layer asks for it.
 - [`API_OLD.md`](plans/API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
 
-**Suggested first hour:** this file top to bottom; PROJECT_PLAN's *Vision* and *Doctrine*
+**Suggested first hour:** this file top to bottom; PROJECT_PLAN's _Vision_ and _Doctrine_
 sections; GLOSSARY skimmed for unfamiliar terms; then NEXT_STEPS to see what's in motion.
 
 ## The shape of the system
@@ -106,49 +106,49 @@ PROJECT_PLAN section.
 1. **Identity is a tree of keys** (the CROWN): a root keypair authorizes children, children
    authorize grandchildren; authority is ordered by rank-path, never by time. Revocation
    (retirement / repudiation-with-anchors) and a recovery key minted at creation make key loss
-   and key theft survivable. → *The CROWN Identity*.
+   and key theft survivable. → _The CROWN Identity_.
 2. **All content is signed append-only chains**, one per `(key, service)` — dense sequence
    numbers, hash links, canonical CBOR, store-the-author's-original-bytes. Merge semantics live
    above the log and are stated once: LWW for scalars, set-merge for collections, rank-path for
-   authority. → *The Identity-Managed Append-Only Log (IM-AOL)*, *Canonical Encoding*.
+   authority. → _The Identity-Managed Append-Only Log (IM-AOL)_, _Canonical Encoding_.
 3. **Private by default**: private chains are epoch-key ciphertext, membership is key
    possession, and a revoked device reads its era and nothing after. Anything public is a
-   deliberate signing act that *copies* content across the membrane — there is no
-   "make public" flip anywhere in the system. → *Private Chains*, *Doctrine* (Copy, Don't Flip).
+   deliberate signing act that _copies_ content across the membrane — there is no
+   "make public" flip anywhere in the system. → _Private Chains_, _Doctrine_ (Copy, Don't Flip).
 4. **Databases are disposable views of the log.** Per-identity Turso databases (encrypted at
    rest), incrementally-folded materialized views, and a raw-entry journal file per identity;
    the signed entries are the only source of truth and everything else rebuilds by replay.
-   → *Data Layer*, *The Substrate*, *The Store Layer*.
+   → _Data Layer_, _The Substrate_, _The Store Layer_.
 5. **Files are content-addressed blobs; mutable content is versioned documents.** One
    iroh-blobs store for every file-shaped byte (private = encrypt-then-hash, random nonce, no
    dedup by design); a document is a stable `doc_id` whose versions form a DAG of whole-file
    snapshots — divergence is detected and kept-both, never silently merged. Organization
-   (tags, trees, annotations) lives *outside* documents. → *The File Layer*, *Versioned
-   Documents*, *Taxonomies*, *Annotations*.
+   (tags, trees, annotations) lives _outside_ documents. → _The File Layer_, _Versioned
+   Documents_, _Taxonomies_, _Annotations_.
 6. **Sync is a custom protocol over iroh QUIC** with a validation gate: every entry is checked
    against the key tree before it is stored, which is what makes revocation real (and why
    iroh-docs wasn't usable). Chains can be held as suffixes (git-shallow-clone style);
-   discovery is pkarr signed records on the Mainline DHT. → *Iroh Protocol Mapping*,
-   *Shallow Sync*, *Discovery*.
+   discovery is pkarr signed records on the Mainline DHT. → _Iroh Protocol Mapping_,
+   _Shallow Sync_, _Discovery_.
 7. **Trust is explicit and flow-computed**: signed vouches from real-world invites seed a
    graph; an Advogato-style joint-flow computation prices Sybils out; moderation stays
-   node-operator policy, never protocol. → *Trust, Credibility, Interest, and Taste*,
-   *Moderation and Operator Liability*.
+   node-operator policy, never protocol. → _Trust, Credibility, Interest, and Taste_,
+   _Moderation and Operator Liability_.
 
 ## Workspace
 
-| path | what |
-|---|---|
-| `proto/` | **ringtome-proto** — the protocol layer: canonical bytes, signing, chains, the key tree, sync messages, serving records. Pure (no IO); the conformance boundary. See [`proto/README.md`](proto/README.md). |
-| `node/` | **ringtome-node** — the connector node: HTTP server, accounts, storage, iroh sync, discovery, ingest, and the embedded Preact UI (`node/js`, `node/html`, baked into the binary). The one binary. See [`node/README.md`](node/README.md). |
-| `supervisor/` | **ringtome-supervisor** — the stable parent of a server node: runs it, installs signed releases, backs it up, rolls a failed update back (binary and data). Shares a wire contract with the node, not code. See [`supervisor/README.md`](supervisor/README.md). |
-| `node/integration/` | The JS integration suite: boots real nodes, drives real HTTP, proves multi-node scenarios (`just integration`). |
-| `plans/` | Design documents: one per app, feature or delivery shape (see *The documents*). New plans go here. |
-| `spec/` | Test vectors ("this logical value MUST produce exactly these bytes"). Prose specs land here too, eventually. |
-| `video-ingest/` | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README. |
-| `spike-tauri/` | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](plans/DESKTOP.md). |
-| `sample_media/` | Fixture media for exercising the ingest pipeline. |
-| `default_media/` | The app's own pictures, compiled into the node (`node/build.rs`, `node/src/builtin.rs`). Every PNG here is in every persona's files, tagged by its folders (`sticker/bodies/body_1.png` is `body_1`, tagged `sticker` and `bodies`), and nobody can delete it. Add a file and rebuild to ship it; remove it and rebuild to take it away. |
+| path                | what                                                                                                                                                                                                                                                                                                                                                |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `proto/`            | **ringtome-proto** — the protocol layer: canonical bytes, signing, chains, the key tree, sync messages, serving records. Pure (no IO); the conformance boundary. See [`proto/README.md`](proto/README.md).                                                                                                                                          |
+| `node/`             | **ringtome-node** — the connector node: HTTP server, accounts, storage, iroh sync, discovery, ingest, and the embedded Preact UI (`node/js`, `node/html`, baked into the binary). The one binary. See [`node/README.md`](node/README.md).                                                                                                           |
+| `supervisor/`       | **ringtome-supervisor** — the stable parent of a server node: runs it, installs signed releases, backs it up, rolls a failed update back (binary and data). Shares a wire contract with the node, not code. See [`supervisor/README.md`](supervisor/README.md).                                                                                     |
+| `node/integration/` | The JS integration suite: boots real nodes, drives real HTTP, proves multi-node scenarios (`just integration`).                                                                                                                                                                                                                                     |
+| `plans/`            | Design documents: one per app, feature or delivery shape (see _The documents_). New plans go here.                                                                                                                                                                                                                                                  |
+| `spec/`             | Test vectors ("this logical value MUST produce exactly these bytes"). Prose specs land here too, eventually.                                                                                                                                                                                                                                        |
+| `video-ingest/`     | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README.                                                                                                                                                                       |
+| `spike-tauri/`      | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](plans/DESKTOP.md). |
+| `sample_media/`     | Fixture media for exercising the ingest pipeline.                                                                                                                                                                                                                                                                                                   |
+| `default_media/`    | The app's own pictures, compiled into the node (`node/build.rs`, `node/src/builtin.rs`). Every PNG here is in every persona's files, tagged by its folders (`sticker/bodies/body_1.png` is `body_1`, tagged `sticker` and `bodies`), and nobody can delete it. Add a file and rebuild to ship it; remove it and rebuild to take it away.            |
 
 (`data/` and `scratch/` are runtime output from local test runs, not source.)
 
@@ -170,4 +170,3 @@ just mainline-smoke         # OPT-IN live test against the real Mainline DHT (pu
 cargo run --bin ringtome    # run a node (see node/README.md for configuration)
 ./target/debug/ringtome inspect <hex>   # pretty-print any signed entry
 ```
-

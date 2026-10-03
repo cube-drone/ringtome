@@ -131,11 +131,12 @@ export function useUserCards(source, format) {
             fresh.map((root) =>
                 api(`/api/id/${root}/profile`)
                     .then((p) => {
-                        const field = (k) => ((p.fields || []).find((f) => f.field === k) || {}).value || '';
+                        const field = (k) =>
+                            ((p.fields || []).find((f) => f.field === k) || {}).value || '';
                         faces.set(root, { name: field('name'), avatar: field('avatar') });
                     })
-                    .catch(() => {})
-            )
+                    .catch(() => {}),
+            ),
         ).then(() => alive && setGen((g) => g + 1));
         return () => {
             alive = false;
@@ -145,7 +146,10 @@ export function useUserCards(source, format) {
 }
 
 const escapeHtml = (s) =>
-    String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    String(s).replace(
+        /[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+    );
 
 const faceOf = (root) => {
     const face = faces.get(root) || {};
@@ -153,8 +157,8 @@ const faceOf = (root) => {
     const names = displayNames({ name: face.name, words });
     const src = face.avatar ? `/id/${root}/docs/${face.avatar}/thumb` : identiconUri(root);
     const hex = (size) =>
-        `<span class="person-hex person-hex-${size}" style="background: hsl(${personaHue(root)}, 60%, 55%)">`
-        + `<img class="person-hex-img" src="${escapeHtml(src)}" alt=""></span>`;
+        `<span class="person-hex person-hex-${size}" style="background: hsl(${personaHue(root)}, 60%, 55%)">` +
+        `<img class="person-hex-img" src="${escapeHtml(src)}" alt=""></span>`;
     return { names, known: !!face.name, hex };
 };
 
@@ -165,9 +169,14 @@ export function userCardHtml(name, attrs) {
     const root = cardRoot(attrs);
     if (!root) return `<div class="user-card jag-line user-card-bad">${escapeHtml(nobody())}</div>`;
     const face = faceOf(root);
-    const others = face.names.length > 1 ? `<small>${escapeHtml(face.names.slice(1).join(' · '))}</small>` : '';
-    return `<a class="user-card jag-line" href="${escapeHtml(personHref(root))}">${face.hex('small')}`
-        + `<span class="user-card-names"><strong>${escapeHtml(face.names[0] || '')}</strong>${others}</span></a>`;
+    const others =
+        face.names.length > 1
+            ? `<small>${escapeHtml(face.names.slice(1).join(' · '))}</small>`
+            : '';
+    return (
+        `<a class="user-card jag-line" href="${escapeHtml(personHref(root))}">${face.hex('small')}` +
+        `<span class="user-card-names"><strong>${escapeHtml(face.names[0] || '')}</strong>${others}</span></a>`
+    );
 }
 
 /// The live preview's span hook: the inline shape, the author's own words inside the span

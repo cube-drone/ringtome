@@ -63,9 +63,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     let posts = crate::record::documents::public_docs(&db, None, 5000)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let shares = crate::record::imaol::rebroadcasts(&db)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let shares =
+        crate::record::imaol::rebroadcasts(&db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     drop(db);
     let now = crate::clock::now_ms();
     let node_db = &state.node_db;
@@ -79,7 +78,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     // One statement per chunk, not per post (2026-09-15): a whole re-fold of a long shelf
     // is a few round trips, not thousands - the fold lane is shared with the feed's own
     // digging, and the history-dig suite felt every extra statement under a full gate.
-    let rows: Vec<crate::record::documents::PublicDoc> = posts.into_iter().filter(|p| p.part_of.is_none()).collect();
+    let rows: Vec<crate::record::documents::PublicDoc> =
+        posts.into_iter().filter(|p| p.part_of.is_none()).collect();
     for chunk in rows.chunks(100) {
         let mut sql = String::from(
             "INSERT INTO node_shelf
@@ -93,9 +93,13 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             }
             let base = i * 12;
             sql.push('(');
-            sql.push_str(&(1..=12).map(|k| format!("?{}", base + k)).collect::<Vec<_>>().join(", "));
+            sql.push_str(
+                &(1..=12).map(|k| format!("?{}", base + k)).collect::<Vec<_>>().join(", "),
+            );
             sql.push(')');
-            let format = p.format.map(|f| crate::record::documents::Format::from_wire(Some(f)).as_str().to_string());
+            let format = p
+                .format
+                .map(|f| crate::record::documents::Format::from_wire(Some(f)).as_str().to_string());
             params.push(root.into());
             params.push(hex::encode(p.doc_id).into());
             params.push("".into());
@@ -106,8 +110,18 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             params.push((p.settled as i64).into());
             params.push((p.trusted_only as i64).into());
             params.push(p.dated_ms.map(turso::Value::from).unwrap_or(turso::Value::Null));
-            params.push(p.reply_to.as_ref().map(|(a, _)| turso::Value::from(a.clone())).unwrap_or(turso::Value::Null));
-            params.push(p.reply_to.as_ref().map(|(_, d)| turso::Value::from(d.clone())).unwrap_or(turso::Value::Null));
+            params.push(
+                p.reply_to
+                    .as_ref()
+                    .map(|(a, _)| turso::Value::from(a.clone()))
+                    .unwrap_or(turso::Value::Null),
+            );
+            params.push(
+                p.reply_to
+                    .as_ref()
+                    .map(|(_, d)| turso::Value::from(d.clone()))
+                    .unwrap_or(turso::Value::Null),
+            );
         }
         node_db.execute(&sql, params).await.context("noting node shelf posts")?;
     }
@@ -120,7 +134,9 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         if head.part_of.is_some() {
             continue;
         }
-        let format = head.format.map(|f| crate::record::documents::Format::from_wire(Some(f)).as_str().to_string());
+        let format = head
+            .format
+            .map(|f| crate::record::documents::Format::from_wire(Some(f)).as_str().to_string());
         node_db
             .execute(
                 "INSERT OR REPLACE INTO node_shelf
@@ -148,7 +164,11 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
 }
 
 /// A shared original's public doc, hosted here or held as a fragment.
-async fn original_head(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<crate::record::documents::PublicDoc> {
+async fn original_head(
+    state: &AppState,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> Option<crate::record::documents::PublicDoc> {
     if crate::identity::is_agented(&state.node_db, author_hex).await.unwrap_or(false) {
         let db = state.user_dbs.get(author_hex).await.ok().flatten()?;
         return crate::record::documents::public_doc(&db, doc_id).await.ok().flatten();
@@ -192,10 +212,36 @@ pub async fn set_listed(node_db: &Db, root: &str, on: bool) -> Result<()> {
     Ok(())
 }
 
-type RowTuple = (String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, Option<String>, Option<String>);
+type RowTuple = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    i64,
+    i64,
+    i64,
+    i64,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+);
 
 fn row_of(t: RowTuple) -> ShelfRow {
-    let (author_root, doc_id, via, title, format, published_ms, updated_ms, settled, _trusted_only, dated_ms, ra, rd) = t;
+    let (
+        author_root,
+        doc_id,
+        via,
+        title,
+        format,
+        published_ms,
+        updated_ms,
+        settled,
+        _trusted_only,
+        dated_ms,
+        ra,
+        rd,
+    ) = t;
     ShelfRow {
         author_root,
         doc_id,
@@ -218,7 +264,11 @@ fn row_of(t: RowTuple) -> ShelfRow {
 const LISTED: &str = "NOT EXISTS (SELECT 1 FROM node_listing l WHERE l.listed = 0
                         AND l.root_pubkey = CASE WHEN s.via_root = '' THEN s.author_root ELSE s.via_root END)";
 
-pub async fn page(node_db: &Db, before: Option<(i64, String)>, limit: i64) -> Result<Vec<ShelfRow>> {
+pub async fn page(
+    node_db: &Db,
+    before: Option<(i64, String)>,
+    limit: i64,
+) -> Result<Vec<ShelfRow>> {
     let rows: Vec<RowTuple> = match before {
         Some((ms, doc)) => {
             node_db
@@ -298,7 +348,8 @@ pub async fn recent_posters(node_db: &Db, want: usize, scan: i64) -> Result<Vec<
 
 /// The hosted personas a stranger may see: hosted here and listed.
 pub async fn listed_roots(node_db: &Db) -> Result<Vec<String>> {
-    let hosted = crate::identity::hosted_roots(node_db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let hosted =
+        crate::identity::hosted_roots(node_db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut out = Vec::with_capacity(hosted.len());
     for r in hosted {
         if listed(node_db, &r).await? {

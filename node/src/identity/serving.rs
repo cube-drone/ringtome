@@ -46,7 +46,12 @@ pub async fn mark_served(
 pub async fn publish_record(state: &AppState, root_hex: &str) -> Result<(), AppError> {
     let leaf_key = super::load_node_leaf_key(&state.node_db, &state.keystore, root_hex)
         .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.serving.identity-not-found", "identity not found")))?;
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "identity.serving.identity-not-found",
+                "identity not found"
+            ))
+        })?;
 
     let record = ServingRecord {
         v: RECORD_VERSION,
@@ -63,10 +68,7 @@ pub async fn publish_record(state: &AppState, root_hex: &str) -> Result<(), AppE
             .publish_serving_with_key(&signed, &leaf_key.to_bytes())
             .await
             .map_err(AppError::Internal)?,
-        other => other
-            .publish_serving(&signed)
-            .await
-            .map_err(AppError::Internal)?,
+        other => other.publish_serving(&signed).await.map_err(AppError::Internal)?,
     }
     Ok(())
 }

@@ -93,7 +93,6 @@ fn page(title: &str, card: String) -> String {
     )
 }
 
-
 /// Is this root hosted by any account on this node? (The shelf, v1: hosting is the only
 /// demand edge that exists - member follows join it when follows do.) The identities table
 /// belongs to identity.rs; this is its question, asked through its door.
@@ -103,18 +102,21 @@ pub(crate) async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool
 
 /// The public profile straight off the identity's own db - the public lane, no account in
 /// the question. Absent fields render as absent; a profile-less persona is still a page.
-pub(crate) async fn public_profile(state: &AppState, root_hex: &str) -> Result<Vec<imaol::ProfileField>, AppError> {
+pub(crate) async fn public_profile(
+    state: &AppState,
+    root_hex: &str,
+) -> Result<Vec<imaol::ProfileField>, AppError> {
     let Some(db) = state.user_dbs.get(root_hex).await.map_err(AppError::Internal)? else {
-        return Err(AppError::NotFound(crate::msg!("idface.nothing-of-theirs-is-held", "nothing of theirs is held here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.nothing-of-theirs-is-held",
+            "nothing of theirs is held here"
+        )));
     };
     imaol::get_profile(&db).await
 }
 
 pub(crate) fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -> Option<&'a str> {
-    fields
-        .iter()
-        .find(|f| f.field == name)
-        .map(|f| f.value.as_str())
+    fields.iter().find(|f| f.field == name).map(|f| f.value.as_str())
 }
 
 /// GET `/id/{seg}/{*rest}` - any deeper path under a persona. Its own handler because axum
@@ -147,10 +149,14 @@ async fn post_named(state: &AppState, root: &[u8; 32], rest: &str) -> Option<[u8
     let parts: Vec<&str> = rest.trim_matches('/').split('/').collect();
     let hex_id = match parts.as_slice() {
         ["post", doc] | ["post", _, "page", doc] => doc.to_string(),
-        ["doc", note] => crate::annotations::published_from(&state.node_db, &hex::encode(root), &note.to_ascii_lowercase())
-            .await
-            .ok()
-            .flatten()?,
+        ["doc", note] => crate::annotations::published_from(
+            &state.node_db,
+            &hex::encode(root),
+            &note.to_ascii_lowercase(),
+        )
+        .await
+        .ok()
+        .flatten()?,
         _ => return None,
     };
     hex::decode(hex_id).ok().and_then(|b| <[u8; 16]>::try_from(b).ok())
@@ -165,7 +171,11 @@ const HEAD_EXCERPT_CHARS: usize = 200;
 /// for; `None` - the person's head instead - for anyone else, for a post that is not on the public
 /// shelf, and for a SEALED post, whose title and words are for trusted readers and never for an
 /// unfurler.
-async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result<Option<Response>, AppError> {
+async fn post_page(
+    state: &AppState,
+    root: [u8; 32],
+    doc_id: [u8; 16],
+) -> Result<Option<Response>, AppError> {
     let root_hex = hex::encode(root);
     if !hosted_here(state, &root_hex).await? {
         return Ok(None);
@@ -209,7 +219,8 @@ async fn post_page(state: &AppState, root: [u8; 32], doc_id: [u8; 16]) -> Result
     }
     let picture = match first_picture {
         Some(path) => Some(format!("{base}{path}")),
-        None => profile_value(&fields, "avatar").map(|avatar| format!("{base}/id/{short}/docs/{avatar}/thumb")),
+        None => profile_value(&fields, "avatar")
+            .map(|avatar| format!("{base}/id/{short}/docs/{avatar}/thumb")),
     };
     if let Some(picture) = picture {
         head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(&picture)));
@@ -246,26 +257,40 @@ pub(crate) async fn post_words(
     author: &str,
 ) -> Result<PostWords, AppError> {
     let doc_hex = hex::encode(post.doc_id);
-    let labels = crate::annotations::for_posts(state, &[(root_hex.to_string(), doc_hex.clone())], None)
-        .await
-        .unwrap_or_default();
-    let described = labels
-        .get(&(root_hex.to_string(), doc_hex))
-        .and_then(|ls| ls.iter().find(|a| a.annotator == root_hex && a.key == "description").map(|a| a.value.clone()));
-    let marquee = crate::record::documents::Format::from_wire(post.format) == crate::record::documents::Format::Marquee;
+    let labels =
+        crate::annotations::for_posts(state, &[(root_hex.to_string(), doc_hex.clone())], None)
+            .await
+            .unwrap_or_default();
+    let described = labels.get(&(root_hex.to_string(), doc_hex)).and_then(|ls| {
+        ls.iter()
+            .find(|a| a.annotator == root_hex && a.key == "description")
+            .map(|a| a.value.clone())
+    });
+    let marquee = crate::record::documents::Format::from_wire(post.format)
+        == crate::record::documents::Format::Marquee;
     let text = match crate::record::documents::public_head(db, &post.doc_id).await? {
-        Some(head) => match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
-            Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
-            _ => String::new(),
-        },
+        Some(head) => {
+            match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
+                Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+                _ => String::new(),
+            }
+        }
         None => String::new(),
     };
     let picture = if marquee { first_picture_thumb(&text) } else { None };
-    let words = if marquee { crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text) } else { String::new() };
+    let words = if marquee {
+        crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text)
+    } else {
+        String::new()
+    };
     let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
     let title = if post.title.trim().is_empty() {
         let first: String = words.split(' ').take(9).collect::<Vec<_>>().join(" ");
-        if first.is_empty() { author.to_string() } else { first }
+        if first.is_empty() {
+            author.to_string()
+        } else {
+            first
+        }
     } else {
         post.title.clone()
     };
@@ -304,11 +329,17 @@ pub(crate) fn clip(s: &str, max: usize) -> String {
 /// the query (the `?via=` hints) kept. Only the PAGES move; a picture's bytes stay at
 /// `/id/{seg}/docs/…`, which signed documents name and can never stop naming. Temporary rather than
 /// permanent while the grammar is young, so a browser never caches a redirect we later regret.
-pub async fn legacy_id(Path(seg): Path<String>, RawQuery(query): RawQuery) -> axum::response::Redirect {
+pub async fn legacy_id(
+    Path(seg): Path<String>,
+    RawQuery(query): RawQuery,
+) -> axum::response::Redirect {
     axum::response::Redirect::temporary(&ringtome_from_legacy(&seg, None, query.as_deref()))
 }
 
-pub async fn legacy_id_deep(Path((seg, rest)): Path<(String, String)>, RawQuery(query): RawQuery) -> axum::response::Redirect {
+pub async fn legacy_id_deep(
+    Path((seg, rest)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> axum::response::Redirect {
     axum::response::Redirect::temporary(&ringtome_from_legacy(&seg, Some(&rest), query.as_deref()))
 }
 
@@ -320,7 +351,9 @@ fn ringtome_from_legacy(seg: &str, rest: Option<&str>, query: Option<&str>) -> S
     if let Some(rest) = rest.map(|r| r.trim_matches('/')).filter(|r| !r.is_empty()) {
         let parts: Vec<&str> = rest.split('/').collect();
         match parts.as_slice() {
-            ["post", doc, page] if page.len() == 32 && page.chars().all(|c| c.is_ascii_hexdigit()) => {
+            ["post", doc, page]
+                if page.len() == 32 && page.chars().all(|c| c.is_ascii_hexdigit()) =>
+            {
                 path.push_str(&format!("/post/{doc}/page/{page}"));
             }
             _ => {
@@ -342,7 +375,6 @@ pub async fn idface(
     State(state): State<AppState>,
     Path(seg): Path<String>,
 ) -> Result<Response, AppError> {
-
     let Some(parsed) = speakable::parse(&seg) else {
         return Ok(face(
             StatusCode::NOT_FOUND,
@@ -395,7 +427,11 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
     let speak = speakable::speakable(&root);
     let words = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
     let hosted = hosted_here(state, &root_hex).await?;
-    let fields = if hosted { public_profile(state, &root_hex).await.unwrap_or_default() } else { Vec::new() };
+    let fields = if hosted {
+        public_profile(state, &root_hex).await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
     let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
     let mut via = Vec::new();
@@ -403,7 +439,10 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
         if let Ok(Some(own_leaf)) = crate::identity::leaf_hex_of(&state.node_db, &root_hex).await {
             via.push(own_leaf);
         }
-        for leaf in crate::net::sync::liveliest_leaves(&state.node_db, &root_hex, 16).await.unwrap_or_default() {
+        for leaf in crate::net::sync::liveliest_leaves(&state.node_db, &root_hex, 16)
+            .await
+            .unwrap_or_default()
+        {
             if via.len() >= 10 {
                 break;
             }
@@ -414,7 +453,10 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
         if via.is_empty() {
             via.push(state.endpoint.id().to_string());
         }
-        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16).await.unwrap_or_default() {
+        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16)
+            .await
+            .unwrap_or_default()
+        {
             if via.len() >= 10 {
                 break;
             }
@@ -423,7 +465,8 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
             }
         }
     }
-    let via: Vec<String> = via.iter().map(|k| speakable::node_key_b58(k).unwrap_or_else(|| k.clone())).collect();
+    let via: Vec<String> =
+        via.iter().map(|k| speakable::node_key_b58(k).unwrap_or_else(|| k.clone())).collect();
     let base = state.config.public_url.clone().unwrap_or_default();
     // The address in its `/ringtome/` form, the root in its short spelling (2026-09-28).
     let short = speak.rsplit('-').next().unwrap_or(&speak);
@@ -449,7 +492,12 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
         ));
     }
     if let Some(doc) = profile_value(&fields, "avatar") {
-        head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}/id/{}/docs/{}/thumb\">", esc(&base), esc(&speak), esc(doc)));
+        head.push_str(&format!(
+            "\n<meta property=\"og:image\" content=\"{}/id/{}/docs/{}/thumb\">",
+            esc(&base),
+            esc(&speak),
+            esc(doc)
+        ));
     }
     let status = if hosted { StatusCode::OK } else { StatusCode::NOT_FOUND };
     Ok((
@@ -473,7 +521,8 @@ const FOREIGN_REVALIDATE_MS: i64 = 30 * 1000;
 /// A test node's runtime override of [`FOREIGN_REVALIDATE_MS`] (`/test/foreign-revalidate`); 0
 /// means none. Per test, never boot-wide: the claim that watches a visit revalidate behind its
 /// answer slept the real thirty seconds, the slowest wait in the suite (2026-10-02).
-pub static FOREIGN_REVALIDATE_OVERRIDE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+pub static FOREIGN_REVALIDATE_OVERRIDE: std::sync::atomic::AtomicI64 =
+    std::sync::atomic::AtomicI64::new(0);
 
 fn foreign_revalidate_ms() -> i64 {
     match FOREIGN_REVALIDATE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
@@ -556,10 +605,7 @@ pub async fn fetched_roots(node_db: &crate::db::Db) -> anyhow::Result<Vec<String
 pub async fn has_fetched(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<bool> {
     use anyhow::Context;
     let row: Option<(i64,)> = node_db
-        .fetch_optional(
-            "SELECT 1 FROM foreign_fetches WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .fetch_optional("SELECT 1 FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("checking the fetch registry")?;
     Ok(row.is_some())
@@ -567,12 +613,12 @@ pub async fn has_fetched(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Res
 
 /// The endpoint that last answered a fetch of this persona, if any - the recovery sweep's
 /// best first guess for who holds its bodies (net::bodies).
-pub async fn fetched_via(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<Option<String>> {
+pub async fn fetched_via(
+    node_db: &crate::db::Db,
+    root_hex: &str,
+) -> anyhow::Result<Option<String>> {
     let row: Option<(Option<String>,)> = node_db
-        .fetch_optional(
-            "SELECT last_via FROM foreign_fetches WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .fetch_optional("SELECT last_via FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
         .await?;
     Ok(row.and_then(|(via,)| via))
 }
@@ -667,7 +713,8 @@ pub(crate) async fn peek_held(state: &AppState, root_hex: &str) -> bool {
 /// dial, and "follow, then open their page" must find the mirror, not the next beat.
 pub(crate) async fn promote_peek(state: &AppState, root_hex: &str) -> bool {
     let via = stored_tree_leaves(state, root_hex).await;
-    fetch_foreign_at(state, root_hex, &via, crate::net::sync::CONTINUATIONS_PER_WAKE, Some(false)).await
+    fetch_foreign_at(state, root_hex, &via, crate::net::sync::CONTINUATIONS_PER_WAKE, Some(false))
+        .await
 }
 
 /// How many posts a peek carries (PROJECT_PLAN's Peeks, ruling 4), and how long the page waits for them.
@@ -704,7 +751,9 @@ pub(crate) async fn touch_look(state: &AppState, root_hex: &str) {
 /// The peek registry, for the eviction sweep: every fetched root with its last look and
 /// its measured footprint (PROJECT_PLAN's Peeks, ruling 6). Owner's read - `foreign_fetches` is this
 /// module's table.
-pub(crate) async fn peek_registry(node_db: &crate::db::Db) -> anyhow::Result<Vec<(String, i64, i64)>> {
+pub(crate) async fn peek_registry(
+    node_db: &crate::db::Db,
+) -> anyhow::Result<Vec<(String, i64, i64)>> {
     node_db
         .fetch_all("SELECT root_pubkey, looked_ms, bytes FROM foreign_fetches", ())
         .await
@@ -713,7 +762,12 @@ pub(crate) async fn peek_registry(node_db: &crate::db::Db) -> anyhow::Result<Vec
 
 /// Whether somebody here looked at this persona within the expiry - the keeper a peek
 /// holds its mirror by (PROJECT_PLAN's Peeks, ruling 6): a look is the rest clock a peek is judged on.
-pub(crate) async fn looked_within(node_db: &crate::db::Db, root_hex: &str, now: i64, expiry_ms: i64) -> bool {
+pub(crate) async fn looked_within(
+    node_db: &crate::db::Db,
+    root_hex: &str,
+    now: i64,
+    expiry_ms: i64,
+) -> bool {
     let row: Option<(i64,)> = node_db
         .fetch_optional("SELECT looked_ms FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
         .await
@@ -741,17 +795,22 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Pinned {
         return Pinned { order: Vec::new(), posts: Vec::new(), shares: Vec::new() };
     };
     let order = crate::record::imaol::pins(&db).await.unwrap_or_default();
-    let ids: Vec<[u8; 16]> = order.iter().filter(|p| p.author == root_hex).map(|p| p.doc_id).collect();
-    let shares: Vec<crate::record::imaol::RebroadcastRow> = if order.iter().any(|p| p.author != root_hex) {
-        crate::record::imaol::rebroadcasts(&db)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|s| !s.is_retracted() && order.iter().any(|p| p.author == s.author_root && p.doc_id == s.doc_id))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let ids: Vec<[u8; 16]> =
+        order.iter().filter(|p| p.author == root_hex).map(|p| p.doc_id).collect();
+    let shares: Vec<crate::record::imaol::RebroadcastRow> =
+        if order.iter().any(|p| p.author != root_hex) {
+            crate::record::imaol::rebroadcasts(&db)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|s| {
+                    !s.is_retracted()
+                        && order.iter().any(|p| p.author == s.author_root && p.doc_id == s.doc_id)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
         let doc = if peek {
@@ -786,7 +845,11 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Pinned {
 
 /// One share on a persona's shelf, as a card: the ORIGINAL author's post, worn with this persona
 /// as its via. Title and format off whatever header this node holds (`fragments::card_header`).
-async fn share_json(state: &AppState, s: &crate::record::imaol::RebroadcastRow, via: &str) -> serde_json::Value {
+async fn share_json(
+    state: &AppState,
+    s: &crate::record::imaol::RebroadcastRow,
+    via: &str,
+) -> serde_json::Value {
     let header = crate::fragments::card_header(state, &s.author_root, &s.doc_id).await;
     serde_json::json!({
         "kind": "share",
@@ -885,14 +948,26 @@ async fn peek_shelf(state: &AppState, root_hex: &str, endpoint_id: &str) -> usiz
         let task_root = root_hex.to_string();
         let task_via = endpoint_id.to_string();
         tasks.spawn(async move {
-            let fetched = crate::net::fragment::fetch_from(&task_state, &task_via, &author, &doc_id).await;
-            if let Ok(crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by)) = fetched {
-                if crate::fragments::remember(&task_state.node_db, &task_root, &task_root, &verified, &entry, &auth_path)
-                    .await
-                    .is_ok()
+            let fetched =
+                crate::net::fragment::fetch_from(&task_state, &task_via, &author, &doc_id).await;
+            if let Ok(crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by)) =
+                fetched
+            {
+                if crate::fragments::remember(
+                    &task_state.node_db,
+                    &task_root,
+                    &task_root,
+                    &verified,
+                    &entry,
+                    &auth_path,
+                )
+                .await
+                .is_ok()
                 {
                     if let Some(ep) = served_by {
-                        let _ = crate::fragments::note_deliverer(&task_state.node_db, &task_root, &ep).await;
+                        let _ =
+                            crate::fragments::note_deliverer(&task_state.node_db, &task_root, &ep)
+                                .await;
                     }
                     // The words, the thumbnail and the preview alike: a face is its thumbnail.
                     let mut hashes = vec![verified.header.file_hash];
@@ -969,7 +1044,10 @@ pub(crate) async fn backfill(state: &AppState, root_hex: &str) -> bool {
         &via,
         1,
         Some(false),
-        crate::net::sync::Ask { ceiling: state.config.follow_posts_ceiling, below: BACKFILL_ENTRIES },
+        crate::net::sync::Ask {
+            ceiling: state.config.follow_posts_ceiling,
+            below: BACKFILL_ENTRIES,
+        },
     )
     .await
 }
@@ -1027,9 +1105,8 @@ async fn fetch_foreign_with(
     // which makes a bare root resolve with no hint at all, for every persona whose founding
     // node still publishes. (The announce rendezvous, when built, covers the personas whose
     // founder is gone.)
-    let own: Vec<String> = std::iter::once(root_hex.to_string())
-        .chain(via.iter().take(10).cloned())
-        .collect();
+    let own: Vec<String> =
+        std::iter::once(root_hex.to_string()).chain(via.iter().take(10).cloned()).collect();
     let mut won = race(state, root_hex, scope, ask, max_passes, held_before, own).await;
 
     // Round two, only when round one reached nobody: the household (the cohort rung, decided
@@ -1044,9 +1121,8 @@ async fn fetch_foreign_with(
     // bound those machines to one of our personas, and the sync door there answers for
     // anyone their users follow or have fetched.
     if won.is_none() {
-        let household: Vec<String> = crate::net::sync::cohort_endpoints(state)
-            .await
-            .unwrap_or_default();
+        let household: Vec<String> =
+            crate::net::sync::cohort_endpoints(state).await.unwrap_or_default();
         if !household.is_empty() {
             won = race(state, root_hex, scope, ask, max_passes, held_before, household).await;
         }
@@ -1353,7 +1429,10 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
         // (PROJECT_PLAN's Peeks, ruling 2): the wake pass is how a budgeted history keeps arriving. So is
         // one held at PEEK depth that somebody here now dials (ruling 7): the dial is the
         // demand, and the whole mirror is owed on the next beat.
-        if now - fetched_at < stale_ms && !state.behind.is_behind(&foreign) && !state.peeked.is_behind(&foreign) {
+        if now - fetched_at < stale_ms
+            && !state.behind.is_behind(&foreign)
+            && !state.peeked.is_behind(&foreign)
+        {
             continue;
         }
         {
@@ -1364,12 +1443,13 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
                 }
             }
         }
-        let active = hosted
-            .get(&local)
-            .is_some_and(|account| active_accounts.contains(account));
-        let entry = by_foreign
-            .entry(foreign.clone())
-            .or_insert(RefreshCandidate { foreign, active: false, eagerness: 0, fetched_at });
+        let active = hosted.get(&local).is_some_and(|account| active_accounts.contains(account));
+        let entry = by_foreign.entry(foreign.clone()).or_insert(RefreshCandidate {
+            foreign,
+            active: false,
+            eagerness: 0,
+            fetched_at,
+        });
         entry.active |= active;
         entry.eagerness = entry.eagerness.max(eagerness);
     }
@@ -1463,13 +1543,8 @@ pub async fn directory(
     State(state): State<AppState>,
 ) -> Result<axum::Json<Vec<DirectoryRow>>, AppError> {
     let served: std::collections::BTreeSet<String> =
-        crate::identity::served_roots(&state.node_db)
-            .await?
-            .into_iter()
-            .collect();
-    let fetched = fetched_roots(&state.node_db)
-        .await
-        .map_err(AppError::Internal)?;
+        crate::identity::served_roots(&state.node_db).await?.into_iter().collect();
+    let fetched = fetched_roots(&state.node_db).await.map_err(AppError::Internal)?;
     let mut roots: Vec<String> = served.iter().cloned().collect();
     roots.extend(fetched.into_iter().filter(|r| !served.contains(r)));
     // The directory is a shelf to scan, never an export: capped, hosted-first, BEFORE the
@@ -1480,9 +1555,8 @@ pub async fn directory(
     // NEXT_STEPS, "Search my people / all visible people").
     roots.truncate(DIRECTORY_CAP);
 
-    let bylines = crate::profiles::bylines(&state.node_db, &roots)
-        .await
-        .map_err(AppError::Internal)?;
+    let bylines =
+        crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
     let mut rows: Vec<DirectoryRow> = roots
         .into_iter()
         .filter_map(|root| {
@@ -1531,13 +1605,16 @@ pub(crate) async fn public_doc_bytes(
     via: Option<&str>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
-    let doc_id: [u8; 16] = hex::decode(doc_hex)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| AppError::NotFound(crate::msg!("idface.no-such-document", "no such document")))?;
+    let doc_id: [u8; 16] =
+        hex::decode(doc_hex).ok().and_then(|b| b.try_into().ok()).ok_or_else(|| {
+            AppError::NotFound(crate::msg!("idface.no-such-document", "no such document"))
+        })?;
     // Two shelves, the author's chain first. Held chain: authoritative, retraction-filtered
     // at `public_head`. No chain: the FRAGMENT ledger (2026-08-14) - a reader whose node
     // learned of this document through a share holds the author's own signed entry and (once
@@ -1583,63 +1660,70 @@ pub(crate) async fn public_doc_bytes(
                 }),
         )
     };
-    let facts: Option<ServeFacts> =
-        match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
-            Some(db) => {
-                let speculative_only = crate::speculative::speculative_only(state, &root_hex)
-                    .await
-                    .map_err(AppError::Internal)?;
-                // A peek's mirror (PROJECT_PLAN's Peeks, ruling 4) has no posts lane either: its words
-                // live on the fragment ledger, so it reads fragment-first like a hunch does.
-                // And a peek FOLLOWS THE EYE (ruling 5): a document it never fetched - a
-                // page of a shared book, a post past the newest twenty - is asked for by id
-                // over the fragment road from the author's own nodes, right now, so the
-                // reader who clicked it gets it rather than a shrug.
-                let peek = peek_held(state, &root_hex).await;
-                let mut fragment_first = if speculative_only || peek { from_fragments().await? } else { None };
-                if peek {
-                    touch_look(state, &root_hex).await;
+    let facts: Option<ServeFacts> = match state
+        .user_dbs
+        .get(&root_hex)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        Some(db) => {
+            let speculative_only = crate::speculative::speculative_only(state, &root_hex)
+                .await
+                .map_err(AppError::Internal)?;
+            // A peek's mirror (PROJECT_PLAN's Peeks, ruling 4) has no posts lane either: its words
+            // live on the fragment ledger, so it reads fragment-first like a hunch does.
+            // And a peek FOLLOWS THE EYE (ruling 5): a document it never fetched - a
+            // page of a shared book, a post past the newest twenty - is asked for by id
+            // over the fragment road from the author's own nodes, right now, so the
+            // reader who clicked it gets it rather than a shrug.
+            let peek = peek_held(state, &root_hex).await;
+            let mut fragment_first =
+                if speculative_only || peek { from_fragments().await? } else { None };
+            if peek {
+                touch_look(state, &root_hex).await;
+            }
+            if peek && fragment_first.is_none() {
+                if !peek_room(state, &root_hex).await {
+                    return Err(AppError::NotFound(crate::msg!(
+                        "idface.this-look-is-full",
+                        "this look is full - follow them to keep everything"
+                    )));
                 }
-                if peek && fragment_first.is_none() {
-                    if !peek_room(state, &root_hex).await {
-                        return Err(AppError::NotFound(crate::msg!("idface.this-look-is-full", "this look is full - follow them to keep everything")));
-                    }
+                crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
+                fragment_first = from_fragments().await?;
+            }
+            // A FOLLOW held from a floor (PROJECT_PLAN's Peeks, ruling 8) may lack an old document
+            // too - a pin beneath the floor, a link into deep history: the ledger, then
+            // by id over the fragment road. Only while the posts chain HAS a floor: a
+            // whole mirror lacking a document lacks it for a reason (retracted,
+            // disproven), and must not fetch it back. Never for a persona hosted here.
+            // A document the held chain lacks may sit on the shelf: beneath a follow
+            // ceiling's floor, or brought by a share or a room (CHAT.md, ruling 11 - a
+            // persona held at room depth has no posts chain here at all, and its media
+            // twins arrive as fragments under the room's door). The shelf is one read,
+            // always taken; the dial for what the shelf lacks stays gated by the floor,
+            // so a typo against a followed persona costs no connection.
+            if !peek
+                && !speculative_only
+                && fragment_first.is_none()
+                && !hosted_here(state, &root_hex).await.unwrap_or(false)
+                && crate::record::documents::public_head(&db, &doc_id).await?.is_none()
+            {
+                fragment_first = from_fragments().await?;
+                if fragment_first.is_none() && posts_floor(state, &root_hex).await > 0 {
                     crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
                     fragment_first = from_fragments().await?;
                 }
-                // A FOLLOW held from a floor (PROJECT_PLAN's Peeks, ruling 8) may lack an old document
-                // too - a pin beneath the floor, a link into deep history: the ledger, then
-                // by id over the fragment road. Only while the posts chain HAS a floor: a
-                // whole mirror lacking a document lacks it for a reason (retracted,
-                // disproven), and must not fetch it back. Never for a persona hosted here.
-                // A document the held chain lacks may sit on the shelf: beneath a follow
-                // ceiling's floor, or brought by a share or a room (CHAT.md, ruling 11 - a
-                // persona held at room depth has no posts chain here at all, and its media
-                // twins arrive as fragments under the room's door). The shelf is one read,
-                // always taken; the dial for what the shelf lacks stays gated by the floor,
-                // so a typo against a followed persona costs no connection.
-                if !peek
-                    && !speculative_only
-                    && fragment_first.is_none()
-                    && !hosted_here(state, &root_hex).await.unwrap_or(false)
-                    && crate::record::documents::public_head(&db, &doc_id).await?.is_none()
-                {
-                    fragment_first = from_fragments().await?;
-                    if fragment_first.is_none() && posts_floor(state, &root_hex).await > 0 {
-                        crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
-                        fragment_first = from_fragments().await?;
-                    }
-                }
-                match fragment_first {
-                    Some(facts) => Some(facts),
-                    None => {
-                        // Off the HEADER, not the text-only shelf view: a media twin is
-                        // filtered out of `public_doc` by format, which left sealed
-                        // pictures serving their ciphertext ungated (caught by the twins
-                        // acceptance - 200 of sealed bytes for the untrusted).
-                        let (gated, seal_of, sealed_title) = match crate::record::documents::public_header_entry(&db, &doc_id)
-                            .await?
-                        {
+            }
+            match fragment_first {
+                Some(facts) => Some(facts),
+                None => {
+                    // Off the HEADER, not the text-only shelf view: a media twin is
+                    // filtered out of `public_doc` by format, which left sealed
+                    // pictures serving their ciphertext ungated (caught by the twins
+                    // acceptance - 200 of sealed bytes for the untrusted).
+                    let (gated, seal_of, sealed_title) =
+                        match crate::record::documents::public_header_entry(&db, &doc_id).await? {
                             Some(entry) => match &entry.entry().payload {
                                 ringtome_proto::Payload::Inline(payload) => {
                                     ringtome_proto::registry::DocHeaderPlain::decode(payload)
@@ -1650,21 +1734,19 @@ pub(crate) async fn public_doc_bytes(
                             },
                             None => (false, None, None),
                         };
-                        crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
-                            ServeFacts {
-                                file_hash: h.file_hash,
-                                thumb_hash: h.thumb_hash,
-                                format: h.format,
-                                trusted_only: gated,
-                                seal_of,
-                                sealed_title,
-                            }
-                        })
-                    }
+                    crate::record::documents::public_head(&db, &doc_id).await?.map(|h| ServeFacts {
+                        file_hash: h.file_hash,
+                        thumb_hash: h.thumb_hash,
+                        format: h.format,
+                        trusted_only: gated,
+                        seal_of,
+                        sealed_title,
+                    })
                 }
             }
-            None => from_fragments().await?,
-        };
+        }
+        None => from_fragments().await?,
+    };
     // Nothing here has the words and a member is asking: one fetch - from the sharer
     // whose shelf listed it (`?via=`), else the author's own nodes - whichever way the
     // author is held: not at all, as a hunch, as a peek short of this post. A share on a
@@ -1684,7 +1766,10 @@ pub(crate) async fn public_doc_bytes(
     };
     let facts = match facts {
         Some(f) => Some(f),
-        None if session.is_some() && not_here_yet && !hosted_here(state, &root_hex).await.unwrap_or(false) => {
+        None if session.is_some()
+            && not_here_yet
+            && !hosted_here(state, &root_hex).await.unwrap_or(false) =>
+        {
             let origin = via
                 .filter(|v| v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit()))
                 .map(str::to_lowercase)
@@ -1694,8 +1779,13 @@ pub(crate) async fn public_doc_bytes(
         }
         None => None,
     };
-    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only, seal_of, sealed_title }) = facts else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
+    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only, seal_of, sealed_title }) =
+        facts
+    else {
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-public-document-here",
+            "no such public document here"
+        )));
     };
     // The trusted-readers gate (PROJECT_PLAN's Post visibility slice 2). The BODY is the gated thing; the
     // thumbnail is the post's public face by ruling, with the title and the date. A reader
@@ -1712,7 +1802,8 @@ pub(crate) async fn public_doc_bytes(
     let holder_hex = hex::encode(holder);
     let mut viewer_hex: Option<String> = None;
     if trusted_only {
-        viewer_hex = trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false, via).await?;
+        viewer_hex =
+            trusted_viewer(state, session, &holder_hex, &hex::encode(key_doc), false, via).await?;
         if viewer_hex.is_none() {
             return Err(AppError::Forbidden(crate::msg!(
                 "idface.for-trusted-readers-only",
@@ -1723,14 +1814,14 @@ pub(crate) async fn public_doc_bytes(
     let mut title_header: Option<String> = None;
     let (hash, mime) = if thumb {
         let Some(t) = thumb_hash else {
-            return Err(AppError::NotFound(crate::msg!("idface.this-document-has-no-thumbnail", "this document has no thumbnail")));
+            return Err(AppError::NotFound(crate::msg!(
+                "idface.this-document-has-no-thumbnail",
+                "this document has no thumbnail"
+            )));
         };
         (t, "image/avif")
     } else {
-        (
-            file_hash,
-            crate::record::documents::Format::from_wire(format).mime(),
-        )
+        (file_hash, crate::record::documents::Format::from_wire(format).mime())
     };
     // The URL names the DOCUMENT (mutable - editing re-publishes new words under the same
     // doc_id); only the blob underneath is content-addressed. This once said `immutable,
@@ -1743,10 +1834,7 @@ pub(crate) async fn public_doc_bytes(
     if if_none_match.is_some_and(|inm| inm == etag) {
         return Ok((
             StatusCode::NOT_MODIFIED,
-            [
-                (header::ETAG, etag.as_str()),
-                (header::CACHE_CONTROL, cache),
-            ],
+            [(header::ETAG, etag.as_str()), (header::CACHE_CONTROL, cache)],
         )
             .into_response());
     }
@@ -1759,19 +1847,23 @@ pub(crate) async fn public_doc_bytes(
         // A peek at its ceiling never wanted these bytes (PROJECT_PLAN's Peeks, ruling 6): say so, rather
         // than promising bodies that are not on their way.
         if peek_held(state, &root_hex).await && !peek_room(state, &root_hex).await {
-            return Err(AppError::NotFound(crate::msg!("idface.this-look-is-full", "this look is full - follow them to keep everything")));
+            return Err(AppError::NotFound(crate::msg!(
+                "idface.this-look-is-full",
+                "this look is full - follow them to keep everything"
+            )));
         }
-        return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "still on its way")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.the-bytes-havent-arrived-here",
+            "still on its way"
+        )));
     };
     // A sealed body opens at the door (PROJECT_PLAN's Post visibility slice 2b): what the store holds and
     // the network spreads is ciphertext; the trusted reader above has earned the words,
     // and the key comes from the memo - or, first time, from whoever serves the author,
     // over the key lane with its own trust check at the far end.
     let bytes = if trusted_only {
-        let doc_bytes: [u8; 16] = hex::decode(doc_hex)
-            .ok()
-            .and_then(|b| b.try_into().ok())
-            .expect("checked above");
+        let doc_bytes: [u8; 16] =
+            hex::decode(doc_hex).ok().and_then(|b| b.try_into().ok()).expect("checked above");
         // The key for THIS persona (2026-09-14): a grant, or the lane asked for them.
         let key = match viewer_hex.as_deref() {
             Some(v) => key_for(state, &holder_hex, &key_doc, v, via).await,
@@ -1800,10 +1892,21 @@ pub(crate) async fn public_doc_bytes(
         }
         // And the labels (ruling 7): a reader proven entitled to the words is entitled to
         // what is said about them - open the raw sealed statements this node holds, once.
-        match crate::annotations::open_sealed(&state.node_db, &hex::encode(root), &hex::encode(doc_id), &holder_hex, &hex::encode(key_doc), &key).await {
+        match crate::annotations::open_sealed(
+            &state.node_db,
+            &hex::encode(root),
+            &hex::encode(doc_id),
+            &holder_hex,
+            &hex::encode(key_doc),
+            &key,
+        )
+        .await
+        {
             Ok(opened) if !opened.is_empty() => {
-                let touched: Vec<(String, String, String)> =
-                    opened.into_iter().map(|x| (hex::encode(root), hex::encode(doc_id), x)).collect();
+                let touched: Vec<(String, String, String)> = opened
+                    .into_iter()
+                    .map(|x| (hex::encode(root), hex::encode(doc_id), x))
+                    .collect();
                 crate::score::labels_moved(state, &touched).await;
             }
             Ok(_) => {}
@@ -1846,9 +1949,7 @@ pub async fn public_body_route(
     Path((seg, doc_hex)): Path<(String, String)>,
     axum::extract::Query(q): axum::extract::Query<ViaQuery>,
 ) -> Result<Response, AppError> {
-    let inm = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|v| v.to_str().ok());
+    let inm = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok());
     public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await
 }
 
@@ -1862,9 +1963,7 @@ pub async fn public_body_named_route(
     Path((seg, doc_hex, _filename)): Path<(String, String, String)>,
     axum::extract::Query(q): axum::extract::Query<ViaQuery>,
 ) -> Result<Response, AppError> {
-    let inm = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|v| v.to_str().ok());
+    let inm = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok());
     public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await
 }
 
@@ -1874,9 +1973,7 @@ pub async fn public_thumb_route(
     headers: axum::http::HeaderMap,
     Path((seg, doc_hex)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    let inm = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|v| v.to_str().ok());
+    let inm = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok());
     public_doc_bytes(&state, &session, &seg, &doc_hex, true, inm, None).await
 }
 
@@ -1905,13 +2002,21 @@ pub struct PostsQuery {
 
 /// Is a post sealed, as this node holds its header - the chain first, the fragment ledger
 /// second? `None` when the header is not here at all.
-pub(crate) async fn sealed_here(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<bool> {
+pub(crate) async fn sealed_here(
+    state: &AppState,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> Option<bool> {
     held_flags(state, author_hex, doc_id).await.map(|(sealed, _)| sealed)
 }
 
 /// Is a post "people I trust, and onward" (Contact tags, ruling 7), as this node holds its
 /// header? `None` when the header is not here at all.
-pub(crate) async fn onward_here(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<bool> {
+pub(crate) async fn onward_here(
+    state: &AppState,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> Option<bool> {
     held_flags(state, author_hex, doc_id).await.map(|(_, onward)| onward)
 }
 
@@ -1938,11 +2043,19 @@ async fn held_flags(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Op
 /// mirrors them - the share on their shares chain, the trust on their identity chain - so
 /// a `?via=` hint nobody's record backs admits nobody. Only for a post whose header says
 /// onward; a plain sealed post has no hop, and neither the holder nor the subject is a hop.
-pub(crate) async fn onward_sharer_admits(state: &AppState, holder_hex: &str, key_doc_hex: &str, sharer_hex: &str, subject_hex: &str) -> bool {
+pub(crate) async fn onward_sharer_admits(
+    state: &AppState,
+    holder_hex: &str,
+    key_doc_hex: &str,
+    sharer_hex: &str,
+    subject_hex: &str,
+) -> bool {
     if sharer_hex == holder_hex || sharer_hex == subject_hex {
         return false;
     }
-    let Ok(key_doc) = hex::decode(key_doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return false };
+    let Ok(key_doc) = hex::decode(key_doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+        return false;
+    };
     let Ok(key_doc) = key_doc else { return false };
     if onward_here(state, holder_hex, &key_doc).await != Some(true) {
         return false;
@@ -1951,7 +2064,11 @@ pub(crate) async fn onward_sharer_admits(state: &AppState, holder_hex: &str, key
     let Ok(Some(db)) = state.user_dbs.get(sharer_hex).await else { return false };
     let shared = crate::record::imaol::rebroadcasts(&db)
         .await
-        .map(|rows| rows.iter().any(|s| s.version_seen.is_some() && s.author_root == holder_hex && s.doc_id == key_doc))
+        .map(|rows| {
+            rows.iter().any(|s| {
+                s.version_seen.is_some() && s.author_root == holder_hex && s.doc_id == key_doc
+            })
+        })
         .unwrap_or(false);
     if !shared {
         return false;
@@ -1977,7 +2094,8 @@ pub(crate) async fn seal_key_for(
         return Ok(None);
     }
     let doc_hex = hex::encode(doc_id);
-    let Some(author) = hex::decode(author_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else {
+    let Some(author) = hex::decode(author_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())
+    else {
         return Ok(None);
     };
     // user-db open 18 of 18 (tests/conventions.rs): the subject's own header, for whose
@@ -1986,7 +2104,9 @@ pub(crate) async fn seal_key_for(
         Ok(Some(db)) => match crate::record::documents::public_header_entry(&db, doc_id).await? {
             Some(entry) => match &entry.entry().payload {
                 ringtome_proto::Payload::Inline(payload) => {
-                    ringtome_proto::registry::DocHeaderPlain::decode(payload).ok().and_then(|h| h.seal_of)
+                    ringtome_proto::registry::DocHeaderPlain::decode(payload)
+                        .ok()
+                        .and_then(|h| h.seal_of)
                 }
                 _ => None,
             },
@@ -2021,7 +2141,10 @@ pub(crate) async fn seal_key_for(
 /// for one admitted reader, it is theirs to keep and never a shared cache's.
 fn cache_policy(format: Option<u64>, sealed: bool) -> &'static str {
     use crate::record::documents::Format;
-    let media = matches!(Format::from_wire(format), Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus);
+    let media = matches!(
+        Format::from_wire(format),
+        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus
+    );
     match (media, sealed) {
         (true, false) => "public, max-age=31536000, s-maxage=2592000, immutable",
         (true, true) => "private, max-age=31536000, immutable",
@@ -2053,7 +2176,13 @@ pub(crate) fn seal_holder(
 /// sharer a share card named: on a post sealed "people I trust, and onward" (ruling 7)
 /// the sharer's own trust admits the subject too - one hop, judged from the sharer's
 /// mirrored record.
-pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str, via: Option<&str>) -> bool {
+pub(crate) async fn seal_admits(
+    state: &AppState,
+    holder_hex: &str,
+    key_doc_hex: &str,
+    subject_hex: &str,
+    via: Option<&str>,
+) -> bool {
     if subject_hex == holder_hex {
         return true;
     }
@@ -2066,7 +2195,10 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
     // the holder's own: a grant the lane gave this persona says yes; nothing yet falls back
     // to published trust, and the door's fetch for the persona settles it either way.
     if !hosted_here(state, holder_hex).await.unwrap_or(false) {
-        if crate::postkeys::granted(&state.node_db, holder_hex, key_doc_hex, subject_hex).await.unwrap_or(false) {
+        if crate::postkeys::granted(&state.node_db, holder_hex, key_doc_hex, subject_hex)
+            .await
+            .unwrap_or(false)
+        {
             return true;
         }
         // A chat for two (CHAT.md, ruling 12) is sealed to one person, whom only the author's
@@ -2074,7 +2206,9 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
         // 2026-10-01: a third person he trusted, on their own node, saw his chat with someone
         // else listed and could open it). Away from the author's node, only the grant the lane
         // gives the one it names admits anybody; the signed header says what kind of room it is.
-        if let Some(doc) = hex::decode(key_doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+        if let Some(doc) =
+            hex::decode(key_doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        {
             if crate::chat::is_im(state, holder_hex, &doc).await {
                 return false;
             }
@@ -2088,7 +2222,9 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
         };
     }
     match crate::postkeys::audience(&state.node_db, holder_hex, key_doc_hex).await.ok().flatten() {
-        Some(tag) => audience_members(state, holder_hex, key_doc_hex, &tag).await.contains(subject_hex),
+        Some(tag) => {
+            audience_members(state, holder_hex, key_doc_hex, &tag).await.contains(subject_hex)
+        }
         None => match state.user_dbs.get(holder_hex).await {
             Ok(Some(db)) => crate::record::imaol::published_edges(&db)
                 .await
@@ -2105,9 +2241,17 @@ pub(crate) async fn seal_admits(state: &AppState, holder_hex: &str, key_doc_hex:
 /// is the word for the shelf, the feed, the thread and the labels (Contact tags, ruling 4).
 /// Never for the body door: the door is what asks for the key, and a refusal must not stop
 /// it asking again once trust or the audience has changed - a key's arrival clears it.
-pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: &str, subject_hex: &str, via: Option<&str>) -> bool {
+pub(crate) async fn seal_lists(
+    state: &AppState,
+    holder_hex: &str,
+    key_doc_hex: &str,
+    subject_hex: &str,
+    via: Option<&str>,
+) -> bool {
     if subject_hex != holder_hex
-        && crate::postkeys::refused(&state.node_db, holder_hex, key_doc_hex, subject_hex).await.unwrap_or(false)
+        && crate::postkeys::refused(&state.node_db, holder_hex, key_doc_hex, subject_hex)
+            .await
+            .unwrap_or(false)
     {
         return false;
     }
@@ -2125,9 +2269,16 @@ pub(crate) async fn seal_lists(state: &AppState, holder_hex: &str, key_doc_hex: 
 /// (2026-10-01) a private chat between him and one person, on a node hosting a third he also
 /// trusted, was listed for the third, opened, read and spoken in. The seal's own question is
 /// asked here now, so no caller can skip it.
-pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 16], viewer_hex: &str, via: Option<&str>) -> Option<[u8; 32]> {
+pub(crate) async fn key_for(
+    state: &AppState,
+    holder_hex: &str,
+    key_doc: &[u8; 16],
+    viewer_hex: &str,
+    via: Option<&str>,
+) -> Option<[u8; 32]> {
     let key_doc_hex = hex::encode(key_doc);
-    let held = crate::postkeys::lookup(&state.node_db, holder_hex, &key_doc_hex).await.ok().flatten();
+    let held =
+        crate::postkeys::lookup(&state.node_db, holder_hex, &key_doc_hex).await.ok().flatten();
     if viewer_hex == holder_hex {
         return held;
     }
@@ -2137,7 +2288,11 @@ pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 1
             false => None,
         };
     }
-    if held.is_some() && crate::postkeys::granted(&state.node_db, holder_hex, &key_doc_hex, viewer_hex).await.unwrap_or(false) {
+    if held.is_some()
+        && crate::postkeys::granted(&state.node_db, holder_hex, &key_doc_hex, viewer_hex)
+            .await
+            .unwrap_or(false)
+    {
         return held;
     }
     let holder = hex::decode(holder_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
@@ -2149,10 +2304,19 @@ pub(crate) async fn key_for(state: &AppState, holder_hex: &str, key_doc: &[u8; 1
 /// only where the holder is hosted, which is the only place an audience is ever judged.
 /// The post's own audience (`@mentioned`, Contact tags ruling 5) is the member list noted
 /// for that key document instead.
-pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, key_doc_hex: &str, tag: &str) -> std::collections::HashSet<String> {
+pub(crate) async fn audience_members(
+    state: &AppState,
+    holder_hex: &str,
+    key_doc_hex: &str,
+    tag: &str,
+) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     if tag == crate::postkeys::MENTIONED_AUDIENCE {
-        out.extend(crate::postkeys::members(&state.node_db, holder_hex, key_doc_hex).await.unwrap_or_default());
+        out.extend(
+            crate::postkeys::members(&state.node_db, holder_hex, key_doc_hex)
+                .await
+                .unwrap_or_default(),
+        );
         return out;
     }
     let Ok(data) = crate::record::store::open_agented(state, holder_hex).await else { return out };
@@ -2160,7 +2324,10 @@ pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, key_doc
     let want = tag.trim().to_lowercase();
     for (root, facts) in contacts {
         let Some(raw) = facts.get("tags") else { continue };
-        let Ok(serde_json::Value::Array(list)) = serde_json::from_str::<serde_json::Value>(raw) else { continue };
+        let Ok(serde_json::Value::Array(list)) = serde_json::from_str::<serde_json::Value>(raw)
+        else {
+            continue;
+        };
         if list.iter().any(|v| v.as_str().is_some_and(|t| t.trim().to_lowercase() == want)) {
             out.insert(root);
         }
@@ -2171,7 +2338,14 @@ pub(crate) async fn audience_members(state: &AppState, holder_hex: &str, key_doc
 /// The viewer's standing with a seal: the first of the session's personas the holder
 /// admits, by root - `for_listing` honours a remembered refusal (`seal_lists`), the body
 /// door does not.
-pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str, key_doc_hex: &str, for_listing: bool, via: Option<&str>) -> Result<Option<String>, AppError> {
+pub(crate) async fn trusted_viewer(
+    state: &AppState,
+    session: &Option<Session>,
+    holder_hex: &str,
+    key_doc_hex: &str,
+    for_listing: bool,
+    via: Option<&str>,
+) -> Result<Option<String>, AppError> {
     let Some(sess) = session else { return Ok(None) };
     let mine: Vec<String> = crate::identity::list_for_account(&state.node_db, &sess.account.id)
         .await?
@@ -2206,7 +2380,10 @@ async fn hide_sealed(
     if !posts.iter().any(|p| p.trusted_only) || viewer == Some(author_hex) {
         return;
     }
-    if viewer.is_none() && session.is_some() && hosted_here(state, author_hex).await.unwrap_or(false) {
+    if viewer.is_none()
+        && session.is_some()
+        && hosted_here(state, author_hex).await.unwrap_or(false)
+    {
         return;
     }
     let Ok(author) = hex_fixed_root(author_hex) else {
@@ -2297,17 +2474,28 @@ pub async fn id_labels(
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-4", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-4",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
     if !shelf_readable(&state, &session, &root_hex).await? {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-5", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-5",
+            "no such persona here"
+        )));
     }
     let mut posts = whole_shelf(&state, &root_hex).await;
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
     // The kind row: the posts by their shape, plus every share the persona passed along.
     let shares = match state.user_dbs.get(&root_hex).await.ok().flatten() {
-        Some(db) => crate::record::imaol::rebroadcasts(&db).await.unwrap_or_default().into_iter().filter(|s| s.version_seen.is_some()).count(),
+        Some(db) => crate::record::imaol::rebroadcasts(&db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| s.version_seen.is_some())
+            .count(),
         None => 0,
     };
     // As the shelf narrows its posts (id_posts), so the facets count them (Curtis, 2026-09-27).
@@ -2322,9 +2510,10 @@ pub async fn id_labels(
         })
         .collect();
     let narrow = crate::search::Narrow::parse(raw.as_deref(), query.q.as_deref());
-    let facets = crate::search::facets_json(&state, &candidates, &narrow, query.as_root.as_deref(), shares)
-        .await
-        .map_err(AppError::Internal)?;
+    let facets =
+        crate::search::facets_json(&state, &candidates, &narrow, query.as_root.as_deref(), shares)
+            .await
+            .map_err(AppError::Internal)?;
     Ok(axum::Json(facets))
 }
 
@@ -2347,15 +2536,18 @@ fn post_kind(p: &crate::record::documents::PublicDoc) -> &'static str {
 /// the search and the facets; no backfill, no cursor: what is here.
 async fn whole_shelf(state: &AppState, root_hex: &str) -> Vec<crate::record::documents::PublicDoc> {
     let hosted_here = crate::identity::is_agented(&state.node_db, root_hex).await.unwrap_or(false);
-    let all: Vec<crate::record::documents::PublicDoc> = if !hosted_here && peek_held(state, root_hex).await {
-        touch_look(state, root_hex).await;
-        crate::fragments::shelf_of(&state.node_db, root_hex, 5000).await.unwrap_or_default()
-    } else {
-        match state.user_dbs.get(root_hex).await.ok().flatten() {
-            Some(db) => crate::record::documents::public_docs(&db, None, 5000).await.unwrap_or_default(),
-            None => Vec::new(),
-        }
-    };
+    let all: Vec<crate::record::documents::PublicDoc> =
+        if !hosted_here && peek_held(state, root_hex).await {
+            touch_look(state, root_hex).await;
+            crate::fragments::shelf_of(&state.node_db, root_hex, 5000).await.unwrap_or_default()
+        } else {
+            match state.user_dbs.get(root_hex).await.ok().flatten() {
+                Some(db) => {
+                    crate::record::documents::public_docs(&db, None, 5000).await.unwrap_or_default()
+                }
+                None => Vec::new(),
+            }
+        };
     all.into_iter().filter(|p| p.part_of.is_none()).collect()
 }
 
@@ -2367,10 +2559,14 @@ pub async fn id_posts(
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-2", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-2",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
-    let missing = || AppError::NotFound(crate::msg!("idface.no-such-persona-here-3", "no such persona here"));
+    let missing =
+        || AppError::NotFound(crate::msg!("idface.no-such-persona-here-3", "no such persona here"));
     if !shelf_readable(&state, &session, &root_hex).await? {
         return Err(missing());
     }
@@ -2379,7 +2575,12 @@ pub async fn id_posts(
     // this was written against a 32-byte id, and document ids are 16).
     let after = match (query.after_ms, query.after_doc.as_deref()) {
         (Some(ms), Some(doc)) => {
-            let bad = || AppError::BadRequest(crate::msg!("idface.that-cursor-isnt-a-document", "that cursor isn't a document id"));
+            let bad = || {
+                AppError::BadRequest(crate::msg!(
+                    "idface.that-cursor-isnt-a-document",
+                    "that cursor isn't a document id"
+                ))
+            };
             let raw = hex::decode(doc).map_err(|_| bad())?;
             let id: [u8; 16] = raw.try_into().map_err(|_| bad())?;
             Some((ms, id))
@@ -2409,11 +2610,7 @@ pub async fn id_posts(
         let keep = crate::search::matching(&state, &candidates, &narrow, query.as_root.as_deref())
             .await
             .map_err(AppError::Internal)?;
-        all.into_iter()
-            .enumerate()
-            .filter(|(i, _)| keep.contains(i))
-            .map(|(_, p)| p)
-            .collect()
+        all.into_iter().enumerate().filter(|(i, _)| keep.contains(i)).map(|(_, p)| p).collect()
     } else if !hosted_here && peek_held(&state, &root_hex).await {
         touch_look(&state, &root_hex).await;
         // A peek's shelf is the fragment ledger's (PROJECT_PLAN's Peeks, ruling 4): one page, no further.
@@ -2448,7 +2645,9 @@ pub async fn id_posts(
         && session.is_some()
         && posts.len() as i64 <= POSTS_PAGE
         && posts_floor(&state, &root_hex).await > 0
-        && tokio::time::timeout(std::time::Duration::from_secs(8), backfill(&state, &root_hex)).await.unwrap_or(false)
+        && tokio::time::timeout(std::time::Duration::from_secs(8), backfill(&state, &root_hex))
+            .await
+            .unwrap_or(false)
     {
         if let Some(db) = &dbh {
             posts = crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
@@ -2478,8 +2677,7 @@ pub async fn id_posts(
     if let Some((ms, doc)) = &after {
         let doc_hex = hex::encode(doc);
         shares.retain(|s| {
-            s.received_at_ms < *ms
-                || (s.received_at_ms == *ms && hex::encode(s.doc_id) > doc_hex)
+            s.received_at_ms < *ms || (s.received_at_ms == *ms && hex::encode(s.doc_id) > doc_hex)
         });
     }
     shares.truncate((page + 1) as usize); // the view is already newest-first
@@ -2500,22 +2698,16 @@ pub async fn id_posts(
     let more = merged.len() as i64 > page;
     merged.truncate(page as usize);
     // The reply counts, one page-scoped memo read for the whole shelf page.
-    let pairs: Vec<(String, String)> = posts
-        .iter()
-        .map(|p| (root_hex.clone(), hex::encode(p.doc_id)))
-        .collect();
-    let counts = crate::replies::known_counts(&state.node_db, &pairs)
-        .await
-        .unwrap_or_default();
+    let pairs: Vec<(String, String)> =
+        posts.iter().map(|p| (root_hex.clone(), hex::encode(p.doc_id))).collect();
+    let counts = crate::replies::known_counts(&state.node_db, &pairs).await.unwrap_or_default();
     let mut items: Vec<serde_json::Value> = Vec::with_capacity(merged.len());
     for (_, _, which) in &merged {
         items.push(match which {
             Shelf::Post(i) => {
                 let p = &posts[*i];
-                let n = counts
-                    .get(&(root_hex.clone(), hex::encode(p.doc_id)))
-                    .copied()
-                    .unwrap_or(0);
+                let n =
+                    counts.get(&(root_hex.clone(), hex::encode(p.doc_id))).copied().unwrap_or(0);
                 post_json(p, n)
             }
             Shelf::Share(i) => share_json(&state, &shares[*i], &root_hex).await,
@@ -2529,10 +2721,9 @@ pub async fn id_posts(
     {
         let mut parents: Vec<(String, String)> = Vec::new();
         for v in items.iter() {
-            if let (Some(pa), Some(pd)) = (
-                v["reply_to"]["author"].as_str(),
-                v["reply_to"]["doc_id"].as_str(),
-            ) {
+            if let (Some(pa), Some(pd)) =
+                (v["reply_to"]["author"].as_str(), v["reply_to"]["doc_id"].as_str())
+            {
                 parents.push((pa.to_string(), pd.to_string()));
             }
         }
@@ -2543,12 +2734,13 @@ pub async fn id_posts(
             )
             .await
             .unwrap_or_default();
-            let mut cards: std::collections::HashMap<(String, String), (Option<String>, Option<i64>)> =
-                Default::default();
+            let mut cards: std::collections::HashMap<
+                (String, String),
+                (Option<String>, Option<i64>),
+            > = Default::default();
             for (pa, pd) in &parents {
-                let Some(id) = hex::decode(pd)
-                    .ok()
-                    .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+                let Some(id) =
+                    hex::decode(pd).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
                 else {
                     continue;
                 };
@@ -2593,7 +2785,8 @@ pub async fn id_posts(
                 ) else {
                     continue;
                 };
-                let (title, ms) = cards.get(&(pa.clone(), pd.clone())).cloned().unwrap_or((None, None));
+                let (title, ms) =
+                    cards.get(&(pa.clone(), pd.clone())).cloned().unwrap_or((None, None));
                 v["reply_to"] = serde_json::json!({
                     "author": pa,
                     "doc_id": pd,
@@ -2642,14 +2835,8 @@ async fn attach_annotations(
     if known.is_empty() {
         return;
     }
-    let annotators: Vec<String> = known
-        .values()
-        .flatten()
-        .map(|a| a.annotator.clone())
-        .collect();
-    let bylines = crate::profiles::bylines(&state.node_db, &annotators)
-        .await
-        .unwrap_or_default();
+    let annotators: Vec<String> = known.values().flatten().map(|a| a.annotator.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &annotators).await.unwrap_or_default();
     for v in posts.iter_mut() {
         let Some(doc) = v["doc_id"].as_str().map(String::from) else {
             continue;
@@ -2674,8 +2861,7 @@ async fn attach_annotations(
 /// nothing renders exactly as before.
 fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_json::Value {
     let link = |l: &Option<(String, String)>| {
-        l.as_ref()
-            .map(|(author, doc)| serde_json::json!({ "author": author, "doc_id": doc }))
+        l.as_ref().map(|(author, doc)| serde_json::json!({ "author": author, "doc_id": doc }))
     };
     serde_json::json!({
         "settled": if p.settled { Some(true) } else { None },
@@ -2711,12 +2897,20 @@ pub async fn id_from(
     State(state): State<AppState>,
     Path((seg, doc)): Path<(String, String)>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
-    let private = || AppError::NotFound(crate::msg!("idface.that-document-is-private", "that document is private"));
+    let private = || {
+        AppError::NotFound(crate::msg!(
+            "idface.that-document-is-private",
+            "that document is private"
+        ))
+    };
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(private());
     };
     let root_hex = hex::encode(root);
-    if doc.len() != 32 || !doc.chars().all(|c| c.is_ascii_hexdigit()) || !shelf_readable(&state, &session, &root_hex).await? {
+    if doc.len() != 32
+        || !doc.chars().all(|c| c.is_ascii_hexdigit())
+        || !shelf_readable(&state, &session, &root_hex).await?
+    {
         return Err(private());
     }
     match crate::annotations::published_from(&state.node_db, &root_hex, &doc.to_ascii_lowercase())
@@ -2743,21 +2937,33 @@ pub async fn id_post_versions(
     Path((seg, doc)): Path<(String, String)>,
     axum::extract::Query(query): axum::extract::Query<IdQuery>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
-    let missing = || AppError::NotFound(crate::msg!("idface.no-such-post-here-3", "no such post here"));
+    let missing =
+        || AppError::NotFound(crate::msg!("idface.no-such-post-here-3", "no such post here"));
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else { return Err(missing()) };
     let root_hex = hex::encode(root);
     if !shelf_readable(&state, &session, &root_hex).await? {
         return Err(missing());
     }
-    let doc_id: [u8; 16] = hex::decode(&doc).ok().and_then(|b| b.try_into().ok()).ok_or_else(missing)?;
+    let doc_id: [u8; 16] =
+        hex::decode(&doc).ok().and_then(|b| b.try_into().ok()).ok_or_else(missing)?;
     let Ok(Some(db)) = state.user_dbs.get(&root_hex).await else { return Err(missing()) };
-    let Some(versions) = crate::record::documents::public_versions(&db, &doc_id).await? else { return Err(missing()) };
+    let Some(versions) = crate::record::documents::public_versions(&db, &doc_id).await? else {
+        return Err(missing());
+    };
     let Some(head) = versions.first() else { return Err(missing()) };
     // The seal: one key for every version, judged on the newest header as the body door judges it.
     let key = if head.header.trusted_only {
         let (holder, key_doc) = seal_holder(&root, &doc_id, head.header.seal_of);
         let holder_hex = hex::encode(holder);
-        let viewer = trusted_viewer(&state, &session, &holder_hex, &hex::encode(key_doc), false, query.via.as_deref()).await?;
+        let viewer = trusted_viewer(
+            &state,
+            &session,
+            &holder_hex,
+            &hex::encode(key_doc),
+            false,
+            query.via.as_deref(),
+        )
+        .await?;
         let key = match viewer.as_deref() {
             Some(v) => key_for(&state, &holder_hex, &key_doc, v, query.via.as_deref()).await,
             None => None,
@@ -2774,17 +2980,23 @@ pub async fn id_post_versions(
     };
     let mut out = Vec::with_capacity(versions.len());
     for v in versions.iter().take(200) {
-        let words = if crate::record::documents::Format::from_wire(v.header.format).is_mergeable_text() {
-            let bytes = state.files.get_public(iroh_blobs::Hash::from_bytes(v.header.file_hash)).await.ok().flatten();
-            let plain = match (bytes, key) {
-                (Some(b), Some(k)) => crate::record::private::open_post_body(&b, &k),
-                (Some(b), None) => Some(b),
-                (None, _) => None,
+        let words =
+            if crate::record::documents::Format::from_wire(v.header.format).is_mergeable_text() {
+                let bytes = state
+                    .files
+                    .get_public(iroh_blobs::Hash::from_bytes(v.header.file_hash))
+                    .await
+                    .ok()
+                    .flatten();
+                let plain = match (bytes, key) {
+                    (Some(b), Some(k)) => crate::record::private::open_post_body(&b, &k),
+                    (Some(b), None) => Some(b),
+                    (None, _) => None,
+                };
+                plain.map(|b| String::from_utf8_lossy(&b).into_owned())
+            } else {
+                None
             };
-            plain.map(|b| String::from_utf8_lossy(&b).into_owned())
-        } else {
-            None
-        };
         let title = match (&v.header.sealed_title, key) {
             (Some(sealed), Some(k)) => crate::record::private::open_post_body(sealed, &k)
                 .map(|t| String::from_utf8_lossy(&t).into_owned())
@@ -2810,17 +3022,24 @@ pub async fn id_post(
     axum::extract::Query(query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-8", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-8",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
     if !shelf_readable(&state, &session, &root_hex).await? {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-9", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-9",
+            "no such persona here"
+        )));
     }
-    let doc_id: [u8; 16] = hex::decode(&doc)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| {
-            AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id", "that isn't a document id"))
+    let doc_id: [u8; 16] =
+        hex::decode(&doc).ok().and_then(|b| b.try_into().ok()).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "idface.that-isnt-a-document-id",
+                "that isn't a document id"
+            ))
         })?;
     // A post this node holds a COPY of, opened (2026-10-02): past its fresh day nothing keeps the
     // copy current, so the visit asks the author - in the background, whichever road answers this
@@ -2831,7 +3050,10 @@ pub async fn id_post(
     let db_for_labels = match state.user_dbs.get(&root_hex).await {
         Ok(Some(db)) => db,
         _ => {
-            return Err(AppError::NotFound(crate::msg!("idface.no-such-post-here-2", "no such post here")));
+            return Err(AppError::NotFound(crate::msg!(
+                "idface.no-such-post-here-2",
+                "no such post here"
+            )));
         }
     };
     let mut post = crate::record::documents::public_doc(&db_for_labels, &doc_id).await?;
@@ -2888,11 +3110,8 @@ pub async fn id_post(
             {
                 if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
                     if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
-                        v["refs"] = serde_json::json!(h
-                            .refs
-                            .iter()
-                            .map(hex::encode)
-                            .collect::<Vec<_>>());
+                        v["refs"] =
+                            serde_json::json!(h.refs.iter().map(hex::encode).collect::<Vec<_>>());
                     }
                 }
             }
@@ -2927,9 +3146,8 @@ pub async fn id_post(
                 }
             }
             let annotators: Vec<String> = labels.iter().map(|(a, _, _)| a.clone()).collect();
-            let bylines = crate::profiles::bylines(&state.node_db, &annotators)
-                .await
-                .unwrap_or_default();
+            let bylines =
+                crate::profiles::bylines(&state.node_db, &annotators).await.unwrap_or_default();
             v["annotations"] = serde_json::json!(labels
                 .into_iter()
                 .map(|(annotator, key, value)| serde_json::json!({
@@ -2941,7 +3159,9 @@ pub async fn id_post(
                 .collect::<Vec<_>>());
             Ok(axum::Json(v).into_response())
         }
-        None => Err(AppError::NotFound(crate::msg!("idface.no-such-post-here", "no such post here"))),
+        None => {
+            Err(AppError::NotFound(crate::msg!("idface.no-such-post-here", "no such post here")))
+        }
     }
 }
 
@@ -2956,14 +3176,23 @@ pub async fn id_post_replies(
     axum::extract::Query(query): axum::extract::Query<RepliesQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-10", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-10",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
     if !shelf_readable(&state, &session, &root_hex).await? {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-11", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-11",
+            "no such persona here"
+        )));
     }
     if hex::decode(&doc).map(|b| b.len()) != Ok(16) {
-        return Err(AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id-2", "that isn't a document id")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "idface.that-isnt-a-document-id-2",
+            "that isn't a document id"
+        )));
     }
     let after = match (query.after_ms, query.after_doc) {
         (Some(ms), Some(d)) => Some((ms, d)),
@@ -3001,7 +3230,9 @@ pub async fn id_post_replies(
     // A level whole (2026-09-28), unless a caller pages it by cursor as the API always allowed.
     let (mut replies, more) = match after {
         None => crate::replies::replies_level(&state.node_db, &root_hex, &doc).await,
-        Some(after) => crate::replies::replies_of(&state.node_db, &root_hex, &doc, Some(after)).await,
+        Some(after) => {
+            crate::replies::replies_of(&state.node_db, &root_hex, &doc, Some(after)).await
+        }
     }
     .map_err(AppError::Internal)?;
 
@@ -3050,19 +3281,34 @@ pub async fn id_post_replies(
     }
     // Hot or best (slice 3): the siblings ordered by the viewer's own scores - only for a signed-in
     // viewer asking as a persona of theirs, since the scores are that persona's dials read aloud.
-    if let (Some(order @ ("hot" | "best")), Some(sess), Some(viewer)) = (query.sort.as_deref(), &session, query.as_root.as_deref()) {
+    if let (Some(order @ ("hot" | "best")), Some(sess), Some(viewer)) =
+        (query.sort.as_deref(), &session, query.as_root.as_deref())
+    {
         if let Ok(data) = crate::record::store::open(&state, &sess.account.id, viewer).await {
             let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
-            crate::score::refresh_dials(&state, viewer, &facts).await.map_err(AppError::Internal)?;
-            let pairs: Vec<(String, String)> = replies.iter().map(|r| (r.author.clone(), r.doc_id.clone())).collect();
-            let scores = crate::score::stored_for(&state.node_db, viewer, &pairs).await.map_err(AppError::Internal)?;
-            let milli = |r: &crate::replies::KnownReply| scores.get(&(r.author.clone(), r.doc_id.clone())).copied().unwrap_or(0);
+            crate::score::refresh_dials(&state, viewer, &facts)
+                .await
+                .map_err(AppError::Internal)?;
+            let pairs: Vec<(String, String)> =
+                replies.iter().map(|r| (r.author.clone(), r.doc_id.clone())).collect();
+            let scores = crate::score::stored_for(&state.node_db, viewer, &pairs)
+                .await
+                .map_err(AppError::Internal)?;
+            let milli = |r: &crate::replies::KnownReply| {
+                scores.get(&(r.author.clone(), r.doc_id.clone())).copied().unwrap_or(0)
+            };
             if order == "hot" {
                 // Each at its time plus an hour a like, the hottest first.
-                replies.sort_by_key(|r| std::cmp::Reverse((crate::score::hot_of(r.claimed_ms, milli(r)), r.doc_id.clone())));
+                replies.sort_by_key(|r| {
+                    std::cmp::Reverse((
+                        crate::score::hot_of(r.claimed_ms, milli(r)),
+                        r.doc_id.clone(),
+                    ))
+                });
             } else {
                 // The best first; among equals, the conversation's own order.
-                replies.sort_by_key(|r| (std::cmp::Reverse(milli(r)), r.claimed_ms, r.doc_id.clone()));
+                replies
+                    .sort_by_key(|r| (std::cmp::Reverse(milli(r)), r.claimed_ms, r.doc_id.clone()));
             }
         }
     }
@@ -3075,12 +3321,13 @@ pub async fn id_post_replies(
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    let bylines: serde_json::Map<String, serde_json::Value> = crate::profiles::bylines_healed(&state, &authors)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(root, b)| (root, serde_json::json!({ "name": b.name, "avatar": b.avatar })))
-        .collect();
+    let bylines: serde_json::Map<String, serde_json::Value> =
+        crate::profiles::bylines_healed(&state, &authors)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(root, b)| (root, serde_json::json!({ "name": b.name, "avatar": b.avatar })))
+            .collect();
     Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more, "seeking": seeking, "bylines": bylines }))
         .into_response())
 }
@@ -3097,23 +3344,30 @@ pub async fn id_post_dossier(
     Path((seg, doc)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-12", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-12",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
     if !shelf_readable(&state, &session, &root_hex).await? {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-13", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-13",
+            "no such persona here"
+        )));
     }
     if hex::decode(&doc).map(|b| b.len()) != Ok(16) {
-        return Err(AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id-3", "that isn't a document id")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "idface.that-isnt-a-document-id-3",
+            "that isn't a document id"
+        )));
     }
     let hosted = hosted_here(&state, &root_hex).await?;
 
     // The post's own shelf facts, when a shelf here holds it.
     let mut post_v = serde_json::Value::Null;
-    let doc_id: [u8; 16] = hex::decode(&doc)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .expect("length-checked above");
+    let doc_id: [u8; 16] =
+        hex::decode(&doc).ok().and_then(|b| b.try_into().ok()).expect("length-checked above");
     if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
         if let Ok(Some(p)) = crate::record::documents::public_doc(&db, &doc_id).await {
             post_v = post_json(&p, 0);
@@ -3151,9 +3405,7 @@ pub async fn id_post_dossier(
 
     let mut names: Vec<String> = labels.iter().map(|(a, ..)| a.clone()).collect();
     names.extend(replies.iter().filter_map(|r| r["author"].as_str().map(String::from)));
-    let bylines = crate::profiles::bylines_healed(&state, &names)
-        .await
-        .unwrap_or_default();
+    let bylines = crate::profiles::bylines_healed(&state, &names).await.unwrap_or_default();
 
     let annotations: Vec<serde_json::Value> = labels
         .into_iter()
@@ -3206,7 +3458,10 @@ pub async fn id_profile(
     axum::extract::Query(query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-4", "no such persona here")));
+        return Err(AppError::NotFound(crate::msg!(
+            "idface.no-such-persona-here-4",
+            "no such persona here"
+        )));
     };
     let root_hex = hex::encode(root);
     let hosted = hosted_here(&state, &root_hex).await?;
@@ -3218,7 +3473,10 @@ pub async fn id_profile(
     let mut synced_ms: Option<i64> = None;
     if !hosted {
         let Some(_member) = session.as_ref() else {
-            return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-5", "no such persona here")));
+            return Err(AppError::NotFound(crate::msg!(
+                "idface.no-such-persona-here-5",
+                "no such persona here"
+            )));
         };
         let now = crate::clock::now_ms();
         let row = foreign_fetch_row(&state, &root_hex).await?;
@@ -3256,7 +3514,10 @@ pub async fn id_profile(
             None => {
                 synced_ms = Some(now); // this request IS the sync; saying so beats saying nothing
                 if !fetch_foreign(&state, &root_hex, &via).await {
-                    return Err(AppError::NotFound(crate::msg!("idface.not-carried-here-and-none", "not carried here, and none of the address's computers answered")));
+                    return Err(AppError::NotFound(crate::msg!(
+                        "idface.not-carried-here-and-none",
+                        "not carried here, and none of the address's computers answered"
+                    )));
                 }
                 // A peek's shelf is still landing behind this answer: say so, and the page
                 // keeps asking until it has arrived.
@@ -3311,7 +3572,8 @@ pub async fn id_profile(
     posts.truncate(POSTS_PAGE as usize);
     // The pinned strip (PROJECT_PLAN's Peeks, ruling 12): the author's own pins, most recently pinned
     // first, each the post as this node holds it - the mirror's, or for a peek the ledger's.
-    let Pinned { order: pin_order, posts: mut pinned, shares: pinned_shares } = pinned_here(&state, &root_hex, peek).await;
+    let Pinned { order: pin_order, posts: mut pinned, shares: pinned_shares } =
+        pinned_here(&state, &root_hex, peek).await;
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut pinned).await;
     // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
     // address minted here should carry (Addressing: hints are keys, never addresses).
@@ -3353,20 +3615,15 @@ pub async fn id_profile(
         .collect();
 
     // The profile's first shelf page carries reply counts like every other post surface.
-    let count_pairs: Vec<(String, String)> = posts
-        .iter()
-        .map(|p| (root_hex.clone(), hex::encode(p.doc_id)))
-        .collect();
-    let reply_counts = crate::replies::known_counts(&state.node_db, &count_pairs)
-        .await
-        .unwrap_or_default();
+    let count_pairs: Vec<(String, String)> =
+        posts.iter().map(|p| (root_hex.clone(), hex::encode(p.doc_id))).collect();
+    let reply_counts =
+        crate::replies::known_counts(&state.node_db, &count_pairs).await.unwrap_or_default();
     let mut profile_posts: Vec<serde_json::Value> = posts
         .iter()
         .map(|p| {
-            let n = reply_counts
-                .get(&(root_hex.clone(), hex::encode(p.doc_id)))
-                .copied()
-                .unwrap_or(0);
+            let n =
+                reply_counts.get(&(root_hex.clone(), hex::encode(p.doc_id))).copied().unwrap_or(0);
             post_json(p, n)
         })
         .collect();
@@ -3384,7 +3641,9 @@ pub async fn id_profile(
                 if let Some(v) = pinned_posts.iter().find(|v| v["doc_id"] == doc_hex.as_str()) {
                     strip.push(v.clone());
                 }
-            } else if let Some(s) = pinned_shares.iter().find(|s| s.author_root == pin.author && s.doc_id == pin.doc_id) {
+            } else if let Some(s) =
+                pinned_shares.iter().find(|s| s.author_root == pin.author && s.doc_id == pin.doc_id)
+            {
                 let mut v = share_json(&state, s, &root_hex).await;
                 v["pinned"] = serde_json::Value::Bool(true);
                 strip.push(v);
@@ -3457,7 +3716,7 @@ mod refresh_order_tests {
         assert_eq!(
             order,
             vec![
-                "high-dial".to_string(),        // same dial, stalest first
+                "high-dial".to_string(), // same dial, stalest first
                 "high-dial-fresher".to_string(),
                 "low-dial".to_string(),
             ]
@@ -3477,7 +3736,10 @@ mod tests {
         assert_eq!(ringtome_from_legacy("k", None, Some("via=a,b")), "/ringtome/user/k?via=a,b");
         assert_eq!(ringtome_from_legacy("k", Some("post/d"), None), "/ringtome/user/k/post/d");
         let page = "fedcba9876543210fedcba9876543210";
-        assert_eq!(ringtome_from_legacy("k", Some(&format!("post/d/{page}")), Some("via=a")), format!("/ringtome/user/k/post/d/page/{page}?via=a"));
+        assert_eq!(
+            ringtome_from_legacy("k", Some(&format!("post/d/{page}")), Some("via=a")),
+            format!("/ringtome/user/k/post/d/page/{page}?via=a")
+        );
         assert_eq!(ringtome_from_legacy("k", Some("gallery"), None), "/ringtome/user/k/gallery");
         assert_eq!(ringtome_from_legacy("k", Some("/"), None), "/ringtome/user/k");
     }

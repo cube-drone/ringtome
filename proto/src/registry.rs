@@ -461,11 +461,7 @@ impl PrivatePlain {
         if self.key.is_empty() || self.key.len() > Self::MAX_NAME_LEN {
             return Err(ProtoError::BadEntry("key length out of range"));
         }
-        if self
-            .value
-            .as_ref()
-            .is_some_and(|v| v.len() > Self::MAX_VALUE_LEN)
-        {
+        if self.value.as_ref().is_some_and(|v| v.len() > Self::MAX_VALUE_LEN) {
             return Err(ProtoError::BadEntry("value too long"));
         }
         let mut w = Writer::new();
@@ -517,11 +513,7 @@ impl PrivatePlain {
         if out.key.is_empty() || out.key.len() > Self::MAX_NAME_LEN {
             return Err(ProtoError::BadEntry("key length out of range"));
         }
-        if out
-            .value
-            .as_ref()
-            .is_some_and(|v| v.len() > Self::MAX_VALUE_LEN)
-        {
+        if out.value.as_ref().is_some_and(|v| v.len() > Self::MAX_VALUE_LEN) {
             return Err(ProtoError::BadEntry("value too long"));
         }
         Ok(out)
@@ -905,7 +897,9 @@ impl DocHeaderPlain {
                 20 => sealed_title = Some(map.bytes()?.to_vec()),
                 21 => {
                     if map.array()? != 2 {
-                        return Err(ProtoError::BadEntry("a seal holder is an author and a document"));
+                        return Err(ProtoError::BadEntry(
+                            "a seal holder is an author and a document",
+                        ));
                     }
                     seal_of = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
                 }
@@ -1059,13 +1053,9 @@ impl Revoke {
                             .map_err(|_| ProtoError::BadEntry("service id out of range"))?;
                         let seq = map.uint()?;
                         let head_hash = map.bytes_fixed::<32>()?;
-                        let instance = if arity == 4 { Some(map.bytes_fixed::<16>()?) } else { None };
-                        list.push(Anchor {
-                            service,
-                            instance,
-                            seq,
-                            head_hash,
-                        });
+                        let instance =
+                            if arity == 4 { Some(map.bytes_fixed::<16>()?) } else { None };
+                        list.push(Anchor { service, instance, seq, head_hash });
                     }
                     anchors = Some(list);
                 }
@@ -1098,9 +1088,7 @@ impl ProfileSet {
 
     pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
         if self.field.is_empty() || self.field.len() > Self::MAX_FIELD_LEN {
-            return Err(ProtoError::BadEntry(
-                "profile field name length out of range",
-            ));
+            return Err(ProtoError::BadEntry("profile field name length out of range"));
         }
         if self.value.len() > Self::MAX_VALUE_LEN {
             return Err(ProtoError::BadEntry("profile value too long"));
@@ -1133,9 +1121,7 @@ impl ProfileSet {
             value: value.ok_or(ProtoError::BadEntry("profile-set missing value"))?,
         };
         if out.field.is_empty() || out.field.len() > Self::MAX_FIELD_LEN {
-            return Err(ProtoError::BadEntry(
-                "profile field name length out of range",
-            ));
+            return Err(ProtoError::BadEntry("profile field name length out of range"));
         }
         if out.value.len() > Self::MAX_VALUE_LEN {
             return Err(ProtoError::BadEntry("profile value too long"));
@@ -1268,9 +1254,7 @@ impl PostRetraction {
             }
         }
         r.finish()?;
-        Ok(Self {
-            doc_id: doc_id.ok_or(ProtoError::BadEntry("post-retract missing doc id"))?,
-        })
+        Ok(Self { doc_id: doc_id.ok_or(ProtoError::BadEntry("post-retract missing doc id"))? })
     }
 }
 
@@ -1451,7 +1435,8 @@ impl PublicAnnotation {
         }
         r.finish()?;
         let out = Self {
-            target_author: target_author.ok_or(ProtoError::BadEntry("annotation missing target author"))?,
+            target_author: target_author
+                .ok_or(ProtoError::BadEntry("annotation missing target author"))?,
             target_doc: target_doc.ok_or(ProtoError::BadEntry("annotation missing target doc"))?,
             key: key.ok_or(ProtoError::BadEntry("annotation missing key"))?,
             value: value.ok_or(ProtoError::BadEntry("annotation missing value"))?,
@@ -1540,13 +1525,14 @@ impl ChatMessage {
     pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
         self.well_formed()?;
         let mut w = Writer::new();
-        w.map(3
-            + u64::from(!self.refs.is_empty())
-            + u64::from(!self.mentions.is_empty())
-            + u64::from(self.reacts_to.is_some())
-            + u64::from(self.retracts.is_some())
-            + u64::from(self.edits.is_some())
-            + u64::from(self.notice.is_some()));
+        w.map(
+            3 + u64::from(!self.refs.is_empty())
+                + u64::from(!self.mentions.is_empty())
+                + u64::from(self.reacts_to.is_some())
+                + u64::from(self.retracts.is_some())
+                + u64::from(self.edits.is_some())
+                + u64::from(self.notice.is_some()),
+        );
         w.uint(0);
         w.bytes(&self.room_author);
         w.uint(1);
@@ -1608,7 +1594,9 @@ impl ChatMessage {
                 3 => {
                     let n = map.array()?;
                     if n as usize > DocHeaderPlain::MAX_REFS {
-                        return Err(ProtoError::BadEntry("a chat message embeds too many documents"));
+                        return Err(ProtoError::BadEntry(
+                            "a chat message embeds too many documents",
+                        ));
                     }
                     for _ in 0..n {
                         refs.push(map.bytes_fixed::<16>()?);
@@ -1637,7 +1625,8 @@ impl ChatMessage {
         }
         r.finish()?;
         let out = Self {
-            room_author: room_author.ok_or(ProtoError::BadEntry("chat message missing room author"))?,
+            room_author: room_author
+                .ok_or(ProtoError::BadEntry("chat message missing room author"))?,
             body: body.ok_or(ProtoError::BadEntry("chat message missing body"))?,
             sealed: sealed.unwrap_or(false),
             refs,
@@ -1658,13 +1647,53 @@ mod tests {
 
     #[test]
     fn a_chat_message_round_trips_and_refuses_silence() {
-        let m = ChatMessage { room_author: [7u8; 32], body: b"hello the room".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let m = ChatMessage {
+            room_author: [7u8; 32],
+            body: b"hello the room".to_vec(),
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         assert_eq!(ChatMessage::decode(&m.encode().unwrap()).unwrap(), m);
-        let sealed = ChatMessage { room_author: [7u8; 32], body: vec![0xaa; 40], sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let sealed = ChatMessage {
+            room_author: [7u8; 32],
+            body: vec![0xaa; 40],
+            sealed: true,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         assert_eq!(ChatMessage::decode(&sealed.encode().unwrap()).unwrap(), sealed);
-        let silent = ChatMessage { room_author: [7u8; 32], body: Vec::new(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let silent = ChatMessage {
+            room_author: [7u8; 32],
+            body: Vec::new(),
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         assert!(silent.encode().is_err());
-        let long = ChatMessage { room_author: [7u8; 32], body: vec![b'x'; ChatMessage::MAX_BODY_BYTES + 65], sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let long = ChatMessage {
+            room_author: [7u8; 32],
+            body: vec![b'x'; ChatMessage::MAX_BODY_BYTES + 65],
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         assert!(long.encode().is_err());
     }
 
@@ -1673,9 +1702,29 @@ mod tests {
     /// cap refuses at both doors.
     #[test]
     fn a_chat_message_carries_its_media_refs() {
-        let with = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: vec![[1u8; 16], [2u8; 16]], mentions: vec![[9u8; 32]], reacts_to: Some([4u8; 32]), retracts: Some([5u8; 32]), edits: Some([6u8; 32]), notice: Some((ChatMessage::NOTICE_MUTED, [7u8; 32])) };
+        let with = ChatMessage {
+            room_author: [7u8; 32],
+            body: b"look".to_vec(),
+            sealed: false,
+            refs: vec![[1u8; 16], [2u8; 16]],
+            mentions: vec![[9u8; 32]],
+            reacts_to: Some([4u8; 32]),
+            retracts: Some([5u8; 32]),
+            edits: Some([6u8; 32]),
+            notice: Some((ChatMessage::NOTICE_MUTED, [7u8; 32])),
+        };
         assert_eq!(ChatMessage::decode(&with.encode().unwrap()).unwrap(), with);
-        let without = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let without = ChatMessage {
+            room_author: [7u8; 32],
+            body: b"look".to_vec(),
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         let mut old = Writer::new();
         old.map(3);
         old.uint(0);
@@ -1685,7 +1734,17 @@ mod tests {
         old.uint(2);
         old.uint(0);
         assert_eq!(without.encode().unwrap(), old.into_bytes(), "no refs is wire-absence");
-        let over = ChatMessage { room_author: [7u8; 32], body: b"look".to_vec(), sealed: false, refs: vec![[1u8; 16]; DocHeaderPlain::MAX_REFS + 1], mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let over = ChatMessage {
+            room_author: [7u8; 32],
+            body: b"look".to_vec(),
+            sealed: false,
+            refs: vec![[1u8; 16]; DocHeaderPlain::MAX_REFS + 1],
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         assert!(over.encode().is_err());
         let mut forged = Writer::new();
         forged.map(4);
@@ -1731,9 +1790,9 @@ mod tests {
             reply_to: None,
             thread_root: None,
             settled: true,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         let settled = DocHeaderPlain::decode(&h.encode().unwrap()).unwrap();
         assert!(settled.settled, "the wish survives the wire");
@@ -1748,15 +1807,25 @@ mod tests {
         );
         h.dated_ms = None;
         h.animation = true;
-        assert!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().animation, "key 18: a silent loop says so");
+        assert!(
+            DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().animation,
+            "key 18: a silent loop says so"
+        );
         h.animation = false;
         h.part_of = Some([9u8; 16]);
-        assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().part_of, Some([9u8; 16]), "key 19: a page names its book");
+        assert_eq!(
+            DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().part_of,
+            Some([9u8; 16]),
+            "key 19: a page names its book"
+        );
         h.part_of = None;
         // CHAT.md, ruling 12: a two-person chat says so on the header, and says nothing
         // about who the other person is - the audience stays the author's own memo.
         h.im = true;
-        assert!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().im, "key 23: an IM says it is one");
+        assert!(
+            DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().im,
+            "key 23: an IM says it is one"
+        );
         h.im = false;
         h.settled = false;
         let open_bytes = h.encode().unwrap();
@@ -1777,7 +1846,10 @@ mod tests {
         assert_eq!(PublicAnnotation::decode(&a.encode().unwrap()).unwrap(), a);
         let gone = PublicAnnotation { present: false, ..a.clone() };
         assert!(PublicAnnotation::decode(&gone.encode().unwrap()).unwrap().is_retraction());
-        let novel = PublicAnnotation { value: "x".repeat(PublicAnnotation::MAX_VALUE_LEN + 1), ..a.clone() };
+        let novel = PublicAnnotation {
+            value: "x".repeat(PublicAnnotation::MAX_VALUE_LEN + 1),
+            ..a.clone()
+        };
         assert!(novel.encode().is_err(), "a value past the cap does not mint");
         let nameless = PublicAnnotation { key: String::new(), ..a.clone() };
         assert!(nameless.encode().is_err(), "an empty key is not a statement");
@@ -1805,18 +1877,11 @@ mod tests {
 
     #[test]
     fn rebroadcast_round_trips_and_retracts() {
-        let share = Rebroadcast {
-            author: [7u8; 32],
-            doc_id: [9u8; 16],
-            version: Some([11u8; 32]),
-        };
+        let share = Rebroadcast { author: [7u8; 32], doc_id: [9u8; 16], version: Some([11u8; 32]) };
         assert_eq!(Rebroadcast::decode(&share.encode()).unwrap(), share);
         assert!(!share.is_retraction());
 
-        let withdrawn = Rebroadcast {
-            version: None,
-            ..share
-        };
+        let withdrawn = Rebroadcast { version: None, ..share };
         assert_eq!(Rebroadcast::decode(&withdrawn.encode()).unwrap(), withdrawn);
         assert!(withdrawn.is_retraction());
     }
@@ -1826,12 +1891,8 @@ mod tests {
     /// rebroadcast from being a copy wearing a citation.
     #[test]
     fn a_rebroadcast_cannot_claim_the_content() {
-        let bytes = Rebroadcast {
-            author: [1u8; 32],
-            doc_id: [2u8; 16],
-            version: Some([3u8; 32]),
-        }
-        .encode();
+        let bytes =
+            Rebroadcast { author: [1u8; 32], doc_id: [2u8; 16], version: Some([3u8; 32]) }.encode();
         // Every field is a reference; there is no body, title, or text slot to smuggle one in.
         assert!(bytes.len() < 128, "a pointer is small by construction");
     }
@@ -1858,15 +1919,8 @@ mod tests {
         assert_eq!(PublicEdge::decode(&full.encode().unwrap()).unwrap(), full);
 
         // The retraction: subject alone, nothing published. Legal and byte-minimal.
-        let retraction = PublicEdge {
-            subject: [3u8; 32],
-            trust: None,
-            interest: None,
-        };
-        assert_eq!(
-            PublicEdge::decode(&retraction.encode().unwrap()).unwrap(),
-            retraction
-        );
+        let retraction = PublicEdge { subject: [3u8; 32], trust: None, interest: None };
+        assert_eq!(PublicEdge::decode(&retraction.encode().unwrap()).unwrap(), retraction);
     }
 
     #[test]
@@ -1890,10 +1944,7 @@ mod tests {
 
     #[test]
     fn profile_set_round_trips() {
-        let ps = ProfileSet {
-            field: "name".into(),
-            value: "Corff Burblepunk".into(),
-        };
+        let ps = ProfileSet { field: "name".into(), value: "Corff Burblepunk".into() };
         let bytes = ps.encode().unwrap();
         assert_eq!(ProfileSet::decode(&bytes).unwrap(), ps);
     }
@@ -1911,16 +1962,12 @@ mod tests {
 
     #[test]
     fn profile_set_enforces_length_caps() {
-        let too_long_field = ProfileSet {
-            field: "f".repeat(ProfileSet::MAX_FIELD_LEN + 1),
-            value: "v".into(),
-        };
+        let too_long_field =
+            ProfileSet { field: "f".repeat(ProfileSet::MAX_FIELD_LEN + 1), value: "v".into() };
         assert!(too_long_field.encode().is_err());
 
-        let too_long_value = ProfileSet {
-            field: "bio".into(),
-            value: "v".repeat(ProfileSet::MAX_VALUE_LEN + 1),
-        };
+        let too_long_value =
+            ProfileSet { field: "bio".into(), value: "v".repeat(ProfileSet::MAX_VALUE_LEN + 1) };
         assert!(too_long_value.encode().is_err());
     }
 
@@ -1934,30 +1981,20 @@ mod tests {
 
     #[test]
     fn authorize_round_trips() {
-        let a = Authorize {
-            child: [2u8; 32],
-            usurpers: vec![[0u8; 32], [1u8; 32]],
-            enc_pubkey: None,
-        };
+        let a =
+            Authorize { child: [2u8; 32], usurpers: vec![[0u8; 32], [1u8; 32]], enc_pubkey: None };
         let bytes = a.encode().unwrap();
         assert_eq!(Authorize::decode(&bytes).unwrap(), a);
 
         // With an encryption pubkey (the private-chains addition): still round-trips, and the
         // no-enc-key encoding is byte-identical to the pre-field format (additive evolution).
-        let c = Authorize {
-            child: [2u8; 32],
-            usurpers: vec![[0u8; 32]],
-            enc_pubkey: Some([5u8; 32]),
-        };
+        let c =
+            Authorize { child: [2u8; 32], usurpers: vec![[0u8; 32]], enc_pubkey: Some([5u8; 32]) };
         assert_eq!(Authorize::decode(&c.encode().unwrap()).unwrap(), c);
 
         // Empty usurper list (a root's first child carries [root]; but the encoding itself
         // permits empty - semantics are the tree's job).
-        let b = Authorize {
-            child: [9u8; 32],
-            usurpers: vec![],
-            enc_pubkey: None,
-        };
+        let b = Authorize { child: [9u8; 32], usurpers: vec![], enc_pubkey: None };
         assert_eq!(Authorize::decode(&b.encode().unwrap()).unwrap(), b);
     }
 
@@ -2035,11 +2072,7 @@ mod tests {
 
     #[test]
     fn private_record_round_trips() {
-        let pr = PrivateRecord {
-            epoch: 1,
-            nonce: [7u8; 24],
-            ciphertext: vec![0xCC; 100],
-        };
+        let pr = PrivateRecord { epoch: 1, nonce: [7u8; 24], ciphertext: vec![0xCC; 100] };
         assert_eq!(PrivateRecord::decode(&pr.encode().unwrap()).unwrap(), pr);
     }
 
@@ -2073,9 +2106,9 @@ mod tests {
             genesis_ms: Some(7),
             reply_to: None,
             thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         let reply = DocHeaderPlain {
             dated_ms: None,
@@ -2102,10 +2135,7 @@ mod tests {
             thread_root: Some(([7u8; 32], [8u8; 16])),
             ..base
         };
-        assert_eq!(
-            orphan.encode(),
-            Err(ProtoError::BadEntry("a thread root without a parent"))
-        );
+        assert_eq!(orphan.encode(), Err(ProtoError::BadEntry("a thread root without a parent")));
     }
 
     #[test]
@@ -2132,9 +2162,9 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
@@ -2214,9 +2244,9 @@ mod tests {
                 genesis_ms: None,
                 reply_to: None,
                 thread_root: None,
-            sealed_title: None,
-            seal_of: None,
-            onward: false,
+                sealed_title: None,
+                seal_of: None,
+                onward: false,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -2243,9 +2273,9 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -2271,9 +2301,9 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
@@ -2299,9 +2329,9 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -2330,9 +2360,9 @@ mod tests {
             genesis_ms: None,
             reply_to: None,
             thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
@@ -2363,10 +2393,7 @@ mod tests {
             DocHeaderPlain::body_hash(&[2u8; 16], body)
         );
         // And it is not the bare BLAKE3 of the body.
-        assert_ne!(
-            DocHeaderPlain::body_hash(&[1u8; 16], body),
-            *blake3::hash(body).as_bytes()
-        );
+        assert_ne!(DocHeaderPlain::body_hash(&[1u8; 16], body), *blake3::hash(body).as_bytes());
     }
 
     #[test]

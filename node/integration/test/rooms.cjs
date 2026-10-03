@@ -6,88 +6,113 @@
     is refused the sealed one; leaving forgets the link. The share rule is the post's own:
     the open room passes along, the sealed one does not.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST, HOST_B, HOST_C, sql } = require("./fetch.cjs");
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat, pullAndFold } = require('./beat.cjs');
+const { HOST, HOST_B, HOST_C, sql } = require('./fetch.cjs');
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
-const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
+const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 
-(HOST_B && HOST_C ? describe : describe.skip)("rooms: a room is a post", function () {
+(HOST_B && HOST_C ? describe : describe.skip)('rooms: a room is a post', function () {
     this.timeout(600000);
 
     let ada, adaRoot, bea, beaRoot, cal, calRoot, kitchen, cellar;
 
     const openRoom = async (who, root, title, body, extra = {}) => {
-        const d = await (await j(who, `api/identity/${root}/docs`, { title, body, format: "marquee" })).json();
-        await who(`api/identity/${root}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
-        const pub = await j(who, `api/identity/${root}/docs/${d.doc_id}/publish`, { room: true, ...extra });
+        const d = await (
+            await j(who, `api/identity/${root}/docs`, { title, body, format: 'marquee' })
+        ).json();
+        await who(`api/identity/${root}/docs/${d.doc_id}/buckets/chat`, { method: 'PUT' });
+        const pub = await j(who, `api/identity/${root}/docs/${d.doc_id}/publish`, {
+            room: true,
+            ...extra,
+        });
         const text = await pub.text();
         assert.equal(pub.status, 200, text);
         return JSON.parse(text).post_id;
     };
-    const rooms = async (who, root) => ((await (await who(`api/identity/${root}/rooms`)).json()).items || []);
+    const rooms = async (who, root) =>
+        (await (await who(`api/identity/${root}/rooms`)).json()).items || [];
 
     before(async function () {
-        ada = await makeUserFetch({ prefix: "roomada" });
-        adaRoot = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
-        await ada(`api/identity/${adaRoot}/serve`, { method: "POST" });
-        bea = await makeUserFetch({ prefix: "roombea", host: HOST_B });
-        beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
-        cal = await makeUserFetch({ prefix: "roomcal", host: HOST_C });
-        calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
+        ada = await makeUserFetch({ prefix: 'roomada' });
+        adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
+        bea = await makeUserFetch({ prefix: 'roombea', host: HOST_B });
+        beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await bea(`api/identity/${beaRoot}/serve`, { method: 'POST' });
+        cal = await makeUserFetch({ prefix: 'roomcal', host: HOST_C });
+        calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await cal(`api/identity/${calRoot}/serve`, { method: 'POST' });
         // Bea follows ada and ada trusts her; cal is a stranger to everyone.
-        if ((await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`)).status !== 200) this.skip();
-        await j(bea, `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { value: "high" }, "PUT");
+        if ((await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`)).status !== 200)
+            this.skip();
+        await j(
+            bea,
+            `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`,
+            { value: 'high' },
+            'PUT',
+        );
         await ada(`api/id/${beaRoot}/profile?via=${await base58(bea)}`);
-        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/trust`, { value: "high" }, "PUT");
-        await beat(HOST, "mint", adaRoot);
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/trust`,
+            { value: 'high' },
+            'PUT',
+        );
+        await beat(HOST, 'mint', adaRoot);
         await pullAndFold(HOST, beaRoot);
-        kitchen = await openRoom(ada, adaRoot, "the kitchen", "where the bread talk happens");
-        cellar = await openRoom(ada, adaRoot, "the cellar", "the quiet one", { trusted_only: true });
+        kitchen = await openRoom(ada, adaRoot, 'the kitchen', 'where the bread talk happens');
+        cellar = await openRoom(ada, adaRoot, 'the cellar', 'the quiet one', {
+            trusted_only: true,
+        });
     });
 
     it("a room wears its format everywhere the post shows, and lists among its author's rooms", async () => {
         const head = await (await ada(`api/id/${adaRoot}/posts/${kitchen}`)).json();
-        assert.equal(head.format, "room", "the shelf says room");
-        assert.equal(head.title, "the kitchen");
+        assert.equal(head.format, 'room', 'the shelf says room');
+        assert.equal(head.title, 'the kitchen');
         const sealed = await (await ada(`api/id/${adaRoot}/posts/${cellar}?as=${adaRoot}`)).json();
-        assert.equal(sealed.format, "room");
-        assert.equal(sealed.trusted_only, true, "a sealed room is a sealed post");
-        assert.equal(sealed.title, "", "whose name travels with its words");
+        assert.equal(sealed.format, 'room');
+        assert.equal(sealed.trusted_only, true, 'a sealed room is a sealed post');
+        assert.equal(sealed.title, '', 'whose name travels with its words');
         const mine = await rooms(ada, adaRoot);
         const ids = mine.map((r) => r.doc_id);
-        assert.ok(ids.includes(kitchen) && ids.includes(cellar), `both rooms list: ${JSON.stringify(mine)}`);
-        assert.ok(mine.every((r) => r.mine), "and they are hers");
+        assert.ok(
+            ids.includes(kitchen) && ids.includes(cellar),
+            `both rooms list: ${JSON.stringify(mine)}`,
+        );
+        assert.ok(
+            mine.every((r) => r.mine),
+            'and they are hers',
+        );
         // The kind row knows the word.
         let kinds = [];
-        for (let i = 0; i < 20 && !kinds.includes("room"); i++) {
-            await beat(HOST, "journal-fill");
+        for (let i = 0; i < 20 && !kinds.includes('room'); i++) {
+            await beat(HOST, 'journal-fill');
             const labels = await (await ada(`api/identity/${adaRoot}/feed/labels`)).json();
             kinds = (labels.kinds || []).map((k) => k.value);
-            if (!kinds.includes("room")) await wait(300);
+            if (!kinds.includes('room')) await wait(300);
         }
-        assert.ok(kinds.includes("room"), `the feed's kind row lists rooms: ${kinds}`);
+        assert.ok(kinds.includes('room'), `the feed's kind row lists rooms: ${kinds}`);
     });
 
-    it("a room reached only by the feed stays in the chats column under any number of newer posts", async () => {
+    it('a room reached only by the feed stays in the chats column under any number of newer posts', async () => {
         // 2026-09-27: the column read the newest 5000 journal rows and kept the rooms among them,
         // so a room bea follows but never entered left her list once 5000 newer posts arrived.
-        const pantry = await openRoom(ada, adaRoot, "the pantry", "never entered by bea");
+        const pantry = await openRoom(ada, adaRoot, 'the pantry', 'never entered by bea');
         await pullAndFold(HOST_B, adaRoot);
         let listed = false;
         for (let i = 0; i < 30 && !listed; i++) {
-            await beat(HOST_B, "journal-fill");
+            await beat(HOST_B, 'journal-fill');
             listed = (await rooms(bea, beaRoot)).some((r) => r.doc_id === pantry);
             if (!listed) await wait(400);
         }
@@ -96,71 +121,133 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const plant = (q) => sql(q, HOST_B);
         await plant(
             `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
-             VALUES ('${beaRoot}', '${adaRoot}', 'plant', 'filler', 'marquee', 9000000000000, 9000000000000, 9000000000000)`
+             VALUES ('${beaRoot}', '${adaRoot}', 'plant', 'filler', 'marquee', 9000000000000, 9000000000000, 9000000000000)`,
         );
         for (let i = 0; i < 13; i++) {
             await plant(
                 `INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
                  SELECT reader_root, author_root, doc_id || '-${i}', title, format, published_ms + 1, updated_ms, arrived_ms
-                 FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`
+                 FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`,
             );
         }
         try {
-            const planted = await plant(`SELECT COUNT(*) AS n FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`);
+            const planted = await plant(
+                `SELECT COUNT(*) AS n FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`,
+            );
             assert.equal(Number(planted.rows[0].n), 8192);
-            assert.ok((await rooms(bea, beaRoot)).some((r) => r.doc_id === pantry), "still in bea's chats column");
+            assert.ok(
+                (await rooms(bea, beaRoot)).some((r) => r.doc_id === pantry),
+                "still in bea's chats column",
+            );
         } finally {
-            await plant(`DELETE FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`);
+            await plant(
+                `DELETE FROM feed_journal WHERE reader_root = '${beaRoot}' AND doc_id LIKE 'plant%'`,
+            );
         }
     });
 
-    it("a room is not a reply, and a room stays a room when its words change", async () => {
-        const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: "no", body: "no", format: "marquee" })).json();
-        const r = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, { room: true, reply_to: { author: adaRoot, doc_id: kitchen } });
+    it('a room is not a reply, and a room stays a room when its words change', async () => {
+        const d = await (
+            await j(ada, `api/identity/${adaRoot}/docs`, {
+                title: 'no',
+                body: 'no',
+                format: 'marquee',
+            })
+        ).json();
+        const r = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {
+            room: true,
+            reply_to: { author: adaRoot, doc_id: kitchen },
+        });
         assert.equal(r.status, 400, await r.text());
         // Re-publishing the draft without the flag keeps the format: once a room, always a room.
         const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs || [];
-        const kitchenDraft = docs.find((x) => x.title === "the kitchen");
+        const kitchenDraft = docs.find((x) => x.title === 'the kitchen');
         assert.ok(kitchenDraft, "the room's draft is a note in the chat bucket");
         const got = await (await ada(`api/identity/${adaRoot}/docs/${kitchenDraft.doc_id}`)).json();
-        const put = await j(ada, `api/identity/${adaRoot}/docs/${kitchenDraft.doc_id}`, { title: got.title, body: "where the bread talk happens, loudly", parents: got.heads.map((h) => h.version), format: "marquee" }, "PUT");
+        const put = await j(
+            ada,
+            `api/identity/${adaRoot}/docs/${kitchenDraft.doc_id}`,
+            {
+                title: got.title,
+                body: 'where the bread talk happens, loudly',
+                parents: got.heads.map((h) => h.version),
+                format: 'marquee',
+            },
+            'PUT',
+        );
         assert.equal(put.status, 200, await put.text());
-        const again = await j(ada, `api/identity/${adaRoot}/docs/${kitchenDraft.doc_id}/publish`, {});
+        const again = await j(
+            ada,
+            `api/identity/${adaRoot}/docs/${kitchenDraft.doc_id}/publish`,
+            {},
+        );
         assert.equal(again.status, 200, await again.text());
         const head = await (await ada(`api/id/${adaRoot}/posts/${kitchen}`)).json();
-        assert.equal(head.format, "room", "still a room");
+        assert.equal(head.format, 'room', 'still a room');
     });
 
-    it("a trusted follower finds both rooms and enters the sealed one", async () => {
+    it('a trusted follower finds both rooms and enters the sealed one', async () => {
         await pullAndFold(HOST_B, adaRoot);
         let hers = [];
-        for (let i = 0; i < 30 && !(hers.some((r) => r.doc_id === kitchen) && hers.some((r) => r.doc_id === cellar)); i++) {
-            for (let k = 0; k < 3; k++) await beat(HOST_B, "journal-fill");
+        for (
+            let i = 0;
+            i < 30 &&
+            !(hers.some((r) => r.doc_id === kitchen) && hers.some((r) => r.doc_id === cellar));
+            i++
+        ) {
+            for (let k = 0; k < 3; k++) await beat(HOST_B, 'journal-fill');
             hers = await rooms(bea, beaRoot);
             if (hers.length < 2) await wait(400);
         }
-        assert.ok(hers.some((r) => r.doc_id === kitchen), "the open room reached her list by the feed");
-        assert.ok(hers.some((r) => r.doc_id === cellar), "and the sealed one, since ada trusts her");
-        assert.ok(hers.every((r) => !r.mine), "neither is hers");
+        assert.ok(
+            hers.some((r) => r.doc_id === kitchen),
+            'the open room reached her list by the feed',
+        );
+        assert.ok(
+            hers.some((r) => r.doc_id === cellar),
+            'and the sealed one, since ada trusts her',
+        );
+        assert.ok(
+            hers.every((r) => !r.mine),
+            'neither is hers',
+        );
         let entered = null;
         for (let i = 0; i < 30 && !entered; i++) {
             const r = await bea(`api/identity/${beaRoot}/rooms/${adaRoot}/${cellar}`);
             if (r.status === 200) entered = await r.json();
             else await wait(400);
         }
-        assert.ok(entered, "the door admits her");
+        assert.ok(entered, 'the door admits her');
         assert.equal(entered.joined, true);
         assert.equal(entered.trusted_only, true);
     });
 
     it("the creator tags a room, and the tags ride it into everyone's list - a sealed room's only to those it admits", async () => {
-        const tagsOf = async (who, root, doc) => ((await rooms(who, root)).find((r) => r.doc_id === doc) || {}).tags || [];
-        for (const [doc, value] of [[kitchen, "bread"], [kitchen, "baking"], [cellar, "secret"]]) {
-            const put = await j(ada, `api/identity/${adaRoot}/public-annotations/${adaRoot}/${doc}`, { key: "tag", value }, "PUT");
+        const tagsOf = async (who, root, doc) =>
+            ((await rooms(who, root)).find((r) => r.doc_id === doc) || {}).tags || [];
+        for (const [doc, value] of [
+            [kitchen, 'bread'],
+            [kitchen, 'baking'],
+            [cellar, 'secret'],
+        ]) {
+            const put = await j(
+                ada,
+                `api/identity/${adaRoot}/public-annotations/${adaRoot}/${doc}`,
+                { key: 'tag', value },
+                'PUT',
+            );
             assert.equal(put.status, 200, await put.text());
         }
-        assert.deepEqual(await tagsOf(ada, adaRoot, kitchen), ["baking", "bread"], "her own list wears them, sorted");
-        assert.deepEqual(await tagsOf(ada, adaRoot, cellar), ["secret"], "the sealed room's too, for its author");
+        assert.deepEqual(
+            await tagsOf(ada, adaRoot, kitchen),
+            ['baking', 'bread'],
+            'her own list wears them, sorted',
+        );
+        assert.deepEqual(
+            await tagsOf(ada, adaRoot, cellar),
+            ['secret'],
+            "the sealed room's too, for its author",
+        );
         // Bea, trusted: both rooms' tags reach her, the sealed one's through the seal.
         let hers = [];
         for (let i = 0; i < 30; i++) {
@@ -169,7 +256,11 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             if (hers.length === 2) break;
             await wait(300);
         }
-        assert.deepEqual(hers, ["baking", "bread"], `the open room's tags reached bea: ${JSON.stringify(hers)}`);
+        assert.deepEqual(
+            hers,
+            ['baking', 'bread'],
+            `the open room's tags reached bea: ${JSON.stringify(hers)}`,
+        );
         let sealed = [];
         for (let i = 0; i < 30; i++) {
             await pullAndFold(HOST_B, adaRoot);
@@ -177,26 +268,56 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             if (sealed.length === 1) break;
             await wait(300);
         }
-        assert.deepEqual(sealed, ["secret"], `the sealed room's tags open for a reader it admits: ${JSON.stringify(sealed)}`);
+        assert.deepEqual(
+            sealed,
+            ['secret'],
+            `the sealed room's tags open for a reader it admits: ${JSON.stringify(sealed)}`,
+        );
         // Everyone tags (the display register, 2026-08-31): bea's word about ada's room
         // rides beside ada's own, the creator's first, and a blocked annotator's shows
         // nowhere - the block read off ada's own ledger, where it stays.
-        const byBea = await j(bea, `api/identity/${beaRoot}/public-annotations/${adaRoot}/${kitchen}`, { key: "tag", value: "crumbs" }, "PUT");
+        const byBea = await j(
+            bea,
+            `api/identity/${beaRoot}/public-annotations/${adaRoot}/${kitchen}`,
+            { key: 'tag', value: 'crumbs' },
+            'PUT',
+        );
         assert.equal(byBea.status, 200, await byBea.text());
         let mine = [];
-        for (let i = 0; i < 30 && !mine.includes("crumbs"); i++) {
+        for (let i = 0; i < 30 && !mine.includes('crumbs'); i++) {
             await pullAndFold(HOST, beaRoot);
             mine = await tagsOf(ada, adaRoot, kitchen);
-            if (!mine.includes("crumbs")) await wait(300);
+            if (!mine.includes('crumbs')) await wait(300);
         }
-        assert.deepEqual(mine, ["baking", "bread", "crumbs"], `the creator's first, then everyone else's: ${JSON.stringify(mine)}`);
-        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/blocked`, { value: "yes" }, "PUT");
-        assert.deepEqual(await tagsOf(ada, adaRoot, kitchen), ["baking", "bread"], "a blocked annotator's label shows nowhere");
-        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/blocked`, { value: "no" }, "PUT");
-        assert.ok((await tagsOf(ada, adaRoot, kitchen)).includes("crumbs"), "and comes back when the block lifts");
+        assert.deepEqual(
+            mine,
+            ['baking', 'bread', 'crumbs'],
+            `the creator's first, then everyone else's: ${JSON.stringify(mine)}`,
+        );
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/blocked`,
+            { value: 'yes' },
+            'PUT',
+        );
+        assert.deepEqual(
+            await tagsOf(ada, adaRoot, kitchen),
+            ['baking', 'bread'],
+            "a blocked annotator's label shows nowhere",
+        );
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/blocked`,
+            { value: 'no' },
+            'PUT',
+        );
+        assert.ok(
+            (await tagsOf(ada, adaRoot, kitchen)).includes('crumbs'),
+            'and comes back when the block lifts',
+        );
     });
 
-    it("a stranger enters the open room by link, is refused the sealed one, and can leave", async () => {
+    it('a stranger enters the open room by link, is refused the sealed one, and can leave', async () => {
         const seen = await cal(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
         if (seen.status !== 200) this.skip();
         let open = null;
@@ -205,28 +326,42 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             if (r.status === 200) open = await r.json();
             else await wait(400);
         }
-        assert.ok(open, "an open room admits anyone who can see the post");
+        assert.ok(open, 'an open room admits anyone who can see the post');
         assert.equal(open.joined, true);
         const refused = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${cellar}`);
         const words = await refused.text();
         assert.equal(refused.status, 403, words);
         assert.match(words, /sealed/);
         let his = await rooms(cal, calRoot);
-        assert.ok(his.some((r) => r.doc_id === kitchen && r.joined), "the room he entered lists, joined by link");
-        assert.ok(!his.some((r) => r.doc_id === cellar), "the sealed one does not");
-        const left = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${kitchen}`, { method: "DELETE" });
+        assert.ok(
+            his.some((r) => r.doc_id === kitchen && r.joined),
+            'the room he entered lists, joined by link',
+        );
+        assert.ok(!his.some((r) => r.doc_id === cellar), 'the sealed one does not');
+        const left = await cal(`api/identity/${calRoot}/rooms/${adaRoot}/${kitchen}`, {
+            method: 'DELETE',
+        });
         assert.equal(left.status, 200, await left.text());
         his = await rooms(cal, calRoot);
         // Left, not forgotten (Curtis, 2026-09-19): the room lists beneath the active ones,
         // no longer joined, until rejoined.
         const gone = his.find((r) => r.doc_id === kitchen);
-        assert.ok(gone && gone.left && !gone.joined, `leaving keeps the room, marked left: ${JSON.stringify(gone)}`);
+        assert.ok(
+            gone && gone.left && !gone.joined,
+            `leaving keeps the room, marked left: ${JSON.stringify(gone)}`,
+        );
     });
 
     it("the share rule is the post's own: the open room passes along, the sealed one does not", async () => {
-        const ok = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: kitchen });
+        const ok = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, {
+            author: adaRoot,
+            doc_id: kitchen,
+        });
         assert.equal(ok.status, 200, await ok.text());
-        const no = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: cellar });
+        const no = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, {
+            author: adaRoot,
+            doc_id: cellar,
+        });
         assert.equal(no.status, 400, await no.text());
     });
 });

@@ -13,28 +13,28 @@
 
 mod cbor;
 mod chain;
+pub mod crown;
+pub mod deliver;
 pub mod directory;
 mod entry;
 mod error;
-pub mod crown;
-pub mod deliver;
 pub mod fragment;
 pub mod pow;
 pub mod registry;
 pub mod sync;
 
 pub use chain::validate_next;
+pub use crown::{Ceiling, Crown, KeyStatus};
+pub use deliver::{DeliverMessage, Envelope, SignedEnvelope};
 pub use entry::{
     ChainId, Entry, Payload, SignedEntry, DOMAIN_ENTRY, ENTRY_VERSION, HASH_LEN, MAX_ENTRY_BYTES,
     MAX_INLINE_PAYLOAD, SIG_LEN, ZERO_HASH,
 };
 pub use error::ProtoError;
-pub use crown::{Ceiling, KeyStatus, Crown};
 pub use registry::{
-    Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PrivateKind, PrivatePlain,
-    PostRetraction, PrivateRecord, ProfileSet, PublicEdge, Rebroadcast,
-    Revoke, PublicAnnotation,};
-pub use deliver::{DeliverMessage, Envelope, SignedEnvelope};
+    Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PostRetraction, PrivateKind,
+    PrivatePlain, PrivateRecord, ProfileSet, PublicAnnotation, PublicEdge, Rebroadcast, Revoke,
+};
 pub use sync::MemberProof;
 
 // Re-export the key types the public API takes, so consumers use the exact same ed25519-dalek

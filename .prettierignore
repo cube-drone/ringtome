@@ -1,0 +1,6 @@
+node_modules/
+target/
+# Written by `just strings` (node/tools/strings.mjs) in its own layout; strings-check compares it.
+node/js/locales/
+# Legal text is quoted, not reflowed.
+LICENSE.md

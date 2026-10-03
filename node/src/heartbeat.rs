@@ -26,7 +26,8 @@ use crate::AppState;
 pub const FIELD: &str = "heartbeat";
 
 /// Each persona's last heartbeat date sent (or being sent) from this node.
-static SENT: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static SENT: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The UTC date of a moment, `YYYY-MM-DD`.
 pub fn utc_date(ms: i64) -> String {
@@ -38,7 +39,8 @@ pub fn utc_date(ms: i64) -> String {
 /// Howard Hinnant's `days_from_civil`.
 pub fn day_of_date(date: &str) -> Option<u32> {
     let mut parts = date.splitn(3, '-');
-    let (y, m, d): (i64, i64, i64) = (parts.next()?.parse().ok()?, parts.next()?.parse().ok()?, parts.next()?.parse().ok()?);
+    let (y, m, d): (i64, i64, i64) =
+        (parts.next()?.parse().ok()?, parts.next()?.parse().ok()?, parts.next()?.parse().ok()?);
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return None;
     }
@@ -110,7 +112,11 @@ mod tests {
         assert_eq!(super::utc_date(1_790_726_400_000), "2026-09-30");
         assert_eq!(super::utc_date(-1), "1969-12-31");
         for day in [0u32, 11_016, 20_725, 47_541] {
-            assert_eq!(super::day_of_date(&super::utc_date(i64::from(day) * 86_400_000)), Some(day), "round trip");
+            assert_eq!(
+                super::day_of_date(&super::utc_date(i64::from(day) * 86_400_000)),
+                Some(day),
+                "round trip"
+            );
         }
         assert_eq!(super::day_of_date("last tuesday"), None);
     }

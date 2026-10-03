@@ -12,7 +12,11 @@ import { tagCounts } from './doclist.js';
 /// A picture that can go into a drawing: an image document (still or animated - an animation is
 /// drawn as its first frame) whose size the node knows, since that is how it is placed.
 export const isPicture = (doc) =>
-    !!doc && OWN_MEDIA_KINDS[doc.format] === 'image' && !!doc.media && doc.media.width > 0 && doc.media.height > 0;
+    !!doc &&
+    OWN_MEDIA_KINDS[doc.format] === 'image' &&
+    !!doc.media &&
+    doc.media.width > 0 &&
+    doc.media.height > 0;
 
 /// The words a title search looks for: lowercase, split on whitespace. Every word must appear.
 const wordsOf = (query) => (query || '').toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -45,8 +49,12 @@ export const STICKER_TAG = 'sticker';
 /// carrying every tag in `tags`; and the tag cloud of the stickers' OTHER tags, counted before those
 /// tags narrow it - `sticker` itself says nothing on a shelf where everything wears it.
 export function stickersOf(docs, tags = []) {
-    const all = (docs || []).filter(pickable(true)).filter((d) => (d.tags || []).includes(STICKER_TAG));
-    const stickers = all.filter((d) => tags.every((t) => (d.tags || []).includes(t))).sort(newestFirst);
+    const all = (docs || [])
+        .filter(pickable(true))
+        .filter((d) => (d.tags || []).includes(STICKER_TAG));
+    const stickers = all
+        .filter((d) => tags.every((t) => (d.tags || []).includes(t)))
+        .sort(newestFirst);
     return { stickers, tags: tagCounts(all).filter(([t]) => t !== STICKER_TAG) };
 }
 
@@ -68,11 +76,16 @@ export function stickerCursorSize(width, height, scale) {
 /// first; the tag cloud ([tag, count], most-used first) over the pictures before the tag filter;
 /// and every notebook holding any picture at all, alphabetical, so the notebook menu never shrinks
 /// out from under a search.
-export function pickPictures(docs, { query = '', bucket = null, tags = [], drawings = false } = {}) {
+export function pickPictures(
+    docs,
+    { query = '', bucket = null, tags = [], drawings = false } = {},
+) {
     const before = narrowed(docs, { query, bucket, drawings });
-    const pictures = before.filter((d) => tags.every((t) => (d.tags || []).includes(t))).sort(newestFirst);
-    const buckets = [...new Set((docs || []).filter(pickable(drawings)).flatMap((d) => d.buckets || []))].sort((a, b) =>
-        a.localeCompare(b)
-    );
+    const pictures = before
+        .filter((d) => tags.every((t) => (d.tags || []).includes(t)))
+        .sort(newestFirst);
+    const buckets = [
+        ...new Set((docs || []).filter(pickable(drawings)).flatMap((d) => d.buckets || [])),
+    ].sort((a, b) => a.localeCompare(b));
     return { pictures, tags: tagCounts(before), buckets };
 }

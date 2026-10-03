@@ -18,16 +18,28 @@ describe('the caret through outside edits', () => {
         const now = 'one ![a](/api/x/body/a.png) two';
         const ch = c.smallestChange(was, now);
         assert.equal(apply(was, ch), now);
-        assert.deepEqual([ch.from, was.slice(ch.to)], [4, ' two'], 'the shared start and end untouched');
+        assert.deepEqual(
+            [ch.from, was.slice(ch.to)],
+            [4, ' two'],
+            'the shared start and end untouched',
+        );
         assert.deepEqual(c.smallestChange('same', 'same'), { from: 4, to: 4, insert: '' });
-        assert.equal(apply('aaa', c.smallestChange('aaa', 'aaaa')), 'aaaa', 'a repeated letter still comes out right');
+        assert.equal(
+            apply('aaa', c.smallestChange('aaa', 'aaaa')),
+            'aaaa',
+            'a repeated letter still comes out right',
+        );
         assert.equal(apply('abc', c.smallestChange('abc', '')), '');
     });
 
     it('lands the caret after the image when it sat after the placeholder', () => {
         // "one " is 4 long; a placeholder of 22 at 4 becomes an image reference of 23.
         assert.equal(c.caretThroughSwap(26, 4, 22, 23), 27, 'just after: just after the image');
-        assert.equal(c.caretThroughSwap(10, 4, 22, 23), 27, 'inside the placeholder: after the image');
+        assert.equal(
+            c.caretThroughSwap(10, 4, 22, 23),
+            27,
+            'inside the placeholder: after the image',
+        );
         assert.equal(c.caretThroughSwap(30, 4, 22, 23), 31, 'further on: moved by the difference');
         assert.equal(c.caretThroughSwap(2, 4, 22, 23), 2, 'before: where it was');
         assert.equal(c.caretThroughSwap(4, 4, 22, 23), 4, 'at its start: where it was');

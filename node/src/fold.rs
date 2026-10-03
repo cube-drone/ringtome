@@ -225,10 +225,7 @@ where
     F: FnMut(bool) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let mut guard = WorkerGuard {
-        root: root.clone(),
-        armed: true,
-    };
+    let mut guard = WorkerGuard { root: root.clone(), armed: true };
     loop {
         until_unheld(&root).await;
         let (target, ledger) = snapshot(&root);
@@ -426,8 +423,7 @@ mod tests {
         let make = {
             let (in_chain, runs, overlaps) = (in_chain.clone(), runs.clone(), overlaps.clone());
             move |_ledger: bool| {
-                let (in_chain, runs, overlaps) =
-                    (in_chain.clone(), runs.clone(), overlaps.clone());
+                let (in_chain, runs, overlaps) = (in_chain.clone(), runs.clone(), overlaps.clone());
                 async move {
                     if in_chain.fetch_add(1, Ordering::SeqCst) != 0 {
                         overlaps.fetch_add(1, Ordering::SeqCst);
@@ -532,7 +528,11 @@ mod tests {
         let before = runs.load(Ordering::SeqCst);
         let _ = test_nudge(root, false, make.clone());
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-        assert_eq!(runs.load(Ordering::SeqCst), before, "the hold stands again once the drain is over");
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            before,
+            "the hold stands again once the drain is over"
+        );
         drop(a);
     }
 

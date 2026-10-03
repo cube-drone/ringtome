@@ -34,7 +34,16 @@ export const BODY_VERSION = 1;
 
 /// A drawing with nothing on it.
 export function blankDrawing() {
-    return { v: BODY_VERSION, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, background: BACKGROUND, layers: [], texts: [], strokes: [], undone: [] };
+    return {
+        v: BODY_VERSION,
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+        background: BACKGROUND,
+        layers: [],
+        texts: [],
+        strokes: [],
+        undone: [],
+    };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -77,7 +86,10 @@ export function encodeSamples(samples) {
         } else {
             continue;
         }
-        if (pen) pressure.push(Math.max(0, Math.min(MAX_PRESSURE, Math.round(samples[i][2] * MAX_PRESSURE))));
+        if (pen)
+            pressure.push(
+                Math.max(0, Math.min(MAX_PRESSURE, Math.round(samples[i][2] * MAX_PRESSURE))),
+            );
         px = x;
         py = y;
     }
@@ -205,8 +217,16 @@ export function readBody(raw) {
         if (!held || layerWins(layer, held)) byId.set(layer.id, layer);
     }
     const layers = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    const texts = foldTexts(Array.isArray(parsed.texts) ? parsed.texts.map(asText).filter(Boolean) : []);
-    const undone = [...new Set(Array.isArray(parsed.undone) ? parsed.undone.filter((id) => typeof id === 'string' && HEX16.test(id)) : [])];
+    const texts = foldTexts(
+        Array.isArray(parsed.texts) ? parsed.texts.map(asText).filter(Boolean) : [],
+    );
+    const undone = [
+        ...new Set(
+            Array.isArray(parsed.undone)
+                ? parsed.undone.filter((id) => typeof id === 'string' && HEX16.test(id))
+                : [],
+        ),
+    ];
     const gone = new Set(undone);
     const seen = new Set();
     const strokes = [];
@@ -222,7 +242,10 @@ export function readBody(raw) {
         v: BODY_VERSION,
         width: dimension(parsed.width, CANVAS_WIDTH),
         height: dimension(parsed.height, CANVAS_HEIGHT),
-        background: typeof parsed.background === 'string' && COLOUR.test(parsed.background) ? parsed.background : BACKGROUND,
+        background:
+            typeof parsed.background === 'string' && COLOUR.test(parsed.background)
+                ? parsed.background
+                : BACKGROUND,
         layers,
         texts,
         strokes,
@@ -291,7 +314,10 @@ function asStroke(s) {
     if (typeof s.id !== 'string' || !HEX16.test(s.id)) return null;
     if (!Number.isSafeInteger(s.t) || s.t < 0) return null;
     // Which layer it is on: absent means the base layer, and is how the base layer is written.
-    const onLayer = typeof s.layer === 'string' && HEX16.test(s.layer) && s.layer !== BASE_LAYER ? { layer: s.layer } : {};
+    const onLayer =
+        typeof s.layer === 'string' && HEX16.test(s.layer) && s.layer !== BASE_LAYER
+            ? { layer: s.layer }
+            : {};
     // A grab (`move`): the whole layer shifted by (dx, dy) - everything on it drawn before this.
     // An entry in the history like a stroke, so it merges by the same union and undoes the same way.
     if (s.tool === 'move') {
@@ -312,25 +338,57 @@ function asStroke(s) {
     // merged by the union and undone like a stroke.
     if (s.tool === 'bucket') {
         if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
-        if (!Array.isArray(s.points) || s.points.length !== 2 || !s.points.every(Number.isSafeInteger)) return null;
+        if (
+            !Array.isArray(s.points) ||
+            s.points.length !== 2 ||
+            !s.points.every(Number.isSafeInteger)
+        )
+            return null;
         if (!Number.isSafeInteger(s.reach) || s.reach < 0 || s.reach > MAX_REACH) return null;
-        return { id: s.id, t: s.t, ...onLayer, tool: 'bucket', color: s.color, points: s.points, reach: s.reach };
+        return {
+            id: s.id,
+            t: s.t,
+            ...onLayer,
+            tool: 'bucket',
+            color: s.color,
+            points: s.points,
+            reach: s.reach,
+        };
     }
     // An image (Curtis, 2026-09-27): one of the person's own pictures, by its document id, placed
     // with its top-left at `points` and `w` x `h` canvas units big. The pixels stay in the picture's
     // document; the drawing holds the reference, and whoever paints it fetches them (doc/drawing.js).
     if (s.tool === 'image') {
         if (typeof s.doc !== 'string' || !DOC_ID.test(s.doc)) return null;
-        if (!Array.isArray(s.points) || s.points.length !== 2 || !s.points.every(Number.isSafeInteger)) return null;
+        if (
+            !Array.isArray(s.points) ||
+            s.points.length !== 2 ||
+            !s.points.every(Number.isSafeInteger)
+        )
+            return null;
         const side = (n) => Number.isSafeInteger(n) && n >= 1 && n <= MAX_IMAGE_SIZE;
         if (!side(s.w) || !side(s.h)) return null;
-        return { id: s.id, t: s.t, ...onLayer, tool: 'image', points: s.points, doc: s.doc, w: s.w, h: s.h };
+        return {
+            id: s.id,
+            t: s.t,
+            ...onLayer,
+            tool: 'image',
+            points: s.points,
+            doc: s.doc,
+            w: s.w,
+            h: s.h,
+        };
     }
     // A crop (Curtis, 2026-09-27): the canvas cut down to the box `points` = [left, top, right,
     // bottom], in the canvas as it stood then - on no layer, since it cuts every layer. Everything
     // before it shifts by (-left, -top), as a grab would shift it, and the canvas becomes the box.
     if (s.tool === 'crop') {
-        if (!Array.isArray(s.points) || s.points.length !== 4 || !s.points.every(Number.isSafeInteger)) return null;
+        if (
+            !Array.isArray(s.points) ||
+            s.points.length !== 4 ||
+            !s.points.every(Number.isSafeInteger)
+        )
+            return null;
         const [l, t, r, b] = s.points;
         if (l >= r || t >= b) return null;
         return { id: s.id, t: s.t, tool: 'crop', points: s.points };
@@ -350,12 +408,26 @@ function asStroke(s) {
     if (s.tool === 'rect' || s.tool === 'ellipse') {
         if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
         if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
-        if (!Array.isArray(s.points) || s.points.length !== 4 || !s.points.every(Number.isSafeInteger)) return null;
-        return { id: s.id, t: s.t, ...onLayer, tool: s.tool, color: s.color, size: s.size, points: s.points };
+        if (
+            !Array.isArray(s.points) ||
+            s.points.length !== 4 ||
+            !s.points.every(Number.isSafeInteger)
+        )
+            return null;
+        return {
+            id: s.id,
+            t: s.t,
+            ...onLayer,
+            tool: s.tool,
+            color: s.color,
+            size: s.size,
+            points: s.points,
+        };
     }
     if (s.tool !== 'brush' && s.tool !== 'eraser') return null;
     if (!Number.isSafeInteger(s.size) || s.size < 1 || s.size > MAX_SIZE) return null;
-    if (!Array.isArray(s.points) || s.points.length < 2 || !s.points.every(Number.isSafeInteger)) return null;
+    if (!Array.isArray(s.points) || s.points.length < 2 || !s.points.every(Number.isSafeInteger))
+        return null;
     // A pen's pressure: one whole 0..100 per point. A list that does not fit its points is dropped,
     // not the stroke - the stroke still paints, one width throughout.
     const pressure =
@@ -364,9 +436,27 @@ function asStroke(s) {
         s.pressure.every((p) => Number.isSafeInteger(p) && p >= 0 && p <= MAX_PRESSURE)
             ? { pressure: s.pressure }
             : {};
-    if (s.tool === 'eraser') return { id: s.id, t: s.t, ...onLayer, tool: 'eraser', size: s.size, points: s.points, ...pressure };
+    if (s.tool === 'eraser')
+        return {
+            id: s.id,
+            t: s.t,
+            ...onLayer,
+            tool: 'eraser',
+            size: s.size,
+            points: s.points,
+            ...pressure,
+        };
     if (typeof s.color !== 'string' || !COLOUR.test(s.color)) return null;
-    return { id: s.id, t: s.t, ...onLayer, tool: 'brush', color: s.color, size: s.size, points: s.points, ...pressure };
+    return {
+        id: s.id,
+        t: s.t,
+        ...onLayer,
+        tool: 'brush',
+        color: s.color,
+        size: s.size,
+        points: s.points,
+        ...pressure,
+    };
 }
 
 /// Did `raw` parse to a body at all (a JSON object), rather than falling back to a blank one?
@@ -393,9 +483,11 @@ function mergedCanvas(bodies) {
     if (!candidates.length) return blankDrawing();
     return candidates.reduce((best, b) =>
         b.width < best.width ||
-        (b.width === best.width && (b.height < best.height || (b.height === best.height && b.background < best.background)))
+        (b.width === best.width &&
+            (b.height < best.height ||
+                (b.height === best.height && b.background < best.background)))
             ? b
-            : best
+            : best,
     );
 }
 
@@ -487,7 +579,8 @@ export function layersOf(drawing) {
     for (const s of drawing.strokes) {
         if (s.tool === 'crop') continue;
         const id = s.layer || BASE_LAYER;
-        if (!layers.has(id)) layers.set(id, { id, n: 1, z: 0, opacity: MAX_OPACITY, hidden: false, t: 0 });
+        if (!layers.has(id))
+            layers.set(id, { id, n: 1, z: 0, opacity: MAX_OPACITY, hidden: false, t: 0 });
     }
     for (const l of drawing.layers || []) layers.set(l.id, l);
     const deleted = deletedLayers(drawing);
@@ -498,7 +591,9 @@ export function layersOf(drawing) {
 
 /// The layers a standing `delete` entry has thrown away. Undo the entry and the layer is back.
 export function deletedLayers(drawing) {
-    return new Set(drawing.strokes.filter((s) => s.tool === 'delete').map((s) => s.layer || BASE_LAYER));
+    return new Set(
+        drawing.strokes.filter((s) => s.tool === 'delete').map((s) => s.layer || BASE_LAYER),
+    );
 }
 
 /// The strokes on one layer, in painting order.
@@ -507,7 +602,10 @@ export function strokesOn(drawing, layerId) {
 }
 
 function upsertLayer(drawing, entry) {
-    return { ...drawing, layers: [...(drawing.layers || []).filter((l) => l.id !== entry.id), entry] };
+    return {
+        ...drawing,
+        layers: [...(drawing.layers || []).filter((l) => l.id !== entry.id), entry],
+    };
 }
 
 /// A new layer on top of the stack, numbered one past the highest.
@@ -524,7 +622,8 @@ export function setLayer(drawing, id, change, now) {
     if (!current) return drawing;
     const next = { ...current, t: now };
     if (typeof change.hidden === 'boolean') next.hidden = change.hidden;
-    if (Number.isFinite(change.opacity)) next.opacity = Math.max(0, Math.min(MAX_OPACITY, Math.round(change.opacity)));
+    if (Number.isFinite(change.opacity))
+        next.opacity = Math.max(0, Math.min(MAX_OPACITY, Math.round(change.opacity)));
     // A name (Curtis, 2026-09-26): trimmed; an empty one takes the name away, back to "layer N".
     if (typeof change.name === 'string') {
         const name = change.name.trim();
@@ -600,7 +699,8 @@ export function apply(m, [x, y]) {
 }
 
 /// A matrix as a transform entry stores it (fixed point, whole numbers), and back.
-export const toFixed = (m) => m.map((n) => Math.max(-MAX_MATRIX, Math.min(MAX_MATRIX, Math.round(n * MATRIX_ONE))));
+export const toFixed = (m) =>
+    m.map((n) => Math.max(-MAX_MATRIX, Math.min(MAX_MATRIX, Math.round(n * MATRIX_ONE))));
 export const fromFixed = (m) => m.map((n) => n / MATRIX_ONE);
 
 /// The matrix an entry applies to what came before it: a move's shift, a transform's matrix, or
@@ -654,7 +754,12 @@ export function duplicateLayer(drawing, sourceId, newLayerId, entryId, now) {
     if (!source) return drawing;
     let out = addLayer(drawing, newLayerId, now);
     const name = source.name ? { name: source.name } : {};
-    out = setLayer(out, newLayerId, { opacity: source.opacity, hidden: source.hidden, ...name }, now);
+    out = setLayer(
+        out,
+        newLayerId,
+        { opacity: source.opacity, hidden: source.hidden, ...name },
+        now,
+    );
     // A text layer's copy is a text layer, its words its own from here on.
     const text = textOf(drawing, sourceId);
     if (text) out = upsertText(out, { ...text, layer: newLayerId, t: now });
@@ -675,7 +780,9 @@ export function effectiveOps(drawing, layerId, before = null) {
     const text = before ? null : textOf(drawing, layerId);
     if (text) out.push({ tool: 'text', ...text });
     // Every crop cuts every layer: they join each layer's own entries, in the one order.
-    const own = drawing.strokes.filter((s) => s.tool === 'crop' || (s.layer || BASE_LAYER) === layerId);
+    const own = drawing.strokes.filter(
+        (s) => s.tool === 'crop' || (s.layer || BASE_LAYER) === layerId,
+    );
     for (const op of own) {
         if (before && strokeOrder(op, before) >= 0) break;
         if (op.tool === 'copy') out.push(...effectiveOps(drawing, op.from, op));
@@ -690,7 +797,12 @@ export function effectiveOps(drawing, layerId, before = null) {
 
 /// Where a picture `width` x `height` pixels lands on a canvas: centred, one pixel to a canvas unit,
 /// shrunk (never grown) to fit inside it. { x, y, w, h }, whole canvas units.
-export function placeImage(width, height, canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT) {
+export function placeImage(
+    width,
+    height,
+    canvasWidth = CANVAS_WIDTH,
+    canvasHeight = CANVAS_HEIGHT,
+) {
     const scale = Math.min(1, canvasWidth / width, canvasHeight / height);
     const w = Math.max(1, Math.round(width * scale));
     const h = Math.max(1, Math.round(height * scale));
@@ -706,7 +818,16 @@ export function addImage(drawing, picture, layerId, entryId, now) {
     if (name) out = setLayer(out, layerId, { name }, now);
     const [cw, ch] = sizeOf(drawing);
     const at = placeImage(picture.width, picture.height, cw, ch);
-    const entry = { id: entryId, t: now, layer: layerId, tool: 'image', points: [at.x, at.y], doc: picture.doc, w: at.w, h: at.h };
+    const entry = {
+        id: entryId,
+        t: now,
+        layer: layerId,
+        tool: 'image',
+        points: [at.x, at.y],
+        doc: picture.doc,
+        w: at.w,
+        h: at.h,
+    };
     return addStroke(out, entry);
 }
 
@@ -735,7 +856,8 @@ function layerNameFrom(title) {
     if (typeof title !== 'string') return null;
     let name = title.replace(/\p{Cc}/gu, ' ').trim();
     const chars = [...name];
-    while (chars.length && new TextEncoder().encode(chars.join('')).length > MAX_NAME_BYTES) chars.pop();
+    while (chars.length && new TextEncoder().encode(chars.join('')).length > MAX_NAME_BYTES)
+        chars.pop();
     name = chars.join('').trim();
     return isLayerName(name) ? name : null;
 }
@@ -761,7 +883,18 @@ export function shapeEntry(tool, from, to, { id, t, layer, color, size }) {
     if (x0 === x1 && y0 === y1) return null;
     const onLayer = layer && layer !== BASE_LAYER ? { layer } : {};
     if (tool === 'line') {
-        return { id, t, ...onLayer, tool: 'brush', color, size, points: encodePoints([[x0, y0], [x1, y1]]) };
+        return {
+            id,
+            t,
+            ...onLayer,
+            tool: 'brush',
+            color,
+            size,
+            points: encodePoints([
+                [x0, y0],
+                [x1, y1],
+            ]),
+        };
     }
     const [l, top, r, bottom] = shapeBox([x0, y0, x1, y1]);
     return { id, t, ...onLayer, tool, color, size, points: [l, top, r, bottom] };
@@ -805,7 +938,8 @@ export function ellipseOutline([l, top, r, bottom]) {
 /// drawing's own: [width, height].
 export function sizeAfter(drawing, ops) {
     let size = [drawing.width, drawing.height];
-    for (const op of ops) if (op.tool === 'crop') size = [op.points[2] - op.points[0], op.points[3] - op.points[1]];
+    for (const op of ops)
+        if (op.tool === 'crop') size = [op.points[2] - op.points[0], op.points[3] - op.points[1]];
     return size;
 }
 
@@ -877,11 +1011,22 @@ function asText(x) {
     if (!Number.isSafeInteger(x.t) || x.t < 0) return null;
     if (!isTextContent(x.text)) return null;
     if (typeof x.font !== 'string' || !FONT_NAME.test(x.font)) return null;
-    if (!Number.isSafeInteger(x.size) || x.size < MIN_TEXT_SIZE || x.size > MAX_TEXT_SIZE) return null;
+    if (!Number.isSafeInteger(x.size) || x.size < MIN_TEXT_SIZE || x.size > MAX_TEXT_SIZE)
+        return null;
     if (typeof x.color !== 'string' || !COLOUR.test(x.color)) return null;
     if (!TEXT_ALIGNS.includes(x.align)) return null;
     if (!Number.isSafeInteger(x.x) || !Number.isSafeInteger(x.y)) return null;
-    return { layer: x.layer, t: x.t, text: x.text, font: x.font, size: x.size, color: x.color, align: x.align, x: x.x, y: x.y };
+    return {
+        layer: x.layer,
+        t: x.t,
+        text: x.text,
+        font: x.font,
+        size: x.size,
+        color: x.color,
+        align: x.align,
+        x: x.x,
+        y: x.y,
+    };
 }
 
 /// Of two records for one layer's text, does `a` win? The later change; on a tie, any fixed order
@@ -901,11 +1046,16 @@ function foldTexts(records) {
         const held = byLayer.get(r.layer);
         if (!held || textWins(r, held)) byLayer.set(r.layer, r);
     }
-    return [...byLayer.values()].sort((a, b) => (a.layer < b.layer ? -1 : a.layer > b.layer ? 1 : 0));
+    return [...byLayer.values()].sort((a, b) =>
+        a.layer < b.layer ? -1 : a.layer > b.layer ? 1 : 0,
+    );
 }
 
 function upsertText(drawing, record) {
-    return { ...drawing, texts: [...(drawing.texts || []).filter((r) => r.layer !== record.layer), record] };
+    return {
+        ...drawing,
+        texts: [...(drawing.texts || []).filter((r) => r.layer !== record.layer), record],
+    };
 }
 
 /// A layer's text, or null when it is not a text layer (or has been thrown away).
@@ -920,7 +1070,17 @@ export function textOf(drawing, layerId) {
 export function addTextLayer(drawing, layerId, { x, y, font, size, color, align, text = '' }, now) {
     const out = addLayer(drawing, layerId, now);
     const words = isTextContent(text) ? text : '';
-    return upsertText(out, { layer: layerId, t: now, text: words, font, size, color, align, x: Math.round(x), y: Math.round(y) });
+    return upsertText(out, {
+        layer: layerId,
+        t: now,
+        text: words,
+        font,
+        size,
+        color,
+        align,
+        x: Math.round(x),
+        y: Math.round(y),
+    });
 }
 
 /// Change a text layer's words, font, size, colour or alignment. A change the body could not keep

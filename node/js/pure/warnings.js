@@ -8,7 +8,11 @@ export const DEFAULT_BLUR = ['nsfw', 'porn', 'assault', 'death', 'gore', 'sexual
 export const DEFAULT_HIDE = [];
 
 /// One tag's spelling for comparison: trimmed, lowercased, inner runs of space collapsed.
-export const normalizeTag = (tag) => String(tag || '').trim().toLowerCase().replace(/\s+/g, ' ');
+export const normalizeTag = (tag) =>
+    String(tag || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
 
 /// A stored list (a JSON array in a private register) back to tags; absent or unreadable
 /// means the fallback stands.

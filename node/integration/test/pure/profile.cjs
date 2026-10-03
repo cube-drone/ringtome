@@ -3,9 +3,8 @@ const assert = require('node:assert');
 
 let WIRE_VALUE_MAX_BYTES, PROFILE_LIMITS, profileChars, overProfileLimit;
 before(async () => {
-    ({ WIRE_VALUE_MAX_BYTES, PROFILE_LIMITS, profileChars, overProfileLimit } = await import(
-        '../../../js/pure/profile.js'
-    ));
+    ({ WIRE_VALUE_MAX_BYTES, PROFILE_LIMITS, profileChars, overProfileLimit } =
+        await import('../../../js/pure/profile.js'));
 });
 
 describe('profile field limits', () => {
@@ -39,7 +38,7 @@ describe('profile field limits', () => {
         for (const [field, cap] of Object.entries(PROFILE_LIMITS)) {
             assert.ok(
                 cap * 4 <= WIRE_VALUE_MAX_BYTES,
-                `${field}'s cap of ${cap} chars could exceed ${WIRE_VALUE_MAX_BYTES} wire bytes`
+                `${field}'s cap of ${cap} chars could exceed ${WIRE_VALUE_MAX_BYTES} wire bytes`,
             );
         }
     });

@@ -17,21 +17,20 @@
     RED as of 2026-08-15, demonstrated live before being skipped; unskipped the same day as
     the cohort-as-candidate slice's first move. Green means the chain lane holds.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { sql, HOST, HOST_C, HOST_E } = require("./fetch.cjs");
-const { makeFetch } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
-const { unplug, plugIn } = require("./unplug.cjs");
-
+const { sql, HOST, HOST_C, HOST_E } = require('./fetch.cjs');
+const { makeFetch } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat, pullAndFold } = require('./beat.cjs');
+const { unplug, plugIn } = require('./unplug.cjs');
 
 const feedOf = async (reader, host) => {
     const { rows } = await sql(
         `SELECT author_root, doc_id, title FROM feed_journal WHERE reader_root = '${reader}'`,
-        host
+        host,
     );
     return rows;
 };
@@ -43,50 +42,47 @@ const servedBody = async (author, post, host) => {
 };
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
 (HOST_C && HOST_E ? describe : describe.skip)(
-    "frontier gossip: the sibling that stayed up",
+    'frontier gossip: the sibling that stayed up',
     function () {
         this.timeout(1200000);
 
         let author, authorRoot, cora, coraRoot, coraOnE;
 
         before(async function () {
-            author = await makeUserFetch({ prefix: "gossauthor" });
-            authorRoot = (
-                await (await author("api/identity", { method: "POST" })).json()
-            ).root_pubkey;
-            await author(`api/identity/${authorRoot}/serve`, { method: "POST" });
+            author = await makeUserFetch({ prefix: 'gossauthor' });
+            authorRoot = (await (await author('api/identity', { method: 'POST' })).json())
+                .root_pubkey;
+            await author(`api/identity/${authorRoot}/serve`, { method: 'POST' });
             const viaAuthor = await base58(author);
 
-            cora = await makeUserFetch({ prefix: "gosscora", host: HOST_C });
-            coraRoot = (
-                await (await cora("api/identity", { method: "POST" })).json()
-            ).root_pubkey;
-            await cora(`api/identity/${coraRoot}/serve`, { method: "POST" });
+            cora = await makeUserFetch({ prefix: 'gosscora', host: HOST_C });
+            coraRoot = (await (await cora('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await cora(`api/identity/${coraRoot}/serve`, { method: 'POST' });
 
             // The one dial in the whole file: cora follows the author.
             if ((await cora(`api/id/${authorRoot}/profile?via=${viaAuthor}`)).status !== 200)
                 this.skip();
             await cora(`api/identity/${coraRoot}/private/kv/contact:${authorRoot}/interest`, {
-                method: "PUT",
-                body: JSON.stringify({ value: "high" }),
+                method: 'PUT',
+                body: JSON.stringify({ value: 'high' }),
             });
             // The follow in the memo before anything publishes (the fanout.cjs barrier).
-            await beat(HOST_C, "fold", coraRoot);
+            await beat(HOST_C, 'fold', coraRoot);
 
             // Cora's second node, by the real ceremony - and settled until echo's own
             // subscriptions memo knows the follow, proving the cohort input paths carry the
             // LEDGER before any darkness. What they do not yet carry is the followed world.
-            coraOnE = await makeUserFetch({ prefix: "gosscorae", host: HOST_E });
+            coraOnE = await makeUserFetch({ prefix: 'gosscorae', host: HOST_E });
             const request = await (
-                await coraOnE("api/identity/adopt/begin", { method: "POST" })
+                await coraOnE('api/identity/adopt/begin', { method: 'POST' })
             ).json();
             const granted = await cora(`api/identity/${coraRoot}/nodes`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({ code: request.code }),
             });
             assert.equal(granted.status, 200, await granted.text());
@@ -94,9 +90,9 @@ const base58 = async (host) => {
             {
                 const { rows } = await sql(
                     `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${authorRoot}'`,
-                    HOST_E
+                    HOST_E,
                 );
-                assert.ok(rows.length, "the sibling learned the follow from the synced ledger");
+                assert.ok(rows.length, 'the sibling learned the follow from the synced ledger');
             }
         });
 
@@ -105,22 +101,22 @@ const base58 = async (host) => {
             await plugIn(HOST_E);
         });
 
-        it("a post the author can no longer serve reaches the waking sibling", async () => {
+        it('a post the author can no longer serve reaches the waking sibling', async () => {
             // The AM-node scenario, verbatim: the sibling sleeps through the morning...
             await unplug(HOST_E);
 
             const made = await (
                 await author(`api/identity/${authorRoot}/docs`, {
-                    method: "POST",
+                    method: 'POST',
                     body: JSON.stringify({
-                        title: "gossiped",
-                        body: "gossiped: the words",
-                        format: "plaintext",
+                        title: 'gossiped',
+                        body: 'gossiped: the words',
+                        format: 'plaintext',
                     }),
                 })
             ).json();
             const pub = await author(`api/identity/${authorRoot}/docs/${made.doc_id}/publish`, {
-                method: "POST",
+                method: 'POST',
             });
             const pubText = await pub.text();
             assert.equal(pub.status, 200, pubText);
@@ -130,7 +126,7 @@ const base58 = async (host) => {
             await pullAndFold(HOST_C, authorRoot);
             assert.ok(
                 (await feedOf(coraRoot, HOST_C)).some((r) => r.doc_id === post),
-                "the awake sibling journaled the post"
+                'the awake sibling journaled the post',
             );
 
             // The premise, made REAL before the author leaves: the sibling holds the WORDS,
@@ -140,13 +136,13 @@ const base58 = async (host) => {
             // logs: "io: connection lost" on charlie's backfill, the author darkened ~100ms
             // after the header landed). With the words never reaching the sibling, nobody
             // reachable held them and the property under test could not hold for anyone.
-            await beat(HOST_C, "body-heal", authorRoot);
-            await beat(HOST_C, "bodies-sweep");
+            await beat(HOST_C, 'body-heal', authorRoot);
+            await beat(HOST_C, 'bodies-sweep');
             {
                 const body = await servedBody(authorRoot, post, HOST_C);
                 assert.ok(
-                    body && body.includes("gossiped"),
-                    "the awake sibling holds the words, not just the header"
+                    body && body.includes('gossiped'),
+                    'the awake sibling holds the words, not just the header',
                 );
             }
 
@@ -166,23 +162,23 @@ const base58 = async (host) => {
             await pullAndFold(HOST_E, authorRoot);
             assert.ok(
                 (await feedOf(coraRoot, HOST_E)).some((r) => r.doc_id === post),
-                "the sibling's frontier gossip carried the followed author's post"
+                "the sibling's frontier gossip carried the followed author's post",
             );
 
             // THE PROPERTY (blob half): the words serve from the waking node's own door,
             // which needs the body blob to have healed from the cohort too.
-            await beat(HOST_E, "body-heal", authorRoot);
-            await beat(HOST_E, "bodies-sweep");
+            await beat(HOST_E, 'body-heal', authorRoot);
+            await beat(HOST_E, 'bodies-sweep');
             {
                 const body = await servedBody(authorRoot, post, HOST_E);
                 assert.ok(
-                    body && body.includes("gossiped"),
-                    "and the words healed from the sibling that stayed up"
+                    body && body.includes('gossiped'),
+                    'and the words healed from the sibling that stayed up',
                 );
             }
         });
 
-        it("a FIRST look at a departed author is answered by the household", async () => {
+        it('a FIRST look at a departed author is answered by the household', async () => {
             // Not the wake pass: a persona this node holds NOTHING of, looked at for the
             // first time with no hint at all - the phone opening a page (2026-09-24). Until
             // the cohort rode every foreign fetch it walked only the hints, and answered
@@ -193,50 +189,73 @@ const base58 = async (host) => {
             // fact, not a fault"). Echo sleeps through the follow so it cannot learn it and
             // fetch ahead of the look; if its own refresh still wins that race after it wakes,
             // the property below holds by the other road, and the claim says so.
-            const stranger = await makeUserFetch({ prefix: "gossstranger" });
-            const strangerRoot = (
-                await (await stranger("api/identity", { method: "POST" })).json()
-            ).root_pubkey;
-            await stranger(`api/identity/${strangerRoot}/serve`, { method: "POST" });
+            const stranger = await makeUserFetch({ prefix: 'gossstranger' });
+            const strangerRoot = (await (await stranger('api/identity', { method: 'POST' })).json())
+                .root_pubkey;
+            await stranger(`api/identity/${strangerRoot}/serve`, { method: 'POST' });
             const made = await (
                 await stranger(`api/identity/${strangerRoot}/docs`, {
-                    method: "POST",
-                    body: JSON.stringify({ title: "household", body: "held by the sibling", format: "plaintext" }),
+                    method: 'POST',
+                    body: JSON.stringify({
+                        title: 'household',
+                        body: 'held by the sibling',
+                        format: 'plaintext',
+                    }),
                 })
             ).json();
-            const pub = await stranger(`api/identity/${strangerRoot}/docs/${made.doc_id}/publish`, { method: "POST" });
+            const pub = await stranger(`api/identity/${strangerRoot}/docs/${made.doc_id}/publish`, {
+                method: 'POST',
+            });
             assert.equal(pub.status, 200, await pub.text());
 
             await unplug(HOST_E);
             const viaStranger = await base58(stranger);
-            assert.equal((await cora(`api/id/${strangerRoot}/profile?via=${viaStranger}`)).status, 200);
+            assert.equal(
+                (await cora(`api/id/${strangerRoot}/profile?via=${viaStranger}`)).status,
+                200,
+            );
             await cora(`api/identity/${coraRoot}/private/kv/contact:${strangerRoot}/interest`, {
-                method: "PUT",
-                body: JSON.stringify({ value: "high" }),
+                method: 'PUT',
+                body: JSON.stringify({ value: 'high' }),
             });
             await pullAndFold(HOST_C, strangerRoot);
             assert.ok(
-                (await feedOf(coraRoot, HOST_C)).some((r) => r.title === "household"),
-                "the awake sibling holds the stranger whole"
+                (await feedOf(coraRoot, HOST_C)).some((r) => r.title === 'household'),
+                'the awake sibling holds the stranger whole',
             );
 
             // The author leaves; echo wakes and looks, first thing, with no hint.
             await unplug(HOST);
             await plugIn(HOST_E);
-            const before = (await sql(`SELECT 1 AS ok FROM foreign_fetches WHERE root_pubkey = '${strangerRoot}'`, HOST_E)).rows.length;
+            const before = (
+                await sql(
+                    `SELECT 1 AS ok FROM foreign_fetches WHERE root_pubkey = '${strangerRoot}'`,
+                    HOST_E,
+                )
+            ).rows.length;
             const look = await coraOnE(`api/id/${strangerRoot}/profile`);
-            assert.equal(look.status, 200, `the household answered the look: ${await look.clone().text()}`);
-            if (before) console.log("      (echo's own refresh fetched them first; the look was answered from the mirror)");
+            assert.equal(
+                look.status,
+                200,
+                `the household answered the look: ${await look.clone().text()}`,
+            );
+            if (before)
+                console.log(
+                    "      (echo's own refresh fetched them first; the look was answered from the mirror)",
+                );
 
             // Their shelf follows, from the sibling's whole copy: the page keeps asking while
             // `refreshing` says so. Bounded, every round a real read.
             let titles = [];
-            for (let i = 0; i < 40 && !titles.includes("household"); i++) {
+            for (let i = 0; i < 40 && !titles.includes('household'); i++) {
                 const page = await (await coraOnE(`api/id/${strangerRoot}/profile`)).json();
                 titles = (page.posts || []).map((p) => p.title);
-                if (!titles.includes("household")) await new Promise((r) => setTimeout(r, 500));
+                if (!titles.includes('household')) await new Promise((r) => setTimeout(r, 500));
             }
-            assert.ok(titles.includes("household"), `the household's copy of their shelf: ${titles}`);
+            assert.ok(
+                titles.includes('household'),
+                `the household's copy of their shelf: ${titles}`,
+            );
         });
-    }
+    },
 );

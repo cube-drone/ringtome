@@ -86,21 +86,33 @@ impl FromRequestParts<AppState> for Session {
         if let Some(key) = bearer_key(&parts.headers) {
             return match super::keys::account_for_key(&state.node_db, &key).await? {
                 Some((account, key_id)) => Ok(Session { account, key: Some(key_id) }),
-                None => Err(AppError::Unauthorized(crate::msg!("auth.extractor.key-not-valid", "that API key isn't valid here"))),
+                None => Err(AppError::Unauthorized(crate::msg!(
+                    "auth.extractor.key-not-valid",
+                    "that API key isn't valid here"
+                ))),
             };
         }
 
         let signed_in = async {
-            let jar = CookieJar::from_request_parts(parts, &state)
-                .await
-                .map_err(|_| AppError::Unauthorized(crate::msg!("auth.extractor.no-cookies", "no cookies")))?;
+            let jar = CookieJar::from_request_parts(parts, &state).await.map_err(|_| {
+                AppError::Unauthorized(crate::msg!("auth.extractor.no-cookies", "no cookies"))
+            })?;
             let token = jar
                 .get(&session_cookie_name(state.config.port))
                 .map(|c| c.value().to_string())
-                .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "please sign in again")))?;
-            let (account, renewed) = account_for_token_renewing(&state.node_db, &token)
-                .await?
-                .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "please sign in again")))?;
+                .ok_or_else(|| {
+                    AppError::Unauthorized(crate::msg!(
+                        "auth.extractor.not-logged-in",
+                        "please sign in again"
+                    ))
+                })?;
+            let (account, renewed) =
+                account_for_token_renewing(&state.node_db, &token).await?.ok_or_else(|| {
+                    AppError::Unauthorized(crate::msg!(
+                        "auth.extractor.session-invalid-or-expired",
+                        "please sign in again"
+                    ))
+                })?;
             // Renewed: the response carries the cookie again, with its Max-Age fresh (`renew_cookie`).
             if renewed {
                 if let Some(slot) = parts.extensions.get::<RenewedSession>() {
@@ -155,7 +167,9 @@ pub async fn renew_cookie(
         .iter()
         .any(|v| v.to_str().is_ok_and(|v| v.starts_with(&format!("{name}="))));
     if !said {
-        if let Ok(value) = axum::http::HeaderValue::from_str(&super::routes::session_cookie(token, state.config.port).to_string()) {
+        if let Ok(value) = axum::http::HeaderValue::from_str(
+            &super::routes::session_cookie(token, state.config.port).to_string(),
+        ) {
             res.headers_mut().append(axum::http::header::SET_COOKIE, value);
         }
     }
@@ -200,7 +214,10 @@ impl axum::extract::OptionalFromRequestParts<AppState> for Session {
 /// administering, whatever its tags (keys.rs).
 fn refuse_key(session: &Session) -> Result<(), AppError> {
     if session.key.is_some() {
-        return Err(AppError::Forbidden(crate::msg!("auth.extractor.no-administering-by-key", "the server is administered from a signed-in browser, not with an API key")));
+        return Err(AppError::Forbidden(crate::msg!(
+            "auth.extractor.no-administering-by-key",
+            "the server is administered from a signed-in browser, not with an API key"
+        )));
     }
     Ok(())
 }
@@ -226,11 +243,12 @@ impl FromRequestParts<AppState> for NodeAdminSession {
         refuse_key(&session)?;
         let db = &state.node_db;
         if has_tag(db, &session.account.id, TAG_NODE_ADMIN).await? {
-            Ok(NodeAdminSession {
-                account: session.account,
-            })
+            Ok(NodeAdminSession { account: session.account })
         } else {
-            Err(AppError::Forbidden(crate::msg!("auth.extractor.nodeadmin-required", "node_admin required")))
+            Err(AppError::Forbidden(crate::msg!(
+                "auth.extractor.nodeadmin-required",
+                "node_admin required"
+            )))
         }
     }
 }
@@ -254,9 +272,7 @@ impl FromRequestParts<AppState> for AdminSession {
         let db = &state.node_db;
         let id = &session.account.id;
         if has_tag(db, id, TAG_ADMIN).await? || has_tag(db, id, TAG_NODE_ADMIN).await? {
-            Ok(AdminSession {
-                account: session.account,
-            })
+            Ok(AdminSession { account: session.account })
         } else {
             Err(AppError::Forbidden(crate::msg!("auth.extractor.admin-required", "admin required")))
         }

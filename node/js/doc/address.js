@@ -5,13 +5,7 @@
 import { api } from '../net.js';
 import { openMirror } from '../mirror.js';
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
-import {
-    bucketFor,
-    matchSlugPath,
-    needsTree,
-    pathSegments,
-    rootTitleFor,
-} from '../pure/naming.js';
+import { bucketFor, matchSlugPath, needsTree, pathSegments, rootTitleFor } from '../pure/naming.js';
 
 // The bucket's tree, cache-first (mirror/doccache.js - resolution and link-generation ride the same
 // fingerprinted cache as the tree pane), fetched when the roster stamp says it moved, or null when

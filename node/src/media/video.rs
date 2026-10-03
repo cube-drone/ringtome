@@ -384,11 +384,7 @@ fn encode_poster_avif(frame: &RgbaImage) -> Result<Vec<u8>, CrushError> {
 /// are the smaller bound, the harsher quantizer, and the absent audio.
 fn build_preview_webm(frames: &[BoundedFrame], flatten: bool) -> Result<Vec<u8>, CrushError> {
     // Preview geometry from the (already-bounded) body frame - fit the smaller square, even dims.
-    let (pw, ph) = even_fit(
-        frames[0].image.width(),
-        frames[0].image.height(),
-        PREVIEW_BOUND,
-    );
+    let (pw, ph) = even_fit(frames[0].image.width(), frames[0].image.height(), PREVIEW_BOUND);
 
     // Frames are ms-ascending and start at 0, so frame 0 always survives this window.
     let preview: Vec<BoundedFrame> = frames
@@ -400,11 +396,7 @@ fn build_preview_webm(frames: &[BoundedFrame], flatten: bool) -> Result<Vec<u8>,
             } else {
                 image::imageops::resize(&f.image, pw, ph, RESIZE_FILTER)
             };
-            BoundedFrame {
-                image,
-                ms: f.ms,
-                dur_ms: f.dur_ms,
-            }
+            BoundedFrame { image, ms: f.ms, dur_ms: f.dur_ms }
         })
         .collect();
 
@@ -442,9 +434,7 @@ fn sniff(input: &[u8]) -> Result<InputKind, CrushError> {
     if input.len() >= 12 && &input[0..4] == b"RIFF" && &input[8..12] == b"WEBP" {
         return Ok(InputKind::Webp);
     }
-    Err(CrushError::Unsupported(
-        "not a WebM, APNG, GIF, or WebP".into(),
-    ))
+    Err(CrushError::Unsupported("not a WebM, APNG, GIF, or WebP".into()))
 }
 
 // ---------------------------------------------------------------------------
@@ -516,9 +506,7 @@ impl FrameSink {
             }
             // A mid-stream resolution switch is not something any honest client emits.
             Some(dims) if dims != (w, h) => {
-                return Err(CrushError::Decode(
-                    "frame dimensions changed mid-stream".into(),
-                ));
+                return Err(CrushError::Decode("frame dimensions changed mid-stream".into()));
             }
             Some(_) => {}
         }
@@ -552,11 +540,7 @@ impl FrameSink {
     fn finish(mut self) -> Vec<BoundedFrame> {
         let n = self.kept.len();
         for i in 0..n {
-            let next_start = if i + 1 < n {
-                self.kept[i + 1].ms
-            } else {
-                self.end_ms
-            };
+            let next_start = if i + 1 < n { self.kept[i + 1].ms } else { self.end_ms };
             self.kept[i].dur_ms = next_start.saturating_sub(self.kept[i].ms).max(1);
         }
         self.kept
@@ -782,13 +766,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, CrushError> {
     if let Some(a) = audio.as_mut() {
         a.packets = std::mem::take(&mut audio_packets);
     }
-    Ok(DemuxedWebm {
-        width,
-        height,
-        declared_ms,
-        video_packets,
-        audio,
-    })
+    Ok(DemuxedWebm { width, height, declared_ms, video_packets, audio })
 }
 
 /// Route one (possibly laced) block's frames to the right packet list with an absolute ms
@@ -820,10 +798,7 @@ fn collect_block_frames(
 /// Pull an unsigned-int child out of a buffered master's children.
 fn find_uint(children: &[MatroskaSpec], pred: impl Fn(&MatroskaSpec) -> bool) -> Option<u64> {
     use webm_iterable::matroska_spec::EbmlTag;
-    children
-        .iter()
-        .find(|t| pred(t))
-        .and_then(|t| t.as_unsigned_int().copied())
+    children.iter().find(|t| pred(t)).and_then(|t| t.as_unsigned_int().copied())
 }
 
 /// Dig PixelWidth/PixelHeight out of a TrackEntry's nested Video master.
@@ -1054,17 +1029,13 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, CrushErr
     }
     let bpc = bpc as u8;
     if w == 0 || h == 0 {
-        return Err(CrushError::Decode(
-            "AV1 decoded to a zero-size frame".into(),
-        ));
+        return Err(CrushError::Decode("AV1 decoded to a zero-size frame".into()));
     }
     if w > MAX_DECODE_DIMENSION as usize
         || h > MAX_DECODE_DIMENSION as usize
         || (w as u64) * (h as u64) * 4 > MAX_DECODE_ALLOC_BYTES
     {
-        return Err(CrushError::Decode(format!(
-            "AV1 frame {w}x{h} is over the decode bounds"
-        )));
+        return Err(CrushError::Decode(format!("AV1 frame {w}x{h} is over the decode bounds")));
     }
 
     // SAFETY: rav1d guarantees data[0]/stride[0] describe `h` rows of at least `w` luma samples.
@@ -1092,10 +1063,9 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, CrushErr
             .as_ptr() as *const u8;
         // SAFETY: chroma planes share stride[1]; each holds `uv_height` rows of >= `uv_width`
         // samples.
-        (
-            unsafe { copy_plane_any(u_ptr, pic.stride[1], uv_width, uv_height, bpc) },
-            unsafe { copy_plane_any(v_ptr, pic.stride[1], uv_width, uv_height, bpc) },
-        )
+        (unsafe { copy_plane_any(u_ptr, pic.stride[1], uv_width, uv_height, bpc) }, unsafe {
+            copy_plane_any(v_ptr, pic.stride[1], uv_width, uv_height, bpc)
+        })
     };
 
     // Colour matrix + range come from the AV1 sequence header; default to BT.601 limited-range
@@ -1187,19 +1157,10 @@ enum ColorMatrix {
 fn matrix_for(mtrx: u32) -> ColorMatrix {
     match mtrx {
         0 => ColorMatrix::Identity, // MC_IDENTITY (RGB / GBR planes)
-        1 => ColorMatrix::YCbCr {
-            kr: 0.2126,
-            kb: 0.0722,
-        }, // MC_BT709
+        1 => ColorMatrix::YCbCr { kr: 0.2126, kb: 0.0722 }, // MC_BT709
         4 => ColorMatrix::YCbCr { kr: 0.30, kb: 0.11 }, // MC_FCC
-        7 => ColorMatrix::YCbCr {
-            kr: 0.212,
-            kb: 0.087,
-        }, // MC_SMPTE240
-        _ => ColorMatrix::YCbCr {
-            kr: 0.299,
-            kb: 0.114,
-        }, // MC_BT601/BT470BG/unspecified
+        7 => ColorMatrix::YCbCr { kr: 0.212, kb: 0.087 }, // MC_SMPTE240
+        _ => ColorMatrix::YCbCr { kr: 0.299, kb: 0.114 }, // MC_BT601/BT470BG/unspecified
     }
 }
 
@@ -1258,11 +1219,7 @@ fn decoded_to_rgba(pic: &DecodedPicture) -> RgbaImage {
                     }
                 }
             };
-            img.put_pixel(
-                x as u32,
-                y as u32,
-                image::Rgba([rgb[0], rgb[1], rgb[2], 255]),
-            );
+            img.put_pixel(x as u32, y as u32, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
         }
     }
     img
@@ -1384,12 +1341,7 @@ fn parse_ogg_opus(input: &[u8]) -> Result<AudioTrack, CrushError> {
     if packets.is_empty() {
         return Err(CrushError::Decode("ogg has no opus audio packets".into()));
     }
-    Ok(AudioTrack {
-        codec_private,
-        channels,
-        pre_skip,
-        packets,
-    })
+    Ok(AudioTrack { codec_private, channels, pre_skip, packets })
 }
 
 /// Validate an OpusHead and pull out (channels, pre_skip). Layout per RFC 7845 §5.1:
@@ -1409,9 +1361,7 @@ fn parse_opus_head(head: &[u8]) -> Result<(u8, u16), CrushError> {
 /// An Opus packet's duration in 48 kHz samples, from its self-describing TOC byte (RFC 6716 §3.1):
 /// the config picks the per-frame duration, the count code the number of frames.
 fn opus_packet_samples(packet: &[u8]) -> Result<u64, CrushError> {
-    let toc = *packet
-        .first()
-        .ok_or_else(|| CrushError::Decode("empty opus packet".into()))?;
+    let toc = *packet.first().ok_or_else(|| CrushError::Decode("empty opus packet".into()))?;
     let config = toc >> 3;
     let frame_samples: u64 = match config {
         0..=11 => [480, 960, 1920, 2880][(config & 3) as usize], // SILK 10/20/40/60 ms
@@ -1475,7 +1425,9 @@ fn encode_av1(
         let handles: Vec<_> = frames
             .chunks(chunk_len)
             .map(|chunk| {
-                scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten, quantizer, on_frame))
+                scope.spawn(move || {
+                    encode_av1_chunk(chunk, width, height, flatten, quantizer, on_frame)
+                })
             })
             .collect();
         handles
@@ -1493,10 +1445,8 @@ fn encode_av1(
     for result in chunk_results {
         packets.extend(result?);
     }
-    let av1c = packets
-        .first()
-        .and_then(|p| extract_sequence_header_obu(&p.data))
-        .and_then(build_av1c);
+    let av1c =
+        packets.first().and_then(|p| extract_sequence_header_obu(&p.data)).and_then(build_av1c);
     Ok(EncodedVideo { packets, av1c })
 }
 
@@ -1535,10 +1485,7 @@ fn encode_av1_chunk(
     enc.low_latency = true;
     enc.tiles = AV1_TILES;
     // Nominal only: real presentation times ride in the WebM mux, per kept frame.
-    enc.time_base = Rational {
-        num: 1,
-        den: 1000 / MIN_FRAME_SPACING_MS,
-    };
+    enc.time_base = Rational { num: 1, den: 1000 / MIN_FRAME_SPACING_MS };
 
     let cfg = Config::new().with_encoder_config(enc);
     let mut ctx = cfg
@@ -1553,11 +1500,7 @@ fn encode_av1_chunk(
         loop {
             match ctx.receive_packet() {
                 Ok(pkt) => {
-                    packets.push((
-                        pkt.input_frameno,
-                        pkt.frame_type == FrameType::KEY,
-                        pkt.data,
-                    ));
+                    packets.push((pkt.input_frameno, pkt.frame_type == FrameType::KEY, pkt.data));
                 }
                 Err(EncoderStatus::Encoded) => continue,
                 Err(EncoderStatus::NeedMoreData) => return Ok(true),
@@ -1589,11 +1532,7 @@ fn encode_av1_chunk(
         .into_iter()
         .map(|(frameno, keyframe, data)| {
             let i = (frameno as usize).min(frames.len() - 1);
-            Av1Packet {
-                ms: frames[i].ms,
-                keyframe,
-                data,
-            }
+            Av1Packet { ms: frames[i].ms, keyframe, data }
         })
         .collect())
 }
@@ -1630,12 +1569,7 @@ fn rgba_to_yuv420(img: &RgbaImage, flatten: bool) -> (Vec<u8>, Vec<u8>, Vec<u8>)
     for cy in 0..ch {
         for cx in 0..cw {
             let (x, y) = (cx * 2, cy * 2);
-            let idx = [
-                y * w + x,
-                y * w + x + 1,
-                (y + 1) * w + x,
-                (y + 1) * w + x + 1,
-            ];
+            let idx = [y * w + x, y * w + x + 1, (y + 1) * w + x, (y + 1) * w + x + 1];
             let cb: f32 = idx.iter().map(|&i| cb_full[i]).sum::<f32>() / 4.0;
             let cr: f32 = idx.iter().map(|&i| cr_full[i]).sum::<f32>() / 4.0;
             u_plane[cy * cw + cx] = clamp_u8(128.0 + cb * (224.0 / 255.0));
@@ -1943,10 +1877,7 @@ fn mux_webm(
                 el_uint(ID_FLAG_LACING, 0),
                 el_str(ID_CODEC_ID, "A_OPUS"),
                 // Opus decoder warm-up: pre-skip in ns, plus the RFC 7845 standard 80 ms pre-roll.
-                el_uint(
-                    ID_CODEC_DELAY,
-                    u64::from(a.pre_skip) * 1_000_000_000 / OPUS_SAMPLE_RATE,
-                ),
+                el_uint(ID_CODEC_DELAY, u64::from(a.pre_skip) * 1_000_000_000 / OPUS_SAMPLE_RATE),
                 el_uint(ID_SEEK_PRE_ROLL, 80_000_000),
                 el(ID_CODEC_PRIVATE, &a.codec_private),
                 el_master(
@@ -1973,12 +1904,7 @@ fn mux_webm(
     let mut blocks: Vec<MuxBlock> = video
         .packets
         .iter()
-        .map(|p| MuxBlock {
-            ms: p.ms,
-            track: VIDEO_TRACK,
-            keyframe: p.keyframe,
-            data: &p.data,
-        })
+        .map(|p| MuxBlock { ms: p.ms, track: VIDEO_TRACK, keyframe: p.keyframe, data: &p.data })
         .collect();
     if let Some(a) = audio {
         blocks.extend(a.packets.iter().map(|(ms, data)| MuxBlock {
@@ -2009,12 +1935,7 @@ fn mux_webm(
         }
         let rel = i16::try_from(block.ms - cluster_start_ms)
             .map_err(|_| CrushError::Decode("cluster overflow in webm mux".into()))?;
-        cluster.push(el_simple_block(
-            block.track,
-            rel,
-            block.keyframe,
-            block.data,
-        ));
+        cluster.push(el_simple_block(block.track, rel, block.keyframe, block.data));
     }
     if !cluster.is_empty() {
         clusters.push(el_master(ID_CLUSTER, &cluster));
@@ -2055,9 +1976,7 @@ fn encode_apng(
         // Per-frame delay as a fraction of a second; ms denominators cap the numerator at ~65 s.
         let num = u16::try_from(frame.dur_ms).unwrap_or(u16::MAX);
         writer.set_frame_delay(num, 1000).map_err(map_png)?;
-        writer
-            .write_image_data(frame.image.as_raw())
-            .map_err(map_png)?;
+        writer.write_image_data(frame.image.as_raw()).map_err(map_png)?;
         on_frame();
     }
     writer.finish().map_err(map_png)?;
@@ -2108,24 +2027,16 @@ mod tests {
             "more than one video block (got {})",
             demuxed.video_packets.len()
         );
-        assert_eq!(
-            demuxed.audio.is_some(),
-            expect_audio,
-            "audio track presence"
-        );
+        assert_eq!(demuxed.audio.is_some(), expect_audio, "audio track presence");
         if let Some(audio) = &demuxed.audio {
             assert!(!audio.packets.is_empty(), "audio blocks present");
-            assert!(
-                audio.codec_private.starts_with(b"OpusHead"),
-                "OpusHead rides along"
-            );
+            assert!(audio.codec_private.starts_with(b"OpusHead"), "OpusHead rides along");
         }
 
         // The first packet must decode in rav1d (it opens with our keyframe + sequence header).
         let mut decoder = Av1Decoder::open().expect("decoder opens");
-        let mut pics = decoder
-            .send_packet(&demuxed.video_packets[0].1)
-            .expect("first packet decodes");
+        let mut pics =
+            decoder.send_packet(&demuxed.video_packets[0].1).expect("first packet decodes");
         pics.extend(decoder.drain().expect("drain"));
         assert!(!pics.is_empty(), "first packet yields a picture");
         assert_eq!(
@@ -2142,9 +2053,7 @@ mod tests {
         let out = crush(
             &corpus("chrome_intermediary.webm"),
             None,
-            CrushOpts {
-                max_frames: Some(CI_FRAMES),
-            },
+            CrushOpts { max_frames: Some(CI_FRAMES) },
         )
         .expect("chrome intermediary crushes");
 
@@ -2152,10 +2061,7 @@ mod tests {
         assert!(out.has_audio, "opus survives as passthrough");
         assert!(!out.alpha_flattened);
         assert!(out.width <= MAX_SIDE && out.height <= MAX_SIDE, "bounded");
-        assert!(
-            out.width.is_multiple_of(2) && out.height.is_multiple_of(2),
-            "even dims"
-        );
+        assert!(out.width.is_multiple_of(2) && out.height.is_multiple_of(2), "even dims");
         assert!(out.frame_count > 1, "a real clip (got {})", out.frame_count);
         assert!(out.duration_ms > 0);
         assert_webm_round_trips(&out, true);
@@ -2168,9 +2074,7 @@ mod tests {
         let out = crush(
             &corpus("chrome_intermediary.webm"),
             None,
-            CrushOpts {
-                max_frames: Some(CI_FRAMES),
-            },
+            CrushOpts { max_frames: Some(CI_FRAMES) },
         )
         .expect("chrome intermediary crushes");
         assert_eq!(out.format, CrushedFormat::WebmAv1);
@@ -2180,10 +2084,7 @@ mod tests {
         assert_eq!(&out.poster_avif[4..8], b"ftyp", "poster is a real AVIF");
 
         // Preview: Some, valid WebM, tiny, silent, and bounded.
-        let preview = out
-            .preview_webm
-            .as_ref()
-            .expect("webm output has a preview");
+        let preview = out.preview_webm.as_ref().expect("webm output has a preview");
         assert!(
             preview.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]),
             "preview is a real WebM (EBML magic)"
@@ -2194,10 +2095,7 @@ mod tests {
             preview.len()
         );
         let demuxed = demux_webm(preview).expect("preview re-demuxes");
-        assert!(
-            demuxed.audio.is_none(),
-            "preview is SILENT (no A_OPUS track)"
-        );
+        assert!(demuxed.audio.is_none(), "preview is SILENT (no A_OPUS track)");
         assert!(!demuxed.video_packets.is_empty(), "preview has video");
         assert!(
             demuxed.width <= PREVIEW_BOUND && demuxed.height <= PREVIEW_BOUND,
@@ -2214,9 +2112,7 @@ mod tests {
         let out = crush(
             &corpus("firefox_frames.apng"),
             Some(&corpus("firefox_audio.ogx")),
-            CrushOpts {
-                max_frames: Some(CI_FRAMES),
-            },
+            CrushOpts { max_frames: Some(CI_FRAMES) },
         )
         .expect("firefox fallback pair crushes");
 
@@ -2250,29 +2146,16 @@ mod tests {
             .into_frames()
             .collect::<Result<_, _>>()
             .expect("output frames decode");
-        assert!(
-            frames.len() > 1,
-            "animation survived (got {} frames)",
-            frames.len()
-        );
-        assert_eq!(
-            frames.len(),
-            out.frame_count as usize,
-            "frame_count is honest"
-        );
-        let transparent_survived = frames
-            .iter()
-            .any(|f| f.buffer().pixels().any(|p| p[3] < 255));
+        assert!(frames.len() > 1, "animation survived (got {} frames)", frames.len());
+        assert_eq!(frames.len(), out.frame_count as usize, "frame_count is honest");
+        let transparent_survived = frames.iter().any(|f| f.buffer().pixels().any(|p| p[3] < 255));
         assert!(transparent_survived, "some pixel kept alpha < 255");
 
         // The APNG route still gets a poster (fills the thumbnail slot) but NO motion preview -
         // an APNG already self-animates in an `<img>`.
         assert!(!out.poster_avif.is_empty(), "poster present");
         assert_eq!(&out.poster_avif[4..8], b"ftyp", "poster is a real AVIF");
-        assert!(
-            out.preview_webm.is_none(),
-            "a self-animating APNG needs no preview clip"
-        );
+        assert!(out.preview_webm.is_none(), "a self-animating APNG needs no preview clip");
     }
 
     /// Transparent + audio: audio wins the container fight; alpha is flattened onto black and
@@ -2302,22 +2185,11 @@ mod tests {
             writer.finish().unwrap();
         }
 
-        let out = crush(
-            &apng,
-            Some(&corpus("firefox_audio.ogx")),
-            CrushOpts::default(),
-        )
-        .expect("transparent apng + audio crushes");
-        assert_eq!(
-            out.format,
-            CrushedFormat::WebmAv1,
-            "audio forces the webm route"
-        );
+        let out = crush(&apng, Some(&corpus("firefox_audio.ogx")), CrushOpts::default())
+            .expect("transparent apng + audio crushes");
+        assert_eq!(out.format, CrushedFormat::WebmAv1, "audio forces the webm route");
         assert!(out.has_audio);
-        assert!(
-            out.alpha_flattened,
-            "alpha was flattened onto the background"
-        );
+        assert!(out.alpha_flattened, "alpha was flattened onto the background");
         assert_eq!((out.width, out.height), (64, 64));
         assert_webm_round_trips(&out, true);
     }
@@ -2332,19 +2204,10 @@ mod tests {
             .into_frames()
             .take(3)
             .all(|f| f.expect("frame").buffer().pixels().all(|p| p[3] == 255));
-        assert!(
-            opaque,
-            "fixture must be opaque for this test to mean anything"
-        );
+        assert!(opaque, "fixture must be opaque for this test to mean anything");
 
-        let out = crush(
-            &input,
-            None,
-            CrushOpts {
-                max_frames: Some(12),
-            },
-        )
-        .expect("opaque gif crushes");
+        let out =
+            crush(&input, None, CrushOpts { max_frames: Some(12) }).expect("opaque gif crushes");
         assert_eq!(out.format, CrushedFormat::WebmAv1);
         assert!(!out.has_audio);
         assert!(!out.alpha_flattened);
@@ -2378,14 +2241,14 @@ mod tests {
         {
             let mut writer = WebmWriter::new(&mut vp9);
             writer
-                .write(&MatroskaSpec::Ebml(Master::Full(vec![
-                    MatroskaSpec::DocType("webm".into()),
-                ])))
+                .write(&MatroskaSpec::Ebml(Master::Full(vec![MatroskaSpec::DocType(
+                    "webm".into(),
+                )])))
                 .unwrap();
             writer.write(&MatroskaSpec::Segment(Master::Start)).unwrap();
             writer
-                .write(&MatroskaSpec::Tracks(Master::Full(vec![
-                    MatroskaSpec::TrackEntry(Master::Full(vec![
+                .write(&MatroskaSpec::Tracks(Master::Full(vec![MatroskaSpec::TrackEntry(
+                    Master::Full(vec![
                         MatroskaSpec::TrackNumber(1),
                         MatroskaSpec::TrackType(1),
                         MatroskaSpec::CodecID("V_VP9".into()),
@@ -2393,16 +2256,13 @@ mod tests {
                             MatroskaSpec::PixelWidth(64),
                             MatroskaSpec::PixelHeight(64),
                         ])),
-                    ])),
-                ])))
+                    ]),
+                )])))
                 .unwrap();
             writer.write(&MatroskaSpec::Segment(Master::End)).unwrap();
         }
         assert!(
-            matches!(
-                crush(&vp9, None, CrushOpts::default()),
-                Err(CrushError::Unsupported(_))
-            ),
+            matches!(crush(&vp9, None, CrushOpts::default()), Err(CrushError::Unsupported(_))),
             "non-AV1 webm is unsupported"
         );
     }
@@ -2414,14 +2274,9 @@ mod tests {
     #[test]
     fn frame_cap_enforced() {
         // Truncation: the squirrel has many frames; a cap of 3 clips the clip.
-        let out = crush(
-            &corpus("animated_color_squirrel.gif"),
-            None,
-            CrushOpts {
-                max_frames: Some(3),
-            },
-        )
-        .expect("capped crush still succeeds");
+        let out =
+            crush(&corpus("animated_color_squirrel.gif"), None, CrushOpts { max_frames: Some(3) })
+                .expect("capped crush still succeeds");
         assert!(
             out.frame_count >= 1 && out.frame_count <= 3,
             "cap truncates to at most 3 frames (got {})",
@@ -2442,9 +2297,9 @@ mod tests {
         {
             let mut writer = WebmWriter::new(&mut bad);
             writer
-                .write(&MatroskaSpec::Ebml(Master::Full(vec![
-                    MatroskaSpec::DocType("webm".into()),
-                ])))
+                .write(&MatroskaSpec::Ebml(Master::Full(vec![MatroskaSpec::DocType(
+                    "webm".into(),
+                )])))
                 .unwrap();
             writer.write(&MatroskaSpec::Segment(Master::Start)).unwrap();
             writer
@@ -2456,10 +2311,7 @@ mod tests {
             writer.write(&MatroskaSpec::Segment(Master::End)).unwrap();
         }
         assert!(
-            matches!(
-                crush(&bad, None, CrushOpts::default()),
-                Err(CrushError::Decode(_))
-            ),
+            matches!(crush(&bad, None, CrushOpts::default()), Err(CrushError::Decode(_))),
             "a nonsense declared duration is refused"
         );
     }
@@ -2482,10 +2334,7 @@ mod tests {
                 data: vec![0xAB; n],
             })
             .collect();
-        let video = EncodedVideo {
-            packets,
-            av1c: None,
-        };
+        let video = EncodedVideo { packets, av1c: None };
         let muxed = mux_webm(&video, None, 600, 16, 16).expect("mux");
         let demuxed = demux_webm(&muxed).expect("every payload size re-demuxes");
         assert_eq!(demuxed.video_packets.len(), 51, "all blocks survive");
@@ -2525,15 +2374,8 @@ mod tests {
         }
 
         let out = crush(&apng, None, CrushOpts::default()).expect("synthetic long clip crushes");
-        assert_eq!(
-            out.format,
-            CrushedFormat::WebmAv1,
-            "opaque + silent routes to webm"
-        );
-        assert_eq!(
-            out.frame_count, frame_count,
-            "no frames dropped at exactly 20 fps"
-        );
+        assert_eq!(out.format, CrushedFormat::WebmAv1, "opaque + silent routes to webm");
+        assert_eq!(out.frame_count, frame_count, "no frames dropped at exactly 20 fps");
         assert_eq!(out.duration_ms, u64::from(frame_count) * 50);
         let demuxed = demux_webm(&out.bytes).expect("long clip re-demuxes");
         assert_eq!(
@@ -2552,12 +2394,8 @@ mod tests {
     fn full_length_dump_to_scratch() {
         let dir = scratch();
 
-        let out = crush(
-            &corpus("chrome_intermediary.webm"),
-            None,
-            CrushOpts::default(),
-        )
-        .expect("full chrome crush");
+        let out = crush(&corpus("chrome_intermediary.webm"), None, CrushOpts::default())
+            .expect("full chrome crush");
         let preview = out.preview_webm.clone().expect("webm output has a preview");
         println!(
             "chrome_intermediary: {}x{} {} frames {} ms audio={} -> body {} KB, poster {} B, preview {} B",
@@ -2571,20 +2409,13 @@ mod tests {
             preview.len(),
         );
         std::fs::write(dir.join("chrome_intermediary.crushed.webm"), &out.bytes).unwrap();
-        std::fs::write(
-            dir.join("chrome_intermediary.poster.avif"),
-            &out.poster_avif,
-        )
-        .unwrap();
+        std::fs::write(dir.join("chrome_intermediary.poster.avif"), &out.poster_avif).unwrap();
         std::fs::write(dir.join("chrome_intermediary.preview.webm"), &preview).unwrap();
         assert_webm_round_trips(&out, true);
 
-        let out = crush(
-            &corpus("animated_logo_transparent_background.gif"),
-            None,
-            CrushOpts::default(),
-        )
-        .expect("full transparent gif crush");
+        let out =
+            crush(&corpus("animated_logo_transparent_background.gif"), None, CrushOpts::default())
+                .expect("full transparent gif crush");
         println!(
             "transparent logo gif: {}x{} {} frames {} ms -> {} KB apng",
             out.width,

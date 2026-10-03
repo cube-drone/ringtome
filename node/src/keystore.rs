@@ -53,10 +53,7 @@ impl Keystore {
             Err(_) => load_or_create_envelope_key_file(data_directory)?,
         };
 
-        Ok(Self {
-            keys_directory,
-            envelope_key,
-        })
+        Ok(Self { keys_directory, envelope_key })
     }
 
     fn cipher(&self) -> XChaCha20Poly1305 {
@@ -74,13 +71,7 @@ impl Keystore {
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
         let ciphertext = self
             .cipher()
-            .encrypt(
-                &nonce,
-                chacha20poly1305::aead::Payload {
-                    msg: plaintext,
-                    aad,
-                },
-            )
+            .encrypt(&nonce, chacha20poly1305::aead::Payload { msg: plaintext, aad })
             .map_err(|_| anyhow!("sealing key"))?;
 
         // Layout: [version byte][24-byte nonce][ciphertext+tag]
@@ -170,10 +161,7 @@ mod tests {
 
     fn temp_keystore() -> (Keystore, PathBuf) {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let dir =
             std::env::temp_dir().join(format!("ringtome-ks-{}-{}", std::process::id(), nanos));
         std::fs::create_dir_all(&dir).unwrap();
@@ -197,8 +185,7 @@ mod tests {
     #[test]
     fn wrong_aad_fails_to_open() {
         let (ks, dir) = temp_keystore();
-        ks.store("identity_a", b"secret bytes", b"identity_a")
-            .unwrap();
+        ks.store("identity_a", b"secret bytes", b"identity_a").unwrap();
 
         // Opening with a different AAD (as if the file were swapped for another identity's) fails.
         assert!(ks.load_key("identity_a", b"identity_b").is_err());
@@ -209,8 +196,7 @@ mod tests {
     #[test]
     fn tampered_file_fails_to_open() {
         let (ks, dir) = temp_keystore();
-        ks.store("identity_a", b"secret bytes", b"identity_a")
-            .unwrap();
+        ks.store("identity_a", b"secret bytes", b"identity_a").unwrap();
 
         // Flip a byte in the ciphertext region and confirm authentication rejects it.
         let path = ks.key_path("identity_a");

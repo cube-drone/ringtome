@@ -37,7 +37,13 @@ import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture, FILES_BUCKET } from './upload.js';
 import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
-import { blockCompletions, emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
+import {
+    blockCompletions,
+    emojiCompletions,
+    linkCompletions,
+    mediaCompletions,
+    mentionCompletions,
+} from './completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
@@ -80,7 +86,17 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, book, uploadBucket = FILES_BUCKET }) => {
+export const Editor = ({
+    root,
+    docId,
+    features,
+    onDeleted,
+    nav,
+    bucket,
+    foot,
+    book,
+    uploadBucket = FILES_BUCKET,
+}) => {
     const feat = features || featuresOf();
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
@@ -136,7 +152,9 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     const differs =
         standing === 'public' &&
         publicWords !== null &&
-        (publicWords.body === null || !sameWords(body, publicWords.body) || (publicWords.title !== null && publicWords.title !== title));
+        (publicWords.body === null ||
+            !sameWords(body, publicWords.body) ||
+            (publicWords.title !== null && publicWords.title !== title));
     const publishThis = async (extra, setBaking) => {
         await save();
         return publishWithBaking(root, docId, setBaking, extra);
@@ -164,7 +182,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         if (uploadNoteTimer.current) clearTimeout(uploadNoteTimer.current);
         uploadNoteTimer.current = setTimeout(() => setUploadNote(null), 8000);
     };
-
 
     // A caret asked for from outside the text - an upload's (doc/upload.js placeCursor): noted for
     // this document, then set on whichever surface is showing, focused only when asked.
@@ -248,7 +265,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     const facesGen = useUserCards(body, format);
     const liveProfile = useMemo(
         () => ({ ...tlProfile, directive: userCardHtml, span: userSpanHtml, faces: facesGen }),
-        [tlProfile, facesGen]
+        [tlProfile, facesGen],
     );
     // One picker instance per editor: it caches the roster it fetched on the first `@`.
     const mentionSource = useMemo(() => mentionCompletions(root), [root]);
@@ -271,8 +288,8 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         chosenMode && available.includes(chosenMode)
             ? chosenMode
             : available.includes(defaultMode(format))
-            ? defaultMode(format)
-            : available[0];
+              ? defaultMode(format)
+              : available[0];
 
     // Caret restoration for the textarea surfaces: when one (re)appears - a mode switch, or
     // a return to this doc - put the caret back where it last sat in this document, clamped
@@ -390,7 +407,9 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             // through untouched, so the upload capture upstream still gets its turn.
             const text = e.clipboardData && e.clipboardData.getData('text/plain');
             if (!text) return;
-            const fixed = pastedPicture(text, window.location.origin) || stripSelfOrigin(text, window.location.origin);
+            const fixed =
+                pastedPicture(text, window.location.origin) ||
+                stripSelfOrigin(text, window.location.origin);
             if (fixed === text) return;
             e.preventDefault();
             const ta = e.currentTarget;
@@ -421,7 +440,9 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             </div>`;
         }
         if (mode === 'read') {
-            return format === 'marquee' ? rendered : html`<pre class="reader-plain jag-line">${body}</pre>`;
+            return format === 'marquee'
+                ? rendered
+                : html`<pre class="reader-plain jag-line">${body}</pre>`;
         }
         if (mode === 'interactive' && format === 'marquee') {
             return html`<${LiveMarquee}
@@ -456,9 +477,10 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     return html`
         <div class="reader" onDrop=${catchDrop} onDragOver=${allowFileDrag} onPaste=${catchPaste}>
             <header class="reader-head">
-                ${mode === 'read'
-                    ? html`<span class="editor-title editor-title-read">${title || 'untitled'}</span>`
-                    : html`<input
+                ${
+                    mode === 'read'
+                        ? html`<span class="editor-title editor-title-read">${title || 'untitled'}</span>`
+                        : html`<input
                           class="editor-title"
                           value=${title}
                           onInput=${(e) => {
@@ -467,51 +489,62 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                           }}
                           onBlur=${() => save()}
                           placeholder="untitled"
-                      />`}
+                      />`
+                }
                 <span class="reader-chips">
                     ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
-                    ${onDeleted &&
-                    standing !== 'public' &&
-                    html`<${Chip}
+                    ${
+                        onDeleted &&
+                        standing !== 'public' &&
+                        html`<${Chip}
                         icon=${Icons.trash}
                         modifier="chip-delete"
                         title="Delete — removes this document from every list (its history is kept)"
                         onClick=${remove}
-                    />`}
+                    />`
+                    }
                     <${Chip}
                         icon=${Icons.copy}
                         title=${t('doc.editor.copy-into-private-notes', 'copy this note into another bucket')}
                         onClick=${() => setCopying(true)}
                     />
-                    ${copying &&
-                    html`<${CopyIntoModal}
+                    ${
+                        copying &&
+                        html`<${CopyIntoModal}
                         current=${{ root }}
                         source=${{ author: root, doc_id: docId, private: true }}
                         onClose=${() => setCopying(false)}
-                    />`}
-                    ${loaded.diverged &&
-                    (loaded.resolution === 'conflict'
-                        ? html`<${Chip}
+                    />`
+                    }
+                    ${
+                        loaded.diverged &&
+                        (loaded.resolution === 'conflict'
+                            ? html`<${Chip}
                               icon=${Icons.conflict}
                               modifier="chip-diverged"
                               title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"
                           />`
-                        : html`<${Chip}
+                            : html`<${Chip}
                               icon=${Icons.merged}
                               modifier="chip-merged"
                               title="Merged — changes from two computers woven together cleanly; your next save seals the weave"
-                          />`)}
-                    ${feat.format &&
-                    html`<${Chip}
+                          />`)
+                    }
+                    ${
+                        feat.format &&
+                        html`<${Chip}
                         icon=${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain}
-                        title=${format === 'marquee'
-                            ? 'Marquee — click to convert this document to plaintext'
-                            : 'Plaintext — click to convert this document to Marquee'}
+                        title=${
+                            format === 'marquee'
+                                ? 'Marquee — click to convert this document to plaintext'
+                                : 'Plaintext — click to convert this document to Marquee'
+                        }
                         onClick=${() => {
                             setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
                             touched();
                         }}
-                    />`}
+                    />`
+                    }
                     <${Chip}
                         icon=${Icons.upload}
                         title="Upload — attach a file to this document (drop or paste works too)"
@@ -522,25 +555,31 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                         title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
                         onClick=${() => setPicking(true)}
                     />
-                    ${picking &&
-                    html`<${ImagePickModal}
+                    ${
+                        picking &&
+                        html`<${ImagePickModal}
                         root=${root}
                         drawings=${true}
                         DrawingThumb=${DrawingThumb}
                         heading=${t('doc.editor.insert-an-image-heading', 'insert an image')}
                         onPick=${insertPicked}
                         onClose=${() => setPicking(false)}
-                    />`}
-                    ${/* The document's address (2026-09-28): a `/ringtome/…/doc/` link - pasted into
+                    />`
+                    }
+                    ${
+                        /* The document's address (2026-09-28): a `/ringtome/…/doc/` link - pasted into
                         another document it unfolds as this one for you, and says "private" to anyone
-                        else until it is published. */ ''}
+                        else until it is published. */ ''
+                    }
                     <${CopyLinkChip} path=${docHref(root, docId)} />
                     <${Chip} modifier=${status === 'error' ? 'chip-diverged' : null} title=${statusTip}>
-                        ${status === 'clean'
-                            ? html`<${Icons.saved} />`
-                            : status === 'error'
-                            ? html`<${Icons.warn} />`
-                            : html`<span class="status-spin"><${Icons.spinner} /></span>`}
+                        ${
+                            status === 'clean'
+                                ? html`<${Icons.saved} />`
+                                : status === 'error'
+                                  ? html`<${Icons.warn} />`
+                                  : html`<span class="status-spin"><${Icons.spinner} /></span>`
+                        }
                     </${Chip}>
                     <span class="editor-meta-anchor" ref=${metaChipRef}>
                         <${Chip}
@@ -551,41 +590,56 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                         />
                     </span>
 
-                    ${feat.pin &&
-                    html`<${Chip}
+                    ${
+                        feat.pin &&
+                        html`<${Chip}
                         icon=${Icons.pin}
                         modifier=${row && row.pinned ? 'chip-pinned' : null}
-                        title=${row && row.pinned
-                            ? 'Pinned — click to unpin it from the top of the list'
-                            : 'Not pinned — click to pin it to the top of the list'}
+                        title=${
+                            row && row.pinned
+                                ? 'Pinned — click to unpin it from the top of the list'
+                                : 'Not pinned — click to pin it to the top of the list'
+                        }
                         onClick=${() => togglePin(row && row.pinned)}
-                    />`}
+                    />`
+                    }
                     <${NavChips} nav=${nav} />
                 </span>
-                ${showMeta &&
-                html`<div class="editor-meta jag-line" ref=${metaPanelRef}>
+                ${
+                    showMeta &&
+                    html`<div class="editor-meta jag-line" ref=${metaPanelRef}>
                     <${Annotations} root=${root} docId=${docId} features=${feat} />
-                </div>`}
+                </div>`
+                }
             </header>
-            ${feat.publish &&
-            book &&
-            (() => {
-                // Inside a book (PROJECT_PLAN's Books, ruling 6) the bar speaks for the page's standing
-                // against the last rollout, not its own publication.
-                const page = pageStanding(row, book.hiddenDocs, book.hidden);
-                const hiddenHere = book.hidden.has(`doc:${docId}`);
-                return html`<div class=${page === 'hidden' ? 'publish-bar publish-bar-private' : page === 'current' ? 'publish-bar publish-bar-public' : 'publish-bar publish-bar-scheduled'}>
+            ${
+                feat.publish &&
+                book &&
+                (() => {
+                    // Inside a book (PROJECT_PLAN's Books, ruling 6) the bar speaks for the page's standing
+                    // against the last rollout, not its own publication.
+                    const page = pageStanding(row, book.hiddenDocs, book.hidden);
+                    const hiddenHere = book.hidden.has(`doc:${docId}`);
+                    return html`<div class=${page === 'hidden' ? 'publish-bar publish-bar-private' : page === 'current' ? 'publish-bar publish-bar-public' : 'publish-bar publish-bar-scheduled'}>
                     <span class="publish-bar-standing">
                         <${Icons.book} />
                         ${t('doc.editor.part-of-the-book', 'part of the book {bucket}', { bucket: book.bucket })}
                         ${' - '}
-                        ${page === 'hidden'
-                            ? t('doc.editor.hidden-from-it', 'hidden from it')
-                            : page === 'new'
-                              ? t('doc.editor.new-since-the-last-rollout', 'new since the last rollout')
-                              : page === 'changed'
-                                ? t('doc.editor.changed-since-the-last-rollout', 'changed since the last rollout')
-                                : t('doc.editor.as-published', 'as published')}
+                        ${
+                            page === 'hidden'
+                                ? t('doc.editor.hidden-from-it', 'hidden from it')
+                                : page === 'new'
+                                  ? t(
+                                        'doc.editor.new-since-the-last-rollout',
+                                        'new since the last rollout',
+                                    )
+                                  : page === 'changed'
+                                    ? t(
+                                          'doc.editor.changed-since-the-last-rollout',
+                                          'changed since the last rollout',
+                                      )
+                                    : t('doc.editor.as-published', 'as published')
+                        }
                     </span>
                     <span class="publish-bar-acts">
                         <label class="publish-bar-wish" title=${t('doc.editor.a-hidden-page-never-publishes', 'a hidden page never publishes with the book')}>
@@ -597,10 +651,12 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                         </button>
                     </span>
                 </div>`;
-            })()}
-            ${feat.publish &&
-            !book &&
-            html`<${PublishBar}
+                })()
+            }
+            ${
+                feat.publish &&
+                !book &&
+                html`<${PublishBar}
                 root=${root}
                 docId=${docId}
                 row=${row}
@@ -608,24 +664,29 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                 differs=${differs}
                 diffHref=${`${docHref(root, docId)}/diff`}
                 onPublished=${() => setHeadPoll((n) => n + 1)}
-            />`}
-            ${available.length > 1 &&
-            html`<div class="editor-tabs">
+            />`
+            }
+            ${
+                available.length > 1 &&
+                html`<div class="editor-tabs">
                 ${available.map(
                     (m) => html`<button
                         key=${m}
                         class=${mode === m ? 'tab jag-line-top active' : 'tab jag-line-top'}
                         title=${MODES[m]}
                         onClick=${() => pickMode(m)}
-                    ><${MODE_ICONS[m]} /></button>`
+                    ><${MODE_ICONS[m]} /></button>`,
                 )}
-            </div>`}
+            </div>`
+            }
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
             ${uploadNote && html`<p class="form-error">${uploadNote}</p>`}
             ${writingSurface()}
-            ${/* A host's own footer (the Feed composer's Post button): a render-prop so the
+            ${
+                /* A host's own footer (the Feed composer's Post button): a render-prop so the
                 host can flush the save and take the confirmed words - the editor owns the
-                session, the host owns what happens at the end. */ ''}
+                session, the host owns what happens at the end. */ ''
+            }
             ${foot && foot({ save, status, body, title })}
             ${uploadExtras}
         </div>

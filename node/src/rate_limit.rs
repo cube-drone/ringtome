@@ -45,8 +45,7 @@ impl RateLimiter {
         if ctx.is_direct_loopback() {
             return Ok(());
         }
-        self.check(action, &ctx.rate_limit_identifier(), limit, window_ms)
-            .await
+        self.check(action, &ctx.rate_limit_identifier(), limit, window_ms).await
     }
 
     /// Allow at most `limit` `action`s per `identifier` per `window_ms`. Returns
@@ -65,14 +64,15 @@ impl RateLimiter {
         let bucket = now_ms() / window_ms.max(1);
         let key = format!("{action}:{identifier}:{window_ms}:{bucket}");
 
-        let counter = self
-            .counters
-            .get_with(key, async { Arc::new(AtomicU32::new(0)) })
-            .await;
+        let counter = self.counters.get_with(key, async { Arc::new(AtomicU32::new(0)) }).await;
         let count = counter.fetch_add(1, Ordering::Relaxed) + 1;
 
         if count > limit {
-            return Err(AppError::TooManyRequests(crate::msg!("rate_limit.rate-limit-for-action-exceeded", "slow down a little ({action})", action = action)));
+            return Err(AppError::TooManyRequests(crate::msg!(
+                "rate_limit.rate-limit-for-action-exceeded",
+                "slow down a little ({action})",
+                action = action
+            )));
         }
         Ok(())
     }

@@ -21,9 +21,11 @@ export function narrowParams(query, picks, extra = {}) {
     for (const g of (picks && picks.tags) || []) parts.push(`tag=${encodeURIComponent(g)}`);
     for (const k of (picks && picks.kinds) || []) parts.push(`kind=${encodeURIComponent(k)}`);
     // The left-out chips (2026-10-01): what carries one is dropped.
-    for (const b of (picks && picks.notBuckets) || []) parts.push(`not_bucket=${encodeURIComponent(b)}`);
+    for (const b of (picks && picks.notBuckets) || [])
+        parts.push(`not_bucket=${encodeURIComponent(b)}`);
     for (const g of (picks && picks.notTags) || []) parts.push(`not_tag=${encodeURIComponent(g)}`);
-    for (const k of (picks && picks.notKinds) || []) parts.push(`not_kind=${encodeURIComponent(k)}`);
+    for (const k of (picks && picks.notKinds) || [])
+        parts.push(`not_kind=${encodeURIComponent(k)}`);
     // The feed's selectivity dial rides along (2026-09-08) so the node narrows what the
     // dial shows; it never makes a search on its own.
     const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;
@@ -49,7 +51,8 @@ export function useSearch(url, query, picks, extra = {}) {
         const timer = setTimeout(async () => {
             try {
                 const page = await api(`${url}${url.includes('?') ? '&' : '?'}${q}`);
-                if (alive) setState({ for: q, results: page.items || page.posts || [], error: null });
+                if (alive)
+                    setState({ for: q, results: page.items || page.posts || [], error: null });
             } catch (e) {
                 if (alive) setState({ for: q, results: [], error: e.message || String(e) });
             }
@@ -61,5 +64,10 @@ export function useSearch(url, query, picks, extra = {}) {
     }, [active, url, q]);
     if (!active) return { active: false, results: null, searching: false, error: null };
     const fresh = state.for === q;
-    return { active: true, results: fresh ? state.results : null, searching: !fresh, error: fresh ? state.error : null };
+    return {
+        active: true,
+        results: fresh ? state.results : null,
+        searching: !fresh,
+        error: fresh ? state.error : null,
+    };
 }

@@ -87,12 +87,18 @@ pub async fn claim(node_db: &Db, root: &str, raw: &str) -> Result<Outcome> {
     if last.as_deref() == Some(slug.as_str()) {
         // The swap: the last becomes current, the current becomes last.
         node_db
-            .execute("UPDATE node_slugs SET standing = 1, noted_ms = ?2 WHERE slug = ?1", (slug.as_str(), now))
+            .execute(
+                "UPDATE node_slugs SET standing = 1, noted_ms = ?2 WHERE slug = ?1",
+                (slug.as_str(), now),
+            )
             .await
             .context("promoting a last slug")?;
         if let Some(c) = current {
             node_db
-                .execute("UPDATE node_slugs SET standing = 0, noted_ms = ?2 WHERE slug = ?1", (c.as_str(), now))
+                .execute(
+                    "UPDATE node_slugs SET standing = 0, noted_ms = ?2 WHERE slug = ?1",
+                    (c.as_str(), now),
+                )
                 .await
                 .context("demoting a current slug")?;
         }
@@ -106,7 +112,10 @@ pub async fn claim(node_db: &Db, root: &str, raw: &str) -> Result<Outcome> {
     }
     if let Some(c) = current {
         node_db
-            .execute("UPDATE node_slugs SET standing = 0, noted_ms = ?2 WHERE slug = ?1", (c.as_str(), now))
+            .execute(
+                "UPDATE node_slugs SET standing = 0, noted_ms = ?2 WHERE slug = ?1",
+                (c.as_str(), now),
+            )
             .await
             .context("demoting a current slug")?;
     }
@@ -173,13 +182,36 @@ mod tests {
         assert_eq!(claim(&db, &ada, "cube-drone").await.unwrap(), Outcome::Claimed);
         assert_eq!(claim(&db, &bea, "cube-drone").await.unwrap(), Outcome::Taken);
         assert_eq!(claim(&db, &ada, "cube").await.unwrap(), Outcome::Claimed, "a change");
-        assert_eq!(of_root(&db, &ada).await.unwrap(), (Some("cube".into()), Some("cube-drone".into())));
-        assert_eq!(resolve(&db, "cube-drone").await.unwrap(), Some((ada.clone(), false)), "the last still resolves, not current");
-        assert_eq!(claim(&db, &bea, "cube-drone").await.unwrap(), Outcome::Taken, "the last is held");
-        assert_eq!(claim(&db, &ada, "cube-drone").await.unwrap(), Outcome::Claimed, "retaking one's own last");
-        assert_eq!(of_root(&db, &ada).await.unwrap(), (Some("cube-drone".into()), Some("cube".into())), "the swap");
+        assert_eq!(
+            of_root(&db, &ada).await.unwrap(),
+            (Some("cube".into()), Some("cube-drone".into()))
+        );
+        assert_eq!(
+            resolve(&db, "cube-drone").await.unwrap(),
+            Some((ada.clone(), false)),
+            "the last still resolves, not current"
+        );
+        assert_eq!(
+            claim(&db, &bea, "cube-drone").await.unwrap(),
+            Outcome::Taken,
+            "the last is held"
+        );
+        assert_eq!(
+            claim(&db, &ada, "cube-drone").await.unwrap(),
+            Outcome::Claimed,
+            "retaking one's own last"
+        );
+        assert_eq!(
+            of_root(&db, &ada).await.unwrap(),
+            (Some("cube-drone".into()), Some("cube".into())),
+            "the swap"
+        );
         assert_eq!(claim(&db, &ada, "drone").await.unwrap(), Outcome::Claimed, "a third");
-        assert_eq!(of_root(&db, &ada).await.unwrap(), (Some("drone".into()), Some("cube-drone".into())), "the oldest dropped");
+        assert_eq!(
+            of_root(&db, &ada).await.unwrap(),
+            (Some("drone".into()), Some("cube-drone".into())),
+            "the oldest dropped"
+        );
         assert_eq!(claim(&db, &bea, "cube").await.unwrap(), Outcome::Claimed, "and is free again");
         assert_eq!(claim(&db, &ada, "x").await.unwrap(), Outcome::Invalid);
         release_root(&db, &ada).await.unwrap();

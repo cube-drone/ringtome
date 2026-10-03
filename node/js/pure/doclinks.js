@@ -5,7 +5,11 @@
 /// The documents whose bodies link to `docId`, newest-titled first as the caller sorts them - not
 /// the note itself, and each once however many times it links.
 export const incomingTo = (rows, docId) =>
-    docId ? (rows || []).filter((r) => r.doc_id !== docId && (r.links || []).some((l) => l.doc === docId)).map((r) => r.doc_id) : [];
+    docId
+        ? (rows || [])
+              .filter((r) => r.doc_id !== docId && (r.links || []).some((l) => l.doc === docId))
+              .map((r) => r.doc_id)
+        : [];
 
 /// What `docId`'s own body links to, in its order, each place once (Curtis, 2026-09-30: "de-dupe
 /// links in this list"): one of your notes is one row however many ways it was addressed (with a

@@ -71,7 +71,10 @@ impl Shell {
 
     /// Everything asked so far (local-test mode; empty otherwise).
     pub fn recorded(&self) -> Vec<ShellRequest> {
-        self.recorded.as_ref().and_then(|log| log.lock().ok().map(|l| l.clone())).unwrap_or_default()
+        self.recorded
+            .as_ref()
+            .and_then(|log| log.lock().ok().map(|l| l.clone()))
+            .unwrap_or_default()
     }
 }
 
@@ -92,7 +95,9 @@ pub async fn save_handler(
 ) -> Result<axum::http::StatusCode, crate::error::AppError> {
     let name = file_name(&q.name);
     let size = body.len();
-    if !crate::registration::is_device(&state) || !state.shell.ask(ShellRequest::Save { name, bytes: body, size }) {
+    if !crate::registration::is_device(&state)
+        || !state.shell.ask(ShellRequest::Save { name, bytes: body, size })
+    {
         return Err(crate::error::AppError::NotFound(crate::msg!(
             "shell.only-the-desktop-app-saves-files",
             "only the desktop app saves files this way"
@@ -110,7 +115,10 @@ pub async fn open_in_browser_handler(
     headers: axum::http::HeaderMap,
 ) -> Result<axum::http::StatusCode, crate::error::AppError> {
     let from_window = crate::auth::window_offered(&headers, &state);
-    if !from_window || !crate::registration::is_device(&state) || !state.shell.ask(ShellRequest::OpenInBrowser) {
+    if !from_window
+        || !crate::registration::is_device(&state)
+        || !state.shell.ask(ShellRequest::OpenInBrowser)
+    {
         return Err(crate::error::AppError::NotFound(crate::msg!(
             "shell.only-the-desktop-app-opens-a-browser",
             "only the desktop app's own window can ask for that"
@@ -123,8 +131,18 @@ pub async fn open_in_browser_handler(
 /// characters, never empty.
 fn file_name(said: &str) -> String {
     let last = said.rsplit(['/', '\\']).next().unwrap_or("");
-    let clean: String = last.chars().filter(|c| !c.is_control()).collect::<String>().trim().trim_start_matches('.').to_string();
-    if clean.is_empty() { "download".to_string() } else { clean }
+    let clean: String = last
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .trim_start_matches('.')
+        .to_string();
+    if clean.is_empty() {
+        "download".to_string()
+    } else {
+        clean
+    }
 }
 
 #[cfg(test)]
@@ -133,7 +151,10 @@ mod tests {
 
     #[test]
     fn a_suggested_name_is_one_plain_file_name() {
-        assert_eq!(file_name("horse-drawing-tycoon-2-spare-key-abc.txt"), "horse-drawing-tycoon-2-spare-key-abc.txt");
+        assert_eq!(
+            file_name("horse-drawing-tycoon-2-spare-key-abc.txt"),
+            "horse-drawing-tycoon-2-spare-key-abc.txt"
+        );
         assert_eq!(file_name("../../etc/passwd"), "passwd");
         assert_eq!(file_name("C:\\Windows\\evil.png"), "evil.png");
         assert_eq!(file_name("..hidden\nname"), "hiddenname");

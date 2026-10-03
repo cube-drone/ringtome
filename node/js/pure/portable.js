@@ -34,7 +34,9 @@ export function stripSelfOrigin(text, origin) {
     if (!text || !origin) return text;
     return text
         .split(origin + '/')
-        .map((piece, i) => (i === 0 ? piece : piece.startsWith('ringtome/') ? `${origin}/${piece}` : `/${piece}`))
+        .map((piece, i) =>
+            i === 0 ? piece : piece.startsWith('ringtome/') ? `${origin}/${piece}` : `/${piece}`,
+        )
         .join('');
 }
 

@@ -3,7 +3,9 @@
 /// A VAPID public key as the node sends it (base64url, no padding) to the bytes
 /// `PushManager.subscribe({ applicationServerKey })` wants.
 export function keyBytes(base64url) {
-    const b64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (base64url.length % 4)) % 4);
+    const b64 =
+        base64url.replace(/-/g, '+').replace(/_/g, '/') +
+        '='.repeat((4 - (base64url.length % 4)) % 4);
     const raw = atob(b64);
     const out = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
@@ -16,7 +18,14 @@ export function keyBytes(base64url) {
 ///   'insecure'    - served over plain http from somewhere that isn't localhost
 ///   'denied'      - the person said no; only the browser's own settings can undo that
 ///   'ready'       - it can be turned on (or already is)
-export function pushSupport({ desktop, secure, serviceWorker, pushManager, notification, permission }) {
+export function pushSupport({
+    desktop,
+    secure,
+    serviceWorker,
+    pushManager,
+    notification,
+    permission,
+}) {
     if (desktop) return 'desktop';
     if (!notification) return 'unsupported';
     if (!secure) return 'insecure';

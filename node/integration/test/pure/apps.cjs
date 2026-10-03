@@ -5,12 +5,40 @@
 // else in the codebase states it.
 const assert = require('node:assert');
 
-let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
-    bucketHolds, featuresOf, itemNoun, itemPlural, homeAppFor, editorModes, appsFor, consoleCellsFor;
+let APPS,
+    DEFAULT_STYLE,
+    appById,
+    appLabel,
+    appForStyle,
+    appTypeOf,
+    bucketsForApp,
+    bucketHolds,
+    featuresOf,
+    itemNoun,
+    itemPlural,
+    homeAppFor,
+    editorModes,
+    appsFor,
+    consoleCellsFor;
 let Icons;
 before(async () => {
-    ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds, homeAppFor,
-       featuresOf, itemNoun, itemPlural, editorModes, appsFor, consoleCellsFor } = await import('../../../js/pure/apps.js'));
+    ({
+        APPS,
+        DEFAULT_STYLE,
+        appById,
+        appLabel,
+        appForStyle,
+        appTypeOf,
+        bucketsForApp,
+        bucketHolds,
+        homeAppFor,
+        featuresOf,
+        itemNoun,
+        itemPlural,
+        editorModes,
+        appsFor,
+        consoleCellsFor,
+    } = await import('../../../js/pure/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 
@@ -50,8 +78,10 @@ describe('app registry', () => {
         it('falls back to the default rather than stranding an unresolvable bucket', () => {
             assert.equal(appTypeOf('dream-diary', []), DEFAULT_STYLE);
             assert.equal(appTypeOf('dream-diary'), DEFAULT_STYLE);
-            assert.equal(appTypeOf('a-style-that-never-shipped', [{ name: 'x', app: 'y' }]),
-                DEFAULT_STYLE);
+            assert.equal(
+                appTypeOf('a-style-that-never-shipped', [{ name: 'x', app: 'y' }]),
+                DEFAULT_STYLE,
+            );
         });
 
         it('lets an implicit name win over a contradicting registry row', () => {
@@ -68,8 +98,11 @@ describe('app registry', () => {
                 { name: 'zebra-nights', app: DEFAULT_STYLE },
                 { name: 'apple-mornings', app: DEFAULT_STYLE },
             ];
-            assert.deepEqual(bucketsForApp(writer(), roster),
-                [DEFAULT_STYLE, 'apple-mornings', 'zebra-nights']);
+            assert.deepEqual(bucketsForApp(writer(), roster), [
+                DEFAULT_STYLE,
+                'apple-mornings',
+                'zebra-nights',
+            ]);
         });
 
         it('offers the home bucket even when the roster is empty', () => {
@@ -93,12 +126,20 @@ describe('app registry', () => {
         // Curtis, 2026-09-27: "chat" and "files" are reserved for those apps, and drawing
         // notebooks and writing notebooks each show only in their own app.
         it('never offers the reserved buckets as notebooks, even unregistered', () => {
-            const roster = [{ name: 'chat' }, { name: 'files', app: DEFAULT_STYLE }, { name: 'dream-diary' }];
+            const roster = [
+                { name: 'chat' },
+                { name: 'files', app: DEFAULT_STYLE },
+                { name: 'dream-diary' },
+            ];
             assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE, 'dream-diary']);
         });
 
         it('gives drawing notebooks to Drawing alone, and writing notebooks to Writer alone', () => {
-            const roster = [{ name: 'horses', app: 'drawing' }, { name: 'dream-diary', app: DEFAULT_STYLE }, { name: 'chat' }];
+            const roster = [
+                { name: 'horses', app: 'drawing' },
+                { name: 'dream-diary', app: DEFAULT_STYLE },
+                { name: 'chat' },
+            ];
             assert.deepEqual(bucketsForApp(appById('drawing'), roster), ['drawing', 'horses']);
             assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE, 'dream-diary']);
             assert.ok(!appById('drawing').soleBucket, 'Drawing has a switcher');
@@ -180,13 +221,27 @@ describe('app registry', () => {
         });
 
         it('routes the unbucketed HOME to the everything-view, the unknown to the default app', () => {
-            assert.equal(homeAppFor({ buckets: [] }, []).id, 'lost-found',
-                'nothing else holds a stray anymore');
+            assert.equal(
+                homeAppFor({ buckets: [] }, []).id,
+                'lost-found',
+                'nothing else holds a stray anymore',
+            );
             assert.equal(homeAppFor({}, []).id, 'lost-found');
-            assert.equal(homeAppFor({ buckets: ['chat'] }, []).id, 'lost-found', "a chat attachment is found in hrseFiles - chat opens rooms, not files");
-            assert.equal(homeAppFor({ buckets: ['files'] }, []).id, 'lost-found', 'a dropped file too');
-            assert.equal(homeAppFor({ buckets: ['mystery'] }, []).id, 'notes',
-                'an unregistered bucket still resolves to the default type');
+            assert.equal(
+                homeAppFor({ buckets: ['chat'] }, []).id,
+                'lost-found',
+                'a chat attachment is found in hrseFiles - chat opens rooms, not files',
+            );
+            assert.equal(
+                homeAppFor({ buckets: ['files'] }, []).id,
+                'lost-found',
+                'a dropped file too',
+            );
+            assert.equal(
+                homeAppFor({ buckets: ['mystery'] }, []).id,
+                'notes',
+                'an unregistered bucket still resolves to the default type',
+            );
         });
     });
 
@@ -226,9 +281,21 @@ describe('app registry', () => {
         });
 
         it("names the settings app for what the person holds - never 'node'", () => {
-            assert.equal(appLabel(appById('device'), 'Curtis'), 'hrseServer™', 'a browser reaching a server');
-            assert.equal(appLabel(appById('device'), 'Curtis', true), 'hrseDevice™', 'the desktop app');
-            assert.equal(appLabel(appById('notes'), 'Curtis', true), 'hrseWriter™', 'an app with one name keeps it');
+            assert.equal(
+                appLabel(appById('device'), 'Curtis'),
+                'hrseServer™',
+                'a browser reaching a server',
+            );
+            assert.equal(
+                appLabel(appById('device'), 'Curtis', true),
+                'hrseDevice™',
+                'the desktop app',
+            );
+            assert.equal(
+                appLabel(appById('notes'), 'Curtis', true),
+                'hrseWriter™',
+                'an app with one name keeps it',
+            );
         });
     });
 
@@ -238,7 +305,13 @@ describe('app registry', () => {
         it('shows the settings app to an administrator and nobody else', () => {
             assert.ok(appsFor(true).some((a) => a.id === 'device'));
             assert.ok(!appsFor(false).some((a) => a.id === 'device'));
-            assert.deepEqual(appsFor(false).map((a) => a.id), appsFor(true).map((a) => a.id).filter((id) => id !== 'device'), 'and hides nothing else');
+            assert.deepEqual(
+                appsFor(false).map((a) => a.id),
+                appsFor(true)
+                    .map((a) => a.id)
+                    .filter((id) => id !== 'device'),
+                'and hides nothing else',
+            );
         });
 
         it('keeps the console honeycomb whole either way', () => {
@@ -248,7 +321,10 @@ describe('app registry', () => {
                 for (const columns of [3, 4, 5]) {
                     const cells = consoleCellsFor(admin, columns);
                     assert.equal(cells.length % columns, 0, `whole rows of ${columns}`);
-                    assert.ok(cells.filter((c) => c.blank).length < columns, 'never a whole row of blanks');
+                    assert.ok(
+                        cells.filter((c) => c.blank).length < columns,
+                        'never a whole row of blanks',
+                    );
                 }
             }
         });
@@ -278,7 +354,10 @@ describe('app registry', () => {
         it('is lowercase, for mid-sentence use', () => {
             const nouns = APPS.filter((a) => a.itemNoun).map((a) => a.itemNoun);
             assert.ok(nouns.length >= 3);
-            assert.deepEqual(nouns.filter((n) => n !== n.toLowerCase()), []);
+            assert.deepEqual(
+                nouns.filter((n) => n !== n.toLowerCase()),
+                [],
+            );
         });
 
         it('gives every DOCUMENT app one (the surfaces put it in front of the user)', () => {
@@ -289,13 +368,17 @@ describe('app registry', () => {
 
     describe('icon names', () => {
         it('every app names a glyph that icons.js actually has', () => {
-            const missing = APPS.filter((a) => !a.blank).filter((a) => !Icons[a.icon])
+            const missing = APPS.filter((a) => !a.blank)
+                .filter((a) => !Icons[a.icon])
                 .map((a) => `${a.id}: '${a.icon}'`);
             assert.deepEqual(missing, []);
         });
 
         it('and no app forgets to name one', () => {
-            assert.deepEqual(APPS.filter((a) => !a.blank && !a.icon).map((a) => a.id), []);
+            assert.deepEqual(
+                APPS.filter((a) => !a.blank && !a.icon).map((a) => a.id),
+                [],
+            );
         });
     });
 });
@@ -303,20 +386,28 @@ describe('app registry', () => {
 // The editor's mode row: which tabs a document actually offers (2026-08-06 rules).
 describe('editorModes', () => {
     it('hides the plain tab wherever side-by-side is offered - side already shows the source', () => {
-        assert.deepEqual(editorModes('marquee', ['interactive', 'side', 'plain', 'read']),
-            ['interactive', 'side', 'read']);
+        assert.deepEqual(editorModes('marquee', ['interactive', 'side', 'plain', 'read']), [
+            'interactive',
+            'side',
+            'read',
+        ]);
     });
 
     it('keeps plain exactly where it is the only way to edit', () => {
-        assert.deepEqual(editorModes('plaintext', ['interactive', 'side', 'plain', 'read']),
-            ['plain', 'read']);
+        assert.deepEqual(editorModes('plaintext', ['interactive', 'side', 'plain', 'read']), [
+            'plain',
+            'read',
+        ]);
     });
 
     it("the feed's list: no read-only, and side hides plain", () => {
         const feed = featuresOf(appById('feed'));
         assert.deepEqual(editorModes('marquee', feed.modes), ['interactive', 'side']);
-        assert.deepEqual(editorModes('plaintext', feed.modes), ['plain'],
-            'a plaintext post is still editable');
+        assert.deepEqual(
+            editorModes('plaintext', feed.modes),
+            ['plain'],
+            'a plaintext post is still editable',
+        );
     });
 
     it('an app list that leaves a format nothing falls back rather than trapping the doc', () => {

@@ -100,7 +100,10 @@ where
                 let progress = Arc::new(Progress::default());
                 let (finished, watching) = tokio::sync::watch::channel(false);
                 let job = work(progress.clone());
-                jobs.insert(key.clone(), Job { progress, answer: None, finished_at: None, finished });
+                jobs.insert(
+                    key.clone(),
+                    Job { progress, answer: None, finished_at: None, finished },
+                );
                 let done_key = key.clone();
                 tokio::spawn(async move {
                     // Its own task inside, so a panic becomes a refusal here rather than a job

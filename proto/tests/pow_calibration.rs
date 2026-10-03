@@ -45,8 +45,5 @@ fn what_each_price_costs_to_pay_and_to_check() {
     for _ in 0..checks {
         let _ = pow::verify(&c, &stamp, 16);
     }
-    println!(
-        "verify: {:.2} us each",
-        started.elapsed().as_micros() as f64 / f64::from(checks)
-    );
+    println!("verify: {:.2} us each", started.elapsed().as_micros() as f64 / f64::from(checks));
 }

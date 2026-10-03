@@ -69,12 +69,8 @@ pub enum Outcome {
 async fn write_frame(send: &mut SendStream, msg: &DeliverMessage) -> Result<()> {
     let body = msg.encode();
     let len = u32::try_from(body.len()).map_err(|_| anyhow!("delivery frame too large"))?;
-    send.write_all(&len.to_be_bytes())
-        .await
-        .context("writing delivery frame length")?;
-    send.write_all(&body)
-        .await
-        .context("writing delivery frame body")?;
+    send.write_all(&len.to_be_bytes()).await.context("writing delivery frame length")?;
+    send.write_all(&body).await.context("writing delivery frame body")?;
     Ok(())
 }
 
@@ -88,12 +84,8 @@ async fn read_frame(recv: &mut RecvStream) -> Result<Option<DeliverMessage>> {
         return Err(anyhow!("delivery frame of {len} bytes exceeds limit"));
     }
     let mut body = vec![0u8; len];
-    recv.read_exact(&mut body)
-        .await
-        .context("reading delivery frame body")?;
-    Ok(Some(DeliverMessage::decode(&body).map_err(|e| {
-        anyhow!("undecodable delivery frame: {e}")
-    })?))
+    recv.read_exact(&mut body).await.context("reading delivery frame body")?;
+    Ok(Some(DeliverMessage::decode(&body).map_err(|e| anyhow!("undecodable delivery frame: {e}"))?))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -184,7 +176,9 @@ async fn judge(state: &AppState, bytes: &[u8]) -> DeliverMessage {
 fn wire_answer(verdict: crate::inbox::Verdict) -> DeliverMessage {
     use crate::inbox::Verdict;
     match verdict {
-        Verdict::Transcribed | Verdict::AlreadyPulled | Verdict::Blocked => DeliverMessage::Accepted,
+        Verdict::Transcribed | Verdict::AlreadyPulled | Verdict::Blocked => {
+            DeliverMessage::Accepted
+        }
     }
 }
 
@@ -202,10 +196,7 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
     // Housemates: two personas on one node. Dialing ourselves would be theatre, and iroh has
     // no reason to make a self-connection work - so the same judgment runs in-process. The
     // recipient's gate is identical either way, which is the point.
-    if crate::identity::is_agented(&state.node_db, recipient_root)
-        .await
-        .unwrap_or(false)
-    {
+    if crate::identity::is_agented(&state.node_db, recipient_root).await.unwrap_or(false) {
         return match judge(state, envelope).await {
             DeliverMessage::Accepted => Outcome::Accepted,
             DeliverMessage::Refused(reason) => Outcome::Refused(reason),
@@ -217,7 +208,8 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
         };
     }
     for candidate in candidates(state, recipient_root).await {
-        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, recipient_root, &candidate).await;
+        let endpoint_id =
+            crate::idface::leaf_via_to_endpoint(state, recipient_root, &candidate).await;
         match tokio::time::timeout(DELIVER_TIMEOUT, knock(state, &endpoint_id, envelope)).await {
             // A busy door is a door that did not work, so the ladder continues rather than
             // spending the whole attempt on one unlucky machine - the sender needs *a* node of
@@ -306,9 +298,6 @@ mod tests {
     /// sender stops. Anything that maps to `Refused` would also stop them, but tells them why.
     #[test]
     fn a_blocked_sender_is_told_the_word_accepted() {
-        assert!(matches!(
-            wire_answer(Verdict::Blocked),
-            DeliverMessage::Accepted
-        ));
+        assert!(matches!(wire_answer(Verdict::Blocked), DeliverMessage::Accepted));
     }
 }

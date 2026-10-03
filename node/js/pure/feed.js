@@ -44,16 +44,20 @@ export function overlayPosted(row, postId) {
 /// The doc row a write leaves, stated ahead of the stream (pure/optimistic.js, 2026-10-01): each
 /// `with*` makes the row, its `*Settled` says when the server's row has caught up. A row the
 /// mirror doesn't hold yet stays absent - there's nothing to wear the fact.
-const withFields = (row, change) => row && { ...row, fields: change({ ...((row && row.fields) || {}) }) };
+const withFields = (row, change) =>
+    row && { ...row, fields: change({ ...((row && row.fields) || {}) }) };
 
 /// Published as `postId`, the public version this row's head.
 export const withPublished = (row, postId) =>
     withFields(row, (f) => ({ ...f, [PUBLISHED_AS]: postId, published_head: row.head }));
 export const publishedSettled = (postId) => (row) =>
-    !!row && (row.fields || {})[PUBLISHED_AS] === postId && (row.fields || {}).published_head === row.head;
+    !!row &&
+    (row.fields || {})[PUBLISHED_AS] === postId &&
+    (row.fields || {}).published_head === row.head;
 
 /// Waiting on a plan to publish at `at`.
-export const withScheduled = (row, at) => withFields(row, (f) => ({ ...f, publish_plan: JSON.stringify({ at }) }));
+export const withScheduled = (row, at) =>
+    withFields(row, (f) => ({ ...f, publish_plan: JSON.stringify({ at }) }));
 export const scheduledSettled = (row) => isScheduled(row);
 
 /// Taken down: no post, no public version.
@@ -113,9 +117,7 @@ export function isTextDoc(d) {
  * the top on a NaN comparison.
  */
 export function recentPosts(posts) {
-    return (posts || [])
-        .slice()
-        .sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0));
+    return (posts || []).slice().sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0));
 }
 
 /**
@@ -330,7 +332,17 @@ export function overrunOf(body, emphasis) {
 
 /// An embed's kind from its address: ringtome's own spellings first, then the web's usual
 /// extensions; anything else drawn with `![...]` is a picture.
-const WEB_MEDIA_KINDS = { mp3: 'audio', ogg: 'audio', oga: 'audio', m4a: 'audio', wav: 'audio', flac: 'audio', mp4: 'video', mov: 'video', m4v: 'video' };
+const WEB_MEDIA_KINDS = {
+    mp3: 'audio',
+    ogg: 'audio',
+    oga: 'audio',
+    m4a: 'audio',
+    wav: 'audio',
+    flac: 'audio',
+    mp4: 'video',
+    mov: 'video',
+    m4v: 'video',
+};
 function embedKind(target) {
     const own = ownMediaKind(target);
     if (own) return own;
@@ -358,7 +370,12 @@ export function heldBack(body, shown) {
     const all = counted(body);
     const seen = counted(shown);
     const less = (k) => Math.max(0, all[k] - seen[k]);
-    return { words: less('words'), images: less('images'), audio: less('audio'), videos: less('videos') };
+    return {
+        words: less('words'),
+        images: less('images'),
+        audio: less('audio'),
+        videos: less('videos'),
+    };
 }
 
 /// A feed item's identity: the same post can reach one reader through one author only, but two
@@ -384,10 +401,10 @@ export function collapseReplyPairs(items) {
     const replied = new Set(
         items
             .filter((i) => i.reply_to)
-            .map((i) => `${i.author}:${i.reply_to.author}:${i.reply_to.doc_id}`)
+            .map((i) => `${i.author}:${i.reply_to.author}:${i.reply_to.doc_id}`),
     );
     return items.filter(
-        (i) => i.mine || !i.via || !replied.has(`${i.via}:${i.author}:${i.doc_id}`)
+        (i) => i.mine || !i.via || !replied.has(`${i.via}:${i.author}:${i.doc_id}`),
     );
 }
 
@@ -407,7 +424,8 @@ export function mergeFeed(seen, page) {
     // you would have no sign you did anything). The next page load files it properly - that
     // reload is the deliberate end of the grace, not a bug.
     return out.sort(
-        (a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || (b.published_ms || 0) - (a.published_ms || 0)
+        (a, b) =>
+            (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || (b.published_ms || 0) - (a.published_ms || 0),
     );
 }
 

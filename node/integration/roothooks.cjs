@@ -14,8 +14,8 @@
     Free when unused: `replugTouched` returns immediately unless something in this process actually
     unplugged a node, so the ~600 tests that never touch the gate pay one function call each.
 */
-const { replugTouched } = require("./test/unplug.cjs");
-const { HOST, HOST_B, HOST_C, HOST_DARK, HOST_E } = require("./test/fetch.cjs");
+const { replugTouched } = require('./test/unplug.cjs');
+const { HOST, HOST_B, HOST_C, HOST_DARK, HOST_E } = require('./test/fetch.cjs');
 
 // Second job (2026-08-24): stamp each test's title into every rig node's log (`/test/mark`)
 // as it starts, so the logs carry the suite's clock. The residual-tail dig spent its longest
@@ -28,12 +28,12 @@ const markAll = (note) => {
     return Promise.allSettled(
         hosts.map((h) =>
             fetch(`http://${h}/test/mark`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ note }),
                 signal: AbortSignal.timeout(500),
-            }).catch(() => {})
-        )
+            }).catch(() => {}),
+        ),
     );
 };
 
@@ -46,7 +46,7 @@ exports.mochaHooks = {
     },
     async afterEach() {
         await markAll(
-            `END(${this.currentTest.state || "unknown"}) @${Date.now()} ${this.currentTest.fullTitle()}`
+            `END(${this.currentTest.state || 'unknown'}) @${Date.now()} ${this.currentTest.fullTitle()}`,
         );
         await replugTouched();
     },

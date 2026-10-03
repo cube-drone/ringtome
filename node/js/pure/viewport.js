@@ -22,7 +22,8 @@ export const ZOOM_STEP = 1.5;
 /// each notch is the same step in, whether at 1x or 6x.
 export const SLIDER_STEPS = 100;
 
-export const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number.isFinite(z) ? z : FIT));
+export const clampZoom = (z) =>
+    Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number.isFinite(z) ? z : FIT));
 /// A step in or out - landing exactly on the ends rather than a hair short of them, and on the fit
 /// when a step would pass over it.
 export const zoomIn = (z) => {
@@ -37,7 +38,8 @@ export const zoomOut = (z) => {
 };
 
 const SPAN = Math.log(MAX_ZOOM / MIN_ZOOM);
-export const zoomToSlider = (z) => Math.round((SLIDER_STEPS * Math.log(clampZoom(z) / MIN_ZOOM)) / SPAN);
+export const zoomToSlider = (z) =>
+    Math.round((SLIDER_STEPS * Math.log(clampZoom(z) / MIN_ZOOM)) / SPAN);
 /// ...snapping to the fit within a notch of it, so the slider can find it.
 export const sliderToZoom = (v) => {
     const z = clampZoom(MIN_ZOOM * Math.exp((v / SLIDER_STEPS) * SPAN));

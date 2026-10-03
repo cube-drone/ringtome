@@ -12,7 +12,8 @@ import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
-const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '';
+const meta = (name) =>
+    document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '';
 
 /// `className`: the quickbar's by default; the front page's Download tab wears it under its buttons
 /// (2026-09-29, "this server is running …"), the same label and the same link.

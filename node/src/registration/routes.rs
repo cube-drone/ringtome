@@ -17,7 +17,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/admin/registration", get(status_handler).put(set_handler))
         .route("/api/admin/registration/limits", axum::routing::put(set_limits_handler))
         .route("/api/admin/auto-follow", axum::routing::post(crate::starters::add_handler))
-        .route("/api/admin/auto-follow/{root}", axum::routing::delete(crate::starters::remove_handler))
+        .route(
+            "/api/admin/auto-follow/{root}",
+            axum::routing::delete(crate::starters::remove_handler),
+        )
 }
 
 /// What a signup screen needs to know: whether to offer signing up, and whether to ask for the
@@ -46,7 +49,10 @@ struct Status {
     auto_follow: Vec<crate::starters::AutoFollow>,
 }
 
-async fn status_handler(State(state): State<AppState>, _admin: NodeAdminSession) -> Result<Json<Status>, AppError> {
+async fn status_handler(
+    State(state): State<AppState>,
+    _admin: NodeAdminSession,
+) -> Result<Json<Status>, AppError> {
     let policy = policy(&state).await?;
     Ok(Json(Status {
         mode: policy.mode.as_str(),
@@ -76,7 +82,11 @@ async fn set_limits_handler(
 ) -> Result<Json<super::Limits>, AppError> {
     super::set_limits(
         &state,
-        &super::Limits { max_accounts: req.max_accounts, disk_max_pct: req.disk_max_pct, group_name: req.group_name },
+        &super::Limits {
+            max_accounts: req.max_accounts,
+            disk_max_pct: req.disk_max_pct,
+            group_name: req.group_name,
+        },
     )
     .await?;
     Ok(Json(super::limits(&state).await?))
@@ -92,7 +102,10 @@ struct SetPolicy {
 
 fn mode_from(s: &str) -> Result<Mode, AppError> {
     Mode::parse(s).ok_or_else(|| {
-        AppError::BadRequest(crate::msg!("registration.routes.unknown-mode", "sign-ups are open, password, or closed"))
+        AppError::BadRequest(crate::msg!(
+            "registration.routes.unknown-mode",
+            "sign-ups are open, password, or closed"
+        ))
     })
 }
 

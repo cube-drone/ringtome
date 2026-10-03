@@ -24,10 +24,10 @@
 //! topic, and a receiving node verifies and folds it through the very gate sync uses.
 //! Presence and typing are beacons on the same topic, ephemeral, never persisted.
 use anyhow::{anyhow, Context, Result};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use ringtome_proto::registry::{entry_type, service, ChatMessage};
 use ringtome_proto::Payload;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::db::Db;
 use crate::error::AppError;
@@ -46,7 +46,9 @@ const OPEN_ROOM_TTL_MS: i64 = 60 * 60 * 1000;
 
 fn room_budget() -> u64 {
     if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
-        if let Some(n) = std::env::var("RINGTOME_TEST_ROOM_BUDGET").ok().and_then(|v| v.parse::<u64>().ok()) {
+        if let Some(n) =
+            std::env::var("RINGTOME_TEST_ROOM_BUDGET").ok().and_then(|v| v.parse::<u64>().ok())
+        {
             return n.max(1);
         }
     }
@@ -107,8 +109,16 @@ impl RoomLive {
     pub fn presence_now(&self) -> (Vec<String>, Vec<String>) {
         let now = crate::clock::now_ms();
         let map = self.presence.lock().expect("presence poisoned");
-        let mut here: Vec<String> = map.iter().filter(|(_, p)| now - p.seen_ms < PRESENCE_TTL_MS).map(|(r, _)| r.clone()).collect();
-        let mut typing: Vec<String> = map.iter().filter(|(_, p)| now - p.typing_ms < TYPING_TTL_MS).map(|(r, _)| r.clone()).collect();
+        let mut here: Vec<String> = map
+            .iter()
+            .filter(|(_, p)| now - p.seen_ms < PRESENCE_TTL_MS)
+            .map(|(r, _)| r.clone())
+            .collect();
+        let mut typing: Vec<String> = map
+            .iter()
+            .filter(|(_, p)| now - p.typing_ms < TYPING_TTL_MS)
+            .map(|(r, _)| r.clone())
+            .collect();
         here.sort();
         typing.sort();
         (here, typing)
@@ -141,7 +151,13 @@ impl Live {
 
 /// The room's topic id (ruling 5), for a viewer: `None` for a sealed room whose key this
 /// node cannot get - no key, no topic, which is the whole point of deriving it so.
-async fn topic_id(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex: &str, sealed: bool) -> Option<iroh_gossip::TopicId> {
+async fn topic_id(
+    state: &AppState,
+    author_hex: &str,
+    doc: &[u8; 16],
+    viewer_hex: &str,
+    sealed: bool,
+) -> Option<iroh_gossip::TopicId> {
     let mut hasher = blake3::Hasher::new();
     hasher.update(TOPIC_DOMAIN);
     if sealed {
@@ -157,7 +173,12 @@ async fn topic_id(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex
 /// Join a room's topic for a hosted persona, or hand back the join already standing. The
 /// bootstrap is the creator's endpoints and every known speaker's - peers this node has
 /// dialled on the room's lane, whose paths its endpoint remembers.
-pub async fn join(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Result<Arc<RoomLive>> {
+pub async fn join(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Result<Arc<RoomLive>> {
     if let Some(live) = state.live.get(doc) {
         return Ok(live);
     }
@@ -177,11 +198,8 @@ pub async fn join(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u
         }
     }
     let ours = state.endpoint.id().to_string();
-    let bootstrap: Vec<iroh::EndpointId> = bootstrap
-        .iter()
-        .filter(|e| **e != ours)
-        .filter_map(|e| e.parse().ok())
-        .collect();
+    let bootstrap: Vec<iroh::EndpointId> =
+        bootstrap.iter().filter(|e| **e != ours).filter_map(|e| e.parse().ok()).collect();
     let sub = state
         .gossip
         .subscribe(topic, bootstrap)
@@ -218,11 +236,18 @@ pub fn leave_live(state: &AppState, doc: &[u8; 16]) {
 
 /// The topic's receive loop: every frame verified and folded through the gate sync uses,
 /// so the live lane can only ever hand the memo what a sync could have (ruling 5).
-async fn run_topic(state: AppState, doc: [u8; 16], mut receiver: iroh_gossip::api::GossipReceiver, live: Arc<RoomLive>) {
+async fn run_topic(
+    state: AppState,
+    doc: [u8; 16],
+    mut receiver: iroh_gossip::api::GossipReceiver,
+    live: Arc<RoomLive>,
+) {
     use n0_future::StreamExt;
     while let Some(event) = receiver.next().await {
         match event {
-            Ok(iroh_gossip::api::Event::Received(msg)) => on_frame(&state, &doc, &msg.content, &live).await,
+            Ok(iroh_gossip::api::Event::Received(msg)) => {
+                on_frame(&state, &doc, &msg.content, &live).await
+            }
             // A new neighbor heard nothing said before it arrived - including the "here" each
             // socket beacons as it opens, which goes out while the topic has nobody to carry
             // it. Say it again for everyone here who is still beaconing (a socket does every
@@ -282,7 +307,10 @@ async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<Roo
         FRAME_ENTRY => {
             let Ok(signed) = ringtome_proto::SignedEntry::decode(payload) else { return };
             let entry = signed.entry();
-            if entry.chain.service != service::CHAT || entry.chain.instance != Some(*doc) || entry.entry_type != entry_type::CHAT_MESSAGE {
+            if entry.chain.service != service::CHAT
+                || entry.chain.instance != Some(*doc)
+                || entry.entry_type != entry_type::CHAT_MESSAGE
+            {
                 return;
             }
             let Payload::Inline(bytes) = &entry.payload else { return };
@@ -300,7 +328,13 @@ async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<Roo
 /// A message off the topic, through the gate: the speaker's own database, their key tree,
 /// the chain's link - the ingest sync runs. A speaker this node holds nothing of, or a gap
 /// beneath the message, is the sync lane's to fill: pull the room and let the fold catch up.
-async fn ingest_live(state: &AppState, root_hex: &str, bytes: Vec<u8>, doc: &[u8; 16], live: &Arc<RoomLive>) {
+async fn ingest_live(
+    state: &AppState,
+    root_hex: &str,
+    bytes: Vec<u8>,
+    doc: &[u8; 16],
+    live: &Arc<RoomLive>,
+) {
     let Some(root) = crate::pubkey::decode(root_hex) else { return };
     let held = state.user_dbs.get(root_hex).await.ok().flatten();
     let mut landed = false;
@@ -360,7 +394,10 @@ pub async fn broadcast_entry(state: &AppState, doc: &[u8; 16], root_hex: &str, b
 pub async fn beacon(state: &AppState, doc: &[u8; 16], root_hex: &str, typing: Option<bool>) {
     let Some(live) = state.live.get(doc) else { return };
     live.note_presence(root_hex, typing);
-    live.local.lock().expect("local presence poisoned").insert(root_hex.to_string(), crate::clock::now_ms());
+    live.local
+        .lock()
+        .expect("local presence poisoned")
+        .insert(root_hex.to_string(), crate::clock::now_ms());
     let _ = live.events.send(LiveEvent::Presence);
     let Some(root) = crate::pubkey::decode(root_hex) else { return };
     let mut frame = Vec::with_capacity(34);
@@ -422,7 +459,14 @@ pub struct Reactor {
 /// This persona's standing reactions with `emoji` on `target`, by entry hash - every one a
 /// take-back must name, since the stack counts a person once however often they said it.
 /// Sealed bodies open with the room's key.
-async fn my_reactions(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16], target: &[u8; 32], emoji: &str) -> Result<Vec<[u8; 32]>, AppError> {
+async fn my_reactions(
+    state: &AppState,
+    root_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+    target: &[u8; 32],
+    emoji: &str,
+) -> Result<Vec<[u8; 32]>, AppError> {
     let rows: Vec<(Vec<u8>, Vec<u8>, i64)> = state
         .node_db
         .fetch_all(
@@ -439,7 +483,8 @@ async fn my_reactions(state: &AppState, root_hex: &str, author_hex: &str, doc: &
     let mut mine = Vec::new();
     for (hash, body, sealed) in rows {
         let said = if sealed != 0 {
-            key.and_then(|k| crate::record::private::open_post_body(&body, &k)).and_then(|b| String::from_utf8(b).ok())
+            key.and_then(|k| crate::record::private::open_post_body(&body, &k))
+                .and_then(|b| String::from_utf8(b).ok())
         } else {
             String::from_utf8(body).ok()
         };
@@ -465,7 +510,11 @@ fn is_shortcode(words: &str) -> bool {
 fn sticker_target(words: &str) -> Option<&str> {
     let inner = words.strip_prefix("![")?.strip_suffix(')')?;
     let (alt, target) = inner.split_once("](")?;
-    if alt.len() > 64 || alt.contains(['[', ']', '\n']) || target.is_empty() || target.contains(['(', ')', ' ', '\n']) {
+    if alt.len() > 64
+        || alt.contains(['[', ']', '\n'])
+        || target.is_empty()
+        || target.contains(['(', ')', ' ', '\n'])
+    {
         return None;
     }
     let own_private = target.starts_with("/api/identity/") && target.contains("/body");
@@ -476,7 +525,8 @@ fn sticker_target(words: &str) -> Option<&str> {
 /// memo holds them, after the say - then a sticker must name a public picture, never a private one.
 fn is_reaction(words: &str, baked: bool) -> bool {
     is_shortcode(words)
-        || sticker_target(words).is_some_and(|t| !baked || crate::record::bake::twin_address(t).is_some())
+        || sticker_target(words)
+            .is_some_and(|t| !baked || crate::record::bake::twin_address(t).is_some())
 }
 
 /// The emoji stacked under each of `targets` (CHAT.md, slice 9): the memo's rows plus any
@@ -498,9 +548,14 @@ async fn stack_reactions(
              WHERE room_author = ?1 AND room_doc = ?2 AND withdrawn = 0 AND target_hash IN ({})",
             marks.join(",")
         );
-        let mut params: Vec<turso::Value> = vec![turso::Value::Text(author_hex.to_string()), turso::Value::Text(doc_hex.to_string())];
+        let mut params: Vec<turso::Value> = vec![
+            turso::Value::Text(author_hex.to_string()),
+            turso::Value::Text(doc_hex.to_string()),
+        ];
         params.extend(chunk.iter().map(|h| turso::Value::Blob(h.clone())));
-        if let Ok(rows) = state.node_db.fetch_all::<(Vec<u8>, String, Vec<u8>, i64)>(&sql, params).await {
+        if let Ok(rows) =
+            state.node_db.fetch_all::<(Vec<u8>, String, Vec<u8>, i64)>(&sql, params).await
+        {
             raw.extend(rows);
         }
     }
@@ -508,7 +563,8 @@ async fn stack_reactions(
     let mut stacks: HashMap<String, Vec<(String, Vec<String>)>> = HashMap::new();
     for (target, speaker, body, sealed) in raw {
         let emoji = if sealed != 0 {
-            key.and_then(|k| crate::record::private::open_post_body(&body, &k)).and_then(|b| String::from_utf8(b).ok())
+            key.and_then(|k| crate::record::private::open_post_body(&body, &k))
+                .and_then(|b| String::from_utf8(b).ok())
         } else {
             String::from_utf8(body).ok()
         };
@@ -523,7 +579,8 @@ async fn stack_reactions(
             None => per_target.push((emoji, vec![speaker])),
         }
     }
-    let everyone: Vec<String> = stacks.values().flat_map(|v| v.iter().flat_map(|(_, who)| who.iter().cloned())).collect();
+    let everyone: Vec<String> =
+        stacks.values().flat_map(|v| v.iter().flat_map(|(_, who)| who.iter().cloned())).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &everyone).await.unwrap_or_default();
     stacks
         .into_iter()
@@ -535,7 +592,10 @@ async fn stack_reactions(
                     count: who.len(),
                     who: who
                         .into_iter()
-                        .map(|root| Reactor { name: bylines.get(&root).and_then(|b| b.name.clone()), root })
+                        .map(|root| Reactor {
+                            name: bylines.get(&root).and_then(|b| b.name.clone()),
+                            root,
+                        })
                         .collect(),
                     emoji,
                 })
@@ -551,7 +611,11 @@ async fn stack_reactions(
 /// The room's header and the stamp of its current version: the user db when the author is
 /// held here, the fragment store otherwise. `None` when the post is not held at all.
 /// user-db open 1 of 2 (tests/conventions.rs): the room post's own header.
-pub async fn room_head(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> Option<(ringtome_proto::registry::DocHeaderPlain, i64)> {
+pub async fn room_head(
+    state: &AppState,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Option<(ringtome_proto::registry::DocHeaderPlain, i64)> {
     if let Ok(Some(db)) = state.user_dbs.get(author_hex).await {
         if let Ok(Some(entry)) = crate::record::documents::public_header_entry(&db, doc).await {
             if let Payload::Inline(payload) = &entry.entry().payload {
@@ -561,7 +625,10 @@ pub async fn room_head(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> Op
             }
         }
     }
-    let entry = crate::fragments::held_entry(&state.node_db, author_hex, &hex::encode(doc)).await.ok().flatten()?;
+    let entry = crate::fragments::held_entry(&state.node_db, author_hex, &hex::encode(doc))
+        .await
+        .ok()
+        .flatten()?;
     let Payload::Inline(payload) = &entry.entry().payload else { return None };
     let h = ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()?;
     Some((h, entry.entry().timestamp_ms))
@@ -584,7 +651,12 @@ pub async fn is_im(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
 /// The other person in an IM, as this persona sees it (ruling 12): the author, when the
 /// room is someone else's; the one member the seal admits, when it is this persona's own.
 /// None when the room is not an IM, or when this node cannot say who the pair is.
-pub async fn im_other(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Option<String> {
+pub async fn im_other(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Option<String> {
     if !is_im(state, author_hex, doc).await {
         return None;
     }
@@ -606,7 +678,10 @@ async fn room_author_of(node_db: &Db, instance: &[u8; 16]) -> Result<Option<Stri
         return Ok(Some(author));
     }
     let row: Option<(String,)> = node_db
-        .fetch_optional("SELECT room_author FROM rooms_open WHERE room_doc = ?1 LIMIT 1", (doc_hex.as_str(),))
+        .fetch_optional(
+            "SELECT room_author FROM rooms_open WHERE room_doc = ?1 LIMIT 1",
+            (doc_hex.as_str(),),
+        )
         .await
         .context("reading an open room's author")?;
     if let Some((author,)) = row {
@@ -618,7 +693,10 @@ async fn room_author_of(node_db: &Db, instance: &[u8; 16]) -> Result<Option<Stri
     // this, the first word of a chat somebody said and then closed the window on would be
     // served to nobody - not even to the room's own creator, coming to ask for it.
     let row: Option<(String,)> = node_db
-        .fetch_optional("SELECT room_author FROM room_messages WHERE room_doc = ?1 LIMIT 1", (doc_hex,))
+        .fetch_optional(
+            "SELECT room_author FROM room_messages WHERE room_doc = ?1 LIMIT 1",
+            (doc_hex,),
+        )
         .await
         .context("reading a held room's author")?;
     Ok(row.map(|(a,)| a))
@@ -687,7 +765,11 @@ async fn fragment_door_admits(
 
 /// One room's key proof for a fragment-lane ask (Curtis, 2026-09-20): the same keyed hash
 /// the Hello carries, bound to this connection's two endpoints.
-pub async fn key_proof_for(state: &AppState, instance: &[u8; 16], peer_endpoint: &[u8; 32]) -> Option<[u8; 32]> {
+pub async fn key_proof_for(
+    state: &AppState,
+    instance: &[u8; 16],
+    peer_endpoint: &[u8; 32],
+) -> Option<[u8; 32]> {
     let key = held_room_key(state, instance).await?;
     let ours: [u8; 32] = *state.endpoint.id().as_bytes();
     Some(ringtome_proto::sync::room_key_proof(&key, instance, &ours, peer_endpoint))
@@ -701,12 +783,18 @@ async fn held_room_key(state: &AppState, instance: &[u8; 16]) -> Option<[u8; 32]
 }
 
 /// Does this dialer's Hello show the key to this room, bound to this connection?
-fn proof_shows_key(key: &[u8; 32], instance: &[u8; 16], proofs: &[([u8; 16], [u8; 32])], prover: &[u8; 32], verifier: &[u8; 32]) -> bool {
+fn proof_shows_key(
+    key: &[u8; 32],
+    instance: &[u8; 16],
+    proofs: &[([u8; 16], [u8; 32])],
+    prover: &[u8; 32],
+    verifier: &[u8; 32],
+) -> bool {
     let want = ringtome_proto::sync::room_key_proof(key, instance, prover, verifier);
     // Constant time over the proof: a mismatch must not say HOW it missed.
-    proofs
-        .iter()
-        .any(|(i, p)| i == instance && p.iter().zip(want.iter()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0)
+    proofs.iter().any(|(i, p)| {
+        i == instance && p.iter().zip(want.iter()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+    })
 }
 
 /// The instances a dialer may hold chains of: every open room; a sealed room when the
@@ -743,7 +831,8 @@ pub async fn instances_dialer_may_hold(
         // which is how a chat's first word could be said and never arrive.
         if (head.onward || head.im) && !key_proofs.is_empty() {
             if let Some(key) = held_room_key(state, i).await {
-                let prover = crate::pubkey::decode(&crate::net::sync::endpoint_to_id(dialer_hex)).unwrap_or([0u8; 32]);
+                let prover = crate::pubkey::decode(&crate::net::sync::endpoint_to_id(dialer_hex))
+                    .unwrap_or([0u8; 32]);
                 if proof_shows_key(&key, i, key_proofs, &prover, our_endpoint) {
                     out.push(*i);
                     continue;
@@ -751,7 +840,8 @@ pub async fn instances_dialer_may_hold(
             }
         }
         let dialer = crate::net::sync::endpoint_to_id(dialer_hex);
-        let served = crate::net::sync::roots_served_by(&state.node_db, &dialer).await.unwrap_or_default();
+        let served =
+            crate::net::sync::roots_served_by(&state.node_db, &dialer).await.unwrap_or_default();
         let doc_hex = hex::encode(i);
         for root in served {
             if crate::idface::seal_admits(state, &author, &doc_hex, &root, None).await {
@@ -767,7 +857,12 @@ pub async fn instances_dialer_may_hold(
 // Opening, saying, reading
 
 /// Note that a hosted persona opened a room: the beat keeps it synced for a while.
-pub async fn open_room(node_db: &Db, root_hex: &str, author_hex: &str, doc_hex: &str) -> Result<()> {
+pub async fn open_room(
+    node_db: &Db,
+    root_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO rooms_open (root_pubkey, room_author, room_doc, opened_ms, synced_ms)
@@ -781,7 +876,12 @@ pub async fn open_room(node_db: &Db, root_hex: &str, author_hex: &str, doc_hex: 
 }
 
 /// Forget an opened room (the leave door).
-pub async fn close_room(node_db: &Db, root_hex: &str, author_hex: &str, doc_hex: &str) -> Result<()> {
+pub async fn close_room(
+    node_db: &Db,
+    root_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+) -> Result<()> {
     node_db
         .execute(
             "DELETE FROM rooms_open WHERE root_pubkey = ?1 AND room_author = ?2 AND room_doc = ?3",
@@ -834,8 +934,18 @@ pub async fn say(
             .context("looking for the line to change")
             .map_err(AppError::Internal)?;
         match own {
-            None => return Err(AppError::NotFound(crate::msg!("chat.thats-not-a-line-of-yours", "that isn't a line of yours here"))),
-            Some((d,)) if d != 0 => return Err(AppError::BadRequest(crate::msg!("chat.that-line-is-already-deleted", "that line is already deleted"))),
+            None => {
+                return Err(AppError::NotFound(crate::msg!(
+                    "chat.thats-not-a-line-of-yours",
+                    "that isn't a line of yours here"
+                )))
+            }
+            Some((d,)) if d != 0 => {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "chat.that-line-is-already-deleted",
+                    "that line is already deleted"
+                )))
+            }
             _ => {}
         }
     }
@@ -849,20 +959,45 @@ pub async fn say(
     let mut retracts: Option<[u8; 32]> = deletes;
     if let Some(target) = reacts_to {
         if !is_reaction(words, false) {
-            return Err(AppError::BadRequest(crate::msg!("chat.a-reaction-is-one-emoji", "a reaction is one emoji or one sticker")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "chat.a-reaction-is-one-emoji",
+                "a reaction is one emoji or one sticker"
+            )));
         }
         if retract {
-            let mut standing = my_reactions(state, root_hex, author_hex, doc, &target, words).await?;
+            let mut standing =
+                my_reactions(state, root_hex, author_hex, doc, &target, words).await?;
             let Some(last) = standing.pop() else {
-                return Err(AppError::NotFound(crate::msg!("chat.you-havent-said-that-emoji-here", "you haven't said that emoji here")));
+                return Err(AppError::NotFound(crate::msg!(
+                    "chat.you-havent-said-that-emoji-here",
+                    "you haven't said that emoji here"
+                )));
             };
             // Every earlier copy but the last is taken back by its own quiet entry; the last
             // rides the ordinary road below, fold, topic and push included.
             for earlier in standing {
-                let quiet = ChatMessage { room_author: crate::pubkey::decode(author_hex).unwrap_or([0u8; 32]), body: words.as_bytes().to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: Some(target), retracts: Some(earlier), edits: None, notice: None }
-                    .encode()
-                    .map_err(|e| AppError::Internal(anyhow!("encoding a take-back: {e}")))?;
-                crate::record::imaol::append_on(data.db(), data.signer(), service::CHAT, Some(*doc), entry_type::CHAT_MESSAGE, Payload::Inline(quiet)).await?;
+                let quiet = ChatMessage {
+                    room_author: crate::pubkey::decode(author_hex).unwrap_or([0u8; 32]),
+                    body: words.as_bytes().to_vec(),
+                    sealed: false,
+                    refs: Vec::new(),
+                    mentions: Vec::new(),
+                    reacts_to: Some(target),
+                    retracts: Some(earlier),
+                    edits: None,
+                    notice: None,
+                }
+                .encode()
+                .map_err(|e| AppError::Internal(anyhow!("encoding a take-back: {e}")))?;
+                crate::record::imaol::append_on(
+                    data.db(),
+                    data.signer(),
+                    service::CHAT,
+                    Some(*doc),
+                    entry_type::CHAT_MESSAGE,
+                    Payload::Inline(quiet),
+                )
+                .await?;
             }
             retracts = Some(last);
         }
@@ -876,35 +1011,57 @@ pub async fn say(
             .context("looking for the line a reaction answers")
             .map_err(AppError::Internal)?;
         if held.is_none() {
-            return Err(AppError::NotFound(crate::msg!("chat.no-such-line-to-react-to", "that line isn't here to react to")));
+            return Err(AppError::NotFound(crate::msg!(
+                "chat.no-such-line-to-react-to",
+                "that line isn't here to react to"
+            )));
         }
     }
     if words.len() > ChatMessage::MAX_BODY_BYTES {
-        return Err(AppError::BadRequest(crate::msg!("chat.that-is-too-long-for-one-message", "that is too long for one message")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.that-is-too-long-for-one-message",
+            "that is too long for one message"
+        )));
     }
     let Some((head, _)) = room_head(state, author_hex, doc).await else {
-        return Err(AppError::NotFound(crate::msg!("chat.no-such-room-is-held-here", "can't find that room")));
+        return Err(AppError::NotFound(crate::msg!(
+            "chat.no-such-room-is-held-here",
+            "can't find that room"
+        )));
     };
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
-        return Err(AppError::BadRequest(crate::msg!("chat.that-post-is-not-a-room", "that post is not a room")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.that-post-is-not-a-room",
+            "that post is not a room"
+        )));
     }
     if head.settled {
-        return Err(AppError::BadRequest(crate::msg!("chat.this-room-is-closed", "this room is closed")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.this-room-is-closed",
+            "this room is closed"
+        )));
     }
     // Muted (ruling 8): the room hid this persona, and an honest node does not grow a chain
     // whose words no floor will show. The creator's own notices are exempt, since the mute
     // is the creator's act and they are never muted in their own room.
-    if notice.is_none() && muted_in(state, root_hex, author_hex, &hex::encode(doc)).await.contains(root_hex) {
+    if notice.is_none()
+        && muted_in(state, root_hex, author_hex, &hex::encode(doc)).await.contains(root_hex)
+    {
         return Err(AppError::Forbidden(crate::msg!(
             "chat.youve-been-muted-by-the-room",
             "you've been muted by the room"
         )));
     }
-    let author = crate::pubkey::decode(author_hex).ok_or_else(|| AppError::BadRequest(crate::msg!("chat.bad-room-author", "bad room author")))?;
+    let author = crate::pubkey::decode(author_hex).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("chat.bad-room-author", "bad room author"))
+    })?;
     // The room's key first: a sealed room seals its words and its pictures under one key.
     let key = if head.trusted_only {
         let Some(key) = room_key(state, author_hex, doc, root_hex).await else {
-            return Err(AppError::Forbidden(crate::msg!("chat.the-rooms-key-hasnt-arrived", "this room isn't ready on this computer yet")));
+            return Err(AppError::Forbidden(crate::msg!(
+                "chat.the-rooms-key-hasnt-arrived",
+                "this room isn't ready on this computer yet"
+            )));
         };
         Some(key)
     } else {
@@ -913,26 +1070,38 @@ pub async fn say(
     // Media rides the room the way it rides a share (ruling 11): the say bakes - a line's words, and
     // a fresh sticker (2026-09-28); never an emoji, a take-back (it names the words as they were
     // baked) or somebody else's public sticker, which is already on the network.
-    let fresh_sticker = reacts_to.is_some() && !retract && sticker_target(words).is_some_and(|t| t.starts_with("/api/identity/"));
+    let fresh_sticker = reacts_to.is_some()
+        && !retract
+        && sticker_target(words).is_some_and(|t| t.starts_with("/api/identity/"));
     let (words, refs) = if (reacts_to.is_some() && !fresh_sticker) || deletes.is_some() {
         (words.to_string(), Vec::new())
     } else {
         bake_words(state, data, root_hex, &author, doc, &head, key, words).await?
     };
     if words.len() > ChatMessage::MAX_BODY_BYTES {
-        return Err(AppError::BadRequest(crate::msg!("chat.that-is-too-long-for-one-message", "that is too long for one message")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.that-is-too-long-for-one-message",
+            "that is too long for one message"
+        )));
     }
     // The people the words name (slice 6): never the speaker; in a sealed room only those
     // the seal admits - the notice is served under the room's door, and a bell that rings
     // for a room one may not enter would say the room exists.
     let mut mentions: Vec<[u8; 32]> = Vec::new();
-    let named_in_words = if reacts_to.is_some() || deletes.is_some() { Vec::new() } else { crate::record::bake::mentions(&words) };
+    let named_in_words = if reacts_to.is_some() || deletes.is_some() {
+        Vec::new()
+    } else {
+        crate::record::bake::mentions(&words)
+    };
     for named in named_in_words {
         let named_hex = hex::encode(named);
         if named_hex == root_hex || mentions.contains(&named) {
             continue;
         }
-        if head.trusted_only && !crate::idface::seal_admits(state, author_hex, &hex::encode(doc), &named_hex, None).await {
+        if head.trusted_only
+            && !crate::idface::seal_admits(state, author_hex, &hex::encode(doc), &named_hex, None)
+                .await
+        {
             continue;
         }
         mentions.push(named);
@@ -958,9 +1127,19 @@ pub async fn say(
         Some(key) => (crate::record::private::seal_post_body(&key, words.as_bytes())?, true),
         None => (words.into_bytes(), false),
     };
-    let payload = ChatMessage { room_author: author, body, sealed, refs, mentions: mentions.clone(), reacts_to, retracts, edits, notice }
-        .encode()
-        .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
+    let payload = ChatMessage {
+        room_author: author,
+        body,
+        sealed,
+        refs,
+        mentions: mentions.clone(),
+        reacts_to,
+        retracts,
+        edits,
+        notice,
+    }
+    .encode()
+    .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
     let signed = crate::record::imaol::append_on(
         data.db(),
         data.signer(),
@@ -982,14 +1161,23 @@ pub async fn say(
     // inside the spawned send, before any network.
     crate::fold::fold_now(state, root_hex).await;
     {
-        let (state, doc, root_hex, bytes) = (state.clone(), *doc, root_hex.to_string(), signed.bytes().to_vec());
+        let (state, doc, root_hex, bytes) =
+            (state.clone(), *doc, root_hex.to_string(), signed.bytes().to_vec());
         tokio::spawn(async move { broadcast_entry(&state, &doc, &root_hex, &bytes).await });
     }
     // The bells (slice 6): one envelope per persona named, the message as evidence, knocked
     // eagerly - the mention's own road, under the room's door at the far end.
     if !mentions.is_empty() {
-        let named: Vec<(String, ringtome_proto::SignedEntry)> = mentions.iter().map(|m| (hex::encode(m), signed.clone())).collect();
-        crate::outbox::queue_notices(state, data, root_hex, named, ringtome_proto::deliver::notice_kind::ROOM_MENTION).await;
+        let named: Vec<(String, ringtome_proto::SignedEntry)> =
+            mentions.iter().map(|m| (hex::encode(m), signed.clone())).collect();
+        crate::outbox::queue_notices(
+            state,
+            data,
+            root_hex,
+            named,
+            ringtome_proto::deliver::notice_kind::ROOM_MENTION,
+        )
+        .await;
     }
     let push_state = state.clone();
     let (push_root, push_author, push_doc) = (root_hex.to_string(), author_hex.to_string(), *doc);
@@ -1084,15 +1272,22 @@ async fn bake_words(
             )));
         }
         let (public, fmt, anim) = docs.bake_private_media(media, key, seal_of, head.onward).await?;
-        swaps.push((target.clone(), crate::record::bake::public_media_target(root_hex, &public, fmt, anim)));
+        swaps.push((
+            target.clone(),
+            crate::record::bake::public_media_target(root_hex, &public, fmt, anim),
+        ));
         if !baked.contains(&public) {
             baked.push(public);
         }
     }
     crate::record::bake::media_budget(state, data, &baked).await?;
-    let words = crate::record::bake::drop_embeds(&crate::record::bake::rewrite(words, &swaps), &missing);
+    let words =
+        crate::record::bake::drop_embeds(&crate::record::bake::rewrite(words, &swaps), &missing);
     if words.is_empty() {
-        return Err(AppError::BadRequest(crate::msg!("chat.that-picture-isnt-here-any-more", "that picture isn't here any more")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "chat.that-picture-isnt-here-any-more",
+            "that picture isn't here any more"
+        )));
     }
     Ok((words, baked))
 }
@@ -1101,7 +1296,13 @@ async fn bake_words(
 /// keyed by the message's hash, the twins wanted from the creator's node first - the
 /// archive holds them - and the speaker's own nodes after. Never for a hosted speaker,
 /// whose twins sit on their own chain here.
-async fn cover_message(state: &AppState, room_author: &str, speaker: &str, hash_hex: &str, refs: &[[u8; 16]]) {
+async fn cover_message(
+    state: &AppState,
+    room_author: &str,
+    speaker: &str,
+    hash_hex: &str,
+    refs: &[[u8; 16]],
+) {
     let mut origins: Vec<String> = Vec::new();
     if !crate::identity::is_hosted(&state.node_db, room_author).await.unwrap_or(false) {
         origins.push(room_author.to_string());
@@ -1115,14 +1316,26 @@ async fn cover_message(state: &AppState, room_author: &str, speaker: &str, hash_
 /// The room's key for this reader, through the onward hop when one brought it here (Contact
 /// tags, ruling 7): the sharer's node holds the key and releases it to the people they
 /// trust, so a room somebody passed along opens for its reader.
-async fn room_key(state: &AppState, author_hex: &str, doc: &[u8; 16], viewer_hex: &str) -> Option<[u8; 32]> {
-    let via = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &hex::encode(doc)).await;
+async fn room_key(
+    state: &AppState,
+    author_hex: &str,
+    doc: &[u8; 16],
+    viewer_hex: &str,
+) -> Option<[u8; 32]> {
+    let via =
+        crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &hex::encode(doc)).await;
     crate::idface::key_for(state, author_hex, doc, viewer_hex, via.as_deref()).await
 }
 
 /// `held_count`, less what the muted said: what a card's "and N more" may honestly say
 /// once a mute stands.
-async fn held_count_unmuted(state: &AppState, author_hex: &str, doc_hex: &str, ceiling: i64, muted: &std::collections::HashSet<String>) -> i64 {
+async fn held_count_unmuted(
+    state: &AppState,
+    author_hex: &str,
+    doc_hex: &str,
+    ceiling: i64,
+    muted: &std::collections::HashSet<String>,
+) -> i64 {
     let cap = ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64 + 1;
     let marks: Vec<String> = (0..muted.len()).map(|i| format!("?{}", i + 5)).collect();
     let sql = format!(
@@ -1146,7 +1359,12 @@ async fn held_count_unmuted(state: &AppState, author_hex: &str, doc_hex: &str, c
 /// like every label, sealed with it when the room is sealed and opened here for a reader the
 /// seal admits. Honoured by this node for every surface it serves, which is what "honoured
 /// by every honest client" means from the inside.
-pub async fn muted_in(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> std::collections::HashSet<String> {
+pub async fn muted_in(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+) -> std::collections::HashSet<String> {
     // A deputy's mute is the creator's (ruling 8): the creator said whose word counts, and
     // this reads both lists off the same post. The creator is never muted in their own room,
     // whoever says otherwise.
@@ -1167,13 +1385,27 @@ pub const MUTE_KEY: &str = "mute";
 pub const DEPUTY_KEY: &str = "deputy";
 
 /// The room's deputies: the creator's own `deputy` labels, read like every label.
-pub async fn deputies_in(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> std::collections::HashSet<String> {
-    labels_by(state, viewer_hex, author_hex, doc_hex, DEPUTY_KEY, |annotator| annotator == author_hex).await
+pub async fn deputies_in(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+) -> std::collections::HashSet<String> {
+    labels_by(state, viewer_hex, author_hex, doc_hex, DEPUTY_KEY, |annotator| {
+        annotator == author_hex
+    })
+    .await
 }
 
 /// Whether this persona may mute in this room: its creator, or one of their deputies.
-pub async fn may_moderate(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> bool {
-    viewer_hex == author_hex || deputies_in(state, viewer_hex, author_hex, doc_hex).await.contains(viewer_hex)
+pub async fn may_moderate(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+) -> bool {
+    viewer_hex == author_hex
+        || deputies_in(state, viewer_hex, author_hex, doc_hex).await.contains(viewer_hex)
 }
 
 /// The values of one label on the room post, by annotators the caller vouches for.
@@ -1185,9 +1417,13 @@ async fn labels_by(
     key: &str,
     said_by: impl Fn(&str) -> bool,
 ) -> std::collections::HashSet<String> {
-    let known = crate::annotations::for_posts(state, &[(author_hex.to_string(), doc_hex.to_string())], Some(viewer_hex))
-        .await
-        .unwrap_or_default();
+    let known = crate::annotations::for_posts(
+        state,
+        &[(author_hex.to_string(), doc_hex.to_string())],
+        Some(viewer_hex),
+    )
+    .await
+    .unwrap_or_default();
     known
         .get(&(author_hex.to_string(), doc_hex.to_string()))
         .map(|list| {
@@ -1336,7 +1572,8 @@ pub async fn answer_room_history(
              WHERE room_author = ?1 AND room_doc = ?2 AND withdrawn = 0 AND target_hash IN ({})",
             marks.join(",")
         );
-        let mut params: Vec<turso::Value> = vec![turso::Value::Text(author_hex.clone()), turso::Value::Text(doc_hex.clone())];
+        let mut params: Vec<turso::Value> =
+            vec![turso::Value::Text(author_hex.clone()), turso::Value::Text(doc_hex.clone())];
         params.extend(chunk.iter().map(|h| turso::Value::Blob(h.clone())));
         if let Ok(more) = state.node_db.fetch_all::<(String, Vec<u8>)>(&sql, params).await {
             rows.extend(more);
@@ -1384,7 +1621,17 @@ async fn archive_history(
     let Some(for_root) = crate::pubkey::decode(viewer_hex) else { return (Vec::new(), 0) };
     let mut fetched: Option<HistoryAnswer> = None;
     for endpoint in creator_endpoints(state, author_hex).await {
-        match crate::net::fragment::fetch_room_history(state, &endpoint, &author, doc, &for_root, before_ms.max(0) as u64, limit as u64).await {
+        match crate::net::fragment::fetch_room_history(
+            state,
+            &endpoint,
+            &author,
+            doc,
+            &for_root,
+            before_ms.max(0) as u64,
+            limit as u64,
+        )
+        .await
+        {
             Ok(answer) => {
                 fetched = Some(answer);
                 break;
@@ -1402,7 +1649,10 @@ async fn archive_history(
             continue;
         }
         let entry = signed.entry();
-        if entry.chain.service != service::CHAT || entry.chain.instance != Some(*doc) || entry.entry_type != entry_type::CHAT_MESSAGE {
+        if entry.chain.service != service::CHAT
+            || entry.chain.instance != Some(*doc)
+            || entry.entry_type != entry_type::CHAT_MESSAGE
+        {
             continue;
         }
         let Payload::Inline(payload) = &entry.payload else { continue };
@@ -1428,7 +1678,12 @@ async fn archive_history(
 
 /// When a line was said, by its hash: what turns a line's address into the page it sits on
 /// (Curtis, 2026-09-20). `None` when this computer does not hold that line.
-pub async fn said_at(state: &AppState, author_hex: &str, doc_hex: &str, hash: &[u8; 32]) -> Option<i64> {
+pub async fn said_at(
+    state: &AppState,
+    author_hex: &str,
+    doc_hex: &str,
+    hash: &[u8; 32],
+) -> Option<i64> {
     state
         .node_db
         .fetch_optional::<(i64,)>(
@@ -1466,7 +1721,12 @@ pub struct Hit {
 /// and the seal's own word) and who is muted in it. `None` when this persona may not read it.
 type RoomVerdict = (ringtome_proto::registry::DocHeaderPlain, std::collections::HashSet<String>);
 
-async fn room_verdict(state: &AppState, viewer_hex: &str, author_hex: &str, doc_hex: &str) -> Option<RoomVerdict> {
+async fn room_verdict(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc_hex: &str,
+) -> Option<RoomVerdict> {
     let doc = hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())?;
     let (head, _) = room_head(state, author_hex, &doc).await?;
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
@@ -1475,7 +1735,8 @@ async fn room_verdict(state: &AppState, viewer_hex: &str, author_hex: &str, doc_
     // The room's own door decides, as it does everywhere else.
     if head.trusted_only && author_hex != viewer_hex {
         let via = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, doc_hex).await;
-        if !crate::idface::seal_admits(state, author_hex, doc_hex, viewer_hex, via.as_deref()).await {
+        if !crate::idface::seal_admits(state, author_hex, doc_hex, viewer_hex, via.as_deref()).await
+        {
             return None;
         }
     }
@@ -1499,7 +1760,12 @@ const SEARCH_SCAN: i64 = 500;
 /// this node holds for them and stay shut without it; a muted speaker's lines are no more
 /// searchable than they are readable; a deleted line is gone here too, and an edited one
 /// matches its newest words.
-pub async fn search(state: &AppState, viewer_hex: &str, needle: &str, limit: usize) -> Result<Vec<Hit>, AppError> {
+pub async fn search(
+    state: &AppState,
+    viewer_hex: &str,
+    needle: &str,
+    limit: usize,
+) -> Result<Vec<Hit>, AppError> {
     let needle = needle.trim().to_lowercase();
     if needle.is_empty() {
         return Ok(Vec::new());
@@ -1569,7 +1835,9 @@ pub async fn search(state: &AppState, viewer_hex: &str, needle: &str, limit: usi
             rooms.insert(at.clone(), verdict);
         }
         let Some(Some((head, muted))) = rooms.get(&at).cloned() else { continue };
-        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+            continue;
+        };
         let Some(key) = room_key(state, &author_hex, &doc, viewer_hex).await else { continue };
         let rows: Vec<SearchRow> = state
             .node_db
@@ -1589,7 +1857,8 @@ pub async fn search(state: &AppState, viewer_hex: &str, needle: &str, limit: usi
                 continue;
             }
             let words = if sealed != 0 {
-                crate::record::private::open_post_body(&body, &key).and_then(|b| String::from_utf8(b).ok())
+                crate::record::private::open_post_body(&body, &key)
+                    .and_then(|b| String::from_utf8(b).ok())
             } else {
                 String::from_utf8(body).ok()
             };
@@ -1703,7 +1972,8 @@ pub async fn history(
         let oldest = rows.last().map(|r| r.3).unwrap_or(ceiling);
         let want = limit - rows.len() as i64;
         let held: std::collections::HashSet<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
-        let (archived, archive_total) = archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
+        let (archived, archive_total) =
+            archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
         total = total.max(archive_total);
         let mut lines_from_archive = 0i64;
         // An archived line's edits arrive beside it (slice 8): the newest stands in.
@@ -1717,7 +1987,12 @@ pub async fn history(
             let Ok(msg) = ChatMessage::decode(payload) else { continue };
             if let Some(target) = msg.reacts_to {
                 if msg.retracts.is_none() {
-                    archived_reactions.push((target.to_vec(), root, msg.body, i64::from(msg.sealed)));
+                    archived_reactions.push((
+                        target.to_vec(),
+                        root,
+                        msg.body,
+                        i64::from(msg.sealed),
+                    ));
                 }
                 continue;
             }
@@ -1760,53 +2035,81 @@ pub async fn history(
     let muted = muted_in(state, viewer_hex, author_hex, &doc_hex).await;
     if !muted.is_empty() {
         rows.retain(|r| !muted.contains(&r.0));
-        total = held_count_unmuted(state, author_hex, &doc_hex, closed.unwrap_or(i64::MAX), &muted).await;
+        total = held_count_unmuted(state, author_hex, &doc_hex, closed.unwrap_or(i64::MAX), &muted)
+            .await;
     }
-    let needs_key = rows.iter().any(|r| r.6 != 0) || archived_reactions.iter().any(|r| r.3 != 0) || head_sealed(state, author_hex, doc).await;
+    let needs_key = rows.iter().any(|r| r.6 != 0)
+        || archived_reactions.iter().any(|r| r.3 != 0)
+        || head_sealed(state, author_hex, doc).await;
     let key = if needs_key { room_key(state, author_hex, doc, viewer_hex).await } else { None };
     let targets: Vec<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
-    let mut stacks = stack_reactions(state, author_hex, &doc_hex, &targets, archived_reactions, key).await;
+    let mut stacks =
+        stack_reactions(state, author_hex, &doc_hex, &targets, archived_reactions, key).await;
     let speakers: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &speakers).await.unwrap_or_default();
     let items = rows
         .into_iter()
-        .map(|(speaker, leaf, seq, said_ms, hash, body, sealed, edited, notice_kind, notice_subject)| {
-            let words = if sealed != 0 {
-                key.and_then(|k| crate::record::private::open_post_body(&body, &k))
-                    .and_then(|b| String::from_utf8(b).ok())
-            } else {
-                String::from_utf8(body).ok()
-            };
-            let byline = bylines.get(&speaker);
-            let hash_hex = hex::encode(hash);
-            Message {
-                speaker_name: byline.and_then(|b| b.name.clone()),
-                speaker_avatar: byline.and_then(|b| b.avatar.clone()),
+        .map(
+            |(
                 speaker,
                 leaf,
-                seq: seq as u64,
+                seq,
                 said_ms,
-                words,
-                reactions: stacks.remove(&hash_hex).unwrap_or_default(),
-                hash: hash_hex,
-                edited: edited != 0,
-                notice: notice_kind.and_then(|k| match k as u64 {
-                    ChatMessage::NOTICE_MUTED => Some("muted".to_string()),
-                    ChatMessage::NOTICE_UNMUTED => Some("unmuted".to_string()),
-                    ChatMessage::NOTICE_DEPUTIZED => Some("deputized".to_string()),
-                    ChatMessage::NOTICE_UNDEPUTIZED => Some("undeputized".to_string()),
-                    _ => None,
-                }),
+                hash,
+                body,
+                sealed,
+                edited,
+                notice_kind,
                 notice_subject,
-            }
-        })
+            )| {
+                let words = if sealed != 0 {
+                    key.and_then(|k| crate::record::private::open_post_body(&body, &k))
+                        .and_then(|b| String::from_utf8(b).ok())
+                } else {
+                    String::from_utf8(body).ok()
+                };
+                let byline = bylines.get(&speaker);
+                let hash_hex = hex::encode(hash);
+                Message {
+                    speaker_name: byline.and_then(|b| b.name.clone()),
+                    speaker_avatar: byline.and_then(|b| b.avatar.clone()),
+                    speaker,
+                    leaf,
+                    seq: seq as u64,
+                    said_ms,
+                    words,
+                    reactions: stacks.remove(&hash_hex).unwrap_or_default(),
+                    hash: hash_hex,
+                    edited: edited != 0,
+                    notice: notice_kind.and_then(|k| match k as u64 {
+                        ChatMessage::NOTICE_MUTED => Some("muted".to_string()),
+                        ChatMessage::NOTICE_UNMUTED => Some("unmuted".to_string()),
+                        ChatMessage::NOTICE_DEPUTIZED => Some("deputized".to_string()),
+                        ChatMessage::NOTICE_UNDEPUTIZED => Some("undeputized".to_string()),
+                        _ => None,
+                    }),
+                    notice_subject,
+                }
+            },
+        )
         .collect();
-    Ok((items, closed.is_some(), more, total.min(ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64)))
+    Ok((
+        items,
+        closed.is_some(),
+        more,
+        total.min(ringtome_proto::fragment::MAX_ROOM_HISTORY_TOTAL as i64),
+    ))
 }
 
 /// Messages said in a room since `since_ms` by anyone but `not_speaker`: the chat badge's
 /// arithmetic (Curtis, 2026-09-19), one count per room this persona is in.
-pub async fn unseen_in(state: &AppState, author_hex: &str, doc_hex: &str, since_ms: i64, not_speaker: &str) -> Result<u64> {
+pub async fn unseen_in(
+    state: &AppState,
+    author_hex: &str,
+    doc_hex: &str,
+    since_ms: i64,
+    not_speaker: &str,
+) -> Result<u64> {
     let rows: Vec<(String, i64)> = state
         .node_db
         .fetch_all(
@@ -1868,7 +2171,10 @@ pub async fn unseen_lines(
     }
     let muted = muted_in(state, not_speaker, author_hex, doc_hex).await;
     let rows: Vec<_> = rows.into_iter().filter(|r| !muted.contains(&r.0)).collect();
-    let key = match (rows.iter().any(|r| r.4 != 0), hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())) {
+    let key = match (
+        rows.iter().any(|r| r.4 != 0),
+        hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
+    ) {
         (true, Some(doc)) => room_key(state, author_hex, &doc, not_speaker).await,
         _ => None,
     };
@@ -1955,7 +2261,10 @@ pub async fn lines_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>
 /// saying earned it.
 pub async fn reactions_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>> {
     let rows: Vec<(Vec<u8>, i64)> = node_db
-        .fetch_all("SELECT entry_hash, said_ms FROM room_reactions WHERE speaker_root = ?1", (root_hex,))
+        .fetch_all(
+            "SELECT entry_hash, said_ms FROM room_reactions WHERE speaker_root = ?1",
+            (root_hex,),
+        )
         .await
         .context("listing a persona's chat reactions")?;
     Ok(rows.into_iter().map(|(h, ms)| (hex::encode(h), ms)).collect())
@@ -2028,10 +2337,19 @@ pub async fn answer_room_reach(
     }
     let ours = state.endpoint.id().to_string();
     let mut speakers = Vec::new();
-    for root_hex in recent_speakers(&state.node_db, &author_hex, &doc_hex).await.into_iter().take(MAX_ROOM_REACH) {
+    for root_hex in recent_speakers(&state.node_db, &author_hex, &doc_hex)
+        .await
+        .into_iter()
+        .take(MAX_ROOM_REACH)
+    {
         let Some(root) = crate::pubkey::decode(&root_hex) else { continue };
         // This node serves them too when they're hosted here.
-        let mut eps: Vec<String> = if crate::identity::is_hosted(&state.node_db, &root_hex).await.unwrap_or(false) { vec![ours.clone()] } else { Vec::new() };
+        let mut eps: Vec<String> =
+            if crate::identity::is_hosted(&state.node_db, &root_hex).await.unwrap_or(false) {
+                vec![ours.clone()]
+            } else {
+                Vec::new()
+            };
         for ep in known_endpoints(state, &root_hex).await {
             if !eps.contains(&ep) {
                 eps.push(ep);
@@ -2222,7 +2540,12 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
 /// The room budget (CHAT.md, ruling 6): keep the newest `ROOM_BUDGET` messages of a room,
 /// prune each speaker's chain held HERE beneath the cut, and the memo rows with them.
 /// Answers whether anything was pruned.
-async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: &str) -> Result<bool> {
+async fn enforce_budget(
+    state: &AppState,
+    db: &Db,
+    room_author: &str,
+    room_doc: &str,
+) -> Result<bool> {
     // The archivist keeps the room whole (ruling 6): the creator's node, or a node whose
     // operator pressed full-sync.
     if archivist_here(state, room_author, room_doc).await {
@@ -2249,7 +2572,9 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
         )
         .await
         .context("finding the chains' floors")?;
-    let Ok(instance) = hex::decode(room_doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { return Ok(false) };
+    let Ok(instance) = hex::decode(room_doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+        return Ok(false);
+    };
     let Ok(instance) = instance else { return Ok(false) };
     // The pruned lines' media goes with them (ruling 11): their covers released, the twins
     // nothing covers forgotten.
@@ -2270,9 +2595,15 @@ async fn enforce_budget(state: &AppState, db: &Db, room_author: &str, room_doc: 
         crate::fragments::release_covers(&state.node_db, &speaker, &hashes).await?;
     }
     for (leaf, floor) in chains {
-        crate::record::imaol::prune_chain_below(db, &leaf, service::CHAT, Some(instance), floor as u64)
-            .await
-            .map_err(|e| anyhow!("{e}"))?;
+        crate::record::imaol::prune_chain_below(
+            db,
+            &leaf,
+            service::CHAT,
+            Some(instance),
+            floor as u64,
+        )
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
     }
     state
         .node_db
@@ -2386,7 +2717,12 @@ async fn recent_speakers(node_db: &Db, author_hex: &str, doc_hex: &str) -> Vec<S
 /// Keep a directory answer: its speakers, in its order, with where each is served when the
 /// answer said - the fifty most recently heard kept. An answer that names no endpoints (an older
 /// node's) leaves any already known in place.
-async fn remember_directory(node_db: &Db, author_hex: &str, doc_hex: &str, speakers: &[(String, Vec<String>)]) {
+async fn remember_directory(
+    node_db: &Db,
+    author_hex: &str,
+    doc_hex: &str,
+    speakers: &[(String, Vec<String>)],
+) {
     let now = crate::clock::now_ms();
     for (i, (speaker, endpoints)) in speakers.iter().take(ROOM_DIRECTORY).enumerate() {
         let _ = node_db
@@ -2428,8 +2764,15 @@ async fn directory_learned_ms(node_db: &Db, author_hex: &str, doc_hex: &str) -> 
 /// creator's answer stands even when it names nobody - a room nobody has spoken in yet; anyone
 /// else's counts only when it names somebody. Remembered, and returned with whether the
 /// creator's node answered at all (a dark creator isn't dialed again for every chain).
-async fn directory_ask(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> (Vec<String>, bool) {
-    let (Some(author), Some(for_root)) = (crate::pubkey::decode(author_hex), crate::pubkey::decode(viewer_hex)) else {
+async fn directory_ask(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> (Vec<String>, bool) {
+    let (Some(author), Some(for_root)) =
+        (crate::pubkey::decode(author_hex), crate::pubkey::decode(viewer_hex))
+    else {
         return (Vec::new(), false);
     };
     let doc_hex = hex::encode(doc);
@@ -2447,29 +2790,44 @@ async fn directory_ask(state: &AppState, viewer_hex: &str, author_hex: &str, doc
             add(speaker_endpoints(state, &speaker).await, &mut others);
         }
     }
-    if let Some(via) = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &doc_hex).await {
+    if let Some(via) =
+        crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, &doc_hex).await
+    {
         add(speaker_endpoints(state, &via).await, &mut others);
     }
-    add(crate::fragments::deliverers_of(&state.node_db, author_hex).await.unwrap_or_default(), &mut others);
+    add(
+        crate::fragments::deliverers_of(&state.node_db, author_hex).await.unwrap_or_default(),
+        &mut others,
+    );
     let ours = state.endpoint.id().to_string();
-    for (endpoint, from_creator) in creator.iter().map(|e| (e, true)).chain(others.iter().map(|e| (e, false))) {
+    for (endpoint, from_creator) in
+        creator.iter().map(|e| (e, true)).chain(others.iter().map(|e| (e, false)))
+    {
         if *endpoint == ours {
             continue;
         }
         // Where each speaker is served, if the node knows the question; the bare directory from
         // a node that predates it.
         let answer: anyhow::Result<Vec<(String, Vec<String>)>> =
-            match crate::net::fragment::fetch_room_reach(state, endpoint, &author, doc, &for_root).await {
+            match crate::net::fragment::fetch_room_reach(state, endpoint, &author, doc, &for_root)
+                .await
+            {
                 Ok(rows) => Ok(rows
                     .into_iter()
                     .map(|(root, eps)| {
-                        let eps = eps.iter().filter_map(|e| iroh::PublicKey::from_bytes(e).ok()).map(|k| k.to_string()).collect();
+                        let eps = eps
+                            .iter()
+                            .filter_map(|e| iroh::PublicKey::from_bytes(e).ok())
+                            .map(|k| k.to_string())
+                            .collect();
                         (hex::encode(root), eps)
                     })
                     .collect()),
-                Err(_) => crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root)
-                    .await
-                    .map(|list| list.iter().map(|r| (hex::encode(r), Vec::new())).collect()),
+                Err(_) => {
+                    crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root)
+                        .await
+                        .map(|list| list.iter().map(|r| (hex::encode(r), Vec::new())).collect())
+                }
             };
         match answer {
             Ok(rows) if from_creator || !rows.is_empty() => {
@@ -2477,7 +2835,9 @@ async fn directory_ask(state: &AppState, viewer_hex: &str, author_hex: &str, doc
                 return (rows.into_iter().map(|(r, _)| r).collect(), from_creator);
             }
             Ok(_) => {}
-            Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed"),
+            Err(e) => {
+                tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed")
+            }
         }
     }
     (Vec::new(), false)
@@ -2517,7 +2877,9 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
                 tracing::debug!(root = %root_hex, room = %hex::encode(doc), sent = stats.sent, "room chain pushed to the creator's node");
                 return;
             }
-            Err(e) => tracing::debug!(root = %root_hex, endpoint = %endpoint, error = ?e, "room push failed"),
+            Err(e) => {
+                tracing::debug!(root = %root_hex, endpoint = %endpoint, error = ?e, "room push failed")
+            }
         }
     }
     // The creator's node is dark: every other speaker's node instead (ruling 4), each of whom
@@ -2525,7 +2887,10 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     // computer is off).
     let doc_hex = hex::encode(doc);
     for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
-        if speaker == root_hex || speaker == author_hex || crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
+        if speaker == root_hex
+            || speaker == author_hex
+            || crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false)
+        {
             continue;
         }
         for endpoint in speaker_endpoints(state, &speaker).await {
@@ -2540,12 +2905,19 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
 /// Pull a room: ask the creator's node who has spoken, then pull each speaker's chain for
 /// this room from it (the reader's half of ruling 4), and fold what landed. Returns how
 /// many speakers' chains were exchanged.
-pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Result<usize> {
+pub async fn sync_room(
+    state: &AppState,
+    root_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Result<usize> {
     let doc_hex = hex::encode(doc);
-    let creator_here = crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false);
+    let creator_here =
+        crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false);
     crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
     crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
-    let endpoints = if creator_here { Vec::new() } else { creator_endpoints(state, author_hex).await };
+    let endpoints =
+        if creator_here { Vec::new() } else { creator_endpoints(state, author_hex).await };
     let mut creator_dark = false;
     // A sealed room's door now answers to the key (Curtis, 2026-09-20), so fetch it before
     // asking - otherwise the first pull of a room somebody passed along has nothing to show
@@ -2568,7 +2940,9 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         // named people. It waits on the speaker's own push landing - and a push tries the
         // first endpoint that answers, once, with nothing behind it if that endpoint was
         // the wrong one. Knowing who may speak is enough to go and ask them.
-        for m in crate::postkeys::members(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default() {
+        for m in
+            crate::postkeys::members(&state.node_db, author_hex, &doc_hex).await.unwrap_or_default()
+        {
             if !who.contains(&m) {
                 who.push(m);
             }
@@ -2628,7 +3002,9 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
                     }
                     break;
                 }
-                Err(e) => tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "room pull failed"),
+                Err(e) => {
+                    tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "room pull failed")
+                }
             }
         }
     }
@@ -2653,13 +3029,20 @@ pub async fn sync_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
 /// to its beginning, a budget's worth per exchange, from the creator's node - the room held
 /// whole from then on, with the archive mark keeping it so. Bounded rounds; the beat's
 /// ordinary pull keeps the top current afterwards.
-pub async fn archive_pull(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Result<usize> {
+pub async fn archive_pull(
+    state: &AppState,
+    root_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Result<usize> {
     let for_root = crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
     let endpoints = creator_endpoints(state, author_hex).await;
     let mut speakers: Vec<String> = Vec::new();
     for endpoint in &endpoints {
-        if let Ok(list) = crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root).await {
+        if let Ok(list) =
+            crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root).await
+        {
             speakers = list.iter().map(hex::encode).collect();
             break;
         }
@@ -2677,12 +3060,23 @@ pub async fn archive_pull(state: &AppState, root_hex: &str, author_hex: &str, do
             let mut received = 0u64;
             for endpoint in &endpoints {
                 let Ok(addr) = crate::net::sync::dial_addr(state, endpoint).await else { continue };
-                match crate::net::sync::sync_with_peer_asking(state, &speaker, addr, crate::net::sync::ROOM_SCOPE, &[*doc], ask).await {
+                match crate::net::sync::sync_with_peer_asking(
+                    state,
+                    &speaker,
+                    addr,
+                    crate::net::sync::ROOM_SCOPE,
+                    &[*doc],
+                    ask,
+                )
+                .await
+                {
                     Ok(stats) => {
                         received = stats.received;
                         break;
                     }
-                    Err(e) => tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "archive pull failed"),
+                    Err(e) => {
+                        tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "archive pull failed")
+                    }
                 }
             }
             if received == 0 {
@@ -2714,11 +3108,28 @@ static PULSED: std::sync::LazyLock<std::sync::Mutex<HashMap<(String, String), i6
 /// lane, verified as signed and as this room's, its claimed time taken for the feed's
 /// order and nothing else. No attribution check - the creator's node is the directory of
 /// record (ruling 6), and a lie here misplaces a card, never a word.
-async fn remote_latest(state: &AppState, viewer_hex: &str, author_hex: &str, doc: &[u8; 16]) -> Option<i64> {
+async fn remote_latest(
+    state: &AppState,
+    viewer_hex: &str,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Option<i64> {
     let author = crate::pubkey::decode(author_hex)?;
     let for_root = crate::pubkey::decode(viewer_hex)?;
     for endpoint in creator_endpoints(state, author_hex).await {
-        let Ok((items, _)) = crate::net::fragment::fetch_room_history(state, &endpoint, &author, doc, &for_root, u64::MAX, 1).await else { continue };
+        let Ok((items, _)) = crate::net::fragment::fetch_room_history(
+            state,
+            &endpoint,
+            &author,
+            doc,
+            &for_root,
+            u64::MAX,
+            1,
+        )
+        .await
+        else {
+            continue;
+        };
         let mut newest: Option<i64> = None;
         for (_, bytes) in items {
             let Ok(signed) = ringtome_proto::SignedEntry::decode(&bytes) else { continue };
@@ -2726,7 +3137,10 @@ async fn remote_latest(state: &AppState, viewer_hex: &str, author_hex: &str, doc
                 continue;
             }
             let entry = signed.entry();
-            if entry.chain.service != service::CHAT || entry.chain.instance != Some(*doc) || entry.entry_type != entry_type::CHAT_MESSAGE {
+            if entry.chain.service != service::CHAT
+                || entry.chain.instance != Some(*doc)
+                || entry.entry_type != entry_type::CHAT_MESSAGE
+            {
                 continue;
             }
             let Payload::Inline(payload) = &entry.payload else { continue };
@@ -2791,11 +3205,17 @@ async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
                 }
                 let key = (author.clone(), doc_hex.clone());
                 let due = pacing == Pacing::Unpaced
-                    || PULSED.lock().map(|m| m.get(&key).is_none_or(|t| now - *t > PULSE_ASK_TTL_MS)).unwrap_or(true);
+                    || PULSED
+                        .lock()
+                        .map(|m| m.get(&key).is_none_or(|t| now - *t > PULSE_ASK_TTL_MS))
+                        .unwrap_or(true);
                 if !due {
                     continue;
                 }
-                let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+                let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice()))
+                else {
+                    continue;
+                };
                 asked += 1;
                 if let Ok(mut m) = PULSED.lock() {
                     m.insert(key, now);
@@ -2804,7 +3224,9 @@ async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
                 // While the creator's node is up, learn who speaks here (2026-09-29): a reader
                 // who hasn't entered the room yet can still find it if that node goes dark.
                 if latest.is_some()
-                    && directory_learned_ms(&state.node_db, &author, &doc_hex).await.is_none_or(|ms| now - ms > DIRECTORY_STALE_MS)
+                    && directory_learned_ms(&state.node_db, &author, &doc_hex)
+                        .await
+                        .is_none_or(|ms| now - ms > DIRECTORY_STALE_MS)
                 {
                     directory_ask(&state, &reader, &author, &doc).await;
                 }
@@ -2846,13 +3268,17 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
         .await
         .context("listing the rooms off the beat")?;
     for (root, author, doc_hex) in quiet {
-        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+            continue;
+        };
         if is_im(&state, &author, &doc).await {
             rows.push((root, author, doc_hex));
         }
     }
     for (root, author, doc_hex) in rows {
-        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+            continue;
+        };
         if !is_room(&state, &author, &doc).await {
             continue;
         }
@@ -2867,12 +3293,17 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
 pub async fn sync_open_rooms(state: &AppState, root_hex: &str) -> Result<usize> {
     let rows: Vec<(String, String)> = state
         .node_db
-        .fetch_all("SELECT room_author, room_doc FROM rooms_open WHERE root_pubkey = ?1", (root_hex,))
+        .fetch_all(
+            "SELECT room_author, room_doc FROM rooms_open WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
         .await
         .context("listing a persona's open rooms")?;
     let mut n = 0;
     for (author, doc_hex) in rows {
-        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else { continue };
+        let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
+            continue;
+        };
         n += sync_room(state, root_hex, &author, &doc).await?;
     }
     Ok(n)
@@ -2887,11 +3318,22 @@ mod tests {
     /// when it is somebody else's sticker being added to).
     #[test]
     fn a_reaction_is_one_emoji_or_one_sticker() {
-        let twin = format!("/ringtome/user/{}/doc/{}/body/media.avif", hex::encode([3u8; 32]), "ab".repeat(16));
-        let private = format!("/api/identity/{}/docs/{}/body/s.avif", hex::encode([3u8; 32]), "cd".repeat(16));
+        let twin = format!(
+            "/ringtome/user/{}/doc/{}/body/media.avif",
+            hex::encode([3u8; 32]),
+            "ab".repeat(16)
+        );
+        let private = format!(
+            "/api/identity/{}/docs/{}/body/s.avif",
+            hex::encode([3u8; 32]),
+            "cd".repeat(16)
+        );
         assert!(is_reaction(":heart:", false) && is_reaction(":heart:", true));
         assert!(is_reaction(&format!("![sticker]({twin})"), true), "a baked sticker");
-        assert!(is_reaction(&format!("![sticker]({private})"), false), "a fresh one, before the bake");
+        assert!(
+            is_reaction(&format!("![sticker]({private})"), false),
+            "a fresh one, before the bake"
+        );
         assert!(!is_reaction(&format!("![sticker]({private})"), true), "never private once said");
         for not in [
             format!("look ![sticker]({twin})"),
@@ -2914,9 +3356,25 @@ mod tests {
     fn a_message_seals_and_opens_under_the_room_key() {
         let key = [9u8; 32];
         let sealed = crate::record::private::seal_post_body(&key, b"the quiet one").unwrap();
-        let msg = ChatMessage { room_author: [1u8; 32], body: sealed, sealed: true, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
+        let msg = ChatMessage {
+            room_author: [1u8; 32],
+            body: sealed,
+            sealed: true,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
         let back = ChatMessage::decode(&msg.encode().unwrap()).unwrap();
-        assert_eq!(crate::record::private::open_post_body(&back.body, &key).unwrap(), b"the quiet one");
-        assert!(crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(), "the wrong key opens nothing");
+        assert_eq!(
+            crate::record::private::open_post_body(&back.body, &key).unwrap(),
+            b"the quiet one"
+        );
+        assert!(
+            crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(),
+            "the wrong key opens nothing"
+        );
     }
 }

@@ -136,19 +136,12 @@ fn sql_stays_in_its_owning_module() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
     rust_files(&src, &mut files);
-    assert!(
-        files.len() > 5,
-        "sanity: expected to scan the actual source tree"
-    );
+    assert!(files.len() > 5, "sanity: expected to scan the actual source tree");
 
     let mut violations = Vec::new();
     for path in &files {
         let content = std::fs::read_to_string(path).expect("readable source file");
-        let rel = path
-            .strip_prefix(&src)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = path.strip_prefix(&src).unwrap().to_string_lossy().replace('\\', "/");
         for (table, allowed) in owners() {
             if allowed.iter().any(|a| rel == *a) {
                 continue;
@@ -196,19 +189,19 @@ fn sql_stays_in_its_owning_module() {
 #[test]
 fn user_db_opens_are_deliberate() {
     let expected: BTreeMap<&str, usize> = BTreeMap::from([
-        ("fanout.rs", 3),          // journal_page + retract_vanished: ONE author per public-move edge
-                                  // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
+        ("fanout.rs", 3), // journal_page + retract_vanished: ONE author per public-move edge
+        // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
         ("identity.rs", 4),
         ("idface.rs", 20), // 20: `id_post_versions` reads the author's chain for a post's history, once per page load (2026-10-02); 19: `post_page` reads a hosted post for its head, once per page load (2026-09-28); 18: `onward_sharer_admits` reads the sharer's mirrored chains for the onward hop (Contact tags, ruling 7, 2026-09-18) - once per (holder, key doc, sharer) per request, memoised by the loops; 17: `seal_admits` away from the holder's node reads the holder's edges as the fallback for a persona the lane has not judged - once per (holder, key doc) per request, memoised by the loops (2026-09-14); 16: `seal_admits` is the one gate - one open per (holder, key doc) per request, memoised by every caller that loops (2026-09-10 pm); 18: `seal_key_for` reads a sealed subject's header for whose seal it wears, once per label written (2026-09-10); 17: the body door's "held at all?" probe before a fetch (2026-09-08), once per request; 13: the whole-shelf read behind a search or the facets (2026-09-07); 14: the shares count for the kind row (2026-09-08); 15-16: the seal's holder (`sealed_here`, `trusted_viewer`) - once per request, and once per sealed REPLY on a shelf page (a page, never a persona loop)          // + stored_tree_leaves: ONE mirror per revalidation;
-                                  // + id_post annotations: one shelf open per permalink read (2026-08-29)
-                                   // + id_post: one open per permalink request (2026-08-25)
+        // + id_post annotations: one shelf open per permalink read (2026-08-29)
+        // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
-        ("profiles.rs", 2),        // refresh: ONE persona per claim-change edge
+        ("profiles.rs", 2), // refresh: ONE persona per claim-change edge
         ("nodeshelf.rs", 2),
         ("chat.rs", 5), // the room post's header (once per door), the memo fold (one persona per CHAT-move edge), the live lane's ingest of one frame into its speaker's database, the archive's answer (one open per speaker on the page) and the reader's attribution check of an archived entry (one per speaker on the page) - CHAT.md slices 2 to 4, 2026-09-18 // the fold's re-say of a hosted persona's shelf (once per move of their chain) and a shared original hosted here (once per distinct original per fold) - PROJECT_PLAN's The node's public face slice 1, 2026-09-15
-        ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge
-        ("inbox.rs", 1),           // accept: ONE recipient per delivered envelope
-        ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
+        ("notifications.rs", 1), // refresh_from: ONE author per frontier-move edge
+        ("inbox.rs", 1), // accept: ONE recipient per delivered envelope
+        ("net/frontier.rs", 1), // refresh: ONE persona per fingerprint recompute
         // refresh_from: ONE persona per FOLLOWS_PUBLIC frontier move, probe-gated so the
         // overwhelming majority of moves (posts, from people who publish no edges) never
         // reach the open. The notifications.rs shape, for the same reason.
@@ -219,7 +212,7 @@ fn user_db_opens_are_deliberate() {
         // peer's Hello claims something to put on it, or the wake pass would mint an empty
         // database per unreachable followed stranger per beat.
         ("net/sync.rs", 4),
-        ("record/bake.rs", 2),     // bake_one: ONE persona per external-media job, the ingest pattern; foreign_twin: the source author's header, once per copy job (2026-09-28)
+        ("record/bake.rs", 2), // bake_one: ONE persona per external-media job, the ingest pattern; foreign_twin: the source author's header, once per copy job (2026-09-28)
         // One open per SHARE - `fragments::current_version` resolves what head this node holds
         // so a share endorses what the reader actually saw. A human gesture, once, never a loop.
         // Plus one per public frontier MOVE - `mirror_retractions` opens the persona whose
@@ -254,19 +247,19 @@ fn user_db_opens_are_deliberate() {
         ("record/store.rs", 3), // + open_agented: the sweeps' session-free door, per agented persona once a minute - the journal-fill pass's own cadence
         ("identity/adoption.rs", 2),
         ("identity/routes.rs", 11), // 9: the feed asks the one gate (2026-09-10 pm); 10: the mention gate on a sealed publish reads the seal holder's edges once (2026-09-10); 10 again: a drawing's publish door opens its own persona once per request, as the avatar door does (DRAWING.md, 2026-09-26); 11: the banner door does the same, once per upload (2026-09-28)
-                                   // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
+        // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 4),
         // A person's RSS (2026-09-30): the one persona whose feed was asked for, once per request.
         ("rss.rs", 1),
         // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request
         // budget, never per candidate; currency is the listing's own stamp.
         ("search.rs", 1),
-        ("storage.rs", 1),         // tally: ONE persona whose files moved, on its own files browser's ask or the beat's (a few per beat)
+        ("storage.rs", 1), // tally: ONE persona whose files moved, on its own files browser's ask or the beat's (a few per beat)
         ("annotations.rs", 2), // 2: `holder_admits` asks the one gate now (2026-09-10 pm); 3: `holder_admits` - once per DISTINCT seal holder among a page's sealed labels, memoised per request (2026-09-10),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
-                                  // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
-                                  // root being folded - serialized per root, never a persona loop (2026-08-26)
-                                  // + curation_refresh_inner: one ledger unseal per ledger-leg fold (2026-08-27)
-                                  // + resolve_proof: one mirror open per served proof, page-bounded by the door (2026-08-27)
+                               // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
+                               // root being folded - serialized per root, never a persona loop (2026-08-26)
+                               // + curation_refresh_inner: one ledger unseal per ledger-leg fold (2026-08-27)
+                               // + resolve_proof: one mirror open per served proof, page-bounded by the door (2026-08-27)
     ]);
 
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -292,8 +285,7 @@ fn user_db_opens_are_deliberate() {
             found.insert(rel, n);
         }
     }
-    let found_ref: BTreeMap<&str, usize> =
-        found.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    let found_ref: BTreeMap<&str, usize> = found.iter().map(|(k, v)| (k.as_str(), *v)).collect();
     assert_eq!(
         found_ref, expected,
         "user-db call sites changed. If the new call runs once per request or per edge, bump \
@@ -316,8 +308,8 @@ fn user_db_opens_are_deliberate() {
 #[test]
 fn create_sites_stay_rare() {
     let expected: BTreeMap<&str, usize> = BTreeMap::from([
-        ("identity.rs", 1),  // create: a new persona's own database, minted at birth
-        ("net/sync.rs", 2),  // both ends of an exchange: a first fetch, and the responder
+        ("identity.rs", 1), // create: a new persona's own database, minted at birth
+        ("net/sync.rs", 2), // both ends of an exchange: a first fetch, and the responder
     ]);
 
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -445,7 +437,9 @@ fn the_picker_and_the_score_lean_the_same_way() {
     let source = std::fs::read_to_string(&js).expect("readable js/emoji.js");
     let escape = regex::Regex::new(r"\\u\{([0-9A-Fa-f]+)\}|\\u([0-9A-Fa-f]{4})").unwrap();
     let row = |tone: &str| -> Vec<String> {
-        let start = source.find(&format!("tone: '{tone}'")).unwrap_or_else(|| panic!("a '{tone}' row in POLE_ROWS"));
+        let start = source
+            .find(&format!("tone: '{tone}'"))
+            .unwrap_or_else(|| panic!("a '{tone}' row in POLE_ROWS"));
         let block = &source[start..];
         let block = &block[..block.find("],\n    },").expect("the row's emoji list closes")];
         block
@@ -516,7 +510,10 @@ fn the_desktop_workspace_keeps_the_dev_profile() {
                 continue;
             }
             if let (Some(t), true) = (&table, !line.is_empty() && !line.starts_with('#')) {
-                out.insert(format!("{t} {}", line.split('=').next().unwrap().trim()), line.to_string());
+                out.insert(
+                    format!("{t} {}", line.split('=').next().unwrap().trim()),
+                    line.to_string(),
+                );
             }
         }
         out
@@ -578,8 +575,9 @@ fn released_migrations_never_change() {
     let mut pinned = 0;
     for line in pins.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
         let (file, want) = line.split_once(' ').expect("`<kind>/<file> <sha256>`");
-        let bytes = std::fs::read(migrations.join(file))
-            .unwrap_or_else(|_| panic!("released rung {file} is gone; a shipped rung is never deleted"));
+        let bytes = std::fs::read(migrations.join(file)).unwrap_or_else(|_| {
+            panic!("released rung {file} is gone; a shipped rung is never deleted")
+        });
         let have = hex::encode(Sha256::digest(&bytes));
         assert_eq!(
             have,

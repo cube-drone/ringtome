@@ -60,11 +60,22 @@ export function parseRingtome(text) {
         return null;
     }
     if (!pathname.startsWith(USER)) return null;
-    const parts = pathname.slice(USER.length).split('/').filter((p, i, all) => p !== '' || i < all.length - 1);
+    const parts = pathname
+        .slice(USER.length)
+        .split('/')
+        .filter((p, i, all) => p !== '' || i < all.length - 1);
     if (parts.length && parts[parts.length - 1] === '') parts.pop();
     const [seg, kind, doc, sub, subValue, ...rest] = parts;
     if (!seg || !SEG.test(seg) || rest.length) return null;
-    const out = { seg, kind: null, doc: null, page: null, line: null, via: viaOf(search), bucket: bucketOf(search) };
+    const out = {
+        seg,
+        kind: null,
+        doc: null,
+        page: null,
+        line: null,
+        via: viaOf(search),
+        bucket: bucketOf(search),
+    };
     if (kind === undefined) return withPath(out);
     if (!['post', 'doc', 'room'].includes(kind) || !doc || !DOC_ID.test(doc)) return null;
     out.kind = kind;
@@ -119,7 +130,10 @@ export function rehome(text) {
 /// is ambiguous at a foreign origin, which is why the new prefix exists.
 export function fromLegacyId(pathAndQuery) {
     const s = (pathAndQuery || '').trim();
-    const m = /^\/id\/([A-Za-z0-9-]{16,})(?:\/post\/([0-9a-f]{32})(?:\/([0-9a-f]{32}))?)?\/?(\?[^#]*)?$/.exec(s);
+    const m =
+        /^\/id\/([A-Za-z0-9-]{16,})(?:\/post\/([0-9a-f]{32})(?:\/([0-9a-f]{32}))?)?\/?(\?[^#]*)?$/.exec(
+            s,
+        );
     if (!m) return null;
     const [, seg, doc, page, search] = m;
     const via = viaOf(search || '');

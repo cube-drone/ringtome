@@ -36,7 +36,8 @@
  * @param replaced every version this editor's own saves have replaced since that load
  */
 export function needsReload(row, parents, seen, replaced = []) {
-    const behind = replaced.includes(row.head) && row.heads === seen.heads && row.diverged === seen.diverged;
+    const behind =
+        replaced.includes(row.head) && row.heads === seen.heads && row.diverged === seen.diverged;
     if (behind) return false;
     return (
         !parents.includes(row.head) ||

@@ -94,9 +94,22 @@ check:
 lint:
     cd "{{workspace}}" && cargo clippy --all-targets -- -D warnings
 
-# Format all Rust code.
-fmt:
-    cd "{{workspace}}" && cargo fmt
+# Format everything a formatter owns (2026-10-02): Rust by rustfmt, JS and Markdown by prettier,
+# each to the config at the workspace root (rustfmt.toml, .prettierrc.json, .prettierignore). Run it
+# last, before handing work over for review, so a diff carries the change and never a reflow.
+format:
+    cd "{{workspace}}" && cargo fmt --all
+    cd "{{workspace}}" && {{prettier}} --write --log-level warn {{prettier_globs}}
+
+# The same, as a question: fails, naming the files, when anything is not as `just format` leaves it.
+format-check:
+    cd "{{workspace}}" && cargo fmt --all -- --check
+    cd "{{workspace}}" && {{prettier}} --check --log-level warn {{prettier_globs}}
+
+alias fmt := format
+
+prettier := "node/js/node_modules/.bin/prettier"
+prettier_globs := "'node/{js,integration,harness,tools}/**/*.{js,cjs,mjs}' '**/*.md'"
 
 # Rust unit tests.
 # Full output teed to /tmp so any failure's `failures:` block survives the run even when a

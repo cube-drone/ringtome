@@ -57,7 +57,10 @@ describe('flatDocs (the book order)', () => {
 
 describe('pathToDoc', () => {
     it('gives the sections down to the document, outermost first', () => {
-        assert.deepEqual(pathToDoc(TREE, 'd2').map((t) => t.taxonomy_id), ['starters', 'cold']);
+        assert.deepEqual(
+            pathToDoc(TREE, 'd2').map((t) => t.taxonomy_id),
+            ['starters', 'cold'],
+        );
     });
 
     it('gives an empty trail for a direct member of the root', () => {
@@ -65,7 +68,10 @@ describe('pathToDoc', () => {
     });
 
     it('gives the FIRST occurrence of a diamond', () => {
-        assert.deepEqual(pathToDoc(TREE, 'd1').map((t) => t.taxonomy_id), ['starters']);
+        assert.deepEqual(
+            pathToDoc(TREE, 'd1').map((t) => t.taxonomy_id),
+            ['starters'],
+        );
     });
 
     it('is null - not empty - when the tree does not hold it', () => {
@@ -75,7 +81,10 @@ describe('pathToDoc', () => {
 
     it('finds a dangling member by id (the tree still mentions it)', () => {
         const t = sec('root', [inTree(sec('s', [dangling('gone')]))]);
-        assert.deepEqual(pathToDoc(t, 'gone').map((x) => x.taxonomy_id), ['s']);
+        assert.deepEqual(
+            pathToDoc(t, 'gone').map((x) => x.taxonomy_id),
+            ['s'],
+        );
     });
 });
 

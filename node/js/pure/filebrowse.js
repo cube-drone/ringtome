@@ -19,7 +19,8 @@ export const FILE_KINDS = ['post', 'drawing', 'image', 'audio', 'video'];
 /// Which of `FILE_KINDS` a file is, or null for a format none of them names.
 export function fileKind(d) {
     const format = d && d.format;
-    if (!format || format === 'marquee' || format === 'plaintext' || format === 'book') return 'post';
+    if (!format || format === 'marquee' || format === 'plaintext' || format === 'book')
+        return 'post';
     if (format === 'drawing') return 'drawing';
     if (format === 'avif' || format === 'apng') return 'image';
     if (format === 'webm') return d.media && d.media.animation ? 'image' : 'video';
@@ -28,7 +29,11 @@ export function fileKind(d) {
 }
 
 const inNotebook = (d, notebook) =>
-    !notebook ? true : notebook === UNFILED ? !(d.buckets || []).length : (d.buckets || []).includes(notebook);
+    !notebook
+        ? true
+        : notebook === UNFILED
+          ? !(d.buckets || []).length
+          : (d.buckets || []).includes(notebook);
 
 /// `docs`: the list as the app already ordered and searched it. Returns the tiles to show, the
 /// notebooks to offer (every one the docs are in, by name), whether any file is unfiled, the tag
@@ -43,11 +48,14 @@ export function browseFiles(docs, { notebook = '', tags = [], kinds = [] } = {})
     const counted = here.filter(tagged);
     return {
         files: here.filter((d) => ofKind(d) && tagged(d)),
-        notebooks: [...new Set(all.flatMap((d) => d.buckets || []))].sort((a, b) => a.localeCompare(b)),
+        notebooks: [...new Set(all.flatMap((d) => d.buckets || []))].sort((a, b) =>
+            a.localeCompare(b),
+        ),
         unfiled: all.some((d) => !(d.buckets || []).length),
         cloud: tagCounts(here.filter(ofKind)),
-        kinds: FILE_KINDS.map((value) => ({ value, count: counted.filter((d) => fileKind(d) === value).length })).filter(
-            (k) => k.count > 0 || kinds.includes(k.value)
-        ),
+        kinds: FILE_KINDS.map((value) => ({
+            value,
+            count: counted.filter((d) => fileKind(d) === value).length,
+        })).filter((k) => k.count > 0 || kinds.includes(k.value)),
     };
 }

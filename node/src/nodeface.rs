@@ -46,7 +46,8 @@ pub async fn node_personas(
     State(state): State<AppState>,
     Query(q): Query<NodePersonasQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let listed = crate::nodeshelf::listed_roots(&state.node_db).await.map_err(AppError::Internal)?;
+    let listed =
+        crate::nodeshelf::listed_roots(&state.node_db).await.map_err(AppError::Internal)?;
     let recent = q.recent.map(|n| n.clamp(1, RECENT_MAX));
     let roots = match recent {
         // Only the hosted and listed: a shared post's sharer is, but the belt holds anyway.
@@ -62,7 +63,8 @@ pub async fn node_personas(
     let mut people: Vec<serde_json::Value> = Vec::with_capacity(roots.len());
     for r in &roots {
         let b = bylines.get(r).cloned().unwrap_or_default();
-        let (slug, _) = crate::slugs::of_root(&state.node_db, r).await.map_err(AppError::Internal)?;
+        let (slug, _) =
+            crate::slugs::of_root(&state.node_db, r).await.map_err(AppError::Internal)?;
         people.push(serde_json::json!({
             "root": r,
             "speakable": decode_root(r).map(|k| crate::speakable::speakable(&k)),
@@ -103,12 +105,15 @@ pub async fn node_feed(
             (Some(ms), Some(doc)) => Some((ms, doc)),
             _ => None,
         };
-        let mut rows = crate::nodeshelf::page(&state.node_db, before, page + 1).await.map_err(AppError::Internal)?;
+        let mut rows = crate::nodeshelf::page(&state.node_db, before, page + 1)
+            .await
+            .map_err(AppError::Internal)?;
         let more = rows.len() as i64 > page;
         rows.truncate(page as usize);
         (rows, more)
     } else {
-        let all = crate::nodeshelf::page(&state.node_db, None, 5000).await.map_err(AppError::Internal)?;
+        let all =
+            crate::nodeshelf::page(&state.node_db, None, 5000).await.map_err(AppError::Internal)?;
         let candidates: Vec<crate::search::Candidate> = all
             .iter()
             .map(|r| crate::search::Candidate {
@@ -119,7 +124,9 @@ pub async fn node_feed(
                 kind: r.kind(),
             })
             .collect();
-        let keep = crate::search::matching(&state, &candidates, &narrow, None).await.map_err(AppError::Internal)?;
+        let keep = crate::search::matching(&state, &candidates, &narrow, None)
+            .await
+            .map_err(AppError::Internal)?;
         let mut i = 0;
         let mut all = all;
         all.retain(|_| {
@@ -135,15 +142,21 @@ pub async fn node_feed(
 
 /// Shelf rows as the front page's cards read them: bylines, labels and reply counts beside each.
 /// The node feed's, and the super-pins' above it (frontdoor.rs).
-pub async fn feed_items(state: &AppState, rows: Vec<crate::nodeshelf::ShelfRow>) -> Result<Vec<serde_json::Value>, AppError> {
+pub async fn feed_items(
+    state: &AppState,
+    rows: Vec<crate::nodeshelf::ShelfRow>,
+) -> Result<Vec<serde_json::Value>, AppError> {
     let mut roots: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
     roots.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     roots.sort();
     roots.dedup();
     let bylines = crate::profiles::bylines(&state.node_db, &roots).await.unwrap_or_default();
-    let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let labels = crate::annotations::for_posts(state, &pairs, None).await.map_err(AppError::Internal)?;
-    let replies = crate::replies::known_counts(&state.node_db, &pairs).await.map_err(AppError::Internal)?;
+    let pairs: Vec<(String, String)> =
+        rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+    let labels =
+        crate::annotations::for_posts(state, &pairs, None).await.map_err(AppError::Internal)?;
+    let replies =
+        crate::replies::known_counts(&state.node_db, &pairs).await.map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
         .map(|r| {
@@ -180,7 +193,8 @@ pub async fn node_feed_labels(
     axum::extract::Query(q): axum::extract::Query<NodeLabelsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let all = crate::nodeshelf::page(&state.node_db, None, 5000).await.map_err(AppError::Internal)?;
+    let all =
+        crate::nodeshelf::page(&state.node_db, None, 5000).await.map_err(AppError::Internal)?;
     // As the node's feed narrows (Curtis, 2026-09-27), so the facets count it.
     let candidates: Vec<crate::search::Candidate> = all
         .iter()
@@ -193,7 +207,9 @@ pub async fn node_feed_labels(
         })
         .collect();
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
-    let facets = crate::search::facets_json(&state, &candidates, &narrow, None, 0).await.map_err(AppError::Internal)?;
+    let facets = crate::search::facets_json(&state, &candidates, &narrow, None, 0)
+        .await
+        .map_err(AppError::Internal)?;
     Ok(Json(facets))
 }
 
@@ -214,7 +230,8 @@ pub async fn slug_get(
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     crate::record::store::open(&state, &session.account.id, &root).await?;
-    let (current, last) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    let (current, last) =
+        crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "slug": current, "last": last })))
 }
 
@@ -229,7 +246,10 @@ pub async fn slug_put(
     if req.slug.trim().is_empty() {
         crate::slugs::drop_current(&state.node_db, &root).await.map_err(AppError::Internal)?;
     } else {
-        match crate::slugs::claim(&state.node_db, &root, &req.slug).await.map_err(AppError::Internal)? {
+        match crate::slugs::claim(&state.node_db, &root, &req.slug)
+            .await
+            .map_err(AppError::Internal)?
+        {
             crate::slugs::Outcome::Claimed => {}
             crate::slugs::Outcome::Taken => {
                 return Err(AppError::BadRequest(crate::msg!(
@@ -245,7 +265,8 @@ pub async fn slug_put(
             }
         }
     }
-    let (current, last) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    let (current, last) =
+        crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "slug": current, "last": last })))
 }
 
@@ -256,7 +277,8 @@ pub async fn slug_resolve(
 ) -> Result<Json<serde_json::Value>, AppError> {
     match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
         Some((root, current)) => {
-            let (now, _) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+            let (now, _) =
+                crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
             Ok(Json(serde_json::json!({
                 "root": root,
                 "speakable": decode_root(&root).map(|k| crate::speakable::speakable(&k)),
@@ -264,31 +286,49 @@ pub async fn slug_resolve(
                 "slug": now,
             })))
         }
-        None => Err(AppError::NotFound(crate::msg!("nodeface.nobody-here-by-that-name", "nobody on this node goes by that name"))),
+        None => Err(AppError::NotFound(crate::msg!(
+            "nodeface.nobody-here-by-that-name",
+            "nobody on this node goes by that name"
+        ))),
     }
 }
 
 /// `GET /@{slug}`: the persona's page under its short name (ruling 6); the last slug sends
 /// the reader on to the current; an unknown one is the app under a 404, which says so.
-pub async fn slug_page(State(state): State<AppState>, Path(slug): Path<String>) -> Result<axum::response::Response, AppError> {
+pub async fn slug_page(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<axum::response::Response, AppError> {
     use axum::response::IntoResponse;
     match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
         Some((root, true)) => {
             let Some(key) = decode_root(&root) else {
-                return Err(AppError::NotFound(crate::msg!("nodeface.nobody-here-by-that-name", "nobody on this node goes by that name")));
+                return Err(AppError::NotFound(crate::msg!(
+                    "nodeface.nobody-here-by-that-name",
+                    "nobody on this node goes by that name"
+                )));
             };
             crate::idface::persona_page(&state, key).await
         }
         Some((root, false)) => {
-            let (current, _) = crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
+            let (current, _) =
+                crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
             match current {
-                Some(c) => Ok(axum::response::Redirect::temporary(&format!("/@{c}")).into_response()),
-                None => Err(AppError::NotFound(crate::msg!("nodeface.nobody-here-by-that-name", "nobody on this node goes by that name"))),
+                Some(c) => {
+                    Ok(axum::response::Redirect::temporary(&format!("/@{c}")).into_response())
+                }
+                None => Err(AppError::NotFound(crate::msg!(
+                    "nodeface.nobody-here-by-that-name",
+                    "nobody on this node goes by that name"
+                ))),
             }
         }
         None => Ok((
             axum::http::StatusCode::NOT_FOUND,
-            axum::response::Html(crate::ui::app_page(&state, "<title>nobody here by that name</title>")),
+            axum::response::Html(crate::ui::app_page(
+                &state,
+                "<title>nobody here by that name</title>",
+            )),
         )
             .into_response()),
     }
@@ -318,6 +358,8 @@ pub async fn listed_put(
     Json(req): Json<ListedPut>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     crate::record::store::open(&state, &session.account.id, &root).await?;
-    crate::nodeshelf::set_listed(&state.node_db, &root, req.listed).await.map_err(AppError::Internal)?;
+    crate::nodeshelf::set_listed(&state.node_db, &root, req.listed)
+        .await
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "listed": req.listed })))
 }

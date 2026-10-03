@@ -129,9 +129,8 @@ pub fn verify(challenge: &[u8; 32], stamp: &[u8], bits: u32) -> Result<(), Proto
     if bits == 0 {
         return Ok(()); // an operator who configures zero has turned the price off
     }
-    let nonce: [u8; STAMP_LEN] = stamp
-        .try_into()
-        .map_err(|_| ProtoError::BadEntry("stamp is not one u64 nonce"))?;
+    let nonce: [u8; STAMP_LEN] =
+        stamp.try_into().map_err(|_| ProtoError::BadEntry("stamp is not one u64 nonce"))?;
     let search_key = blake3::derive_key(SEARCH_DOMAIN, challenge);
     if leading_zero_bits(&attempt(&search_key, u64::from_be_bytes(nonce))) < bits {
         return Err(ProtoError::BadEntry("stamp does not clear the required work"));

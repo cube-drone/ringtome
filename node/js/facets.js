@@ -10,7 +10,17 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
-import { cycleMe, cyclePick, facetSlice, fitCount, LEFT_OUT, OPEN_LINES, tagFamily, tagRows, wrapLines } from './pure/facets.js';
+import {
+    cycleMe,
+    cyclePick,
+    facetSlice,
+    fitCount,
+    LEFT_OUT,
+    OPEN_LINES,
+    tagFamily,
+    tagRows,
+    wrapLines,
+} from './pure/facets.js';
 
 const html = htm.bind(h);
 
@@ -77,7 +87,16 @@ const chipTitle = (state) =>
 /// instead, its matches in a box that scrolls rather than a wall that takes the page. The picked
 /// values stay on the row either way. `titleOf(state)` words a chip's hover where the row is not
 /// three-state (the files browser's tags only narrow).
-export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, extra = null, titleOf = chipTitle }) => {
+export const FacetRow = ({
+    label,
+    items: counted,
+    picked,
+    out,
+    onToggle,
+    names,
+    extra = null,
+    titleOf = chipTitle,
+}) => {
     const [mode, setMode] = useState('line'); // 'line' | 'open' | 'search'
     const expanded = mode === 'open';
     const searching = mode === 'search';
@@ -89,9 +108,13 @@ export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, 
     // clicked on round.
     const chosen = [...(picked || []), ...(out || [])];
     const have = new Set((counted || []).map((f) => f.value));
-    const items = [...(counted || []), ...chosen.filter((v) => !have.has(v)).map((value) => ({ value, count: 0 }))];
+    const items = [
+        ...(counted || []),
+        ...chosen.filter((v) => !have.has(v)).map((value) => ({ value, count: 0 })),
+    ];
     const word = (v) => (names && names[v] ? names[v]() : v);
-    const stateIn = (v) => ((picked || []).includes(v) ? 'only' : (out || []).includes(v) ? 'out' : null);
+    const stateIn = (v) =>
+        (picked || []).includes(v) ? 'only' : (out || []).includes(v) ? 'out' : null;
     const sig = `${extra ? 'x' : ''}|${items.map((f) => `${f.value}:${f.count}`).join('|')}|${(picked || []).join('|')}|${(out || []).join('|')}`;
     const measuring = mode === 'line' && (!measured.current || measured.current.sig !== sig);
     const reckon = () => {
@@ -105,7 +128,9 @@ export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, 
         if (!measuring || !row) return;
         const width = (e) => e.getBoundingClientRect().width;
         const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
-        const fixed = [...row.querySelectorAll(':scope > .facet-row-label, :scope > [data-facet-extra]')].reduce((sum, e) => sum + width(e) + gap, 0);
+        const fixed = [
+            ...row.querySelectorAll(':scope > .facet-row-label, :scope > [data-facet-extra]'),
+        ].reduce((sum, e) => sum + width(e) + gap, 0);
         const moreButton = row.querySelector(':scope > [data-facet-more]');
         measured.current = {
             sig,
@@ -128,7 +153,8 @@ export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, 
     const more = () => {
         const row = rowRef.current;
         const m = measured.current;
-        const lines = row && m ? wrapLines(m.widths, row.clientWidth - m.fixed, row.clientWidth, m.gap) : 1;
+        const lines =
+            row && m ? wrapLines(m.widths, row.clientWidth - m.fixed, row.clientWidth, m.gap) : 1;
         setQuery('');
         setMode(lines <= OPEN_LINES ? 'open' : 'search');
     };
@@ -141,7 +167,9 @@ export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, 
     >${word(f.value)} <span class="facet-count">${f.count}</span></button>`;
     if (searching) {
         const q = query.trim().toLowerCase();
-        const matches = items.filter((f) => !chosen.includes(f.value) && (!q || word(f.value).toLowerCase().includes(q)));
+        const matches = items.filter(
+            (f) => !chosen.includes(f.value) && (!q || word(f.value).toLowerCase().includes(q)),
+        );
         return html`<div class="facet-search">
             <div class="facet-row facet-row-open" ref=${rowRef}>
                 <span class="facet-row-label">${label}</span>
@@ -172,15 +200,19 @@ export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, 
         <span class="facet-row-label">${label}</span>
         ${extra && html`<span class="facet-row-extra" data-facet-extra>${extra}</span>`}
         ${shown.map(chip)}
-        ${measuring &&
-        html`<button class="facet-more" data-facet-more tabindex="-1" aria-hidden="true">
+        ${
+            measuring &&
+            html`<button class="facet-more" data-facet-more tabindex="-1" aria-hidden="true">
             ${t('facets.and-n-more', 'and {n} more…', { n: items.length })}
-        </button>`}
-        ${!measuring &&
-        hidden > 0 &&
-        html`<button class="facet-more" onClick=${more}>
+        </button>`
+        }
+        ${
+            !measuring &&
+            hidden > 0 &&
+            html`<button class="facet-more" onClick=${more}>
             ${t('facets.and-n-more', 'and {n} more…', { n: hidden })}
-        </button>`}
+        </button>`
+        }
         ${expanded && folds && html`<button class="facet-more" onClick=${() => setMode('line')}>${t('facets.fewer', 'fewer')}</button>`}
     </div>`;
 };
@@ -190,7 +222,14 @@ export const FacetRow = ({ label, items: counted, picked, out, onToggle, names, 
 /// with the next picks. Every chip cycles the same way (Curtis, 2026-10-01): left alone, only,
 /// left out - "only" picks in one row widen to either, the rows narrow together.
 export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = null }) => {
-    if (!meChip && (!labels || ((labels.kinds || []).length === 0 && (labels.buckets || []).length === 0 && (labels.tags || []).length === 0))) return null;
+    if (
+        !meChip &&
+        (!labels ||
+            ((labels.kinds || []).length === 0 &&
+                (labels.buckets || []).length === 0 &&
+                (labels.tags || []).length === 0))
+    )
+        return null;
     const toggle = (row) => (value) => onPicks(cyclePick(picks, row, value));
     // "me" (Curtis, 2026-09-27), the reader's own feed only: your own posts, cycling like every
     // other chip - among the rest, only yours, or left out (`picks.me`: undefined, 'only', false).
@@ -203,14 +242,18 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
           >${t('facets.me', 'me')}</button>`
         : null;
     return html`<div class="facets">
-        ${/* The kind row (Curtis, 2026-09-08): posts, replies, rebroadcasts, books - the
+        ${
+            /* The kind row (Curtis, 2026-09-08): posts, replies, rebroadcasts, books - the
             same semantics as the rows below it: nothing picked shows everything, a pick
-            narrows to just those. "posts" is what is none of the other kinds. */ ''}
+            narrows to just those. "posts" is what is none of the other kinds. */ ''
+        }
         <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
         <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} out=${picks[LEFT_OUT.buckets]} onToggle=${toggle('buckets')} />
-        ${/* The tag row split three ways (Curtis, 2026-10-02): a post's size, its media, and every
+        ${
+            /* The tag row split three ways (Curtis, 2026-10-02): a post's size, its media, and every
             other tag - each row only when it has something to pick, and each a row like the
-            others (the node narrows across them). All three are the `tags` picks underneath. */ ''}
+            others (the node narrows across them). All three are the `tags` picks underneath. */ ''
+        }
         ${['size', 'media', 'tags'].map((family) => {
             const items = tagRows(labels && labels.tags)[family];
             const picked = (picks.tags || []).filter((v) => tagFamily(v) === family);
@@ -222,7 +265,14 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
     </div>`;
 };
 
-export const NO_PICKS = { kinds: [], buckets: [], tags: [], notKinds: [], notBuckets: [], notTags: [] };
+export const NO_PICKS = {
+    kinds: [],
+    buckets: [],
+    tags: [],
+    notKinds: [],
+    notBuckets: [],
+    notTags: [],
+};
 
 /// The picks, kept for the browser session (Curtis, 2026-09-08): a refresh of the feed
 /// or of a person's page finds the same kinds, buckets and tags picked. Keyed by the
@@ -263,5 +313,7 @@ export const anyPicks = (picks) =>
         picks &&
         (picks.me === false ||
             picks.me === 'only' ||
-            ['kinds', 'buckets', 'tags'].some((row) => (picks[row] || []).length || (picks[LEFT_OUT[row]] || []).length))
+            ['kinds', 'buckets', 'tags'].some(
+                (row) => (picks[row] || []).length || (picks[LEFT_OUT[row]] || []).length,
+            ))
     );

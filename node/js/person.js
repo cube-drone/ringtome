@@ -34,11 +34,15 @@ import { daysSince } from './pure/heartbeat.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import { sizeLabel } from './pure/backups.js';
+import { contactCollection, bandOf } from './pure/contact.js';
 import {
-    contactCollection,
-    bandOf,
-} from './pure/contact.js';
-import { contactTags, tagCounts, withTag, withoutTag, serialiseTags, TAG_MAX } from './pure/contacttags.js';
+    contactTags,
+    tagCounts,
+    withTag,
+    withoutTag,
+    serialiseTags,
+    TAG_MAX,
+} from './pure/contacttags.js';
 import { personHref, roomHref } from './links.js';
 
 const html = htm.bind(h);
@@ -60,23 +64,29 @@ export function usePerson(root, { current, profile: given } = {}) {
     // Your ledger's facts about them (nickname, trust, interest, blocked) - live.
     const contactRow = useLive(
         () => (myRoot && root && !isYou ? openMirror(myRoot).contacts.get(root) : null),
-        [myRoot, root, isYou]
+        [myRoot, root, isYou],
     );
     // Your own self-claims, when the person IS you - live off your profile table.
     const myName = useLive(
         () => (isYou ? openMirror(myRoot).profile.get('name') : null),
-        [isYou, myRoot]
+        [isYou, myRoot],
     );
     const myAvatar = useLive(
         () => (isYou ? openMirror(myRoot).profile.get('avatar') : null),
-        [isYou, myRoot]
+        [isYou, myRoot],
     );
-    const myBio = useLive(() => (isYou ? openMirror(myRoot).profile.get('bio') : null), [
-        isYou,
-        myRoot,
-    ]);
-    const myBanner = useLive(() => (isYou ? openMirror(myRoot).profile.get('banner') : null), [isYou, myRoot]);
-    const myHeartbeat = useLive(() => (isYou ? openMirror(myRoot).profile.get('heartbeat') : null), [isYou, myRoot]);
+    const myBio = useLive(
+        () => (isYou ? openMirror(myRoot).profile.get('bio') : null),
+        [isYou, myRoot],
+    );
+    const myBanner = useLive(
+        () => (isYou ? openMirror(myRoot).profile.get('banner') : null),
+        [isYou, myRoot],
+    );
+    const myHeartbeat = useLive(
+        () => (isYou ? openMirror(myRoot).profile.get('heartbeat') : null),
+        [isYou, myRoot],
+    );
 
     // The last resort: a stranger, no ledger row, no profile handed down. One fetch.
     const [fetched, setFetched] = useState(null);
@@ -113,7 +123,9 @@ export function usePerson(root, { current, profile: given } = {}) {
     // Their last heartbeat, a UTC date (heartbeat.rs, 2026-09-29): "active today".
     const lastActive = isYou
         ? (myHeartbeat && myHeartbeat.value) || ''
-        : fromProfile(source && source.fields, 'heartbeat') || (contactRow && contactRow.last_active) || '';
+        : fromProfile(source && source.fields, 'heartbeat') ||
+          (contactRow && contactRow.last_active) ||
+          '';
 
     // How to reach them, as the node knows it (idface.rs computes it honestly: a persona it
     // hosts hints itself and their peers; a foreign one hints whatever actually reached
@@ -184,7 +196,8 @@ export const bannerStyle = (root, bannerDoc) =>
 /// The same banner behind a People row (Curtis, 2026-09-28), under a fade that is solid where the
 /// picture and the names sit and thins toward the right, so the words read on any banner.
 const rowBannerStyle = (person) => {
-    const fade = 'linear-gradient(90deg, var(--surface) 0, var(--surface) 30%, var(--row-veil) 100%)';
+    const fade =
+        'linear-gradient(90deg, var(--surface) 0, var(--surface) 30%, var(--row-veil) 100%)';
     return person.bannerUrl
         ? `background-image: ${fade}, url(${person.bannerUrl}); background-size: auto, cover; background-position: 0 0, center`
         : `background-image: ${fade}, url("${identiconUri(person.root)}"); background-size: auto, 64px 64px; background-repeat: no-repeat, repeat`;
@@ -265,8 +278,10 @@ export const PersonInline = ({ root, current, profile }) => {
 const PersonNames = ({ person }) => html`
     <span class="person-names">
         <span class="person-name-primary">${person.primary}</span>
-        ${person.others.length > 0 &&
-        html`<span class="person-name-others">${person.others.join(' · ')}</span>`}
+        ${
+            person.others.length > 0 &&
+            html`<span class="person-name-others">${person.others.join(' · ')}</span>`
+        }
     </span>
 `;
 
@@ -300,29 +315,45 @@ export const PersonRow = ({ root, current, profile, aside, storage }) => {
         >
             <${PersonHex} person=${person} size="small" />
             <${PersonNames} person=${person} />
-            ${/* Your tags for them (2026-09-10), on the row itself: the People list is where
-                you look for "family", so the word rides the person, not only the filter. */ ''}
-            ${contactTags(person.facts).length > 0 &&
-            html`<span class="person-row-tags">
+            ${
+                /* Your tags for them (2026-09-10), on the row itself: the People list is where
+                you look for "family", so the word rides the person, not only the filter. */ ''
+            }
+            ${
+                contactTags(person.facts).length > 0 &&
+                html`<span class="person-row-tags">
                 ${contactTags(person.facts).map((tag) => html`<span class="label-chip" key=${tag}>${tag}</span>`)}
-            </span>`}
-            ${/* The row's right edge: your relationship at a glance - unless the caller has a
+            </span>`
+            }
+            ${
+                /* The row's right edge: your relationship at a glance - unless the caller has a
                 better claim to the slot (the suggested shelf's "via ..." byline: a stranger
                 has no relationship to glance at, and "nothing recorded yet" would bury the
-                one fact that explains why they're on screen). */ ''}
-            ${/* A node admin's figures (storage.rs, 2026-10-02): what this persona would cost to
-                move, and what evicting it from this node would free - nobody else's business. */ ''}
-            ${storage &&
-            html`<span
+                one fact that explains why they're on screen). */ ''
+            }
+            ${
+                /* A node admin's figures (storage.rs, 2026-10-02): what this persona would cost to
+                move, and what evicting it from this node would free - nobody else's business. */ ''
+            }
+            ${
+                storage &&
+                html`<span
                 class="person-row-storage"
-                title=${t('person.storage-title', 'on this node: moving them carries {move}; evicting them would free {evict}', {
-                    move: sizeLabel(storage.move_bytes),
-                    evict: sizeLabel(storage.evict_bytes),
-                })}
-            >${t('person.storage', 'move {move} · evict {evict}', { move: sizeLabel(storage.move_bytes), evict: sizeLabel(storage.evict_bytes) })}</span>`}
-            ${aside
-                ? html`<span class="person-row-via">${aside}</span>`
-                : html`<${RelationshipGlance} facts=${person.facts} />`}
+                title=${t(
+                    'person.storage-title',
+                    'on this node: moving them carries {move}; evicting them would free {evict}',
+                    {
+                        move: sizeLabel(storage.move_bytes),
+                        evict: sizeLabel(storage.evict_bytes),
+                    },
+                )}
+            >${t('person.storage', 'move {move} · evict {evict}', { move: sizeLabel(storage.move_bytes), evict: sizeLabel(storage.evict_bytes) })}</span>`
+            }
+            ${
+                aside
+                    ? html`<span class="person-row-via">${aside}</span>`
+                    : html`<${RelationshipGlance} facts=${person.facts} />`
+            }
         </a>
     `;
 };
@@ -365,17 +396,33 @@ const ChatWithButton = ({ myRoot, root, name }) => {
 /// The whole person: picture, names, the shareable address, their bio, and - for anyone who
 /// isn't you - your relationship with them. For you, `you` is what sits where the
 /// relationship would: the page's own management disclosure (persona.js PersonaMenu).
-export const PersonCard = ({ root, current, profile, you, children, beside = null, after = null, banner = null }) => {
+export const PersonCard = ({
+    root,
+    current,
+    profile,
+    you,
+    children,
+    beside = null,
+    after = null,
+    banner = null,
+}) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
     const name = html`<h1 class="person-card-name">
                 ${person.primary}
-                ${/* The chat sits with their name (Curtis, 2026-09-20), not down in the
-                    relationship panel: talking to somebody is not a dial about them. */ ''}
-                ${!person.isYou && current &&
-                html`<${ChatWithButton} myRoot=${current.root} root=${root} name=${person.primary} />`}
+                ${
+                    /* The chat sits with their name (Curtis, 2026-09-20), not down in the
+                    relationship panel: talking to somebody is not a dial about them. */ ''
+                }
+                ${
+                    !person.isYou &&
+                    current &&
+                    html`<${ChatWithButton} myRoot=${current.root} root=${root} name=${person.primary} />`
+                }
             </h1>`;
-    const others = person.others.length > 0 && html`<p class="person-card-others">${person.others.join(' · ')}</p>`;
+    const others =
+        person.others.length > 0 &&
+        html`<p class="person-card-others">${person.others.join(' · ')}</p>`;
     // Their RSS (rss.rs, 2026-09-30), wherever this node keeps their shelf: in the top right
     // corner, after whatever else sits there.
     const rss =
@@ -409,11 +456,16 @@ export const PersonCard = ({ root, current, profile, you, children, beside = nul
             ${person.isYou && you}
             ${children}
             <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} slug=${person.slug} />
-            ${/* Your relationship sits above their bio: how you stand with someone is the
+            ${
+                /* Your relationship sits above their bio: how you stand with someone is the
                 first thing you want when you arrive on their page, and the bio is what you
-                read once you have it. */ ''}
-            ${!person.isYou && current &&
-            html`<${ContactLedger} myRoot=${current.root} theirRoot=${root} />`}
+                read once you have it. */ ''
+            }
+            ${
+                !person.isYou &&
+                current &&
+                html`<${ContactLedger} myRoot=${current.root} theirRoot=${root} />`
+            }
             ${/* What follows your relationship (2026-09-28: who you know that trusts or follows them). */ ''}
             ${after}
             ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
@@ -440,16 +492,17 @@ function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
         // Hints the caller already learned (the node's honest answer for this persona) win
         // outright. Without them - your own persona home, where no profile was fetched -
         // ask the node: its own endpoint first, then this persona's liveliest peers.
-        const hints = viaKey !== null
-            ? Promise.resolve(viaKey ? viaKey.split(',') : [])
-            : Promise.all([
-                  api('/api/node'),
-                  // Peers are gravy: a persona on one computer has none, and a failed
-                  // fetch must not cost the address row its self-hint.
-                  api(`/api/identity/${root}/peers`).catch(() => ({ peers: [] })),
-              ]).then(([node, { peers }]) =>
-                  viaHints(node.endpoint_id, peers).map((k) => toBase58(k))
-              );
+        const hints =
+            viaKey !== null
+                ? Promise.resolve(viaKey ? viaKey.split(',') : [])
+                : Promise.all([
+                      api('/api/node'),
+                      // Peers are gravy: a persona on one computer has none, and a failed
+                      // fetch must not cost the address row its self-hint.
+                      api(`/api/identity/${root}/peers`).catch(() => ({ peers: [] })),
+                  ]).then(([node, { peers }]) =>
+                      viaHints(node.endpoint_id, peers).map((k) => toBase58(k)),
+                  );
         Promise.all([api('/api/config'), hints])
             .then(([config, via]) => {
                 if (!live) return;
@@ -466,7 +519,7 @@ function useIdentityAddress(root, { via: givenVia, hosted = true } = {}) {
                         publicUrl: hosted ? config.public_url : '',
                         root: toBase58(root),
                         via,
-                    })
+                    }),
                 );
             })
             .catch(() => {
@@ -505,13 +558,15 @@ export const AddressRow = ({ root, via, hosted, slug }) => {
                 ${copied ? t('person.copied', 'copied!') : t('person.copy', 'copy')}
             </button>
         </div>
-        ${slug &&
-        html`<div class="persona-address persona-slug">
+        ${
+            slug &&
+            html`<div class="persona-address persona-slug">
             <span class="persona-address-label">${t('person.on-this-node', 'on this node')}</span>
             <a class="persona-address-value" href=${`/@${slug}`} title=${t('person.this-nodes-short-name', 'their short name here')}>
                 <code>${base}/<strong class="persona-slug-name">@${slug}</strong></code>
             </a>
-        </div>`}
+        </div>`
+        }
     `;
 };
 
@@ -640,7 +695,9 @@ const ContactTagsEditor = ({ myRoot, tags, onChange }) => {
     const [adding, setAdding] = useState(false);
     const [draft, setDraft] = useState('');
     const everyone = useLive(() => (myRoot ? openMirror(myRoot).contacts.toArray() : []), [myRoot]);
-    const known = tagCounts(everyone || []).map((c) => c.value).filter((v) => !tags.includes(v));
+    const known = tagCounts(everyone || [])
+        .map((c) => c.value)
+        .filter((v) => !tags.includes(v));
     const listId = `contact-tags-${myRoot ? myRoot.slice(0, 8) : 'x'}`;
     const add = (raw) => {
         const next = withTag(tags, raw);
@@ -657,10 +714,11 @@ const ContactTagsEditor = ({ myRoot, tags, onChange }) => {
                     title=${t('person.take-this-tag-off', 'take this tag off')}
                     onClick=${() => onChange(withoutTag(tags, tag))}
                 >×</button>
-            </span>`
+            </span>`,
         )}
-        ${adding
-            ? html`<input
+        ${
+            adding
+                ? html`<input
                   class="label-add-input jag-field"
                   list=${listId}
                   maxlength=${TAG_MAX}
@@ -681,7 +739,8 @@ const ContactTagsEditor = ({ myRoot, tags, onChange }) => {
                   onBlur=${() => add(draft)}
               />
               <datalist id=${listId}>${known.map((v) => html`<option value=${v} key=${v} />`)}</datalist>`
-            : html`<button class="label-add" onClick=${() => setAdding(true)}>${t('person.plus-tag', '+ tag')}</button>`}
+                : html`<button class="label-add" onClick=${() => setAdding(true)}>${t('person.plus-tag', '+ tag')}</button>`
+        }
     </span>`;
 };
 
@@ -702,7 +761,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     useEffect(() => {
         setPending((p) => {
             const next = Object.fromEntries(
-                Object.entries(p).filter(([k, v]) => mirrorFacts[k] !== v)
+                Object.entries(p).filter(([k, v]) => mirrorFacts[k] !== v),
             );
             return Object.keys(next).length === Object.keys(p).length ? p : next;
         });
@@ -733,8 +792,8 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 setPending((p) => {
                     const { [key]: _, ...rest } = p;
                     return rest;
-                })
-            )
+                }),
+            ),
         );
     };
 
@@ -754,14 +813,18 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 <span class="ledger-title">${t('person.your-relationship', 'your relationship')}</span>
                 <${RelationshipGlance} facts=${facts} />
             </summary>
-            ${blocked &&
-            html`<p class="ledger-note">
+            ${
+                blocked &&
+                html`<p class="ledger-note">
                 ${t('person.blocked---nothing-of-theirs', 'blocked')}
-            </p>`}
-            ${/* Visibility leads (2026-08-09): every dial below it is a thing that may be
+            </p>`
+            }
+            ${
+                /* Visibility leads (2026-08-09): every dial below it is a thing that may be
                 published, so the question of who sees them is not a footnote to that list -
                 it is the frame around it. Public is the resting state; this is where you
-                take it back. */ ''}
+                take it back. */ ''
+            }
             <label class="ledger-dial">
                 <span class="ledger-label">
                     ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
@@ -791,10 +854,12 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                     onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
                 />
             </label>
-            ${/* Contact tags (PROJECT_PLAN's Contact tags, 2026-09-10): "family",
+            ${
+                /* Contact tags (PROJECT_PLAN's Contact tags, 2026-09-10): "family",
                 "trade-show" - private labels, one register in the contact's bag, so every
                 computer you sign in on keeps the same lists and nobody else ever sees them.
-                The People page filters by them; the audience arc will seal to them. */ ''}
+                The People page filters by them; the audience arc will seal to them. */ ''
+            }
             <div class="ledger-dial">
                 <span class="ledger-label">
                     ${t('person.your-tags-for-them', 'your tags for them')}
@@ -823,8 +888,10 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 value=${facts.interest_rebroadcasts}
                 onPick=${(v) => put('interest_rebroadcasts', v)}
             />
-            ${/* The block lives INSIDE: a button in the summary would toggle the disclosure
-                instead of blocking anyone, and blocking is an edit like the rest. */ ''}
+            ${
+                /* The block lives INSIDE: a button in the summary would toggle the disclosure
+                instead of blocking anyone, and blocking is an edit like the rest. */ ''
+            }
             <button
                 class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
                 onClick=${() => put('blocked', blocked ? 'no' : 'yes')}

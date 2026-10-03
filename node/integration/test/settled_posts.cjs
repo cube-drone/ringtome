@@ -4,11 +4,11 @@
     it: the reply publish refuses, the rebroadcast mint refuses, the thread door serves
     nothing, and the permalink says so.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch } = require('./helpers.cjs');
 
 describe("settled posts: the author's wish, honored", function () {
     this.timeout(600000);
@@ -18,75 +18,79 @@ describe("settled posts: the author's wish, honored", function () {
     const publish = async (title, body, extra) => {
         const made = await (
             await ada(`api/identity/${adaRoot}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title, body, format: "plaintext" }),
+                method: 'POST',
+                body: JSON.stringify({ title, body, format: 'plaintext' }),
             })
         ).json();
         const pub = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/publish`, {
-            method: "POST",
+            method: 'POST',
             ...(extra ? { body: JSON.stringify(extra) } : {}),
         });
         const text = await pub.text();
-        return { status: pub.status, text, post: pub.status === 200 ? JSON.parse(text).post_id : null };
+        return {
+            status: pub.status,
+            text,
+            post: pub.status === 200 ? JSON.parse(text).post_id : null,
+        };
     };
 
     before(async () => {
-        ada = await makeUserFetch({ prefix: "setada" });
-        adaRoot = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
-        await ada(`api/identity/${adaRoot}/serve`, { method: "POST" });
-        bea = await makeUserFetch({ prefix: "setbea" });
-        beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
+        ada = await makeUserFetch({ prefix: 'setada' });
+        adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
+        bea = await makeUserFetch({ prefix: 'setbea' });
+        beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await bea(`api/identity/${beaRoot}/serve`, { method: 'POST' });
     });
 
-    it("the flag rides the publish and the permalink says so", async () => {
-        const made = await publish("quiet words", "said once", { settled: true });
+    it('the flag rides the publish and the permalink says so', async () => {
+        const made = await publish('quiet words', 'said once', { settled: true });
         assert.equal(made.status, 200, made.text);
         settled = made.post;
         const head = await (await ada(`api/id/${adaRoot}/posts/${settled}`)).json();
-        assert.equal(head.settled, true, "the permalink carries the wish");
-        const control = await publish("open words", "say more", undefined);
+        assert.equal(head.settled, true, 'the permalink carries the wish');
+        const control = await publish('open words', 'say more', undefined);
         assert.equal(control.status, 200, control.text);
         open = control.post;
         const openHead = await (await ada(`api/id/${adaRoot}/posts/${open}`)).json();
-        assert.ok(!openHead.settled, "absence means open");
+        assert.ok(!openHead.settled, 'absence means open');
     });
 
-    it("a reply naming a settled parent is refused with words", async () => {
+    it('a reply naming a settled parent is refused with words', async () => {
         const made = await (
             await ada(`api/identity/${adaRoot}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title: "", body: "but actually", format: "plaintext" }),
+                method: 'POST',
+                body: JSON.stringify({ title: '', body: 'but actually', format: 'plaintext' }),
             })
         ).json();
         const pub = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/publish`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ reply_to: { author: adaRoot, doc_id: settled } }),
         });
         const text = await pub.text();
         assert.equal(pub.status, 400, text);
-        assert.match(text, /settled/, "the refusal has the word");
+        assert.match(text, /settled/, 'the refusal has the word');
     });
 
-    it("a settled post passes along like any other (Curtis, 2026-09-10: the wish is comments off; only the seal stops a share)", async () => {
+    it('a settled post passes along like any other (Curtis, 2026-09-10: the wish is comments off; only the seal stops a share)', async () => {
         // bea's node (this same node) holds ada's chains, so the header - and its wish -
         // is visible at the mint; the wish no longer speaks to a share.
         const yes = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ author: adaRoot, doc_id: settled }),
         });
         assert.equal(yes.status, 200, await yes.text());
         const also = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ author: adaRoot, doc_id: open }),
         });
         assert.equal(also.status, 200, await also.text());
     });
 
-    it("the thread door is shut: the replies read serves nothing and says why", async () => {
+    it('the thread door is shut: the replies read serves nothing and says why', async () => {
         const page = await (await ada(`api/id/${adaRoot}/posts/${settled}/replies`)).json();
-        assert.deepEqual(page.replies, [], "nothing served");
-        assert.equal(page.settled, true, "and the reader is told why");
-        assert.equal(page.seeking, false, "and nobody goes asking for more");
+        assert.deepEqual(page.replies, [], 'nothing served');
+        assert.equal(page.settled, true, 'and the reader is told why');
+        assert.equal(page.seeking, false, 'and nobody goes asking for more');
     });
 });

@@ -11,7 +11,7 @@ built, or the unsigned artifacts, which the CI matrix produces without a single 
 **What signing buys, stated plainly, so the money is spent knowingly:** on macOS it is the
 difference between an app that opens and one that says "Horse Drawing Tycoon 2 is damaged and can't be opened",
 which is what Gatekeeper tells a user about unsigned software downloaded from the web. On Windows it
-is the difference between SmartScreen's blue wall and a normal install — *eventually*: an OV
+is the difference between SmartScreen's blue wall and a normal install — _eventually_: an OV
 certificate, which is what both of these are, earns its reputation over downloads rather than
 arriving with it. Only an EV certificate (hardware token, several hundred a year) silences
 SmartScreen from the first download, and that is not what we are buying.
@@ -116,7 +116,7 @@ a week if their identity check wants a second look.
 ### What to create once you are in
 
 1. **A "Developer ID Application" certificate.** Not "Mac App Distribution" — Developer ID is the one
-   for software distributed outside the App Store, which is us. Only the *Account Holder* can create
+   for software distributed outside the App Store, which is us. Only the _Account Holder_ can create
    the first one, which is you.
 
    The portal asks two things that are easy to stall on (Curtis, 2026-09-22):
@@ -125,7 +125,7 @@ a week if their identity check wants a second look.
      tooling and its certificates expire Feb 1 2027 anyway. The two lines are radio buttons — the
      Continue button stays greyed out until one is actually selected.
    - **A Certificate Signing Request, and Xcode is not needed for it.** Keychain Access makes one:
-     *Keychain Access → Certificate Assistant → Request a Certificate From a Certificate Authority*,
+     _Keychain Access → Certificate Assistant → Request a Certificate From a Certificate Authority_,
      your Apple ID email as the user email, your name as the Common Name (it becomes
      `Developer ID Application: Your Name (TEAMID)`), CA email blank, **Saved to disk**. Upload the
      `.certSigningRequest`, download the `.cer`, double-click to install.
@@ -142,27 +142,33 @@ a week if their identity check wants a second look.
    anywhere in this. The key simply lives in the keychain that made it, and it travels the way keys
    travel - as a `.p12` holding both halves, which is why that export asks for a password. The `.cer`
    Apple hands back is the public half alone and cannot sign anything by itself.
+
 2. **Export it as a `.p12`** from Keychain Access (**My Certificates**, right-click the
-   *Developer ID Application* entry → Export, choose a password you will keep). Exporting from
+   _Developer ID Application_ entry → Export, choose a password you will keep). Exporting from
    anywhere that offers no private key means you are exporting the public half alone, which signs
    nothing.
 
    Then confirm the identity is real and learn its exact name, which is what the signing
    configuration wants character for character:
+
    ```sh
    security find-identity -v -p codesigning
    #  1) A1B2... "Developer ID Application: Your Name (TEAM1D2345)"
    ```
+
    The quoted string is `APPLE_SIGNING_IDENTITY`; the part in parentheses is the Team ID. "0 valid
    identities found" means the certificate never landed in this keychain - double-click the `.cer`
    (or the `.p12`) and look again.
 
    And base64 it for CI:
+
    ```sh
    openssl base64 -A -in certificate.p12 -out certificate-base64.txt
    ```
+
    Then the `.p12` and its password go in the password manager and the loose copies get deleted; the
    keychain keeps a working copy for signing locally.
+
 3. **An App Store Connect API key for notarization.** App Store Connect → Users and Access →
    Integrations / Keys → App Store Connect API → Generate. You get an **Issuer ID** (top of the
    page, shared by all your keys), a **Key ID** (on the row), and a `.p8` file **you can only
@@ -179,43 +185,47 @@ a week if their identity check wants a second look.
    than days. **Stapling** then attaches the ticket to the `.dmg` so a Mac can verify it offline.
 
    What it buys: since macOS 10.15, software downloaded from the web must be signed AND notarized,
-   or the first launch says *"cannot be opened because Apple cannot check it for malicious
-   software"* - the dialog with no obvious way forward, which is what friends and family would hit.
+   or the first launch says _"cannot be opened because Apple cannot check it for malicious
+   software"_ - the dialog with no obvious way forward, which is what friends and family would hit.
    With it, an ordinary "downloaded from the internet, are you sure?" once.
 
    The trade, stated so it is a decision rather than a surprise: the ticket is also a kill switch.
    A build later found malicious can have its ticket revoked, and Macs stop opening it. That is the
-   same authenticated relationship that makes notarization need an ACTIVE membership - see *When you
-   can stop paying*.
+   same authenticated relationship that makes notarization need an ACTIVE membership - see _When you
+   can stop paying_.
 
    **What to do with the three things it gives you.** The Key ID is on the key's row; the Issuer ID
    is the UUID above the list, shared by every key you make, and it is the one people scroll past.
    The `.p8` becomes a secret by way of base64:
+
    ```sh
    openssl base64 -A -in AuthKey_XXXXXXXX.p8 -out apikey-base64.txt
    ```
+
    → `APPLE_API_ISSUER` (the UUID), `APPLE_API_KEY` (the Key ID), `APPLE_API_KEY_BASE64` (that file).
 
    **Vault the `.p8` before deleting anything**: it downloads once, so the password manager's copy
    becomes the only copy in the world. Save it, check the save, then clear Downloads.
 
    **Then prove the three work together**, before any build depends on them:
+
    ```sh
    xcrun notarytool history --key AuthKey_XXXXXXXX.p8 --key-id <key id> --issuer <issuer uuid>
    ```
+
    An empty history is a pass - it authenticated. An error here is much cheaper to find now than in
    the middle of a release.
 
 ### What that turns into
 
-| secret | what it is |
-|---|---|
-| `APPLE_CERTIFICATE` | the base64 of the `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | the password you chose when exporting |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_API_ISSUER` | the Issuer ID |
-| `APPLE_API_KEY` | the Key ID |
-| `APPLE_API_KEY_PATH` | a path - so the secret is the `.p8`'s **base64** (`APPLE_API_KEY_BASE64`), which the workflow writes to a file and points this at |
+| secret                       | what it is                                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `APPLE_CERTIFICATE`          | the base64 of the `.p12`                                                                                                          |
+| `APPLE_CERTIFICATE_PASSWORD` | the password you chose when exporting                                                                                             |
+| `APPLE_SIGNING_IDENTITY`     | e.g. `Developer ID Application: Your Name (TEAMID)`                                                                               |
+| `APPLE_API_ISSUER`           | the Issuer ID                                                                                                                     |
+| `APPLE_API_KEY`              | the Key ID                                                                                                                        |
+| `APPLE_API_KEY_PATH`         | a path - so the secret is the `.p8`'s **base64** (`APPLE_API_KEY_BASE64`), which the workflow writes to a file and points this at |
 
 Notarization is a round trip to Apple on every release build — it uploads the app, waits for a
 verdict, and staples the result. It usually takes a few minutes and occasionally much longer; that is
@@ -249,7 +259,7 @@ cannot sign from CI without a machine of our own to plug it into.
 
 - **Individual validation is available only to developers located in the United States or Canada.**
 - It reads your identity from the **Azure billing account**, which must have Account Type =
-  *Individual*, and whose legal name and address must **match your government ID exactly**. Fix the
+  _Individual_, and whose legal name and address must **match your government ID exactly**. Fix the
   billing account first; a mismatch means starting the validation over.
 
 ### The steps
@@ -311,10 +321,11 @@ certificate Microsoft issues is valid for **three days** — every signature is 
 
 The same key signs every `ringtome-server-…tar.gz` (the `server-sign` job, the one server job in the
 `deploy` environment), and `server-latest.json` carries those signatures for the server's own updater
+
 - `ringtome-supervisor` (`supervisor/src/manifest.rs`, `verify`; the public half is compiled into
-`supervisor/src/config.rs`). One key, one public half, two kinds of update. The job
-verifies every signature with the stock `minisign` tool against the public key committed in
-`desktop/tauri.conf.json` before it uploads anything.
+  `supervisor/src/config.rs`). One key, one public half, two kinds of update. The job
+  verifies every signature with the stock `minisign` tool against the public key committed in
+  `desktop/tauri.conf.json` before it uploads anything.
 
 The container image is signed differently, with no key at all: **cosign keyless** (Sigstore) turns
 the workflow's GitHub OIDC token into a short-lived certificate saying "cube-drone/ringtome's release

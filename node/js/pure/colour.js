@@ -25,7 +25,10 @@ export function hexToRgb(hex) {
 
 /// [r, g, b] to lowercase `#rrggbb` - the form a drawing's strokes store (pure/drawing.js).
 export function rgbToHex([r, g, b]) {
-    const two = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+    const two = (n) =>
+        Math.max(0, Math.min(255, Math.round(n)))
+            .toString(16)
+            .padStart(2, '0');
     return `#${two(r)}${two(g)}${two(b)}`;
 }
 
@@ -50,7 +53,17 @@ export function hsvToRgb({ h, s, v }) {
     const x = c * (1 - Math.abs((hh % 2) - 1));
     const m = v - c;
     const [r, g, b] =
-        hh < 1 ? [c, x, 0] : hh < 2 ? [x, c, 0] : hh < 3 ? [0, c, x] : hh < 4 ? [0, x, c] : hh < 5 ? [x, 0, c] : [c, 0, x];
+        hh < 1
+            ? [c, x, 0]
+            : hh < 2
+              ? [x, c, 0]
+              : hh < 3
+                ? [0, c, x]
+                : hh < 4
+                  ? [0, x, c]
+                  : hh < 5
+                    ? [x, 0, c]
+                    : [c, 0, x];
     return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
@@ -115,7 +128,11 @@ export function clampToTriangle(point, corners) {
     if (a >= 0 && b >= 0 && c >= 0) return point;
     const { hue, white, black } = corners;
     let best = null;
-    for (const [p, q] of [[hue, white], [white, black], [black, hue]]) {
+    for (const [p, q] of [
+        [hue, white],
+        [white, black],
+        [black, hue],
+    ]) {
         const n = nearestOnSegment(point, p, q);
         const d = Math.hypot(n[0] - point[0], n[1] - point[1]);
         if (!best || d < best.d) best = { n, d };

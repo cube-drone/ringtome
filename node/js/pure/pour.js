@@ -22,7 +22,14 @@
 //
 // The pour covers every cell whose distance is within its reach.
 
-import { decodePoints, pressureWidth, matricesOf, apply, shapeBox, ellipseOutline } from './drawing.js';
+import {
+    decodePoints,
+    pressureWidth,
+    matricesOf,
+    apply,
+    shapeBox,
+    ellipseOutline,
+} from './drawing.js';
 
 /// The field's units per canvas unit: a straight step, and a diagonal one.
 export const STEP = 3;
@@ -87,7 +94,13 @@ export function wallsOf(ops, upto, width, height) {
     const { each } = matricesOf(ops.slice(0, upto));
     for (let j = 0; j < upto; j++) {
         const op = ops[j];
-        if (op.tool !== 'brush' && op.tool !== 'eraser' && op.tool !== 'rect' && op.tool !== 'ellipse') continue;
+        if (
+            op.tool !== 'brush' &&
+            op.tool !== 'eraser' &&
+            op.tool !== 'rect' &&
+            op.tool !== 'ellipse'
+        )
+            continue;
         const m = each[j];
         // Only shifted (the common case, and the only one before transforms): exact. Turned,
         // scaled or slanted: every point through the matrix, and the line's width by the matrix's
@@ -98,22 +111,39 @@ export function wallsOf(ops, upto, width, height) {
         const stretch = shifted ? 1 : Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
         const at = (p) => apply(m, p);
         const segments = (points, radius, value) => {
-            for (let i = 1; i < points.length; i++) stampSegment(walls, width, height, points[i - 1], points[i], radius, value);
+            for (let i = 1; i < points.length; i++)
+                stampSegment(walls, width, height, points[i - 1], points[i], radius, value);
         };
         // The shapes (Curtis, 2026-09-27): a rectangle exactly, an ellipse as its outline's
         // segments - both lines, so both hold paint back.
         if (op.tool === 'rect' || op.tool === 'ellipse') {
             const [l, top, r, bottom] = shapeBox(op.points);
             if (op.tool === 'rect' && shifted) {
-                stampRect(walls, width, height, [l + m[4], top + m[5], r + m[4], bottom + m[5]], op.size / 2);
+                stampRect(
+                    walls,
+                    width,
+                    height,
+                    [l + m[4], top + m[5], r + m[4], bottom + m[5]],
+                    op.size / 2,
+                );
                 continue;
             }
-            const outline = op.tool === 'rect' ? [[l, top], [r, top], [r, bottom], [l, bottom], [l, top]] : ellipseOutline([l, top, r, bottom]);
+            const outline =
+                op.tool === 'rect'
+                    ? [
+                          [l, top],
+                          [r, top],
+                          [r, bottom],
+                          [l, bottom],
+                          [l, top],
+                      ]
+                    : ellipseOutline([l, top, r, bottom]);
             segments(outline.map(at), (op.size / 2) * stretch, 1);
             continue;
         }
         const points = decodePoints(op.points).map(at);
-        const radius = (i) => ((op.size * (op.pressure ? pressureWidth(op.pressure[i]) : 1)) / 2) * stretch;
+        const radius = (i) =>
+            ((op.size * (op.pressure ? pressureWidth(op.pressure[i]) : 1)) / 2) * stretch;
         const value = op.tool === 'brush' ? 1 : 0;
         if (points.length === 1) {
             stampSegment(walls, width, height, points[0], points[0], radius(0), value);
@@ -122,7 +152,15 @@ export function wallsOf(ops, upto, width, height) {
         // As the stroke is painted (doc/drawing.js, `paintStroke`): each segment as wide as the
         // average of its two ends.
         for (let i = 1; i < points.length; i++) {
-            stampSegment(walls, width, height, points[i - 1], points[i], (radius(i - 1) + radius(i)) / 2, value);
+            stampSegment(
+                walls,
+                width,
+                height,
+                points[i - 1],
+                points[i],
+                (radius(i - 1) + radius(i)) / 2,
+                value,
+            );
         }
     }
     return walls;
@@ -136,7 +174,8 @@ export function pourField(walls, width, height, x, y, limit = Infinity) {
     if (x < 0 || y < 0 || x >= width || y >= height) return dist;
     const start = y * width + x;
     if (walls[start]) return dist;
-    const open = (cx, cy) => cx >= 0 && cy >= 0 && cx < width && cy < height && !walls[cy * width + cx];
+    const open = (cx, cy) =>
+        cx >= 0 && cy >= 0 && cx < width && cy < height && !walls[cy * width + cx];
     // Dial's algorithm: the steps are small whole numbers, so a queue per distance does what a
     // priority queue would, in order, and the same order everywhere.
     const queue = [[start]];

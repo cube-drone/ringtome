@@ -1,20 +1,20 @@
 # Reads That Grow With History: the full-chain audit
 
-*2026-08-09 to 2026-08-10. Extracted from [`../HISTORY.md`](../HISTORY.md) because the seven
+_2026-08-09 to 2026-08-10. Extracted from [`../HISTORY.md`](../HISTORY.md) because the seven
 entries only mean anything in sequence: the audit was provoked by a wrong answer, its first
 fix could not be measured, its middle fixes kept finding bugs that had nothing to do with
-scanning, and the rule it ended on is worth more than any individual patch.*
+scanning, and the rule it ended on is worth more than any individual patch._
 
-*Read the section titled "The thief was never caught" first. The CPU symptom that started all
-this was never attributed, and one entry below claims otherwise in its title.*
+_Read the section titled "The thief was never caught" first. The CPU symptom that started all
+this was never attributed, and one entry below claims otherwise in its title._
 
 ## What it was
 
 Curtis, after an idle three-node dev network was found sitting at 23-34% CPU per node:
-*"I'm looking for a list of every place in our system that does something to a full chain from
+_"I'm looking for a list of every place in our system that does something to a full chain from
 genesis, exempting identity chains because they're very small and very correctness sensitive:
 almost all of the time, our YAGNI instincts don't hold here: we're targeting tens of thousands
-of entries and long term usage, even from the get-go."*
+of entries and long term usage, even from the get-go."_
 
 Twelve sites were found. Seven needed fixing; the rest were either identity chains (exempt by
 that rule) or already watermarked. The prologue below is the entry that provoked the audit -
@@ -43,7 +43,7 @@ reading that as a conviction, all visible at the time:
 - `sample` is a **wall-clock** stack sampler, not a CPU-time profiler. A thread awaiting
   `stmt_lock` - the mutex serializing every statement on a shared connection - or waiting on
   IO looks exactly like one computing.
-- A sample of a *different* node minutes earlier showed every thread **parked**. That
+- A sample of a _different_ node minutes earlier showed every thread **parked**. That
   contradiction was explained away as burstiness rather than treated as a reason to doubt the
   method.
 - The dev databases are **tiny**: 6 MB across all personas, largest single file 909 KB. A
@@ -55,7 +55,7 @@ is per-persona rather than structural, and is not scan volume - which is the one
 audit removed. The suspect had motive and no means.
 
 That does not make the seven fixes wrong; they were justified by asymptote and doctrine, and
-two genuine bugs fell out of making them. It makes the *headline* wrong, and the honest next
+two genuine bugs fell out of making them. It makes the _headline_ wrong, and the honest next
 step is a CPU-time profile of a node with personas on it, or a bisect from that 0.3% floor by
 adding one persona and one background loop at a time.
 
@@ -131,7 +131,7 @@ now reads `chain_heads` by primary-key prefix.
 **The correctness argument, because this goes on the wire.** Over-reporting is the fatal
 direction: claim a head you do not hold and the peer never offers it again - silent, permanent
 loss. Under-reporting is free (the peer re-offers, the gate deduplicates). The memo can only
-lag: `note_head` runs *after* the row lands, in both write paths, and is monotone on seq;
+lag: `note_head` runs _after_ the row lands, in both write paths, and is monotone on seq;
 eviction calls `forget_chain`; retention prunes below the floor and leaves the head. The one
 way it could lead - a database that lost entries while node.db kept its rows - is closed by
 reconciling the memo against the log **once per persona per process at database open**, beside
@@ -211,7 +211,7 @@ revocation buys N signature verifications and a whole log in memory.
 Two things were wrong, and they came apart cleanly:
 
 **The re-validation was never the point.** Entries that survive eviction were validated when
-they were admitted; the rebuild re-litigates them only because the ritual's *purpose* is
+they were admitted; the rebuild re-litigates them only because the ritual's _purpose_ is
 re-litigation. The ingest path only needs correct views. So `refold_after_eviction` drops the
 stale views and lets each refold itself from its watermark - which is how every encrypted view
 in this codebase has always worked ("the drop half": `documents::catch_up`,

@@ -81,7 +81,11 @@ const sentence = (r) => {
             // The words themselves - "labelled" without the label is half the news.
             return r.doc_id
                 ? t('apps.notifications.labelled-words', 'labelled "{words}"', { words: r.detail })
-                : t('apps.notifications.labelled-a-post-words', 'labelled one of your posts "{words}"', { words: r.detail });
+                : t(
+                      'apps.notifications.labelled-a-post-words',
+                      'labelled one of your posts "{words}"',
+                      { words: r.detail },
+                  );
         }
         return r.doc_id
             ? t('apps.notifications.labelled', 'labelled')
@@ -110,28 +114,22 @@ const sentence = (r) => {
         // survives only for a row that names no post to show.
         return r.doc_id
             ? t('apps.notifications.shared', 'shared')
-            : t(
-                  'apps.notifications.shared-something-of-yours',
-                  'shared something of yours'
-              );
+            : t('apps.notifications.shared-something-of-yours', 'shared something of yours');
     }
     const follows = !!r.interest;
     const vouches = r.trust === 'max';
     if (follows && vouches)
-        return t(
-            'apps.notifications.follows-you-publicly-and-vouches',
-            'follows and trusts you'
-        );
+        return t('apps.notifications.follows-you-publicly-and-vouches', 'follows and trusts you');
     if (follows && r.trust)
         return t(
             'apps.notifications.follows-you-publicly-and-publishes',
-            'follows you publicly, and publishes their trust in you'
+            'follows you publicly, and publishes their trust in you',
         );
     if (follows) return t('apps.notifications.follows-you-publicly', 'follows you, publicly');
     if (vouches)
         return t(
             'apps.notifications.vouches-for-you-publicly',
-            'trusts you, publicly - they say you two have met'
+            'trusts you, publicly - they say you two have met',
         );
     return t('apps.notifications.publishes-their-trust-in', 'publishes their trust in you');
 };
@@ -186,27 +184,28 @@ export const NotificationsApp = ({ current }) => {
         <div class="notif-app">
             <div class="notif-bar">
                 <${PushToggle} root=${root} />
-                ${unseen > 0 &&
-                html`<button class="notif-mark-read jag-line" onClick=${markAllRead}>
+                ${
+                    unseen > 0 &&
+                    html`<button class="notif-mark-read jag-line" onClick=${markAllRead}>
                     ${t('apps.notifications.mark-all-read', 'mark all read')}
-                </button>`}
+                </button>`
+                }
             </div>
-            ${page && items.length === 0
-                ? html`<p class="notif-empty">
+            ${
+                page && items.length === 0
+                    ? html`<p class="notif-empty">
                       <${Icons.notifications} />
-                      ${t(
-                          'apps.notifications.nothing-yet-when-someone-you',
-                          'nothing yet'
-                      )}
+                      ${t('apps.notifications.nothing-yet-when-someone-you', 'nothing yet')}
                   </p>`
-                : html`<div class="notif-list">
+                    : html`<div class="notif-list">
                       ${items.map(
                           (r) => html`
                               <div
                                   class=${r.seen ? 'notif-row' : 'notif-row notif-unseen'}
                                   key=${`${r.stranger ? 'x' : 'd'}:${r.author}:${r.kind}`}
                               >
-                                  ${/* Passing a profile - even an EMPTY one, which is what a
+                                  ${
+                                      /* Passing a profile - even an EMPTY one, which is what a
                                       stranger's row carries - is what stops usePerson fetching
                                       their page. That rule is about FAN-OUT and stays: a flood
                                       of stranger notices must not become a flood of syncs.
@@ -218,74 +217,96 @@ export const NotificationsApp = ({ current }) => {
                                       Support", it only made honest strangers unreadable. So the
                                       claim is shown - beside the identicon and speakable words
                                       derived from their root, which nobody can choose, and
-                                      never in the identity's place. */ ''}
+                                      never in the identity's place. */ ''
+                                  }
                                   <${PersonChip}
                                       root=${r.author}
                                       current=${current}
                                       profile=${{
                                           fields: [
-                                              r.author_name && { field: 'name', value: r.author_name },
-                                              r.author_avatar && { field: 'avatar', value: r.author_avatar },
+                                              r.author_name && {
+                                                  field: 'name',
+                                                  value: r.author_name,
+                                              },
+                                              r.author_avatar && {
+                                                  field: 'avatar',
+                                                  value: r.author_avatar,
+                                              },
                                           ].filter(Boolean),
                                           via: [],
                                       }}
                                   />
                                   <span class="notif-text">
-                                      ${/* Every row names its subject. The chip is a FACE - its
+                                      ${
+                                          /* Every row names its subject. The chip is a FACE - its
                                           label is a hover tooltip - so a row without this reads
                                           "follows you, publicly" with nobody doing it. Adding a
                                           visible name to strangers only (2026-08-11) made the
                                           unverified claim MORE prominent than a real name, which
-                                          is the exact inversion this design is trying to avoid. */ ''}
+                                          is the exact inversion this design is trying to avoid. */ ''
+                                      }
                                       <${Subject} row=${r} />
                                       ${sentence(r)}
-                                      ${/* The mini-card: the referenced post as a dressed
+                                      ${
+                                          /* The mini-card: the referenced post as a dressed
                                           link to its own page - title joined server-side
                                           (the reader's own post), degrading to a bare
-                                          "link" when the post has left the shelf. */ ''}
-                                      ${(r.kind === 'rebroadcast' ||
-                                          r.kind === 'comment' ||
-                                          r.kind === 'tagged' ||
-                                          r.kind === 'mentioned') &&
-                                      r.doc_id &&
-                                      html`<${MiniPost}
+                                          "link" when the post has left the shelf. */ ''
+                                      }
+                                      ${
+                                          (r.kind === 'rebroadcast' ||
+                                              r.kind === 'comment' ||
+                                              r.kind === 'tagged' ||
+                                              r.kind === 'mentioned') &&
+                                          r.doc_id &&
+                                          html`<${MiniPost}
                                           author=${r.kind === 'mentioned' ? r.author : root}
                                           doc_id=${r.doc_id}
                                           title=${r.doc_title}
                                           published_ms=${r.doc_published_ms}
-                                      />`}
-                                      ${r.stranger &&
-                                      html`<span
+                                      />`
+                                      }
+                                      ${
+                                          r.stranger &&
+                                          html`<span
                                           class="notif-stranger jag-line"
                                           title=${t('apps.notifications.you-dont-follow-them-so', "someone you don't follow")}
-                                      >${t('apps.notifications.a-stranger', 'a stranger')}</span>`}
+                                      >${t('apps.notifications.a-stranger', 'a stranger')}</span>`
+                                      }
                                   </span>
                                   <span class="notif-cells">
-                                      ${r.trust &&
-                                      html`<${SignalCell}
+                                      ${
+                                          r.trust &&
+                                          html`<${SignalCell}
                                           stops=${trustStops()}
                                           value=${r.trust}
                                           label=${t('apps.notifications.dial-trust', 'trust')}
-                                      />`}
-                                      ${r.interest &&
-                                      html`<${SignalCell}
+                                      />`
+                                      }
+                                      ${
+                                          r.interest &&
+                                          html`<${SignalCell}
                                           stops=${interestStops()}
                                           value=${r.interest}
                                           label=${t('apps.notifications.dial-interest', 'interest')}
-                                      />`}
+                                      />`
+                                      }
                                   </span>
                                   <span class="notif-when" title=${new Date(r.updated_ms).toLocaleString()}>
                                       ${whenWords(r.updated_ms)}
-                                      ${!r.seen &&
-                                      html`<span
+                                      ${
+                                          !r.seen &&
+                                          html`<span
                                           class="notif-new"
                                           title=${t('apps.notifications.you-havent-seen-this-yet', "you haven't seen this yet")}
-                                      ></span>`}
+                                      ></span>`
+                                      }
                                   </span>
                               </div>
-                          `
+                          `,
                       )}
-                  </div>`}
+                  </div>`
+            }
         </div>
     `;
 };

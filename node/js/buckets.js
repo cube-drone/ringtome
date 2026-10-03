@@ -133,7 +133,13 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
         if (!name) return;
         // A reserved name would vanish from every switcher the moment it was made.
         if (RESERVED_BUCKETS.has(name)) {
-            alert(t('buckets.name-is-reserved', '"{name}" is kept for another app - choose another name', { name }));
+            alert(
+                t(
+                    'buckets.name-is-reserved',
+                    '"{name}" is kept for another app - choose another name',
+                    { name },
+                ),
+            );
             return;
         }
         try {
@@ -143,7 +149,11 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             });
             onSwitch(name); // it exists empty right away; the roster row follows via the stream
         } catch (e) {
-            alert(t('buckets.couldnt-create-it', "couldn't create it: {message}", { message: e.message }));
+            alert(
+                t('buckets.couldnt-create-it', "couldn't create it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -161,7 +171,7 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
         if (
             !confirm(
                 `DELETE THE ${app.bucketNoun.toUpperCase()} “${bucket}”?\n\n${inside}\n\n` +
-                    `This is the big one. Are you sure?`
+                    `This is the big one. Are you sure?`,
             )
         )
             return;
@@ -175,7 +185,11 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             });
             onSwitch(app.style); // land back on the shelf's home notebook
         } catch (e) {
-            alert(t('buckets.couldnt-delete-it', "couldn't delete it: {message}", { message: e.message }));
+            alert(
+                t('buckets.couldnt-delete-it', "couldn't delete it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -201,8 +215,9 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
                 disabled=${names.length < 2}
                 onClick=${() => step(1)}
             ><${Icons.forward} /></button>
-            ${menu &&
-            html`<div class="bucket-menu">
+            ${
+                menu &&
+                html`<div class="bucket-menu">
                 ${names.map(
                     (name) => html`<button
                         key=${name}
@@ -214,13 +229,16 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
                     >
                         <span>${name}</span>
                         <span class="bucket-menu-count">${membersOf(name)}</span>
-                    </button>`
+                    </button>`,
                 )}
-                ${!isHome &&
-                html`<button class="bucket-menu-item bucket-menu-delete" onClick=${destroy}>
+                ${
+                    !isHome &&
+                    html`<button class="bucket-menu-item bucket-menu-delete" onClick=${destroy}>
                     ${t('buckets.delete-this', 'Delete this {bucketNoun}…', { bucketNoun: app.bucketNoun })}
-                </button>`}
-            </div>`}
+                </button>`
+                }
+            </div>`
+            }
         </span>
     `;
 };

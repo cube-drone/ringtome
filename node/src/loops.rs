@@ -28,11 +28,7 @@ pub struct FreshnessMarks(Arc<Mutex<HashMap<(&'static str, String), i64>>>);
 impl FreshnessMarks {
     /// Has this root changed since `domain` last looked? Records nothing.
     pub fn is_stale(&self, domain: &'static str, root: &str, mtime_ms: i64) -> bool {
-        self.0
-            .lock()
-            .unwrap()
-            .get(&(domain, root.to_string()))
-            .is_none_or(|seen| *seen < mtime_ms)
+        self.0.lock().unwrap().get(&(domain, root.to_string())).is_none_or(|seen| *seen < mtime_ms)
     }
 
     /// The recorded mark itself, for a caller that filters BY the value rather than asking
@@ -47,10 +43,7 @@ impl FreshnessMarks {
     /// write landing mid-fold moves mtime past the mark and the next tick redoes one root
     /// (idempotent) instead of skipping a real change forever.
     pub fn record(&self, domain: &'static str, root: &str, mtime_ms: i64) {
-        self.0
-            .lock()
-            .unwrap()
-            .insert((domain, root.to_string()), mtime_ms);
+        self.0.lock().unwrap().insert((domain, root.to_string()), mtime_ms);
     }
 }
 
@@ -152,18 +145,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_loop_outlives_failures_and_panics() {
         let passes = Arc::new(AtomicU32::new(0));
-        periodic(
-            "test-loop",
-            Duration::from_secs(60),
-            passes.clone(),
-            |counter| async move {
-                match counter.fetch_add(1, Ordering::SeqCst) {
-                    0 => anyhow::bail!("first pass fails"),
-                    1 => panic!("second pass panics (expected noise in test output)"),
-                    _ => Ok(()),
-                }
-            },
-        );
+        periodic("test-loop", Duration::from_secs(60), passes.clone(), |counter| async move {
+            match counter.fetch_add(1, Ordering::SeqCst) {
+                0 => anyhow::bail!("first pass fails"),
+                1 => panic!("second pass panics (expected noise in test output)"),
+                _ => Ok(()),
+            }
+        });
 
         // Paused clock: this sleep fast-forwards virtual time through five tick deadlines.
         tokio::time::sleep(Duration::from_secs(60 * 5 + 1)).await;

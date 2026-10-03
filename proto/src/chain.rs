@@ -18,24 +18,18 @@ pub fn validate_next(prev: Option<&SignedEntry>, next: &SignedEntry) -> Result<(
                 return Err(ProtoError::ChainViolation("genesis entry must have seq 0"));
             }
             if next.entry().prev_hash != ZERO_HASH {
-                return Err(ProtoError::ChainViolation(
-                    "genesis entry must have a zero prev_hash",
-                ));
+                return Err(ProtoError::ChainViolation("genesis entry must have a zero prev_hash"));
             }
         }
         Some(prev) => {
             if prev.entry().chain != next.entry().chain {
-                return Err(ProtoError::ChainViolation(
-                    "entry belongs to a different chain",
-                ));
+                return Err(ProtoError::ChainViolation("entry belongs to a different chain"));
             }
             if next.entry().seq != prev.entry().seq + 1 {
                 return Err(ProtoError::ChainViolation("sequence gap or duplicate"));
             }
             if next.entry().prev_hash != *prev.hash() {
-                return Err(ProtoError::ChainViolation(
-                    "prev_hash does not match predecessor",
-                ));
+                return Err(ProtoError::ChainViolation("prev_hash does not match predecessor"));
             }
         }
     }
@@ -94,9 +88,7 @@ mod tests {
         let bad_prev = make(0, [1u8; 32], &k);
         assert_eq!(
             validate_next(None, &bad_prev),
-            Err(ProtoError::ChainViolation(
-                "genesis entry must have a zero prev_hash"
-            ))
+            Err(ProtoError::ChainViolation("genesis entry must have a zero prev_hash"))
         );
     }
 
@@ -124,9 +116,7 @@ mod tests {
         let forged = make(1, [0xffu8; 32], &k);
         assert_eq!(
             validate_next(Some(&e0), &forged),
-            Err(ProtoError::ChainViolation(
-                "prev_hash does not match predecessor"
-            ))
+            Err(ProtoError::ChainViolation("prev_hash does not match predecessor"))
         );
     }
 
@@ -154,9 +144,7 @@ mod tests {
         };
         assert_eq!(
             validate_next(Some(&e0), &other_chain),
-            Err(ProtoError::ChainViolation(
-                "entry belongs to a different chain"
-            ))
+            Err(ProtoError::ChainViolation("entry belongs to a different chain"))
         );
 
         // Same author, same service, an INSTANCE = a different chain too (CHAT.md slice 0).
@@ -178,9 +166,7 @@ mod tests {
         };
         assert_eq!(
             validate_next(Some(&e0), &room_chain),
-            Err(ProtoError::ChainViolation(
-                "entry belongs to a different chain"
-            ))
+            Err(ProtoError::ChainViolation("entry belongs to a different chain"))
         );
     }
 }

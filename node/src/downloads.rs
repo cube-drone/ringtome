@@ -46,7 +46,9 @@ pub fn pick(release: &serde_json::Value) -> Downloads {
                 .collect()
         })
         .unwrap_or_default();
-    let find = |suffix: &str| assets.iter().find(|(name, _)| name.ends_with(suffix)).map(|(_, url)| url.to_string());
+    let find = |suffix: &str| {
+        assets.iter().find(|(name, _)| name.ends_with(suffix)).map(|(_, url)| url.to_string())
+    };
     Downloads {
         tag: release["tag_name"].as_str().map(String::from),
         mac: find(".dmg"),
@@ -56,7 +58,8 @@ pub fn pick(release: &serde_json::Value) -> Downloads {
     }
 }
 
-static CACHE: LazyLock<tokio::sync::Mutex<Option<(Instant, Downloads, bool)>>> = LazyLock::new(|| tokio::sync::Mutex::new(None));
+static CACHE: LazyLock<tokio::sync::Mutex<Option<(Instant, Downloads, bool)>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(None));
 
 async fn fetch() -> anyhow::Result<Downloads> {
     let client = reqwest::Client::builder().timeout(TIMEOUT).build()?;
@@ -119,6 +122,10 @@ mod tests {
         assert_eq!(d.mac, Some(format!("{base}/Horse.Drawing.Tycoon.2_0.2.2_universal.dmg")));
         assert_eq!(d.windows, Some(format!("{base}/Horse.Drawing.Tycoon.2_0.2.2_x64-setup.exe")));
         assert_eq!(d.linux, Some(format!("{base}/Horse.Drawing.Tycoon.2_0.2.2_amd64.AppImage")));
-        assert_eq!(super::pick(&serde_json::json!({})), super::Downloads { releases: super::RELEASES_PAGE, ..Default::default() }, "nothing to offer, no dead links");
+        assert_eq!(
+            super::pick(&serde_json::json!({})),
+            super::Downloads { releases: super::RELEASES_PAGE, ..Default::default() },
+            "nothing to offer, no dead links"
+        );
     }
 }

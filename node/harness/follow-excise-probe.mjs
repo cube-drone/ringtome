@@ -8,29 +8,46 @@ const BASE = 'http://localhost:5299';
 async function user(name) {
     const s = session(BASE);
     await signUp(s, name);
-    const root = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
+    const root = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json())
+        .root_pubkey;
     return { s, root };
 }
 const post = async (u, title) => {
-    const d = await (await u.s.fetch(`/api/identity/${u.root}/docs`, { method: 'POST', headers: J,
-        body: JSON.stringify({ title, body: `body of ${title}`, format: 'plaintext' }) })).json();
-    await u.s.fetch(`/api/identity/${u.root}/docs/${d.doc_id}/publish`, { method: 'POST', headers: J });
+    const d = await (
+        await u.s.fetch(`/api/identity/${u.root}/docs`, {
+            method: 'POST',
+            headers: J,
+            body: JSON.stringify({ title, body: `body of ${title}`, format: 'plaintext' }),
+        })
+    ).json();
+    await u.s.fetch(`/api/identity/${u.root}/docs/${d.doc_id}/publish`, {
+        method: 'POST',
+        headers: J,
+    });
 };
 const dial = (u, them, level) =>
     u.s.fetch(`/api/identity/${u.root}/private/kv/contact:${them}/interest`, {
-        method: 'PUT', headers: J, body: JSON.stringify({ value: String(level) }) });
+        method: 'PUT',
+        headers: J,
+        body: JSON.stringify({ value: String(level) }),
+    });
 const feedTitles = async (u) => {
     const f = await (await u.s.fetch(`/api/identity/${u.root}/feed`)).json();
     return (f.items || f.rows || f).map((r) => r.title).sort();
 };
 const settle = async (fn, tries = 80) => {
-    for (let i = 0; i < tries; i++) { const got = await fn(); if (got) return got; await sleep(250); }
+    for (let i = 0; i < tries; i++) {
+        const got = await fn();
+        if (got) return got;
+        await sleep(250);
+    }
     return null;
 };
 
 const author = await user('excise-author');
 const reader = await user('excise-reader');
-await post(author, 'Alpha'); await post(author, 'Beta');
+await post(author, 'Alpha');
+await post(author, 'Beta');
 await sleep(1000);
 
 await dial(reader, author.root, 'medium');

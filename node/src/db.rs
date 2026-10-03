@@ -28,7 +28,6 @@ use turso::{Builder, EncryptionOpts, IntoParams, Value};
 use crate::keystore::Keystore;
 use crate::record::journal::Journal;
 
-
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -267,10 +266,7 @@ impl Db {
         // busy answer (a reader mid-snapshot) is a no-op and the next window retries;
         // the 60s beat (`checkpoint_pass`) still covers the idle tail. Cheap when
         // frequent: the truncate's cost is the frames since the last one.
-        let count = self
-            .writes
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            + 1;
+        let count = self.writes.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         if count.is_multiple_of(CHECKPOINT_EVERY) {
             if let Err(e) = self.checkpoint().await {
                 tracing::debug!(error = ?e, "volume checkpoint failed");
@@ -362,9 +358,7 @@ impl Db {
 
     /// Exactly one row, extracted into `T`; errors if the query returns none.
     pub async fn fetch_one<T: FromRow>(&self, sql: &str, params: impl IntoParams) -> Result<T> {
-        self.fetch_optional(sql, params)
-            .await?
-            .ok_or_else(|| anyhow!("query returned no rows"))
+        self.fetch_optional(sql, params).await?.ok_or_else(|| anyhow!("query returned no rows"))
     }
 
     /// Truncate this database's WAL: backfill every frame into the main file, then cut the
@@ -415,7 +409,9 @@ impl Db {
                 continue;
             }
             if let Some(dir) = to.parent() {
-                tokio::fs::create_dir_all(dir).await.with_context(|| format!("creating {}", dir.display()))?;
+                tokio::fs::create_dir_all(dir)
+                    .await
+                    .with_context(|| format!("creating {}", dir.display()))?;
             }
             bytes += tokio::fs::copy(from, to)
                 .await
@@ -461,10 +457,7 @@ impl Db {
 
     /// This handle (and every clone made from it) with the journal attached.
     fn with_journal(self, journal: Journal) -> Db {
-        Db {
-            journal: Some(journal),
-            ..self
-        }
+        Db { journal: Some(journal), ..self }
     }
 
     /// Checkpoint an ephemeral chain's head - the write-ahead half of the inbox durability
@@ -488,16 +481,18 @@ impl Db {
     /// The checkpointed head of an ephemeral chain, if the file remembers one - what a rebuilt
     /// database continues from when its inbox chains did not replay (they were never
     /// journaled).
-    pub fn ephemeral_head(&self, author_hex: &str, service: u32, instance: Option<[u8; 16]>) -> Option<(u64, [u8; 32])> {
+    pub fn ephemeral_head(
+        &self,
+        author_hex: &str,
+        service: u32,
+        instance: Option<[u8; 16]>,
+    ) -> Option<(u64, [u8; 32])> {
         self.ephemeral_heads.as_ref()?.head_of(author_hex, service, instance)
     }
 
     /// This handle with the checkpoint attached (the manager's open, and tests).
     pub(crate) fn with_ephemeral_heads(self, heads: crate::record::heads::EphemeralHeads) -> Db {
-        Db {
-            ephemeral_heads: Some(heads),
-            ..self
-        }
+        Db { ephemeral_heads: Some(heads), ..self }
     }
 
     /// Fire the write nudge: a locally-signed write just landed - wake the eager-sync loop and
@@ -513,10 +508,7 @@ impl Db {
 
     /// This handle (and every clone made from it) with the write-nudge bus attached.
     fn with_write_nudge(self, bus: WriteNudge) -> Db {
-        Db {
-            write_nudge: Some(bus),
-            ..self
-        }
+        Db { write_nudge: Some(bus), ..self }
     }
 
     /// The identity's root pubkey, when this is a per-user database. See the field doc.
@@ -531,18 +523,12 @@ impl Db {
 
     /// This handle with the node-level database attached (see the `memo` field).
     pub(crate) fn with_memo(self, node_db: std::sync::Arc<Db>) -> Db {
-        Db {
-            memo: Some(node_db),
-            ..self
-        }
+        Db { memo: Some(node_db), ..self }
     }
 
     /// This handle (and every clone made from it) knowing whose it is.
     pub(crate) fn with_root(self, root_hex: String) -> Db {
-        Db {
-            root: Some(root_hex),
-            ..self
-        }
+        Db { root: Some(root_hex), ..self }
     }
 }
 
@@ -615,26 +601,20 @@ pub async fn open_database(path: &Path, keystore: &Keystore) -> Result<Db> {
     let hexkey = load_or_create_db_key(keystore, &logical_name)?;
     let database = Builder::new_local(path_str)
         .experimental_encryption(true)
-        .with_encryption(EncryptionOpts {
-            cipher: "aegis256".to_string(),
-            hexkey,
-        })
+        .with_encryption(EncryptionOpts { cipher: "aegis256".to_string(), hexkey })
         .build()
         .await
         .with_context(|| format!("opening database {}", path.display()))?;
 
     let db = connect(database)?;
-    db.execute("PRAGMA synchronous = NORMAL", ())
-        .await
-        .context("setting synchronous pragma")?;
+    db.execute("PRAGMA synchronous = NORMAL", ()).await.context("setting synchronous pragma")?;
     Ok(db)
 }
 
 /// Wrap a built database in a [`Db`]: connect and set the busy timeout.
 fn connect(database: turso::Database) -> Result<Db> {
     let conn = database.connect().context("connecting to database")?;
-    conn.busy_timeout(BUSY_TIMEOUT)
-        .context("setting busy timeout")?;
+    conn.busy_timeout(BUSY_TIMEOUT).context("setting busy timeout")?;
     Ok(Db {
         _database: database,
         conn,
@@ -664,9 +644,7 @@ pub async fn open_node_db(data_directory: &Path, keystore: &Keystore) -> Result<
 #[cfg(test)]
 pub async fn test_node_db() -> Db {
     let db = test_memory_db().await;
-    crate::migrations::climb(&db, crate::migrations::NODE, "node")
-        .await
-        .unwrap();
+    crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
     db
 }
 
@@ -675,9 +653,7 @@ pub async fn test_node_db() -> Db {
 #[cfg(test)]
 pub async fn test_user_db() -> Db {
     let db = test_memory_db().await;
-    crate::migrations::climb(&db, crate::migrations::USER, "user")
-        .await
-        .unwrap();
+    crate::migrations::climb(&db, crate::migrations::USER, "user").await.unwrap();
     db
 }
 
@@ -799,10 +775,7 @@ impl UserDbManager {
     /// file keeps whatever WAL it had - it only grows while written, writes only happen
     /// through an open handle, and the next open puts it back on this walk.
     pub fn open_handles(&self) -> Vec<(String, Db)> {
-        self.handles
-            .iter()
-            .map(|(root, db)| (root.as_ref().clone(), db))
-            .collect()
+        self.handles.iter().map(|(root, db)| (root.as_ref().clone(), db)).collect()
     }
 
     /// A persona database's files - the database and its log - for the backup (backup.rs).
@@ -928,9 +901,7 @@ impl UserDbManager {
     }
 
     pub async fn held(&self, root_pubkey: &str) -> Result<Db> {
-        self.get(root_pubkey)
-            .await?
-            .ok_or_else(|| anyhow!("no database held for {root_pubkey}"))
+        self.get(root_pubkey).await?.ok_or_else(|| anyhow!("no database held for {root_pubkey}"))
     }
 
     /// Open one persona's database, MINTING it if this node holds nothing of theirs yet -
@@ -985,11 +956,7 @@ impl UserDbManager {
         // invariant: an empty journal over a non-empty entries table gets every stored entry
         // backfilled as frames, or rebuild-by-replay would silently lose the prefix.
         let journal_path = self.journal_path_for(root_pubkey);
-        let first_look = self
-            .validated_journals
-            .lock()
-            .unwrap()
-            .insert(root_pubkey.to_string());
+        let first_look = self.validated_journals.lock().unwrap().insert(root_pubkey.to_string());
         let journal = if first_look {
             Journal::open(&journal_path)
                 .with_context(|| format!("opening journal for {root_pubkey}"))?
@@ -997,9 +964,8 @@ impl UserDbManager {
             Journal::reopen(&journal_path)
                 .with_context(|| format!("reopening journal for {root_pubkey}"))?
         };
-        let journal_empty = journal
-            .is_empty()
-            .with_context(|| format!("checking journal for {root_pubkey}"))?;
+        let journal_empty =
+            journal.is_empty().with_context(|| format!("checking journal for {root_pubkey}"))?;
         // The entry BYTES are fetched only on the branch that writes them. The version that
         // read them unconditionally spent a whole-log read per open - so per handle-cache
         // miss - to answer `is_empty()` in the common case where the journal and the database
@@ -1040,13 +1006,10 @@ impl UserDbManager {
             // the un-replayed rebuild left empty key trees, which the persona screen then
             // misread as a departed computer).
             if let Some(root) = crate::pubkey::decode(root_pubkey) {
-                let (accepted, rejected) = crate::record::journal::rebuild_from_journal(
-                    &db,
-                    root,
-                    &journal_path,
-                )
-                .await
-                .with_context(|| format!("replaying journal for {root_pubkey}"))?;
+                let (accepted, rejected) =
+                    crate::record::journal::rebuild_from_journal(&db, root, &journal_path)
+                        .await
+                        .with_context(|| format!("replaying journal for {root_pubkey}"))?;
                 tracing::info!(
                     root = %root_pubkey,
                     accepted,
@@ -1057,7 +1020,9 @@ impl UserDbManager {
         }
         let t_journal = t0.elapsed();
         let heads = crate::record::heads::EphemeralHeads::open(&self.heads_path_for(root_pubkey))
-            .with_context(|| format!("opening the ephemeral-heads checkpoint for {root_pubkey}"))?;
+            .with_context(|| {
+            format!("opening the ephemeral-heads checkpoint for {root_pubkey}")
+        })?;
         let mut db = db
             .with_journal(journal)
             .with_ephemeral_heads(heads)
@@ -1148,16 +1113,10 @@ mod tests {
             db.fetch_all("SELECT app_version FROM boot_timestamps", ()).await;
         assert!(wrong.is_err(), "the decode error still surfaces");
         // The connection must be immediately writable and the write immediately visible.
-        db.execute(
-            "INSERT INTO boot_timestamps (booted_at_ms, app_version) VALUES (3, 'c')",
-            (),
-        )
-        .await
-        .expect("the statement was drained; the write must not wedge");
-        let n: (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM boot_timestamps", ())
+        db.execute("INSERT INTO boot_timestamps (booted_at_ms, app_version) VALUES (3, 'c')", ())
             .await
-            .unwrap();
+            .expect("the statement was drained; the write must not wedge");
+        let n: (i64,) = db.fetch_one("SELECT COUNT(*) FROM boot_timestamps", ()).await.unwrap();
         assert_eq!(n.0, 3, "the read sees the post-error write - no pinned snapshot");
     }
 
@@ -1174,10 +1133,7 @@ mod tests {
         // test-unit tee).
         static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = UNIQUE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let dir = std::env::temp_dir().join(format!(
             "ringtome-test-{}-{}-{}",
             std::process::id(),
@@ -1262,9 +1218,7 @@ mod tests {
         // One file underneath them all: a write through a fresh handle is visible to the
         // next, and the journal took exactly one coherent stream of frames.
         let db = mgr.create(&root_hex).await.unwrap();
-        crate::record::imaol::set_profile_field(&db, &key, "name", "One File Frank")
-            .await
-            .unwrap();
+        crate::record::imaol::set_profile_field(&db, &key, "name", "One File Frank").await.unwrap();
         let again = mgr.held(&root_hex).await.unwrap();
         let profile = crate::record::imaol::get_profile(&again).await.unwrap();
         assert_eq!(
@@ -1281,10 +1235,8 @@ mod tests {
         let db = open_node_db(&dir, &ks).await.unwrap();
         record_boot(&db, "0.0.0-test").await.unwrap();
 
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM boot_timestamps", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) =
+            db.fetch_one("SELECT COUNT(*) FROM boot_timestamps", ()).await.unwrap();
         assert_eq!(count, 1);
 
         // The database is stamped at the node ladder's top rung, and a key file was minted.
@@ -1295,17 +1247,12 @@ mod tests {
         // At-rest encryption is real: the file must not start with the plaintext SQLite magic.
         drop(db);
         let bytes = std::fs::read(dir.join("node.db")).unwrap();
-        assert!(
-            !bytes.starts_with(b"SQLite format 3"),
-            "node.db is plaintext on disk"
-        );
+        assert!(!bytes.starts_with(b"SQLite format 3"), "node.db is plaintext on disk");
 
         // Reopening with the same keystore finds the same key and reads the data back.
         let db = open_node_db(&dir, &ks).await.unwrap();
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM boot_timestamps", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) =
+            db.fetch_one("SELECT COUNT(*) FROM boot_timestamps", ()).await.unwrap();
         assert_eq!(count, 1);
 
         tokio::fs::remove_dir_all(&dir).await.ok();
@@ -1329,14 +1276,8 @@ mod tests {
             Ok(_) => panic!("opened a database whose key file is missing"),
             Err(e) => e,
         };
-        assert!(
-            err.to_string().contains("key file"),
-            "refusal names the missing key file: {err}"
-        );
-        assert!(
-            !ks.contains("db-node"),
-            "no key is minted over an unattributable database"
-        );
+        assert!(err.to_string().contains("key file"), "refusal names the missing key file: {err}");
+        assert!(!ks.contains("db-node"), "no key is minted over an unattributable database");
 
         tokio::fs::remove_dir_all(&dir).await.ok();
     }
@@ -1352,17 +1293,10 @@ mod tests {
         let b = mgr.create("bob_pubkey").await.unwrap();
 
         // Prove isolation: a table created in alice's DB is not visible in bob's.
-        a.execute("CREATE TABLE probe (v INTEGER)", ())
-            .await
-            .unwrap();
-        a.execute("INSERT INTO probe (v) VALUES (1)", ())
-            .await
-            .unwrap();
+        a.execute("CREATE TABLE probe (v INTEGER)", ()).await.unwrap();
+        a.execute("INSERT INTO probe (v) VALUES (1)", ()).await.unwrap();
 
-        let bob_sees_probe = b
-            .fetch_all::<(i64,)>("SELECT v FROM probe", ())
-            .await
-            .is_err();
+        let bob_sees_probe = b.fetch_all::<(i64,)>("SELECT v FROM probe", ()).await.is_err();
         assert!(bob_sees_probe, "bob's db must not see alice's table");
 
         // Re-getting alice returns the cached handle and the data persists.
@@ -1421,9 +1355,8 @@ mod tests {
         let root = "aa".repeat(32);
         let db = mgr.create(&root).await.unwrap();
         let key = ringtome_proto::SigningKey::from_bytes(&[5u8; 32]);
-        let signed = crate::record::imaol::set_profile_field(&db, &key, "name", "Hats Ahoy")
-            .await
-            .unwrap();
+        let signed =
+            crate::record::imaol::set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
 
         // The manager attached the journal, and the append rode through it write-ahead.
         let journal_path = dir.join("journals").join(format!("{root}.jnl"));
@@ -1456,16 +1389,11 @@ mod tests {
         let dir = temp_dir().await;
         let keystore = temp_keystore(&dir);
         let db = open_database(&dir.join("walcheck.db"), &keystore).await.unwrap();
-        db.execute("CREATE TABLE fat (id INTEGER PRIMARY KEY, words TEXT)", ())
-            .await
-            .unwrap();
+        db.execute("CREATE TABLE fat (id INTEGER PRIMARY KEY, words TEXT)", ()).await.unwrap();
         for i in 0..300i64 {
-            db.execute(
-                "INSERT INTO fat (id, words) VALUES (?1, ?2)",
-                (i, "x".repeat(2000)),
-            )
-            .await
-            .unwrap();
+            db.execute("INSERT INTO fat (id, words) VALUES (?1, ?2)", (i, "x".repeat(2000)))
+                .await
+                .unwrap();
         }
         let wal = dir.join("walcheck.db-wal");
         let before = std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0);
@@ -1532,7 +1460,9 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let count = |db: Db| async move { db.fetch_one::<(i64,)>("SELECT COUNT(*) FROM probe", ()).await.unwrap().0 };
+        let count = |db: Db| async move {
+            db.fetch_one::<(i64,)>("SELECT COUNT(*) FROM probe", ()).await.unwrap().0
+        };
 
         // A READ, three rows into two thousand, abandoned.
         {
@@ -1552,13 +1482,19 @@ mod tests {
             let _guard = db.stmt_lock.lock().await;
             let mut rows = db
                 .conn
-                .query("INSERT INTO probe (v) SELECT v + 10000 FROM probe WHERE v < 10 RETURNING v", ())
+                .query(
+                    "INSERT INTO probe (v) SELECT v + 10000 FROM probe WHERE v < 10 RETURNING v",
+                    (),
+                )
                 .await
                 .unwrap();
             rows.next().await.unwrap().unwrap();
         }
         let after = count(db.clone()).await;
-        assert!(after == 2001 || after == 2012, "the half-read insert landed whole or not at all, never partly: {after}");
+        assert!(
+            after == 2001 || after == 2012,
+            "the half-read insert landed whole or not at all, never partly: {after}"
+        );
         db.execute("INSERT INTO probe (v) VALUES (-2)", ())
             .await
             .expect("the connection takes a write after an abandoned RETURNING");
@@ -1578,7 +1514,9 @@ mod tests {
                 }
             }
             drop(fut);
-            db.execute("INSERT INTO probe (v) VALUES (-3)", ()).await.expect("writable after a dropped fetch");
+            db.execute("INSERT INTO probe (v) VALUES (-3)", ())
+                .await
+                .expect("writable after a dropped fetch");
         }
         assert_eq!(count(db.clone()).await, after + 6);
         tokio::fs::remove_dir_all(&dir).await.ok();

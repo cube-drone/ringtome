@@ -55,7 +55,7 @@ while an accepted path also appends an entry and folds it - so a sender who time
 can still separate the two. Much weaker than the one-bit oracle that was closed the same day
 (it needs repeated probes and a quiet network, and the fold's cost varies for honest reasons),
 and a constant-time door is not worth building yet. Recorded because it is the reason the
-block-oracle fix should be described as *no cheap signal* rather than *no signal* - if that
+block-oracle fix should be described as _no cheap signal_ rather than _no signal_ - if that
 distinction ever stops being good enough, the fix is to pad the blocked path to the shape of a
 transcription, not to answer differently.
 
@@ -71,7 +71,7 @@ The useful measurement made while writing this up: **an empty node on the curren
 at 0.3%.** So the cost is per-persona, not structural (networking, discovery, the runtime), and
 there is a clean floor to bisect from — add one persona, then one background loop at a time,
 and watch where 0.3% becomes 30%. The one-second `resync::EAGER_TICK` is the obvious first
-suspect by frequency alone, but *what* it does per persona per tick is the open question, and
+suspect by frequency alone, but _what_ it does per persona per tick is the open question, and
 page-level AEGIS decryption on every query is a candidate nobody has ruled in or out.
 
 Wants a CPU-time profiler rather than `sample`.
@@ -80,7 +80,6 @@ The full-chain audit of 2026-08-10 is closed — all seven items, see HISTORY. T
 behind, for anything new that touches the log: **a read whose cost grows with an identity's
 history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` now enforces
 the third case rather than trusting it (`service_reads_whole`).
-
 
 ## Storage read visibility (open, 2026-08-25): one narrated occurrence still wanted
 

@@ -21,11 +21,11 @@
     fold), "eager-push"; fleet-wide - "fragment-sweep", "bodies-sweep", "journal-fill",
     "follow-refresh", "speculative-acquire", "evict". Root is ignored by the fleet sweeps.
 */
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch } = require('./fetch.cjs');
 
 async function beat(host, pass, root) {
-    const res = await makeFetch(host)("test/beat", {
-        method: "POST",
+    const res = await makeFetch(host)('test/beat', {
+        method: 'POST',
         body: JSON.stringify(root ? { pass, root } : { pass }),
     });
     if (res.status !== 200) {
@@ -36,8 +36,8 @@ async function beat(host, pass, root) {
 /// The common two-step: the reader's node pulls a chain and folds it. What most
 /// "X reached Y" settles actually waited for.
 async function pullAndFold(host, root) {
-    await beat(host, "pull", root);
-    await beat(host, "fold", root);
+    await beat(host, 'pull', root);
+    await beat(host, 'fold', root);
 }
 
 /// A SHARE's arrival at a reader's node, to the fragment: pull the sharer's chain, fold,
@@ -48,9 +48,9 @@ async function pullAndFold(host, root) {
 /// (fanout.rs, fixed 2026-08-25) - the rung's drain covers the real first-ask misses.
 async function shareArrives(host, sharerRoot, authorRoot) {
     await pullAndFold(host, sharerRoot);
-    await beat(host, "fragment-sweep", authorRoot);
-    await beat(host, "fold", sharerRoot);
-    await beat(host, "fragment-sweep", authorRoot);
+    await beat(host, 'fragment-sweep', authorRoot);
+    await beat(host, 'fold', sharerRoot);
+    await beat(host, 'fragment-sweep', authorRoot);
 }
 
 module.exports = { beat, pullAndFold, shareArrives };

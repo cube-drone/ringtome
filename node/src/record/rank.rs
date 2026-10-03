@@ -197,10 +197,7 @@ mod tests {
         ] {
             let out = between(lo, hi);
             assert!(!out.is_empty());
-            assert!(
-                out.bytes().all(|b| DIGITS.contains(&b)),
-                "output stays in-alphabet: {out:?}"
-            );
+            assert!(out.bytes().all(|b| DIGITS.contains(&b)), "output stays in-alphabet: {out:?}");
         }
         assert!(after(Some("~")).bytes().all(|b| DIGITS.contains(&b)));
         assert!(after(Some("")).as_str() > "");
@@ -232,10 +229,7 @@ mod tests {
         let mut sorted = ranks.clone();
         sorted.sort();
         sorted.dedup();
-        assert_eq!(
-            ranks, sorted,
-            "insertion order IS sort order, no duplicates"
-        );
+        assert_eq!(ranks, sorted, "insertion order IS sort order, no duplicates");
     }
 
     #[test]
@@ -246,11 +240,7 @@ mod tests {
             assert!(next > last, "{next:?} > {last:?}");
             last = next;
         }
-        assert!(
-            last.len() <= 62,
-            "1000 appends stay compact: {}",
-            last.len()
-        );
+        assert!(last.len() <= 62, "1000 appends stay compact: {}", last.len());
     }
 
     #[test]

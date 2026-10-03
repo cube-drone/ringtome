@@ -23,7 +23,8 @@ import { t } from './i18n.js';
 /// be a second place for it to go stale. Since 2026-09-28 it signs nobody in - the desktop app's
 /// window signs in like any browser - and only names the window (`X-Ringtome-Window`), so the
 /// node knows whose alerts the operating system should show.
-const launchToken = () => (typeof window === 'undefined' ? null : window.__ringtome_launch_token || null);
+const launchToken = () =>
+    typeof window === 'undefined' ? null : window.__ringtome_launch_token || null;
 
 /// Is this the desktop app, rather than a browser? The shell's key is on the window only there.
 /// What decides "Device" over "Server", and "show in folder" over "download".
@@ -130,7 +131,9 @@ export async function apiTextTitled(path, options = {}) {
     let title = null;
     if (hex && /^[0-9a-f]*$/i.test(hex) && hex.length % 2 === 0) {
         try {
-            title = new TextDecoder().decode(Uint8Array.from(hex.match(/../g) || [], (b) => parseInt(b, 16)));
+            title = new TextDecoder().decode(
+                Uint8Array.from(hex.match(/../g) || [], (b) => parseInt(b, 16)),
+            );
         } catch {
             title = null;
         }
@@ -167,7 +170,8 @@ export function xhrUpload(url, body, onPct) {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', url);
         xhr.responseType = 'json';
-        for (const [name, value] of Object.entries(authHeaders())) xhr.setRequestHeader(name, value);
+        for (const [name, value] of Object.entries(authHeaders()))
+            xhr.setRequestHeader(name, value);
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && onPct) onPct(Math.round((e.loaded / e.total) * 100));
         };
@@ -176,7 +180,8 @@ export function xhrUpload(url, body, onPct) {
                 resolve(xhr.response);
                 return;
             }
-            const message = (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`;
+            const message =
+                (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`;
             const err = new Error(message);
             err.status = xhr.status;
             reject(err);

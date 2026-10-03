@@ -21,7 +21,12 @@ import { compose, apply } from './drawing.js';
 export const ROTATE_STEP = Math.PI / 12;
 
 /// A box [left, top, right, bottom] as a frame.
-export const frameOf = ([l, t, r, b]) => [[l, t], [r, t], [r, b], [l, b]];
+export const frameOf = ([l, t, r, b]) => [
+    [l, t],
+    [r, t],
+    [r, b],
+    [l, b],
+];
 
 /// A frame through a matrix.
 export const frameThrough = (m, frame) => frame.map((p) => apply(m, p));
@@ -43,7 +48,8 @@ function toSegment(p, a, b) {
     const dx = b[0] - a[0];
     const dy = b[1] - a[1];
     const len2 = dx * dx + dy * dy;
-    const k = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
+    const k =
+        len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
     return dist2(p, [a[0] + k * dx, a[1] + k * dy]);
 }
 
@@ -54,13 +60,19 @@ function toSegment(p, a, b) {
 export function gripAt(frame, p, reach) {
     const r2 = reach * reach;
     for (let i = 0; i < 4; i++) if (dist2(p, frame[i]) <= r2) return { kind: 'corner', i };
-    for (let i = 0; i < 4; i++) if (toSegment(p, frame[i], frame[(i + 1) % 4]) <= r2) return { kind: 'edge', i };
+    for (let i = 0; i < 4; i++)
+        if (toSegment(p, frame[i], frame[(i + 1) % 4]) <= r2) return { kind: 'edge', i };
     const [u, v] = apply(invert(basisOf(frame)), p);
     return u >= 0 && u <= 1 && v >= 0 && v <= 1 ? { kind: 'inside' } : { kind: 'outside' };
 }
 
 /// The corners' places in the unit square.
-const UNIT = [[0, 0], [1, 0], [1, 1], [0, 1]];
+const UNIT = [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+];
 
 /// Never scale through nothing: a drag that would collapse the layer stops just short of it.
 const nonZero = (s) => (Math.abs(s) < 0.01 ? (s < 0 ? -0.01 : 0.01) : s);
@@ -80,7 +92,8 @@ export function gestureMatrix(frame, grip, from, to, perfect = false) {
 
     if (grip.kind === 'outside') {
         const c = [(frame[0][0] + frame[2][0]) / 2, (frame[0][1] + frame[2][1]) / 2];
-        let angle = Math.atan2(to[1] - c[1], to[0] - c[0]) - Math.atan2(from[1] - c[1], from[0] - c[0]);
+        let angle =
+            Math.atan2(to[1] - c[1], to[0] - c[0]) - Math.atan2(from[1] - c[1], from[0] - c[0]);
         if (perfect) angle = Math.round(angle / ROTATE_STEP) * ROTATE_STEP;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
@@ -94,7 +107,11 @@ export function gestureMatrix(frame, grip, from, to, perfect = false) {
         const s = nonZero(1 + (far ? 1 : -1) * (across ? du : dv));
         const anchorU = across ? (far ? 0 : 1) : 0.5;
         const anchorV = across ? 0.5 : far ? 0 : 1;
-        const scale = perfect ? [s, 0, 0, s, 0, 0] : across ? [s, 0, 0, 1, 0, 0] : [1, 0, 0, s, 0, 0];
+        const scale = perfect
+            ? [s, 0, 0, s, 0, 0]
+            : across
+              ? [s, 0, 0, 1, 0, 0]
+              : [1, 0, 0, s, 0, 0];
         return inFrame(about([anchorU, anchorV], scale));
     }
 
@@ -106,7 +123,10 @@ export function gestureMatrix(frame, grip, from, to, perfect = false) {
         const opposite = frame[(grip.i + 2) % 4];
         const target = [to[0] + corner[0] - from[0], to[1] + corner[1] - from[1]];
         const d = [corner[0] - opposite[0], corner[1] - opposite[1]];
-        const s = nonZero(((target[0] - opposite[0]) * d[0] + (target[1] - opposite[1]) * d[1]) / (d[0] * d[0] + d[1] * d[1]));
+        const s = nonZero(
+            ((target[0] - opposite[0]) * d[0] + (target[1] - opposite[1]) * d[1]) /
+                (d[0] * d[0] + d[1] * d[1]),
+        );
         return about(opposite, [s, 0, 0, s, 0, 0]);
     }
     // Slant: the edge through the corner along u leans by du, the edge through it along v by dv.
@@ -164,7 +184,12 @@ export function dragBox(box, grip, from, to, [width, height]) {
         else if (grip.i === 2) b += dy;
         else l += dx;
     }
-    return [clampX(Math.min(l, r)), clampY(Math.min(t, b)), clampX(Math.max(l, r)), clampY(Math.max(t, b))];
+    return [
+        clampX(Math.min(l, r)),
+        clampY(Math.min(t, b)),
+        clampX(Math.max(l, r)),
+        clampY(Math.max(t, b)),
+    ];
 }
 
 /// The box of a tool whose shape is fixed (Curtis, 2026-09-28: "Set as Profile" and "Set as
@@ -202,7 +227,7 @@ export function dragBoxAt(box, grip, from, to, [width, height], ratio) {
         const top = grip.i === 0 || grip.i === 1;
         [ax, sx] = left ? [r, -1] : [l, 1];
         [ay, sy] = top ? [b, -1] : [t, 1];
-        w = Math.max((left ? r - l - dx : r - l + dx), (top ? b - t - dy : b - t + dy) * ratio);
+        w = Math.max(left ? r - l - dx : r - l + dx, (top ? b - t - dy : b - t + dy) * ratio);
     } else {
         // Edges from the top, clockwise: 0 top, 1 right, 2 bottom, 3 left.
         const across = grip.i === 1 || grip.i === 3;

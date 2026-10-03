@@ -210,10 +210,8 @@ pub async fn climb(db: &Db, ladder: &[Rung], what: &str) -> Result<()> {
     let (Some(baseline), Some(top)) = (ladder.first(), ladder.last()) else {
         bail!("the {what} ladder has no rungs");
     };
-    let (stamp,): (i64,) = db
-        .fetch_one("PRAGMA user_version", ())
-        .await
-        .context("reading the schema stamp")?;
+    let (stamp,): (i64,) =
+        db.fetch_one("PRAGMA user_version", ()).await.context("reading the schema stamp")?;
 
     if stamp > top.version {
         bail!(
@@ -231,9 +229,7 @@ pub async fn climb(db: &Db, ladder: &[Rung], what: &str) -> Result<()> {
         );
     }
 
-    db.execute(LADDER_TABLE, ())
-        .await
-        .context("creating the schema_ladder table")?;
+    db.execute(LADDER_TABLE, ()).await.context("creating the schema_ladder table")?;
     if stamp != 0 {
         check_climbed(db, ladder, stamp, what).await?;
     }
@@ -283,9 +279,7 @@ async fn check_climbed(db: &Db, ladder: &[Rung], stamp: i64, what: &str) -> Resu
 /// One rung, whole or not at all: its SQL, its refold, its record and its stamp share a
 /// transaction.
 async fn apply(db: &Db, rung: &Rung) -> Result<()> {
-    db.execute("BEGIN", ())
-        .await
-        .context("starting the migration transaction")?;
+    db.execute("BEGIN", ()).await.context("starting the migration transaction")?;
     let applied: Result<()> = async {
         db.execute_batch(rung.sql).await.context("running the rung's SQL")?;
         if !rung.refold.is_empty() {
@@ -315,11 +309,7 @@ async fn apply(db: &Db, rung: &Rung) -> Result<()> {
     }
     .await;
     match applied {
-        Ok(()) => db
-            .execute("COMMIT", ())
-            .await
-            .context("committing the rung")
-            .map(|_| ()),
+        Ok(()) => db.execute("COMMIT", ()).await.context("committing the rung").map(|_| ()),
         Err(e) => {
             let _ = db.execute("ROLLBACK", ()).await;
             Err(e)
@@ -372,14 +362,10 @@ mod tests {
     async fn an_existing_database_climbs_in_place_and_keeps_its_rows() {
         let db = crate::db::test_memory_db().await;
         climb(&db, &WIDGETS[..1], "toy").await.unwrap();
-        db.execute("INSERT INTO widgets (label) VALUES ('sprocket')", ())
-            .await
-            .unwrap();
+        db.execute("INSERT INTO widgets (label) VALUES ('sprocket')", ()).await.unwrap();
         climb(&db, WIDGETS, "toy").await.unwrap();
-        let (label, colour): (String, String) = db
-            .fetch_one("SELECT label, colour FROM widgets", ())
-            .await
-            .unwrap();
+        let (label, colour): (String, String) =
+            db.fetch_one("SELECT label, colour FROM widgets", ()).await.unwrap();
         assert_eq!((label.as_str(), colour.as_str()), ("sprocket", "beige"));
         assert_eq!(stamp_of(&db).await, 8);
     }
@@ -471,13 +457,21 @@ mod tests {
                     rung.version
                 );
                 for s in rung.refold {
-                    assert!(crate::record::imaol::every_service().contains(s), "{kind} rung {} refolds unknown service {s}", rung.name);
+                    assert!(
+                        crate::record::imaol::every_service().contains(s),
+                        "{kind} rung {} refolds unknown service {s}",
+                        rung.name
+                    );
                 }
                 if kind == "node" {
-                    assert!(rung.refold.is_empty(), "node rungs cannot refold (see the module doc)");
+                    assert!(
+                        rung.refold.is_empty(),
+                        "node rungs cannot refold (see the module doc)"
+                    );
                 }
             }
-            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations").join(kind);
+            let dir =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations").join(kind);
             let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
                 .unwrap()
                 .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
@@ -485,7 +479,10 @@ mod tests {
                 .collect();
             on_disk.sort();
             let listed: Vec<String> = ladder.iter().map(|r| r.name.to_string()).collect();
-            assert_eq!(on_disk, listed, "every .sql in migrations/{kind} is a rung on the {kind} ladder");
+            assert_eq!(
+                on_disk, listed,
+                "every .sql in migrations/{kind} is a rung on the {kind} ladder"
+            );
         }
     }
 }

@@ -8,7 +8,12 @@ export function smallestChange(was, now) {
     let from = 0;
     while (from < was.length && from < now.length && was[from] === now[from]) from++;
     let end = 0;
-    while (end < was.length - from && end < now.length - from && was[was.length - 1 - end] === now[now.length - 1 - end]) end++;
+    while (
+        end < was.length - from &&
+        end < now.length - from &&
+        was[was.length - 1 - end] === now[now.length - 1 - end]
+    )
+        end++;
     return { from, to: was.length - end, insert: now.slice(from, now.length - end) };
 }
 

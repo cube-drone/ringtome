@@ -52,7 +52,10 @@ pub async fn enroll(state: &AppState, account: &Uuid, root: &str) {
 async fn enroll_inner(state: &AppState, account: &Uuid, root: &str) -> Result<(), AppError> {
     let row: Option<(String, Option<String>)> = state
         .node_db
-        .fetch_optional("SELECT group_name, root_pubkey FROM group_members WHERE account_id = ?1", (account.to_string(),))
+        .fetch_optional(
+            "SELECT group_name, root_pubkey FROM group_members WHERE account_id = ?1",
+            (account.to_string(),),
+        )
         .await
         .map_err(AppError::Internal)?;
     let Some((group, None)) = row else { return Ok(()) }; // no group, or its first persona is made
@@ -62,7 +65,10 @@ async fn enroll_inner(state: &AppState, account: &Uuid, root: &str) -> Result<()
     }
     state
         .node_db
-        .execute("UPDATE group_members SET root_pubkey = ?1 WHERE account_id = ?2", (root, account.to_string()))
+        .execute(
+            "UPDATE group_members SET root_pubkey = ?1 WHERE account_id = ?2",
+            (root, account.to_string()),
+        )
         .await
         .map_err(AppError::Internal)?;
     let peers = peers_of(state, &group, root).await?;
@@ -96,7 +102,9 @@ async fn peers_of(state: &AppState, group: &str, joiner: &str) -> Result<Vec<Str
         .map_err(AppError::Internal)?;
     let mut peers: Vec<String> = members.into_iter().map(|(r,)| r).collect();
     for admin in crate::auth::accounts_tagged(&state.node_db, crate::auth::TAG_NODE_ADMIN).await? {
-        if let Some(first) = crate::identity::list_for_account(&state.node_db, &admin).await?.into_iter().next() {
+        if let Some(first) =
+            crate::identity::list_for_account(&state.node_db, &admin).await?.into_iter().next()
+        {
             peers.push(first.root_pubkey);
         }
     }
@@ -127,7 +135,9 @@ async fn befriend(state: &AppState, me: &str, them: &str, group: &str) -> Result
         .unwrap_or_default();
     if !tag.is_empty() && !tags.contains(&tag) && tags.len() < TAGS_CAP {
         tags.push(tag);
-        register.set("tags", &serde_json::to_string(&tags).map_err(|e| AppError::Internal(e.into()))?).await?;
+        register
+            .set("tags", &serde_json::to_string(&tags).map_err(|e| AppError::Internal(e.into()))?)
+            .await?;
     }
     Ok(())
 }

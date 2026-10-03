@@ -51,12 +51,16 @@ const SyncLine = ({ syncedMs, refreshing, peek }) => {
     if (!when && !refreshing) return null;
     return html`<p class="id-sync">
         ${when && html`<span title=${new Date(syncedMs).toLocaleString()}>${t('idpage.synced', 'synced {when}', { when })}</span>`}
-        ${refreshing &&
-        html`<span class="id-sync-now">
-            <span class="status-spin"><${Icons.spinner} /></span> ${peek
-                ? t('idpage.fetching-their-newest-posts', 'fetching their newest posts…')
-                : t('idpage.checking-for-anything-newer', 'checking for anything newer')}
-        </span>`}
+        ${
+            refreshing &&
+            html`<span class="id-sync-now">
+            <span class="status-spin"><${Icons.spinner} /></span> ${
+                peek
+                    ? t('idpage.fetching-their-newest-posts', 'fetching their newest posts…')
+                    : t('idpage.checking-for-anything-newer', 'checking for anything newer')
+            }
+        </span>`
+        }
     </p>`;
 };
 
@@ -80,12 +84,16 @@ const ReachPill = ({ root }) => {
         <${Icons.stats} />
         <span
             class="person-reach-n"
-            title=${t('idpage.reach-follows-title', '{n} public follows: {exact} from people this computer keeps up with ({known} of them people you know), and about {told} more who told you they follow you - an unfollow from those never reaches you', {
-                n: follows,
-                exact: n.follow_you,
-                known: n.you_know,
-                told: n.told_you,
-            })}
+            title=${t(
+                'idpage.reach-follows-title',
+                '{n} public follows: {exact} from people this computer keeps up with ({known} of them people you know), and about {told} more who told you they follow you - an unfollow from those never reaches you',
+                {
+                    n: follows,
+                    exact: n.follow_you,
+                    known: n.you_know,
+                    told: n.told_you,
+                },
+            )}
         >${follows}</span>
         /
         <span
@@ -115,8 +123,10 @@ const KnownBy = ({ viewer, subject, current }) => {
             ? html`<p class="person-known-by">
                   <span class="person-known-by-words">${words}</span>
                   ${group.people.map((root) => html`<${PersonChip} key=${root} root=${root} current=${current} size="small" />`)}
-                  ${group.count > group.people.length &&
-                  html`<span class="person-known-by-more">${more(group.count - group.people.length)}</span>`}
+                  ${
+                      group.count > group.people.length &&
+                      html`<span class="person-known-by-more">${more(group.count - group.people.length)}</span>`
+                  }
               </p>`
             : null;
     return html`${row(known.trusted, t('idpage.trusted-by', 'trusted by'), (n) => t('idpage.and-n-more-you-know', 'and {n} more you know', { n }))}
@@ -148,7 +158,9 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
         let timer = null;
         // `as`: the viewing persona, for the sealed-post rule (a trusted-only post its author
         // does not open for you is not listed, as in the feed).
-        const params = [via && `via=${encodeURIComponent(via)}`, viewer && `as=${viewer}`].filter(Boolean);
+        const params = [via && `via=${encodeURIComponent(via)}`, viewer && `as=${viewer}`].filter(
+            Boolean,
+        );
         const url = `/api/id/${root}/profile${params.length ? `?${params.join('&')}` : ''}`;
         // Bounded: a peer that never answers must not leave a page polling forever.
         const look = (tries) => {
@@ -159,7 +171,8 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
                     // A peek's posts land behind the answer (PROJECT_PLAN's Peeks, ruling 9): keep asking
                     // while the node says they are still arriving, a little longer than a
                     // plain revalidation warrants.
-                    if (p.refreshing && tries > 0) timer = setTimeout(() => look(tries - 1), p.peek ? 1000 : 1500);
+                    if (p.refreshing && tries > 0)
+                        timer = setTimeout(() => look(tries - 1), p.peek ? 1000 : 1500);
                 })
                 .catch(() => live && setProfile(null));
         };
@@ -178,7 +191,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
     // person wears (nickname / self-name / speakable words).
     const ledgerRow = useLive(
         () => (current && root ? openMirror(current.root).contacts.get(root) : null),
-        [current && current.root, root]
+        [current && current.root, root],
     );
     const nickname = (ledgerRow && ledgerRow.facts && ledgerRow.facts.nickname) || '';
 
@@ -192,8 +205,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             return () => onTitle(null);
         }
         const words = speakable(root).split('-').slice(0, 2).join('-');
-        const name =
-            profile && (profile.fields || []).find((f) => f.field === 'name');
+        const name = profile && (profile.fields || []).find((f) => f.field === 'name');
         onTitle(nickname || (name && name.value) || words);
         return () => onTitle(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,9 +253,17 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
                 ${words}
             </h1>
             <p>${t('idpage.couldnt-reach-this-persona-just', "Couldn't reach this persona just now - it isn't carried on your node, and")}
-            ${via
-                ? t('idpage.none-of-the-computers-its', 'none of the computers its address points at answered.')
-                : t('idpage.its-address-carries-no-hints', 'its address carries no hints about where to find it.')}</p>
+            ${
+                via
+                    ? t(
+                          'idpage.none-of-the-computers-its',
+                          'none of the computers its address points at answered.',
+                      )
+                    : t(
+                          'idpage.its-address-carries-no-hints',
+                          'its address carries no hints about where to find it.',
+                      )
+            }</p>
             <p class="id-address"><code>/ringtome/user/${speak}</code></p>
         <//>`;
     }
@@ -263,17 +283,29 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             beside=${viewer && viewer === root ? html`<${ReachPill} root=${root} />` : null}
             after=${viewer && viewer !== root ? html`<${KnownBy} viewer=${viewer} subject=${root} current=${current} />` : null}
         >
-            ${profile.foreign && !profile.peek &&
-            html`<p class="id-words">${t('idpage.reached-across-the-network--', 'found elsewhere')}</p>`}
-            ${profile.peek && !profile.peek_full &&
-            html`<p class="id-words">${t('idpage.a-look-at-their-newest', 'a look at their newest posts - follow them to keep up')}</p>`}
-            ${profile.peek_full &&
-            html`<p class="id-words">${t('idpage.this-look-is-full', 'this look is full - follow them to keep everything')}</p>`}
-            ${profile.foreign &&
-            html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} peek=${profile.peek} />`}
+            ${
+                profile.foreign &&
+                !profile.peek &&
+                html`<p class="id-words">${t('idpage.reached-across-the-network--', 'found elsewhere')}</p>`
+            }
+            ${
+                profile.peek &&
+                !profile.peek_full &&
+                html`<p class="id-words">${t('idpage.a-look-at-their-newest', 'a look at their newest posts - follow them to keep up')}</p>`
+            }
+            ${
+                profile.peek_full &&
+                html`<p class="id-words">${t('idpage.this-look-is-full', 'this look is full - follow them to keep everything')}</p>`
+            }
+            ${
+                profile.foreign &&
+                html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} peek=${profile.peek} />`
+            }
         <//>
-        ${/* A rule between the person - their card, settings and address - and what they
-            said (Curtis, 2026-09-08). */ ''}
+        ${
+            /* A rule between the person - their card, settings and address - and what they
+            said (Curtis, 2026-09-08). */ ''
+        }
         <hr class="id-rule" />
         <${PublicPosts}
             root=${root}

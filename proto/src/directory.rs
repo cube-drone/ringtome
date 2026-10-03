@@ -111,9 +111,7 @@ impl SignedServingRecord {
             return Err(ProtoError::UnsupportedVersion(u64::from(record.v)));
         }
         if record.node_key != key.verifying_key().to_bytes() {
-            return Err(ProtoError::BadEntry(
-                "signing key does not match record node_key",
-            ));
+            return Err(ProtoError::BadEntry("signing key does not match record node_key"));
         }
         if record.timestamp_ms < 0 {
             return Err(ProtoError::BadEntry("negative timestamp"));
@@ -153,10 +151,7 @@ impl SignedServingRecord {
         vk.verify_strict(&preimage, &Signature::from_bytes(&sig))
             .map_err(|_| ProtoError::BadSignature)?;
 
-        Ok(Self {
-            bytes: bytes.to_vec(),
-            record,
-        })
+        Ok(Self { bytes: bytes.to_vec(), record })
     }
 
     pub fn record(&self) -> &ServingRecord {
@@ -205,10 +200,7 @@ mod tests {
         // Flip a bit inside the root field (find its constant-filled run).
         let idx = bytes.windows(4).position(|w| w == [1, 1, 1, 1]).unwrap();
         bytes[idx] ^= 0xff;
-        assert_eq!(
-            SignedServingRecord::decode(&bytes),
-            Err(ProtoError::BadSignature)
-        );
+        assert_eq!(SignedServingRecord::decode(&bytes), Err(ProtoError::BadSignature));
     }
 
     #[test]

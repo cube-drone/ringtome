@@ -111,13 +111,13 @@ world.
 
 **Where things end up**, with the unit above:
 
-| path | what |
-|---|---|
-| `/var/lib/ringtome/data/` | the node's data: databases **and the keys that identify the node**. Guard it like the server |
-| `/var/lib/ringtome/ringtome-supervisor/versions/<version>/ringtome` | installed node versions: the current one and the one before it |
-| `/var/lib/ringtome/ringtome-supervisor/state.json` | what is running (`current`), what ran before (`previous`), what failed and is skipped (`skipped`), and any update in flight (`pending`) |
-| `/var/lib/ringtome/ringtome-supervisor/node.pid` | the running node's process id |
-| `/var/lib/ringtome/ringtome-supervisor/backups/` | `backup_<UTC time>.tar.gz` archives. **They contain the node's keys**; anyone holding one holds the node |
+| path                                                                | what                                                                                                                                    |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `/var/lib/ringtome/data/`                                           | the node's data: databases **and the keys that identify the node**. Guard it like the server                                            |
+| `/var/lib/ringtome/ringtome-supervisor/versions/<version>/ringtome` | installed node versions: the current one and the one before it                                                                          |
+| `/var/lib/ringtome/ringtome-supervisor/state.json`                  | what is running (`current`), what ran before (`previous`), what failed and is skipped (`skipped`), and any update in flight (`pending`) |
+| `/var/lib/ringtome/ringtome-supervisor/node.pid`                    | the running node's process id                                                                                                           |
+| `/var/lib/ringtome/ringtome-supervisor/backups/`                    | `backup_<UTC time>.tar.gz` archives. **They contain the node's keys**; anyone holding one holds the node                                |
 
 To restore a backup by hand: stop the service, empty the data directory, unpack the archive into
 it, and start the service.
@@ -125,26 +125,26 @@ it, and start the service.
 ## Configuration
 
 Everything is an environment variable. The supervisor passes its whole environment to the node, so
-configure the node exactly as you would without the supervisor (SERVER.md's *Settings* table). The
+configure the node exactly as you would without the supervisor (SERVER.md's _Settings_ table). The
 supervisor also reads three of the node's settings, to find it: `RINGTOME_DATA_DIRECTORY` (default
 `./data`), `RINGTOME_BIND_ADDRESS` and `RINGTOME_PORT`.
 
 Its own settings:
 
-| variable | default | meaning |
-|---|---|---|
-| `RINGTOME_SUPERVISOR_DIRECTORY` | `./ringtome-supervisor` | installed node versions, `state.json`, `node.pid` |
-| `RINGTOME_BACKUP_DIRECTORY` | `<supervisor directory>/backups` | where backups go, the node's and the supervisor's. Must be **outside** the data directory, because a restore replaces the data directory's contents; the supervisor refuses to start otherwise. Ideally on another disk |
-| `RINGTOME_BACKUP_STRATEGY` | `on-update` | `on-update` backs up before each update. `hourly` and `nightly` (04:00 UTC) do that too, plus scheduled backups that never stop the node. `none` updates **without** a backup: a failed update then gets its old binary back but not its old data, and the old binary will refuse data the new one migrated |
-| `RINGTOME_BACKUP_RETENTION` | `7` | how many `backup_*.tar.gz` to keep, newest first. This counts **every** archive in the backup directory, including ones you made by hand |
-| `RINGTOME_AUTO_UPDATE` | `true` | `false` runs the installed node and never looks for another |
-| `RINGTOME_UPDATE_CHECK_SECONDS` | `3600` | how often to check for a release |
-| `RINGTOME_UPDATE_HEALTH_TIMEOUT_SECONDS` | `600` | how long a new version has to answer `/health`. Migrations run before it can, so this is generous |
-| `RINGTOME_UPDATE_PROBATION_SECONDS` | `60` | how long it must then stay up and healthy before the update counts |
-| `RINGTOME_STOP_GRACE_SECONDS` | `30` | how long the node gets to exit after SIGTERM before it is killed |
-| `RINGTOME_UPDATE_MANIFEST_URL` | this repository's `server-latest.json` | where releases are described. For a fork that publishes its own |
-| `RINGTOME_UPDATE_PUBLIC_KEY` | this repository's release key | the minisign public key releases must be signed with. For a fork that signs its own |
-| `RINGTOME_SUPERVISOR_LOG` | `info` | the supervisor's log filter, in `tracing` syntax. The node's own is `RUST_LOG` |
+| variable                                 | default                                | meaning                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RINGTOME_SUPERVISOR_DIRECTORY`          | `./ringtome-supervisor`                | installed node versions, `state.json`, `node.pid`                                                                                                                                                                                                                                                           |
+| `RINGTOME_BACKUP_DIRECTORY`              | `<supervisor directory>/backups`       | where backups go, the node's and the supervisor's. Must be **outside** the data directory, because a restore replaces the data directory's contents; the supervisor refuses to start otherwise. Ideally on another disk                                                                                     |
+| `RINGTOME_BACKUP_STRATEGY`               | `on-update`                            | `on-update` backs up before each update. `hourly` and `nightly` (04:00 UTC) do that too, plus scheduled backups that never stop the node. `none` updates **without** a backup: a failed update then gets its old binary back but not its old data, and the old binary will refuse data the new one migrated |
+| `RINGTOME_BACKUP_RETENTION`              | `7`                                    | how many `backup_*.tar.gz` to keep, newest first. This counts **every** archive in the backup directory, including ones you made by hand                                                                                                                                                                    |
+| `RINGTOME_AUTO_UPDATE`                   | `true`                                 | `false` runs the installed node and never looks for another                                                                                                                                                                                                                                                 |
+| `RINGTOME_UPDATE_CHECK_SECONDS`          | `3600`                                 | how often to check for a release                                                                                                                                                                                                                                                                            |
+| `RINGTOME_UPDATE_HEALTH_TIMEOUT_SECONDS` | `600`                                  | how long a new version has to answer `/health`. Migrations run before it can, so this is generous                                                                                                                                                                                                           |
+| `RINGTOME_UPDATE_PROBATION_SECONDS`      | `60`                                   | how long it must then stay up and healthy before the update counts                                                                                                                                                                                                                                          |
+| `RINGTOME_STOP_GRACE_SECONDS`            | `30`                                   | how long the node gets to exit after SIGTERM before it is killed                                                                                                                                                                                                                                            |
+| `RINGTOME_UPDATE_MANIFEST_URL`           | this repository's `server-latest.json` | where releases are described. For a fork that publishes its own                                                                                                                                                                                                                                             |
+| `RINGTOME_UPDATE_PUBLIC_KEY`             | this repository's release key          | the minisign public key releases must be signed with. For a fork that signs its own                                                                                                                                                                                                                         |
+| `RINGTOME_SUPERVISOR_LOG`                | `info`                                 | the supervisor's log filter, in `tracing` syntax. The node's own is `RUST_LOG`                                                                                                                                                                                                                              |
 
 This table is also in [SERVER.md](../SERVER.md), which ships in the tarball. Change both together.
 
@@ -156,7 +156,7 @@ This table is also in [SERVER.md](../SERVER.md), which ships in the tarball. Cha
 Its version number moves in step with every release, even when its code has not changed.
 
 **It does not update itself, on purpose.** It is the fixed point the rest of the system hangs from.
-A supervisor that replaced itself would need something above it to roll *it* back, and that thing
+A supervisor that replaced itself would need something above it to roll _it_ back, and that thing
 would need one too. The chain stops at systemd, which your distribution keeps up to date.
 
 **When to update it.** Rarely: when a release's notes say the supervisor changed, or when you want
@@ -200,16 +200,16 @@ A few rules belong to this crate alone:
 
 The modules, in the order an update touches them:
 
-| file | what |
-|---|---|
-| `src/main.rs` | the composition root: read the settings, start logging, hand over |
-| `src/config.rs` | the environment variables above |
-| `src/supervise.rs` | the loop: restarts, update checks, scheduled backups, the update and rollback sequence |
-| `src/manifest.rs` | `server-latest.json`, version comparison, and sha256 plus signature checks. No input or output |
-| `src/install.rs` | downloading, installing versions, adopting the binary beside it, `state.json` |
-| `src/backup.rs` | live and stopped backups, restore, retention |
-| `src/node.rs` | the child process: start, health, stop |
-| `src/stamp.rs` | UTC time stamps for file names |
+| file               | what                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `src/main.rs`      | the composition root: read the settings, start logging, hand over                              |
+| `src/config.rs`    | the environment variables above                                                                |
+| `src/supervise.rs` | the loop: restarts, update checks, scheduled backups, the update and rollback sequence         |
+| `src/manifest.rs`  | `server-latest.json`, version comparison, and sha256 plus signature checks. No input or output |
+| `src/install.rs`   | downloading, installing versions, adopting the binary beside it, `state.json`                  |
+| `src/backup.rs`    | live and stopped backups, restore, retention                                                   |
+| `src/node.rs`      | the child process: start, health, stop                                                         |
+| `src/stamp.rs`     | UTC time stamps for file names                                                                 |
 
 **Testing:**
 

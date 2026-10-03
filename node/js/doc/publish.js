@@ -29,7 +29,10 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
         // is the author's LOCAL claim, and a bare day takes the publication's own hour.
         const resp = await api(`/api/identity/${root}/docs/${privDocId}/publish`, {
             method: 'POST',
-            body: JSON.stringify({ tz_offset_min: new Date().getTimezoneOffset(), ...(extraBody || {}) }),
+            body: JSON.stringify({
+                tz_offset_min: new Date().getTimezoneOffset(),
+                ...(extraBody || {}),
+            }),
         });
         // A schedule is a terminal answer too (PUBLISH.md): nothing public yet, and nothing
         // to poll - the mirror row's plan is what the feed shows until the day.
@@ -45,7 +48,9 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
             const failed = items.filter((i) => i.status === 'failed').length;
             onBaking(null);
             throw new Error(
-                failed === 1 ? "one media item couldn't be prepared" : `${failed} media items couldn't be prepared`
+                failed === 1
+                    ? "one media item couldn't be prepared"
+                    : `${failed} media items couldn't be prepared`,
             );
         }
         await new Promise((r) => setTimeout(r, 900));
@@ -65,17 +70,26 @@ export const BakeModal = ({ items }) => {
         <div class="bake-modal-backdrop">
             <div class="bake-modal">
                 <p class="bake-modal-head">
-                    ${/* With every item ready, what is left is the post itself - minted and folded, which
-                        can take a moment: a spinner says it hasn't frozen (Curtis, 2026-10-02). */ ''}
+                    ${
+                        /* With every item ready, what is left is the post itself - minted and folded, which
+                        can take a moment: a spinner says it hasn't frozen (Curtis, 2026-10-02). */ ''
+                    }
                     ${minting && html`<span class="status-spin"><${Icons.spinner} /></span> `}
-                    ${minting
-                        ? t('postentry.publishing', 'publishing…')
-                        : t('postentry.preparing-media-for-the-network', 'preparing media for the network…')}
+                    ${
+                        minting
+                            ? t('postentry.publishing', 'publishing…')
+                            : t(
+                                  'postentry.preparing-media-for-the-network',
+                                  'preparing media for the network…',
+                              )
+                    }
                 </p>
-                ${items.length > 0 &&
-                html`<div class="upload-bar jag-line-2" title=${t('postentry.ready-of', '{ready} of {total} ready', { ready, total: items.length })}>
+                ${
+                    items.length > 0 &&
+                    html`<div class="upload-bar jag-line-2" title=${t('postentry.ready-of', '{ready} of {total} ready', { ready, total: items.length })}>
                     <div class="upload-bar-fill" style=${`width: ${Math.round((ready / items.length) * 100)}%`}></div>
-                </div>`}
+                </div>`
+                }
                 ${items.map(
                     (i) => html`<div class="bake-item" key=${i.source}>
                         <span class="bake-item-kind">${i.kind === 'external' ? t('postentry.fetching', 'fetching') : t('postentry.yours', 'yours')}</span>
@@ -83,22 +97,26 @@ export const BakeModal = ({ items }) => {
                             ${i.source.replace(/^https?:\/\//, '').slice(0, 48)}
                         </span>
                         <span
-                            class=${/* spelled out so the dead-CSS convention can see each */
-                            i.status === 'failed'
-                                ? 'bake-item-status bake-item-failed'
-                                : i.status === 'ready'
-                                  ? 'bake-item-status bake-item-ready'
-                                  : 'bake-item-status bake-item-busy'}
+                            class=${
+                                /* spelled out so the dead-CSS convention can see each */
+                                i.status === 'failed'
+                                    ? 'bake-item-status bake-item-failed'
+                                    : i.status === 'ready'
+                                      ? 'bake-item-status bake-item-ready'
+                                      : 'bake-item-status bake-item-busy'
+                            }
                         >
-                            ${i.status === 'ready'
-                                ? t('postentry.ready', 'ready')
-                                : i.status === t('postentry.failed', 'failed')
-                                  ? i.error || t('postentry.failed-2', 'failed')
-                                  : i.progress != null
-                                    ? `processing ${i.progress}%`
-                                    : i.status}
+                            ${
+                                i.status === 'ready'
+                                    ? t('postentry.ready', 'ready')
+                                    : i.status === t('postentry.failed', 'failed')
+                                      ? i.error || t('postentry.failed-2', 'failed')
+                                      : i.progress != null
+                                        ? `processing ${i.progress}%`
+                                        : i.status
+                            }
                         </span>
-                    </div>`
+                    </div>`,
                 )}
             </div>
         </div>

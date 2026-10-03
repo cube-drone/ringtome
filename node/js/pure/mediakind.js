@@ -76,8 +76,12 @@ export function mediaResolver(base) {
         const kind = ownMediaKind(target);
         if (kind && base.linkAllowed(target)) {
             // A `/ringtome/` picture at another origin is fetched from THIS node, by key (2026-09-28).
-            const url = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(target) ? mediaPath(target) || target : target;
-            return kind === 'video' && isLoopTarget(target) ? { kind, url, loop: true } : { kind, url };
+            const url = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(target)
+                ? mediaPath(target) || target
+                : target;
+            return kind === 'video' && isLoopTarget(target)
+                ? { kind, url, loop: true }
+                : { kind, url };
         }
         return base.media.call(base, target);
     };

@@ -29,7 +29,14 @@ import { descriptionOf, excerpt } from './pure/excerpt.js';
 // position, then the whole gemoji table - shared with the room's reaction picker
 // (emoji.js). One click says the emoji as a tag.
 import { EmojiStrip, toneOf } from './emoji.js';
-import { groupLabels, isEmojiTag, mayTag, tagsLeft, visibleAnnotations, MAX_TAG_CHARS } from './pure/annotations.js';
+import {
+    groupLabels,
+    isEmojiTag,
+    mayTag,
+    tagsLeft,
+    visibleAnnotations,
+    MAX_TAG_CHARS,
+} from './pure/annotations.js';
 import {
     FEED_STYLE,
     publishedState,
@@ -150,9 +157,7 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 
     const editingFor = (publicDocId) => {
         if (!myRoot || !rows) return null;
-        const row = rows
-            .map(decorate)
-            .find((r) => publishedState(r).postId === publicDocId);
+        const row = rows.map(decorate).find((r) => publishedState(r).postId === publicDocId);
         if (!row) return null;
         return {
             root: myRoot,
@@ -197,22 +202,29 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 /// A share's card carries no annotations, so the page says `pinned` on it outright.
 const pinner = (item) => (item.kind === 'share' ? item.via : item.author);
 const pinnedByAuthor = (item) =>
-    !!item.pinned || (item.annotations || []).some((a) => a.key === PIN_KEY && a.annotator === pinner(item));
+    !!item.pinned ||
+    (item.annotations || []).some((a) => a.key === PIN_KEY && a.annotator === pinner(item));
 
 const PinButton = ({ item, current, pinned, onPinned }) => {
     const [busy, setBusy] = useState(false);
     const base = `/api/identity/${current.root}/public-annotations/${item.author}/${item.doc_id}`;
     return html`<button
         class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
-        title=${pinned
-            ? t('postentry.unpin-this-from-your-page', 'unpin this from your page')
-            : t('postentry.pin-this-to-the-top', 'pin this to the top of your page')}
+        title=${
+            pinned
+                ? t('postentry.unpin-this-from-your-page', 'unpin this from your page')
+                : t('postentry.pin-this-to-the-top', 'pin this to the top of your page')
+        }
         disabled=${busy}
         onClick=${async () => {
             setBusy(true);
             try {
                 if (pinned) await api(`${base}/${PIN_KEY}/${PIN_VALUE}`, { method: 'DELETE' });
-                else await api(base, { method: 'PUT', body: JSON.stringify({ key: PIN_KEY, value: PIN_VALUE }) });
+                else
+                    await api(base, {
+                        method: 'PUT',
+                        body: JSON.stringify({ key: PIN_KEY, value: PIN_VALUE }),
+                    });
                 onPinned(!pinned);
             } catch {
                 /* the next click retries; the chip stays honest to what the server holds */
@@ -235,8 +247,9 @@ const UnpublishButton = ({ item, current, onTakenDown }) => {
             title=${t('postentry.take-this-post-back-off', 'take this post back off the network')}
             onClick=${() => setAsking(true)}
         ><${Icons.trash} /></button>
-        ${asking &&
-        html`<${Modal}
+        ${
+            asking &&
+            html`<${Modal}
             title=${t('postentry.take-it-down', 'take it down')}
             onClose=${() => {
                 if (!going) setAsking(false);
@@ -245,7 +258,7 @@ const UnpublishButton = ({ item, current, onTakenDown }) => {
             <p class="feed-unpublish-warn">
                 ${t(
                     'postentry.this-removes-it-from-other',
-                    'It may take a while to disappear everywhere.'
+                    'It may take a while to disappear everywhere.',
                 )}
             </p>
             <div class="feed-unpublish-acts">
@@ -282,7 +295,8 @@ const UnpublishButton = ({ item, current, onTakenDown }) => {
                     onClick=${() => setAsking(false)}
                 >${t('postentry.keep-it', 'keep it')}</button>
             </div>
-        <//>`}`;
+        <//>`
+        }`;
 };
 
 /// "Pass this along": one click to rebroadcast a post into your own network.
@@ -313,9 +327,11 @@ const ViaOthers = ({ item, current }) => {
     const hidden = more - others.length;
     return html`<span class="feed-entry-via-others">
         <span class="feed-entry-via-count">
-            ${more === 1
-                ? t('postentry.and-one-other', 'and one other')
-                : t('postentry.and-count-others', 'and {count} others', { count: more })}
+            ${
+                more === 1
+                    ? t('postentry.and-one-other', 'and one other')
+                    : t('postentry.and-count-others', 'and {count} others', { count: more })
+            }
         </span>
         <span class="feed-entry-via-roster">
             ${others.map(
@@ -331,14 +347,16 @@ const ViaOthers = ({ item, current }) => {
                         ].filter(Boolean),
                         via: [],
                     }}
-                />`
+                />`,
             )}
-            ${hidden > 0 &&
-            html`<span class="feed-entry-via-rest"
+            ${
+                hidden > 0 &&
+                html`<span class="feed-entry-via-rest"
                 >${t('postentry.count-more-not-listed', 'and {count} more, not listed here', {
                     count: hidden,
                 })}</span
-            >`}
+            >`
+            }
         </span>
     </span>`;
 };
@@ -378,9 +396,11 @@ const ShareButton = ({ item, current }) => {
     return html`<button
         class=${shared ? 'chip chip-button chip-open' : 'chip chip-button'}
         disabled=${sending || known === null}
-        title=${shared
-            ? t('postentry.stop-sharing-this-with-your', 'stop sharing this with your network')
-            : t('postentry.pass-this-along-to-your', 'pass this along to your network')}
+        title=${
+            shared
+                ? t('postentry.stop-sharing-this-with-your', 'stop sharing this with your network')
+                : t('postentry.pass-this-along-to-your', 'pass this along to your network')
+        }
         onClick=${pass}
     >
         <${Icons.colRebroadcast} />
@@ -459,7 +479,7 @@ const BookSection = ({ section, author, depth }) => html`<li class="book-card-se
         ${section.pages.map(
             (p) => html`<li class="book-card-page" key=${p.post}>
                 <a href=${postHref(author, p.post)}>${p.title || t('postentry.untitled-page', 'untitled page')}</a>
-            </li>`
+            </li>`,
         )}
         ${section.sections.map((s, i) => html`<${BookSection} key=${`${depth}-${i}`} section=${s} author=${author} depth=${depth + 1} />`)}
     </ul>
@@ -483,14 +503,17 @@ const BookCard = ({ book, author }) => {
         };
     }, [author, cover]);
     const coverProfile = useTurbolinks(coverWords || '', 'marquee');
-    if (!book) return html`<p class="null-sub">${t('postentry.a-book-this-node-cannot-read', 'a book this computer cannot read yet')}</p>`;
+    if (!book)
+        return html`<p class="null-sub">${t('postentry.a-book-this-node-cannot-read', 'a book this computer cannot read yet')}</p>`;
     return html`<div class="book-card">
         ${!!coverWords && html`<div class="book-card-cover"><${MarqueeBody} source=${coverWords} profile=${coverProfile} onUnparsable=${bareSource} /></div>`}
         <p class="book-card-head">
             <${Icons.book} />
-            ${book.count === 1
-                ? t('postentry.a-book-1-page', 'a book · 1 page')
-                : t('postentry.a-book-n-pages', 'a book · {count} pages', { count: book.count })}
+            ${
+                book.count === 1
+                    ? t('postentry.a-book-1-page', 'a book · 1 page')
+                    : t('postentry.a-book-n-pages', 'a book · {count} pages', { count: book.count })
+            }
         </p>
         <ul class="book-card-list">
             <${BookSection} section=${{ title: '', pages: book.pages, sections: book.sections }} author=${author} depth=${0} />
@@ -508,7 +531,9 @@ const ROOM_TAIL = 3;
 const ROOM_MORE_CAP = 100;
 const sinceWords = (ms) => {
     const ago = agoUnit(ms, Date.now());
-    return ago ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit) : t('postentry.just-now', 'just now');
+    return ago
+        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
+        : t('postentry.just-now', 'just now');
 };
 const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
     const profile = useTurbolinks(words || '', 'marquee');
@@ -519,7 +544,8 @@ const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
     // person and opening a chat with somebody is not a relationship with them.
     const person = usePerson(speaker, { current });
     const trust = (person.facts || {}).trust;
-    const stranger = !!current && speaker !== current.root && speaker !== author && (!trust || trust === 'none');
+    const stranger =
+        !!current && speaker !== current.root && speaker !== author && (!trust || trust === 'none');
     const [revealed, setRevealed] = useState(false);
     const veiled =
         !revealed &&
@@ -535,10 +561,11 @@ const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
     return html`<li class=${stranger ? 'room-card-line room-card-line-untrusted' : 'room-card-line'}>
         <${PersonChip} root=${speaker} current=${current} />
         <div class="room-card-words">
-            ${words === null
-                ? html`<span class="chat-msg-sealed">${t('postentry.sealed-words', 'sealed words')}</span>`
-                : veiled
-                  ? html`<div class="feed-entry-veil">
+            ${
+                words === null
+                    ? html`<span class="chat-msg-sealed">${t('postentry.sealed-words', 'sealed words')}</span>`
+                    : veiled
+                      ? html`<div class="feed-entry-veil">
                         <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
                             <${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />
                         </div>
@@ -546,7 +573,8 @@ const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
                             ${t('postentry.media-from-someone-you-dont-trust', "media from someone you don't trust - click to see")}
                         </button>
                     </div>`
-                  : html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`}
+                      : html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`
+            }
         </div>
         <span class="room-card-when" title=${new Date(said_ms).toLocaleString()}>${sinceWords(said_ms)}</span>
     </li>`;
@@ -568,16 +596,22 @@ const RoomFloor = ({ item, current, post }) => {
     const more = tail ? Math.max(0, (tail.total || 0) - lines.length) : 0;
     return html`<ul class="room-card-lines">
         <${RoomLine} speaker=${item.author} words=${post} said_ms=${item.published_ms} current=${current} author=${item.author} im=${tail && tail.im} />
-        ${/* A rule with the count on it: a break in the conversation, not a line of it
-            (Curtis, 2026-09-18). */ ''}
-        ${more > 0 &&
-        html`<li class="room-card-more" role="separator">
-            ${more > ROOM_MORE_CAP
-                ? t('postentry.and-100-more', 'and {cap}+ more', { cap: ROOM_MORE_CAP })
-                : more === 1
-                  ? t('postentry.and-one-more', 'and one more')
-                  : t('postentry.and-n-more', 'and {n} more', { n: more })}
-        </li>`}
+        ${
+            /* A rule with the count on it: a break in the conversation, not a line of it
+            (Curtis, 2026-09-18). */ ''
+        }
+        ${
+            more > 0 &&
+            html`<li class="room-card-more" role="separator">
+            ${
+                more > ROOM_MORE_CAP
+                    ? t('postentry.and-100-more', 'and {cap}+ more', { cap: ROOM_MORE_CAP })
+                    : more === 1
+                      ? t('postentry.and-one-more', 'and one more')
+                      : t('postentry.and-n-more', 'and {n} more', { n: more })
+            }
+        </li>`
+        }
         ${lines.map((m) => html`<${RoomLine} key=${m.hash} speaker=${m.speaker} words=${m.words} said_ms=${m.said_ms} current=${current} author=${item.author} im=${tail && tail.im} />`)}
     </ul>`;
 };
@@ -621,7 +655,9 @@ const RoomLinkCard = ({ target }) => {
     if (!author || !ref) return null;
     const title =
         (room && room.title) ||
-        (room && room.locked ? t('postentry.a-private-chat-room', 'a private chat room') : t('postentry.a-chat-room', 'a chat room'));
+        (room && room.locked
+            ? t('postentry.a-private-chat-room', 'a private chat room')
+            : t('postentry.a-chat-room', 'a chat room'));
     const head = html`<a class="rt-room-head" href=${ref.path}>
         <${Icons.room} />
         <span class="rt-room-title">${title}</span>
@@ -630,14 +666,16 @@ const RoomLinkCard = ({ target }) => {
     const floor = !nested && reader && room && !room.locked && room.words !== null;
     return html`<div class="rt-room">
         ${head}
-        ${floor &&
-        html`<${InRoomCard.Provider} value=${true}>
+        ${
+            floor &&
+            html`<${InRoomCard.Provider} value=${true}>
             <${RoomFloor}
                 item=${{ author, doc_id: ref.doc, published_ms: room.published_ms }}
                 current=${{ root: reader }}
                 post=${room.words}
             />
-        </${InRoomCard.Provider}>`}
+        </${InRoomCard.Provider}>`
+        }
     </div>`;
 };
 registerRoomCard(RoomLinkCard);
@@ -722,7 +760,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     const backdated = isBackdated(item);
     const minted = backdated ? formatWhen(item.minted_ms) : null;
     // Its words changed after it went out: the head's stamp past the mint's.
-    const edited = !item.scheduled && item.updated_ms && item.minted_ms && item.updated_ms > item.minted_ms;
+    const edited =
+        !item.scheduled && item.updated_ms && item.minted_ms && item.updated_ms > item.minted_ms;
     // The item's link: the title when there is one, a quiet line at the foot when not. It
     // goes to the post's OWN page (postpage.js) - the per-item page this comment spent
     // months promising took the href over on 2026-08-26, the day after it was built. The
@@ -748,13 +787,18 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // "there's more but you just can't see it"). A room draws its floor, not its words.
     const fading = cut && !wholeThing && item.format !== 'room';
     // A book's body is its tree, never prose: no lead cut, the card draws the whole table.
-    const shown = item.format === 'book' || wholeThing ? shownBody : fading ? overrunOf(shownBody || '', emphasis) : lead;
+    const shown =
+        item.format === 'book' || wholeThing
+            ? shownBody
+            : fading
+              ? overrunOf(shownBody || '', emphasis)
+              : lead;
     // Whose labels this reader sees: the register and their ledger, both live. The
     // description key is the author's alone here (one description per post); anyone
     // else's description is shown only at 'everyone', as a label.
     const contactRows = useLive(
         () => (current && current.root ? openMirror(current.root).contacts.toArray() : []),
-        [current && current.root]
+        [current && current.root],
     );
     const factsByRoot = current && current.root ? {} : null;
     if (factsByRoot) for (const c of contactRows || []) factsByRoot[c.root] = c.facts || {};
@@ -773,7 +817,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         hide: warnLists.hide,
     });
     const [revealed, setRevealed] = useState(false);
-    const veiled = !revealed && (warning.kind === 'blur' || (warning.kind === 'hide' && standalone));
+    const veiled =
+        !revealed && (warning.kind === 'blur' || (warning.kind === 'hide' && standalone));
     // The foot's parts (see the foot, below): each only where the words are on screen to act on.
     const bodyShown = !!shownBody && !veiled;
     const seeMore = bodyShown && cut && !wholeThing;
@@ -784,15 +829,21 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         held &&
         [
             held.words > 0 &&
-                (held.words === 1 ? t('postentry.held-a-word', '+1 word') : t('postentry.held-words', '+{n} words', { n: held.words })),
+                (held.words === 1
+                    ? t('postentry.held-a-word', '+1 word')
+                    : t('postentry.held-words', '+{n} words', { n: held.words })),
             held.images > 0 &&
-                (held.images === 1 ? t('postentry.held-an-image', '+1 image') : t('postentry.held-images', '+{n} images', { n: held.images })),
+                (held.images === 1
+                    ? t('postentry.held-an-image', '+1 image')
+                    : t('postentry.held-images', '+{n} images', { n: held.images })),
             held.audio > 0 &&
                 (held.audio === 1
                     ? t('postentry.held-an-audio-file', '+1 audio file')
                     : t('postentry.held-audio-files', '+{n} audio files', { n: held.audio })),
             held.videos > 0 &&
-                (held.videos === 1 ? t('postentry.held-a-video', '+1 video') : t('postentry.held-videos', '+{n} videos', { n: held.videos })),
+                (held.videos === 1
+                    ? t('postentry.held-a-video', '+1 video')
+                    : t('postentry.held-videos', '+{n} videos', { n: held.videos })),
         ]
             .filter(Boolean)
             .join(', ');
@@ -825,7 +876,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // persona.js's usePersonaName, restated here to keep the import graph acyclic.
     const liveMyName = useLive(
         () => (current ? openMirror(current.root).profile.get('name') : Promise.resolve(null)),
-        [current && current.root]
+        [current && current.root],
     );
     const myName = (liveMyName && liveMyName.value) || (current && current.name) || undefined;
     const addTag = async (raw) => {
@@ -844,7 +895,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         // statement before it answers, seconds on a big persona - and taken back if refused.
         const said = { annotator: me, annotator_name: myName, key: 'tag', value };
         setRetractedLabels((have) => have.filter((k) => k !== labelKey(said)));
-        setSaidLabels((have) => (have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said]));
+        setSaidLabels((have) =>
+            have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said],
+        );
         try {
             await api(`/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}`, {
                 method: 'PUT',
@@ -864,12 +917,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         if (me === item.author) {
             try {
                 const draft = (await openMirror(me).docs.toArray()).find(
-                    (d) => d.fields && d.fields.published_as === item.doc_id
+                    (d) => d.fields && d.fields.published_as === item.doc_id,
                 );
                 if (draft) {
                     await api(
                         `/api/identity/${me}/docs/${draft.doc_id}/annotations/tags/${encodeURIComponent(value)}`,
-                        { method: 'PUT' }
+                        { method: 'PUT' },
                     );
                 }
             } catch {
@@ -885,7 +938,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         try {
             await api(
                 `/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}/${encodeURIComponent(a.key)}/${encodeURIComponent(a.value)}`,
-                { method: 'DELETE' }
+                { method: 'DELETE' },
             );
         } catch {
             setRetractedLabels((have) => have.filter((k) => k !== labelKey(a)));
@@ -894,12 +947,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         if (me === item.author && a.key === 'tag') {
             try {
                 const draft = (await openMirror(me).docs.toArray()).find(
-                    (d) => d.fields && d.fields.published_as === item.doc_id
+                    (d) => d.fields && d.fields.published_as === item.doc_id,
                 );
                 if (draft) {
                     await api(
                         `/api/identity/${me}/docs/${draft.doc_id}/annotations/tags/${encodeURIComponent(a.value)}`,
-                        { method: 'DELETE' }
+                        { method: 'DELETE' },
                     );
                 }
             } catch {
@@ -916,7 +969,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         // "in: feed", so the label carries no information and renders as noise (Curtis,
         // 2026-08-30). Hidden at DISPLAY only - the statement still replicates publicly by
         // ruling, and any other bucket ("blog") still shows.
-        .filter((a) => !(a.key === 'bucket' && a.value === FEED_STYLE && a.annotator === item.author));
+        .filter(
+            (a) => !(a.key === 'bucket' && a.value === FEED_STYLE && a.annotator === item.author),
+        );
     const shownLabels = [
         ...baseLabels,
         ...saidLabels.filter((a) => !baseLabels.some((b) => labelKey(b) === labelKey(a))),
@@ -949,7 +1004,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         : shownLabels;
     // The list a sealed post is for: the server says it for your own posts; for a post
     // sealed to the people mentioned, the author's own sealed label says it to the room.
-    const saidAudience = ((item.annotations || []).find((a) => a.key === 'audience' && a.annotator === item.author) || {}).value;
+    const saidAudience = (
+        (item.annotations || []).find((a) => a.key === 'audience' && a.annotator === item.author) ||
+        {}
+    ).value;
     const audience = item.audience || saidAudience || '';
     // "People I trust, and onward" (Contact tags, ruling 7): the header says it, to everyone.
     const onward = !!item.onward;
@@ -963,20 +1021,27 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         <article
             class=${entryClass}
             ref=${itemRef}
-            style=${[
-                scale === 1 ? '' : `--post-scale: ${scale}`,
-                imageCap === null || imageCap >= POST_IMAGE_MAX ? '' : `--post-image-cap: ${imageCap}px`,
-            ]
-                .filter(Boolean)
-                .join('; ') || undefined}
+            style=${
+                [
+                    scale === 1 ? '' : `--post-scale: ${scale}`,
+                    imageCap === null || imageCap >= POST_IMAGE_MAX
+                        ? ''
+                        : `--post-image-cap: ${imageCap}px`,
+                ]
+                    .filter(Boolean)
+                    .join('; ') || undefined
+            }
         >
             ${editing && html`<${BakeModal} items=${editing.baking} />`}
-            ${/* Who passed this along, when it arrived by rebroadcast. ABOVE the banner and
+            ${
+                /* Who passed this along, when it arrived by rebroadcast. ABOVE the banner and
                 quieter than it, because the card is still the AUTHOR speaking - a share is how
                 it reached you, not whose words these are. Getting that hierarchy backwards is
-                how a quote-tweet reads as the quoter's post. */ ''}
-            ${!!item.via &&
-            html`<p class="feed-entry-via">
+                how a quote-tweet reads as the quoter's post. */ ''
+            }
+            ${
+                !!item.via &&
+                html`<p class="feed-entry-via">
                 <${Icons.colRebroadcast} />
                 <${PersonChip}
                     root=${item.via}
@@ -992,30 +1057,40 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                 />
                 <${ViaOthers} item=${item} current=${current} />
                 ${t('postentry.passed-this-along', 'passed this along')}
-            </p>`}
-            ${/* The speculative sibling: nobody you follow brought this - your trust graph
+            </p>`
+            }
+            ${
+                /* The speculative sibling: nobody you follow brought this - your trust graph
                 did (PROJECT_PLAN's Discovery, slice 2). Same seat, same quiet voice, and honest about the
                 different mechanism: a vouch is not a share. Mutually exclusive with the
-                share line by construction, so the two never stack. */ ''}
-            ${!item.via &&
-            !!item.suggested_via &&
-            html`<p class="feed-entry-via">
+                share line by construction, so the two never stack. */ ''
+            }
+            ${
+                !item.via &&
+                !!item.suggested_via &&
+                html`<p class="feed-entry-via">
                 <${PersonChip}
                     root=${item.suggested_via}
                     current=${current}
                     size="mini"
                     profile=${{
                         fields: [
-                            item.suggested_via_name && { field: 'name', value: item.suggested_via_name },
+                            item.suggested_via_name && {
+                                field: 'name',
+                                value: item.suggested_via_name,
+                            },
                         ].filter(Boolean),
                         via: [],
                     }}
                 />
                 ${t('postentry.vouches-for-this-author', 'trusts this author')}
-            </p>`}
-            ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
+            </p>`
+            }
+            ${
+                /* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini heptagon made you
-                hover. The when and - for your own posts - the unlock ride its actions slot. */ ''}
+                hover. The when and - for your own posts - the unlock ride its actions slot. */ ''
+            }
             <div class="feed-entry-head">
             <${PersonBanner}
                 root=${item.author}
@@ -1027,87 +1102,124 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     ].filter(Boolean),
                     via: [],
                 }}
-                actions=${html`${item.scheduled
+                actions=${html`${
+                    item.scheduled
                         ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
                         : backdated
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by the author, written {minted}', { minted })}>${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`
-                          : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`}
-                    ${/* Edited after it went out (Curtis, 2026-10-02: posts edit forever, so an edit says
-                        so): when, and the way to every version it has been. */ ''}
-                    ${edited &&
-                    html`<a class="feed-entry-edited" href=${postHistoryHref(item.author, item.doc_id)} title=${t('postentry.see-every-version', 'see every version of this post')}>${t('postentry.edited-when', 'edited {when}', { when: formatWhen(item.updated_ms) })}</a>`}
-                    ${/* The takedown first, after the date: trash is always the leftmost chip, on every
-                        row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''}
+                          : html`<span class="feed-entry-when">${when} <span class="feed-entry-beats" title=${t('postentry.internet-time', 'internet time')}>${beatLabel(item.published_ms)}</span></span>`
+                }
+                    ${
+                        /* Edited after it went out (Curtis, 2026-10-02: posts edit forever, so an edit says
+                        so): when, and the way to every version it has been. */ ''
+                    }
+                    ${
+                        edited &&
+                        html`<a class="feed-entry-edited" href=${postHistoryHref(item.author, item.doc_id)} title=${t('postentry.see-every-version', 'see every version of this post')}>${t('postentry.edited-when', 'edited {when}', { when: formatWhen(item.updated_ms) })}</a>`
+                    }
+                    ${
+                        /* The takedown first, after the date: trash is always the leftmost chip, on every
+                        row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''
+                    }
                     ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} onTakenDown=${() => setGone(true)} />`}
-                    ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
+                    ${
+                        /* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
                         never the key, and that is not what the button promises - unless the
-                        author asked for the hop (Contact tags, ruling 7). */ ''}
+                        author asked for the hop (Contact tags, ruling 7). */ ''
+                    }
                     ${!item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
-                    ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
+                    ${
+                        /* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
                         that note in Writer - or, for a posted drawing, the brush to Drawing (Curtis,
                         2026-09-27) - and the publish bar there says the changes again. A post
                         composed in the feed opens for editing in place, at once: no lock, no
                         wait, and no day after which it can't (Curtis, 2026-10-02 - the lock was
-                        confusing, and posts edit forever). */ ''}
-                    ${editing &&
-                    !open &&
-                    (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
-                        ? editing.row.format === 'drawing'
-                            ? html`<a
+                        confusing, and posts edit forever). */ ''
+                    }
+                    ${
+                        editing &&
+                        !open &&
+                        (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
+                            ? editing.row.format === 'drawing'
+                                ? html`<a
                                   class="chip chip-button"
                                   href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
                               ><${Icons.drawing} /></a>`
-                            : html`<a
+                                : html`<a
                                   class="chip chip-button"
                                   href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
                               ><${Icons.notes} /></a>`
-                        : editing &&
-                          !open &&
-                          html`<button
+                            : editing &&
+                              !open &&
+                              html`<button
                               class="chip chip-button"
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
-                          ><${Icons.rename} /></button>`}
-                    ${/* Any post of yours - a book and a room too, which have no in-place editor
-                        - and any post you pass along (2026-09-29). */ ''}
-                    ${!open && !item.private_doc && !!current && !!current.root && pinner(item) === current.root &&
-                    html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
+                          ><${Icons.rename} /></button>`
+                    }
+                    ${
+                        /* Any post of yours - a book and a room too, which have no in-place editor
+                        - and any post you pass along (2026-09-29). */ ''
+                    }
+                    ${
+                        !open &&
+                        !item.private_doc &&
+                        !!current &&
+                        !!current.root &&
+                        pinner(item) === current.root &&
+                        html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`
+                    }
                     ${/* A node administrator's super-pin (2026-09-30): onto the server's front page. */ ''}
                     ${!open && !item.private_doc && !item.trusted_only && item.kind !== 'share' && !!current && html`<${SuperPinChip} item=${item} />`}
-                    ${/* The post's address (2026-09-28), just before the copy into notes: pasted
-                        in the app it unfolds as this card; pasted outside, it opens. */ ''}
+                    ${
+                        /* The post's address (2026-09-28), just before the copy into notes: pasted
+                        in the app it unfolds as this card; pasted outside, it opens. */ ''
+                    }
                     ${!open && html`<${CopyLinkChip} path=${href} />`}
-                    ${/* Copy into private notes, last on every card (Curtis, 2026-09-08: the
-                        same seat on your own posts and other people's). */ ''}
-                    ${/* A room is a conversation, not a note (Curtis, 2026-09-18): it does
-                        not copy, and it takes no replies (the page hides the thread). */ ''}
+                    ${
+                        /* Copy into private notes, last on every card (Curtis, 2026-09-08: the
+                        same seat on your own posts and other people's). */ ''
+                    }
+                    ${
+                        /* A room is a conversation, not a note (Curtis, 2026-09-18): it does
+                        not copy, and it takes no replies (the page hides the thread). */ ''
+                    }
                     ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && html`<${CopyButton} item=${item} current=${current} />`}`}
             />
-            ${!open &&
-            !!title &&
-            html`<h2 class="feed-entry-title"><a href=${href}>${item.format === 'room' && !item.im
-                ? html`<${RoomTitle}>${title}</${RoomTitle}>`
-                : item.format === 'book'
-                  ? html`<${BookTitle}>${title}</${BookTitle}>`
-                  : title}</a></h2>`}
+            ${
+                !open &&
+                !!title &&
+                html`<h2 class="feed-entry-title"><a href=${href}>${
+                    item.format === 'room' && !item.im
+                        ? html`<${RoomTitle}>${title}</${RoomTitle}>`
+                        : item.format === 'book'
+                          ? html`<${BookTitle}>${title}</${BookTitle}>`
+                          : title
+                }</a></h2>`
+            }
             ${!open && !!subtitle && html`<p class="feed-entry-subtitle">${subtitle}</p>`}
             </div>
-            ${/* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
+            ${
+                /* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
                 mini-card names what it answers - which is the whole reason context-free
                 "@rando, I disagree" cannot happen here. Suppressed on the thread page
-                (quote=false), where nesting under the parent already says it. */ ''}
-            ${/* Deeper than depth one, the thread's ROOT first (Curtis, 2026-08-28): the
+                (quote=false), where nesting under the parent already says it. */ ''
+            }
+            ${
+                /* Deeper than depth one, the thread's ROOT first (Curtis, 2026-08-28): the
                 conversation's subject above the words these answer - root, then parent,
                 then the reply, reading downward like the thread itself. Absent when the
                 parent IS the root - one card, not the same card twice. The label is just
-                "thread": the card carries the title, and nothing needs saying twice. */ ''}
-            ${!!item.thread_root &&
-            quote !== false &&
-            html`<p class="feed-entry-replyto feed-entry-thread-root">
+                "thread": the card carries the title, and nothing needs saying twice. */ ''
+            }
+            ${
+                !!item.thread_root &&
+                quote !== false &&
+                html`<p class="feed-entry-replyto feed-entry-thread-root">
                 ${t('postentry.thread', 'thread')}
                 <${MiniPost}
                     author=${item.thread_root.author}
@@ -1115,64 +1227,119 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     title=${item.thread_root.title}
                     published_ms=${item.thread_root.published_ms}
                 />
-            </p>`}
-            ${/* The labels (PROJECT_PLAN's Public annotations, slice 2): the author's own plain, anyone else's
+            </p>`
+            }
+            ${
+                /* The labels (PROJECT_PLAN's Public annotations, slice 2): the author's own plain, anyone else's
                 with the annotator's byline - never an anonymous cloud - and only the
                 annotators the reader's display register admits. The author's description
                 is the one description; others' descriptions are tags-grade and ride the
-                display rule like any label. */ ''}
-            ${!!item.reply_to &&
-            quote !== false &&
-            html`<p class="feed-entry-replyto">
-                ${item.reply_to.name
-                    ? t('postentry.in-reply-to-name', 'in reply to {name}', { name: item.reply_to.name })
-                    : t('postentry.in-reply-to', 'in reply to')}
+                display rule like any label. */ ''
+            }
+            ${
+                !!item.reply_to &&
+                quote !== false &&
+                html`<p class="feed-entry-replyto">
+                ${
+                    item.reply_to.name
+                        ? t('postentry.in-reply-to-name', 'in reply to {name}', {
+                              name: item.reply_to.name,
+                          })
+                        : t('postentry.in-reply-to', 'in reply to')
+                }
                 <${MiniPost}
                     author=${item.reply_to.author}
                     doc_id=${item.reply_to.doc_id}
                     title=${item.reply_to.title}
                     published_ms=${item.reply_to.published_ms}
                 />
-            </p>`}
-            ${!open && (chipLabels.length > 0 || !!current || item.trusted_only || item.settled || pinned) &&
-            html`<div class="feed-entry-labels">
-                ${pinned &&
-                html`<span class="label-chip label-chip-flag" title=${item.kind === 'share'
-                    ? t('postentry.pinned-share-chip-title', 'pinned to the top of the page of the person passing it along')
-                    : t('postentry.pinned-chip-title', 'the author pinned this to the top of their page')}><${Icons.pin} /> ${t('postentry.pinned', 'pinned')}</span>`}
-                ${/* The author's wishes wear chips of their own, first in the row (Curtis,
+            </p>`
+            }
+            ${
+                !open &&
+                (chipLabels.length > 0 ||
+                    !!current ||
+                    item.trusted_only ||
+                    item.settled ||
+                    pinned) &&
+                html`<div class="feed-entry-labels">
+                ${
+                    pinned &&
+                    html`<span class="label-chip label-chip-flag" title=${
+                        item.kind === 'share'
+                            ? t(
+                                  'postentry.pinned-share-chip-title',
+                                  'pinned to the top of the page of the person passing it along',
+                              )
+                            : t(
+                                  'postentry.pinned-chip-title',
+                                  'the author pinned this to the top of their page',
+                              )
+                    }><${Icons.pin} /> ${t('postentry.pinned', 'pinned')}</span>`
+                }
+                ${
+                    /* The author's wishes wear chips of their own, first in the row (Curtis,
                     2026-09-03: "I didn't know that this post was trusted-only") - chrome,
-                    not labels: nobody said them, the header did. */ ''}
-                ${item.trusted_only &&
-                html`<span
+                    not labels: nobody said them, the header did. */ ''
+                }
+                ${
+                    item.trusted_only &&
+                    html`<span
                     class="label-chip label-chip-flag"
-                    title=${audience === '@mentioned'
-                        ? t('postentry.mentioned-chip-title', 'these words are for the people named in them')
+                    title=${
+                        audience === '@mentioned'
+                            ? t(
+                                  'postentry.mentioned-chip-title',
+                                  'these words are for the people named in them',
+                              )
+                            : onward
+                              ? t(
+                                    'postentry.onward-chip-title',
+                                    'the author shares these words with people they trust, who may pass them to people they trust',
+                                )
+                              : audience
+                                ? t(
+                                      'postentry.audience-chip-title',
+                                      'you share these words only with the people you tagged {audience}',
+                                      { audience },
+                                  )
+                                : t(
+                                      'postentry.trusted-only-chip-title',
+                                      'the author shares these words only with people they trust',
+                                  )
+                    }
+                ><${Icons.trustPrivate} /> ${
+                    audience === '@mentioned'
+                        ? t('postentry.only-the-people-mentioned', 'only the people mentioned')
                         : onward
-                          ? t('postentry.onward-chip-title', 'the author shares these words with people they trust, who may pass them to people they trust')
+                          ? t('postentry.trusted-and-onward', 'trusted, and onward')
                           : audience
-                            ? t('postentry.audience-chip-title', 'you share these words only with the people you tagged {audience}', { audience })
-                            : t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}
-                ><${Icons.trustPrivate} /> ${audience === '@mentioned'
-                    ? t('postentry.only-the-people-mentioned', 'only the people mentioned')
-                    : onward
-                      ? t('postentry.trusted-and-onward', 'trusted, and onward')
-                      : audience
-                        ? t('postentry.only-audience', 'only {audience}', { audience })
-                        : t('postentry.trusted-only', 'trusted only')}</span>`}
-                ${item.settled &&
-                html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`}
+                            ? t('postentry.only-audience', 'only {audience}', { audience })
+                            : t('postentry.trusted-only', 'trusted only')
+                }</span>`
+                }
+                ${
+                    item.settled &&
+                    html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off comments on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'comments off')}</span>`
+                }
                 ${groupLabels(chipLabels, { author: item.author }).map((g) => {
                     // One chip per (key, value), worn by everyone who said it: most-agreed
                     // first, names smashed ("Jeff Dorp and 3 others"), and the chip itself
                     // is the agree button when you have not said it yet.
-                    const names = g.contributors.map((c) => c.annotator_name || speakable(c.annotator));
-                    const mine = current && g.contributors.find((c) => c.annotator === current.root);
+                    const names = g.contributors.map(
+                        (c) => c.annotator_name || speakable(c.annotator),
+                    );
+                    const mine =
+                        current && g.contributors.find((c) => c.annotator === current.root);
                     const canAgree =
                         !!current &&
                         g.key === 'tag' &&
                         !mine &&
-                        mayTag(shownLabels, { author: item.author, me: current.root, value: g.value });
+                        mayTag(shownLabels, {
+                            author: item.author,
+                            me: current.root,
+                            value: g.value,
+                        });
                     const soleAuthor =
                         g.contributors.length === 1 && g.contributors[0].annotator === item.author;
                     // A reaction wears its lean (Curtis, 2026-09-27): the glad on green, the
@@ -1181,49 +1348,73 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     return html`<span
                         class=${[
                             'label-chip',
-                            g.contributors.some((c) => c.annotator === item.author) ? '' : 'label-chip-theirs',
+                            g.contributors.some((c) => c.annotator === item.author)
+                                ? ''
+                                : 'label-chip-theirs',
                             canAgree ? 'label-chip-agree' : '',
                             mine ? 'label-chip-mine' : '',
-                            tone === 'good' ? 'label-chip-good' : tone === 'bad' ? 'label-chip-bad' : '',
+                            tone === 'good'
+                                ? 'label-chip-good'
+                                : tone === 'bad'
+                                  ? 'label-chip-bad'
+                                  : '',
                         ]
                             .filter(Boolean)
                             .join(' ')}
                         key=${`${g.key}:${g.value}`}
-                        title=${canAgree
-                            ? t('postentry.click-to-agree', '{names} - click to agree', { names: names.join(', ') })
-                            : soleAuthor
-                              ? t('postentry.the-authors-label', "the author's label")
-                              : t('postentry.label-by-name', 'label by {name}', { name: names.join(', ') })}
+                        title=${
+                            canAgree
+                                ? t('postentry.click-to-agree', '{names} - click to agree', {
+                                      names: names.join(', '),
+                                  })
+                                : soleAuthor
+                                  ? t('postentry.the-authors-label', "the author's label")
+                                  : t('postentry.label-by-name', 'label by {name}', {
+                                        name: names.join(', '),
+                                    })
+                        }
                         onClick=${canAgree ? () => addTag(g.value) : undefined}
                     >
                         ${g.key === 'bucket' ? html`<span class="label-kind">${t('postentry.in', 'in')}</span>` : ''}
                         ${g.key === 'description' ? html`<span class="label-kind">${t('postentry.about', 'about')}</span>` : ''}
-                        ${g.key === 'tag' && isEmojiTag(g.value)
-                            ? html`<span class="label-emoji-value">${g.value}</span>`
-                            : g.value}
-                        ${/* Provenance lives on hover (Curtis, 2026-08-31); the chip face
+                        ${
+                            g.key === 'tag' && isEmojiTag(g.value)
+                                ? html`<span class="label-emoji-value">${g.value}</span>`
+                                : g.value
+                        }
+                        ${
+                            /* Provenance lives on hover (Curtis, 2026-08-31); the chip face
                             wears only the tag and how many people applied it - a bare chip
-                            means one. */ ''}
-                        ${g.contributors.length > 1 &&
-                        html`<span class="label-count">${g.contributors.length}</span>`}
-                        ${!!mine &&
-                        html`<button
+                            means one. */ ''
+                        }
+                        ${
+                            g.contributors.length > 1 &&
+                            html`<span class="label-count">${g.contributors.length}</span>`
+                        }
+                        ${
+                            !!mine &&
+                            html`<button
                             class="label-x"
                             title=${t('postentry.take-this-label-back', 'take this label back')}
                             onClick=${(e) => {
                                 e.stopPropagation();
                                 removeLabel(mine);
                             }}
-                        >×</button>`}
+                        >×</button>`
+                        }
                     </span>`;
                 })}
-                ${/* Say something about any post - yours or anyone's (PROJECT_PLAN's Public annotations
+                ${
+                    /* Say something about any post - yours or anyone's (PROJECT_PLAN's Public annotations
                     slice 4): the statement lands on YOUR chain, bylined as yours
-                    everywhere it travels. */ ''}
-                ${!!current &&
-                (tagging || tagsLeft(shownLabels, { author: item.author, me: current.root }) > 0) &&
-                (tagging
-                    ? html`<span class="label-add-anchor"><input
+                    everywhere it travels. */ ''
+                }
+                ${
+                    !!current &&
+                    (tagging ||
+                        tagsLeft(shownLabels, { author: item.author, me: current.root }) > 0) &&
+                    (tagging
+                        ? html`<span class="label-add-anchor"><input
                           class="label-add-input jag-field"
                           maxlength="32"
                           placeholder=${t('postentry.tag-placeholder', 'a tag')}
@@ -1261,15 +1452,18 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           >${ch}</button>`;
                           return html`<${EmojiStrip} hit=${hit} chip=${chip} />`;
                       })()}</span>`
-                    : html`<button
+                        : html`<button
                           class="label-add"
                           title=${t('postentry.say-what-this-post-is', 'add a label, in your name')}
                           onClick=${() => setTagging(true)}
-                      >${t('postentry.plus-tag', '+ tag')}</button>`)}
-            </div>`}
+                      >${t('postentry.plus-tag', '+ tag')}</button>`)
+                }
+            </div>`
+            }
 
-            ${open
-                ? html`<${Composer}
+            ${
+                open
+                    ? html`<${Composer}
                       root=${editing.root}
                       docId=${editing.row.doc_id}
                       published=${true}
@@ -1295,61 +1489,87 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                       posting=${editing.posting}
                   />
                   ${postError && html`<p class="form-error">${postError}</p>`}`
-                : html`${shownBody === undefined && html`<p class="null-sub">…</p>`}
-                      ${shownBody === null &&
-                      html`<p class="null-sub">
-                          ${item.trusted_only
-                              ? t('postentry.for-trusted-readers-only', 'the author shares these words only with people they trust')
-                              : html`<span class="waiting-dot"></span> ${t('postentry.these-words-havent-reached-this', "these words haven't reached this computer.")}`}
-                      </p>`}
-                      ${!!shownBody &&
-                      veiled &&
-                      html`<div class="feed-entry-veil">
+                    : html`${shownBody === undefined && html`<p class="null-sub">…</p>`}
+                      ${
+                          shownBody === null &&
+                          html`<p class="null-sub">
+                          ${
+                              item.trusted_only
+                                  ? t(
+                                        'postentry.for-trusted-readers-only',
+                                        'the author shares these words only with people they trust',
+                                    )
+                                  : html`<span class="waiting-dot"></span> ${t('postentry.these-words-havent-reached-this', "these words haven't reached this computer.")}`
+                          }
+                      </p>`
+                      }
+                      ${
+                          !!shownBody &&
+                          veiled &&
+                          html`<div class="feed-entry-veil">
                           <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
-                              ${bodyFormat === 'marquee'
-                                  ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
-                                  : html`<pre class="reader-plain jag-line">${shown}</pre>`}
+                              ${
+                                  bodyFormat === 'marquee'
+                                      ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
+                                      : html`<pre class="reader-plain jag-line">${shown}</pre>`
+                              }
                           </div>
                           <button class="feed-entry-unveil" onClick=${() => setRevealed(true)}>
                               ${t('postentry.tagged-show-anyway', 'tagged {tags} - show anyway', { tags: warning.tags.join(', ') })}
                           </button>
-                      </div>`}
-                      ${!!shownBody &&
-                      !veiled &&
-                      html`<div class=${fading ? 'feed-entry-body feed-entry-body-fading' : 'feed-entry-body'}>
-                          ${item.format === 'book'
-                              ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
-                              : item.format === 'room'
-                                ? html`${/* In the post's own paper (Curtis, 2026-09-30): a room's
-                                      opening line and its latest, bubbled as a post's words are. */ ''}<div class="reader-marquee jag-line">
+                      </div>`
+                      }
+                      ${
+                          !!shownBody &&
+                          !veiled &&
+                          html`<div class=${fading ? 'feed-entry-body feed-entry-body-fading' : 'feed-entry-body'}>
+                          ${
+                              item.format === 'book'
+                                  ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
+                                  : item.format === 'room'
+                                    ? html`${
+                                          /* In the post's own paper (Curtis, 2026-09-30): a room's
+                                      opening line and its latest, bubbled as a post's words are. */ ''
+                                      }<div class="reader-marquee jag-line">
                                       <${RoomFloor} item=${item} current=${current} post=${shownBody} />
                                   </div>`
-                                : bodyFormat === 'marquee'
-                                  ? html`<${MarqueeBody}
+                                    : bodyFormat === 'marquee'
+                                      ? html`<${MarqueeBody}
                                         source=${shown}
                                         profile=${tlProfile}
                                         onUnparsable=${bareSource}
                                     />`
-                                  : html`<pre class="reader-plain jag-line">${fading ? html`<span class="feed-entry-fade-words">${shown}</span>` : shown}</pre>`}
-                      </div>`}`}
-            ${/* The card's foot (Curtis, 2026-09-27): centred under the post, large and bold, stacking
+                                      : html`<pre class="reader-plain jag-line">${fading ? html`<span class="feed-entry-fade-words">${shown}</span>` : shown}</pre>`
+                          }
+                      </div>`
+                      }`
+            }
+            ${
+                /* The card's foot (Curtis, 2026-09-27): centred under the post, large and bold, stacking
                 whichever apply - "see more…" when something was held back; "enter the room" on a
                 room (CHAT.md, ruling 1 - a stranger's shell has no rooms, so the door is the
                 sign-in); and the replies: "N replies" whenever this node knows of any ("how many
                 replies we THINK exist", honest-partial like the thread it summarizes), titled post
                 or not, else "reply" - to the post's own page, where the thread assembles - unless
-                "see more…" already stands there. A room takes no replies, so offers none. */ ''}
-            ${!open &&
-            html`<div class="feed-entry-acts">
-                ${seeMore &&
-                html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>
-                    ${heldNote && html`<small class="feed-entry-held">${heldNote}</small>`}`}
-                ${roomDoor &&
-                html`<a class="feed-entry-act" href=${roomHref(item.author, item.doc_id)}
+                "see more…" already stands there. A room takes no replies, so offers none. */ ''
+            }
+            ${
+                !open &&
+                html`<div class="feed-entry-acts">
+                ${
+                    seeMore &&
+                    html`<button class="feed-entry-act" onClick=${() => setWholeThing(true)}>${t('postentry.see-more', 'see more…')}</button>
+                    ${heldNote && html`<small class="feed-entry-held">${heldNote}</small>`}`
+                }
+                ${
+                    roomDoor &&
+                    html`<a class="feed-entry-act" href=${roomHref(item.author, item.doc_id)}
                     ><${Icons.room} /> ${t('postentry.enter-the-room', 'enter the room')}</a
-                >`}
+                >`
+                }
                 ${replyWords && html`<a class="feed-entry-act" href=${href}>${replyWords}</a>`}
-            </div>`}
+            </div>`
+            }
         </article>
     `;
 };

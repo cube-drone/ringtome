@@ -12,7 +12,11 @@ describe('the facet strip folds each list to its top few (2026-09-07)', () => {
         assert.equal(folded.shown.length, FACET_TOP);
         assert.equal(folded.hidden, 10 - FACET_TOP);
         assert.deepEqual(facetSlice(items, [], true), { shown: items, hidden: 0 });
-        assert.deepEqual(facetSlice(items.slice(0, 3), [], false), { shown: items.slice(0, 3), hidden: 0 }, 'a short list never folds');
+        assert.deepEqual(
+            facetSlice(items.slice(0, 3), [], false),
+            { shown: items.slice(0, 3), hidden: 0 },
+            'a short list never folds',
+        );
     });
     it('a picked value past the fold still shows - what narrows the page is never hidden', () => {
         const { shown, hidden } = facetSlice(items, ['t9'], false);
@@ -70,14 +74,18 @@ describe('every chip cycles the same three ways (2026-10-01)', () => {
         assert.equal(cycleMe(undefined), 'only');
         assert.equal(cycleMe('only'), false);
         assert.equal(cycleMe(false), undefined);
-        assert.deepEqual([meParam(undefined), meParam('only'), meParam(false)], [null, 'only', '0']);
+        assert.deepEqual(
+            [meParam(undefined), meParam('only'), meParam(false)],
+            [null, 'only', '0'],
+        );
     });
 });
 
 describe('the size and media rows (2026-10-02)', () => {
     let tagRows, tagFamily, SIZE_TAGS, MEDIA_TAGS;
     before(async () => {
-        ({ tagRows, tagFamily, SIZE_TAGS, MEDIA_TAGS } = await import('../../../js/pure/facets.js'));
+        ({ tagRows, tagFamily, SIZE_TAGS, MEDIA_TAGS } =
+            await import('../../../js/pure/facets.js'));
     });
 
     it('splits the tag row three ways, sizes and media in their own order', () => {
@@ -89,16 +97,36 @@ describe('the size and media rows (2026-10-02)', () => {
             { value: 'audio', count: 1 },
         ];
         const rows = tagRows(counted);
-        assert.deepEqual(rows.size.map((f) => f.value), ['micro', 'long'], 'smallest first, whatever the counts');
-        assert.deepEqual(rows.media.map((f) => f.value), ['audio', 'image']);
-        assert.deepEqual(rows.tags.map((f) => f.value), ['bread']);
-        assert.deepEqual(tagRows(null), { size: [], media: [], tags: [] }, 'nothing counted, every row empty');
+        assert.deepEqual(
+            rows.size.map((f) => f.value),
+            ['micro', 'long'],
+            'smallest first, whatever the counts',
+        );
+        assert.deepEqual(
+            rows.media.map((f) => f.value),
+            ['audio', 'image'],
+        );
+        assert.deepEqual(
+            rows.tags.map((f) => f.value),
+            ['bread'],
+        );
+        assert.deepEqual(
+            tagRows(null),
+            { size: [], media: [], tags: [] },
+            'nothing counted, every row empty',
+        );
     });
 
-    it('is the node\'s families exactly - its implicit tags, sizes and media', () => {
+    it("is the node's families exactly - its implicit tags, sizes and media", () => {
         const fs = require('node:fs');
-        const rust = fs.readFileSync(require('node:path').join(__dirname, '../../../src/search.rs'), 'utf8');
-        const list = (name) => JSON.parse(rust.match(new RegExp(`pub const ${name}: \\[&str; \\d+\\] = (\\[[^\\]]*\\]);`))[1]);
+        const rust = fs.readFileSync(
+            require('node:path').join(__dirname, '../../../src/search.rs'),
+            'utf8',
+        );
+        const list = (name) =>
+            JSON.parse(
+                rust.match(new RegExp(`pub const ${name}: \\[&str; \\d+\\] = (\\[[^\\]]*\\]);`))[1],
+            );
         assert.deepEqual(SIZE_TAGS, list('SIZE_TAGS'));
         assert.deepEqual(MEDIA_TAGS, list('MEDIA_TAGS'));
         assert.equal(tagFamily('bread'), 'tags');
@@ -113,10 +141,22 @@ describe('how many lines a row opens onto (2026-10-02)', () => {
 
     it('counts the wrap the way the row will draw it', () => {
         assert.equal(wrapLines([], 100, 200, 5), 1, 'nothing: one line');
-        assert.equal(wrapLines([40, 40], 100, 200, 5), 1, 'two fit the first line beside the label');
+        assert.equal(
+            wrapLines([40, 40], 100, 200, 5),
+            1,
+            'two fit the first line beside the label',
+        );
         assert.equal(wrapLines([40, 40, 40], 100, 200, 5), 2, 'the third wraps');
-        assert.equal(wrapLines([40, 40, 60, 60, 60], 100, 200, 5), 2, 'later lines are wider: three fit the second');
+        assert.equal(
+            wrapLines([40, 40, 60, 60, 60], 100, 200, 5),
+            2,
+            'later lines are wider: three fit the second',
+        );
         assert.equal(wrapLines(Array(30).fill(60), 100, 200, 5), 11, 'a long tail is many lines');
-        assert.equal(wrapLines([150], 100, 200, 5), 1, 'one chip too wide still takes the line it starts');
+        assert.equal(
+            wrapLines([150], 100, 200, 5),
+            1,
+            'one chip too wide still takes the line it starts',
+        );
     });
 });

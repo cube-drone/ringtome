@@ -8,36 +8,35 @@
     into identity_peers, leaf-bound. Leaf-bound is the point: revocation can finally reach
     routing, and this suite pins both halves.
 */
-const assert = require("node:assert");
-const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat } = require("./beat.cjs");
-
+const assert = require('node:assert');
+const { sql, HOST_B, HOST_C } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat } = require('./beat.cjs');
 
 const adopt = async (haver, joiner, root) => {
-    const request = await (await joiner("api/identity/adopt/begin", { method: "POST" })).json();
+    const request = await (await joiner('api/identity/adopt/begin', { method: 'POST' })).json();
     const grant = await (
         await haver(`api/identity/${root}/nodes`, {
-            method: "POST",
+            method: 'POST',
             body: JSON.stringify({ code: request.code }),
         })
     ).json();
-    const done = await joiner("api/identity/adopt/complete", {
-        method: "POST",
+    const done = await joiner('api/identity/adopt/complete', {
+        method: 'POST',
         body: JSON.stringify({ code: grant.code }),
     });
     assert.equal(done.status, 200, await done.text());
 };
 
-(HOST_B && HOST_C ? describe : describe.skip)("the derived peer set", function () {
+(HOST_B && HOST_C ? describe : describe.skip)('the derived peer set', function () {
     this.timeout(120000);
 
-    it("a ceremony chain converges to a full mesh, leaf-bound - and revocation prunes it", async () => {
-        const a = await makeUserFetch({ prefix: "derivea" });
-        const root = (await (await a("api/identity", { method: "POST" })).json()).root_pubkey;
-        const b = await makeUserFetch({ prefix: "deriveb", host: HOST_B });
+    it('a ceremony chain converges to a full mesh, leaf-bound - and revocation prunes it', async () => {
+        const a = await makeUserFetch({ prefix: 'derivea' });
+        const root = (await (await a('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const b = await makeUserFetch({ prefix: 'deriveb', host: HOST_B });
         await adopt(a, b, root);
-        const c = await makeUserFetch({ prefix: "derivec", host: HOST_C });
+        const c = await makeUserFetch({ prefix: 'derivec', host: HOST_C });
         await adopt(b, c, root);
 
         // A and C shared no ceremony; the derive sweep must teach each about the other,
@@ -47,28 +46,28 @@ const adopt = async (haver, joiner, root) => {
         // through B's rows, and C learns A) - the sweep's own convergence, sequenced.
         for (let round = 0; round < 2; round++) {
             // The records cross by ordinary sync; each node then derives from what landed.
-            await beat(undefined, "eager-push", root);
-            await beat(HOST_B, "eager-push", root);
-            await beat(HOST_C, "eager-push", root);
+            await beat(undefined, 'eager-push', root);
+            await beat(HOST_B, 'eager-push', root);
+            await beat(HOST_C, 'eager-push', root);
             for (const node of [a, b, c]) {
-                const rung = await node("test/derive", { method: "POST" });
-                assert.equal(rung.status, 200, "the derive pass rings on demand");
+                const rung = await node('test/derive', { method: 'POST' });
+                assert.equal(rung.status, 200, 'the derive pass rings on demand');
             }
         }
         {
             const { rows } = await sql(
                 `SELECT COUNT(*) AS n FROM identity_peers
-                 WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`
+                 WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`,
             );
-            assert.ok(rows[0].n >= 2, "A learned both siblings, leaf-bound, without meeting C");
+            assert.ok(rows[0].n >= 2, 'A learned both siblings, leaf-bound, without meeting C');
         }
         {
             const { rows } = await sql(
                 `SELECT COUNT(*) AS n FROM identity_peers
                  WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`,
-                HOST_C
+                HOST_C,
             );
-            assert.ok(rows[0].n >= 2, "and C learned A the same way");
+            assert.ok(rows[0].n >= 2, 'and C learned A the same way');
         }
 
         // Revocation reaches routing: repudiate C's leaf from A; the derive sweep must drop
@@ -76,7 +75,7 @@ const adopt = async (haver, joiner, root) => {
         // eager loop kept dialing it forever.
         const { rows: leafRows } = await sql(
             `SELECT leaf_pubkey FROM identity_peers
-             WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`
+             WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`,
         );
         // Identify C's leaf as the one B granted last (the row set is {B's leaf, C's leaf});
         // ask B's node, which granted C and recorded its leaf at ceremony time.
@@ -84,29 +83,32 @@ const adopt = async (haver, joiner, root) => {
             `SELECT leaf_pubkey FROM identity_peers
              WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL
              ORDER BY added_at_ms DESC LIMIT 1`,
-            HOST_B
+            HOST_B,
         );
         const cLeaf = cRow[0].leaf_pubkey;
-        assert.ok(leafRows.some((r) => r.leaf_pubkey === cLeaf), "A's mesh includes C's leaf");
+        assert.ok(
+            leafRows.some((r) => r.leaf_pubkey === cLeaf),
+            "A's mesh includes C's leaf",
+        );
         const struck = await a(`api/identity/${root}/keys/${cLeaf}/revoke`, {
-            method: "POST",
-            body: JSON.stringify({ disposition: "repudiation", cut: "genesis" }),
+            method: 'POST',
+            body: JSON.stringify({ disposition: 'repudiation', cut: 'genesis' }),
         });
         assert.equal(struck.status, 200, await struck.text());
         // The derive beat is recovery-paced (minutes) and its lag behind the strike is the
         // strike's DELIVERY window, so this probe rings the beat itself rather than waiting
         // out (or globally shortening, which races other strike tests) the real cadence.
-        const derived = await a("test/derive", { method: "POST" });
-        assert.equal(derived.status, 200, "the derive pass can be rung on demand");
+        const derived = await a('test/derive', { method: 'POST' });
+        assert.equal(derived.status, 200, 'the derive pass can be rung on demand');
         {
             const { rows } = await sql(
                 `SELECT 1 FROM identity_peers
-                 WHERE root_pubkey = '${root}' AND leaf_pubkey = '${cLeaf}'`
+                 WHERE root_pubkey = '${root}' AND leaf_pubkey = '${cLeaf}'`,
             );
             assert.equal(
                 rows.length,
                 0,
-                "the repudiated device left A's dial list on the rung derive"
+                "the repudiated device left A's dial list on the rung derive",
             );
         }
     });

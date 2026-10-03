@@ -5,9 +5,8 @@ const assert = require('node:assert');
 
 let speakable, parseSpeakable, wordsFor, toBase58, fromBase58, WORDS;
 before(async () => {
-    ({ speakable, parseSpeakable, wordsFor, toBase58, fromBase58 } = await import(
-        '../../../js/speakable.js'
-    ));
+    ({ speakable, parseSpeakable, wordsFor, toBase58, fromBase58 } =
+        await import('../../../js/speakable.js'));
     ({ WORDS } = await import('../../../js/pure/words.js'));
 });
 
@@ -17,21 +16,18 @@ const GOLDENS = [
         '93ad0ddd9dd2022bf2ac21664b386965e0eeffecaff6e49b71039db5f1cf53f3',
         'sway-broke-AwTyvw9SPjfiJ4xvMfwDKZeHQH6N1mw3LQtoYtJNPfqU',
     ],
-    [
-        'aa'.repeat(32),
-        'tulip-brick-CVDFLCAjXhVWiPXH9nTCTpCgVzmDVoiPzNJYuccr1dqB',
-    ],
-    [
-        '00'.repeat(31) + '01',
-        'goal-sneak-11111111111111111111111111111112',
-    ],
+    ['aa'.repeat(32), 'tulip-brick-CVDFLCAjXhVWiPXH9nTCTpCgVzmDVoiPzNJYuccr1dqB'],
+    ['00'.repeat(31) + '01', 'goal-sneak-11111111111111111111111111111112'],
 ];
 
 describe('the speakable identicon', () => {
     it('pins the wordlist as a wire format', () => {
         assert.equal(WORDS.length, 1296);
         assert.equal(new Set(WORDS).size, 1296, 'no duplicates');
-        assert.ok(WORDS.every((w) => /^[a-z]+$/.test(w)), 'lowercase ascii, no hyphens');
+        assert.ok(
+            WORDS.every((w) => /^[a-z]+$/.test(w)),
+            'lowercase ascii, no hyphens',
+        );
         assert.equal(WORDS[1285], 'yonder', "the yo-yo slot's amendment, pinned");
     });
 
@@ -60,7 +56,11 @@ describe('the speakable identicon', () => {
 
     it('rejects what is not an address at all', () => {
         assert.equal(parseSpeakable('pagoda-dimension'), null, 'words with no key');
-        assert.equal(parseSpeakable('not/base58/0OIl'), null, 'confusables are not in the alphabet');
+        assert.equal(
+            parseSpeakable('not/base58/0OIl'),
+            null,
+            'confusables are not in the alphabet',
+        );
         assert.equal(parseSpeakable('a-b-c-d'), null, 'too many parts');
         assert.equal(parseSpeakable(''), null);
         assert.equal(parseSpeakable(null), null);
@@ -92,7 +92,11 @@ describe('the strict key rule', () => {
         // must round-trip through toBase58 - only canonical mints qualify.
         assert.equal(parseSpeakable('y'), null);
         assert.equal(parseSpeakable('yy'), null);
-        assert.equal(parseSpeakable('apple-fifth-y'), null, 'a short key never earns "did you mean"');
+        assert.equal(
+            parseSpeakable('apple-fifth-y'),
+            null,
+            'a short key never earns "did you mean"',
+        );
     });
 
     it('a canonical key still parses, and lying words still get the truth', () => {
@@ -116,7 +120,10 @@ describe('the wordlist is the pinned file, index for index', () => {
         const path = require('node:path');
         const { WORDS } = await import('../../../js/pure/words.js');
         const txt = fs
-            .readFileSync(path.join(__dirname, '..', '..', '..', 'wordlist', 'eff_short_1.txt'), 'utf8')
+            .readFileSync(
+                path.join(__dirname, '..', '..', '..', 'wordlist', 'eff_short_1.txt'),
+                'utf8',
+            )
             .split(/\s+/)
             .filter(Boolean);
         assert.equal(WORDS.length, 1296);

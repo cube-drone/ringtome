@@ -272,8 +272,8 @@ export const appLabel = (app, personaName, device = false) =>
     app && app.id === 'persona' && personaName
         ? personaName
         : app
-        ? (device && app.deviceName) || app.name
-        : '';
+          ? (device && app.deviceName) || app.name
+          : '';
 
 /// The set of names that are app-types in their own right (so a like-named bucket is implicit).
 /// Document apps only - a system app (Persona) has no style and names no bucket type.

@@ -52,7 +52,8 @@ pub fn id_of(path: &str) -> [u8; 16] {
 
 fn read(path: &str, bytes: &'static [u8]) -> BuiltIn {
     let (dirs, file) = path.rsplit_once('/').unwrap_or(("", path));
-    let title = file.strip_suffix(".png").or_else(|| file.strip_suffix(".PNG")).unwrap_or(file).to_string();
+    let title =
+        file.strip_suffix(".png").or_else(|| file.strip_suffix(".PNG")).unwrap_or(file).to_string();
     let tags = dirs.split('/').filter(|d| !d.is_empty()).map(str::to_lowercase).collect();
     let (width, height, animation) = png_facts(bytes).unwrap_or((0, 0, false));
     BuiltIn {
@@ -88,8 +89,10 @@ fn png_facts(bytes: &[u8]) -> Option<(u32, u32, bool)> {
     Some((width, height, false))
 }
 
-static ALL: LazyLock<Vec<BuiltIn>> = LazyLock::new(|| table::FILES.iter().map(|(path, bytes)| read(path, bytes)).collect());
-static BY_ID: LazyLock<HashMap<[u8; 16], usize>> = LazyLock::new(|| ALL.iter().enumerate().map(|(i, b)| (b.id, i)).collect());
+static ALL: LazyLock<Vec<BuiltIn>> =
+    LazyLock::new(|| table::FILES.iter().map(|(path, bytes)| read(path, bytes)).collect());
+static BY_ID: LazyLock<HashMap<[u8; 16], usize>> =
+    LazyLock::new(|| ALL.iter().enumerate().map(|(i, b)| (b.id, i)).collect());
 
 /// Every built-in, in path order.
 pub fn all() -> &'static [BuiltIn] {
@@ -128,15 +131,22 @@ pub async fn adopt(
 ) -> Result<bool, crate::error::AppError> {
     use crate::error::AppError;
     let Some(b) = get(id) else {
-        return Err(AppError::NotFound(crate::msg!("builtin.not-in-this-build", "that picture no longer comes with the app")));
+        return Err(AppError::NotFound(crate::msg!(
+            "builtin.not-in-this-build",
+            "that picture no longer comes with the app"
+        )));
     };
     let docs = data.documents();
     if docs.held(&[*id]).await?.contains(id) {
         return docs.media_bytes_present(id).await;
     }
-    let account = crate::identity::account_of(&state.node_db, root_hex)
-        .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("builtin.no-such-persona-here", "that persona isn't kept on this computer")))?;
+    let account =
+        crate::identity::account_of(&state.node_db, root_hex).await?.ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "builtin.no-such-persona-here",
+                "that persona isn't kept on this computer"
+            ))
+        })?;
     match crate::ingest::latest_job_for_doc(&state.node_db, &account, &hex::encode(id)).await? {
         Some((status, _)) if status == "pending" || status == "processing" => return Ok(false),
         Some((status, error)) if status == "failed" => {
@@ -153,7 +163,15 @@ pub async fn adopt(
         .ingest
         .enqueue(
             &state.node_db,
-            crate::ingest::Upload { account: &account, root: root_hex, doc_id: *id, parents: &[], title: &b.title, bytes: b.bytes, audio: None },
+            crate::ingest::Upload {
+                account: &account,
+                root: root_hex,
+                doc_id: *id,
+                parents: &[],
+                title: &b.title,
+                bytes: b.bytes,
+                audio: None,
+            },
         )
         .await?;
     Ok(false)
@@ -166,8 +184,9 @@ mod tests {
     #[test]
     fn a_path_names_its_tags_title_and_id() {
         static PNG: &[u8] = &[
-            0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0, 0, 0, 48, 0, 0, 0, 32, 8, 6, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, b'I', b'E', b'N', b'D', 0, 0, 0, 0,
+            0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0, 0, 0, 13, b'I', b'H', b'D', b'R',
+            0, 0, 0, 48, 0, 0, 0, 32, 8, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'I', b'E', b'N',
+            b'D', 0, 0, 0, 0,
         ];
         let b = super::read("sticker/Bodies/body_1.png", PNG);
         assert_eq!(b.title, "body_1");
@@ -184,7 +203,11 @@ mod tests {
         assert!(!super::all().is_empty(), "default_media/ compiled in nothing");
         for b in super::all() {
             assert!(b.width > 0 && b.height > 0, "{} doesn't read as a PNG", b.title);
-            assert!(std::ptr::eq(super::get(&b.id).unwrap(), b), "{} collides with another path", b.title);
+            assert!(
+                std::ptr::eq(super::get(&b.id).unwrap(), b),
+                "{} collides with another path",
+                b.title
+            );
         }
     }
 }

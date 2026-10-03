@@ -2,14 +2,14 @@
 
 **Horse Drawing Tycoon 2** is the app people install; underneath, every copy runs a **Ringtome** node.
 This page is for running one on a server instead - a node other people's apps and browsers can
-reach, or one you keep online for yourself (see README's *Two names*).
+reach, or one you keep online for yourself (see README's _Two names_).
 
 Each release on GitHub carries two kinds of download, and it is worth knowing which is which:
 
-| file | what it is |
-|---|---|
-| `Horse Drawing Tycoon 2_…` (`.dmg`, `.exe`, `.msi`, `.AppImage`, `.deb`, `.rpm`) | the **desktop app**: a window, a tray, updates itself |
-| `ringtome-server-<version>-<name>-linux-<arch>.tar.gz` | the **server node** for a Linux host, no window: `ringtome` (the node) and `ringtome-supervisor` (which keeps it running, updated and backed up) |
+| file                                                                             | what it is                                                                                                                                       |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Horse Drawing Tycoon 2_…` (`.dmg`, `.exe`, `.msi`, `.AppImage`, `.deb`, `.rpm`) | the **desktop app**: a window, a tray, updates itself                                                                                            |
+| `ringtome-server-<version>-<name>-linux-<arch>.tar.gz`                           | the **server node** for a Linux host, no window: `ringtome` (the node) and `ringtome-supervisor` (which keeps it running, updated and backed up) |
 
 The server node also ships as a container image: `ghcr.io/cube-drone/ringtome:<version>` (and
 `:latest`), for `linux/amd64` and `linux/arm64`.
@@ -85,7 +85,7 @@ a node on a server needs and systemd cannot know how to do:
   checking its sha256 **and** its signature against the release key built into the supervisor;
 - **keeps it safe to update**: backs the node up before each update, starts the new version, and
   waits for it to answer `/health` and stay healthy for a minute. If it doesn't, the supervisor
-  **rolls back** - the previous binary *and* the backup, since nothing migrates down - and never
+  **rolls back** - the previous binary _and_ the backup, since nothing migrates down - and never
   tries that version again. A newer release is tried, since it may be the fix.
 
 The backup before an update is taken live through the node's own backup endpoint, so the node only
@@ -136,8 +136,7 @@ the links the node mints point there.
 
 ## The peer-to-peer port
 
-Nodes talk to each other over QUIC, which is UDP. Publish or open `RINGTOME_P2P_PORT` (the image uses
-5282) so other nodes can connect directly. Without it the node still works - it reaches peers through
+Nodes talk to each other over QUIC, which is UDP. Publish or open `RINGTOME_P2P_PORT` (the image uses 5282) so other nodes can connect directly. Without it the node still works - it reaches peers through
 iroh's relays - but every connection takes the long way round. On a plain Linux host,
 `--network host` for the container is the simplest way to get direct connections.
 
@@ -208,22 +207,22 @@ rollback.
 
 Everything is an environment variable. The ones an operator is likely to want:
 
-| variable | default | meaning |
-|---|---|---|
-| `RINGTOME_BIND_ADDRESS` | `127.0.0.1` (image: `0.0.0.0`) | the address HTTP listens on |
-| `RINGTOME_PORT` | `5281` | the HTTP port |
-| `RINGTOME_P2P_PORT` | chosen by the OS (image: `5282`) | the UDP port for peer-to-peer (QUIC) |
-| `RINGTOME_DATA_DIRECTORY` | `./data` (image: `/data`) | databases and keys - see above |
-| `RINGTOME_BACKUP_DIRECTORY` | `<data directory>/backups` | where backups are written (left out of the backups themselves) - ideally another disk |
-| `RINGTOME_PUBLIC_URL` | unset | the HTTPS address people reach this node at |
-| `RINGTOME_DISCOVERY` | `mainline` | `mainline` (the public DHT and relays), `off` (no discovery), or `local:<path>` (a private test network sharing a folder) |
-| `RINGTOME_ENVIRONMENT` | `prod` | `prod`, or `dev` (serves the UI from the source tree - development only) |
-| `RINGTOME_TENANCY` | `multi` | `multi` for a node that hosts other people; `single` for one person's own |
-| `RINGTOME_NODE_NAME` | the hostname | what this node is called on your devices list |
-| `RINGTOME_ADMIN_PERSONA_ID` | unset | the address of the persona that administers the node (the first account otherwise) |
-| `RINGTOME_MAX_UPLOAD_BYTES` | 128 MiB (multi) / 1 GiB (single) | the largest raw upload the node will accept |
-| `RINGTOME_QUARANTINE_DIRECTORY` | the system temp dir | where uploads wait for processing; disposable |
-| `RUST_LOG` | `info` for the node | log filter, in the usual `tracing` syntax |
+| variable                        | default                          | meaning                                                                                                                   |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `RINGTOME_BIND_ADDRESS`         | `127.0.0.1` (image: `0.0.0.0`)   | the address HTTP listens on                                                                                               |
+| `RINGTOME_PORT`                 | `5281`                           | the HTTP port                                                                                                             |
+| `RINGTOME_P2P_PORT`             | chosen by the OS (image: `5282`) | the UDP port for peer-to-peer (QUIC)                                                                                      |
+| `RINGTOME_DATA_DIRECTORY`       | `./data` (image: `/data`)        | databases and keys - see above                                                                                            |
+| `RINGTOME_BACKUP_DIRECTORY`     | `<data directory>/backups`       | where backups are written (left out of the backups themselves) - ideally another disk                                     |
+| `RINGTOME_PUBLIC_URL`           | unset                            | the HTTPS address people reach this node at                                                                               |
+| `RINGTOME_DISCOVERY`            | `mainline`                       | `mainline` (the public DHT and relays), `off` (no discovery), or `local:<path>` (a private test network sharing a folder) |
+| `RINGTOME_ENVIRONMENT`          | `prod`                           | `prod`, or `dev` (serves the UI from the source tree - development only)                                                  |
+| `RINGTOME_TENANCY`              | `multi`                          | `multi` for a node that hosts other people; `single` for one person's own                                                 |
+| `RINGTOME_NODE_NAME`            | the hostname                     | what this node is called on your devices list                                                                             |
+| `RINGTOME_ADMIN_PERSONA_ID`     | unset                            | the address of the persona that administers the node (the first account otherwise)                                        |
+| `RINGTOME_MAX_UPLOAD_BYTES`     | 128 MiB (multi) / 1 GiB (single) | the largest raw upload the node will accept                                                                               |
+| `RINGTOME_QUARANTINE_DIRECTORY` | the system temp dir              | where uploads wait for processing; disposable                                                                             |
+| `RUST_LOG`                      | `info` for the node              | log filter, in the usual `tracing` syntax                                                                                 |
 
 The rest (sync and admission budgets, proof-of-work prices) have defaults sized for a small hosted
 node and are documented where they are read, in `node/src/config.rs`.
@@ -231,17 +230,17 @@ node and are documented where they are read, in `node/src/config.rs`.
 The supervisor reads these as well (and `RINGTOME_DATA_DIRECTORY`, `RINGTOME_BIND_ADDRESS` and
 `RINGTOME_PORT` above, to find the node):
 
-| variable | default | meaning |
-|---|---|---|
-| `RINGTOME_SUPERVISOR_DIRECTORY` | `./ringtome-supervisor` | installed node versions, `state.json`, `node.pid` |
-| `RINGTOME_BACKUP_DIRECTORY` | `<supervisor directory>/backups` | as above; under the supervisor it must be **outside** the data directory, since a restore replaces the data directory's contents |
-| `RINGTOME_BACKUP_STRATEGY` | `on-update` | `on-update` (before each update), `hourly`, `nightly` (04:00 UTC) - the last two also back up before updates - or `none`, which updates without a backup: a failed update then rolls back the binary but not the data, and the older binary will refuse data the newer one migrated |
-| `RINGTOME_BACKUP_RETENTION` | `7` | how many `backup_*.tar.gz` to keep, newest first - including ones you made by hand |
-| `RINGTOME_AUTO_UPDATE` | `true` | `false` runs the installed node and never looks for another |
-| `RINGTOME_UPDATE_CHECK_SECONDS` | `3600` | how often to look for a release |
-| `RINGTOME_UPDATE_HEALTH_TIMEOUT_SECONDS` | `600` | how long a new version has to answer `/health` (migrations run first) |
-| `RINGTOME_UPDATE_PROBATION_SECONDS` | `60` | how long it must then stay up and healthy |
-| `RINGTOME_STOP_GRACE_SECONDS` | `30` | how long the node gets to exit after SIGTERM |
-| `RINGTOME_UPDATE_MANIFEST_URL` | this repository's `server-latest.json` | where releases are described - for a fork's own releases |
-| `RINGTOME_UPDATE_PUBLIC_KEY` | this repository's release key | the minisign public key releases must be signed with - for a fork's own releases |
-| `RINGTOME_SUPERVISOR_LOG` | `info` | the supervisor's own log filter |
+| variable                                 | default                                | meaning                                                                                                                                                                                                                                                                             |
+| ---------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RINGTOME_SUPERVISOR_DIRECTORY`          | `./ringtome-supervisor`                | installed node versions, `state.json`, `node.pid`                                                                                                                                                                                                                                   |
+| `RINGTOME_BACKUP_DIRECTORY`              | `<supervisor directory>/backups`       | as above; under the supervisor it must be **outside** the data directory, since a restore replaces the data directory's contents                                                                                                                                                    |
+| `RINGTOME_BACKUP_STRATEGY`               | `on-update`                            | `on-update` (before each update), `hourly`, `nightly` (04:00 UTC) - the last two also back up before updates - or `none`, which updates without a backup: a failed update then rolls back the binary but not the data, and the older binary will refuse data the newer one migrated |
+| `RINGTOME_BACKUP_RETENTION`              | `7`                                    | how many `backup_*.tar.gz` to keep, newest first - including ones you made by hand                                                                                                                                                                                                  |
+| `RINGTOME_AUTO_UPDATE`                   | `true`                                 | `false` runs the installed node and never looks for another                                                                                                                                                                                                                         |
+| `RINGTOME_UPDATE_CHECK_SECONDS`          | `3600`                                 | how often to look for a release                                                                                                                                                                                                                                                     |
+| `RINGTOME_UPDATE_HEALTH_TIMEOUT_SECONDS` | `600`                                  | how long a new version has to answer `/health` (migrations run first)                                                                                                                                                                                                               |
+| `RINGTOME_UPDATE_PROBATION_SECONDS`      | `60`                                   | how long it must then stay up and healthy                                                                                                                                                                                                                                           |
+| `RINGTOME_STOP_GRACE_SECONDS`            | `30`                                   | how long the node gets to exit after SIGTERM                                                                                                                                                                                                                                        |
+| `RINGTOME_UPDATE_MANIFEST_URL`           | this repository's `server-latest.json` | where releases are described - for a fork's own releases                                                                                                                                                                                                                            |
+| `RINGTOME_UPDATE_PUBLIC_KEY`             | this repository's release key          | the minisign public key releases must be signed with - for a fork's own releases                                                                                                                                                                                                    |
+| `RINGTOME_SUPERVISOR_LOG`                | `info`                                 | the supervisor's own log filter                                                                                                                                                                                                                                                     |

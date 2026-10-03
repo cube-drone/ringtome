@@ -129,7 +129,11 @@ function writeVersions(next, dryRun) {
 /// which freezes it from here on. Lines are only ever added, never rewritten.
 const PINS = 'node/migrations/released.txt';
 function pinMigrations(dryRun) {
-    const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'node/migrations', file))).digest('hex');
+    const sha256 = (file) =>
+        crypto
+            .createHash('sha256')
+            .update(fs.readFileSync(path.join(ROOT, 'node/migrations', file)))
+            .digest('hex');
     const text = read(PINS);
     const pinned = new Map();
     for (const line of text.split('\n').map((l) => l.trim())) {
@@ -142,19 +146,27 @@ function pinMigrations(dryRun) {
             throw new Error(`released migration ${file} is gone; a shipped rung is never deleted.`);
         }
         if (sha256(file) !== hash) {
-            throw new Error(`released migration ${file} has changed since it shipped; put it back and write the change as a new rung.`);
+            throw new Error(
+                `released migration ${file} has changed since it shipped; put it back and write the change as a new rung.`,
+            );
         }
     }
     const fresh = [];
     for (const kind of ['node', 'user']) {
         const dir = path.join(ROOT, 'node/migrations', kind);
-        for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) {
+        for (const name of fs
+            .readdirSync(dir)
+            .filter((n) => n.endsWith('.sql'))
+            .sort()) {
             const file = `${kind}/${name}`;
             if (!pinned.has(file)) fresh.push(`${file} ${sha256(file)}`);
         }
     }
     if (fresh.length && !dryRun) {
-        fs.writeFileSync(path.join(ROOT, PINS), text.replace(/\n*$/, '\n') + fresh.join('\n') + '\n');
+        fs.writeFileSync(
+            path.join(ROOT, PINS),
+            text.replace(/\n*$/, '\n') + fresh.join('\n') + '\n',
+        );
     }
     return fresh.map((l) => l.split(' ')[0]);
 }
@@ -214,7 +226,12 @@ async function main() {
     console.log(`\n  ${from}  ->  ${next}-${name}`);
     console.log(`  tag:   ${tag}`);
     console.log(`  since: ${since || 'the beginning'}\n`);
-    console.log(notes.split('\n').map((l) => `    ${l}`).join('\n'));
+    console.log(
+        notes
+            .split('\n')
+            .map((l) => `    ${l}`)
+            .join('\n'),
+    );
     console.log('');
 
     const touched = writeVersions(next, dryRun);
@@ -224,21 +241,23 @@ async function main() {
     if (rungs.length === 0) console.log('  no new migrations to freeze');
 
     if (dryRun) {
-    console.log('\n  --dry-run: nothing written, nothing committed, nothing pushed.\n');
-    process.exit(0);
-}
+        console.log('\n  --dry-run: nothing written, nothing committed, nothing pushed.\n');
+        process.exit(0);
+    }
 
     if (!assumeYes) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await rl.question(`\n  release ${next}-${name}? this builds, signs and ships. [y/N] `);
-    rl.close();
-    if (answer.trim().toLowerCase() !== 'y') {
-        for (const spot of VERSIONED) git('checkout', '--', spot.file);
-        git('checkout', '--', PINS);
-        console.log('  nothing released; the version files are back as they were.');
-        process.exit(1);
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await rl.question(
+            `\n  release ${next}-${name}? this builds, signs and ships. [y/N] `,
+        );
+        rl.close();
+        if (answer.trim().toLowerCase() !== 'y') {
+            for (const spot of VERSIONED) git('checkout', '--', spot.file);
+            git('checkout', '--', PINS);
+            console.log('  nothing released; the version files are back as they were.');
+            process.exit(1);
+        }
     }
-}
 
     refreshLocks(dryRun);
     git('add', '--all');

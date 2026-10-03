@@ -1,0 +1,8 @@
+{
+    "printWidth": 100,
+    "tabWidth": 4,
+    "singleQuote": true,
+    "embeddedLanguageFormatting": "off",
+    "proseWrap": "preserve",
+    "overrides": [{ "files": "*.md", "options": { "tabWidth": 2 } }]
+}

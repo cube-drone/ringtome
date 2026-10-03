@@ -25,11 +25,29 @@ use crate::AppState;
 /// The picker's glad row (js/emoji.js `POLE_ROWS`, tone 'good'), bare of variation selectors.
 /// tests/conventions.rs pins these to the client's rows.
 pub const GLAD: [&str; 10] = [
-    "\u{2764}", "\u{1F44D}", "\u{1F923}", "\u{1FAC2}", "\u{1F4AF}", "\u{1F434}", "\u{1F60D}", "\u{1F975}", "\u{1F60E}", "\u{1F446}",
+    "\u{2764}",
+    "\u{1F44D}",
+    "\u{1F923}",
+    "\u{1FAC2}",
+    "\u{1F4AF}",
+    "\u{1F434}",
+    "\u{1F60D}",
+    "\u{1F975}",
+    "\u{1F60E}",
+    "\u{1F446}",
 ];
 /// ...and its sour row (tone 'bad').
 pub const SOUR: [&str; 10] = [
-    "\u{1F44E}", "\u{1F4A9}", "\u{1F644}", "\u{1F92E}", "\u{1F922}", "\u{1F92C}", "\u{1FAE0}", "\u{1F976}", "\u{1F910}", "\u{1F9CC}",
+    "\u{1F44E}",
+    "\u{1F4A9}",
+    "\u{1F644}",
+    "\u{1F92E}",
+    "\u{1F922}",
+    "\u{1F92C}",
+    "\u{1FAE0}",
+    "\u{1F976}",
+    "\u{1F910}",
+    "\u{1F9CC}",
 ];
 
 /// What one followed-but-untrusted person's reaction weighs: counted, but under the lowest trust.
@@ -103,7 +121,12 @@ fn standing_of(reader: &str, annotator: &str, facts: &Facts) -> (Standing, f64) 
         return (Standing::Blocked, 0.0);
     }
     match band_ordinal(say("trust")) {
-        Some(n) if n >= 1 => return (Standing::Trusted(say("trust").unwrap_or_default().to_string()), n as f64 / 4.0),
+        Some(n) if n >= 1 => {
+            return (
+                Standing::Trusted(say("trust").unwrap_or_default().to_string()),
+                n as f64 / 4.0,
+            )
+        }
         _ => {}
     }
     match band_ordinal(say("interest")) {
@@ -120,7 +143,12 @@ fn interest_factor(band: Option<usize>) -> f64 {
 
 /// One post's score for `reader`, from the labels a reader's read already admitted and bounded
 /// (annotations.rs `for_posts`).
-pub fn reckon(reader: &str, author: &str, labels: &[crate::annotations::KnownAnnotation], facts: &Facts) -> Reckoning {
+pub fn reckon(
+    reader: &str,
+    author: &str,
+    labels: &[crate::annotations::KnownAnnotation],
+    facts: &Facts,
+) -> Reckoning {
     let parts: Vec<Part> = labels
         .iter()
         .filter(|a| a.key == ringtome_proto::PublicAnnotation::TAG_KEY)
@@ -128,7 +156,13 @@ pub fn reckon(reader: &str, author: &str, labels: &[crate::annotations::KnownAnn
             let tone = tone(&a.value);
             (tone != 0).then(|| {
                 let (standing, weight) = standing_of(reader, &a.annotator, facts);
-                Part { annotator: a.annotator.clone(), value: a.value.clone(), tone, standing, weight }
+                Part {
+                    annotator: a.annotator.clone(),
+                    value: a.value.clone(),
+                    tone,
+                    standing,
+                    weight,
+                }
             })
         })
         .collect();
@@ -184,7 +218,8 @@ impl Rank {
     /// Does `self` come before `other` in the order? Every key descending - the journal's time
     /// index walks one direction (node rung 0058).
     pub fn before(&self, other: &Rank) -> bool {
-        (self.milli, self.published_ms, &self.doc_id) > (other.milli, other.published_ms, &other.doc_id)
+        (self.milli, self.published_ms, &self.doc_id)
+            > (other.milli, other.published_ms, &other.doc_id)
     }
 
     /// The cursor's spelling: `milli:published_ms:doc_id`.
@@ -223,8 +258,13 @@ pub fn dials_of(reader: &str, facts: &Facts) -> HashMap<String, Dial> {
     let mut out: HashMap<String, Dial> = HashMap::new();
     for root in facts.keys().filter(|r| r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit())) {
         let (_, weight) = standing_of(reader, root, facts);
-        let factor = interest_factor(band_ordinal(facts.get(root).and_then(|f| f.get("interest")).map(String::as_str)));
-        let dial = Dial { weight_milli: (weight * 1000.0).round() as i64, factor_milli: (factor * 1000.0).round() as i64 };
+        let factor = interest_factor(band_ordinal(
+            facts.get(root).and_then(|f| f.get("interest")).map(String::as_str),
+        ));
+        let dial = Dial {
+            weight_milli: (weight * 1000.0).round() as i64,
+            factor_milli: (factor * 1000.0).round() as i64,
+        };
         if dial != NO_DIAL {
             out.insert(root.clone(), dial);
         }
@@ -234,7 +274,11 @@ pub fn dials_of(reader: &str, facts: &Facts) -> HashMap<String, Dial> {
 }
 
 /// A reaction's tones summed, times the sayer's weight - one `score_parts` row.
-fn part_of(labels: &[crate::annotations::KnownAnnotation], annotator: &str, weight_milli: i64) -> i64 {
+fn part_of(
+    labels: &[crate::annotations::KnownAnnotation],
+    annotator: &str,
+    weight_milli: i64,
+) -> i64 {
     let tones: i64 = labels
         .iter()
         .filter(|a| a.annotator == annotator && a.key == ringtome_proto::PublicAnnotation::TAG_KEY)
@@ -251,7 +295,10 @@ fn total_of(parts_milli: i64, factor_milli: i64) -> i64 {
 
 async fn stored_dials(db: &crate::db::Db, reader: &str) -> anyhow::Result<HashMap<String, Dial>> {
     let rows: Vec<(String, i64, i64)> = db
-        .fetch_all("SELECT root, weight_milli, factor_milli FROM score_dials WHERE reader_root = ?1", (reader,))
+        .fetch_all(
+            "SELECT root, weight_milli, factor_milli FROM score_dials WHERE reader_root = ?1",
+            (reader,),
+        )
         .await
         .map_err(|e| anyhow::anyhow!("reading the stored dials: {e}"))?;
     Ok(rows.into_iter().map(|(r, w, f)| (r, Dial { weight_milli: w, factor_milli: f })).collect())
@@ -298,7 +345,11 @@ async fn set_part(
 }
 
 /// Sum a post's parts into its score for one reader.
-async fn set_total(db: &crate::db::Db, reader: &str, (author, doc): (&str, &str)) -> anyhow::Result<()> {
+async fn set_total(
+    db: &crate::db::Db,
+    reader: &str,
+    (author, doc): (&str, &str),
+) -> anyhow::Result<()> {
     let (sum,): (Option<i64>,) = db
         .fetch_one(
             "SELECT SUM(part_milli) FROM score_parts WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3",
@@ -332,7 +383,8 @@ async fn rescore(
     reader: &str,
     touched: &[(String, String, String)],
 ) -> anyhow::Result<()> {
-    let mut posts: Vec<(String, String)> = touched.iter().map(|(a, d, _)| (a.clone(), d.clone())).collect();
+    let mut posts: Vec<(String, String)> =
+        touched.iter().map(|(a, d, _)| (a.clone(), d.clone())).collect();
     posts.sort();
     posts.dedup();
     for chunk in posts.chunks(400) {
@@ -357,7 +409,10 @@ pub async fn labels_moved(state: &AppState, touched: &[(String, String, String)]
     }
 }
 
-async fn labels_moved_inner(state: &AppState, touched: &[(String, String, String)]) -> anyhow::Result<()> {
+async fn labels_moved_inner(
+    state: &AppState,
+    touched: &[(String, String, String)],
+) -> anyhow::Result<()> {
     let mut by_reader: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
     let mut annotators: Vec<&str> = touched.iter().map(|(_, _, x)| x.as_str()).collect();
     annotators.sort_unstable();
@@ -395,7 +450,10 @@ pub async fn refresh_dials(state: &AppState, reader: &str, facts: &Facts) -> any
     let mut reweighed: Vec<&str> = Vec::new();
     let mut refactored: Vec<&str> = Vec::new();
     for root in now.keys().chain(before.keys()) {
-        let (n, b) = (now.get(root).copied().unwrap_or(NO_DIAL), before.get(root).copied().unwrap_or(NO_DIAL));
+        let (n, b) = (
+            now.get(root).copied().unwrap_or(NO_DIAL),
+            before.get(root).copied().unwrap_or(NO_DIAL),
+        );
         if n.weight_milli != b.weight_milli && !reweighed.contains(&root.as_str()) {
             reweighed.push(root);
         }
@@ -471,7 +529,11 @@ pub async fn rebuild(state: &AppState, reader: &str, facts: &Facts) -> anyhow::R
 
 /// One reader's stored scores, `(author, doc) -> thousandths`, for these posts - what a "best"
 /// order narrowed by a search or the picks sorts by.
-pub async fn stored_for(db: &crate::db::Db, reader: &str, posts: &[(String, String)]) -> anyhow::Result<HashMap<(String, String), i64>> {
+pub async fn stored_for(
+    db: &crate::db::Db,
+    reader: &str,
+    posts: &[(String, String)],
+) -> anyhow::Result<HashMap<(String, String), i64>> {
     let docs: Vec<String> = posts
         .iter()
         .map(|(_, d)| d)
@@ -497,7 +559,10 @@ pub async fn stored_for(db: &crate::db::Db, reader: &str, posts: &[(String, Stri
 }
 
 /// Every stored score for one reader - the test door's comparison of kept against rebuilt.
-pub async fn all_stored(db: &crate::db::Db, reader: &str) -> anyhow::Result<Vec<(String, String, i64)>> {
+pub async fn all_stored(
+    db: &crate::db::Db,
+    reader: &str,
+) -> anyhow::Result<Vec<(String, String, i64)>> {
     db.fetch_all(
         "SELECT author_root, doc_id, milli FROM post_scores WHERE reader_root = ?1 ORDER BY author_root, doc_id",
         (reader,),
@@ -544,7 +609,8 @@ impl HotRank {
 
     pub fn parse(token: &str) -> Option<HotRank> {
         let (ms, doc) = token.split_once(':')?;
-        (!doc.is_empty()).then(|| Some(HotRank { hot_ms: ms.parse().ok()?, doc_id: doc.to_string() }))?
+        (!doc.is_empty())
+            .then(|| Some(HotRank { hot_ms: ms.parse().ok()?, doc_id: doc.to_string() }))?
     }
 }
 
@@ -559,7 +625,9 @@ mod tests {
 
     fn facts(rows: &[(&str, &[(&str, &str)])]) -> Facts {
         rows.iter()
-            .map(|(root, kv)| (root.to_string(), kv.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()))
+            .map(|(root, kv)| {
+                (root.to_string(), kv.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
+            })
             .collect()
     }
 
@@ -596,13 +664,27 @@ mod tests {
             tag("max", "beef"),
         ];
         let r = reckon("me", "author", &labels, &f);
-        let weights: Vec<(&str, f64)> = r.parts.iter().map(|p| (p.annotator.as_str(), p.weight)).collect();
+        let weights: Vec<(&str, f64)> =
+            r.parts.iter().map(|p| (p.annotator.as_str(), p.weight)).collect();
         assert_eq!(
             weights,
-            [("max", 1.0), ("max", 1.0), ("low", 0.25), ("fol", 0.1), ("nop", 0.0), ("blk", 0.0), ("stranger", 0.0), ("me", 1.0)],
+            [
+                ("max", 1.0),
+                ("max", 1.0),
+                ("low", 0.25),
+                ("fol", 0.1),
+                ("nop", 0.0),
+                ("blk", 0.0),
+                ("stranger", 0.0),
+                ("me", 1.0)
+            ],
             "one part per reaction, words left out"
         );
-        assert_eq!(r.parts[4].standing, Standing::Stranger, "trust 'none' and no follow is no edge");
+        assert_eq!(
+            r.parts[4].standing,
+            Standing::Stranger,
+            "trust 'none' and no follow is no edge"
+        );
         // (1 + 1 - 0.25 + 0.1 + 1) x 1.1
         assert!((r.score - 2.85 * 1.1).abs() < 1e-9, "score {}", r.score);
         assert_eq!(r.milli(), 3135);
@@ -615,7 +697,8 @@ mod tests {
     #[test]
     fn stored_thousandths_agree_with_the_reckoning() {
         let hex = |c: char| c.to_string().repeat(64);
-        let (me, max, low, fol, blk, author) = (hex('e'), hex('a'), hex('b'), hex('c'), hex('d'), hex('f'));
+        let (me, max, low, fol, blk, author) =
+            (hex('e'), hex('a'), hex('b'), hex('c'), hex('d'), hex('f'));
         let f = facts(&[
             (max.as_str(), &[("trust", "max")]),
             (low.as_str(), &[("trust", "low")]),
@@ -628,7 +711,11 @@ mod tests {
         assert_eq!(dials[&low].weight_milli, 250);
         assert_eq!(dials[&fol], Dial { weight_milli: 100, factor_milli: 1000 });
         assert!(!dials.contains_key(&blk), "blocked, and no other dial: a stranger's, not kept");
-        assert_eq!(dials[&author], Dial { weight_milli: 100, factor_milli: 1050 }, "an author followed: a follow's weight, and a factor");
+        assert_eq!(
+            dials[&author],
+            Dial { weight_milli: 100, factor_milli: 1050 },
+            "an author followed: a follow's weight, and a factor"
+        );
         assert_eq!(dials[&me].weight_milli, 1000, "the reader, at full weight");
         let labels = [
             tag(&max, "\u{1F44D}"),
@@ -644,13 +731,20 @@ mod tests {
             .sum();
         let stored = total_of(parts, dials[&author].factor_milli);
         assert_eq!(stored, reckon(&me, &author, &labels, &f).milli());
-        assert_eq!(stored, 2993, "(2 - 0.25 + 0.1 + 1) x 1.05 = 2.9925, a half-thousandth rounded away from zero");
+        assert_eq!(
+            stored, 2993,
+            "(2 - 0.25 + 0.1 + 1) x 1.05 = 2.9925, a half-thousandth rounded away from zero"
+        );
     }
 
     #[test]
     fn hot_is_time_plus_an_hour_a_like_and_its_cursor_round_trips() {
         assert_eq!(hot_of(10_000_000, 1000), 10_000_000 + 3_600_000, "a whole like is an hour");
-        assert_eq!(hot_of(10_000_000, -500), 10_000_000 - 1_800_000, "half a dislike, half an hour back");
+        assert_eq!(
+            hot_of(10_000_000, -500),
+            10_000_000 - 1_800_000,
+            "half a dislike, half an hour back"
+        );
         let a = HotRank { hot_ms: 9, doc_id: "a".into() };
         let b = HotRank { hot_ms: 5, doc_id: "b".into() };
         let c = HotRank { hot_ms: 5, doc_id: "a".into() };
@@ -672,7 +766,10 @@ mod tests {
         let b = Rank { milli: 1000, published_ms: 9, doc_id: "a".into() };
         let c = Rank { milli: 1000, published_ms: 7, doc_id: "a".into() };
         let d = Rank { milli: 1000, published_ms: 7, doc_id: "b".into() };
-        assert!(a.before(&b) && b.before(&c) && d.before(&c), "score, then newest, then the higher id");
+        assert!(
+            a.before(&b) && b.before(&c) && d.before(&c),
+            "score, then newest, then the higher id"
+        );
         assert!(!c.before(&d) && !c.before(&c));
         assert_eq!(Rank::parse(&c.token()), Some(c));
         assert_eq!(Rank::parse("-250:12:abcd").map(|r| r.milli), Some(-250));

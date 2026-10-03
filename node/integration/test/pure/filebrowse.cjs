@@ -23,7 +23,11 @@ describe('browseFiles', () => {
         assert.deepEqual(ids(b.files), ['a', 'b', 'c', 'd'], 'the order it was given');
         assert.deepEqual(b.notebooks, ['files', 'journal']);
         assert.equal(b.unfiled, true);
-        assert.deepEqual(b.cloud, [['horse', 2], ['red', 1], ['stray', 1]]);
+        assert.deepEqual(b.cloud, [
+            ['horse', 2],
+            ['red', 1],
+            ['stray', 1],
+        ]);
     });
 
     it('a notebook narrows the files and the cloud alike', () => {
@@ -59,21 +63,53 @@ describe('the kind row (2026-10-02: "just get me images")', () => {
         { doc_id: 'a', format: 'opus', tags: [] },
     ];
 
-    it('names each file\'s kind - a silent loop is an image', () => {
-        assert.deepEqual(docs.map(fileKind), ['post', 'drawing', 'image', 'image', 'video', 'audio']);
+    it("names each file's kind - a silent loop is an image", () => {
+        assert.deepEqual(docs.map(fileKind), [
+            'post',
+            'drawing',
+            'image',
+            'image',
+            'video',
+            'audio',
+        ]);
         assert.equal(fileKind({ format: 'plaintext' }), 'post');
         assert.equal(fileKind({ format: 'mystery' }), null);
     });
 
     it('counts the kinds in order, narrows to either of those picked, and the tags count what is left', () => {
         const all = browseFiles(docs);
-        assert.deepEqual(all.kinds.map((k) => `${k.value}:${k.count}`), ['post:1', 'drawing:1', 'image:2', 'audio:1', 'video:1']);
+        assert.deepEqual(
+            all.kinds.map((k) => `${k.value}:${k.count}`),
+            ['post:1', 'drawing:1', 'image:2', 'audio:1', 'video:1'],
+        );
         const images = browseFiles(docs, { kinds: ['image'] });
-        assert.deepEqual(images.files.map((d) => d.doc_id), ['p', 'l']);
-        assert.equal(images.kinds.find((k) => k.value === 'post').count, 1, 'the row still offers the other kinds');
-        assert.deepEqual(images.cloud, [['horses', 1], ['sky', 1]], 'the tags count only the images');
+        assert.deepEqual(
+            images.files.map((d) => d.doc_id),
+            ['p', 'l'],
+        );
+        assert.equal(
+            images.kinds.find((k) => k.value === 'post').count,
+            1,
+            'the row still offers the other kinds',
+        );
+        assert.deepEqual(
+            images.cloud,
+            [
+                ['horses', 1],
+                ['sky', 1],
+            ],
+            'the tags count only the images',
+        );
         const either = browseFiles(docs, { kinds: ['image', 'video'], tags: ['sky'] });
-        assert.deepEqual(either.files.map((d) => d.doc_id), ['p', 'v'], 'either kind, and the tag');
-        assert.deepEqual(either.kinds.map((k) => `${k.value}:${k.count}`), ['image:1', 'video:1'], 'counted under the tag, not the kinds');
+        assert.deepEqual(
+            either.files.map((d) => d.doc_id),
+            ['p', 'v'],
+            'either kind, and the tag',
+        );
+        assert.deepEqual(
+            either.kinds.map((k) => `${k.value}:${k.count}`),
+            ['image:1', 'video:1'],
+            'counted under the tag, not the kinds',
+        );
     });
 });

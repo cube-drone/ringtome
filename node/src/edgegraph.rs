@@ -95,10 +95,8 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
             .await
             .map_err(|e| anyhow::anyhow!("reading published edges: {e}"))?;
         let now = now_ms();
-        let standing: Vec<(&String, &crate::record::imaol::PublishedRow)> = edges
-            .iter()
-            .filter(|(_, row)| !row.edge.is_empty())
-            .collect();
+        let standing: Vec<(&String, &crate::record::imaol::PublishedRow)> =
+            edges.iter().filter(|(_, row)| !row.edge.is_empty()).collect();
         for chunk in standing.chunks(EDGE_CHUNK_ROWS) {
             let placeholders: Vec<String> = (0..chunk.len())
                 .map(|i| {
@@ -192,11 +190,8 @@ pub async fn refresh_implicit(
             blocked.insert(root);
             explicit.insert(root);
         }
-        let band = |key: &str| {
-            facts
-                .get(key)
-                .and_then(|v| crate::net::subscriptions::band_ordinal(v))
-        };
+        let band =
+            |key: &str| facts.get(key).and_then(|v| crate::net::subscriptions::band_ordinal(v));
         for dial in ["trust", "interest", "interest_rebroadcasts"] {
             if band(dial).is_some() {
                 explicit.insert(root);
@@ -243,9 +238,7 @@ pub async fn refresh_implicit(
     let mut vouches: HashMap<(&str, &str), i64> = HashMap::new();
     for (author, _, trust, interest) in &rows {
         let counted = |v: &Option<String>| {
-            v.as_deref()
-                .and_then(crate::net::subscriptions::band_ordinal)
-                .is_some_and(|o| o > 0)
+            v.as_deref().and_then(crate::net::subscriptions::band_ordinal).is_some_and(|o| o > 0)
         };
         if counted(trust) {
             *vouches.entry((author, "trust")).or_default() += 1;
@@ -263,11 +256,9 @@ pub async fn refresh_implicit(
         if subject == reader_root || blocked.contains(subject.as_str()) {
             continue;
         }
-        let theirs = |v: &Option<String>| {
-            v.as_deref().and_then(crate::net::subscriptions::band_ordinal)
-        };
-        if let (Some(mine), Some(published)) = (trust_dial.get(author.as_str()), theirs(trust))
-        {
+        let theirs =
+            |v: &Option<String>| v.as_deref().and_then(crate::net::subscriptions::band_ordinal);
+        if let (Some(mine), Some(published)) = (trust_dial.get(author.as_str()), theirs(trust)) {
             let level = (*mine).min(published);
             if level > 0 {
                 let count = vouches.get(&(author.as_str(), "trust")).copied().unwrap_or(0);
@@ -280,9 +271,7 @@ pub async fn refresh_implicit(
                 });
             }
         }
-        if let (Some(mine), Some(published)) =
-            (taste_dial.get(author.as_str()), theirs(interest))
-        {
+        if let (Some(mine), Some(published)) = (taste_dial.get(author.as_str()), theirs(interest)) {
             let level = (*mine).min(published);
             if level > 0 {
                 let count = vouches.get(&(author.as_str(), "taste")).copied().unwrap_or(0);
@@ -301,15 +290,7 @@ pub async fn refresh_implicit(
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
                 let b = i * 6;
-                format!(
-                    "(?{},?{},?{},2,?{},?{},?{})",
-                    b + 1,
-                    b + 2,
-                    b + 3,
-                    b + 4,
-                    b + 5,
-                    b + 6
-                )
+                format!("(?{},?{},?{},2,?{},?{},?{})", b + 1, b + 2, b + 3, b + 4, b + 5, b + 6)
             })
             .collect();
         let sql = format!(
@@ -346,10 +327,7 @@ pub async fn refresh_implicit(
     // away - a friend unfollowed, a vouch withdrawn, a dial dropped to the floor.
     store
         .db()
-        .execute(
-            "DELETE FROM implicit_edges WHERE updated_at_ms < ?1",
-            (now,),
-        )
+        .execute("DELETE FROM implicit_edges WHERE updated_at_ms < ?1", (now,))
         .await
         .context("sweeping stale implicit edges")?;
 
@@ -386,7 +364,10 @@ pub struct ImplicitRow {
 /// `(author, trust, interest)`: the authors whose mirrored edges carry a trust or an interest band
 /// of low or above (2026-09-28). Exact for the chains held - a statement withdrawn is gone from
 /// them - and silent about everyone else.
-pub async fn edges_naming(node_db: &crate::db::Db, subject: &str) -> Result<Vec<(String, Option<String>, Option<String>)>> {
+pub async fn edges_naming(
+    node_db: &crate::db::Db,
+    subject: &str,
+) -> Result<Vec<(String, Option<String>, Option<String>)>> {
     node_db
         .fetch_all(
             "SELECT author_root, trust, interest FROM edge_graph
@@ -400,10 +381,7 @@ pub async fn edges_naming(node_db: &crate::db::Db, subject: &str) -> Result<Vec<
 
 pub async fn forget_author(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM edge_graph WHERE author_root = ?1",
-            (author_root,),
-        )
+        .execute("DELETE FROM edge_graph WHERE author_root = ?1", (author_root,))
         .await
         .context("forgetting an evicted author's edges")?;
     Ok(())
@@ -421,16 +399,14 @@ pub async fn implicit_of(db: &Db) -> Result<Vec<ImplicitRow>> {
         .context("listing implicit edges")?;
     Ok(rows
         .into_iter()
-        .map(
-            |(target_root, lane, introducer_root, depth, level, introducer_vouches)| ImplicitRow {
-                target_root,
-                lane,
-                introducer_root,
-                depth,
-                level,
-                introducer_vouches,
-            },
-        )
+        .map(|(target_root, lane, introducer_root, depth, level, introducer_vouches)| ImplicitRow {
+            target_root,
+            lane,
+            introducer_root,
+            depth,
+            level,
+            introducer_vouches,
+        })
         .collect())
 }
 

@@ -30,9 +30,13 @@ export const PersonDemo = ({ seg, current }) => {
         return html`<div class="persona-page">
             <h1 class="persona-page-title">${t('persondemo.the-gallery-needs-a-persona', 'the gallery needs a persona')}</h1>
             <p>
-                ${tNodes('persondemo.visit-this-page-under-someones', "Visit this page under someone's address - {path}.", {
-                    path: html`<code>/ringtome/user/&lt;address&gt;/ui-demo</code>`,
-                })}
+                ${tNodes(
+                    'persondemo.visit-this-page-under-someones',
+                    "Visit this page under someone's address - {path}.",
+                    {
+                        path: html`<code>/ringtome/user/&lt;address&gt;/ui-demo</code>`,
+                    },
+                )}
             </p>
         </div>`;
     }

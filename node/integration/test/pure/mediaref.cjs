@@ -12,8 +12,14 @@ before(async () => {
 const ROOT = 'aabb';
 const BASE = `/api/identity/${ROOT}/docs/doc7/body`;
 const ref = (over = {}) =>
-    mediaReference({ root: ROOT, format: 'marquee', docId: 'doc7', name: 'holiday.jpg',
-        mimeType: 'image/jpeg', ...over });
+    mediaReference({
+        root: ROOT,
+        format: 'marquee',
+        docId: 'doc7',
+        name: 'holiday.jpg',
+        mimeType: 'image/jpeg',
+        ...over,
+    });
 
 describe('media reference', () => {
     it('embeds an image with the extension the renderer sniffs for', () => {
@@ -21,15 +27,21 @@ describe('media reference', () => {
     });
 
     it('maps each input kind to what the crush actually emits', () => {
-        assert.equal(ref({ mimeType: 'video/quicktime', name: 'clip.mov' }),
-            `![clip.mov](${BASE}/clip.webm)`);
-        assert.equal(ref({ mimeType: 'audio/wav', name: 'song.wav' }),
-            `![song.wav](${BASE}/song.ogg)`);
+        assert.equal(
+            ref({ mimeType: 'video/quicktime', name: 'clip.mov' }),
+            `![clip.mov](${BASE}/clip.webm)`,
+        );
+        assert.equal(
+            ref({ mimeType: 'audio/wav', name: 'song.wav' }),
+            `![song.wav](${BASE}/song.ogg)`,
+        );
     });
 
     it('degrades an unknown kind to a plain link rather than guessing an extension', () => {
-        assert.equal(ref({ mimeType: 'application/pdf', name: 'thesis.pdf' }),
-            `[thesis.pdf](${BASE})`);
+        assert.equal(
+            ref({ mimeType: 'application/pdf', name: 'thesis.pdf' }),
+            `[thesis.pdf](${BASE})`,
+        );
         assert.equal(ref({ mimeType: '' }), `[holiday.jpg](${BASE})`);
         assert.equal(ref({ mimeType: undefined }), `[holiday.jpg](${BASE})`);
     });
@@ -40,13 +52,14 @@ describe('media reference', () => {
     });
 
     it('strips from the LABEL the characters that would break the markup around it', () => {
-        assert.equal(ref({ name: 'my [best] (photo).jpg' }),
-            `![my best photo.jpg](${BASE}/my_best_photo.avif)`);
+        assert.equal(
+            ref({ name: 'my [best] (photo).jpg' }),
+            `![my best photo.jpg](${BASE}/my_best_photo.avif)`,
+        );
     });
 
     it('collapses everything path-hostile in the slug and drops the original extension', () => {
-        assert.equal(ref({ name: 'a b  c!@#d.jpeg' }),
-            `![a b  c!@#d.jpeg](${BASE}/a_b_c_d.avif)`);
+        assert.equal(ref({ name: 'a b  c!@#d.jpeg' }), `![a b  c!@#d.jpeg](${BASE}/a_b_c_d.avif)`);
     });
 
     it('keeps dots and dashes in a slug, dropping only the trailing extension', () => {
@@ -67,28 +80,42 @@ describe('media reference', () => {
 
 describe('decoratedBodyUrl (the copyable byte URL)', () => {
     it('derives the sniffable extension from the document format', () => {
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'avif', 'holiday snap'),
-            '/api/identity/aabb/docs/doc7/body/holiday_snap.avif');
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'webm', 'clip'),
-            '/api/identity/aabb/docs/doc7/body/clip.webm');
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'opus', 'song'),
-            '/api/identity/aabb/docs/doc7/body/song.ogg');
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'apng', 'loop'),
-            '/api/identity/aabb/docs/doc7/body/loop.apng');
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'avif', 'holiday snap'),
+            '/api/identity/aabb/docs/doc7/body/holiday_snap.avif',
+        );
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'webm', 'clip'),
+            '/api/identity/aabb/docs/doc7/body/clip.webm',
+        );
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'opus', 'song'),
+            '/api/identity/aabb/docs/doc7/body/song.ogg',
+        );
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'apng', 'loop'),
+            '/api/identity/aabb/docs/doc7/body/loop.apng',
+        );
     });
 
     it('drops a title s own extension before adding the real one', () => {
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'avif', 'photo.png'),
-            '/api/identity/aabb/docs/doc7/body/photo.avif');
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'avif', 'photo.png'),
+            '/api/identity/aabb/docs/doc7/body/photo.avif',
+        );
     });
 
     it('degrades to the bare body URL for text formats', () => {
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'marquee', 'notes'),
-            '/api/identity/aabb/docs/doc7/body');
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'marquee', 'notes'),
+            '/api/identity/aabb/docs/doc7/body',
+        );
     });
 
     it('never emits an empty path segment', () => {
-        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'avif', ''),
-            '/api/identity/aabb/docs/doc7/body/file.avif');
+        assert.equal(
+            decoratedBodyUrl('aabb', 'doc7', 'avif', ''),
+            '/api/identity/aabb/docs/doc7/body/file.avif',
+        );
     });
 });

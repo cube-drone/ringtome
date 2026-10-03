@@ -66,7 +66,11 @@ pub struct Alert {
     /// That picture as a small PNG, for an embedder to hand its operating system - rendered
     /// only while an embedder listens (`watch_window`), since not every platform's
     /// notification reads AVIF. Its size is what the test recorder shows.
-    #[serde(rename = "picture_png_bytes", serialize_with = "png_size", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "picture_png_bytes",
+        serialize_with = "png_size",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub picture_png: Option<Arc<Vec<u8>>>,
 }
 
@@ -160,7 +164,14 @@ impl Attention {
     pub fn recorded(&self, root: &str) -> Vec<Alert> {
         self.recorded
             .as_ref()
-            .map(|r| r.lock().expect("attention recorder poisoned").iter().filter(|a| a.root == root).cloned().collect())
+            .map(|r| {
+                r.lock()
+                    .expect("attention recorder poisoned")
+                    .iter()
+                    .filter(|a| a.root == root)
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -173,7 +184,8 @@ impl Attention {
 
     /// Does an embedder listen - someone who will want an alert's picture as a file?
     fn embedded(&self) -> bool {
-        self.everyone.load(std::sync::atomic::Ordering::SeqCst) || self.embedder.load(std::sync::atomic::Ordering::SeqCst)
+        self.everyone.load(std::sync::atomic::Ordering::SeqCst)
+            || self.embedder.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Is anybody listening for anyone? (What lets an idle tick skip even the hosted-roots read.)
@@ -243,7 +255,9 @@ pub async fn watch(state: AppState) {
         }
         let Ok(hosted) = crate::identity::hosted_roots(&state.node_db).await else { continue };
         let many = hosted.len() > 1;
-        for root in hosted.iter().filter(|r| (everyone || dirty.contains(*r)) && state.attention.wanted(r)) {
+        for root in
+            hosted.iter().filter(|r| (everyone || dirty.contains(*r)) && state.attention.wanted(r))
+        {
             // Primed means a pass has SUCCEEDED for this persona: only then is its set a
             // record of what was already unseen. (Not "the tick has seen it" - the guard is
             // written before the pass, and counting that replayed the backlog at launch.)
@@ -319,11 +333,13 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?
     {
-        let lines = crate::chat::unseen_lines(state, &author, &doc, since, root, LINES_PER_ROOM).await?;
+        let lines =
+            crate::chat::unseen_lines(state, &author, &doc, since, root, LINES_PER_ROOM).await?;
         if lines.is_empty() {
             continue;
         }
-        let fresh: Vec<&crate::chat::UnseenLine> = lines.iter().filter(|l| !known.chat.contains(&l.hash)).collect();
+        let fresh: Vec<&crate::chat::UnseenLine> =
+            lines.iter().filter(|l| !known.chat.contains(&l.hash)).collect();
         if !fresh.is_empty() {
             let room = room_name(state, &author, &doc).await;
             let route = room_route(&author, &doc);
@@ -336,7 +352,13 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
                 };
                 alerts.push(Alert {
                     root: root.to_string(),
-                    title: crate::msg!("attention.speaker-in-room", "{who} in {room}", who = who, room = room).english,
+                    title: crate::msg!(
+                        "attention.speaker-in-room",
+                        "{who} in {room}",
+                        who = who,
+                        room = room
+                    )
+                    .english,
                     body,
                     route: route.clone(),
                     picture,
@@ -375,7 +397,8 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
             out.push(Alert {
                 root: root.to_string(),
                 title: crate::msg!("attention.notifications", "Notifications").english,
-                body: crate::msg!("attention.n-new-notifications", "{n} new notifications", n = n).english,
+                body: crate::msg!("attention.n-new-notifications", "{n} new notifications", n = n)
+                    .english,
                 route,
                 picture: None,
                 picture_png: None,
@@ -384,7 +407,13 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
             out.push(Alert {
                 root: root.to_string(),
                 title: last.title,
-                body: crate::msg!("attention.n-new-messages", "{n} new messages - latest: {words}", n = n, words = last.body).english,
+                body: crate::msg!(
+                    "attention.n-new-messages",
+                    "{n} new messages - latest: {words}",
+                    n = n,
+                    words = last.body
+                )
+                .english,
                 route,
                 picture: last.picture,
                 picture_png: None,
@@ -403,7 +432,9 @@ fn room_route(author_hex: &str, doc: &str) -> String {
     let seg = hex::decode(author_hex)
         .ok()
         .and_then(|b| <[u8; 32]>::try_from(b).ok())
-        .map(|root| crate::speakable::speakable(&root).rsplit('-').next().unwrap_or_default().to_string())
+        .map(|root| {
+            crate::speakable::speakable(&root).rsplit('-').next().unwrap_or_default().to_string()
+        })
         .unwrap_or_else(|| author_hex.to_string());
     format!("/ringtome/user/{seg}/room/{doc}")
 }
@@ -418,7 +449,9 @@ async fn bell_alert(
     let who = if item.stranger {
         item.claimed_name
             .as_ref()
-            .map(|c| crate::msg!("attention.claimed-name", "\"{name}\" (unverified)", name = c).english)
+            .map(|c| {
+                crate::msg!("attention.claimed-name", "\"{name}\" (unverified)", name = c).english
+            })
             .unwrap_or_else(|| short_name(&item.author))
     } else {
         item.author_name.clone().unwrap_or_else(|| short_name(&item.author))
@@ -432,7 +465,8 @@ async fn bell_alert(
             None => None,
         }
     } else {
-        let doc = hex::decode(&item.doc_id).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok());
+        let doc =
+            hex::decode(&item.doc_id).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok());
         match doc {
             Some(doc) => crate::record::documents::public_doc(data.db(), &doc)
                 .await
@@ -445,27 +479,75 @@ async fn bell_alert(
     };
     use crate::notifications as k;
     let body = match (item.kind.as_str(), title) {
-        (k::KIND_REBROADCAST, Some(t)) => crate::msg!("attention.shared-your-post", "shared your post \"{t}\"", t = t).english,
-        (k::KIND_REBROADCAST, None) => crate::msg!("attention.shared-something-of-yours", "shared something of yours").english,
-        (k::KIND_COMMENT, Some(t)) => crate::msg!("attention.replied-to-your-post", "replied to your post \"{t}\"", t = t).english,
-        (k::KIND_COMMENT, None) => crate::msg!("attention.replied-to-one-of-your-posts", "replied to one of your posts").english,
+        (k::KIND_REBROADCAST, Some(t)) => {
+            crate::msg!("attention.shared-your-post", "shared your post \"{t}\"", t = t).english
+        }
+        (k::KIND_REBROADCAST, None) => {
+            crate::msg!("attention.shared-something-of-yours", "shared something of yours").english
+        }
+        (k::KIND_COMMENT, Some(t)) => {
+            crate::msg!("attention.replied-to-your-post", "replied to your post \"{t}\"", t = t)
+                .english
+        }
+        (k::KIND_COMMENT, None) => {
+            crate::msg!("attention.replied-to-one-of-your-posts", "replied to one of your posts")
+                .english
+        }
         (k::KIND_TAGGED, t) => match (&item.detail, t) {
-            (Some(words), Some(t)) => crate::msg!("attention.labelled-post-words", "labelled \"{t}\" \"{words}\"", t = t, words = words).english,
-            (Some(words), None) => crate::msg!("attention.labelled-a-post-words", "labelled one of your posts \"{words}\"", words = words).english,
-            (None, Some(t)) => crate::msg!("attention.labelled-post", "labelled your post \"{t}\"", t = t).english,
-            (None, None) => crate::msg!("attention.labelled-a-post", "labelled one of your posts").english,
+            (Some(words), Some(t)) => {
+                crate::msg!(
+                    "attention.labelled-post-words",
+                    "labelled \"{t}\" \"{words}\"",
+                    t = t,
+                    words = words
+                )
+                .english
+            }
+            (Some(words), None) => {
+                crate::msg!(
+                    "attention.labelled-a-post-words",
+                    "labelled one of your posts \"{words}\"",
+                    words = words
+                )
+                .english
+            }
+            (None, Some(t)) => {
+                crate::msg!("attention.labelled-post", "labelled your post \"{t}\"", t = t).english
+            }
+            (None, None) => {
+                crate::msg!("attention.labelled-a-post", "labelled one of your posts").english
+            }
         },
-        (k::KIND_MENTIONED, _) => crate::msg!("attention.mentioned-you-in-a-post", "mentioned you in a post").english,
-        (k::KIND_ROOM_MENTION, Some(room)) => crate::msg!("attention.mentioned-you-in-room", "mentioned you in {room}", room = room).english,
-        (k::KIND_ROOM_MENTION, None) => crate::msg!("attention.mentioned-you-in-a-room", "mentioned you in a room").english,
+        (k::KIND_MENTIONED, _) => {
+            crate::msg!("attention.mentioned-you-in-a-post", "mentioned you in a post").english
+        }
+        (k::KIND_ROOM_MENTION, Some(room)) => {
+            crate::msg!("attention.mentioned-you-in-room", "mentioned you in {room}", room = room)
+                .english
+        }
+        (k::KIND_ROOM_MENTION, None) => {
+            crate::msg!("attention.mentioned-you-in-a-room", "mentioned you in a room").english
+        }
         _ => {
             let follows = item.interest.is_some();
             let vouches = item.trust.as_deref() == Some("max");
             match (follows, vouches, item.trust.is_some()) {
-                (true, true, _) => crate::msg!("attention.follows-and-vouches", "follows and trusts you").english,
-                (true, false, true) => crate::msg!("attention.follows-and-trusts", "follows you publicly, and publishes their trust in you").english,
-                (true, false, false) => crate::msg!("attention.follows-you", "follows you, publicly").english,
-                (false, true, _) => crate::msg!("attention.vouches-for-you", "trusts you, publicly").english,
+                (true, true, _) => {
+                    crate::msg!("attention.follows-and-vouches", "follows and trusts you").english
+                }
+                (true, false, true) => {
+                    crate::msg!(
+                        "attention.follows-and-trusts",
+                        "follows you publicly, and publishes their trust in you"
+                    )
+                    .english
+                }
+                (true, false, false) => {
+                    crate::msg!("attention.follows-you", "follows you, publicly").english
+                }
+                (false, true, _) => {
+                    crate::msg!("attention.vouches-for-you", "trusts you, publicly").english
+                }
                 _ => crate::msg!("attention.trusts-you", "publishes their trust in you").english,
             }
         }
@@ -522,10 +604,15 @@ async fn with_picture(state: &AppState, root: &str, alert: &mut Alert) {
         }
         let Some(avif) = picture_bytes(state, root, &picture).await else { continue };
         if state.attention.embedded() {
-            let png = tokio::task::spawn_blocking(move || crate::media::image::avif_to_png(&avif, PICTURE_BOUND)).await;
+            let png = tokio::task::spawn_blocking(move || {
+                crate::media::image::avif_to_png(&avif, PICTURE_BOUND)
+            })
+            .await;
             match png {
                 Ok(Ok(png)) => alert.picture_png = Some(Arc::new(png)),
-                Ok(Err(e)) => tracing::debug!(error = %e, "a notification's picture would not decode"),
+                Ok(Err(e)) => {
+                    tracing::debug!(error = %e, "a notification's picture would not decode")
+                }
                 Err(e) => tracing::debug!(error = %e, "a notification's picture render stopped"),
             }
         }
@@ -553,7 +640,10 @@ async fn picture_bytes(state: &AppState, root: &str, picture: &str) -> Option<ax
         key: None,
         account: crate::auth::Account { id: account, username: String::new() },
     });
-    let response = crate::idface::public_doc_bytes(state, &session, seg, doc_hex, false, None, None).await.ok()?;
+    let response =
+        crate::idface::public_doc_bytes(state, &session, seg, doc_hex, false, None, None)
+            .await
+            .ok()?;
     if !response.status().is_success() {
         return None;
     }
@@ -575,7 +665,11 @@ async fn room_name(state: &AppState, author: &str, doc: &str) -> String {
         Some(doc) => crate::chat::is_im(state, author, &doc).await,
         None => false,
     };
-    if im { title } else { format!("# {title}") }
+    if im {
+        title
+    } else {
+        format!("# {title}")
+    }
 }
 
 /// A persona's own name, for telling several apart on one machine.
@@ -619,7 +713,14 @@ mod tests {
     }
 
     fn alert(route: &str, body: &str) -> Alert {
-        Alert { root: "r".into(), title: "t".into(), body: body.into(), route: route.into(), picture: None, picture_png: None }
+        Alert {
+            root: "r".into(),
+            title: "t".into(),
+            body: body.into(),
+            route: route.into(),
+            picture: None,
+            picture_png: None,
+        }
     }
 
     #[test]
@@ -636,8 +737,15 @@ mod tests {
         ];
         let out = collapse("r", many);
         assert_eq!(out.len(), 3, "one per room, one for the bell");
-        assert!(out.iter().any(|a| a.route == BELL_ROUTE && a.body.contains("2 new notifications")));
-        assert!(out.iter().any(|a| a.route == "/ringtome/user/x/room/y" && a.body.contains("2 new messages") && a.body.contains("hello")));
-        assert!(out.iter().any(|a| a.route == "/ringtome/user/z/room/w" && a.body == "lone"), "a lone line stays itself");
+        assert!(out
+            .iter()
+            .any(|a| a.route == BELL_ROUTE && a.body.contains("2 new notifications")));
+        assert!(out.iter().any(|a| a.route == "/ringtome/user/x/room/y"
+            && a.body.contains("2 new messages")
+            && a.body.contains("hello")));
+        assert!(
+            out.iter().any(|a| a.route == "/ringtome/user/z/room/w" && a.body == "lone"),
+            "a lone line stays itself"
+        );
     }
 }

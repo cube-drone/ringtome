@@ -26,38 +26,70 @@ const doc = window.document;
 const frameKids = () => {
     const inner = doc.querySelector('.app-frame-inner');
     if (!inner) return '(no app-frame-inner)';
-    return [...inner.children].map((c) => `${c.tagName.toLowerCase()}.${[...c.classList].join('.')}`).join(' | ');
+    return [...inner.children]
+        .map((c) => `${c.tagName.toLowerCase()}.${[...c.classList].join('.')}`)
+        .join(' | ');
 };
 const report = (label) =>
-    console.log(`### ${label}\n    frame: ${frameKids()}\n    .wiki=${doc.querySelectorAll('.wiki').length} .tree-pane=${doc.querySelectorAll('.tree-pane').length} url=${window.location.pathname}`);
+    console.log(
+        `### ${label}\n    frame: ${frameKids()}\n    .wiki=${doc.querySelectorAll('.wiki').length} .tree-pane=${doc.querySelectorAll('.tree-pane').length} url=${window.location.pathname}`,
+    );
 
 try {
     await waitFor(doc, () => doc.querySelector('.quickbar-hex'), 'the open persona quickbar');
     report('console (persona open)');
 
-    click(window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'Wikibook'));
+    click(
+        window,
+        [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'Wikibook'),
+    );
     await waitFor(doc, () => doc.querySelector('.wiki'), 'the wiki app');
     report('wiki open');
 
-    const sectionBtn = () => [...doc.querySelectorAll('.tree-tool')].find((b) => /section/.test(b.textContent));
+    const sectionBtn = () =>
+        [...doc.querySelectorAll('.tree-tool')].find((b) => /section/.test(b.textContent));
     window.__nextPrompt = 'first directory';
     click(window, await waitFor(doc, sectionBtn, 'the section button'));
-    await waitFor(doc, () => [...doc.querySelectorAll('.tree-row-title')].some((t) => t.textContent.includes('first directory')), 'directory 1 in the tree');
+    await waitFor(
+        doc,
+        () =>
+            [...doc.querySelectorAll('.tree-row-title')].some((t) =>
+                t.textContent.includes('first directory'),
+            ),
+        'directory 1 in the tree',
+    );
     report('after creating directory 1');
 
     window.__nextPrompt = 'second directory';
     click(window, sectionBtn());
-    await waitFor(doc, () => [...doc.querySelectorAll('.tree-row-title')].some((t) => t.textContent.includes('second directory')), 'directory 2 in the tree');
+    await waitFor(
+        doc,
+        () =>
+            [...doc.querySelectorAll('.tree-row-title')].some((t) =>
+                t.textContent.includes('second directory'),
+            ),
+        'directory 2 in the tree',
+    );
     report('after creating directory 2');
 
     // Open a page: the editor's opening -> loaded hook transition is the fragile spot the
     // lint gate polices (hooks above the early returns; editor.js, 2026-07-30).
-    click(window, [...doc.querySelectorAll('.tree-tool')].find((b) => /page/.test(b.textContent)));
-    await waitFor(doc, () => doc.querySelector('.reader, .editor, .wiki-main textarea, .cm-editor'), 'an editor surface');
+    click(
+        window,
+        [...doc.querySelectorAll('.tree-tool')].find((b) => /page/.test(b.textContent)),
+    );
+    await waitFor(
+        doc,
+        () => doc.querySelector('.reader, .editor, .wiki-main textarea, .cm-editor'),
+        'an editor surface',
+    );
     await sleep(1000);
     report('after opening a page (editor mounted)');
 
-    click(window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'TurboNotes'));
+    click(
+        window,
+        [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'TurboNotes'),
+    );
     await sleep(1500);
     report('after switching to TurboNotes');
 } catch (e) {

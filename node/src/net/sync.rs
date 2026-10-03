@@ -113,7 +113,12 @@ pub struct Ask {
 /// memo_chains` carries the full "lags but never leads" argument. The scan survives as the
 /// fallback for handles with no memo attached - bare test databases, and `node.db` itself.
 /// A frontier list narrowed to a Hello's scope - empty scope means everything, unchanged.
-fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32], instances: &[[u8; 16]], member: bool) -> Vec<Frontier> {
+fn scoped_frontiers(
+    frontiers: Vec<Frontier>,
+    wanted: &[u32],
+    instances: &[[u8; 16]],
+    member: bool,
+) -> Vec<Frontier> {
     frontiers
         .into_iter()
         .filter(|f| wanted.is_empty() || wanted.contains(&f.service))
@@ -145,14 +150,7 @@ pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Front
         .map(|(author_hex, svc, instance, floor, head, head_hash)| {
             let author = pubkey::decode(&author_hex)
                 .ok_or_else(|| anyhow!("corrupt author pubkey in a chain record"))?;
-            Ok(Frontier {
-                author,
-                service: svc,
-                instance,
-                floor,
-                head,
-                head_hash,
-            })
+            Ok(Frontier { author, service: svc, instance, floor, head, head_hash })
         })
         .collect()
 }
@@ -187,10 +185,16 @@ pub async fn chain_ranges(db: &Db) -> Result<Vec<crate::net::frontier::MemoChain
             )
             .await
             .context("reading a chain's head hash")?;
-        let hash: [u8; 32] = hash
-            .try_into()
-            .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
-        out.push((author_hex, svc as u32, crate::db::instance_of(&instance), floor as u64, head as u64, hash));
+        let hash: [u8; 32] =
+            hash.try_into().map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
+        out.push((
+            author_hex,
+            svc as u32,
+            crate::db::instance_of(&instance),
+            floor as u64,
+            head as u64,
+            hash,
+        ));
     }
     Ok(out)
 }
@@ -217,7 +221,8 @@ async fn send_missing(
     budget: &mut crate::net::admission::Budget,
 ) -> Result<(u64, bool)> {
     let mut sent = 0u64;
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, instances, ask).await?;
+    let mut missing =
+        MissingEntries::plan(db, peer_frontiers, include_private, wanted, instances, ask).await?;
     while let Some(bytes) = missing.next().await? {
         // The send budget (PROJECT_PLAN's Peeks, ruling 2): short of the peer's need is a pass, not a
         // failure - they will see they are still behind and come back.
@@ -308,7 +313,8 @@ impl<'a> MissingEntries<'a> {
             // floor: a budget cut then leaves a run that still joins the floor's commitment,
             // where a cut of an upward walk would leave the genesis and no join at all.
             if let Some((author_hex, service, instance, lowest, next)) = self.backfill.clone() {
-                let rows = chain_page_down(self.db, &author_hex, service, instance, next, lowest).await?;
+                let rows =
+                    chain_page_down(self.db, &author_hex, service, instance, next, lowest).await?;
                 match rows.last() {
                     Some((last_seq, _)) if *last_seq > lowest => {
                         self.backfill = Some((author_hex, service, instance, lowest, last_seq - 1));
@@ -322,7 +328,8 @@ impl<'a> MissingEntries<'a> {
             // this chain is finished, and the next loop turn moves on.
             if self.more {
                 if let Some((author_hex, service, instance, from_seq)) = self.current.clone() {
-                    let rows = chain_page(self.db, &author_hex, service, instance, from_seq).await?;
+                    let rows =
+                        chain_page(self.db, &author_hex, service, instance, from_seq).await?;
                     self.more = rows.len() == SEND_PAGE_ENTRIES;
                     if let Some((last_seq, _)) = rows.last() {
                         // Advance by the seq actually read, never by a count: a shallow-held
@@ -337,10 +344,11 @@ impl<'a> MissingEntries<'a> {
             match self.chains.next() {
                 Some(chain) => {
                     self.page.extend(chain.evidence);
-                    self.backfill = chain
-                        .backfill
-                        .map(|(from, to)| (chain.author_hex.clone(), chain.service, chain.instance, from, to));
-                    self.current = Some((chain.author_hex, chain.service, chain.instance, chain.from_seq));
+                    self.backfill = chain.backfill.map(|(from, to)| {
+                        (chain.author_hex.clone(), chain.service, chain.instance, from, to)
+                    });
+                    self.current =
+                        Some((chain.author_hex, chain.service, chain.instance, chain.from_seq));
                     self.more = true;
                 }
                 None => return Ok(None),
@@ -378,10 +386,8 @@ async fn missing_plan(
         .iter()
         .map(|f| ((f.author, f.service, f.instance), (f.head, f.head_hash)))
         .collect();
-    let peer_floor: HashMap<ChainKey, u64> = peer_frontiers
-        .iter()
-        .map(|f| ((f.author, f.service, f.instance), f.floor))
-        .collect();
+    let peer_floor: HashMap<ChainKey, u64> =
+        peer_frontiers.iter().map(|f| ((f.author, f.service, f.instance), f.floor)).collect();
 
     // Which chains do we hold? From the MEMO (2026-08-10, the full-chain audit) - this was a
     // `SELECT DISTINCT author_pubkey, service FROM entries`, a full scan of the log per sync
@@ -397,7 +403,9 @@ async fn missing_plan(
         (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root)
             .await?
             .into_iter()
-            .map(|(author_hex, svc, instance, _, head, _)| (author_hex, i64::from(svc), instance, Some(head)))
+            .map(|(author_hex, svc, instance, _, head, _)| {
+                (author_hex, i64::from(svc), instance, Some(head))
+            })
             .collect(),
         _ => db
             .fetch_all::<(String, i64, Vec<u8>)>(
@@ -442,7 +450,8 @@ async fn missing_plan(
         // A room chain backfills beneath its floor on the room's lane too (CHAT.md, ruling
         // 6: the full-sync pull walks the archive's whole history down from the reader's
         // floor, page by page, the way scrollback walks a posts chain).
-        let backfills = CEILING_SERVICES.contains(&(svc as u32)) || (svc as u32 == service::CHAT && instance.is_some());
+        let backfills = CEILING_SERVICES.contains(&(svc as u32))
+            || (svc as u32 == service::CHAT && instance.is_some());
         if backfills {
             // The follow ceiling (PROJECT_PLAN's Peeks, slice 5): a peer holding nothing of this chain and
             // asking for a ceiling gets its newest `ceiling` entries - a suffix; a peer
@@ -463,7 +472,9 @@ async fn missing_plan(
                     from_seq = from_seq.max((head + 1).saturating_sub(ask.ceiling));
                 }
             }
-            if let (Some(floor), true) = (peer_floor.get(&(author, svc as u32, instance)), ask.below > 0) {
+            if let (Some(floor), true) =
+                (peer_floor.get(&(author, svc as u32, instance)), ask.below > 0)
+            {
                 if *floor > 0 {
                     backfill = Some((floor.saturating_sub(ask.below), floor - 1));
                 }
@@ -475,7 +486,12 @@ async fn missing_plan(
                 .fetch_optional(
                     "SELECT entry_hash, bytes FROM entries
                      WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
-                    (author_hex.as_str(), svc, crate::db::instance_blob(instance), *peer_head as i64),
+                    (
+                        author_hex.as_str(),
+                        svc,
+                        crate::db::instance_blob(instance),
+                        *peer_head as i64,
+                    ),
                 )
                 .await
                 .context("reading our entry at the peer's claimed head")?;
@@ -552,10 +568,7 @@ async fn chain_page(
         )
         .await
         .context("reading a page of entries to send")?;
-    Ok(rows
-        .into_iter()
-        .map(|(seq, bytes)| (seq as u64, bytes))
-        .collect())
+    Ok(rows.into_iter().map(|(seq, bytes)| (seq as u64, bytes)).collect())
 }
 
 /// The whole selection, collected - the shape the gate tests assert against, drained through
@@ -570,7 +583,9 @@ pub(crate) async fn missing_for_peer(
     wanted: &[u32],
 ) -> Result<Vec<Vec<u8>>> {
     let mut out = Vec::new();
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, &[], Ask::default()).await?;
+    let mut missing =
+        MissingEntries::plan(db, peer_frontiers, include_private, wanted, &[], Ask::default())
+            .await?;
     while let Some(bytes) = missing.next().await? {
         out.push(bytes);
     }
@@ -663,7 +678,10 @@ async fn ingest_stream(
                 batch.push(bytes);
                 if batch.len() >= INGEST_BATCH_ENTRIES {
                     let full = std::mem::take(&mut batch);
-                    total.absorb(ingest_batch(db, root, full, peer_proven, identity_ceiling, allowed).await?);
+                    total.absorb(
+                        ingest_batch(db, root, full, peer_proven, identity_ceiling, allowed)
+                            .await?,
+                    );
                     if total.over_ceiling {
                         let _ = recv.stop(1u8.into());
                         return Ok(total);
@@ -713,7 +731,9 @@ pub(crate) async fn ingest_batch(
                 // chains from an unproven peer are refused on the same line, for the reason
                 // the docs above give.
                 let svc = e.entry().chain.service;
-                if allowed.is_some_and(|a| !a.contains(&svc)) || (!peer_proven && is_private_service(svc)) {
+                if allowed.is_some_and(|a| !a.contains(&svc))
+                    || (!peer_proven && is_private_service(svc))
+                {
                     rejected += 1;
                 } else if e.entry().chain.service == service::IDENTITY_PUBLIC {
                     identity_candidates.push(e);
@@ -766,10 +786,7 @@ pub(crate) async fn ingest_batch(
     identity_candidates.sort_by_key(|e| (e.entry().chain.author, e.entry().seq));
     let mut identity_by_author: BTreeMap<[u8; 32], Vec<SignedEntry>> = BTreeMap::new();
     for e in identity_candidates {
-        identity_by_author
-            .entry(e.entry().chain.author)
-            .or_default()
-            .push(e);
+        identity_by_author.entry(e.entry().chain.author).or_default().push(e);
     }
     for (author, entries) in identity_by_author {
         if let Some(c) = tree.ceiling(&author, service::IDENTITY_PUBLIC) {
@@ -793,7 +810,8 @@ pub(crate) async fn ingest_batch(
         }
         match tree.status(&author) {
             KeyStatus::Active => {
-                let mut prev = stored_chain_head(db, &author, service::IDENTITY_PUBLIC, None).await?;
+                let mut prev =
+                    stored_chain_head(db, &author, service::IDENTITY_PUBLIC, None).await?;
                 for e in entries {
                     // Already held? (Peer resent below our head.) Skip silently.
                     if let Some(p) = &prev {
@@ -845,12 +863,7 @@ pub(crate) async fn ingest_batch(
     // strangers, the structurally void, and revoked keys on chains the revocation never
     // anchored - is refused.
     content_candidates.sort_by_key(|e| {
-        (
-            e.entry().chain.author,
-            e.entry().chain.service,
-            e.entry().chain.instance,
-            e.entry().seq,
-        )
+        (e.entry().chain.author, e.entry().chain.service, e.entry().chain.instance, e.entry().seq)
     });
     let mut content_by_chain: BTreeMap<ChainKey, Vec<SignedEntry>> = BTreeMap::new();
     for e in content_candidates {
@@ -860,10 +873,7 @@ pub(crate) async fn ingest_batch(
             .push(e);
     }
     for ((author, svc, instance), entries) in content_by_chain {
-        if matches!(
-            tree.status(&author),
-            KeyStatus::Invalid | KeyStatus::Unknown
-        ) {
+        if matches!(tree.status(&author), KeyStatus::Invalid | KeyStatus::Unknown) {
             rejected += entries.len() as u64;
             continue;
         }
@@ -893,7 +903,11 @@ pub(crate) async fn ingest_batch(
                 // own `prev_hash`, the commitment the suffix carried all along.
                 let suffix_ok = service_allows_suffix(svc)
                     || (identity_ceiling.is_some() && CEILING_SERVICES.contains(&svc));
-                let floor_entry = if suffix_ok { stored_chain_floor(db, &author, svc, instance).await? } else { None };
+                let floor_entry = if suffix_ok {
+                    stored_chain_floor(db, &author, svc, instance).await?
+                } else {
+                    None
+                };
                 let floor_seq = floor_entry.as_ref().map(|f| f.entry().seq);
                 let mut backfill: Vec<SignedEntry> = Vec::new();
                 let mut entries = entries;
@@ -995,9 +1009,16 @@ pub(crate) async fn ingest_batch(
                         // The lane folds past a watermark; these landed beneath it. Lower
                         // it to the backfill's lowest seq so the next catch-up folds them.
                         let lowest = backfill.first().map(|e| e.entry().seq as i64).unwrap_or(0);
-                        crate::record::imaol::lower_watermark(db, &hex::encode(author), svc, lowest - 1)
-                            .await
-                            .map_err(|e| anyhow!("lowering the view watermark after a backfill: {e}"))?;
+                        crate::record::imaol::lower_watermark(
+                            db,
+                            &hex::encode(author),
+                            svc,
+                            lowest - 1,
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow!("lowering the view watermark after a backfill: {e}")
+                        })?;
                     } else {
                         tracing::warn!(author = %hex::encode(author), service = svc,
                             "a backfill did not hash-match the floor's commitment - refused");
@@ -1028,12 +1049,7 @@ pub(crate) async fn ingest_batch(
     // machinery decides what is honored history, and the quarantine has nothing left to hold.
     clear_adjudicated_equivocations(db, &tree).await?;
 
-    Ok(IngestOutcome {
-        received,
-        rejected,
-        ledger_moved,
-        ..Default::default()
-    })
+    Ok(IngestOutcome { received, rejected, ledger_moved, ..Default::default() })
 }
 
 /// Record proof that a single-writer key signed two different entries at one (service, seq),
@@ -1189,7 +1205,8 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             services.insert(svc);
             // The evicted chain's memo row is a lie now; the memo forgets with it.
             if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
-                let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, svc, instance).await;
+                let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, svc, instance)
+                    .await;
             }
             tracing::warn!(
                 author = %author_hex,
@@ -1225,10 +1242,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             // still looked Active (the revoker's own store can't hold any - its anchors ARE
             // its heads - but a peer that had synced further can). The one lawful survivor is
             // the credited self-revocation, which can only live one seq past its own seal.
-            let origin: Vec<u8> = tree
-                .revocation_of(key)
-                .map(|h| h.to_vec())
-                .unwrap_or_default();
+            let origin: Vec<u8> = tree.revocation_of(key).map(|h| h.to_vec()).unwrap_or_default();
             let rows_affected = db
                 .execute(
                     "DELETE FROM entries
@@ -1251,7 +1265,8 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             continue;
         }
         if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
-            let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, *svc, *instance).await;
+            let _ =
+                crate::net::frontier::forget_chain(memo, root, &author_hex, *svc, *instance).await;
         }
         let rows_affected = db
             .execute(
@@ -1309,27 +1324,25 @@ async fn admit_ceilinged_chain(
     }
 
     let prefix: Option<Vec<&SignedEntry>> =
-        usize::try_from(ceiling.final_seq)
-            .ok()
-            .and_then(|final_seq| {
-                if by_hash.len() <= final_seq {
-                    return None; // cannot possibly hold seqs 0..=final_seq
+        usize::try_from(ceiling.final_seq).ok().and_then(|final_seq| {
+            if by_hash.len() <= final_seq {
+                return None; // cannot possibly hold seqs 0..=final_seq
+            }
+            let mut want = ceiling.head_hash;
+            let mut out: Vec<&SignedEntry> = Vec::with_capacity(final_seq + 1);
+            for seq in (0..=final_seq).rev() {
+                let e = *by_hash.get(&want)?;
+                if e.entry().seq != seq as u64 {
+                    return None;
                 }
-                let mut want = ceiling.head_hash;
-                let mut out: Vec<&SignedEntry> = Vec::with_capacity(final_seq + 1);
-                for seq in (0..=final_seq).rev() {
-                    let e = *by_hash.get(&want)?;
-                    if e.entry().seq != seq as u64 {
-                        return None;
-                    }
-                    want = e.entry().prev_hash;
-                    out.push(e);
-                }
-                (want == ZERO_HASH).then(|| {
-                    out.reverse();
-                    out
-                })
-            });
+                want = e.entry().prev_hash;
+                out.push(e);
+            }
+            (want == ZERO_HASH).then(|| {
+                out.reverse();
+                out
+            })
+        });
     let Some(prefix) = prefix else {
         // No sealed prefix assemblable yet: admit nothing, keep what we hold. Fail closed.
         return Ok((Vec::new(), incoming.len() as u64, 0));
@@ -1390,7 +1403,12 @@ async fn admit_ceilinged_chain(
 }
 
 /// Every stored entry of one chain, in seq order.
-async fn stored_chain(db: &Db, author: &[u8; 32], svc: u32, instance: Option<[u8; 16]>) -> Result<Vec<SignedEntry>> {
+async fn stored_chain(
+    db: &Db,
+    author: &[u8; 32],
+    svc: u32,
+    instance: Option<[u8; 16]>,
+) -> Result<Vec<SignedEntry>> {
     let rows: Vec<(Vec<u8>,)> = db
         .fetch_all(
             "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq",
@@ -1416,7 +1434,12 @@ async fn load_identity_entries(db: &Db) -> Result<Vec<SignedEntry>> {
         .collect()
 }
 
-async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32, instance: Option<[u8; 16]>) -> Result<Option<SignedEntry>> {
+async fn stored_chain_head(
+    db: &Db,
+    author: &[u8; 32],
+    svc: u32,
+    instance: Option<[u8; 16]>,
+) -> Result<Option<SignedEntry>> {
     let row: Option<(Vec<u8>,)> = db
         .fetch_optional(
             "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
@@ -1430,7 +1453,12 @@ async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32, instance: Optio
 }
 
 /// The oldest entry we hold of a chain - the floor a suffix commits from.
-async fn stored_chain_floor(db: &Db, author: &[u8; 32], svc: u32, instance: Option<[u8; 16]>) -> Result<Option<SignedEntry>> {
+async fn stored_chain_floor(
+    db: &Db,
+    author: &[u8; 32],
+    svc: u32,
+    instance: Option<[u8; 16]>,
+) -> Result<Option<SignedEntry>> {
     let row: Option<(Vec<u8>,)> = db
         .fetch_optional(
             "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
@@ -1459,8 +1487,7 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     if !service_allows_suffix(e.entry().chain.service) {
         // (The inbox tiers alone: a posts suffix under the follow ceiling is journaled like
         // any held chain - it is what a rebuild replays.)
-        db.journal_append(e.bytes())
-            .context("journaling synced entry")?;
+        db.journal_append(e.bytes()).context("journaling synced entry")?;
     }
     db.execute(
         "INSERT INTO entries
@@ -1486,7 +1513,9 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     // The memo, fed at the source (see imaol::append's twin): an ingested entry is a tip too.
     if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
         let (author_hex, service, instance, seq, hash) = &entry_meta;
-        if let Err(err) = crate::net::frontier::note_head(memo, root, author_hex, *service, *instance, *seq, hash).await
+        if let Err(err) =
+            crate::net::frontier::note_head(memo, root, author_hex, *service, *instance, *seq, hash)
+                .await
         {
             tracing::debug!(error = ?err, "noting an ingested chain head failed (sweep reconciles)");
         }
@@ -1520,12 +1549,7 @@ async fn our_member_proof(
 ) -> Option<MemberProof> {
     let root_hex = hex::encode(root);
     match crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, &root_hex).await {
-        Ok(Some(leaf)) => Some(MemberProof::create(
-            &root,
-            our_endpoint,
-            peer_endpoint,
-            &leaf,
-        )),
+        Ok(Some(leaf)) => Some(MemberProof::create(&root, our_endpoint, peer_endpoint, &leaf)),
         Ok(None) => None,
         Err(e) => {
             tracing::warn!(root = %root_hex, "could not load leaf key for member proof: {e}");
@@ -1656,7 +1680,12 @@ pub async fn sync_with_peer_asking(
     // their WAIT and detaches the work; this bounds the work. Over it, the connection is
     // closed - a trickle is not an exchange.
     let wall = state.admission.limits().exchange_wall_clock;
-    match tokio::time::timeout(wall, exchange_on(state, root_hex, &conn, addr, wanted, instances, ask, root)).await {
+    match tokio::time::timeout(
+        wall,
+        exchange_on(state, root_hex, &conn, addr, wanted, instances, ask, root),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_) => {
             conn.close(2u8.into(), b"wall clock");
@@ -1780,11 +1809,7 @@ async fn exchange_on(
     // device dialed us gave every follower node an unpaced, unfollow-blind background sync
     // of everyone it follows - the wake pass (idface::refresh_followed_pass) is that job,
     // done with presence priority, the eagerness dial, and a cap.
-    if peer_proven
-        && crate::identity::is_agented(&state.node_db, root_hex)
-            .await
-            .unwrap_or(false)
-    {
+    if peer_proven && crate::identity::is_agented(&state.node_db, root_hex).await.unwrap_or(false) {
         if let (Some(p), Ok(ep)) = (&peer_proof, iroh::PublicKey::from_bytes(&peer_id)) {
             if let Err(e) = add_peer_with_leaf(
                 &state.node_db,
@@ -1799,14 +1824,14 @@ async fn exchange_on(
         }
     }
 
-    let agented = crate::identity::is_agented(&state.node_db, root_hex)
-        .await
-        .unwrap_or(false);
+    let agented = crate::identity::is_agented(&state.node_db, root_hex).await.unwrap_or(false);
     let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
     let mut read_budget = state.admission.budget();
     let mut send_budget = state.admission.budget();
     let allowed = if wanted.is_empty() { None } else { Some(wanted) };
-    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget).await?;
+    let outcome =
+        ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget)
+            .await?;
     if outcome.over_ceiling {
         conn.close(3u8.into(), b"identity chain over the ceiling");
         bail!("{root_hex}: identity chain over the ceiling - refused");
@@ -1814,8 +1839,17 @@ async fn exchange_on(
     let (received, rejected) = (outcome.received, outcome.rejected);
 
     // Now send what the peer lacks - private chains only to a proven member.
-    let (sent, _cut_send) =
-        send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted, instances, Ask::default(), &mut send_budget).await?;
+    let (sent, _cut_send) = send_missing(
+        &db,
+        &peer_frontiers,
+        &mut send,
+        peer_proven,
+        wanted,
+        instances,
+        Ask::default(),
+        &mut send_budget,
+    )
+    .await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -1828,10 +1862,8 @@ async fn exchange_on(
             .iter()
             .map(|f| format!("{}:{}", f.service, f.head))
             .collect();
-        let claimed_heads: Vec<String> = peer_frontiers
-            .iter()
-            .map(|f| format!("{}:{}", f.service, f.head))
-            .collect();
+        let claimed_heads: Vec<String> =
+            peer_frontiers.iter().map(|f| format!("{}:{}", f.service, f.head)).collect();
         tracing::debug!(root = %root_hex, claimed = %claimed_heads.join(","),
             ours = %our_heads.join(","), "served nothing - our heads at serve time");
     }
@@ -1845,8 +1877,7 @@ async fn exchange_on(
     let behind = outcome.cut || {
         let ours = local_frontiers(&db, peer_proven).await.unwrap_or_default();
         peer_frontiers.iter().any(|pf| {
-            ours
-                .iter()
+            ours.iter()
                 .find(|f| f.author == pf.author && f.service == pf.service)
                 .is_none_or(|f| f.head < pf.head)
         })
@@ -1886,9 +1917,7 @@ async fn exchange_on(
         crate::net::frontier::Verdict::Ahead
     } else {
         let ours = crate::net::frontier::persona_fingerprint(
-            &crate::net::frontier::held(&state.node_db, root_hex)
-                .await
-                .unwrap_or_default(),
+            &crate::net::frontier::held(&state.node_db, root_hex).await.unwrap_or_default(),
         );
         if ours == claimed {
             crate::net::frontier::Verdict::Behind
@@ -1916,13 +1945,7 @@ async fn exchange_on(
         crate::fold::nudge(state, root_hex);
     }
 
-    Ok(ExchangeStats {
-        received,
-        rejected,
-        sent,
-        bodies_fetched,
-        behind,
-    })
+    Ok(ExchangeStats { received, rejected, sent, bodies_fetched, behind })
 }
 
 /// Responder role: called from the accept loop with an established connection.
@@ -2084,7 +2107,14 @@ async fn serve_on(
     // The room's door at the lane (CHAT.md, ruling 4): a sealed room's chains go only to a
     // dialer serving a persona the seal admits; the instances it may not hold leave the
     // scope, so neither side claims nor sends them.
-    let instances = crate::chat::instances_dialer_may_hold(&state, &instances, &key_proofs, &hex::encode(peer_id), &our_id).await;
+    let instances = crate::chat::instances_dialer_may_hold(
+        &state,
+        &instances,
+        &key_proofs,
+        &hex::encode(peer_id),
+        &our_id,
+    )
+    .await;
 
     // They dialed us and named this persona: that is a demand edge, recorded before anything
     // else happens because the asking is the fact, whatever the exchange goes on to transfer.
@@ -2110,9 +2140,13 @@ async fn serve_on(
     // must not enroll the personas it mirrors into its device-mesh worklist.
     if peer_proven && agented {
         if let (Some(p), Ok(ep)) = (&peer_proof, iroh::PublicKey::from_bytes(&peer_id)) {
-            if let Err(e) =
-                add_peer_with_leaf(&state.node_db, &root_hex, &ep.to_string(), Some(&hex::encode(p.leaf)))
-                    .await
+            if let Err(e) = add_peer_with_leaf(
+                &state.node_db,
+                &root_hex,
+                &ep.to_string(),
+                Some(&hex::encode(p.leaf)),
+            )
+            .await
             {
                 tracing::debug!(error = ?e, "recording a proven dialer failed");
             }
@@ -2127,7 +2161,12 @@ async fn serve_on(
             root,
             // Scoped to the requester's ask: a scoped exchange discloses no frontier
             // metadata beyond the services it named.
-            frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope, &instances, peer_proven),
+            frontiers: scoped_frontiers(
+                local_frontiers(&db, peer_proven).await?,
+                &scope,
+                &instances,
+                peer_proven,
+            ),
             proof: our_member_proof(&state, root, &our_id, &peer_id).await,
             wanted: scope.clone(),
             ceiling: 0,
@@ -2139,8 +2178,17 @@ async fn serve_on(
     )
     .await?;
     let mut send_budget = state.admission.budget();
-    let (sent, _cut_send) =
-        send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope, &instances, ask, &mut send_budget).await?;
+    let (sent, _cut_send) = send_missing(
+        &db,
+        &peer_frontiers,
+        &mut send,
+        peer_proven,
+        &scope,
+        &instances,
+        ask,
+        &mut send_budget,
+    )
+    .await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -2153,10 +2201,8 @@ async fn serve_on(
             .iter()
             .map(|f| format!("{}:{}", f.service, f.head))
             .collect();
-        let claimed_heads: Vec<String> = peer_frontiers
-            .iter()
-            .map(|f| format!("{}:{}", f.service, f.head))
-            .collect();
+        let claimed_heads: Vec<String> =
+            peer_frontiers.iter().map(|f| format!("{}:{}", f.service, f.head)).collect();
         tracing::debug!(root = %root_hex, claimed = %claimed_heads.join(","),
             ours = %our_heads.join(","), "served nothing - our heads at serve time");
     }
@@ -2166,7 +2212,9 @@ async fn serve_on(
     // connections from anyone who speaks the ALPN, so this is the buffer a stranger drives.
     let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
     let mut read_budget = state.admission.budget();
-    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget).await?;
+    let outcome =
+        ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget)
+            .await?;
     if outcome.over_ceiling {
         conn.close(3u8.into(), b"identity chain over the ceiling");
         bail!("{root_hex}: identity chain over the ceiling - refused");
@@ -2198,10 +2246,7 @@ async fn serve_on(
         }
         // A delivered push IS freshness for a mirrored persona - stamp it so the
         // follow-refresh sweep stays quiet while the push machinery is working.
-        if !crate::identity::is_agented(&state.node_db, &root_hex)
-            .await
-            .unwrap_or(true)
-        {
+        if !crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(true) {
             if let Err(e) = crate::idface::touch_foreign_fetch(&state.node_db, &root_hex).await {
                 tracing::debug!(error = ?e, "freshness touch failed");
             }
@@ -2311,8 +2356,7 @@ pub async fn derive_peers_for(state: &crate::AppState, root_hex: &str) {
             if hex::encode(rec.root) != root_hex {
                 continue; // a leaf serving some other root is not this persona's peer
             }
-            let endpoint_hex =
-                iroh::PublicKey::from_bytes(&rec.endpoint_id).map(|k| k.to_string());
+            let endpoint_hex = iroh::PublicKey::from_bytes(&rec.endpoint_id).map(|k| k.to_string());
             let Ok(endpoint_id) = endpoint_hex else {
                 continue;
             };
@@ -2448,10 +2492,7 @@ pub async fn endpoint_serves_any(
 /// sealed-room door, CHAT.md ruling 4).
 pub async fn roots_served_by(node_db: &Db, endpoint_id: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
-        .fetch_all(
-            "SELECT root_pubkey FROM identity_peers WHERE endpoint_id = ?1",
-            (endpoint_id,),
-        )
+        .fetch_all("SELECT root_pubkey FROM identity_peers WHERE endpoint_id = ?1", (endpoint_id,))
         .await
         .context("listing the personas an endpoint serves")?;
     Ok(rows.into_iter().map(|(r,)| r).collect())
@@ -2487,10 +2528,7 @@ pub async fn recently_synced_endpoints(node_db: &Db, since_ms: i64) -> Result<Ve
 
 pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
-        .fetch_all(
-            "SELECT endpoint_id FROM identity_peers WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
+        .fetch_all("SELECT endpoint_id FROM identity_peers WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("listing peers")?;
     Ok(rows.into_iter().map(|(id,)| id).collect())
@@ -2552,9 +2590,7 @@ pub async fn cohort_endpoints(state: &crate::AppState) -> Result<Vec<String>> {
     // Through the owner's door: `identities` belongs to identity.rs, so the hosted set comes
     // from its reader and lands here as a quoted IN-list (the belt-and-braces idiom: a root
     // that is not 64 hex chars cannot name a row, so the list can carry nothing but roots).
-    let hosted = crate::identity::hosted_roots(&state.node_db)
-        .await
-        .map_err(|e| anyhow!("{e}"))?;
+    let hosted = crate::identity::hosted_roots(&state.node_db).await.map_err(|e| anyhow!("{e}"))?;
     let quoted: Vec<String> = hosted
         .iter()
         .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
@@ -2577,11 +2613,7 @@ pub async fn cohort_endpoints(state: &crate::AppState) -> Result<Vec<String>> {
         )
         .await
         .context("listing the cohort")?;
-    Ok(rows
-        .into_iter()
-        .map(|(id,)| id)
-        .filter(|id| *id != ours)
-        .collect())
+    Ok(rows.into_iter().map(|(id,)| id).filter(|id| *id != ours).collect())
 }
 
 /// Distinct roots that have at least one known peer - the background sync worklist.
@@ -2701,9 +2733,7 @@ pub async fn sync_peers(
 /// in; in local mode the stub's endpoint record supplies it; in Off mode a bare id only works if
 /// iroh has the peer cached from a previous connection.
 pub async fn dial_addr(state: &AppState, endpoint_id: &str) -> Result<EndpointAddr> {
-    let id: iroh::PublicKey = endpoint_id
-        .parse()
-        .map_err(|_| anyhow!("bad endpoint id"))?;
+    let id: iroh::PublicKey = endpoint_id.parse().map_err(|_| anyhow!("bad endpoint id"))?;
     let mut ea = EndpointAddr::new(id);
     if let Some(addrs) = state.directory.resolve_endpoint(endpoint_id).await? {
         for a in &addrs {
@@ -2716,9 +2746,7 @@ pub async fn dial_addr(state: &AppState, endpoint_id: &str) -> Result<EndpointAd
 
 /// Build a connectable address from an endpoint id and socket-address strings.
 pub fn endpoint_addr(endpoint_id: &str, addrs: &[String]) -> Result<EndpointAddr> {
-    let id: iroh::PublicKey = endpoint_id
-        .parse()
-        .map_err(|_| anyhow!("bad endpoint id"))?;
+    let id: iroh::PublicKey = endpoint_id.parse().map_err(|_| anyhow!("bad endpoint id"))?;
     let mut ea = EndpointAddr::new(id);
     for a in addrs {
         let sock: std::net::SocketAddr = a.parse().context("bad socket address")?;
@@ -2766,23 +2794,13 @@ mod tests {
 
     impl Chain {
         fn new(seed: u8, svc: u32) -> Self {
-            Self {
-                sk: SigningKey::from_bytes(&[seed; 32]),
-                svc,
-                seq: 0,
-                prev: ZERO_HASH,
-            }
+            Self { sk: SigningKey::from_bytes(&[seed; 32]), svc, seq: 0, prev: ZERO_HASH }
         }
 
         /// A second pen at the same position: clone the chain state so the SAME key can sign
         /// two different continuations of one prefix - the equivocator's move.
         fn fork(&self) -> Chain {
-            Chain {
-                sk: self.sk.clone(),
-                svc: self.svc,
-                seq: self.seq,
-                prev: self.prev,
-            }
+            Chain { sk: self.sk.clone(), svc: self.svc, seq: self.seq, prev: self.prev }
         }
 
         fn pk(&self) -> [u8; 32] {
@@ -2793,11 +2811,7 @@ mod tests {
             let entry = Entry {
                 v: ENTRY_VERSION,
                 entry_type: type_id,
-                chain: ChainId {
-                    author: self.pk(),
-                    service: self.svc,
-                    instance: None,
-                },
+                chain: ChainId { author: self.pk(), service: self.svc, instance: None },
                 seq: self.seq,
                 prev_hash: self.prev,
                 timestamp_ms: 1_700_000_000_000 + self.seq as i64,
@@ -2830,21 +2844,15 @@ mod tests {
 
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
-        let honest: Vec<SignedEntry> = (0..3u8)
-            .map(|n| k_posts.append(entry_type::POST, vec![0xa0, n]))
-            .collect();
+        let honest: Vec<SignedEntry> =
+            (0..3u8).map(|n| k_posts.append(entry_type::POST, vec![0xa0, n])).collect();
         let mut forged_posts = Chain::new(2, service::POSTS);
-        let forged: Vec<SignedEntry> = (0..3u8)
-            .map(|n| forged_posts.append(entry_type::POST, vec![0xbb, n]))
-            .collect();
+        let forged: Vec<SignedEntry> =
+            (0..3u8).map(|n| forged_posts.append(entry_type::POST, vec![0xbb, n])).collect();
         let revoke = root_chain.append(
             entry_type::REVOKE,
             Revoke {
@@ -2861,14 +2869,7 @@ mod tests {
             .unwrap(),
         );
 
-        Scenario {
-            root: root_chain.pk(),
-            k,
-            authorize,
-            revoke,
-            honest,
-            forged,
-        }
+        Scenario { root: root_chain.pk(), k, authorize, revoke, honest, forged }
     }
 
     async fn ingest(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
@@ -2888,16 +2889,23 @@ mod tests {
         let k = k_posts.pk();
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }.encode().unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
-        let posts: Vec<SignedEntry> = (0..6u8).map(|n| k_posts.append(entry_type::POST, vec![0xa0, n])).collect();
-        let raw = |entries: &[SignedEntry]| -> Vec<Vec<u8>> { entries.iter().map(|e| e.bytes().to_vec()).collect() };
+        let posts: Vec<SignedEntry> =
+            (0..6u8).map(|n| k_posts.append(entry_type::POST, vec![0xa0, n])).collect();
+        let raw = |entries: &[SignedEntry]| -> Vec<Vec<u8>> {
+            entries.iter().map(|e| e.bytes().to_vec()).collect()
+        };
         let root = root_chain.pk();
         let foreign = Some(10_000usize);
 
         // A suffix from nothing: seqs 3..=5 land on a foreign gate, floor 3.
         let db = test_db().await;
-        ingest_batch(&db, root, raw(std::slice::from_ref(&authorize)), false, foreign, None).await.unwrap();
+        ingest_batch(&db, root, raw(std::slice::from_ref(&authorize)), false, foreign, None)
+            .await
+            .unwrap();
         let got = ingest_batch(&db, root, raw(&posts[3..]), false, foreign, None).await.unwrap();
         assert_eq!((got.received, got.rejected), (3, 0), "the suffix is adopted");
         assert_eq!(stored_hashes(&db, &k, service::POSTS).await, hashes(&posts[3..]));
@@ -2905,20 +2913,36 @@ mod tests {
         // A forged backfill: the same key, the same seqs 1..=2, different words - its top
         // hash is not what post 3's prev_hash committed to. Refused whole.
         let mut forged = Chain::new(2, service::POSTS);
-        let fake: Vec<SignedEntry> = (0..3u8).map(|n| forged.append(entry_type::POST, vec![0xbb, n])).collect();
+        let fake: Vec<SignedEntry> =
+            (0..3u8).map(|n| forged.append(entry_type::POST, vec![0xbb, n])).collect();
         let bad = ingest_batch(&db, root, raw(&fake[1..]), false, foreign, None).await.unwrap();
-        assert_eq!((bad.received, bad.rejected), (0, 2), "a backfill that does not match the commitment is refused");
-        assert_eq!(stored_hashes(&db, &k, service::POSTS).await, hashes(&posts[3..]), "nothing of it stored");
+        assert_eq!(
+            (bad.received, bad.rejected),
+            (0, 2),
+            "a backfill that does not match the commitment is refused"
+        );
+        assert_eq!(
+            stored_hashes(&db, &k, service::POSTS).await,
+            hashes(&posts[3..]),
+            "nothing of it stored"
+        );
 
         // The honest backfill: seqs 1..=2 join post 3 by hash. Admitted; the floor lowers.
         let good = ingest_batch(&db, root, raw(&posts[1..3]), false, foreign, None).await.unwrap();
         assert_eq!((good.received, good.rejected), (2, 0));
-        assert_eq!(stored_hashes(&db, &k, service::POSTS).await, hashes(&posts[1..]), "the chain now runs from 1");
+        assert_eq!(
+            stored_hashes(&db, &k, service::POSTS).await,
+            hashes(&posts[1..]),
+            "the chain now runs from 1"
+        );
 
         // A hosted gate (no ceiling) admits no suffix at all: from nothing, seq 3 is a gap.
         let hosted = test_db().await;
-        ingest_batch(&hosted, root, raw(std::slice::from_ref(&authorize)), false, None, None).await.unwrap();
-        let refused = ingest_batch(&hosted, root, raw(&posts[3..]), false, None, None).await.unwrap();
+        ingest_batch(&hosted, root, raw(std::slice::from_ref(&authorize)), false, None, None)
+            .await
+            .unwrap();
+        let refused =
+            ingest_batch(&hosted, root, raw(&posts[3..]), false, None, None).await.unwrap();
         assert_eq!(refused.received, 0, "a hosted persona's chains are never shallow");
     }
 
@@ -2933,13 +2957,25 @@ mod tests {
         };
         // Ceiling 1: the first identity entry fits, the second would make two.
         let db = test_db().await;
-        let first = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.authorize)), false, Some(1), None)
-            .await
-            .unwrap();
-        assert_eq!((first.received, first.over_ceiling), (1, false), "one entry sits under a ceiling of one");
-        let second = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.revoke)), false, Some(1), None)
-            .await
-            .unwrap();
+        let first = ingest_batch(
+            &db,
+            s.root,
+            raw(std::slice::from_ref(&s.authorize)),
+            false,
+            Some(1),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (first.received, first.over_ceiling),
+            (1, false),
+            "one entry sits under a ceiling of one"
+        );
+        let second =
+            ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.revoke)), false, Some(1), None)
+                .await
+                .unwrap();
         assert!(second.over_ceiling, "the second would exceed the ceiling");
         assert_eq!(second.received, 0, "and nothing of it is admitted");
         assert_eq!(
@@ -2964,9 +3000,16 @@ mod tests {
         assert!(stored_hashes(&db2, &s.root, service::IDENTITY_PUBLIC).await.is_empty());
         // No ceiling (a hosted persona): the same two entries are admitted.
         let db3 = test_db().await;
-        let hosted = ingest_batch(&db3, s.root, raw(&[s.authorize.clone(), s.revoke.clone()]), false, None, None)
-            .await
-            .unwrap();
+        let hosted = ingest_batch(
+            &db3,
+            s.root,
+            raw(&[s.authorize.clone(), s.revoke.clone()]),
+            false,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!((hosted.received, hosted.over_ceiling), (2, false));
     }
 
@@ -2977,28 +3020,42 @@ mod tests {
         let db = crate::db::test_user_db().await;
         let sk = SigningKey::from_bytes(&[21u8; 32]);
         let room = [7u8; 16];
-        let msg = ringtome_proto::registry::ChatMessage { room_author: [9u8; 32], body: b"hi".to_vec(), sealed: false, refs: Vec::new(), mentions: Vec::new(), reacts_to: None, retracts: None, edits: None, notice: None };
-        crate::record::imaol::append_on(&db, &sk, service::CHAT, Some(room), entry_type::CHAT_MESSAGE, Payload::Inline(msg.encode().unwrap()))
-            .await
-            .unwrap();
+        let msg = ringtome_proto::registry::ChatMessage {
+            room_author: [9u8; 32],
+            body: b"hi".to_vec(),
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+        };
+        crate::record::imaol::append_on(
+            &db,
+            &sk,
+            service::CHAT,
+            Some(room),
+            entry_type::CHAT_MESSAGE,
+            Payload::Inline(msg.encode().unwrap()),
+        )
+        .await
+        .unwrap();
         let unscoped = missing_plan(&db, &[], false, &[], &[], Ask::default()).await.unwrap();
         assert!(unscoped.is_empty(), "a follower's unscoped pull carries no room chain");
-        let lane = missing_plan(&db, &[], false, ROOM_SCOPE, &[room], Ask::default()).await.unwrap();
+        let lane =
+            missing_plan(&db, &[], false, ROOM_SCOPE, &[room], Ask::default()).await.unwrap();
         assert_eq!(lane.len(), 1, "the room's lane carries it");
         assert_eq!(lane[0].instance, Some(room));
-        let other = missing_plan(&db, &[], false, ROOM_SCOPE, &[[8u8; 16]], Ask::default()).await.unwrap();
+        let other =
+            missing_plan(&db, &[], false, ROOM_SCOPE, &[[8u8; 16]], Ask::default()).await.unwrap();
         assert!(other.is_empty(), "another room's lane does not");
         let mesh = missing_plan(&db, &[], true, &[], &[], Ask::default()).await.unwrap();
         assert_eq!(mesh.len(), 1, "the persona's own computers carry it, whatever the scope");
     }
 
     async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {
-        stored_chain(db, author, svc, None)
-            .await
-            .unwrap()
-            .iter()
-            .map(|e| *e.hash())
-            .collect()
+        stored_chain(db, author, svc, None).await.unwrap().iter().map(|e| *e.hash()).collect()
     }
 
     fn hashes(entries: &[SignedEntry]) -> Vec<[u8; 32]> {
@@ -3017,13 +3074,9 @@ mod tests {
         let k = posts.pk();
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         // Deliberately astride the boundary: one full page, then a short one.
         let count = SEND_PAGE_ENTRIES + 3;
@@ -3059,25 +3112,18 @@ mod tests {
         let mut posts = Chain::new(42, service::POSTS);
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: posts.pk(),
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: posts.pk(), usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
-        let written: Vec<SignedEntry> = (0..3)
-            .map(|n| posts.append(entry_type::POST, vec![0xa0, n as u8]))
-            .collect();
+        let written: Vec<SignedEntry> =
+            (0..3).map(|n| posts.append(entry_type::POST, vec![0xa0, n as u8])).collect();
         assert_eq!(ingest(&db, root_chain.pk(), std::slice::from_ref(&authorize)).await, (1, 0));
         assert_eq!(ingest(&db, root_chain.pk(), &written).await.0, 3);
 
         // Scoped to identity: the posts chain - "lacked entirely" by this empty-handed
         // peer - stays home.
-        let sent = missing_for_peer(&db, &[], false, &[service::IDENTITY_PUBLIC])
-            .await
-            .unwrap();
+        let sent = missing_for_peer(&db, &[], false, &[service::IDENTITY_PUBLIC]).await.unwrap();
         assert_eq!(
             sent,
             vec![authorize.bytes().to_vec()],
@@ -3103,17 +3149,12 @@ mod tests {
         let root = root_chain.pk();
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
-        let written: Vec<SignedEntry> = (0..5)
-            .map(|n| posts.append(entry_type::POST, vec![0xa0, n]))
-            .collect();
+        let written: Vec<SignedEntry> =
+            (0..5).map(|n| posts.append(entry_type::POST, vec![0xa0, n])).collect();
         let mut all = vec![authorize];
         all.extend(written);
 
@@ -3152,11 +3193,7 @@ mod tests {
         assert_eq!(ingest(&db, s.root, &[s.authorize, s.revoke]).await, (2, 0));
 
         let (received, rejected) = ingest(&db, s.root, &s.forged).await;
-        assert_eq!(
-            (received, rejected),
-            (0, 3),
-            "the forged prefix is refused whole"
-        );
+        assert_eq!((received, rejected), (0, 3), "the forged prefix is refused whole");
         assert!(stored_hashes(&db, &s.k, service::POSTS).await.is_empty());
     }
 
@@ -3188,10 +3225,7 @@ mod tests {
         assert!(stored_hashes(&db, &s.k, service::POSTS).await.is_empty());
 
         assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0));
-        assert_eq!(
-            stored_hashes(&db, &s.k, service::POSTS).await,
-            hashes(&s.honest)
-        );
+        assert_eq!(stored_hashes(&db, &s.k, service::POSTS).await, hashes(&s.honest));
     }
 
     #[tokio::test]
@@ -3215,10 +3249,7 @@ mod tests {
 
         // The final anchored entry completes the seal against what is already stored.
         assert_eq!(ingest(&db, s.root, &s.honest[2..]).await, (1, 0));
-        assert_eq!(
-            stored_hashes(&db, &s.k, service::POSTS).await,
-            hashes(&s.honest)
-        );
+        assert_eq!(stored_hashes(&db, &s.k, service::POSTS).await, hashes(&s.honest));
     }
 
     #[tokio::test]
@@ -3234,13 +3265,9 @@ mod tests {
 
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let grandchild = Chain::new(3, service::IDENTITY_PUBLIC);
         let g_auth = k_ident.append(
@@ -3283,13 +3310,9 @@ mod tests {
         let phantom = Chain::new(9, service::IDENTITY_PUBLIC);
         let phantom_auth = k_ident.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: phantom.pk(),
-                usurpers: vec![root_chain.pk(), k],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: phantom.pk(), usurpers: vec![root_chain.pk(), k], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let (received, rejected) = ingest(&db, root_chain.pk(), &[phantom_auth]).await;
         assert_eq!((received, rejected), (0, 1), "post-seal mints stay refused");
@@ -3310,13 +3333,9 @@ mod tests {
         let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
         let _reauthorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: s.k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: s.k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let revoke = root_chain.append(
             entry_type::REVOKE,
@@ -3360,23 +3379,15 @@ mod tests {
         let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
         let _reauthorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: s.k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: s.k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let genesis_revoke = root_chain.append(
             entry_type::REVOKE,
-            Revoke {
-                target: s.k,
-                disposition: Disposition::Repudiation,
-                anchors: vec![],
-            }
-            .encode()
-            .unwrap(),
+            Revoke { target: s.k, disposition: Disposition::Repudiation, anchors: vec![] }
+                .encode()
+                .unwrap(),
         );
 
         let (received, _rejected) = ingest(&db, s.root, &[genesis_revoke]).await;
@@ -3400,27 +3411,18 @@ mod tests {
 
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let retire = k_ident.append(
             entry_type::REVOKE,
-            Revoke {
-                target: k,
-                disposition: Disposition::Retirement,
-                anchors: vec![],
-            }
-            .encode()
-            .unwrap(),
+            Revoke { target: k, disposition: Disposition::Retirement, anchors: vec![] }
+                .encode()
+                .unwrap(),
         );
 
-        let (received, rejected) =
-            ingest(&db, root_chain.pk(), &[authorize, retire.clone()]).await;
+        let (received, rejected) = ingest(&db, root_chain.pk(), &[authorize, retire.clone()]).await;
         assert_eq!((received, rejected), (2, 0), "the founding self-revoke lands");
         assert_eq!(
             stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await,
@@ -3432,20 +3434,12 @@ mod tests {
         let phantom = Chain::new(9, service::IDENTITY_PUBLIC);
         let phantom_auth = k_ident.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: phantom.pk(),
-                usurpers: vec![root_chain.pk(), k],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: phantom.pk(), usurpers: vec![root_chain.pk(), k], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let (received, rejected) = ingest(&db, root_chain.pk(), &[phantom_auth]).await;
-        assert_eq!(
-            (received, rejected),
-            (0, 1),
-            "post-retirement mints stay refused"
-        );
+        assert_eq!((received, rejected), (0, 1), "post-retirement mints stay refused");
     }
 
     #[tokio::test]
@@ -3493,34 +3487,22 @@ mod tests {
 
         let authorize_k = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k,
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let honest_auth = k_id.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: child.pk(),
-                usurpers: vec![root_chain.pk(), k],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: child.pk(), usurpers: vec![root_chain.pk(), k], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let mut forged_k = Chain::new(2, service::IDENTITY_PUBLIC);
         let forged_auth = forged_k.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: phantom.pk(),
-                usurpers: vec![root_chain.pk(), k],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: phantom.pk(), usurpers: vec![root_chain.pk(), k], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
         let revoke = root_chain.append(
             entry_type::REVOKE,
@@ -3546,9 +3528,7 @@ mod tests {
             (0, 1),
             "the phantom authorization is refused, not merely uncredited"
         );
-        assert!(stored_hashes(&db, &k, service::IDENTITY_PUBLIC)
-            .await
-            .is_empty());
+        assert!(stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await.is_empty());
 
         assert_eq!(ingest(&db, root, std::slice::from_ref(&honest_auth)).await, (1, 0));
         assert_eq!(
@@ -3600,9 +3580,9 @@ mod tests {
                 genesis_ms: None,
                 reply_to: None,
                 thread_root: None,
-            sealed_title: None,
-            seal_of: None,
-            onward: false,
+                sealed_title: None,
+                seal_of: None,
+                onward: false,
             };
             chain.append(entry_type::DOC_HEADER, header.encode().unwrap())
         }
@@ -3634,8 +3614,14 @@ mod tests {
         let b = test_db().await;
         let c = test_db().await;
         let root = root_chain.pk();
-        assert_eq!(ingest(&b, root, &[authorize.clone(), common.clone(), left.clone()]).await, (3, 0));
-        assert_eq!(ingest(&c, root, &[authorize.clone(), common.clone(), right.clone()]).await, (3, 0));
+        assert_eq!(
+            ingest(&b, root, &[authorize.clone(), common.clone(), left.clone()]).await,
+            (3, 0)
+        );
+        assert_eq!(
+            ingest(&c, root, &[authorize.clone(), common.clone(), right.clone()]).await,
+            (3, 0)
+        );
 
         // CONTAINMENT, wire half: range arithmetic sees agreement (equal heads), but the
         // head-hash mismatch makes each side send its head entry - the proof crosses.
@@ -3648,7 +3634,11 @@ mod tests {
 
         // CONTAINMENT, gate half: the proof arrives; neither branch overwrites the other,
         // the second branch is NOT a second post, and the evidence is on the record.
-        assert_eq!(ingest(&b, root, std::slice::from_ref(&right)).await, (0, 0), "recorded, not stored");
+        assert_eq!(
+            ingest(&b, root, std::slice::from_ref(&right)).await,
+            (0, 0),
+            "recorded, not stored"
+        );
         assert_eq!(ingest(&c, root, std::slice::from_ref(&left)).await, (0, 0));
         assert_eq!(
             stored_hashes(&b, &k, service::POSTS).await,
@@ -3723,10 +3713,7 @@ mod tests {
         // prefix is the only admissible history), and the quarantine does NOT re-arm - the
         // evidence path only runs for Active keys.
         assert_eq!(ingest(&c, root, std::slice::from_ref(&right)).await, (0, 1));
-        assert_eq!(
-            stored_hashes(&c, &k, service::POSTS).await,
-            vec![*common.hash(), *left.hash()]
-        );
+        assert_eq!(stored_hashes(&c, &k, service::POSTS).await, vec![*common.hash(), *left.hash()]);
         assert!(!has_public_equivocation(&c).await.unwrap());
     }
 
@@ -3760,10 +3747,7 @@ mod tests {
         let n = prune_forgotten_peers(&db, now).await.unwrap();
         assert_eq!(n, 2, "exactly the two dark-on-both-clocks rows");
         let survivors: Vec<(String,)> = db
-            .fetch_all(
-                "SELECT endpoint_id FROM identity_peers ORDER BY endpoint_id",
-                (),
-            )
+            .fetch_all("SELECT endpoint_id FROM identity_peers ORDER BY endpoint_id", ())
             .await
             .unwrap();
         assert_eq!(
@@ -3795,17 +3779,12 @@ mod tests {
         let mut k_inbox = Chain::new(2, service::INBOX_STRANGER);
         let authorize = root_chain.append(
             entry_type::AUTHORIZE,
-            Authorize {
-                child: k_inbox.pk(),
-                usurpers: vec![root_chain.pk()],
-                enc_pubkey: None,
-            }
-            .encode()
-            .unwrap(),
+            Authorize { child: k_inbox.pk(), usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
         );
-        let entries: Vec<SignedEntry> = (0..len)
-            .map(|n| k_inbox.append(entry_type::INBOX_NOTICE, vec![0xcc, n]))
-            .collect();
+        let entries: Vec<SignedEntry> =
+            (0..len).map(|n| k_inbox.append(entry_type::INBOX_NOTICE, vec![0xcc, n])).collect();
         (root_chain.pk(), authorize, entries)
     }
 
@@ -3821,11 +3800,8 @@ mod tests {
             .await
             .with_memo(std::sync::Arc::new(node_db.clone()))
             .with_root(root.clone());
-        let raw: Vec<Vec<u8>> = [vec![authorize], entries]
-            .concat()
-            .iter()
-            .map(|e| e.bytes().to_vec())
-            .collect();
+        let raw: Vec<Vec<u8>> =
+            [vec![authorize], entries].concat().iter().map(|e| e.bytes().to_vec()).collect();
         let outcome = ingest_batch(&user_db, root_pk, raw, true, None, None).await.unwrap();
         assert_eq!(outcome.rejected, 0, "the fixture's own chains are admissible");
 
@@ -3852,11 +3828,8 @@ mod tests {
         // validates content against an authority context it has to have already been sent.
         let (root_pk, authorize, entries) = inbox_scenario(3);
         let root = hex::encode(root_pk);
-        let raw: Vec<Vec<u8>> = [vec![authorize], entries]
-            .concat()
-            .iter()
-            .map(|e| e.bytes().to_vec())
-            .collect();
+        let raw: Vec<Vec<u8>> =
+            [vec![authorize], entries].concat().iter().map(|e| e.bytes().to_vec()).collect();
 
         let node_db = crate::db::test_node_db().await;
         let memoed = crate::db::test_user_db()
@@ -3869,9 +3842,7 @@ mod tests {
         ingest_batch(&bare, root_pk, raw, true, None, None).await.unwrap();
 
         let shape = |plan: &[ChainSend]| -> Vec<(String, u32, u64)> {
-            plan.iter()
-                .map(|c| (c.author_hex.clone(), c.service, c.from_seq))
-                .collect()
+            plan.iter().map(|c| (c.author_hex.clone(), c.service, c.from_seq)).collect()
         };
         let from_memo = missing_plan(&memoed, &[], true, &[], &[], Ask::default()).await.unwrap();
         let from_scan = missing_plan(&bare, &[], true, &[], &[], Ask::default()).await.unwrap();
@@ -3899,17 +3870,14 @@ mod tests {
         // starts at seq 3 because everything below aged off the floor.
         let db = test_db().await;
         let (root, authorize, entries) = inbox_scenario(6);
-        let (received, rejected) = ingest_proven(
-            &db,
-            root,
-            &[vec![authorize], entries[3..].to_vec()].concat(),
-        )
-        .await;
+        let (received, rejected) =
+            ingest_proven(&db, root, &[vec![authorize], entries[3..].to_vec()].concat()).await;
         assert_eq!(rejected, 0, "a suffix on an inbox chain is not a defect");
         assert_eq!(received, 4, "the authorize plus the three held entries");
-        let held = stored_chain(&db, &entries[3].entry().chain.author, service::INBOX_STRANGER, None)
-            .await
-            .unwrap();
+        let held =
+            stored_chain(&db, &entries[3].entry().chain.author, service::INBOX_STRANGER, None)
+                .await
+                .unwrap();
         assert_eq!(held.first().unwrap().entry().seq, 3, "held from the peer's floor");
         assert_eq!(held.last().unwrap().entry().seq, 5);
     }
@@ -3940,12 +3908,9 @@ mod tests {
         // holders never prune.
         let db = test_db().await;
         let s = scenario();
-        let (_, rejected) = ingest(
-            &db,
-            s.root,
-            &[vec![s.authorize.clone()], s.honest[2..].to_vec()].concat(),
-        )
-        .await;
+        let (_, rejected) =
+            ingest(&db, s.root, &[vec![s.authorize.clone()], s.honest[2..].to_vec()].concat())
+                .await;
         assert_eq!(rejected, 1, "a posts chain starting at seq 2 is refused");
         assert!(
             stored_chain(&db, &s.k, service::POSTS, None).await.unwrap().is_empty(),
@@ -3962,20 +3927,12 @@ mod tests {
         let db = test_db().await;
         let (root, authorize, entries) = inbox_scenario(6);
         let author = entries[0].entry().chain.author;
-        let batch = [
-            vec![authorize],
-            entries[..2].to_vec(),
-            entries[4..].to_vec(),
-        ]
-        .concat();
+        let batch = [vec![authorize], entries[..2].to_vec(), entries[4..].to_vec()].concat();
         let (received, rejected) = ingest_proven(&db, root, &batch).await;
         assert_eq!(rejected, 0);
         assert_eq!(received, 5, "authorize + two early + two adopted");
         let held = stored_chain(&db, &author, service::INBOX_STRANGER, None).await.unwrap();
-        assert_eq!(
-            held.iter().map(|e| e.entry().seq).collect::<Vec<_>>(),
-            vec![4, 5]
-        );
+        assert_eq!(held.iter().map(|e| e.entry().seq).collect::<Vec<_>>(), vec![4, 5]);
     }
 
     #[tokio::test]
@@ -3994,9 +3951,8 @@ mod tests {
 
         // And a key the tree never authorized gets nowhere, gap or not.
         let mut stranger_chain = Chain::new(9, service::INBOX_STRANGER);
-        let orphan: Vec<SignedEntry> = (0..2u8)
-            .map(|n| stranger_chain.append(entry_type::INBOX_NOTICE, vec![n]))
-            .collect();
+        let orphan: Vec<SignedEntry> =
+            (0..2u8).map(|n| stranger_chain.append(entry_type::INBOX_NOTICE, vec![n])).collect();
         let (received, rejected) = ingest_proven(&db, root, &orphan[1..]).await;
         assert_eq!((received, rejected), (0, 1), "unknown keys stay unknown");
     }

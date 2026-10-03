@@ -15,24 +15,13 @@ pub fn run(arg: &str) -> Result<()> {
     let e = signed.entry();
 
     println!("ringtome entry (v{}, {} bytes)", e.v, signed.bytes().len());
-    println!(
-        "  type:      {} ({})",
-        e.entry_type,
-        entry_type::name(e.entry_type)
-    );
+    println!("  type:      {} ({})", e.entry_type, entry_type::name(e.entry_type));
     println!("  author:    {}", hex::encode(e.chain.author));
     println!("  speaks as: {}", crate::speakable::speakable(&e.chain.author));
-    println!(
-        "  service:   {} ({})",
-        e.chain.service,
-        service::name(e.chain.service)
-    );
+    println!("  service:   {} ({})", e.chain.service, service::name(e.chain.service));
     println!("  seq:       {}", e.seq);
     println!("  prev_hash: {}", hex::encode(e.prev_hash));
-    println!(
-        "  timestamp: {} (claimed ms since epoch; advisory)",
-        e.timestamp_ms
-    );
+    println!("  timestamp: {} (claimed ms since epoch; advisory)", e.timestamp_ms);
     match &e.payload {
         Payload::Inline(b) => {
             println!("  payload:   inline ({} bytes)", b.len());

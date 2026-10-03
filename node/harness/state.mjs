@@ -43,22 +43,36 @@ const made = await (await a.fetch('/api/identity', { method: 'POST', headers: J 
 const root = made.root_pubkey;
 
 // Adoption: B requests, A grants (one-trip when the nodes can reach each other).
-const req = await (await b.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })).json();
+const req = await (
+    await b.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })
+).json();
 const leaf = decodeCode(req.code).leaf_pubkey;
-const grant = await (await a.fetch(`/api/identity/${root}/nodes`, { method: 'POST', headers: J, body: JSON.stringify({ code: req.code }) })).json();
+const grant = await (
+    await a.fetch(`/api/identity/${root}/nodes`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ code: req.code }),
+    })
+).json();
 if (!grant.delivered) {
-    await b.fetch('/api/identity/adopt/complete', { method: 'POST', headers: J, body: JSON.stringify({ code: grant.code }) });
+    await b.fetch('/api/identity/adopt/complete', {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ code: grant.code }),
+    });
 }
 
 const sync = async () => {
     await (await a.fetch(`/api/identity/${root}/sync`, { method: 'POST', headers: J })).json();
 };
 const save = async (s, docId, body, parents) => {
-    const r = await (await s.fetch(`/api/identity/${root}/docs/${docId}`, {
-        method: 'PUT',
-        headers: J,
-        body: JSON.stringify({ title: 'shared', body, parents, format: 'marquee' }),
-    })).json();
+    const r = await (
+        await s.fetch(`/api/identity/${root}/docs/${docId}`, {
+            method: 'PUT',
+            headers: J,
+            body: JSON.stringify({ title: 'shared', body, parents, format: 'marquee' }),
+        })
+    ).json();
     return r.version;
 };
 
@@ -66,11 +80,13 @@ const save = async (s, docId, body, parents) => {
 // The scenario (disposable - rewrite per investigation). Currently: the revocation field test.
 // good(A) <- good(A) <- good(A) <- bad(B) <- good(A), then A strikes B with the genesis cut.
 
-const doc0 = await (await a.fetch(`/api/identity/${root}/docs`, {
-    method: 'POST',
-    headers: J,
-    body: JSON.stringify({ title: 'shared', body: 'good1', format: 'marquee' }),
-})).json();
+const doc0 = await (
+    await a.fetch(`/api/identity/${root}/docs`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ title: 'shared', body: 'good1', format: 'marquee' }),
+    })
+).json();
 const doc = doc0.doc_id;
 const v2 = await save(a, doc, 'good1\ngood2', [doc0.version]);
 const v3 = await save(a, doc, 'good1\ngood2\ngood3', [v2]);
@@ -86,6 +102,9 @@ await a.fetch(`/api/identity/${root}/keys/${leaf}/revoke`, {
 });
 
 const after = await (await a.fetch(`/api/identity/${root}/docs/${doc}`)).json();
-console.log('API-level resolution:', JSON.stringify({ resolution: after.resolution, body: after.body }).slice(0, 300));
+console.log(
+    'API-level resolution:',
+    JSON.stringify({ resolution: after.resolution, body: after.body }).slice(0, 300),
+);
 console.log(JSON.stringify({ user: username, pw: password, root, doc }));
 console.log(`next: node ui.mjs ${A} ${username} ${password} ${doc}`);

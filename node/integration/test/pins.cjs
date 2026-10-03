@@ -5,123 +5,196 @@
     window however deep they sit. Unpinning retracts the statement: the strip empties
     everywhere while the post stands.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST_B, HOST_C, sql } = require("./fetch.cjs");
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat, pullAndFold } = require('./beat.cjs');
+const { HOST_B, HOST_C, sql } = require('./fetch.cjs');
 
 const POSTS = 60;
 const DEEP = 3;
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
-const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
+const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 
-(HOST_B && HOST_C ? describe : describe.skip)("public pins: the author's pin heads their page, travels, and is fetched first", function () {
-    this.timeout(600000);
+(HOST_B && HOST_C ? describe : describe.skip)(
+    "public pins: the author's pin heads their page, travels, and is fetched first",
+    function () {
+        this.timeout(600000);
 
-    let ada, adaRoot, bea, beaRoot, cal, calRoot, posts = [], deep;
-    const pinPath = () => `api/identity/${adaRoot}/public-annotations/${adaRoot}/${deep}`;
+        let ada,
+            adaRoot,
+            bea,
+            beaRoot,
+            cal,
+            calRoot,
+            posts = [],
+            deep;
+        const pinPath = () => `api/identity/${adaRoot}/public-annotations/${adaRoot}/${deep}`;
 
-    before(async () => {
-        ada = await makeUserFetch({ prefix: "pinada" });
-        adaRoot = (await (await ada("api/identity", { method: "POST" })).json()).root_pubkey;
-        await ada(`api/identity/${adaRoot}/serve`, { method: "POST" });
-        for (let i = 0; i < POSTS; i++) {
-            const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title: `post ${i}`, body: `words ${i}`, format: "plaintext" })).json();
-            if (i === DEEP) await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/annotations/tags/keeper`, { method: "PUT" });
-            const pub = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {});
-            const pubText = await pub.text();
-            assert.equal(pub.status, 200, pubText);
-            posts.push(JSON.parse(pubText).post_id);
-        }
-        deep = posts[DEEP];
-        assert.ok(deep, "the deep post has a public id");
-    });
+        before(async () => {
+            ada = await makeUserFetch({ prefix: 'pinada' });
+            adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
+            for (let i = 0; i < POSTS; i++) {
+                const d = await (
+                    await j(ada, `api/identity/${adaRoot}/docs`, {
+                        title: `post ${i}`,
+                        body: `words ${i}`,
+                        format: 'plaintext',
+                    })
+                ).json();
+                if (i === DEEP)
+                    await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/annotations/tags/keeper`, {
+                        method: 'PUT',
+                    });
+                const pub = await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {});
+                const pubText = await pub.text();
+                assert.equal(pub.status, 200, pubText);
+                posts.push(JSON.parse(pubText).post_id);
+            }
+            deep = posts[DEEP];
+            assert.ok(deep, 'the deep post has a public id');
+        });
 
-    it("the author pins a post deep in their history, and their own page opens with it", async () => {
-        const pinned = await j(ada, pinPath(), { key: "pin", value: "yes" }, "PUT");
-        assert.equal(pinned.status, 200, await pinned.text());
-        const profile = await (await ada(`api/id/${adaRoot}/profile`)).json();
-        assert.deepEqual((profile.pinned || []).map((p) => p.doc_id), [deep], "the strip holds the pin");
-        assert.ok(!(profile.posts || []).some((p) => p.doc_id === deep), "and it sits deep, past the first page");
-        const head = await (await ada(`api/id/${adaRoot}/posts/${deep}`)).json();
-        assert.ok((head.annotations || []).some((a) => a.key === "pin" && a.annotator === adaRoot), "the card knows");
-    });
+        it('the author pins a post deep in their history, and their own page opens with it', async () => {
+            const pinned = await j(ada, pinPath(), { key: 'pin', value: 'yes' }, 'PUT');
+            assert.equal(pinned.status, 200, await pinned.text());
+            const profile = await (await ada(`api/id/${adaRoot}/profile`)).json();
+            assert.deepEqual(
+                (profile.pinned || []).map((p) => p.doc_id),
+                [deep],
+                'the strip holds the pin',
+            );
+            assert.ok(
+                !(profile.posts || []).some((p) => p.doc_id === deep),
+                'and it sits deep, past the first page',
+            );
+            const head = await (await ada(`api/id/${adaRoot}/posts/${deep}`)).json();
+            assert.ok(
+                (head.annotations || []).some((a) => a.key === 'pin' && a.annotator === adaRoot),
+                'the card knows',
+            );
+        });
 
-    it("a follower's page opens with the pin, its labels along, and the pinned body serves", async function () {
-        bea = await makeUserFetch({ prefix: "pinbea", host: HOST_B });
-        beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
-        await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
-        if ((await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`)).status !== 200) this.skip();
-        await j(bea, `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { value: "high" }, "PUT");
-        let strip = [];
-        for (let i = 0; i < 12 && !strip.includes(deep); i++) {
-            await pullAndFold(HOST_B, adaRoot);
-            strip = ((await (await bea(`api/id/${adaRoot}/profile`)).json()).pinned || []).map((p) => p.doc_id);
-        }
-        assert.deepEqual(strip, [deep], "the follower's strip holds the pin");
-        const prof = await (await bea(`api/id/${adaRoot}/profile`)).json();
-        assert.ok((prof.pinned[0].annotations || []).some((a) => a.key === "tag" && a.value === "keeper"), "its labels came too");
-        let body = null;
-        for (let i = 0; i < 40 && body === null; i++) {
-            const r = await bea(`id/${adaRoot}/docs/${deep}/body`);
-            if (r.status === 200) body = await r.text();
-            else await new Promise((res) => setTimeout(res, 400));
-        }
-        assert.equal(body, `words ${DEEP}`, "the pinned body arrived");
-    });
+        it("a follower's page opens with the pin, its labels along, and the pinned body serves", async function () {
+            bea = await makeUserFetch({ prefix: 'pinbea', host: HOST_B });
+            beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await bea(`api/identity/${beaRoot}/serve`, { method: 'POST' });
+            if ((await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`)).status !== 200)
+                this.skip();
+            await j(
+                bea,
+                `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`,
+                { value: 'high' },
+                'PUT',
+            );
+            let strip = [];
+            for (let i = 0; i < 12 && !strip.includes(deep); i++) {
+                await pullAndFold(HOST_B, adaRoot);
+                strip = ((await (await bea(`api/id/${adaRoot}/profile`)).json()).pinned || []).map(
+                    (p) => p.doc_id,
+                );
+            }
+            assert.deepEqual(strip, [deep], "the follower's strip holds the pin");
+            const prof = await (await bea(`api/id/${adaRoot}/profile`)).json();
+            assert.ok(
+                (prof.pinned[0].annotations || []).some(
+                    (a) => a.key === 'tag' && a.value === 'keeper',
+                ),
+                'its labels came too',
+            );
+            let body = null;
+            for (let i = 0; i < 40 && body === null; i++) {
+                const r = await bea(`id/${adaRoot}/docs/${deep}/body`);
+                if (r.status === 200) body = await r.text();
+                else await new Promise((res) => setTimeout(res, 400));
+            }
+            assert.equal(body, `words ${DEEP}`, 'the pinned body arrived');
+        });
 
-    it("a stranger's peek fetches the pinned post beside the newest twenty, labels along", async function () {
-        cal = await makeUserFetch({ prefix: "pincal", host: HOST_C });
-        calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
-        const r = await cal(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
-        if (r.status !== 200) this.skip();
-        let prof = await r.json();
-        for (let i = 0; i < 20 && !(prof.pinned || []).length; i++) {
-            await new Promise((res) => setTimeout(res, 400));
-            prof = await (await cal(`api/id/${adaRoot}/profile`)).json();
-        }
-        assert.equal(prof.peek, true);
-        assert.deepEqual((prof.pinned || []).map((p) => p.doc_id), [deep], "the peek fetched the pin ahead of the window");
-        // The window is the newest twenty the peek actually landed; under a loaded rig the
-        // peek's own budget can cut it short (2026-09-09), and then the deep post is
-        // honestly among what is held. The claim is about the full window, so it asks
-        // the ledger how many it holds: nineteen of the window plus the pin is a page of
-        // exactly twenty with the deep post on it (2026-09-17's CI red), not the window.
-        const { rows } = await sql(`SELECT COUNT(*) AS n FROM fragments WHERE author_root = '${adaRoot}'`, HOST_C);
-        if (Number(rows[0].n) > 20) {
-            assert.ok(!(prof.posts || []).some((p) => p.doc_id === deep), "which the full window itself never reaches");
-        }
-        assert.ok((prof.pinned[0].annotations || []).some((a) => a.key === "tag" && a.value === "keeper"), "labels rode the fragment");
-    });
+        it("a stranger's peek fetches the pinned post beside the newest twenty, labels along", async function () {
+            cal = await makeUserFetch({ prefix: 'pincal', host: HOST_C });
+            calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await cal(`api/identity/${calRoot}/serve`, { method: 'POST' });
+            const r = await cal(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
+            if (r.status !== 200) this.skip();
+            let prof = await r.json();
+            for (let i = 0; i < 20 && !(prof.pinned || []).length; i++) {
+                await new Promise((res) => setTimeout(res, 400));
+                prof = await (await cal(`api/id/${adaRoot}/profile`)).json();
+            }
+            assert.equal(prof.peek, true);
+            assert.deepEqual(
+                (prof.pinned || []).map((p) => p.doc_id),
+                [deep],
+                'the peek fetched the pin ahead of the window',
+            );
+            // The window is the newest twenty the peek actually landed; under a loaded rig the
+            // peek's own budget can cut it short (2026-09-09), and then the deep post is
+            // honestly among what is held. The claim is about the full window, so it asks
+            // the ledger how many it holds: nineteen of the window plus the pin is a page of
+            // exactly twenty with the deep post on it (2026-09-17's CI red), not the window.
+            const { rows } = await sql(
+                `SELECT COUNT(*) AS n FROM fragments WHERE author_root = '${adaRoot}'`,
+                HOST_C,
+            );
+            if (Number(rows[0].n) > 20) {
+                assert.ok(
+                    !(prof.posts || []).some((p) => p.doc_id === deep),
+                    'which the full window itself never reaches',
+                );
+            }
+            assert.ok(
+                (prof.pinned[0].annotations || []).some(
+                    (a) => a.key === 'tag' && a.value === 'keeper',
+                ),
+                'labels rode the fragment',
+            );
+        });
 
-    it("unpinning empties the strip everywhere while the post stands", async () => {
-        const un = await ada(`${pinPath()}/pin/yes`, { method: "DELETE" });
-        assert.equal(un.status, 200, await un.text());
-        assert.deepEqual(((await (await ada(`api/id/${adaRoot}/profile`)).json()).pinned || []), [], "the author's strip is empty");
-        assert.equal((await ada(`api/id/${adaRoot}/posts/${deep}`)).status, 200, "the post stands");
-        let strip = [deep];
-        for (let i = 0; i < 12 && strip.length; i++) {
-            await pullAndFold(HOST_B, adaRoot);
-            strip = ((await (await bea(`api/id/${adaRoot}/profile`)).json()).pinned || []).map((p) => p.doc_id);
-        }
-        assert.deepEqual(strip, [], "the follower's strip emptied");
-        assert.equal((await bea(`api/id/${adaRoot}/posts/${deep}`)).status, 200, "and the post stands there too");
-        if (!cal) return;
-        let peeked = [deep];
-        for (let i = 0; i < 12 && peeked.length; i++) {
-            await beat(HOST_C, "pull", adaRoot);
-            peeked = ((await (await cal(`api/id/${adaRoot}/profile`)).json()).pinned || []).map((p) => p.doc_id);
-        }
-        assert.deepEqual(peeked, [], "the peek's strip emptied on its next look");
-    });
-});
+        it('unpinning empties the strip everywhere while the post stands', async () => {
+            const un = await ada(`${pinPath()}/pin/yes`, { method: 'DELETE' });
+            assert.equal(un.status, 200, await un.text());
+            assert.deepEqual(
+                (await (await ada(`api/id/${adaRoot}/profile`)).json()).pinned || [],
+                [],
+                "the author's strip is empty",
+            );
+            assert.equal(
+                (await ada(`api/id/${adaRoot}/posts/${deep}`)).status,
+                200,
+                'the post stands',
+            );
+            let strip = [deep];
+            for (let i = 0; i < 12 && strip.length; i++) {
+                await pullAndFold(HOST_B, adaRoot);
+                strip = ((await (await bea(`api/id/${adaRoot}/profile`)).json()).pinned || []).map(
+                    (p) => p.doc_id,
+                );
+            }
+            assert.deepEqual(strip, [], "the follower's strip emptied");
+            assert.equal(
+                (await bea(`api/id/${adaRoot}/posts/${deep}`)).status,
+                200,
+                'and the post stands there too',
+            );
+            if (!cal) return;
+            let peeked = [deep];
+            for (let i = 0; i < 12 && peeked.length; i++) {
+                await beat(HOST_C, 'pull', adaRoot);
+                peeked = ((await (await cal(`api/id/${adaRoot}/profile`)).json()).pinned || []).map(
+                    (p) => p.doc_id,
+                );
+            }
+            assert.deepEqual(peeked, [], "the peek's strip emptied on its next look");
+        });
+    },
+);
 
 /*
     Pin books, chats, or rebroadcasts (Curtis, 2026-09-29). A room pins like any post of the
@@ -129,43 +202,85 @@ const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.s
     post - and sits in the strip, in pin order, as the share it is. Withdrawing the share takes
     its pin off the page.
 */
-describe("pins beyond words: a room, and a post passed along", function () {
+describe('pins beyond words: a room, and a post passed along', function () {
     this.timeout(120000);
 
     it("both head the sharer's page, most recently pinned first; the withdrawn share leaves", async () => {
-        const dee = await makeUserFetch({ prefix: "pindee" });
-        const deeRoot = (await (await dee("api/identity", { method: "POST" })).json()).root_pubkey;
-        const theirs = (await (await j(dee, `api/identity/${deeRoot}/docs`, { title: "passed on", body: "**theirs**", format: "marquee" })).json()).doc_id;
-        const theirPost = JSON.parse(await (await j(dee, `api/identity/${deeRoot}/docs/${theirs}/publish`, {})).text()).post_id;
+        const dee = await makeUserFetch({ prefix: 'pindee' });
+        const deeRoot = (await (await dee('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const theirs = (
+            await (
+                await j(dee, `api/identity/${deeRoot}/docs`, {
+                    title: 'passed on',
+                    body: '**theirs**',
+                    format: 'marquee',
+                })
+            ).json()
+        ).doc_id;
+        const theirPost = JSON.parse(
+            await (await j(dee, `api/identity/${deeRoot}/docs/${theirs}/publish`, {})).text(),
+        ).post_id;
 
-        const eve = await makeUserFetch({ prefix: "pineve" });
-        const eveRoot = (await (await eve("api/identity", { method: "POST" })).json()).root_pubkey;
-        const d = await (await j(eve, `api/identity/${eveRoot}/docs`, { title: "a room", body: "come in", format: "marquee" })).json();
-        await eve(`api/identity/${eveRoot}/docs/${d.doc_id}/buckets/chat`, { method: "PUT" });
-        const roomPub = await j(eve, `api/identity/${eveRoot}/docs/${d.doc_id}/publish`, { room: true });
+        const eve = await makeUserFetch({ prefix: 'pineve' });
+        const eveRoot = (await (await eve('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const d = await (
+            await j(eve, `api/identity/${eveRoot}/docs`, {
+                title: 'a room',
+                body: 'come in',
+                format: 'marquee',
+            })
+        ).json();
+        await eve(`api/identity/${eveRoot}/docs/${d.doc_id}/buckets/chat`, { method: 'PUT' });
+        const roomPub = await j(eve, `api/identity/${eveRoot}/docs/${d.doc_id}/publish`, {
+            room: true,
+        });
         const roomText = await roomPub.text();
         assert.equal(roomPub.status, 200, roomText);
         const room = JSON.parse(roomText).post_id;
-        const shared = await j(eve, `api/identity/${eveRoot}/rebroadcasts`, { author: deeRoot, doc_id: theirPost });
+        const shared = await j(eve, `api/identity/${eveRoot}/rebroadcasts`, {
+            author: deeRoot,
+            doc_id: theirPost,
+        });
         assert.equal(shared.status, 200, await shared.text());
 
-        const pin = (author, doc) => j(eve, `api/identity/${eveRoot}/public-annotations/${author}/${doc}`, { key: "pin", value: "yes" }, "PUT");
+        const pin = (author, doc) =>
+            j(
+                eve,
+                `api/identity/${eveRoot}/public-annotations/${author}/${doc}`,
+                { key: 'pin', value: 'yes' },
+                'PUT',
+            );
         assert.equal((await pin(eveRoot, room)).status, 200);
         await new Promise((res) => setTimeout(res, 5)); // pin order is the statements' time
         assert.equal((await pin(deeRoot, theirPost)).status, 200);
 
         const strip = (await (await eve(`api/id/${eveRoot}/profile`)).json()).pinned || [];
-        assert.deepEqual(strip.map((p) => [p.kind || "post", p.doc_id]), [["share", theirPost], ["post", room]], "newest pin first");
+        assert.deepEqual(
+            strip.map((p) => [p.kind || 'post', p.doc_id]),
+            [
+                ['share', theirPost],
+                ['post', room],
+            ],
+            'newest pin first',
+        );
         const [share, pinnedRoom] = strip;
-        assert.equal(share.author, deeRoot, "the share is still its author speaking");
+        assert.equal(share.author, deeRoot, 'the share is still its author speaking');
         assert.equal(share.via, eveRoot, "passed along by the page's persona");
         assert.equal(share.pinned, true, "and the card is told it's pinned");
-        assert.equal(share.format, "marquee");
-        assert.equal(pinnedRoom.format, "room");
+        assert.equal(share.format, 'marquee');
+        assert.equal(pinnedRoom.format, 'room');
 
-        const withdrawn = await j(eve, `api/identity/${eveRoot}/rebroadcasts`, { author: deeRoot, doc_id: theirPost, retract: true });
+        const withdrawn = await j(eve, `api/identity/${eveRoot}/rebroadcasts`, {
+            author: deeRoot,
+            doc_id: theirPost,
+            retract: true,
+        });
         assert.equal(withdrawn.status, 200, await withdrawn.text());
         const after = (await (await eve(`api/id/${eveRoot}/profile`)).json()).pinned || [];
-        assert.deepEqual(after.map((p) => p.doc_id), [room], "a pin on a share no longer passed along leaves the page");
+        assert.deepEqual(
+            after.map((p) => p.doc_id),
+            [room],
+            'a pin on a share no longer passed along leaves the page',
+        );
     });
 });

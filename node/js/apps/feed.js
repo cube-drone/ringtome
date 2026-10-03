@@ -55,7 +55,12 @@ import {
     PUBLISHED_AS,
 } from '../pure/feed.js';
 import { api } from '../net.js';
-import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
+import {
+    SELECTIVITY_STOPS,
+    DEFAULT_STOP,
+    effectiveInterest,
+    visibleAt,
+} from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, narrowParams } from '../postsearch.js';
@@ -98,7 +103,6 @@ const SORT_WORDS = {
     year: () => t('apps.feed.sort-year', 'best this year'),
 };
 
-
 // A stack item's words, rendered. Journal's reader exactly (doc/detail.js, cache-first and
 // patient about a body still in flight), and the BARE fallback for an unparsable document
 // rather than the apology - a paragraph of explanation per card is noise in a stream.
@@ -117,9 +121,11 @@ const PostBody = ({ doc }) => {
     }
     if (!doc.body.trim()) return null;
     return html`<div class="feed-item-body">
-        ${doc.format === 'marquee'
-            ? html`<${MarqueeBody} source=${doc.body} profile=${tlProfile} onUnparsable=${bareSource} />`
-            : html`<pre class="reader-plain jag-line">${doc.body}</pre>`}
+        ${
+            doc.format === 'marquee'
+                ? html`<${MarqueeBody} source=${doc.body} profile=${tlProfile} onUnparsable=${bareSource} />`
+                : html`<pre class="reader-plain jag-line">${doc.body}</pre>`
+        }
     </div>`;
 };
 
@@ -156,11 +162,23 @@ const StackItem = ({ root, row, onPost, posting }) => {
     // every list, its history stays - behind the app's native confirm idiom. The mirror's
     // live rows drop it from the stack on their own; nothing here needs to.
     const discard = async () => {
-        if (!confirm(t('apps.feed.discard-this-draft', 'Discard this draft? It leaves the list right away.'))) return;
+        if (
+            !confirm(
+                t(
+                    'apps.feed.discard-this-draft',
+                    'Discard this draft? It leaves the list right away.',
+                ),
+            )
+        )
+            return;
         try {
             await api(`/api/identity/${root}/docs/${row.doc_id}`, { method: 'DELETE' });
         } catch (e) {
-            alert(t('apps.feed.couldnt-discard-it', "couldn't discard it: {message}", { message: e.message }));
+            alert(
+                t('apps.feed.couldnt-discard-it', "couldn't discard it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
     const when = formatWhen(createdMs(row));
@@ -170,29 +188,38 @@ const StackItem = ({ root, row, onPost, posting }) => {
             <header class="feed-item-head">
                 <span class="feed-item-when">${when}</span>
                 <span class="feed-item-state">${open ? t('apps.feed.editing', 'editing') : state.label}</span>
-                ${!open &&
-                html`${/* Writer's chips (Curtis, 2026-09-27), trash leftmost: discard, then edit -
-                    at once, posted or not (2026-10-02: no lock, no window). */ ''}
-                    ${!state.published &&
-                    html`<button
+                ${
+                    !open &&
+                    html`${
+                        /* Writer's chips (Curtis, 2026-09-27), trash leftmost: discard, then edit -
+                    at once, posted or not (2026-10-02: no lock, no window). */ ''
+                    }
+                    ${
+                        !state.published &&
+                        html`<button
                         class="chip chip-button chip-delete"
                         title=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
                         aria-label=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
                         onClick=${discard}
-                    ><${Icons.trash} /></button>`}
+                    ><${Icons.trash} /></button>`
+                    }
                     <button
                         class="chip chip-button"
                         title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                         aria-label=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                         onClick=${() => setOpen(true)}
-                    ><${Icons.rename} /></button>`}
+                    ><${Icons.rename} /></button>`
+                }
             </header>
-            ${/* No title, no heading. A post that was never given one is untitled in the
+            ${
+                /* No title, no heading. A post that was never given one is untitled in the
                 ordinary sense of the word - the app inventing the LABEL "untitled" and
-                setting it in heading type says the author called it that. */ ''}
+                setting it in heading type says the author called it that. */ ''
+            }
             ${!open && !!row.title && html`<h2 class="feed-item-title">${row.title}</h2>`}
-            ${open
-                ? html`<${Composer}
+            ${
+                open
+                    ? html`<${Composer}
                       root=${root}
                       docId=${row.doc_id}
                       published=${state.published}
@@ -203,11 +230,14 @@ const StackItem = ({ root, row, onPost, posting }) => {
                       posting=${posting}
                       onDeleted=${() => setOpen(false)}
                   />`
-                : html`<${PostBody} doc=${doc} />`}
-            ${state.published &&
-            html`<p class="feed-item-link">
+                    : html`<${PostBody} doc=${doc} />`
+            }
+            ${
+                state.published &&
+                html`<p class="feed-item-link">
                 <a data-settles href=${`/id/${root}/docs/${state.postId}/body`}>${t('apps.feed.the-public-copy', 'the public copy')}</a>
-            </p>`}
+            </p>`
+            }
         </article>
     `;
 };
@@ -238,7 +268,20 @@ export function scheduledPlan(doc) {
 // `feedUrl`/`labelsUrl` default to the reader's; `dial` is the reader's selectivity, off
 // for the node (there is no reader to have interest); `picksKey` keeps the facet picks
 // apart per road. Without a root there is no composer, no fresh bar, no editing.
-export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery, feedUrl, labelsUrl, dial = true, picksKey, nullState }) => {
+export const FeedStream = ({
+    root,
+    current,
+    contacts,
+    fresh,
+    scheduled,
+    editingFor,
+    searchQuery,
+    feedUrl,
+    labelsUrl,
+    dial = true,
+    picksKey,
+    nullState,
+}) => {
     const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
     // The facet picks, kept per road for the tab (facets.js). Up here: the pages below read them.
@@ -274,7 +317,8 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     const [after, setAfter] = useState(null);
     const [stop, setStop] = useState(null);
     const stopKey = dial ? stop || DEFAULT_STOP : null;
-    const bestStop = ranked && stopKey && stopKey !== 'explorer' ? `&stop=${encodeURIComponent(stopKey)}` : '';
+    const bestStop =
+        ranked && stopKey && stopKey !== 'explorer' ? `&stop=${encodeURIComponent(stopKey)}` : '';
 
     const loadPage = async (cursor) => {
         setLoading(true);
@@ -282,13 +326,17 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
         try {
             if (ranked) {
                 // The node ranks the feed (hot) or the window (best) at the dial's stop, and pages it.
-                const qs = withOwn(`?${sortParams(sort)}${bestStop}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
+                const qs = withOwn(
+                    `?${sortParams(sort)}${bestStop}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`,
+                );
                 const page = await api(`${feedDoor}${qs}`);
                 setItems((have) => mergeRanked(cursor ? have : [], page.items));
                 setAfter(page.after || null);
                 setMore(!!page.more);
             } else {
-                const qs = withOwn(cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '');
+                const qs = withOwn(
+                    cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '',
+                );
                 const page = await api(`${feedDoor}${qs}`);
                 setItems((have) => mergeFeed(cursor ? have : [], page.items));
                 setMore(!!page.more);
@@ -439,7 +487,7 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     // The share/reply pair collapses at render (pure/feed.js): when a reply and the
     // parent row its pin journaled are both on screen, the quote-card says it once.
     const visible = collapseReplyPairs(
-        dial ? items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot)) : items
+        dial ? items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot)) : items,
     );
     // Your scheduled posts ride at the TOP (Curtis, 2026-09-02): a future time sorts later
     // than anything that exists, and the badge says why nobody else sees them yet.
@@ -462,29 +510,42 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
     ]
         .filter(Boolean)
         .join('&');
-    const labels = useLabels(labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null, items.length);
+    const labels = useLabels(
+        labelsDoor ? `${labelsDoor}${labelQuery ? `?${labelQuery}` : ''}` : null,
+        items.length,
+    );
     const search = useSearch(feedDoor, searchQuery, picks, { stop: stopKey, me, sort });
     const shown = search.active
-        ? (ranked ? mergeRanked([], search.results || []) : mergeFeed([], search.results || [])).filter(
-              (item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot)
-          )
+        ? (ranked
+              ? mergeRanked([], search.results || [])
+              : mergeFeed([], search.results || [])
+          ).filter((item) => !dial || item.mine || visibleAt(stopKey, item, factsByRoot))
         : [...(scheduled || []), ...visible];
 
     // The options have a box of their own (Curtis, 2026-09-30: the zone "feels a little inchoate
     // because it's got so many options in it now"), drawn only when there is something to put in it
     // - the public feed has no dial, and a place with nothing labelled has no lists.
-    const facetsShow = meChip || (!!labels && ((labels.kinds || []).length > 0 || (labels.buckets || []).length > 0 || (labels.tags || []).length > 0));
+    const facetsShow =
+        meChip ||
+        (!!labels &&
+            ((labels.kinds || []).length > 0 ||
+                (labels.buckets || []).length > 0 ||
+                (labels.tags || []).length > 0));
     const optionsShow = stop !== null || (sortable && sort !== null) || facetsShow;
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
-            ${optionsShow &&
-            html`<div class="feed-options jag-line">
-            ${/* The dial first, above even the tag cloud (Curtis, 2026-09-27): how far the feed may
-                reach decides everything under it, the lists included. */ ''}
+            ${
+                optionsShow &&
+                html`<div class="feed-options jag-line">
+            ${
+                /* The dial first, above even the tag cloud (Curtis, 2026-09-27): how far the feed may
+                reach decides everything under it, the lists included. */ ''
+            }
             <div class="feed-top">
-                ${stop !== null &&
-                html`<label class="feed-selectivity" title=${t('apps.feed.how-far-past-the-people', 'how far past the people you chose this feed may reach')}>
+                ${
+                    stop !== null &&
+                    html`<label class="feed-selectivity" title=${t('apps.feed.how-far-past-the-people', 'how far past the people you chose this feed may reach')}>
                     <span class="feed-selectivity-name">${t('apps.feed.feed-curiosity', 'feed curiosity:')}</span>
                     <input
                         type="range"
@@ -494,46 +555,60 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                         onInput=${(e) => moveStop(SELECTIVITY_STOPS[Number(e.currentTarget.value)].key)}
                     />
                     <span class="feed-selectivity-label">${STOP_WORDS[stopKey] ? STOP_WORDS[stopKey]() : ''}</span>
-                </label>`}
-                ${/* Clear all (Curtis, 2026-10-02): every chip on the strip back to "left alone" at once -
+                </label>`
+                }
+                ${
+                    /* Clear all (Curtis, 2026-10-02): every chip on the strip back to "left alone" at once -
                     with picks set, a click that read as "also show X" was "only X". Always there, so
-                    the order beside it never jumps; idle while nothing is picked. */ ''}
-                ${facetsShow &&
-                html`<button
+                    the order beside it never jumps; idle while nothing is picked. */ ''
+                }
+                ${
+                    facetsShow &&
+                    html`<button
                     class="facet-more feed-clear"
                     disabled=${!anyPicks(picks)}
                     title=${t('apps.feed.clear-all-title', 'show everything again - every type and tag back to unpicked')}
                     onClick=${() => setPicks(NO_PICKS)}
-                >${t('apps.feed.clear-all', 'clear all')}</button>`}
-                ${sortable &&
-                sort !== null &&
-                html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked')}>
+                >${t('apps.feed.clear-all', 'clear all')}</button>`
+                }
+                ${
+                    sortable &&
+                    sort !== null &&
+                    html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked')}>
                     <span class="feed-selectivity-name">${t('apps.feed.sort-by', 'order:')}</span>
                     <select value=${sort} onChange=${(e) => moveSort(e.currentTarget.value)}>
                         ${FEED_SORTS.map((key) => html`<option value=${key} key=${key}>${SORT_WORDS[key]()}</option>`)}
                     </select>
-                </label>`}
+                </label>`
+                }
             </div>
-            ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
+            ${
+                /* No unread filter, and no unread anything (2026-08-09): a feed is a river you
                 dip into, not an inbox to empty. The fresh-updates bar above is the one "what
-                arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
+                arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''
+            }
             <${LabelFacets}
                 labels=${labels}
                 picks=${picks}
                 onPicks=${setPicks}
                 meChip=${meChip}
             />
-            </div>`}
-            ${/* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
+            </div>`
+            }
+            ${
+                /* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
                 the dial's corner it was hard to see): centred, and always the same height, so the
                 button appearing never moves your read position - the reason updates wait to be
-                asked for. */ ''}
+                asked for. */ ''
+            }
             <div class="feed-fresh-bar">
-                ${pending.length > 0 &&
-                html`<button class="feed-fresh-btn" onClick=${takePending}>
+                ${
+                    pending.length > 0 &&
+                    html`<button class="feed-fresh-btn" onClick=${takePending}>
                     ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : t('apps.feed.n-updates', '{n} updates', { n: pending.length })}
                     ${t('apps.feed.refresh', '· refresh')}
-                </button>`}
+                </button>`
+                }
             </div>
             <div class="feed-stream-head">
                 <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
@@ -545,43 +620,60 @@ export const FeedStream = ({ root, current, contacts, fresh, scheduled, editingF
                     interest=${emphasisBand(item)}
                     current=${current}
                     editing=${item.mine ? edit(item.doc_id) : null}
-                />`
+                />`,
             )}
-            ${best &&
-            items.length === 0 &&
-            !loading &&
-            html`<p class="null-sub">${t('apps.feed.nothing-in-this-window', 'nothing in your feed was posted in this window.')}</p>`}
-            ${!best &&
-            items.length === 0 &&
-            !loading &&
-            (nullState ||
-            html`<p class="null-sub">
+            ${
+                best &&
+                items.length === 0 &&
+                !loading &&
+                html`<p class="null-sub">${t('apps.feed.nothing-in-this-window', 'nothing in your feed was posted in this window.')}</p>`
+            }
+            ${
+                !best &&
+                items.length === 0 &&
+                !loading &&
+                (nullState ||
+                    html`<p class="null-sub">
                 ${t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
-            </p>`)}
-            ${search.active &&
-            search.searching &&
-            html`<p class="null-sub"><span class="waiting-dot"></span> ${t('apps.feed.searching', 'searching…')}</p>`}
-            ${search.active &&
-            !search.searching &&
-            shown.length === 0 &&
-            html`<p class="null-sub">
+            </p>`)
+            }
+            ${
+                search.active &&
+                search.searching &&
+                html`<p class="null-sub"><span class="waiting-dot"></span> ${t('apps.feed.searching', 'searching…')}</p>`
+            }
+            ${
+                search.active &&
+                !search.searching &&
+                shown.length === 0 &&
+                html`<p class="null-sub">
                 ${search.error || t('apps.feed.nothing-in-your-feed-says-that', 'nothing in your feed says that.')}
-            </p>`}
-            ${dial &&
-            items.length > 0 &&
-            visible.length === 0 &&
-            !loading &&
-            html`<p class="null-sub">
+            </p>`
+            }
+            ${
+                dial &&
+                items.length > 0 &&
+                visible.length === 0 &&
+                !loading &&
+                html`<p class="null-sub">
                 ${t('apps.feed.nothing-at-this-selectivity', 'nothing at this selectivity - slide toward Explorer to widen the feed.')}
-            </p>`}
-            ${more &&
-            html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(nextCursor())}>
-                ${loading
-                    ? t('apps.feed.reading-further-back', 'reading further back…')
-                    : pageError
-                      ? t('apps.feed.couldnt-reach-further-back--', "couldn't reach further back - try again")
-                      : t('apps.feed.further-back', 'further back')}
-            </button>`}
+            </p>`
+            }
+            ${
+                more &&
+                html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(nextCursor())}>
+                ${
+                    loading
+                        ? t('apps.feed.reading-further-back', 'reading further back…')
+                        : pageError
+                          ? t(
+                                'apps.feed.couldnt-reach-further-back--',
+                                "couldn't reach further back - try again",
+                            )
+                          : t('apps.feed.further-back', 'further back')
+                }
+            </button>`
+            }
         </main>
     `;
 };
@@ -613,7 +705,9 @@ export const FeedApp = ({ current, searchQuery }) => {
     // The composer's floor is 260px: below that the editor's chrome crushes even in its
     // narrow mode (panes.js applies the floor to drags AND to previously-stored widths).
     // The composer's column has no ceiling (Curtis, 2026-09-29).
-    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose'], { compose: 260 }, ['compose']);
+    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose'], { compose: 260 }, [
+        'compose',
+    ]);
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     // Your ledger, for the rendering dials: interest shapes an item's size, never its place.
@@ -649,7 +743,7 @@ export const FeedApp = ({ current, searchQuery }) => {
             setMinted(made.doc_id); // on screen now, not when the stream says so
             await api(
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`,
-                { method: 'PUT' }
+                { method: 'PUT' },
             );
         } catch (e) {
             setError(e.message);
@@ -745,7 +839,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                           ...(trustNext ? { trusted_only: true } : {}),
                           ...(audienceTag ? { audience: audienceTag } : {}),
                       }
-                    : undefined
+                    : undefined,
             );
             setSettleNext(false);
             setAudienceNext('');
@@ -772,7 +866,8 @@ export const FeedApp = ({ current, searchQuery }) => {
             for (const [field, value] of Object.entries((row && row.fields) || {})) {
                 // Bookkeeping never becomes a chip: where the draft went public, the key
                 // it sealed under, and a schedule this very mint just spent.
-                if (field === PUBLISHED_AS || field === 'trusted_key' || field === 'publish_plan') continue;
+                if (field === PUBLISHED_AS || field === 'trusted_key' || field === 'publish_plan')
+                    continue;
                 if (field === 'seal' || field === 'audience') continue; // the wishes wear their own chip
                 if (field === DISPLAY_DATE_FIELD) continue; // rides the header as the post's date
                 if (!(value || '').trim()) continue;
@@ -829,12 +924,15 @@ export const FeedApp = ({ current, searchQuery }) => {
             d.doc_id !== draftId &&
             isTextDoc(d) && // an uploaded image in the feed bucket is media, never a draft
             !publishedState(overlayPosted(d, postedAs[d.doc_id])).published &&
-            !scheduledPlan(d) // a scheduled draft lives in the stream, badged, not down here
+            !scheduledPlan(d), // a scheduled draft lives in the stream, badged, not down here
     );
     // Every scheduled draft of this persona - any bucket, since Writer publishes too -
     // dressed as a stream item for the top of the feed.
     const scheduledItems = (rows || [])
-        .filter((d) => scheduledPlan(d) && !publishedState(overlayPosted(d, postedAs[d.doc_id])).published)
+        .filter(
+            (d) =>
+                scheduledPlan(d) && !publishedState(overlayPosted(d, postedAs[d.doc_id])).published,
+        )
         .map((d) => {
             const plan = scheduledPlan(d);
             return {
@@ -855,20 +953,21 @@ export const FeedApp = ({ current, searchQuery }) => {
         <div class="feed-app">
             <${BakeModal} items=${baking} />
             <div class="feed-columns panes" style=${colStyle}>
-                ${tucked.has('compose')
-                    ? html`<${Rail}
+                ${
+                    tucked.has('compose')
+                        ? html`<${Rail}
                           icon=${Icons.notes}
                           label=${t('apps.feed.write', 'write')}
                           onClick=${() => toggleTuck('compose')}
                       />`
-                    : html`${tab('compose', Icons.notes, t('apps.feed.write', 'write'))}<aside class="feed-compose">
+                        : html`${tab('compose', Icons.notes, t('apps.feed.write', 'write'))}<aside class="feed-compose">
                               <${PaneHead} icon=${Icons.notes} label=${t('apps.feed.write-2', 'write')} onTuck=${() => toggleTuck('compose')} />
-                              ${draftId
-                                  ? html`<${Composer}
+                              ${
+                                  draftId
+                                      ? html`<${Composer}
                                         root=${root}
                                         docId=${draftId}
-                                        published=${!!onDraft &&
-                                        publishedState(onDraft).published}
+                                        published=${!!onDraft && publishedState(onDraft).published}
                                         onPost=${() => post()}
                                         posting=${posting}
                                         onDeleted=${() => {
@@ -906,13 +1005,17 @@ export const FeedApp = ({ current, searchQuery }) => {
                                             ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
                                         </select>
                                     </label>`
-                                  : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`}
-                              ${/* Beside the button that caused it. This used to sit above the
+                                      : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`
+                              }
+                              ${
+                                  /* Beside the button that caused it. This used to sit above the
                                   columns, where a failed post reported itself a long way from
-                                  the post. */ ''}
+                                  the post. */ ''
+                              }
                               ${error && html`<p class="form-error">${error}</p>`}
-                              ${drafts.length > 0 &&
-                              html`<div class="feed-drafts">
+                              ${
+                                  drafts.length > 0 &&
+                                  html`<div class="feed-drafts">
                                   <p class="feed-drafts-head">${t('apps.feed.older-drafts', 'older drafts')}</p>
                                   ${drafts.map(
                                       (row) => html`<${StackItem}
@@ -921,11 +1024,13 @@ export const FeedApp = ({ current, searchQuery }) => {
                                           row=${overlayPosted(row, postedAs[row.doc_id])}
                                           onPost=${post}
                                           posting=${posting}
-                                      />`
+                                      />`,
                                   )}
-                              </div>`}
+                              </div>`
+                              }
                           </aside>
-                          ${resizer('compose')}`}
+                          ${resizer('compose')}`
+                }
                 <${FeedStream}
                     root=${root}
                     current=${current}

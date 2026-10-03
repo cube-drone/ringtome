@@ -77,12 +77,7 @@ pub struct Put {
 
 impl Put {
     fn new(store: &FileStore, hash: Hash, tag: iroh_blobs::api::TempTag) -> Self {
-        *store
-            .outstanding
-            .lock()
-            .expect("outstanding puts poisoned")
-            .entry(hash)
-            .or_insert(0) += 1;
+        *store.outstanding.lock().expect("outstanding puts poisoned").entry(hash).or_insert(0) += 1;
         Put {
             hash,
             ring: store.recent.clone(),
@@ -282,7 +277,9 @@ impl FileStore {
                 let work = tokio::spawn(async move {
                     // A backup is copying the store: skip this round rather than delete under it.
                     let Ok(_quiet) = gate.try_read() else {
-                        tracing::debug!("blob reaper: a backup holds the store still - round skipped");
+                        tracing::debug!(
+                            "blob reaper: a backup holds the store still - round skipped"
+                        );
                         return None;
                     };
                     // This round's number, taken BEFORE the walk: anything noted from here
@@ -407,19 +404,10 @@ impl FileStore {
         // (the HTTP document cap, the transcode's output bound); this is the floor under all of it,
         // at the layer that actually distributes.
         if blob.len() as u64 > self.max_blob_bytes {
-            bail!(
-                "blob is {} bytes, over the {}-byte cap",
-                blob.len(),
-                self.max_blob_bytes
-            );
+            bail!("blob is {} bytes, over the {}-byte cap", blob.len(), self.max_blob_bytes);
         }
         let _writing = self.gate.read().await;
-        let tag = self
-            .store()
-            .add_bytes(blob)
-            .temp_tag()
-            .await
-            .context("storing blob")?;
+        let tag = self.store().add_bytes(blob).temp_tag().await.context("storing blob")?;
         let hash = *tag.as_ref();
         Ok(Put::new(self, hash, tag))
     }
@@ -430,11 +418,7 @@ impl FileStore {
     /// plainly, and identical public bytes sharing a hash is fine and free.
     pub async fn put_public(&self, plaintext: &[u8]) -> Result<Put> {
         if plaintext.len() as u64 > self.max_blob_bytes {
-            bail!(
-                "blob is {} bytes, over the {}-byte cap",
-                plaintext.len(),
-                self.max_blob_bytes
-            );
+            bail!("blob is {} bytes, over the {}-byte cap", plaintext.len(), self.max_blob_bytes);
         }
         let _writing = self.gate.read().await;
         let tag = self
@@ -576,17 +560,12 @@ mod tests {
     // (the reaper test below shrinks the recent-put grace so a reap is watchable; harmless to
     // every other test because the reaper only acts on ARMED stores, and only that test arms)
 
-
     use super::*;
     use iroh::endpoint::presets;
     use iroh::protocol::Router;
 
     async fn test_endpoint() -> Endpoint {
-        Endpoint::builder(presets::Minimal)
-            .alpns(vec![BLOB_ALPN.to_vec()])
-            .bind()
-            .await
-            .unwrap()
+        Endpoint::builder(presets::Minimal).alpns(vec![BLOB_ALPN.to_vec()]).bind().await.unwrap()
     }
 
     /// The wiring test: a blob fetched through the REAL node plumbing - `build_endpoint`
@@ -597,19 +576,19 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "ringtome-files-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
 
         // Node A, assembled from the same constructors main() uses.
         let keystore = crate::keystore::Keystore::load(&dir).unwrap();
-        let ep_a =
-            crate::net::p2p::build_endpoint(&keystore, &crate::net::discovery::DiscoveryMode::Off, None)
-                .await
-                .unwrap();
+        let ep_a = crate::net::p2p::build_endpoint(
+            &keystore,
+            &crate::net::discovery::DiscoveryMode::Off,
+            None,
+        )
+        .await
+        .unwrap();
         let files_a = std::sync::Arc::new(FileStore::memory());
         let state = crate::AppState {
             config: crate::config::Config::from_env(),
@@ -637,7 +616,11 @@ mod tests {
             gossip: iroh_gossip::net::Gossip::builder().spawn(ep_a.clone()),
             live: Default::default(),
             attention: crate::attention::Attention::new(false),
-            webpush: crate::webpush::WebPush::load(&crate::keystore::Keystore::load(&dir).unwrap(), false).unwrap(),
+            webpush: crate::webpush::WebPush::load(
+                &crate::keystore::Keystore::load(&dir).unwrap(),
+                false,
+            )
+            .unwrap(),
             backups: Default::default(),
             shell: crate::shell::Shell::new(false),
         };
@@ -646,10 +629,7 @@ mod tests {
         let epoch = 5u64;
         let key = [7u8; 32];
         let plaintext = b"served by the real accept loop".to_vec();
-        let hash = files_a
-            .put_encrypted(epoch, &key, &plaintext)
-            .await
-            .unwrap().hash;
+        let hash = files_a.put_encrypted(epoch, &key, &plaintext).await.unwrap().hash;
 
         let addr_a = crate::net::sync::endpoint_addr(
             &ep_a.id().to_string(),
@@ -678,13 +658,8 @@ mod tests {
         // Node A stores the encrypted body and serves blobs on its endpoint.
         let ep_a = test_endpoint().await;
         let store_a = FileStore::memory();
-        let hash = store_a
-            .put_encrypted(epoch, &key, &plaintext)
-            .await
-            .unwrap().hash;
-        let _router_a = Router::builder(ep_a.clone())
-            .accept(BLOB_ALPN, store_a.protocol())
-            .spawn();
+        let hash = store_a.put_encrypted(epoch, &key, &plaintext).await.unwrap().hash;
+        let _router_a = Router::builder(ep_a.clone()).accept(BLOB_ALPN, store_a.protocol()).spawn();
 
         // A's connectable address, built with the same helpers the sync path uses.
         let addr_a = crate::net::sync::endpoint_addr(
@@ -714,10 +689,7 @@ mod tests {
             "an over-cap body is refused at put"
         );
         // Under the cap still stores fine.
-        let put = store
-            .put_encrypted(1, &[0u8; 32], b"a small body")
-            .await
-            .unwrap();
+        let put = store.put_encrypted(1, &[0u8; 32], b"a small body").await.unwrap();
         assert!(store.has(put.hash).await);
     }
 
@@ -726,15 +698,9 @@ mod tests {
     /// (public-domain / CC, hence distributable) 34.6MB video - genuinely over any document cap.
     #[tokio::test]
     async fn fetch_refuses_a_blob_over_the_cap() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../sample_media/buck-twenty.mp4"
-        );
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../sample_media/buck-twenty.mp4");
         let big = std::fs::read(path).expect("corpus fixture sample_media/buck-twenty.mp4");
-        assert!(
-            big.len() as u64 > 10 * 1024 * 1024,
-            "fixture must be over-cap"
-        );
+        assert!(big.len() as u64 > 10 * 1024 * 1024, "fixture must be over-cap");
 
         let epoch = 1u64;
         let key = [3u8; 32];
@@ -743,9 +709,7 @@ mod tests {
         let ep_a = test_endpoint().await;
         let store_a = FileStore::memory().with_max_blob_bytes(64 * 1024 * 1024);
         let hash = store_a.put_encrypted(epoch, &key, &big).await.unwrap().hash;
-        let _router_a = Router::builder(ep_a.clone())
-            .accept(BLOB_ALPN, store_a.protocol())
-            .spawn();
+        let _router_a = Router::builder(ep_a.clone()).accept(BLOB_ALPN, store_a.protocol()).spawn();
         let addr_a = crate::net::sync::endpoint_addr(
             &ep_a.id().to_string(),
             &crate::net::p2p::addr_strings(&ep_a),
@@ -759,10 +723,7 @@ mod tests {
             store_b.fetch(&ep_b, addr_a, hash).await.is_err(),
             "an over-cap blob is refused mid-stream"
         );
-        assert!(
-            !store_b.has(hash).await,
-            "and never lands as a complete blob"
-        );
+        assert!(!store_b.has(hash).await, "and never lands as a complete blob");
     }
 
     /// The reaper's one blind spot, closed twice. The GC's protect snapshot (the live-set

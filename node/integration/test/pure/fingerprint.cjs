@@ -51,7 +51,10 @@ describe('roster fingerprint', () => {
         assert.notEqual(base, rosterFingerprint([{ ...roster[0], members: 4 }, roster[1]]));
         assert.notEqual(base, rosterFingerprint([{ ...roster[0], title: 'Recipes!' }, roster[1]]));
         assert.notEqual(base, rosterFingerprint([{ ...roster[0], taxonomy_id: 't9' }, roster[1]]));
-        assert.notEqual(base, rosterFingerprint([...roster, { taxonomy_id: 't3', title: 'x', members: 1 }]));
+        assert.notEqual(
+            base,
+            rosterFingerprint([...roster, { taxonomy_id: 't3', title: 'x', members: 1 }]),
+        );
         assert.notEqual(base, rosterFingerprint([roster[0]]));
     });
 

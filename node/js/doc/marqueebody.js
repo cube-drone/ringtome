@@ -24,7 +24,8 @@ import { t } from '../i18n.js';
 const html = htm.bind(h);
 
 /// Just the source, unadorned.
-export const bareSource = (_error, source) => html`<pre class="reader-plain jag-line">${source}</pre>`;
+export const bareSource = (_error, source) =>
+    html`<pre class="reader-plain jag-line">${source}</pre>`;
 
 /// The default: what happened, and then the source so nothing is hidden.
 export const marqueeApology = (_error, source) => html`<div>
@@ -44,7 +45,13 @@ export const parseError = (error) =>
  *                     Preact function component does not forward.
  * @param onUnparsable (error, source) => vnode
  */
-export const MarqueeBody = ({ source, profile, handle, onNodeClick, onUnparsable = marqueeApology }) => {
+export const MarqueeBody = ({
+    source,
+    profile,
+    handle,
+    onNodeClick,
+    onUnparsable = marqueeApology,
+}) => {
     try {
         parse(source);
     } catch (error) {

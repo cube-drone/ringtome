@@ -1,4 +1,4 @@
-const assert = require("node:assert");
+const assert = require('node:assert');
 /*
     Test fixtures built on top of the raw fetch wrapper.
 
@@ -14,12 +14,12 @@ const assert = require("node:assert");
         alice.username // the generated username
         alice.account  // the AccountInfo body from registration { id, username }
 */
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch } = require('./fetch.cjs');
 
 let counter = 0;
 
 // Unique per call within a run; the counter guards against two calls landing in the same ms.
-function uniqueUsername(prefix = "user") {
+function uniqueUsername(prefix = 'user') {
     counter += 1;
     return `${prefix}_${Date.now().toString(36)}_${counter}`;
 }
@@ -35,10 +35,10 @@ function uniqueUsername(prefix = "user") {
 async function makeUserFetch(opts = {}) {
     const fetch = opts.fetch || makeFetch(opts.host);
     const username = opts.username || uniqueUsername(opts.prefix);
-    const password = opts.password || "test-password-123";
+    const password = opts.password || 'test-password-123';
 
-    const regResp = await fetch("api/auth/register", {
-        method: "POST",
+    const regResp = await fetch('api/auth/register', {
+        method: 'POST',
         body: JSON.stringify({ username, password }),
     });
     if (regResp.status !== 200) {
@@ -47,8 +47,8 @@ async function makeUserFetch(opts = {}) {
     }
     const account = await regResp.json();
 
-    const loginResp = await fetch("api/auth/login", {
-        method: "POST",
+    const loginResp = await fetch('api/auth/login', {
+        method: 'POST',
         body: JSON.stringify({ username, password }),
     });
     if (loginResp.status !== 200) {
@@ -66,14 +66,13 @@ async function makeUserFetch(opts = {}) {
 // peek at a field (usually the minted leaf pubkey). Tolerates the bare-JSON form too, mirroring
 // the server's unpack.
 function decodeCode(code) {
-    const zlib = require("node:zlib");
+    const zlib = require('node:zlib');
     const trimmed = code.trim();
-    if (trimmed.startsWith("{")) return JSON.parse(trimmed);
-    if (!trimmed.startsWith("rt1.")) throw new Error(`not a code: ${trimmed.slice(0, 12)}…`);
-    const deflated = Buffer.from(trimmed.slice(4), "base64url");
-    return JSON.parse(zlib.inflateRawSync(deflated).toString("utf8"));
+    if (trimmed.startsWith('{')) return JSON.parse(trimmed);
+    if (!trimmed.startsWith('rt1.')) throw new Error(`not a code: ${trimmed.slice(0, 12)}…`);
+    const deflated = Buffer.from(trimmed.slice(4), 'base64url');
+    return JSON.parse(zlib.inflateRawSync(deflated).toString('utf8'));
 }
-
 
 /// The one settle loop, previously copy-pasted into fifteen files with only the default
 /// budget differing - which meant no way to give CI more patience than a dev machine
@@ -82,20 +81,22 @@ function decodeCode(code) {
 /// picks its default budget; RINGTOME_TEST_SETTLE_SCALE multiplies every budget centrally
 /// (ci.yml sets 2). Green settles return early, so the scale costs a green run nothing -
 /// only failing waits and the two absence-shaped asserts run longer.
-const SETTLE_SCALE = Math.max(1, parseInt(process.env.RINGTOME_TEST_SETTLE_SCALE || "1", 10) || 1);
-const settleWith = (defaultTries) => async (fn, tries = defaultTries) => {
-    for (let i = 0; i < tries * SETTLE_SCALE; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const SETTLE_SCALE = Math.max(1, parseInt(process.env.RINGTOME_TEST_SETTLE_SCALE || '1', 10) || 1);
+const settleWith =
+    (defaultTries) =>
+    async (fn, tries = defaultTries) => {
+        for (let i = 0; i < tries * SETTLE_SCALE; i++) {
+            const got = await fn();
+            if (got) return got;
+            await new Promise((r) => setTimeout(r, 250));
+        }
+        return null;
+    };
 
 function pngChunk(type, data) {
     const len = Buffer.alloc(4);
     len.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
     const crc = Buffer.alloc(4);
     crc.writeUInt32BE(crc32(body));
     return Buffer.concat([len, body, crc]);
@@ -107,10 +108,10 @@ function crc32(buf) {
         c ^= buf[i];
         for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
     }
-    return (~c) >>> 0;
+    return ~c >>> 0;
 }
 
-const zlib = require("node:zlib");
+const zlib = require('node:zlib');
 
 function makePng(width, height) {
     const ihdr = Buffer.alloc(13);
@@ -130,18 +131,18 @@ function makePng(width, height) {
     }
     return Buffer.concat([
         Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-        pngChunk("IHDR", ihdr),
-        pngChunk("IDAT", zlib.deflateSync(raw)),
-        pngChunk("IEND", Buffer.alloc(0)),
+        pngChunk('IHDR', ihdr),
+        pngChunk('IDAT', zlib.deflateSync(raw)),
+        pngChunk('IEND', Buffer.alloc(0)),
     ]);
 }
 
 // AVIF is ISOBMFF: an `ftyp` box at offset 4, with an `avif`/`avis` brand near the head.
 function assertIsAvif(buf, why) {
     assert.ok(buf.length > 12, `${why}: non-empty`);
-    assert.equal(buf.slice(4, 8).toString("ascii"), "ftyp", `${why}: ISOBMFF ftyp box`);
-    const head = buf.slice(0, 64).toString("ascii");
-    assert.ok(head.includes("avif") || head.includes("avis"), `${why}: AVIF brand present`);
+    assert.equal(buf.slice(4, 8).toString('ascii'), 'ftyp', `${why}: ISOBMFF ftyp box`);
+    const head = buf.slice(0, 64).toString('ascii');
+    assert.ok(head.includes('avif') || head.includes('avis'), `${why}: AVIF brand present`);
 }
 
 // Poll the owner's ingest queue until the job finishes. Transcode is async (quarantine -> queue
@@ -153,7 +154,17 @@ function assertIsAvif(buf, why) {
     the tags people stated (record/documents.rs IMPLICIT_TAGS; implicit_tags.cjs says them). A claim
     about the tags somebody said takes `stated()` of a list - of strings, or of `{ value }` rows.
 */
-const IMPLICIT_TAGS = ["image", "video", "audio", "micro", "short", "medium", "long"];
-const stated = (tags) => (tags || []).filter((t) => !IMPLICIT_TAGS.includes(typeof t === "string" ? t : t.value));
+const IMPLICIT_TAGS = ['image', 'video', 'audio', 'micro', 'short', 'medium', 'long'];
+const stated = (tags) =>
+    (tags || []).filter((t) => !IMPLICIT_TAGS.includes(typeof t === 'string' ? t : t.value));
 
-module.exports = { makeUserFetch, uniqueUsername, decodeCode, settleWith, makePng, assertIsAvif, IMPLICIT_TAGS, stated };
+module.exports = {
+    makeUserFetch,
+    uniqueUsername,
+    decodeCode,
+    settleWith,
+    makePng,
+    assertIsAvif,
+    IMPLICIT_TAGS,
+    stated,
+};

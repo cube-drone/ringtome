@@ -22,8 +22,11 @@ describe('agoUnit', () => {
 
     it('steps up when the smaller unit stops reading well', () => {
         assert.deepEqual(ago(60 * 1000), { value: -1, unit: 'minute' });
-        assert.deepEqual(ago(90 * 60 * 1000), { value: -1, unit: 'hour' },
-            '90 minutes is an hour ago, not 90 minutes ago');
+        assert.deepEqual(
+            ago(90 * 60 * 1000),
+            { value: -1, unit: 'hour' },
+            '90 minutes is an hour ago, not 90 minutes ago',
+        );
         assert.deepEqual(ago(26 * 60 * 60 * 1000), { value: -1, unit: 'day' });
     });
 

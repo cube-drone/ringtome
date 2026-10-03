@@ -233,19 +233,16 @@ impl Config {
         let bind_address =
             env::var("RINGTOME_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1".to_string());
 
-        let port = env::var("RINGTOME_PORT")
-            .ok()
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(5281);
+        let port =
+            env::var("RINGTOME_PORT").ok().and_then(|s| s.parse::<u16>().ok()).unwrap_or(5281);
 
         let p2p_port = env::var("RINGTOME_P2P_PORT")
             .ok()
             .and_then(|s| s.trim().parse::<u16>().ok())
             .filter(|p| *p != 0);
 
-        let data_directory: PathBuf = env::var("RINGTOME_DATA_DIRECTORY")
-            .unwrap_or_else(|_| "./data".to_string())
-            .into();
+        let data_directory: PathBuf =
+            env::var("RINGTOME_DATA_DIRECTORY").unwrap_or_else(|_| "./data".to_string()).into();
 
         let backup_directory: PathBuf = env::var("RINGTOME_BACKUP_DIRECTORY")
             .ok()
@@ -273,10 +270,7 @@ impl Config {
             _ => Tenancy::Multi,
         };
 
-        let local_test = matches!(
-            env::var("RINGTOME_LOCAL_TEST").as_deref(),
-            Ok("1") | Ok("true")
-        );
+        let local_test = matches!(env::var("RINGTOME_LOCAL_TEST").as_deref(), Ok("1") | Ok("true"));
 
         let launch_token = if local_test {
             env::var("RINGTOME_LAUNCH_TOKEN").ok().filter(|t| !t.trim().is_empty())
@@ -393,7 +387,10 @@ impl Config {
             .ok()
             .map(|s| s.trim().trim_end_matches('/').to_string())
             .filter(|s| !s.is_empty());
-        let admin_persona = match env::var("RINGTOME_ADMIN_PERSONA_ID").ok().filter(|s| !s.trim().is_empty()) {
+        let admin_persona = match env::var("RINGTOME_ADMIN_PERSONA_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+        {
             None => None,
             Some(raw) => match parse_admin_persona(&raw) {
                 Some(root) => Some(root),

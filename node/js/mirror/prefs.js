@@ -50,7 +50,6 @@ export const TOOLTIPS_KEY = 'tooltips';
 /// (Curtis, 2026-09-27). Domain: 'open' | 'closed'; absent is closed.
 export const SETTINGS_MENU_KEY = 'persona:settings-menu';
 
-
 // --- reading ---
 
 /**
@@ -61,11 +60,14 @@ export const SETTINGS_MENU_KEY = 'persona:settings-menu';
 export function usePrefMap(root, prefix) {
     const rows = useLive(
         () => openMirror(root).prefs.where('key').startsWith(prefix).toArray(),
-        [root, prefix]
+        [root, prefix],
     );
     return useMemo(
-        () => (rows === undefined ? undefined : new Map(rows.map((r) => [r.key.slice(prefix.length), r.value]))),
-        [rows, prefix]
+        () =>
+            rows === undefined
+                ? undefined
+                : new Map(rows.map((r) => [r.key.slice(prefix.length), r.value])),
+        [rows, prefix],
     );
 }
 
@@ -87,14 +89,17 @@ export const flagsOf = (map) =>
 /// One pref's stored value, live, where there may be no persona yet (the app's root, before one is
 /// open): `undefined` without a root, or until the first result, or when nothing is stored.
 export function usePrefValue(root, key) {
-    const rows = useLive(() => (root ? openMirror(root).prefs.where('key').equals(key).toArray() : []), [root, key]);
+    const rows = useLive(
+        () => (root ? openMirror(root).prefs.where('key').equals(key).toArray() : []),
+        [root, key],
+    );
     return rows && rows[0] ? rows[0].value : undefined;
 }
 
 export function usePref(root, key, fallback) {
     const rows = useLive(
         () => openMirror(root).prefs.where('key').equals(key).toArray(),
-        [root, key]
+        [root, key],
     );
     const stored = rows && rows[0] && rows[0].value;
     const [pick, setPick] = useState(null);
@@ -126,7 +131,9 @@ export async function readPref(root, key) {
 
 /// Store one pref.
 export function setPref(root, key, value) {
-    openMirror(root).prefs.put({ key, value }).catch(() => {});
+    openMirror(root)
+        .prefs.put({ key, value })
+        .catch(() => {});
 }
 
 /// Store one '1'/'0' flag.

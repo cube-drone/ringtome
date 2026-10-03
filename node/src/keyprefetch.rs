@@ -38,7 +38,8 @@ const RETRY: Duration = Duration::from_secs(10 * 60);
 type Slot = (String, String, String);
 
 /// Each slot's last unanswered ask.
-static TRIED: LazyLock<Mutex<HashMap<Slot, Instant>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static TRIED: LazyLock<Mutex<HashMap<Slot, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// One pass: ask for the keys the feeds' sealed posts are missing.
 pub async fn prefetch_pass(state: AppState) -> anyhow::Result<()> {
@@ -48,9 +49,15 @@ pub async fn prefetch_pass(state: AppState) -> anyhow::Result<()> {
         if asked >= ASKS {
             break;
         }
-        let Ok(doc) = <[u8; 16]>::try_from(hex::decode(&doc_hex).unwrap_or_default().as_slice()) else { continue };
+        let Ok(doc) = <[u8; 16]>::try_from(hex::decode(&doc_hex).unwrap_or_default().as_slice())
+        else {
+            continue;
+        };
         // Whose key opens it: the post's own, or - a reply sealed under its parent - the parent's.
-        let (holder, key_doc) = match crate::fragments::card_header(&state, &author, &doc).await.and_then(|h| h.seal_of) {
+        let (holder, key_doc) = match crate::fragments::card_header(&state, &author, &doc)
+            .await
+            .and_then(|h| h.seal_of)
+        {
             Some((holder, key_doc)) => (hex::encode(holder), key_doc),
             None => (author.clone(), doc),
         };

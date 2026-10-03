@@ -114,17 +114,29 @@ async fn refresh_from_inner(
     // before paying for a user-database open. A leg whose chain did not move is off, whatever
     // the memo says it holds.
     let has_edges = wants(service::FOLLOWS_PUBLIC)
-        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::FOLLOWS_PUBLIC)
-            .await?;
+        && crate::net::frontier::has_service_chain(
+            &state.node_db,
+            author_root,
+            service::FOLLOWS_PUBLIC,
+        )
+        .await?;
     let has_shares = wants(service::REBROADCASTS)
-        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::REBROADCASTS)
-            .await?;
+        && crate::net::frontier::has_service_chain(
+            &state.node_db,
+            author_root,
+            service::REBROADCASTS,
+        )
+        .await?;
     let has_posts = wants(service::POSTS)
         && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::POSTS)
             .await?;
     let has_labels = wants(service::ANNOTATIONS_PUBLIC)
-        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::ANNOTATIONS_PUBLIC)
-            .await?;
+        && crate::net::frontier::has_service_chain(
+            &state.node_db,
+            author_root,
+            service::ANNOTATIONS_PUBLIC,
+        )
+        .await?;
     // Reads below open the database once for whichever legs run; the comment leg then asks
     // the reply-set fingerprint (replies::replies_moved) and steps aside for a plain post.
     if !has_edges && !has_shares && !has_posts && !has_labels {
@@ -133,11 +145,8 @@ async fn refresh_from_inner(
     // ONE database open for both folds, the fold edge's allowance (the same shape as
     // fanout::journal_for). Two folds reading one handle beats two handles, and the
     // conventions cop counts opens per file for exactly this reason.
-    let Some(db) = state
-        .user_dbs
-        .get(author_root)
-        .await
-        .context("opening the author's database")?
+    let Some(db) =
+        state.user_dbs.get(author_root).await.context("opening the author's database")?
     else {
         return Ok(()); // an author we hold nothing of has published nothing we can read
     };
@@ -189,12 +198,11 @@ async fn refresh_from_inner(
         return Ok(());
     }
 
-    let hosted: std::collections::BTreeSet<String> =
-        crate::identity::hosted_roots(&state.node_db)
-            .await
-            .map_err(|e| anyhow::anyhow!("listing hosted personas: {e}"))?
-            .into_iter()
-            .collect();
+    let hosted: std::collections::BTreeSet<String> = crate::identity::hosted_roots(&state.node_db)
+        .await
+        .map_err(|e| anyhow::anyhow!("listing hosted personas: {e}"))?
+        .into_iter()
+        .collect();
     // Every reader whose rows this pass touches gets a stream nudge at the end (the dock
     // badge, 2026-08-28): these rows live in node.db, invisible to the stream's user-db
     // stamp, so the fold is what tells the open tabs "recount now". Delivered notices need
@@ -230,7 +238,8 @@ async fn refresh_from_inner(
         if answered.contains(&(row.author_root.clone(), hex::encode(row.doc_id))) {
             continue;
         }
-        if !crate::net::subscriptions::follows(&state.node_db, &row.author_root, author_root).await?
+        if !crate::net::subscriptions::follows(&state.node_db, &row.author_root, author_root)
+            .await?
         {
             continue;
         }
@@ -241,14 +250,8 @@ async fn refresh_from_inner(
             // shares your post" is not news, just the absence of some - the same rule the
             // retracted edge follows below, and the same one `verify_claim` applies to the
             // delivered twin.
-            delete_row(
-                &state.node_db,
-                &row.author_root,
-                author_root,
-                KIND_REBROADCAST,
-                &doc_hex,
-            )
-            .await?;
+            delete_row(&state.node_db, &row.author_root, author_root, KIND_REBROADCAST, &doc_hex)
+                .await?;
         } else {
             upsert_row(
                 &state.node_db,
@@ -310,7 +313,8 @@ async fn refresh_from_inner(
             Default::default();
         // Their tags apart (2026-09-27): only the two every reader keeps are news
         // (annotations.rs `bounded`), however many they said.
-        let mut fresh_tags: std::collections::BTreeMap<(String, String), Vec<String>> = Default::default();
+        let mut fresh_tags: std::collections::BTreeMap<(String, String), Vec<String>> =
+            Default::default();
         // The mentions (2026-09-06) ride the same leg: a `mention=<reader>` the author
         // says about their OWN post is news for the reader it names - hosted here,
         // following the author - and collapses per (reader, post) like a label does.
@@ -322,13 +326,13 @@ async fn refresh_from_inner(
                 if l.target_author != author_root
                     || !hosted.contains(named)
                     || named == author_root
-                    || !crate::net::subscriptions::follows(&state.node_db, named, author_root).await?
+                    || !crate::net::subscriptions::follows(&state.node_db, named, author_root)
+                        .await?
                 {
                     continue;
                 }
-                let e = fresh_mentions
-                    .entry((named.clone(), hex::encode(l.target_doc)))
-                    .or_insert(0);
+                let e =
+                    fresh_mentions.entry((named.clone(), hex::encode(l.target_doc))).or_insert(0);
                 *e = (*e).max(l.received_at_ms);
                 continue;
             }
@@ -499,16 +503,7 @@ async fn upsert_row(
                  interest = excluded.interest,
                  detail = excluded.detail,
                  updated_ms = excluded.updated_ms",
-            (
-                reader_root,
-                author_root,
-                kind,
-                doc_id,
-                trust,
-                interest,
-                detail,
-                updated_ms,
-            ),
+            (reader_root, author_root, kind, doc_id, trust, interest, detail, updated_ms),
         )
         .await
         .context("storing a notification")?;
@@ -584,17 +579,15 @@ pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<Not
         .context("reading notifications")?;
     Ok(rows
         .into_iter()
-        .map(
-            |(author_root, kind, doc_id, trust, interest, detail, updated_ms)| NotificationRow {
-                author_root,
-                kind,
-                detail,
-                doc_id,
-                trust,
-                interest,
-                updated_ms,
-            },
-        )
+        .map(|(author_root, kind, doc_id, trust, interest, detail, updated_ms)| NotificationRow {
+            author_root,
+            kind,
+            detail,
+            doc_id,
+            trust,
+            interest,
+            updated_ms,
+        })
         .collect())
 }
 
@@ -608,7 +601,8 @@ async fn open_sealed_statements(
     labels: Vec<crate::record::imaol::AnnotationRow>,
 ) -> Vec<crate::record::imaol::AnnotationRow> {
     let mut out = Vec::with_capacity(labels.len());
-    let mut keys: std::collections::HashMap<(String, [u8; 16]), Option<[u8; 32]>> = Default::default();
+    let mut keys: std::collections::HashMap<(String, [u8; 16]), Option<[u8; 32]>> =
+        Default::default();
     let mut followers: Option<Vec<String>> = None;
     for l in labels {
         if l.key != crate::annotations::SEALED_KEY {
@@ -620,7 +614,10 @@ async fn open_sealed_statements(
             Some(k) => *k,
             None => {
                 let doc_hex = hex::encode(l.target_doc);
-                let mut k = crate::postkeys::lookup(&state.node_db, &l.target_author, &doc_hex).await.ok().flatten();
+                let mut k = crate::postkeys::lookup(&state.node_db, &l.target_author, &doc_hex)
+                    .await
+                    .ok()
+                    .flatten();
                 if k.is_none() && l.target_author == author_root {
                     // Asked FOR each hosted follower in turn (2026-09-14: the lane admits
                     // personas, not nodes) until one is granted; refusals are remembered
@@ -632,13 +629,29 @@ async fn open_sealed_statements(
                                 .unwrap_or_default(),
                         );
                     }
-                    if let Some(author) = hex::decode(author_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) {
+                    if let Some(author) =
+                        hex::decode(author_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())
+                    {
                         for f in followers.as_deref().unwrap_or(&[]) {
-                            if crate::postkeys::refused(&state.node_db, author_root, &doc_hex, f).await.unwrap_or(false) {
+                            if crate::postkeys::refused(&state.node_db, author_root, &doc_hex, f)
+                                .await
+                                .unwrap_or(false)
+                            {
                                 continue;
                             }
-                            let Some(reader) = hex::decode(f).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else { continue };
-                            k = crate::net::fragment::fetch_key(state, &author, &l.target_doc, &reader, None).await;
+                            let Some(reader) =
+                                hex::decode(f).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())
+                            else {
+                                continue;
+                            };
+                            k = crate::net::fragment::fetch_key(
+                                state,
+                                &author,
+                                &l.target_doc,
+                                &reader,
+                                None,
+                            )
+                            .await;
                             if k.is_some() {
                                 break;
                             }
@@ -667,8 +680,22 @@ mod tests {
         let reader = "aa".repeat(32);
         let author = "bb".repeat(32);
 
-        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", None, Some("high"), None, 1000).await.unwrap();
-        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", Some("max"), Some("high"), None, 2000).await.unwrap();
+        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", None, Some("high"), None, 1000)
+            .await
+            .unwrap();
+        upsert_row(
+            &db,
+            &reader,
+            &author,
+            KIND_PUBLIC_EDGE,
+            "",
+            Some("max"),
+            Some("high"),
+            None,
+            2000,
+        )
+        .await
+        .unwrap();
 
         let rows = page(&db, &reader, 50).await.unwrap();
         assert_eq!(rows.len(), 1, "collapse by (sender, kind): one row however often they publish");
@@ -718,9 +745,7 @@ mod tests {
         assert_eq!(page(&db, &me, 50).await.unwrap().len(), 3);
 
         // Un-sharing one leaves the other standing.
-        delete_row(&db, &me, &sharer, KIND_REBROADCAST, &first)
-            .await
-            .unwrap();
+        delete_row(&db, &me, &sharer, KIND_REBROADCAST, &first).await.unwrap();
         let rows = page(&db, &me, 50).await.unwrap();
         assert_eq!(rows.len(), 2);
         assert!(rows.iter().any(|r| r.doc_id == second));
@@ -732,9 +757,25 @@ mod tests {
         let me = "aa".repeat(32);
         let housemate = "cc".repeat(32);
 
-        upsert_row(&db, &me, &"b1".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("low"), None, 100).await.unwrap();
-        upsert_row(&db, &me, &"b2".repeat(32), KIND_PUBLIC_EDGE, "", Some("high"), None, None, 300).await.unwrap();
-        upsert_row(&db, &housemate, &"b3".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("max"), None, 200).await.unwrap();
+        upsert_row(&db, &me, &"b1".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("low"), None, 100)
+            .await
+            .unwrap();
+        upsert_row(&db, &me, &"b2".repeat(32), KIND_PUBLIC_EDGE, "", Some("high"), None, None, 300)
+            .await
+            .unwrap();
+        upsert_row(
+            &db,
+            &housemate,
+            &"b3".repeat(32),
+            KIND_PUBLIC_EDGE,
+            "",
+            None,
+            Some("max"),
+            None,
+            200,
+        )
+        .await
+        .unwrap();
 
         let mine = page(&db, &me, 50).await.unwrap();
         assert_eq!(

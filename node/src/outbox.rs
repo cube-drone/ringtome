@@ -101,10 +101,7 @@ pub async fn seal_notice(
 /// profile read failing must never stop a notice going out.
 async fn published_name(db: &Db) -> Option<String> {
     let fields = crate::record::imaol::get_profile(db).await.ok()?;
-    let name = fields
-        .into_iter()
-        .find(|f| f.field == "name")
-        .map(|f| f.value)?;
+    let name = fields.into_iter().find(|f| f.field == "name").map(|f| f.value)?;
     let name = name.trim();
     if name.is_empty() {
         return None;
@@ -151,13 +148,10 @@ async fn auth_path(db: &Db, root: &[u8; 32], leaf: &[u8; 32]) -> Result<Vec<Vec<
     // tiny by design (a key tree's design center is a handful of keys).
     let mut by_child: std::collections::HashMap<[u8; 32], ([u8; 32], Vec<u8>)> =
         std::collections::HashMap::new();
-    for signed in crate::record::imaol::entries_of_type(
-        db,
-        service::IDENTITY_PUBLIC,
-        entry_type::AUTHORIZE,
-    )
-    .await
-    .map_err(|e| anyhow!("{e}"))?
+    for signed in
+        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::AUTHORIZE)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
     {
         let Payload::Inline(payload) = &signed.entry().payload else {
             continue;
@@ -165,10 +159,8 @@ async fn auth_path(db: &Db, root: &[u8; 32], leaf: &[u8; 32]) -> Result<Vec<Vec<
         let Ok(authorization) = ringtome_proto::Authorize::decode(payload) else {
             continue;
         };
-        by_child.insert(
-            authorization.child,
-            (signed.entry().chain.author, signed.bytes().to_vec()),
-        );
+        by_child
+            .insert(authorization.child, (signed.entry().chain.author, signed.bytes().to_vec()));
     }
 
     // Walk up from the leaf, then reverse: the verifier reads root-first.
@@ -230,12 +222,7 @@ fn already_paid(envelope: &[u8], bits: u32) -> bool {
         return false;
     };
     let plain = signed.envelope();
-    pow::verify(
-        &plain.challenge(),
-        plain.stamp.as_deref().unwrap_or_default(),
-        bits,
-    )
-    .is_ok()
+    pow::verify(&plain.challenge(), plain.stamp.as_deref().unwrap_or_default(), bits).is_ok()
 }
 
 /// Re-stamp a queued envelope at a newly quoted price and re-sign it.
@@ -250,9 +237,7 @@ async fn restamp(state: &AppState, envelope: &[u8], bits: u32) -> Result<Vec<u8>
     // be checked. A door asking more than we think a notice is worth gets a shrug, not our CPU.
     let willing = state.config.pow_willing_bits;
     if bits > willing {
-        return Err(anyhow!(
-            "a door wants {bits} bits; this node pays at most {willing}"
-        ));
+        return Err(anyhow!("a door wants {bits} bits; this node pays at most {willing}"));
     }
     let signed = SignedEnvelope::decode(envelope).map_err(|e| anyhow!("{e}"))?;
     let mut plain = signed.envelope().clone();
@@ -302,7 +287,12 @@ async fn retire(node_db: &Db, sender_root: &str, recipient_root: &str, kind: &st
     Ok(())
 }
 
-async fn mark_tried(node_db: &Db, sender_root: &str, recipient_root: &str, kind: &str) -> Result<()> {
+async fn mark_tried(
+    node_db: &Db,
+    sender_root: &str,
+    recipient_root: &str,
+    kind: &str,
+) -> Result<()> {
     node_db
         .execute(
             "UPDATE outbound_notices SET tries = tries + 1, last_tried_ms = ?4
@@ -316,9 +306,7 @@ async fn mark_tried(node_db: &Db, sender_root: &str, recipient_root: &str, kind:
 
 /// Zero the knock backoff - the test beat's "knock again NOW" (test_endpoints).
 pub(crate) async fn force_due(node_db: &Db) -> Result<()> {
-    node_db
-        .execute("UPDATE outbound_notices SET last_tried_ms = 0", ())
-        .await?;
+    node_db.execute("UPDATE outbound_notices SET last_tried_ms = 0", ()).await?;
     Ok(())
 }
 
@@ -340,13 +328,16 @@ pub async fn queue_notices(
     tracing::debug!(kind, count = named.len(), "queueing notices");
     for (named_hex, signed) in named {
         let Some(recipient) = crate::pubkey::decode(&named_hex) else { continue };
-        match data.notices().seal(&recipient, &signed, kind, state.config.pow_requested_bits).await {
+        match data.notices().seal(&recipient, &signed, kind, state.config.pow_requested_bits).await
+        {
             Ok(envelope) => {
                 if let Err(e) = queue(&state.node_db, root, &named_hex, &envelope).await {
                     tracing::warn!(named = %named_hex, kind, error = ?e, "could not queue a notice");
                 }
             }
-            Err(e) => tracing::warn!(named = %named_hex, kind, error = ?e, "could not seal a notice"),
+            Err(e) => {
+                tracing::warn!(named = %named_hex, kind, error = ?e, "could not seal a notice")
+            }
         }
     }
     let eager = state.clone();

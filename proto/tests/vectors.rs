@@ -21,10 +21,8 @@ use ringtome_proto::{
     PrivateRecord, ProfileSet, PublicEdge, Revoke, SignedEntry, ENTRY_VERSION, ZERO_HASH,
 };
 
-const VECTORS_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../spec/test-vectors/entry-v0.json"
-);
+const VECTORS_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/test-vectors/entry-v0.json");
 
 /// Deterministic key: this seed exists only for test vectors. Never reuse it for anything real.
 const TEST_SEED: [u8; 32] = [7u8; 32];
@@ -76,11 +74,7 @@ fn build_vectors() -> VectorFile {
         let entry = Entry {
             v: ENTRY_VERSION,
             entry_type: entry_type_id,
-            chain: ChainId {
-                author,
-                service: service_id,
-                instance: None,
-            },
+            chain: ChainId { author, service: service_id, instance: None },
             seq,
             prev_hash,
             timestamp_ms,
@@ -111,12 +105,7 @@ fn build_vectors() -> VectorFile {
     };
 
     // Vector 1: genesis profile-set (ASCII).
-    let ps_name = ProfileSet {
-        field: "name".into(),
-        value: "Curtis".into(),
-    }
-    .encode()
-    .unwrap();
+    let ps_name = ProfileSet { field: "name".into(), value: "Curtis".into() }.encode().unwrap();
     let e0 = make(
         "profile-set genesis (ascii)",
         entry_type::PROFILE_SET,
@@ -225,11 +214,7 @@ fn build_vectors() -> VectorFile {
         epoch: 1,
         recipients: vec![
             (author, [0x42u8; 32], vec![0xAA; 80]),
-            (
-                recovery.verifying_key().to_bytes(),
-                [0x43u8; 32],
-                vec![0xBB; 80],
-            ),
+            (recovery.verifying_key().to_bytes(), [0x43u8; 32], vec![0xBB; 80]),
         ],
     }
     .encode()
@@ -275,13 +260,9 @@ fn build_vectors() -> VectorFile {
     // Vector 9: the follows-public chain's genesis - a public-edge statement publishing both
     // bands about one subject (the consented relationship, whole).
     let subject = SigningKey::from_bytes(&[10u8; 32]).verifying_key().to_bytes();
-    let pe = PublicEdge {
-        subject,
-        trust: Some("max".into()),
-        interest: Some("high".into()),
-    }
-    .encode()
-    .unwrap();
+    let pe = PublicEdge { subject, trust: Some("max".into()), interest: Some("high".into()) }
+        .encode()
+        .unwrap();
     let f0 = make(
         "public-edge genesis (both bands)",
         entry_type::PUBLIC_EDGE,
@@ -294,13 +275,7 @@ fn build_vectors() -> VectorFile {
 
     // Vector 10: the retraction - same subject, no bands. LWW per subject makes this the
     // published relationship now: nothing.
-    let pe_retract = PublicEdge {
-        subject,
-        trust: None,
-        interest: None,
-    }
-    .encode()
-    .unwrap();
+    let pe_retract = PublicEdge { subject, trust: None, interest: None }.encode().unwrap();
     let _f1 = make(
         "public-edge chained (retraction)",
         entry_type::PUBLIC_EDGE,
@@ -364,12 +339,7 @@ fn published_envelopes_decode_and_verify() {
         signed.verify().unwrap_or_else(|e| {
             panic!("vector {:?} failed signature verification: {e}", v.name);
         });
-        assert_eq!(
-            hex::encode(signed.hash()),
-            v.hash_hex,
-            "vector {:?}",
-            v.name
-        );
+        assert_eq!(hex::encode(signed.hash()), v.hash_hex, "vector {:?}", v.name);
         assert_eq!(signed.entry().seq, v.entry.seq, "vector {:?}", v.name);
     }
 }

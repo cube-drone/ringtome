@@ -5,9 +5,9 @@ A design draft (2026-09-30). Nothing built.
 A feed reader inside Horse Drawing Tycoon 2. You add feeds, which the node fetches and turns into
 Marquee documents you read in the app, and you can pass an item on to the people who follow you.
 
-What Curtis asked for is under *The ask*. The sections after it are Claude's proposals and are not
-yet rulings: in particular *Where the items live*, which changes one part of the ask, and
-*Rebroadcasting*, which narrows another.
+What Curtis asked for is under _The ask_. The sections after it are Claude's proposals and are not
+yet rulings: in particular _Where the items live_, which changes one part of the ask, and
+_Rebroadcasting_, which narrows another.
 
 ## The ask (Curtis, 2026-09-30)
 
@@ -37,7 +37,7 @@ is instead: **the subscription is on the chain; the items are not.**
 
 - **On the private chain** (the user's own facts, which travel to all their computers):
   - the feeds they follow, and the tags on them;
-  - anything they *do* with an item: copy it into notes, save it, rebroadcast it. The moment an
+  - anything they _do_ with an item: copy it into notes, save it, rebroadcast it. The moment an
     item is acted on, it becomes the user's own document, like any other copy into notes.
 - **In a node-level item cache** (`rss_feeds`, `rss_items`, owned by `rss.rs`, beside `node_shelf`):
   - every item of every feed anyone on the node follows, as converted Marquee, keyed by
@@ -81,7 +81,7 @@ What it costs:
     dropped), which is point 8.
 - **Politeness:**
   - send `If-None-Match` / `If-Modified-Since`, and a `304` costs nothing;
-  - honour the feed's own `<ttl>` or `Cache-Control` when it asks for *less* often than 3 hours;
+  - honour the feed's own `<ttl>` or `Cache-Control` when it asks for _less_ often than 3 hours;
   - honour `429` and `Retry-After`;
   - add jitter, so a node's feeds don't all fire at the top of the hour.
 - **Unreachable sources back off** (3h, 6h, 12h, a day). After a month of failures the feed is
@@ -151,7 +151,7 @@ the article.**
     publishes to be quoted);
   - the source metadata: the feed's URL and title, and the item's id;
   - the user's own words, if they add any.
-- **It reads as "via *The Source*"**, with a **subscribe** chip that adds the feed to the reader's
+- **It reads as "via _The Source_"**, with a **subscribe** chip that adds the feed to the reader's
   own hrseRSS, which is point 7's discovery.
 - **Open question for Curtis:** whether full-text republishing is wanted anyway, perhaps only for
   feeds whose licence says so (`<copyright>` / Creative Commons).
@@ -172,7 +172,7 @@ the article.**
   in this document assumes the cache.
 - **Rebroadcast contents.** Pointer and summary (proposed), or the full text?
 - **Read/unread:** wanted? And per feed or per item?
-- **How long items live.** Forever, or the newest *n* per feed? The cache makes either cheap;
+- **How long items live.** Forever, or the newest _n_ per feed? The cache makes either cheap;
   chains would make "forever" the only answer.
 - **Private feeds** (URLs with a token in them): allowed? The URL would sit on the private chain,
   but the node's cache would hold the items for anyone else on the node who followed the same URL.

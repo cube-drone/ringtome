@@ -7,21 +7,36 @@ import { inflateRawSync } from 'node:zlib';
 import { session, signUp, sleep } from './boot.mjs';
 const J = { 'Content-Type': 'application/json' };
 const settle = async (fn, tries = 160) => {
-    for (let i = 0; i < tries; i++) { const got = await fn(); if (got) return got; await sleep(250); }
+    for (let i = 0; i < tries; i++) {
+        const got = await fn();
+        if (got) return got;
+        await sleep(250);
+    }
     return null;
 };
 const adopt = async (haver, joiner, root) => {
-    const request = await (await joiner.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })).json();
-    const grant = await (await haver.fetch(`/api/identity/${root}/nodes`, { method: 'POST', headers: J,
-        body: JSON.stringify({ code: request.code }) })).json();
-    const done = await joiner.fetch('/api/identity/adopt/complete', { method: 'POST', headers: J,
-        body: JSON.stringify({ code: grant.code }) });
+    const request = await (
+        await joiner.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })
+    ).json();
+    const grant = await (
+        await haver.fetch(`/api/identity/${root}/nodes`, {
+            method: 'POST',
+            headers: J,
+            body: JSON.stringify({ code: request.code }),
+        })
+    ).json();
+    const done = await joiner.fetch('/api/identity/adopt/complete', {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({ code: grant.code }),
+    });
     if (done.status !== 200) throw new Error(`adopt failed: ${await done.text()}`);
 };
 
 const a = session('http://localhost:5297');
 await signUp(a, 'chain-a');
-const root = (await (await a.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
+const root = (await (await a.fetch('/api/identity', { method: 'POST', headers: J })).json())
+    .root_pubkey;
 
 const b = session('http://localhost:5298');
 await signUp(b, 'chain-b');
@@ -38,8 +53,17 @@ execSync(`kill ${bpid}`);
 console.log(`RESULT killed the introducer (pid ${bpid})`);
 await sleep(1000);
 
-const d = await (await c.fetch(`/api/identity/${root}/docs`, { method: 'POST', headers: J,
-    body: JSON.stringify({ title: 'Across the Gap', body: 'no introducer needed', format: 'plaintext' }) })).json();
+const d = await (
+    await c.fetch(`/api/identity/${root}/docs`, {
+        method: 'POST',
+        headers: J,
+        body: JSON.stringify({
+            title: 'Across the Gap',
+            body: 'no introducer needed',
+            format: 'plaintext',
+        }),
+    })
+).json();
 console.log('RESULT wrote on C:', d.doc_id ? 'ok' : JSON.stringify(d));
 
 const arrived = await settle(async () => {

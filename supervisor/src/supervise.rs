@@ -67,14 +67,8 @@ pub async fn run(config: Config) -> Result<()> {
         auto_update = config.auto_update,
         "supervisor starting"
     );
-    let mut sup = Supervisor {
-        config,
-        client,
-        state,
-        node: None,
-        restart_at: None,
-        backoff: RESTART_FLOOR,
-    };
+    let mut sup =
+        Supervisor { config, client, state, node: None, restart_at: None, backoff: RESTART_FLOOR };
     let mut stop = StopSignal::new()?;
 
     if sup.state.current.is_none() {
@@ -245,11 +239,7 @@ impl Supervisor {
             );
             return;
         }
-        tracing::info!(
-            running = current.name,
-            available = manifest.name,
-            "an update is out"
-        );
+        tracing::info!(running = current.name, available = manifest.name, "an update is out");
         let to = match install::download(&self.client, &self.config, &manifest).await {
             Ok(to) => to,
             Err(e) => {
@@ -277,11 +267,7 @@ impl Supervisor {
                 }
             }
         };
-        let pending = Pending {
-            from: Some(current),
-            to,
-            backup,
-        };
+        let pending = Pending { from: Some(current), to, backup };
         self.state.pending = Some(pending.clone());
         if let Err(e) = self.state.save(&self.config) {
             // Without the pending record, a crash mid-update would leave nobody knowing to roll

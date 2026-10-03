@@ -60,7 +60,8 @@ export function openMirror(root) {
 /// make, settled, request)` around a request; `holdNewDoc(root, made, { title, format, bucket })`
 /// for a document just created.
 export const holdDoc = (root, ...rest) => optimistic.holdDoc(openMirror(root), root, ...rest);
-export const optimisticDoc = (root, ...rest) => optimistic.optimisticDoc(openMirror(root), root, ...rest);
+export const optimisticDoc = (root, ...rest) =>
+    optimistic.optimisticDoc(openMirror(root), root, ...rest);
 export const holdNewDoc = (root, ...rest) => optimistic.holdNewDoc(openMirror(root), root, ...rest);
 
 /// The "forget this browser" obligation: drop the mirror wholesale. Called on logout.
@@ -143,7 +144,7 @@ async function apply(db, msg, root) {
                     root,
                     db.docs,
                     (id) => !!whole || sent.has(id),
-                    (id) => (whole ? whole.get(id) : sent.get(id))
+                    (id) => (whole ? whole.get(id) : sent.get(id)),
                 );
             }
             if (msg.search_changed) {
@@ -153,7 +154,7 @@ async function apply(db, msg, root) {
                 await db.search.bulkDelete(msg.search_removed);
             }
             await db.kv.put({ key: 'cursor', value: msg.cursor });
-        }
+        },
     );
 }
 

@@ -110,7 +110,9 @@ export function usePersona(account) {
                 // well-intentioned node discovers its own revocation and lets go, rather
                 // than wandering a read-only ghost town (PROJECT_PLAN, Revocation).
                 setPersonas(personas);
-                const chosen = personas.find((p) => p.root_pubkey === remembered() && p.standing === 'active');
+                const chosen = personas.find(
+                    (p) => p.root_pubkey === remembered() && p.standing === 'active',
+                );
                 if (chosen) return open(chosen.root_pubkey);
                 const active = personas.find((p) => p.standing === 'active');
                 if (active) return open(active.root_pubkey);
@@ -170,7 +172,6 @@ export function usePersona(account) {
         };
         window.addEventListener('ringtome:revoked-signer', onRevoked);
         return () => window.removeEventListener('ringtome:revoked-signer', onRevoked);
-         
     }, [current]);
 
     const refreshPersonas = async () => {
@@ -254,7 +255,9 @@ export function usePersona(account) {
         const timer = setInterval(async () => {
             try {
                 const now = await api('/api/identity');
-                const arrived = now.find((p) => !known.has(p.root_pubkey)) || (known.size === 0 ? now[0] : null);
+                const arrived =
+                    now.find((p) => !known.has(p.root_pubkey)) ||
+                    (known.size === 0 ? now[0] : null);
                 if (arrived) {
                     clearInterval(timer);
                     setPersonas(now);
@@ -342,23 +345,33 @@ export const FarewellScreen = ({ persona }) => {
     return html`
         <div class="null-state">
             <p class="null-title">
-                ${lockedOut
-                    ? t('persona.this-computer-has-been-locked-out', 'This computer has been locked out.')
-                    : t('persona.this-computer-has-left-the-persona', 'This computer has left the persona.')}
+                ${
+                    lockedOut
+                        ? t(
+                              'persona.this-computer-has-been-locked-out',
+                              'This computer has been locked out.',
+                          )
+                        : t(
+                              'persona.this-computer-has-left-the-persona',
+                              'This computer has left the persona.',
+                          )
+                }
             </p>
             <p class="null-sub">
-                ${lockedOut
-                    ? `Another of the persona's computers locked this one out - it no longer
+                ${
+                    lockedOut
+                        ? `Another of the persona's computers locked this one out - it no longer
                        speaks for the persona, and nothing written here will reach anyone.
                        If that's a surprise, talk to whoever holds the persona's other
                        computers (or its spare key).`
-                    : `This computer's key retired. Everything it wrote up to that point still
-                       counts; it just isn't part of the persona anymore.`}
+                        : `This computer's key retired. Everything it wrote up to that point still
+                       counts; it just isn't part of the persona anymore.`
+                }
             </p>
             <p class="null-sub">
                 ${t(
                     'persona.the-persona-itself-is-fine',
-                    "The persona itself is fine and lives on its other computers. All that's left here is to let it go."
+                    "The persona itself is fine and lives on its other computers. All that's left here is to let it go.",
                 )}
             </p>
             ${error && html`<p class="form-error">${error}</p>`}
@@ -482,9 +495,10 @@ export const SpareKeyCeremony = ({ persona }) => {
             `spare key: ${secret}`,
         ].join('\n');
         setError(null);
-        saveFile(`horse-drawing-tycoon-2-spare-key-${shortcode(root)}.txt`, new Blob([contents], { type: 'text/plain' })).catch((e) =>
-            setError(e.message),
-        );
+        saveFile(
+            `horse-drawing-tycoon-2-spare-key-${shortcode(root)}.txt`,
+            new Blob([contents], { type: 'text/plain' }),
+        ).catch((e) => setError(e.message));
     };
 
     return html`
@@ -557,13 +571,15 @@ export const NamePicker = ({ persona, account }) => {
                     onInput=${(e) => setName(e.currentTarget.value)}
                     autocapitalize="off"
                 />
-                ${over &&
-                html`<p class="form-error">
+                ${
+                    over &&
+                    html`<p class="form-error">
                     <span class="profile-count profile-count-over">
                         ${profileChars(name)}/${PROFILE_LIMITS.name}
                     </span>
                     ${' '}${t('persona.--a-name-this-long', "- a name this long won't fit")}
-                </p>`}
+                </p>`
+                }
                 ${error && html`<p class="form-error">${error}</p>`}
                 <button class="welcome-go" type="submit" disabled=${busy || over}>
                     ${busy ? '…' : t('persona.thats-me', 'that’s me')}
@@ -585,7 +601,7 @@ export const NamePicker = ({ persona, account }) => {
 export function usePersonaName(current) {
     const liveName = useLive(
         () => (current ? openMirror(current.root).profile.get('name') : Promise.resolve(null)),
-        [current && current.root]
+        [current && current.root],
     );
     return (liveName && liveName.value) || (current && current.name) || '';
 }
@@ -618,7 +634,15 @@ export const PersonaMenu = ({ persona, session }) => {
     const logout = async () => {
         // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
         // easy to hit by mistake, and coming back means signing in again.
-        if (!confirm(t('persona.log-out-of-this-browser', 'Log out of this browser? You will sign in again to come back.'))) return;
+        if (
+            !confirm(
+                t(
+                    'persona.log-out-of-this-browser',
+                    'Log out of this browser? You will sign in again to come back.',
+                ),
+            )
+        )
+            return;
         await persona.shutdown();
         session.logout();
     };
@@ -635,10 +659,16 @@ export const PersonaMenu = ({ persona, session }) => {
                 <span class="persona-menu-icon"><${Icons.settings} /></span>
                 ${t('persona.your-settings', 'your settings')}
             </summary>
-            ${/* An administrator is told so (Curtis, 2026-09-16): the account's tags ride
-                the session's whoami answer. */ ''}
-            ${session && session.account && (session.account.tags || []).includes(NODE_ADMIN_TAG) &&
-            html`<p class="persona-menu-note">${t('persona.you-administer-this-node', 'you administer this node')}</p>`}
+            ${
+                /* An administrator is told so (Curtis, 2026-09-16): the account's tags ride
+                the session's whoami answer. */ ''
+            }
+            ${
+                session &&
+                session.account &&
+                (session.account.tags || []).includes(NODE_ADMIN_TAG) &&
+                html`<p class="persona-menu-note">${t('persona.you-administer-this-node', 'you administer this node')}</p>`
+            }
             <nav class="persona-menu">
                 <a class="persona-menu-item" href=${personaPageHref('profile')}>
                     <span class="persona-menu-icon"><${Icons.profile} /></span>
@@ -709,7 +739,8 @@ export const ContentControl = ({ current }) => {
 /// Application settings (Curtis, 2026-09-27): how the app behaves for you, a zone of your settings
 /// of its own, after the profile - as opposed to what you say about yourself there. Prefs, so kept
 /// by this browser alone (mirror/prefs.js).
-export const AppSettings = ({ current }) => (current && current.root ? html`<${AppSettingsFor} root=${current.root} />` : null);
+export const AppSettings = ({ current }) =>
+    current && current.root ? html`<${AppSettingsFor} root=${current.root} />` : null;
 
 // The page itself, once there is a persona whose prefs to read.
 const AppSettingsFor = ({ root }) => {
@@ -729,9 +760,11 @@ const AppSettingsFor = ({ root }) => {
             </label>
             <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
             <${ApiKeys} />
-            ${/* The running build (Curtis, 2026-09-30: a narrow window's bar has no version, so a phone
+            ${
+                /* The running build (Curtis, 2026-09-30: a narrow window's bar has no version, so a phone
                 had "no way to see this when you're logged in"): its name, linked to its notes as
-                the bar's is, and every release beside it. */ ''}
+                the bar's is, and every release beside it. */ ''
+            }
             <p class="settings-version-line">
                 ${t('persona.version', 'version')}${' '}<${Version} className="settings-version" />${' '}·${' '}<a href=${RELEASES_URL} target="_blank" rel="noopener">${t('persona.every-release', 'every release')}</a>
             </p>
@@ -764,7 +797,10 @@ const ApiKeys = () => {
         setBusy(true);
         setError(null);
         try {
-            const k = await api('/api/auth/keys', { method: 'POST', body: JSON.stringify({ name }) });
+            const k = await api('/api/auth/keys', {
+                method: 'POST',
+                body: JSON.stringify({ name }),
+            });
             setMade({ name: k.name, key: k.key });
             setCopied(false);
             setName('');
@@ -776,7 +812,16 @@ const ApiKeys = () => {
         }
     };
     const revoke = async (k) => {
-        if (!confirm(t('persona.revoke-key-confirm', 'Revoke "{name}"? Anything using it stops working at once.', { name: k.name }))) return;
+        if (
+            !confirm(
+                t(
+                    'persona.revoke-key-confirm',
+                    'Revoke "{name}"? Anything using it stops working at once.',
+                    { name: k.name },
+                ),
+            )
+        )
+            return;
         try {
             await api(`/api/auth/keys/${k.id}`, { method: 'DELETE' });
             load();
@@ -798,21 +843,24 @@ const ApiKeys = () => {
         <p class="null-sub">
             ${t(
                 'persona.api-keys-explain',
-                "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account on this server, not to this browser, and work only here."
+                "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account on this server, not to this browser, and work only here.",
             )}
         </p>
-        ${made &&
-        html`<div class="settings-key-made jag-line">
+        ${
+            made &&
+            html`<div class="settings-key-made jag-line">
             <p>${t('persona.new-key-copy-now', 'Your new key, "{name}". Copy it now - it won\'t be shown again.', { name: made.name })}</p>
             <code class="settings-key-value">${made.key}</code>
             <div class="settings-key-acts">
                 <button class="profile-save" onClick=${copy}>${copied ? t('persona.copied', 'copied') : t('persona.copy', 'copy')}</button>
                 <button class="computer-remove" onClick=${() => setMade(null)}>${t('persona.ive-kept-it', "I've kept it")}</button>
             </div>
-        </div>`}
-        ${keys &&
-        keys.length > 0 &&
-        html`<ul class="settings-keys-list">
+        </div>`
+        }
+        ${
+            keys &&
+            keys.length > 0 &&
+            html`<ul class="settings-keys-list">
             ${keys.map(
                 (k) => html`<li class="settings-key-row" key=${k.id}>
                     <button class="chip chip-button chip-delete" title=${t('persona.revoke-key', 'revoke this key')} onClick=${() => revoke(k)}><${Icons.trash} /></button>
@@ -820,9 +868,10 @@ const ApiKeys = () => {
                     <span class="settings-key-when">
                         ${t('persona.key-made', 'made {when}', { when: when(k.created_ms) })}${' · '}${k.last_used_ms ? t('persona.key-last-used', 'last used {when}', { when: when(k.last_used_ms) }) : t('persona.key-never-used', 'never used')}
                     </span>
-                </li>`
+                </li>`,
             )}
-        </ul>`}
+        </ul>`
+        }
         <form class="settings-key-new" onSubmit=${make}>
             <input
                 class="settings-key-input jag-field"
@@ -850,7 +899,13 @@ const AVATAR_MAX_SIDE = 1024;
 async function avatarBytes(root, pick) {
     if (pick.format === 'drawing') {
         const detail = await api(`/api/identity/${root}/docs/${pick.doc}`);
-        if (detail.body == null) throw new Error(t('persona.drawing-not-here-yet', 'that drawing has not reached this computer yet - try again in a moment'));
+        if (detail.body == null)
+            throw new Error(
+                t(
+                    'persona.drawing-not-here-yet',
+                    'that drawing has not reached this computer yet - try again in a moment',
+                ),
+            );
         return flattenToBlob(root, readBody(detail.body));
     }
     const img = new Image();
@@ -862,7 +917,20 @@ async function avatarBytes(root, pick) {
     canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
     return new Promise((resolve, reject) =>
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error(t('persona.could-not-read-that-picture', 'could not read that picture')))), 'image/png')
+        canvas.toBlob(
+            (b) =>
+                b
+                    ? resolve(b)
+                    : reject(
+                          new Error(
+                              t(
+                                  'persona.could-not-read-that-picture',
+                                  'could not read that picture',
+                              ),
+                          ),
+                      ),
+            'image/png',
+        ),
     );
 }
 
@@ -1006,28 +1074,32 @@ export const Profile = ({ current }) => {
                 <h1 class="persona-page-title">${t('persona.profile-2', 'profile')}</h1>
             </div>
             <div class="profile-avatar-row">
-                ${avatarDoc
-                    ? html`<img
+                ${
+                    avatarDoc
+                        ? html`<img
                           class="profile-avatar"
                           src="/id/${root}/docs/${avatarDoc}/thumb"
                           alt=${t('persona.your-avatar', 'your avatar')}
                       />`
-                    : html`<span
+                        : html`<span
                           class="profile-avatar profile-avatar-empty"
                           style="background: hsl(${personaHue(root)}, 60%, 55%)"
-                      ></span>`}
+                      ></span>`
+                }
                 <button class="profile-avatar-pick" disabled=${avatarBusy} onClick=${() => setChoosing(true)}>
                     ${avatarBusy ? t('persona.working-on-it', 'working on it…') : avatarDoc ? t('persona.change-your-picture', 'change your picture') : t('persona.add-a-picture', 'add a picture')}
                 </button>
-                ${choosing &&
-                html`<${ImagePickModal}
+                ${
+                    choosing &&
+                    html`<${ImagePickModal}
                     root=${root}
                     drawings=${true}
                     DrawingThumb=${DrawingThumb}
                     heading=${t('persona.choose-your-picture', 'choose your picture')}
                     onPick=${pickAvatar}
                     onClose=${() => setChoosing(false)}
-                />`}
+                />`
+                }
             </div>
             ${avatarErr && html`<p class="form-error">${avatarErr}</p>`}
             <div class="profile-banner-row">
@@ -1036,20 +1108,24 @@ export const Profile = ({ current }) => {
                     <button class="profile-avatar-pick" disabled=${bannerBusy} onClick=${() => setChoosingBanner(true)}>
                         ${bannerBusy ? t('persona.working-on-it', 'working on it…') : bannerDoc ? t('persona.change-your-banner', 'change your banner') : t('persona.add-a-banner', 'add a banner')}
                     </button>
-                    ${bannerDoc &&
-                    html`<button class="profile-avatar-pick" disabled=${bannerBusy} onClick=${clearBanner}>
+                    ${
+                        bannerDoc &&
+                        html`<button class="profile-avatar-pick" disabled=${bannerBusy} onClick=${clearBanner}>
                         ${t('persona.remove-your-banner', 'back to your pattern')}
-                    </button>`}
+                    </button>`
+                    }
                 </div>
-                ${choosingBanner &&
-                html`<${ImagePickModal}
+                ${
+                    choosingBanner &&
+                    html`<${ImagePickModal}
                     root=${root}
                     drawings=${true}
                     DrawingThumb=${DrawingThumb}
                     heading=${t('persona.choose-your-banner', 'choose your banner')}
                     onPick=${pickBanner}
                     onClose=${() => setChoosingBanner(false)}
-                />`}
+                />`
+                }
             </div>
             ${bannerErr && html`<p class="form-error">${bannerErr}</p>`}
             <label class="profile-field">
@@ -1112,7 +1188,10 @@ const ColorwayPicker = ({ root }) => {
     const pick = async (colorway) => {
         setError(null);
         try {
-            await api(`/api/identity/${root}/profile`, { method: 'POST', body: JSON.stringify({ field: 'colorway', value: colorway }) });
+            await api(`/api/identity/${root}/profile`, {
+                method: 'POST',
+                body: JSON.stringify({ field: 'colorway', value: colorway }),
+            });
         } catch (e) {
             setError(e.message || String(e));
         }
@@ -1128,7 +1207,7 @@ const ColorwayPicker = ({ root }) => {
                     aria-checked=${c === current}
                     class=${c === current ? 'colorway-option jag-line picked' : 'colorway-option jag-line'}
                     onClick=${() => pick(c)}
-                ><span class=${COLORWAY_CLASS[c]}><span></span><span></span><span></span></span>${COLORWAY_WORDS[c]()}</button>`
+                ><span class=${COLORWAY_CLASS[c]}><span></span><span></span><span></span></span>${COLORWAY_WORDS[c]()}</button>`,
             )}
         </div>
         ${error && html`<p class="form-error">${error}</p>`}
@@ -1161,10 +1240,19 @@ const NodeSlug = ({ root }) => {
         setBusy(true);
         setNote(null);
         try {
-            const r = await api(`/api/identity/${root}/slug`, { method: 'PUT', body: JSON.stringify({ slug: draft }) });
+            const r = await api(`/api/identity/${root}/slug`, {
+                method: 'PUT',
+                body: JSON.stringify({ slug: draft }),
+            });
             setHeld(r);
             setDraft(r.slug || '');
-            setNote(r.slug ? t('persona.this-node-knows-you-as', 'this node knows you as @{slug}', { slug: r.slug }) : t('persona.name-given-up', 'name given up'));
+            setNote(
+                r.slug
+                    ? t('persona.this-node-knows-you-as', 'this node knows you as @{slug}', {
+                          slug: r.slug,
+                      })
+                    : t('persona.name-given-up', 'name given up'),
+            );
         } catch (e) {
             setNote(e.message || t('persona.that-name-did-not-take', 'that name did not take'));
         }
@@ -1193,8 +1281,10 @@ const NodeSlug = ({ root }) => {
                     ${held.slug ? t('persona.change', 'change') : t('persona.claim', 'claim')}
                 </button>
             </span>
-            ${held.last &&
-            html`<small class="profile-slug-last">${t('persona.also-answers-to', 'also @{last}', { last: held.last })}</small>`}
+            ${
+                held.last &&
+                html`<small class="profile-slug-last">${t('persona.also-answers-to', 'also @{last}', { last: held.last })}</small>`
+            }
             ${note && html`<span class="profile-flash">${note}</span>`}
         </label>
     `;
@@ -1219,11 +1309,14 @@ export const Personas = ({ persona, current }) => {
             list.map(async (p) => {
                 try {
                     const profile = await api(`/api/identity/${p.root_pubkey}/profile`);
-                    return [p.root_pubkey, (profile.find((f) => f.field === 'name') || {}).value || ''];
+                    return [
+                        p.root_pubkey,
+                        (profile.find((f) => f.field === 'name') || {}).value || '',
+                    ];
                 } catch {
                     return [p.root_pubkey, ''];
                 }
-            })
+            }),
         ).then((pairs) => live && setNames(Object.fromEntries(pairs)));
         return () => {
             live = false;
@@ -1254,13 +1347,15 @@ export const Personas = ({ persona, current }) => {
                             <strong>${names[p.root_pubkey] || words}</strong>
                             <small>${words}${p.standing !== 'active' ? ` · ${p.standing}` : ''}</small>
                         </span>
-                        ${mine
-                            ? html`<span class="persona-row-mark">${t('persona.this-browser', 'this browser')}</span>`
-                            : html`<button
+                        ${
+                            mine
+                                ? html`<span class="persona-row-mark">${t('persona.this-browser', 'this browser')}</span>`
+                                : html`<button
                                   class="persona-row-switch jag-line"
                                   disabled=${busy || p.standing !== 'active'}
                                   onClick=${run(() => persona.switchTo(p.root_pubkey).then(() => loc.route(LAUNCHER)))}
-                              >${t('persona.switch', 'switch')}</button>`}
+                              >${t('persona.switch', 'switch')}</button>`
+                        }
                     </div>`;
                 })}
             </div>

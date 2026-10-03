@@ -148,7 +148,15 @@ function htmlTemplates(src) {
                 owner.body += HOLE;
                 owner.map.push(i);
             }
-            stack.push({ kind: 'interp', braces: 0, owner, bodyPos, start: i, srcStart: i + 2, nested: [] });
+            stack.push({
+                kind: 'interp',
+                braces: 0,
+                owner,
+                bodyPos,
+                start: i,
+                srcStart: i + 2,
+                nested: [],
+            });
             i += 2;
             continue;
         }
@@ -229,7 +237,13 @@ function stringsInTemplate(body) {
                 while (j < body.length && body[j] !== quote) j++;
                 if (HUMAN_ATTRS.has(name)) {
                     // The span covers the quotes too: `title="close"` becomes `title=${t(…)}`.
-                    out.push({ kind: name, start: i + nameMatch[0].length, end: j + 1, valueStart, valueEnd: j });
+                    out.push({
+                        kind: name,
+                        start: i + nameMatch[0].length,
+                        end: j + 1,
+                        valueStart,
+                        valueEnd: j,
+                    });
                 }
                 j++;
             } else if (body[j] === HOLE && HUMAN_ATTRS.has(name)) {
@@ -440,7 +454,10 @@ function jsString(text) {
 /// The `t(...)` call that replaces a piece of bare copy.
 function tCall(key, english, params) {
     const args = [jsString(key), jsString(english)];
-    if (params.length) args.push(`{ ${params.map(([n, e]) => (n === e.trim() ? n : `${n}: ${e.trim()}`)).join(', ')} }`);
+    if (params.length)
+        args.push(
+            `{ ${params.map(([n, e]) => (n === e.trim() ? n : `${n}: ${e.trim()}`)).join(', ')} }`,
+        );
     return `t(${args.join(', ')})`;
 }
 
@@ -466,15 +483,13 @@ function bareStrings(file, src, taken) {
         const holeNames = [];
         const used = new Set();
         let index = 0;
-        named = named
-            .split(HOLE)
-            .reduce((acc, piece, n) => {
-                if (n === 0) return piece;
-                const name = paramName(params[index] ?? '', index, used);
-                holeNames.push([name, params[index] ?? '']);
-                index++;
-                return `${acc}{${name}}${piece}`;
-            }, '');
+        named = named.split(HOLE).reduce((acc, piece, n) => {
+            if (n === 0) return piece;
+            const name = paramName(params[index] ?? '', index, used);
+            holeNames.push([name, params[index] ?? '']);
+            index++;
+            return `${acc}{${name}}${piece}`;
+        }, '');
         const key = mintKey(file, english, taken);
         edits.push({ start, end, key, english: named, params: holeNames, kind: kindLabel });
     };
@@ -525,7 +540,8 @@ function bareStrings(file, src, taken) {
                     if (b > a) {
                         const text = tpl.body.slice(a, b);
                         const params = [];
-                        for (let q = a; q < b; q++) if (tpl.body[q] === HOLE) params.push(byPos.get(q).src);
+                        for (let q = a; q < b; q++)
+                            if (tpl.body[q] === HOLE) params.push(byPos.get(q).src);
                         record(srcStartOf(a), srcEndOf(b - 1), text, params, 'text');
                     }
                     segStart = p + 1;
@@ -544,7 +560,13 @@ function bareStrings(file, src, taken) {
             for (let q = piece.valueStart; q < piece.valueEnd; q++) {
                 if (tpl.body[q] === HOLE) params.push(byPos.get(q).src);
             }
-            record(srcStartOf(piece.valueStart) - 1, srcEndOf(piece.valueEnd - 1) + 1, text, params, piece.kind);
+            record(
+                srcStartOf(piece.valueStart) - 1,
+                srcEndOf(piece.valueEnd - 1) + 1,
+                text,
+                params,
+                piece.kind,
+            );
         }
     }
 
@@ -602,7 +624,10 @@ function tCalls(src) {
             let value = '';
             while (i < src.length && src[i] !== quote) {
                 if (src[i] === '\\') {
-                    value += { n: '\n', t: '\t', "'": "'", '"': '"', '\\': '\\', '`': '`' }[src[i + 1]] ?? src[i + 1];
+                    value +=
+                        { n: '\n', t: '\t', "'": "'", '"': '"', '\\': '\\', '`': '`' }[
+                            src[i + 1]
+                        ] ?? src[i + 1];
                     i += 2;
                     continue;
                 }
@@ -629,7 +654,15 @@ function tCalls(src) {
 
 /// The `AppError` variants that carry prose to the browser. `Internal` is excluded on purpose: it
 /// renders as a 500 and its text is for the log, not the reader.
-const RUST_VARIANTS = ['BadRequest', 'Unauthorized', 'Forbidden', 'RevokedSigner', 'NotFound', 'Unprocessable', 'TooManyRequests'];
+const RUST_VARIANTS = [
+    'BadRequest',
+    'Unauthorized',
+    'Forbidden',
+    'RevokedSigner',
+    'NotFound',
+    'Unprocessable',
+    'TooManyRequests',
+];
 
 /**
  * Every user-facing `AppError` in one Rust file that is not yet a `msg!`, as a list of edits.
@@ -669,7 +702,9 @@ function bareRustErrors(file, src, taken) {
         // The trailing comma is not cosmetic: rustfmt breaks a long construction across lines and
         // leaves one behind, and a pattern anchored without it silently skips exactly the longest
         // (and most user-visible) messages.
-        const asStatic = /^"((?:[^"\\]|\\.)*)"\s*(?:\.into\(\)|\.to_string\(\))?\s*,?\s*$/s.exec(inner);
+        const asStatic = /^"((?:[^"\\]|\\.)*)"\s*(?:\.into\(\)|\.to_string\(\))?\s*,?\s*$/s.exec(
+            inner,
+        );
         const asFormat = /^format!\(\s*"((?:[^"\\]|\\.)*)"\s*(,[\s\S]*?)?\)\s*,?\s*$/s.exec(inner);
         if (!asStatic && !asFormat) continue;
 
@@ -786,16 +821,30 @@ async function loadEnglish() {
  */
 export function renderEnglish(entries, existing) {
     const lines = [];
-    lines.push('// The English catalog: every phrase the application says to a person, in one place.');
+    lines.push(
+        '// The English catalog: every phrase the application says to a person, in one place.',
+    );
     lines.push('//');
-    lines.push('// THIS FILE IS AUTHORITATIVE FOR ENGLISH, and it is the one to edit to change what the app');
-    lines.push('// says. `just strings` will not overwrite your wording - it only adds keys that are new in');
-    lines.push('// the source, drops keys the source no longer has, and rewrites the seeds at the call sites');
-    lines.push('// to agree with what is written here. Structure (grouping, order) is regenerated; values');
+    lines.push(
+        '// THIS FILE IS AUTHORITATIVE FOR ENGLISH, and it is the one to edit to change what the app',
+    );
+    lines.push(
+        '// says. `just strings` will not overwrite your wording - it only adds keys that are new in',
+    );
+    lines.push(
+        '// the source, drops keys the source no longer has, and rewrites the seeds at the call sites',
+    );
+    lines.push(
+        '// to agree with what is written here. Structure (grouping, order) is regenerated; values',
+    );
     lines.push('// are yours.');
     lines.push('//');
-    lines.push('// Keys are names, minted once and never edited: renaming one orphans every translation');
-    lines.push('// attached to it. To start another language, copy this file, translate the values, and');
+    lines.push(
+        '// Keys are names, minted once and never edited: renaming one orphans every translation',
+    );
+    lines.push(
+        '// attached to it. To start another language, copy this file, translate the values, and',
+    );
     lines.push('// register it in i18n.js - the keys are already right.');
     lines.push('//');
     lines.push(
@@ -816,7 +865,9 @@ export function renderEnglish(entries, existing) {
             currentFile = e.file;
             lines.push(`    // --- ${e.file} ---`);
         }
-        const value = Object.prototype.hasOwnProperty.call(existing, e.key) ? existing[e.key] : e.english;
+        const value = Object.prototype.hasOwnProperty.call(existing, e.key)
+            ? existing[e.key]
+            : e.english;
         lines.push(`    ${jsString(e.key)}: ${jsString(value)},`);
     }
     lines.push('};');
@@ -936,7 +987,9 @@ async function writeEnglish() {
     const has = new Set(entries.map((e) => e.key));
     const added = [...has].filter((k) => !had.has(k));
     const dropped = [...had].filter((k) => !has.has(k));
-    console.log(`${relPath(EN_FILE)}: ${entries.length} phrases (+${added.length} new, -${dropped.length} retired)`);
+    console.log(
+        `${relPath(EN_FILE)}: ${entries.length} phrases (+${added.length} new, -${dropped.length} retired)`,
+    );
     // A dropped key takes a hand-written English value with it, and every translation of it in
     // every other catalog is now orphaned too - worth naming, not just counting.
     for (const k of dropped) console.log(`  retired ${k}: ${JSON.stringify(existing[k])}`);
@@ -961,13 +1014,25 @@ async function check() {
         const orphaned = [...inCatalog].filter((k) => !inSource.has(k));
         const some = (keys) => keys.slice(0, 5).join(', ') + (keys.length > 5 ? ', …' : '');
         const detail = [];
-        if (missing.length) detail.push(`  ${missing.length} phrase(s) in the source have no entry: ${some(missing)}`);
-        if (orphaned.length) detail.push(`  ${orphaned.length} entr(ies) are no longer in the source: ${some(orphaned)}`);
+        if (missing.length)
+            detail.push(
+                `  ${missing.length} phrase(s) in the source have no entry: ${some(missing)}`,
+            );
+        if (orphaned.length)
+            detail.push(
+                `  ${orphaned.length} entr(ies) are no longer in the source: ${some(orphaned)}`,
+            );
         if (!detail.length) {
-            detail.push('  Every key matches - only the formatting differs (quoting, order, or grouping');
-            detail.push('  against code that has moved). Your wording is safe; this just normalizes it.');
+            detail.push(
+                '  Every key matches - only the formatting differs (quoting, order, or grouping',
+            );
+            detail.push(
+                '  against code that has moved). Your wording is safe; this just normalizes it.',
+            );
         }
-        problems.push(`locales/en.js is out of step with the source.\n${detail.join('\n')}\n  Run \`just strings\` and read the diff.`);
+        problems.push(
+            `locales/en.js is out of step with the source.\n${detail.join('\n')}\n  Run \`just strings\` and read the diff.`,
+        );
     }
 
     // The catalog outranks the seeds, so a disagreement means the code is claiming to say something
@@ -979,7 +1044,9 @@ async function check() {
         const src = stripComments(fs.readFileSync(path.join(WORKSPACE, file), 'utf8'));
         for (const c of tCalls(src)) {
             if (catalog[c.key] !== undefined && catalog[c.key] !== c.english) {
-                drifted.push(`${file}:${lineAt(src, c.offset)}  seed ${JSON.stringify(c.english)} vs catalog ${JSON.stringify(catalog[c.key])}`);
+                drifted.push(
+                    `${file}:${lineAt(src, c.offset)}  seed ${JSON.stringify(c.english)} vs catalog ${JSON.stringify(catalog[c.key])}`,
+                );
             }
         }
     }
@@ -987,7 +1054,9 @@ async function check() {
         const src = stripComments(fs.readFileSync(path.join(WORKSPACE, file), 'utf8'));
         for (const c of rustMessages(src)) {
             if (catalog[c.key] !== undefined && catalog[c.key] !== c.english) {
-                drifted.push(`${file}:${lineAt(src, c.offset)}  seed ${JSON.stringify(c.english)} vs catalog ${JSON.stringify(catalog[c.key])}`);
+                drifted.push(
+                    `${file}:${lineAt(src, c.offset)}  seed ${JSON.stringify(c.english)} vs catalog ${JSON.stringify(catalog[c.key])}`,
+                );
             }
         }
     }
@@ -1028,7 +1097,7 @@ async function check() {
         problems.push(
             `${bare.length} phrase(s) are shown to a person without going through t():\n` +
                 bare.map((b) => `  ${b}`).join('\n') +
-                '\n  Wrap them: t(\'a.stable-key\', \'the English\'). `just strings-migrate` does it for you.',
+                "\n  Wrap them: t('a.stable-key', 'the English'). `just strings-migrate` does it for you.",
         );
     }
 

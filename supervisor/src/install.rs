@@ -102,16 +102,10 @@ pub async fn download(
     manifest: &Manifest,
 ) -> Result<Installed> {
     if manifest::parse_version(&manifest.version).is_none() {
-        bail!(
-            "the manifest's version {:?} is not major.minor.patch",
-            manifest.version
-        );
+        bail!("the manifest's version {:?} is not major.minor.patch", manifest.version);
     }
     let download = manifest.platforms.get(&config.platform).with_context(|| {
-        format!(
-            "release {} has no build for {}",
-            manifest.version, config.platform
-        )
+        format!("release {} has no build for {}", manifest.version, config.platform)
     })?;
     let bytes = client
         .get(&download.url)
@@ -132,16 +126,10 @@ pub async fn download(
     tokio::task::spawn_blocking(move || install_binary(&bytes, &versions, &version))
         .await
         .context("the install task died")??;
-    let name = if manifest.name.is_empty() {
-        manifest.version.clone()
-    } else {
-        manifest.name.clone()
-    };
+    let name =
+        if manifest.name.is_empty() { manifest.version.clone() } else { manifest.name.clone() };
     tracing::info!(version = manifest.version, name, "installed and verified");
-    Ok(Installed {
-        version: manifest.version.clone(),
-        name,
-    })
+    Ok(Installed { version: manifest.version.clone(), name })
 }
 
 /// Install the node binary that shipped beside this supervisor in its release tarball, as this
@@ -154,10 +142,7 @@ pub fn adopt(config: &Config, binary: &Path) -> Result<Installed> {
     let bytes = std::fs::read(binary).with_context(|| format!("reading {}", binary.display()))?;
     install_bytes(&bytes, &config.versions_directory(), version)?;
     tracing::info!(version, "adopted the node from {}", binary.display());
-    Ok(Installed {
-        version: version.to_string(),
-        name: version.to_string(),
-    })
+    Ok(Installed { version: version.to_string(), name: version.to_string() })
 }
 
 /// Pull the one `ringtome` file out of a release tarball into `<versions>/<version>/ringtome`.
@@ -181,9 +166,7 @@ fn install_binary(tarball: &[u8], versions: &Path, version: &str) -> Result<()> 
             bail!("the tarball holds more than one `ringtome`");
         }
         let mut bytes = Vec::new();
-        entry
-            .read_to_end(&mut bytes)
-            .context("reading the binary out of the tarball")?;
+        entry.read_to_end(&mut bytes).context("reading the binary out of the tarball")?;
         found = Some(bytes);
     }
     let bytes = found.context("the tarball holds no `ringtome` binary")?;
@@ -252,10 +235,8 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "ringtome-supervisor-test-{name}-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir()
+            .join(format!("ringtome-supervisor-test-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -265,10 +246,7 @@ mod tests {
         let versions = scratch("install");
         let archive = tarball(&[
             ("ringtome-server-0.2.0-x-linux-x86_64/SERVER.md", b"docs"),
-            (
-                "ringtome-server-0.2.0-x-linux-x86_64/ringtome",
-                b"#!/bin/sh\n",
-            ),
+            ("ringtome-server-0.2.0-x-linux-x86_64/ringtome", b"#!/bin/sh\n"),
             ("../../escape", b"nope"),
         ]);
         install_binary(&archive, &versions, "0.2.0").unwrap();
@@ -277,16 +255,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                std::fs::metadata(&installed).unwrap().permissions().mode() & 0o777,
-                0o755
-            );
+            assert_eq!(std::fs::metadata(&installed).unwrap().permissions().mode() & 0o777, 0o755);
         }
-        let names: Vec<_> = std::fs::read_dir(&versions)
-            .unwrap()
-            .flatten()
-            .map(|e| e.file_name())
-            .collect();
+        let names: Vec<_> =
+            std::fs::read_dir(&versions).unwrap().flatten().map(|e| e.file_name()).collect();
         assert_eq!(
             names,
             vec![std::ffi::OsString::from("0.2.0")],

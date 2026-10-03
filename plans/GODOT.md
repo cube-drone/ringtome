@@ -1,12 +1,12 @@
 # Ringtome — The Game-Engine Client
 
-**Status: exploratory. Nothing here is planned, scheduled, or started.** PROJECT_PLAN's *The Client
-Story: one client, carried by the web* strikes this idea outright — "Game-engine client (Godot):
+**Status: exploratory. Nothing here is planned, scheduled, or started.** PROJECT_PLAN's _The Client
+Story: one client, carried by the web_ strikes this idea outright — "Game-engine client (Godot):
 struck from the roadmap" — and that strike is still canon. This document does not overturn it.
 
 It exists because the idea keeps coming back, and because when we costed it properly (2026-08-11)
-the estimate inside the strike turned out to be *right about the renderer and wrong about the
-editor* — in the direction that makes a Godot client cheaper than the strike assumes. The strike's
+the estimate inside the strike turned out to be _right about the renderer and wrong about the
+editor_ — in the direction that makes a Godot client cheaper than the strike assumes. The strike's
 own escape clause ("justified only if a genuinely gamey product layer someday demands one") is the
 door this document furnishes: if that day arrives, the argument starts here instead of from
 scratch.
@@ -17,14 +17,14 @@ question (what shape is the application?) and they constrain each other.
 ## Why this keeps coming back
 
 Godot unlocks things a browser fights us on, and some of them are close to the project's stated
-aesthetic rather than decoration on top of it: unrestricted audio (PROJECT_PLAN's *The Client
-Story* already concedes the browser tax here, and answers it with a period-authentic "click the
+aesthetic rather than decoration on top of it: unrestricted audio (PROJECT_PLAN's _The Client
+Story_ already concedes the browser tax here, and answers it with a period-authentic "click the
 speaker icon to enable sound" ritual — a ritual we only need because the browser forced it),
 spatiality, direct manipulation of the cozy objects, and shader-level control of the retro look.
 
 The honest counter-pressure is that a social network is mostly data-bound, text-heavy, accessible
 UI, which is what engine toolkits are worst at. That is the strike's core argument and it survives
-everything below. What follows is only about *how much* it would cost, and where the cost actually
+everything below. What follows is only about _how much_ it would cost, and where the cost actually
 sits — because the strike locates it in the wrong place.
 
 ## The two integration shapes
@@ -52,7 +52,7 @@ Less than the strike assumes, because **the parser is already ours and already R
 pre-pass, so a gdext client links the same crate and gets the AST for free. The strike's own cost
 model — "a renderer for a few dozen tags, not a browser" — is therefore literally true.
 
-Better than that: it would be the *second* implementation of the grammar in the tree, not the
+Better than that: it would be the _second_ implementation of the grammar in the tree, not the
 third. The web client renders through `@cube-drone/marquee-codemirror`; a Godot client would
 render from the same Rust parser the node already uses, which is the cleaner factoring of the two.
 
@@ -67,9 +67,9 @@ surface on `TextEdit` is a multi-month project whose best outcome is worse than 
 objection aims at a problem **this design does not have.**
 
 `js/doc/livemarquee.js` states the reason in its header: the document never stops being plain
-Marquee source, styling is *projected onto* the text as CodeMirror decorations, and "the editor's
+Marquee source, styling is _projected onto_ the text as CodeMirror decorations, and "the editor's
 save machinery sees exactly the same thing a textarea would: a string." There is no rich-text
-model anywhere in the system. The save contract is *produce a string*, which ports to anything.
+model anywhere in the system. The save contract is _produce a string_, which ports to anything.
 
 `js/doc/editor.js` offers four view modes — `interactive` (the live-preview projection), `side`
 (source pane plus rendered pane), `plain`, and `read`. Only the first is expensive to reproduce.
@@ -84,7 +84,7 @@ built for precisely that:
 - Gutters, delimiters, undo, multi-caret, clipboard, and selection all come along.
 
 And because per-line decoration is the shape `SyntaxHighlighter` already has, a partial
-`interactive` mode is reachable later rather than foreclosed. What it would lose is inline *block*
+`interactive` mode is reachable later rather than foreclosed. What it would lose is inline _block_
 rendering — images and tables opening in place under the cursor. The gap is quantitative, not
 architectural.
 
@@ -110,9 +110,9 @@ faster.
 
 **Concentrated cost is the kind a solo project can beat with one good decision. Diffuse cost can
 only be declined.** That is the whole strategic content of this document: a complete second client
-is not the shape to attempt. A *narrow additive surface* is — consumption and play in the engine,
+is not the shape to attempt. A _narrow additive surface_ is — consumption and play in the engine,
 authoring in the browser, linked rather than duplicated. PROJECT_PLAN's client-agnostic API rule
-(*The Client Story*: "no web-UI-private endpoints") is what makes that legitimate rather than a
+(_The Client Story_: "no web-UI-private endpoints") is what makes that legitimate rather than a
 hack, and it is already policy.
 
 ## Talking to the node from Godot: the practical inventory
@@ -153,35 +153,35 @@ Naming this concretely, because "gamier" carries a lot of weight in the argument
 be inspectable:
 
 - **Spatiality.** The monkeysphere as a place — rooms, a house you decorate, a street of
-  neighbours' pages. This maps onto the trust graph unusually well, because *Trust, Credibility,
-  Interest, and Taste* already makes trust a distance metric with bands. The graph is a topology
+  neighbours' pages. This maps onto the trust graph unusually well, because _Trust, Credibility,
+  Interest, and Taste_ already makes trust a distance metric with bands. The graph is a topology
   we currently render as lists.
 - **Co-presence.** Avatars, who-is-here, synchronous encounter. See the tension below.
-- **Audio without the browser's permission model** — which is the tax *The Client Story* already
+- **Audio without the browser's permission model** — which is the tax _The Client Story_ already
   pays for with the speaker-icon ritual. MIDI, trackers, chiptune, ambient rooms.
 - **Direct manipulation of the cozy objects.** A guestbook you open, a hit counter that is a
-  physical thing, decorations you drag. *Cozy Aesthetic // Hidden Internals* argues for this
+  physical thing, decorations you drag. _Cozy Aesthetic // Hidden Internals_ argues for this
   aesthetic; an engine is where it stops being a metaphor.
 
 One note on the strike's reasoning: it is a **novelty-budget** argument ("a solo project's novelty
 budget is already fully spent on the protocol layer"), and budgets depend on who is spending.
-Spatial social with user-generated content may be a *lower*-novelty area for this project's author
+Spatial social with user-generated content may be a _lower_-novelty area for this project's author
 than the protocol layer ever was, which is not how the strike reads it.
 
 ## The tension a gamey layer introduces, and its resolution
 
 **A gamey layer inverts the availability requirement the protocol was designed around.** The cozy
-asynchronous model tolerates days of staleness by construction — *Rebroadcast: Pointer Plus Pinned
-Replica* makes popularity into replication, *silence preserves, speech deletes* keeps an offline
+asynchronous model tolerates days of staleness by construction — _Rebroadcast: Pointer Plus Pinned
+Replica_ makes popularity into replication, _silence preserves, speech deletes_ keeps an offline
 author's content alive through replicas, and anti-entropy converges eventually. Co-presence
 tolerates none of that: it needs two people awake at once. The gamier the surface, the more it
 wants exactly the always-on infrastructure that [MOBILE.md](MOBILE.md) is trying to stop needing.
 
 The way out is probably that **presence should not be chain content at all** — ephemeral, unsigned,
 direct iroh connections, nothing durable, nothing replicated, nothing to validate at the sync
-gate. And then the tension dissolves for a good reason: *synchronous features do not need
+gate. And then the tension dissolves for a good reason: _synchronous features do not need
 availability guarantees, because their failure mode is "nobody is around right now", which is a
-legible social fact rather than a broken feature.* Empty rooms are fine. Empty rooms are
+legible social fact rather than a broken feature._ Empty rooms are fine. Empty rooms are
 period-accurate.
 
 This is the load-bearing design question a gamey product layer would have to answer first, and it

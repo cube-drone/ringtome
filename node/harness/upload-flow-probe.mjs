@@ -6,26 +6,37 @@ const J = { 'Content-Type': 'application/json' };
 const png = readFileSync(new URL('../../sample_media/bowie_comic.png', import.meta.url).pathname);
 const s = session('http://localhost:5299');
 await signUp(s, 'dropper');
-const root = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
+const root = (await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json())
+    .root_pubkey;
 
 const drive = async (path, scope, label) => {
     const dom = await s.boot(path);
     const win = dom.window;
     const doc = win.document;
-    for (let t = 0; t < 240 && !doc.querySelector(`${scope} .cm-editor, ${scope} textarea, ${scope} .reader`); t++)
+    for (
+        let t = 0;
+        t < 240 && !doc.querySelector(`${scope} .cm-editor, ${scope} textarea, ${scope} .reader`);
+        t++
+    )
         await sleep(50);
     const surface = doc.querySelector(`${scope} .reader`) || doc.querySelector(scope);
-    console.log(`RESULT ${label}: drop target = ${surface ? surface.className.split(' ')[0] || surface.tagName : 'NONE'}`);
+    console.log(
+        `RESULT ${label}: drop target = ${surface ? surface.className.split(' ')[0] || surface.tagName : 'NONE'}`,
+    );
     const file = new win.File([png], 'dropped-pic.png', { type: 'image/png' });
     const ev = new win.Event('drop', { bubbles: true, cancelable: true });
     ev.dataTransfer = { files: [file], types: ['Files'], getData: () => '' };
     surface.dispatchEvent(ev);
     await sleep(800);
     const modal = doc.querySelector('.modal-scrim, [class*=upload]');
-    console.log(`RESULT ${label}: upload UI appeared = ${!!modal}`,
-        modal ? `(${(modal.className || '').toString().split(' ')[0]})` : '');
+    console.log(
+        `RESULT ${label}: upload UI appeared = ${!!modal}`,
+        modal ? `(${(modal.className || '').toString().split(' ')[0]})` : '',
+    );
     // Confirm through whatever the modal asks, if it asks.
-    const go = [...doc.querySelectorAll('button')].find((b) => /upload|attach|add/i.test(b.textContent));
+    const go = [...doc.querySelectorAll('button')].find((b) =>
+        /upload|attach|add/i.test(b.textContent),
+    );
     if (go) go.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
     // Wait for the crush + the reference swap to land in the body.
     let swapped = null;

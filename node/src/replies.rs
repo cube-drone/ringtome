@@ -153,22 +153,13 @@ async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Resu
     if !replies_moved(state, &db, author_root, "replies-memo").await? && !force {
         return Ok(());
     }
-    let replies = crate::record::documents::public_replies(&db)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let replies =
+        crate::record::documents::public_replies(&db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     drop(db);
     let now = now_ms();
     for (doc_id, parent, root, claimed_ms) in &replies {
-        note(
-            &state.node_db,
-            parent,
-            root,
-            author_root,
-            &hex::encode(doc_id),
-            *claimed_ms,
-            "chain",
-        )
-        .await?;
+        note(&state.node_db, parent, root, author_root, &hex::encode(doc_id), *claimed_ms, "chain")
+            .await?;
     }
     // The stamp sweep: chain-sourced rows this rewrite did not touch lost the header that
     // justified them - a deleted reply recedes on the fold that noticed. Runs whenever the
@@ -316,7 +307,11 @@ pub const THREAD_LEVEL_CAP: i64 = 500;
 /// One level of a thread whole: a post's direct replies, oldest first, at most `THREAD_LEVEL_CAP`,
 /// and whether there were more. The thread used to read `REPLIES_PAGE` of them and never ask for
 /// the next page, so a post's twenty-first reply was never shown (found 2026-09-28).
-pub async fn replies_level(node_db: &Db, parent_author: &str, parent_doc: &str) -> Result<(Vec<KnownReply>, bool)> {
+pub async fn replies_level(
+    node_db: &Db,
+    parent_author: &str,
+    parent_doc: &str,
+) -> Result<(Vec<KnownReply>, bool)> {
     let rows: Vec<(String, String, i64)> = node_db
         .fetch_all(
             "SELECT reply_author, reply_doc, claimed_ms FROM post_replies
@@ -327,8 +322,10 @@ pub async fn replies_level(node_db: &Db, parent_author: &str, parent_doc: &str) 
         .await
         .context("reading a thread level")?;
     let more = rows.len() as i64 > THREAD_LEVEL_CAP;
-    let mut out: Vec<KnownReply> =
-        rows.into_iter().map(|(author, doc_id, claimed_ms)| KnownReply { author, doc_id, claimed_ms }).collect();
+    let mut out: Vec<KnownReply> = rows
+        .into_iter()
+        .map(|(author, doc_id, claimed_ms)| KnownReply { author, doc_id, claimed_ms })
+        .collect();
     out.truncate(THREAD_LEVEL_CAP as usize);
     Ok((out, more))
 }
@@ -369,11 +366,7 @@ pub async fn replies_of(
     let more = rows.len() as i64 > REPLIES_PAGE;
     let mut out: Vec<KnownReply> = rows
         .into_iter()
-        .map(|(author, doc_id, claimed_ms)| KnownReply {
-            author,
-            doc_id,
-            claimed_ms,
-        })
+        .map(|(author, doc_id, claimed_ms)| KnownReply { author, doc_id, claimed_ms })
         .collect();
     out.truncate(REPLIES_PAGE as usize);
     Ok((out, more))
@@ -412,12 +405,7 @@ pub async fn keep_evidence(
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT (reply_author, reply_doc) DO UPDATE SET
                  entry = excluded.entry, auth_path = excluded.auth_path",
-            (
-                reply_author,
-                reply_doc,
-                entry.to_vec(),
-                crate::fragments::pack_path(auth_path),
-            ),
+            (reply_author, reply_doc, entry.to_vec(), crate::fragments::pack_path(auth_path)),
         )
         .await
         .context("keeping a reply's evidence")?;
@@ -450,16 +438,8 @@ pub async fn keep_claim(
     };
     let doc_hex = hex::encode(header.doc_id);
     keep_evidence(node_db, reply_author, &doc_hex, evidence, auth_path).await?;
-    note(
-        node_db,
-        &parent,
-        &root,
-        reply_author,
-        &doc_hex,
-        signed.entry().timestamp_ms,
-        "envelope",
-    )
-    .await
+    note(node_db, &parent, &root, reply_author, &doc_hex, signed.entry().timestamp_ms, "envelope")
+        .await
 }
 
 async fn evidence_for(
@@ -491,10 +471,9 @@ pub async fn curation_refresh_root(state: &AppState, root_hex: &str) {
 
 async fn curation_refresh_inner(state: &AppState, root_hex: &str) -> Result<()> {
     use anyhow::anyhow;
-    let Some(leaf) =
-        crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex)
-            .await
-            .map_err(|e| anyhow!("{e}"))?
+    let Some(leaf) = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex)
+        .await
+        .map_err(|e| anyhow!("{e}"))?
     else {
         return Ok(()); // not agented here: nothing to unseal, nothing to serve
     };
@@ -571,9 +550,7 @@ pub async fn curation_verdict(
 
 /// The author's curation mode: 'trusted' unless their ledger says otherwise.
 pub async fn curation_mode(node_db: &Db, root: &str) -> String {
-    curation_row(node_db, root, "", "")
-        .await
-        .unwrap_or_else(|| MODE_TRUSTED.to_string())
+    curation_row(node_db, root, "", "").await.unwrap_or_else(|| MODE_TRUSTED.to_string())
 }
 
 /// The bit itself: does this author's node SPEAK about this reply - to the door, and on
@@ -653,9 +630,7 @@ pub async fn door_page(
     parent_doc: &str,
     since: u64,
 ) -> (Vec<ringtome_proto::fragment::ReplyProof>, u64) {
-    let hosted = crate::identity::hosted_roots(&state.node_db)
-        .await
-        .unwrap_or_default();
+    let hosted = crate::identity::hosted_roots(&state.node_db).await.unwrap_or_default();
     if !hosted.iter().any(|r| r == parent_author) {
         return (Vec::new(), since); // not this node's author, not this node's door
     }
@@ -698,11 +673,7 @@ pub async fn door_page(
             continue;
         };
         if let Some((entry, auth_path)) = resolve_proof(state, &replier_hex, &doc_hex).await {
-            proofs.push(ringtome_proto::fragment::ReplyProof {
-                replier,
-                entry,
-                auth_path,
-            });
+            proofs.push(ringtome_proto::fragment::ReplyProof { replier, entry, auth_path });
         }
     }
     (proofs, cursor)
@@ -719,20 +690,16 @@ async fn resolve_proof(
     if let Ok(Some(found)) = evidence_for(&state.node_db, replier_hex, doc_hex).await {
         return Some(found);
     }
-    if let Ok(Some(found)) = crate::fragments::held_proof(&state.node_db, replier_hex, doc_hex).await
+    if let Ok(Some(found)) =
+        crate::fragments::held_proof(&state.node_db, replier_hex, doc_hex).await
     {
         return Some(found);
     }
     let doc_bytes = hex::decode(doc_hex).ok()?;
     let doc_id = <[u8; 16]>::try_from(doc_bytes.as_slice()).ok()?;
     let db = state.user_dbs.get(replier_hex).await.ok().flatten()?;
-    let entry = crate::record::documents::public_header_entry(&db, &doc_id)
-        .await
-        .ok()
-        .flatten()?;
-    let path = crate::record::documents::auth_path_for(&db, replier_hex, &entry)
-        .await
-        .ok()?;
+    let entry = crate::record::documents::public_header_entry(&db, &doc_id).await.ok().flatten()?;
+    let path = crate::record::documents::auth_path_for(&db, replier_hex, &entry).await.ok()?;
     Some((entry.bytes().to_vec(), path))
 }
 
@@ -803,16 +770,8 @@ pub async fn learn(
         let doc_hex = hex::encode(reply_doc);
         // The root link is not in hand here (the proof pins the parent); parent-as-root is
         // the honest default and the fragment intake corrects it from the full header.
-        if let Err(e) = note(
-            &state.node_db,
-            &parent,
-            &parent,
-            &replier_hex,
-            &doc_hex,
-            claimed_ms,
-            "door",
-        )
-        .await
+        if let Err(e) =
+            note(&state.node_db, &parent, &parent, &replier_hex, &doc_hex, claimed_ms, "door").await
         {
             tracing::debug!(error = ?e, "could not note a door-learned reply");
             continue;

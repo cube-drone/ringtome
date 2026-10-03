@@ -23,22 +23,32 @@ const html = htm.bind(h);
 /// anchors, by design, so `/id/…` anchors route here by hand. A modifier-click or a
 /// middle-click keeps the browser's own behaviour.
 const soft = (loc) => (e) => {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+        return;
     e.preventDefault();
     loc.route(e.currentTarget.getAttribute('href'));
 };
 
-const Tree = ({ section, root, book, page, depth, loc }) => html`<ul class=${depth === 0 ? 'book-reader-list book-reader-list-top' : 'book-reader-list'}>
+const Tree = ({
+    section,
+    root,
+    book,
+    page,
+    depth,
+    loc,
+}) => html`<ul class=${depth === 0 ? 'book-reader-list book-reader-list-top' : 'book-reader-list'}>
     ${section.pages.map(
-        (p) => html`<li class=${p.post === page ? 'book-reader-page book-reader-page-current' : 'book-reader-page'} key=${p.post}>
+        (
+            p,
+        ) => html`<li class=${p.post === page ? 'book-reader-page book-reader-page-current' : 'book-reader-page'} key=${p.post}>
             <a href=${postHref(root, book, p.post)} onClick=${soft(loc)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
-        </li>`
+        </li>`,
     )}
     ${section.sections.map(
         (s, i) => html`<li class="book-reader-section" key=${`${depth}-${i}`}>
             <span class="book-reader-section-title"><${Icons.section} /> ${s.title || t('doc.bookreader.untitled-section', '(untitled section)')}</span>
             <${Tree} section=${s} root=${root} book=${book} page=${page} depth=${depth + 1} loc=${loc} />
-        </li>`
+        </li>`,
     )}
 </ul>`;
 
@@ -102,17 +112,25 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     // The arrow keys turn the pages too (Curtis, 2026-10-02), as the buttons do - and as Writer's
     // do (doc/docapp.js): only while the keyboard is free, and from the cover, right opens the
     // first page. Here, before the early returns: a hook runs on every render.
-    const walk = payload ? (page ? neighbours(payload, page) : { prev: null, next: null, order: neighbours(payload, '').order }) : null;
+    const walk = payload
+        ? page
+            ? neighbours(payload, page)
+            : { prev: null, next: null, order: neighbours(payload, '').order }
+        : null;
     const go = (post) => loc.route(postHref(root, book, post || null));
     useArrowNav(
         walk && { prev: walk.prev && walk.prev.post, next: walk.next && walk.next.post, go },
         walk ? walk.order.map((p) => p.post) : [],
         page || null,
-        go
+        go,
     );
-    if (payload === undefined) return html`<p class="postpage-loading">${t('doc.bookreader.opening-the-book', 'opening the book…')}</p>`;
-    if (payload === null) return html`<p class="postpage-missing">${t('doc.bookreader.this-book-cannot-be-read', 'this book cannot be read here yet')}</p>`;
-    const nav = page ? neighbours(payload, page) : { index: -1, prev: null, next: null, order: neighbours(payload, '').order };
+    if (payload === undefined)
+        return html`<p class="postpage-loading">${t('doc.bookreader.opening-the-book', 'opening the book…')}</p>`;
+    if (payload === null)
+        return html`<p class="postpage-missing">${t('doc.bookreader.this-book-cannot-be-read', 'this book cannot be read here yet')}</p>`;
+    const nav = page
+        ? neighbours(payload, page)
+        : { index: -1, prev: null, next: null, order: neighbours(payload, '').order };
     const here = nav.index >= 0 ? nav.order[nav.index] : null;
     const steps = html`<nav class="book-reader-nav">
         <button class="book-reader-step" disabled=${!nav.prev} title=${t('doc.bookreader.the-page-before', 'the page before')} onClick=${() => nav.prev && go(nav.prev.post)}>
@@ -129,35 +147,54 @@ export const BookReader = ({ root, book, page: asked, title }) => {
         <aside class="book-reader-tree">
             <p class="book-reader-book"><${Icons.book} /> ${title || payload.title || t('doc.bookreader.a-book', 'a book')}</p>
             <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} />
-            ${picked.size > 0 && shownBook.pages.length === 0 && shownBook.sections.length === 0 &&
-            html`<p class="book-reader-none">${t('doc.bookreader.no-page-carries-all-of', 'no page carries all of those tags')}</p>`}
-            ${tags.length > 0 &&
-            html`<div class="book-reader-tags">
+            ${
+                picked.size > 0 &&
+                shownBook.pages.length === 0 &&
+                shownBook.sections.length === 0 &&
+                html`<p class="book-reader-none">${t('doc.bookreader.no-page-carries-all-of', 'no page carries all of those tags')}</p>`
+            }
+            ${
+                tags.length > 0 &&
+                html`<div class="book-reader-tags">
                 ${tags.map(
                     ({ tag, count }) => html`<button
                         key=${tag}
                         class=${picked.has(tag) ? 'book-reader-tag book-reader-tag-on' : 'book-reader-tag'}
-                        title=${picked.has(tag)
-                            ? t('doc.bookreader.selected---click-to-lift', 'selected - click to lift it')
-                            : t('doc.bookreader.n-pages-carry-this-tag', '{count} pages carry this tag - click to show only those', { count })}
+                        title=${
+                            picked.has(tag)
+                                ? t(
+                                      'doc.bookreader.selected---click-to-lift',
+                                      'selected - click to lift it',
+                                  )
+                                : t(
+                                      'doc.bookreader.n-pages-carry-this-tag',
+                                      '{count} pages carry this tag - click to show only those',
+                                      { count },
+                                  )
+                        }
                         onClick=${() => toggleTag(tag)}
-                    >${tag} <span class="book-reader-tag-count">${count}</span></button>`
+                    >${tag} <span class="book-reader-tag-count">${count}</span></button>`,
                 )}
-            </div>`}
+            </div>`
+            }
         </aside>
         <div class="book-reader-pane">
             ${steps}
-            ${!page &&
-            html`<p class="null-sub">${t('doc.bookreader.this-book-has-no-pages', 'this book has no pages yet')}</p>`}
-            ${page &&
-            html`<article class="book-reader-article" ref=${article}>
+            ${
+                !page &&
+                html`<p class="null-sub">${t('doc.bookreader.this-book-has-no-pages', 'this book has no pages yet')}</p>`
+            }
+            ${
+                page &&
+                html`<article class="book-reader-article" ref=${article}>
                 ${here && here.trail.length > 0 && html`<p class="book-reader-trail">${here.trail.join(' › ')}</p>`}
                 <h2 class="book-reader-title">${(here && here.title) || t('doc.bookreader.untitled-page', 'untitled page')}</h2>
                 ${words === undefined && html`<p class="null-sub">…</p>`}
                 ${words === null && html`<p class="null-sub">${t('doc.bookreader.these-words-havent-reached', "these words haven't reached this computer, or they are shared only with people the author trusts")}</p>`}
                 ${!!words && html`<div class="feed-entry-body"><${MarqueeBody} source=${words} profile=${tlProfile} onUnparsable=${bareSource} /></div>`}
             </article>
-            ${tall && steps}`}
+            ${tall && steps}`
+            }
         </div>
     </section>`;
 };

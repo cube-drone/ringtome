@@ -23,7 +23,10 @@ const EmptyNode = () => {
     return html`<p class="null-sub">
         ${t('nodefeed.nobody-has-said-anything', 'nobody has said anything on this node yet.')}
         ${' '}
-        <a href="/" onClick=${(e) => { e.preventDefault(); loc.route('/'); }}>${t('nodefeed.sign-in-or-make-a-persona', 'sign in, or make a persona here')}</a>
+        <a href="/" onClick=${(e) => {
+            e.preventDefault();
+            loc.route('/');
+        }}>${t('nodefeed.sign-in-or-make-a-persona', 'sign in, or make a persona here')}</a>
     </p>`;
 };
 

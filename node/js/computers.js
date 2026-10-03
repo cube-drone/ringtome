@@ -68,9 +68,7 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
         try {
             await api(`/api/identity/${current.root}/keys/${target.pubkey}/revoke`, {
                 method: 'POST',
-                body: JSON.stringify(
-                    cutChoice ? { disposition, cut: cutChoice } : { disposition }
-                ),
+                body: JSON.stringify(cutChoice ? { disposition, cut: cutChoice } : { disposition }),
             });
             onDone();
         } catch (e) {
@@ -92,8 +90,9 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
           : `remove ${d.label}`;
 
     return html`<${Modal} title=${title} onClose=${onClose}>
-        ${step === 'choose' &&
-        html`<p class="null-sub">${t('computers.how-should-go', 'How should {label} go?', { label: d.label })}</p>
+        ${
+            step === 'choose' &&
+            html`<p class="null-sub">${t('computers.how-should-go', 'How should {label} go?', { label: d.label })}</p>
             <button class="removal-option" onClick=${() => setStep('leave')}>
                 <span class="removal-option-title">${t('computers.have-this-computer-leave', 'have this computer leave')}</span>
                 <span class="removal-option-sub">
@@ -105,22 +104,28 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
                 <span class="removal-option-sub">
                     ${t('computers.for-a-computer-you-dont', "For a computer you don't trust anymore. It is shut out - and every computer it invited is shut out with it.")}
                 </span>
-            </button>`}
-        ${step === 'leave' &&
-        html`<p class="null-sub">
-                ${isSelf
-                    ? `This computer stops being you. Everything it already wrote stays good,
+            </button>`
+        }
+        ${
+            step === 'leave' &&
+            html`<p class="null-sub">
+                ${
+                    isSelf
+                        ? `This computer stops being you. Everything it already wrote stays good,
                        your other computers carry on without it - and this one is left out of
                        everything new, for keeps.`
-                    : `${d.label} stops being you, gracefully. Everything it wrote stays good,
-                       and any computers it invited stay too.`}
+                        : `${d.label} stops being you, gracefully. Everything it wrote stays good,
+                       and any computers it invited stay too.`
+                }
             </p>
             ${fingerprint}
             <button class="removal-go" disabled=${busy} onClick=${() => revoke('retirement')}>
                 ${busy ? '…' : isSelf ? t('computers.leave-this-persona', 'leave this persona') : t('computers.have-it-leave', 'have it leave')}
-            </button>`}
-        ${step === 'lockout' &&
-        html`<p class="null-sub">${t('computers.was-this-computer-really-you', 'Was this computer really you?')}</p>
+            </button>`
+        }
+        ${
+            step === 'lockout' &&
+            html`<p class="null-sub">${t('computers.was-this-computer-really-you', 'Was this computer really you?')}</p>
             <button
                 class="removal-option ${cut === 'now' ? 'removal-option-picked' : ''}"
                 onClick=${() => setCut('now')}
@@ -139,12 +144,15 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
                     ${t('computers.an-impostor-all-along-everything', 'An impostor all along. Everything it ever wrote is struck from the record.')}
                 </span>
             </button>
-            ${cut &&
-            html`${radius.length > 0 &&
-                html`<p class="removal-blast">
+            ${
+                cut &&
+                html`${
+                    radius.length > 0 &&
+                    html`<p class="removal-blast">
                     ${t('computers.locked-out-with-it', 'locked out with it:')}${' '}
                     ${radius.map((k) => describe(k).label).join(', ')}
-                </p>`}
+                </p>`
+                }
                 ${fingerprint}
                 <button
                     class="removal-go"
@@ -152,7 +160,9 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
                     onClick=${() => revoke('repudiation', cut)}
                 >
                     ${busy ? '…' : t('computers.lock-it-out', 'lock it out')}
-                </button>`}`}
+                </button>`
+            }`
+        }
         ${error && html`<p class="form-error">${error}</p>`}
     <//>`;
 };
@@ -171,7 +181,7 @@ export const Computers = ({ current }) => {
             api(`/api/identity/${current.root}/keys`)
                 .then((r) => setKeys(r.keys))
                 .catch((e) => setError(e.message)),
-        [current.root]
+        [current.root],
     );
     useEffect(() => {
         load();
@@ -203,8 +213,9 @@ export const Computers = ({ current }) => {
         <div class="computers">
             <h2 class="computers-title">${t('computers.your-computers', 'your computers')}</h2>
             ${!keys && !error && html`<p class="null-sub">${t('computers.looking-around', 'looking around…')}</p>`}
-            ${keys &&
-            html`<ul class="computer-list">
+            ${
+                keys &&
+                html`<ul class="computer-list">
                 ${keys.map((k) => {
                     const d = describe(k);
                     // The server sends responsibility order (rank paths); the indent makes the
@@ -222,38 +233,46 @@ export const Computers = ({ current }) => {
                         <span class="computer-facts" title=${k.pubkey}>
                             ${cozyStatus(k.status) && html`<span class="computer-status">${cozyStatus(k.status)}${' · '}</span>`}${shortcode(k.pubkey)}
                         </span>
-                        ${k.removal &&
-                        html`<button
+                        ${
+                            k.removal &&
+                            html`<button
                             class="computer-remove"
-                            title=${k.removal === 'self'
-                                ? t('computers.leave-this-persona-2', 'leave this persona')
-                                : t('computers.remove-this-computer', 'remove this computer')}
+                            title=${
+                                k.removal === 'self'
+                                    ? t('computers.leave-this-persona-2', 'leave this persona')
+                                    : t('computers.remove-this-computer', 'remove this computer')
+                            }
                             onClick=${() => setRemoving(k)}
                         >
                             <${Icons.trash} />
-                        </button>`}
+                        </button>`
+                        }
                     </li>`;
                 })}
-            </ul>`}
+            </ul>`
+            }
 
             <h3 class="computers-subtitle">${t('computers.invite-another-computer-to-be', 'invite another computer to be you')}</h3>
-            ${delivered &&
-            html`<p class="field-note ok">
+            ${
+                delivered &&
+                html`<p class="field-note ok">
                     ${t('computers.it-moved-right-in--', 'It moved right in - nothing to carry back. It should be itself over there already.')}
                 </p>
                 <button class="skip-link" onClick=${() => setDelivered(false)}>
                     ${t('computers.invite-another-computer', 'invite another computer')}
-                </button>`}
-            ${grantCode
-                ? html`<p class="null-sub">
+                </button>`
+            }
+            ${
+                grantCode
+                    ? html`<p class="null-sub">
                           ${t('computers.couldnt-reach-the-new-computer', "Couldn't reach the new computer directly - carry this invite back and paste it there. Keep this computer awake while it moves in.")}
                       </p>
                       <code class="spare-key">${grantCode}</code>
                       <button class="skip-link" onClick=${() => setGrantCode(null)}>
                           ${t('computers.invite-a-different-computer', 'invite a different computer')}
                       </button>`
-                : !delivered &&
-                  html`<p class="null-sub">
+                    : !delivered &&
+                      html`<p class="null-sub">
                           ${tNodes(
                               'computers.on-the-new-computer-sign',
                               'On the new computer, sign in and choose {action} - it will give you a code to paste here.',
@@ -279,10 +298,12 @@ export const Computers = ({ current }) => {
                           <button class="welcome-go" type="submit" disabled=${busy}>
                               ${busy ? '…' : t('computers.invite-this-computer-to-be', 'invite this computer to be you')}
                           </button>
-                      </form>`}
+                      </form>`
+            }
             ${error && html`<p class="form-error">${error}</p>`}
-            ${removing &&
-            html`<${RemovalFlow}
+            ${
+                removing &&
+                html`<${RemovalFlow}
                 current=${current}
                 target=${removing}
                 keys=${keys || []}
@@ -291,7 +312,8 @@ export const Computers = ({ current }) => {
                     load(); // the tree changed; show the new status
                 }}
                 onClose=${() => setRemoving(null)}
-            />`}
+            />`
+            }
         </div>
     `;
 };

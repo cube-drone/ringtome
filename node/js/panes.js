@@ -11,8 +11,16 @@ import { h } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
-import { usePrefMap, flagsOf, setPref, setFlag, widthKey, widthPrefix, tuckKey, tuckPrefix }
-    from './mirror/prefs.js';
+import {
+    usePrefMap,
+    flagsOf,
+    setPref,
+    setFlag,
+    widthKey,
+    widthPrefix,
+    tuckKey,
+    tuckPrefix,
+} from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
@@ -80,18 +88,20 @@ if (typeof document !== 'undefined') {
             if (!openKey) return;
             const query = narrowQuery();
             if (!query || !query.matches) return;
-            const settles = e.target && e.target.closest ? e.target.closest('[data-settles]') : null;
+            const settles =
+                e.target && e.target.closest ? e.target.closest('[data-settles]') : null;
             if (!settles) return;
             const stays = e.target.closest('[data-stays]');
             if (stays && settles.contains(stays)) return;
             setOpen(null);
         },
-        { capture: true }
+        { capture: true },
     );
 }
 
 /// Whether the window is narrow, live as it resizes.
-const narrowQuery = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(NARROW) : null);
+const narrowQuery = () =>
+    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(NARROW) : null;
 
 export function useNarrow() {
     const [narrow, setNarrow] = useState(() => {
@@ -148,7 +158,8 @@ export function useColTucks(root, appId, startsTucked = [], { lead = null } = {}
     }, [narrow, appId, lead]);
     if (narrow) {
         return {
-            tab: (col, icon, label) => html`<${Rail} icon=${icon} label=${label} active=${true} onClick=${() => setOpen(null)} />`,
+            tab: (col, icon, label) =>
+                html`<${Rail} icon=${icon} label=${label} active=${true} onClick=${() => setOpen(null)} />`,
             tucked: { has: (col) => !mine(col) },
             toggleTuck: (col) => setOpen(mine(col) ? null : `${appId}/${col}`),
             settle,
@@ -219,7 +230,13 @@ export function useColWidths(root, appId, cols, mins = {}, open = []) {
 // the list reads. Column furniture, so it lives here with the heads and the rails: Writer asks
 // for it through `features.tagColumn`, and the chat app keeps one for rooms (Curtis,
 // 2026-09-20). `label` names what the tags are on, when "tags" is not enough.
-export const TagColumn = ({ cloud, active, onToggleTag, onTuck, label }) => html`<aside class="tag-column">
+export const TagColumn = ({
+    cloud,
+    active,
+    onToggleTag,
+    onTuck,
+    label,
+}) => html`<aside class="tag-column">
     <${PaneHead} icon=${Icons.tag} label=${label || t('panes.tags', 'tags')} onTuck=${onTuck} />
     ${cloud.map(
         ([tag, count]) => html`<button
@@ -229,7 +246,7 @@ export const TagColumn = ({ cloud, active, onToggleTag, onTuck, label }) => html
         >
             <span class="tag-cloud-name">${tag}</span>
             <span class="tag-cloud-count">${count}</span>
-        </button>`
+        </button>`,
     )}
     ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('panes.no-tags-yet', 'no tags yet')}</p>`}
 </aside>`;

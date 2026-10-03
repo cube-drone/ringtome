@@ -23,13 +23,18 @@ const ITEM_CHARS: usize = 4000;
 
 /// Escape text for XML (element text and attribute values alike).
 fn xml(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 /// Milliseconds since the epoch as RFC 822, the date RSS speaks: `Wed, 30 Sep 2026 14:05:09 GMT`.
 fn rfc822(ms: i64) -> String {
     const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"]; // 1970-01-01 was a Thursday
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS: [&str; 12] =
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let secs = ms.div_euclid(1000);
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
@@ -68,8 +73,13 @@ fn base(state: &AppState, headers: &HeaderMap) -> String {
 }
 
 /// GET `/ringtome/user/{seg}/rss.xml`.
-pub async fn rss_handler(State(state): State<AppState>, Path(seg): Path<String>, headers: HeaderMap) -> Result<Response, AppError> {
-    let missing = || AppError::NotFound(crate::msg!("rss.no-such-persona-here", "no such persona here"));
+pub async fn rss_handler(
+    State(state): State<AppState>,
+    Path(seg): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let missing =
+        || AppError::NotFound(crate::msg!("rss.no-such-persona-here", "no such persona here"));
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(missing());
     };
@@ -89,9 +99,11 @@ pub async fn rss_handler(State(state): State<AppState>, Path(seg): Path<String>,
     let base = base(&state, &headers);
     let page = format!("{base}/ringtome/user/{short}");
 
-    let posts = crate::record::documents::public_docs(&db, None, ITEMS * 2).await.unwrap_or_default();
+    let posts =
+        crate::record::documents::public_docs(&db, None, ITEMS * 2).await.unwrap_or_default();
     let mut items = String::new();
-    for post in posts.iter().filter(|p| p.part_of.is_none() && !p.trusted_only).take(ITEMS as usize) {
+    for post in posts.iter().filter(|p| p.part_of.is_none() && !p.trusted_only).take(ITEMS as usize)
+    {
         let doc_hex = hex::encode(post.doc_id);
         let said = crate::idface::post_words(&state, &db, &root_hex, post, &name).await?;
         let link = format!("{page}/post/{doc_hex}");
@@ -132,7 +144,10 @@ pub async fn rss_handler(State(state): State<AppState>, Path(seg): Path<String>,
     );
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"), (header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
+        [
+            (header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
         feed,
     )
         .into_response())
@@ -152,6 +167,9 @@ mod tests {
 
     #[test]
     fn xml_escapes_all_five() {
-        assert_eq!(xml(r#"<a href="x">Tom & 'Bea'</a>"#), "&lt;a href=&quot;x&quot;&gt;Tom &amp; &apos;Bea&apos;&lt;/a&gt;");
+        assert_eq!(
+            xml(r#"<a href="x">Tom & 'Bea'</a>"#),
+            "&lt;a href=&quot;x&quot;&gt;Tom &amp; &apos;Bea&apos;&lt;/a&gt;"
+        );
     }
 }

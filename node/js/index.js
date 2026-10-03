@@ -26,7 +26,10 @@ import {
     PersonaHome,
     Profile,
     usePersonaName,
-    ContentControl, Personas, AppSettings } from './persona.js';
+    ContentControl,
+    Personas,
+    AppSettings,
+} from './persona.js';
 import { Computers } from './computers.js';
 import { DocsApp } from './apps/notes.js';
 import { Console } from './console.js';
@@ -49,7 +52,15 @@ import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { fromLegacyId, rehome, parseRingtome } from './pure/ringtome.js';
-import { postHref, personHref, docHref, roomHref, appHref, personaPageHref, LAUNCHER } from './links.js';
+import {
+    postHref,
+    personHref,
+    docHref,
+    roomHref,
+    appHref,
+    personaPageHref,
+    LAUNCHER,
+} from './links.js';
 import { parseSpeakable } from './speakable.js';
 import { api } from './net.js';
 import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure/naming.js';
@@ -84,9 +95,13 @@ const PERSONA_APP_ID = 'persona';
 const NotFound = () => html`
     <div class="console">
         <p class="null-sub">
-            ${tNodes('index.theres-nothing-at-this-address', "there's nothing at this address. {home}.", {
-                home: html`<a href=${LAUNCHER}>${t('index.back-to-your-applications', 'back to your applications')}</a>`,
-            })}
+            ${tNodes(
+                'index.theres-nothing-at-this-address',
+                "there's nothing at this address. {home}.",
+                {
+                    home: html`<a href=${LAUNCHER}>${t('index.back-to-your-applications', 'back to your applications')}</a>`,
+                },
+            )}
         </p>
     </div>
 `;
@@ -130,15 +145,17 @@ const SearchOptions = ({ kind, onKind }) => {
             title=${t('index.more-search-options', 'more search options')}
             onClick=${() => setOpen((o) => !o)}
         ><${Icons.filter} /></button>
-        ${open &&
-        html`<div class="search-opts-menu">
+        ${
+            open &&
+            html`<div class="search-opts-menu">
             <span class="search-opts-label">${t('index.show', 'show')}</span>
             <button
                 class="search-opts-kind"
                 title=${t('index.rotates-all-files-only-documents', 'rotates: all files / only documents / only media')}
                 onClick=${() => onKind(nextSearchKind(kind))}
             >${SEARCH_KIND_WORDS[kind] ? SEARCH_KIND_WORDS[kind]() : ''}</button>
-        </div>`}
+        </div>`
+        }
     </span>`;
 };
 
@@ -229,10 +246,20 @@ const Inside = ({ session }) => {
     // (pure/naming.js `docPlacement`), read off the live mirror.
     const pathParts = loc.path.split('/'); // ['', 'ringtome', '<app>'|'user', ...]
     const underApps = pathParts[1] === 'ringtome' && pathParts[2] && pathParts[2] !== 'user';
-    const appDirect = underApps ? appById(pathParts[2]) : ref && ref.kind === 'room' ? appById('chat') : null;
+    const appDirect = underApps
+        ? appById(pathParts[2])
+        : ref && ref.kind === 'room'
+          ? appById('chat')
+          : null;
     const notebookSlug = underApps && pathParts[3] === 'notebook' ? pathParts[4] || '' : null;
-    const ownDoc = ref && ref.kind === 'doc' && root && (parseSpeakable(ref.seg) || {}).root === root ? ref.doc : null;
-    const ownDocRow = useLive(() => (ownDoc ? openMirror(root).docs.get(ownDoc) : null), [root, ownDoc]);
+    const ownDoc =
+        ref && ref.kind === 'doc' && root && (parseSpeakable(ref.seg) || {}).root === root
+            ? ref.doc
+            : null;
+    const ownDocRow = useLive(
+        () => (ownDoc ? openMirror(root).docs.get(ownDoc) : null),
+        [root, ownDoc],
+    );
     const placed = ownDoc && ownDocRow ? docPlacement(ownDocRow, roster, ref.bucket) : null;
     const cozyBucketRow = notebookSlug
         ? (roster || []).find((b) => slugify(b.name) === notebookSlug) || null
@@ -240,7 +267,10 @@ const Inside = ({ session }) => {
           ? (roster || []).find((b) => b.name === placed.bucket) || { name: placed.bucket }
           : null;
     const appHere = placed ? placed.app : appDirect;
-    const inDoc = !!(appHere && (ownDoc || (underApps && pathParts[3] && pathParts[3] !== 'notebook')));
+    const inDoc = !!(
+        appHere &&
+        (ownDoc || (underApps && pathParts[3] && pathParts[3] !== 'notebook'))
+    );
 
     // The Persona app wears the current persona's name (live), everywhere its label shows - the
     // console tile and the app header. '' until a persona is open or named, and then `appLabel`
@@ -250,7 +280,10 @@ const Inside = ({ session }) => {
     // their picture and colour rather than a generic person glyph.
     const me = faceOf(usePerson(root, { current: persona.current }));
     // Your colourway (colorway.js), live off your profile: the app wears it, but on another person's page.
-    const colorwayRow = useLive(() => (root ? openMirror(root).profile.get('colorway') : null), [root]);
+    const colorwayRow = useLive(
+        () => (root ? openMirror(root).profile.get('colorway') : null),
+        [root],
+    );
     useOwnColorway(colorwayRow && colorwayRow.value);
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
@@ -258,7 +291,11 @@ const Inside = ({ session }) => {
     // header owns the input and the app reads it; it clears when you switch apps. Only document
     // apps (those with a `style`) offer search - and one of those opts out, because a box that
     // reaches a component which never reads the query is a control that lies.
-    const showSearch = !!(appHere && (appHere.style || appHere.everything || appHere.searchable === true) && appHere.searchable !== false);
+    const showSearch = !!(
+        appHere &&
+        (appHere.style || appHere.everything || appHere.searchable === true) &&
+        appHere.searchable !== false
+    );
     const [query, setQuery] = useState('');
     // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
     // it on app switch - a filter you set in one app shouldn't silently empty another.
@@ -294,16 +331,19 @@ const Inside = ({ session }) => {
     // right away"), so a badge is a live query and never a poll.
     const unreadRow = useLive(
         () => (root ? openMirror(root).kv.get('unread_notifications') : null),
-        [root]
+        [root],
     );
     const unread = unreadRow && typeof unreadRow.value === 'number' ? unreadRow.value : 0;
     const unreadChatRow = useLive(
         () => (root ? openMirror(root).kv.get('unread_chat') : null),
-        [root]
+        [root],
     );
-    const unreadChat = unreadChatRow && typeof unreadChatRow.value === 'number' ? unreadChatRow.value : 0;
+    const unreadChat =
+        unreadChatRow && typeof unreadChatRow.value === 'number' ? unreadChatRow.value : 0;
     // The account's other personas, for the switcher over the persona tile.
-    const siblings = (persona.personas || []).filter((p) => p.standing === 'active' && p.root_pubkey !== root).map((p) => p.root_pubkey);
+    const siblings = (persona.personas || [])
+        .filter((p) => p.standing === 'active' && p.root_pubkey !== root)
+        .map((p) => p.root_pubkey);
     // Become another of them where you stand: your own page follows you to theirs, and a document
     // of the one you were goes back to its app's list, since it isn't the new persona's.
     const becomeSibling = async (next) => {
@@ -333,8 +373,9 @@ const Inside = ({ session }) => {
     };
     const narrowBar = html`<footer class="quickbar quickbar-narrow">
         <span class="quickbar-apps">
-            ${open &&
-            html`${narrowSlot(BELL_APP_ID, unread)}
+            ${
+                open &&
+                html`${narrowSlot(BELL_APP_ID, unread)}
                 <span class="quickbar-slot">
                     <button
                         class=${inApp ? 'quickbar-hex quickbar-hex-home' : 'quickbar-hex quickbar-hex-home active'}
@@ -343,7 +384,8 @@ const Inside = ({ session }) => {
                         onClick=${() => loc.route(LAUNCHER)}
                     ><span class="quickbar-hex-face"><${Icons.home} /></span></button>
                 </span>
-                ${narrowSlot(CHAT_APP_ID, unreadChat)}`}
+                ${narrowSlot(CHAT_APP_ID, unreadChat)}`
+            }
         </span>
     </footer>`;
     const bar = narrow
@@ -351,17 +393,23 @@ const Inside = ({ session }) => {
         : html`
         <footer class="quickbar">
             <span class="quickbar-apps">
-                ${open &&
-                appsFor(nodeAdmin).map((app) => {
-                    // Your own /id page is the persona app's home now: the lead tile lights there.
-                    const isActive =
-                        app.id === PERSONA_APP_ID
-                            ? !!root && loc.path === personHref(root)
-                            : !!(appHere && appHere.id === app.id);
-                    const badge = app.id === BELL_APP_ID ? unread : app.id === CHAT_APP_ID ? unreadChat : 0;
-                    // Clicking the app you're already in closes it (back to the launcher).
-                    const lead = app.id === PERSONA_APP_ID;
-                    return html`<span class=${lead ? 'quickbar-slot quickbar-slot-persona' : 'quickbar-slot'} key=${app.id}>
+                ${
+                    open &&
+                    appsFor(nodeAdmin).map((app) => {
+                        // Your own /id page is the persona app's home now: the lead tile lights there.
+                        const isActive =
+                            app.id === PERSONA_APP_ID
+                                ? !!root && loc.path === personHref(root)
+                                : !!(appHere && appHere.id === app.id);
+                        const badge =
+                            app.id === BELL_APP_ID
+                                ? unread
+                                : app.id === CHAT_APP_ID
+                                  ? unreadChat
+                                  : 0;
+                        // Clicking the app you're already in closes it (back to the launcher).
+                        const lead = app.id === PERSONA_APP_ID;
+                        return html`<span class=${lead ? 'quickbar-slot quickbar-slot-persona' : 'quickbar-slot'} key=${app.id}>
                         <button
                             class=${[
                                 'quickbar-hex',
@@ -375,25 +423,36 @@ const Inside = ({ session }) => {
                             title=${lead && siblings.length > 0 ? undefined : appLabel(app, personaName, isDevice())}
                             aria-label=${appLabel(app, personaName, isDevice())}
                             onClick=${() => loc.route(isActive ? LAUNCHER : appHref(app.id))}
-                        ><span class="quickbar-hex-face">${app.id === PERSONA_APP_ID && me
-                            ? html`<img class="quickbar-hex-img" src=${me.src} alt="" />`
-                            : html`<${iconFor(app, isDevice())} />`}</span></button>
-                        ${/* Outside the heptagon, not inside it: the hex is clip-pathed,
-                            and a badge within it would be cut to the shape. */ ''}
-                        ${badge > 0 &&
-                        html`<span class="quickbar-badge">${badge > 99 ? '99+' : badge}</span>`}
+                        ><span class="quickbar-hex-face">${
+                            app.id === PERSONA_APP_ID && me
+                                ? html`<img class="quickbar-hex-img" src=${me.src} alt="" />`
+                                : html`<${iconFor(app, isDevice())} />`
+                        }</span></button>
+                        ${
+                            /* Outside the heptagon, not inside it: the hex is clip-pathed,
+                            and a badge within it would be cut to the shape. */ ''
+                        }
+                        ${
+                            badge > 0 &&
+                            html`<span class="quickbar-badge">${badge > 99 ? '99+' : badge}</span>`
+                        }
                         ${/* The other personas, stacked above on hover in place of the name. */ ''}
-                        ${lead &&
-                        siblings.length > 0 &&
-                        html`<span class="quickbar-switcher">
+                        ${
+                            lead &&
+                            siblings.length > 0 &&
+                            html`<span class="quickbar-switcher">
                             ${siblings.map((r) => html`<${SiblingTile} key=${r} root=${r} current=${persona.current} onPick=${becomeSibling} />`)}
-                        </span>`}
+                        </span>`
+                        }
                     </span>`;
-                })}
+                    })
+                }
             </span>
             <${Version} />
-            ${/* HorseBucks in the clock's own box, after the time (Curtis, 2026-09-29): a click
-                opens hrseBank. */ ''}
+            ${
+                /* HorseBucks in the clock's own box, after the time (Curtis, 2026-09-29): a click
+                opens hrseBank. */ ''
+            }
             <${Clock}><${CornerBank} root=${root} /><//>
         </footer>
     `;
@@ -414,11 +473,14 @@ const Inside = ({ session }) => {
             <span class="app-header-lead">
                 <span class="app-header-title">${idTitle || ''}</span>
             </span>
-            ${/* The person's page filters their posts from the header's search slot, the
+            ${
+                /* The person's page filters their posts from the header's search slot, the
                 place a search bar sits everywhere else (2026-09-07). A post's page has
-                nothing to narrow, so the slot stays empty there. */ ''}
-            ${!loc.path.includes('/post/') &&
-            html`<span class="app-header-search-box">
+                nothing to narrow, so the slot stays empty there. */ ''
+            }
+            ${
+                !loc.path.includes('/post/') &&
+                html`<span class="app-header-search-box">
                 <input
                     class="app-header-search"
                     type="search"
@@ -426,13 +488,16 @@ const Inside = ({ session }) => {
                     value=${query}
                     onInput=${(e) => setQuery(e.currentTarget.value)}
                 />
-            </span>`}
+            </span>`
+            }
             <span class="app-header-actions">
                 <button
                     class="app-header-btn"
-                    title=${idBack === appHref('people')
-                        ? t('index.back-to-people', 'back to hrsePeople™')
-                        : t('index.back-to-their-page', 'back to their page')}
+                    title=${
+                        idBack === appHref('people')
+                            ? t('index.back-to-people', 'back to hrsePeople™')
+                            : t('index.back-to-their-page', 'back to their page')
+                    }
                     onClick=${() => loc.route(idBack)}
                 ><${Icons.back} /></button>
                 <button
@@ -445,13 +510,14 @@ const Inside = ({ session }) => {
 
     const appHeader =
         (appHere &&
-        html`<header class="app-header">
+            html`<header class="app-header">
             <span class="app-header-lead">
                 <span class="app-header-title">${appLabel(appHere, personaName, isDevice())}</span>
             </span>
             ${appHere.lookup && html`<${PeopleLookup} query=${query} onQuery=${setQuery} />`}
-            ${showSearch &&
-            html`<span class="app-header-search-box">
+            ${
+                showSearch &&
+                html`<span class="app-header-search-box">
                 <input
                     class="app-header-search"
                     type="search"
@@ -459,16 +525,21 @@ const Inside = ({ session }) => {
                     value=${query}
                     onInput=${(e) => setQuery(e.currentTarget.value)}
                 />
-                ${!appHere.plainSearch &&
-                html`<${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />`}
-            </span>`}
+                ${
+                    !appHere.plainSearch &&
+                    html`<${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />`
+                }
+            </span>`
+            }
             <span class="app-header-actions">
-                ${inDoc &&
-                html`<button
+                ${
+                    inDoc &&
+                    html`<button
                     class="app-header-btn"
                     title=${t('index.back-to-the-list', 'back to the list')}
                     onClick=${() => loc.route(bucket && appHere.style ? bucketHref(bucket, roster) : appHref(appHere.id))}
-                ><${Icons.back} /></button>`}
+                ><${Icons.back} /></button>`
+                }
                 <button
                     class="app-header-btn app-header-btn-square"
                     title=${t('index.close-this-app', 'close this app')}
@@ -492,7 +563,9 @@ const Inside = ({ session }) => {
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
     // whatever the URL says. These onboarding flows aren't apps either, so they ride the stage.
     if (persona.state === 'checking') {
-        return stage(html`<div class="loading-shell"><p>${t('index.loading', 'Loading…')}</p></div>`);
+        return stage(
+            html`<div class="loading-shell"><p>${t('index.loading', 'Loading…')}</p></div>`,
+        );
     }
     if (persona.state === 'ceremony') {
         return stage(html`<${SpareKeyCeremony} persona=${persona} />`);
@@ -589,7 +662,9 @@ const LegacyId = () => {
     const loc = useLocation();
     useEffect(() => {
         const query = loc.url.includes('?') ? loc.url.slice(loc.url.indexOf('?')) : '';
-        const mapped = fromLegacyId(loc.path + query) || loc.path.replace(/^\/id\//, '/ringtome/user/') + query;
+        const mapped =
+            fromLegacyId(loc.path + query) ||
+            loc.path.replace(/^\/id\//, '/ringtome/user/') + query;
         loc.route(mapped, true);
     }, [loc]);
     return null;
@@ -642,7 +717,6 @@ const DocResolve = ({ seg, doc, current }) => {
     return privateHere ? html`<${PrivateDoc} />` : null;
 };
 
-
 /// Root, signed in: the console lives at /home (PROJECT_PLAN's The node's public face, 2026-09-15 - root is the
 /// stranger's front page, and a reader who lands there goes on to their own).
 const HomeBounce = () => {
@@ -678,16 +752,16 @@ const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket 
     // The row, null once the mirror holds documents and this isn't among them (deleted, or not on
     // this computer yet) - a missing row used to read as still loading, forever (2026-10-01).
     // An empty mirror is still filling, so there it keeps looking.
-    const row = useLive(
-        () => {
-            if (!mine) return null;
-            const docs = openMirror(current.root).docs;
-            return Promise.all([docs.get(doc), docs.count()]).then(([r, held]) => r || (held > 0 ? null : undefined));
-        },
-        [mine, current && current.root, doc]
-    );
+    const row = useLive(() => {
+        if (!mine) return null;
+        const docs = openMirror(current.root).docs;
+        return Promise.all([docs.get(doc), docs.count()]).then(
+            ([r, held]) => r || (held > 0 ? null : undefined),
+        );
+    }, [mine, current && current.root, doc]);
     if (!mine) return html`<${DocResolve} seg=${seg} doc=${doc} current=${current} />`;
-    if (row === undefined) return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
+    if (row === undefined)
+        return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
     if (row === null)
         return html`<div class="null-state">
             <p class="null-title">${t('index.not-here', "that isn't here - it was deleted, or hasn't reached this computer yet.")}</p>
@@ -729,14 +803,18 @@ const LegacyHome = ({ current }) => {
             const [first, second, third, fourth] = segs;
             if (!first) return go(LAUNCHER);
             if (first === 'persona') return go(personaPageHref(second));
-            if (first === 'device') return go(second ? `${appHref('device')}/${second}` : appHref('device'));
+            if (first === 'device')
+                return go(second ? `${appHref('device')}/${second}` : appHref('device'));
             if (first === 'chat') {
-                if (!second || second === 'new') return go(second ? `${appHref('chat')}/new` : appHref('chat'));
-                if (HEX_ID64.test(second) && third) return go(roomHref(second, third, fourth || null));
+                if (!second || second === 'new')
+                    return go(second ? `${appHref('chat')}/new` : appHref('chat'));
+                if (HEX_ID64.test(second) && third)
+                    return go(roomHref(second, third, fourth || null));
             }
             const app = appById(first);
             if (app && !second) return go(appHref(app.id));
-            if (app && second && HEX_ID.test(second) && root) return go(`${docHref(root, second)}${third === 'diff' ? '/diff' : ''}`);
+            if (app && second && HEX_ID.test(second) && root)
+                return go(`${docHref(root, second)}${third === 'diff' ? '/diff' : ''}`);
         }
         if (!root) return undefined;
         let live = true;
@@ -744,8 +822,15 @@ const LegacyHome = ({ current }) => {
             .then((hit) => {
                 if (!live) return;
                 if (!hit) return setLost(true);
-                if (hit.docId) return go(docHref(root, hit.docId) + (cozy && segs[0] ? `?bucket=${segs[0]}` : ''));
-                go(cozy && segs[0] ? `${appHref(hit.appId)}/notebook/${segs[0]}` : appHref(hit.appId));
+                if (hit.docId)
+                    return go(
+                        docHref(root, hit.docId) + (cozy && segs[0] ? `?bucket=${segs[0]}` : ''),
+                    );
+                go(
+                    cozy && segs[0]
+                        ? `${appHref(hit.appId)}/notebook/${segs[0]}`
+                        : appHref(hit.appId),
+                );
             })
             .catch(() => live && setLost(true));
         return () => {
@@ -810,8 +895,9 @@ const Outside = ({ session }) => {
         <span class="app-header-lead">
             <span class="app-header-title outside-band-title">${title}</span>
         </span>
-        ${!signingIn &&
-        html`<span class="app-header-search-box">
+        ${
+            !signingIn &&
+            html`<span class="app-header-search-box">
             <input
                 class="app-header-search"
                 type="search"
@@ -819,10 +905,12 @@ const Outside = ({ session }) => {
                 value=${query}
                 onInput=${(e) => setQuery(e.currentTarget.value)}
             />
-        </span>`}
+        </span>`
+        }
         <span class="app-header-actions">
-            ${signingIn
-                ? html`<button
+            ${
+                signingIn
+                    ? html`<button
                           class="app-header-btn"
                           title=${t('index.feed', 'feed')}
                           onClick=${() => loc.route('/feed')}
@@ -832,11 +920,12 @@ const Outside = ({ session }) => {
                           title=${t('index.people', 'people')}
                           onClick=${() => loc.route('/people')}
                       ><${Icons.people} /></button>`
-                : html`<button
+                    : html`<button
                       class="app-header-btn"
                       title=${t('index.home', 'home')}
                       onClick=${() => loc.route('/')}
-                  ><${Icons.home} /></button>`}
+                  ><${Icons.home} /></button>`
+            }
         </span>
     </header>`;
     return html`<div class="app-frame">
@@ -878,7 +967,7 @@ const App = () => {
     if (!session.account) {
         return html`
             <${LocationProvider}>
-                <${ErrorBoundary} onError=${error => console.error(error)}>
+                <${ErrorBoundary} onError=${(error) => console.error(error)}>
                     <div class="app-main">
                         <${Outside} session=${session} />
                     </div>
@@ -889,7 +978,7 @@ const App = () => {
 
     return html`
         <${LocationProvider} scope=${/^\/(home|in|ringtome)(\/|$)/}>
-            <${ErrorBoundary} onError=${error => console.error(error)}>
+            <${ErrorBoundary} onError=${(error) => console.error(error)}>
                 <${PushRoutes} />
                 <div class="app-main">
                     <${Inside} session=${session} />
@@ -914,14 +1003,15 @@ function rehomeLink(e) {
 
 function main() {
     let app = document.getElementById('app');
-    console.log("Horse Drawing Tycoon 2 UI loaded!");
+    console.log('Horse Drawing Tycoon 2 UI loaded!');
     // Before the first render: `t` reads the active catalog at call time, so a locale chosen after
     // paint would leave the first screen in English. This also stamps `<html lang>`, which is where
     // a screen reader takes its pronunciation from.
     setLocale(detectLocale());
     // Every `title` in the app becomes the house tooltip - quicker than the browser's (tooltip.js).
     installTooltips();
-    for (const kind of ['pointerover', 'focusin', 'click']) document.addEventListener(kind, rehomeLink, true);
+    for (const kind of ['pointerover', 'focusin', 'click'])
+        document.addEventListener(kind, rehomeLink, true);
     // One provider at the root sets the house icon style: Phosphor, DUOTONE, sized to the font
     // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
     // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the
@@ -930,7 +1020,7 @@ function main() {
         html`<${IconContext.Provider}
             value=${{ weight: 'duotone', size: '1em', className: 'ph' }}
         ><${App} /></${IconContext.Provider}>`,
-        app
+        app,
     );
 }
 

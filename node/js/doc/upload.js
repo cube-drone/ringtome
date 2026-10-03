@@ -95,7 +95,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
             encStart: null,
             outBytes: null,
             audioDropped: false,
-        }))
+        })),
     );
     const patchRow = (i, up) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...up } : r)));
     // The names as they are RIGHT NOW (state is async; async completions need current values).
@@ -169,18 +169,18 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                     res =
                         out.lane === 'av1'
                             ? await uploadBinary(root, out.video, namesRef.current[i], (pct) =>
-                                  patchRow(i, { pct })
+                                  patchRow(i, { pct }),
                               )
                             : await uploadVideoParts(
                                   root,
                                   out.video,
                                   out.audio,
                                   namesRef.current[i],
-                                  (pct) => patchRow(i, { pct })
+                                  (pct) => patchRow(i, { pct }),
                               );
                 } else {
                     res = await uploadBinary(root, file, namesRef.current[i], (pct) =>
-                        patchRow(i, { pct })
+                        patchRow(i, { pct }),
                     );
                 }
                 patchRow(i, { docId: res.doc_id, jobId: res.job_id, phase: 'queued', pct: 100 });
@@ -193,7 +193,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                 if (bucket) {
                     api(
                         `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(bucket)}`,
-                        { method: 'PUT' }
+                        { method: 'PUT' },
                     ).catch(() => {});
                 }
                 // An upload is filed into the NOTEBOOK but never into the tree (Curtis,
@@ -235,7 +235,11 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                             return doneRow;
                         }
                         if (job.status === 'failed') {
-                            return { ...r, phase: 'failed', error: job.error || 'processing failed' };
+                            return {
+                                ...r,
+                                phase: 'failed',
+                                error: job.error || 'processing failed',
+                            };
                         }
                         return {
                             ...r,
@@ -243,7 +247,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                             queuePos: job.position ?? null,
                             srvPct: job.progress ?? null,
                         };
-                    })
+                    }),
                 );
                 for (const [i, row] of settle) renameNow(i, row);
                 // The crush has spoken: tell the host what the document really is, so the
@@ -278,7 +282,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
     }, [encoding]);
 
     const anyInFlight = rows.some(
-        (r) => r.phase === 'encoding' || r.phase === 'uploading' || r.phase === 'queued'
+        (r) => r.phase === 'encoding' || r.phase === 'uploading' || r.phase === 'queued',
     );
 
     return html`<${Modal} title="File upload" onClose=${onClose}>
@@ -307,8 +311,9 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                             onClick=${() => patchRow(i, { tagsOpen: !r.tagsOpen })}
                         ><${Icons.tag} /></button>
                     </div>
-                    ${r.phase === 'encoding' &&
-                    html`<div class="upload-status">
+                    ${
+                        r.phase === 'encoding' &&
+                        html`<div class="upload-status">
                         <span class="status-spin"><${Icons.spinner} /></span>
                         re-encoding in your browser…
                         ${' '}${Math.max(0, Math.round((Date.now() - r.encStart) / 1000))}s
@@ -317,58 +322,79 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                             about two minutes)
                         </span>
                     </div>
-                    ${r.encPct != null &&
-                    html`<div class="upload-bar jag-line-2">
+                    ${
+                        r.encPct != null &&
+                        html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.encPct}%`}></div>
-                    </div>`}`}
-                    ${r.phase === 'uploading' &&
-                    html`<div class="upload-bar jag-line-2">
+                    </div>`
+                    }`
+                    }
+                    ${
+                        r.phase === 'uploading' &&
+                        html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.pct}%`}></div>
-                    </div>`}
-                    ${r.phase === 'queued' &&
-                    html`<div class="upload-status">
+                    </div>`
+                    }
+                    ${
+                        r.phase === 'queued' &&
+                        html`<div class="upload-status">
                         <span class="status-spin"><${Icons.spinner} /></span>
                         ${queueLabel(r)}
                     </div>
-                    ${r.queueStatus === 'processing' &&
-                    r.srvPct != null &&
-                    html`<div class="upload-bar jag-line-2">
+                    ${
+                        r.queueStatus === 'processing' &&
+                        r.srvPct != null &&
+                        html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.srvPct}%`}></div>
-                    </div>`}`}
-                    ${r.phase === 'done' &&
-                    html`<div class="upload-status upload-done">
+                    </div>`
+                    }`
+                    }
+                    ${
+                        r.phase === 'done' &&
+                        html`<div class="upload-status upload-done">
                         <${Icons.done} /> processed and stored
-                    </div>`}
-                    ${r.phase === 'failed' &&
-                    html`<div class="upload-status upload-failed">${r.error}</div>`}
-                    ${r.lane === 'frames' &&
-                    r.phase !== 'failed' &&
-                    html`<div class="upload-note">
+                    </div>`
+                    }
+                    ${
+                        r.phase === 'failed' &&
+                        html`<div class="upload-status upload-failed">${r.error}</div>`
+                    }
+                    ${
+                        r.lane === 'frames' &&
+                        r.phase !== 'failed' &&
+                        html`<div class="upload-note">
                         this browser can't encode AV1, so the frame-by-frame fallback is doing
                         the work - a bigger upload, the same result.
-                    </div>`}
-                    ${r.audioDropped &&
-                    html`<div class="upload-note">
+                    </div>`
+                    }
+                    ${
+                        r.audioDropped &&
+                        html`<div class="upload-note">
                         the audio track couldn't be processed (an unusual codec - AC-3/DTS can't
                         be decoded in a browser), so this uploads video-only.
-                    </div>`}
-                    ${r.tagsOpen &&
-                    r.docId &&
-                    html`<div class="upload-tags">
+                    </div>`
+                    }
+                    ${
+                        r.tagsOpen &&
+                        r.docId &&
+                        html`<div class="upload-tags">
                         <${Annotations}
                             root=${root}
                             docId=${r.docId}
                             features=${{ date: false, description: false }}
                         />
-                    </div>`}
-                </div>`
+                    </div>`
+                    }
+                </div>`,
             )}
         </div>
         <div class="modal-actions">
-            ${anyInFlight &&
-            html`<span class="upload-note">
+            ${
+                anyInFlight &&
+                html`<span class="upload-note">
                 OK returns to the document - the upload keeps going and lands on its own.
-            </span>`}
+            </span>`
+            }
             <button class="modal-ok" onClick=${onClose}>OK</button>
         </div>
     </${Modal}>`;
@@ -404,10 +430,10 @@ export function mediaReference({ root, format, mimeType, docId, name }) {
     const ext = t.startsWith('image/')
         ? 'avif'
         : t.startsWith('video/')
-        ? 'webm'
-        : t.startsWith('audio/')
-        ? 'ogg'
-        : null;
+          ? 'webm'
+          : t.startsWith('audio/')
+            ? 'ogg'
+            : null;
     const label = (name || 'file').replace(/[[\]()]/g, '');
     const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
     if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
@@ -468,16 +494,20 @@ export function useUploadCapture({
             if (distinct != null && distinct + files.length > EMBED_CAP) {
                 onRefused &&
                     onRefused(
-                        t('doc.upload.one-page-holds-embedded-files', 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest', {
-                            distinct,
-                            cap: EMBED_CAP,
-                        })
+                        t(
+                            'doc.upload.one-page-holds-embedded-files',
+                            'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
+                            {
+                                distinct,
+                                cap: EMBED_CAP,
+                            },
+                        ),
                     );
                 return;
             }
         }
         const tokens = files.map(
-            (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`
+            (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`,
         );
         uploadTokens.current = tokens;
         const at = cursorPos ? cursorPos() : null;
@@ -497,7 +527,8 @@ export function useUploadCapture({
         // The caret keeps its place through the swap: after the placeholder, it is after the
         // image; further on, it moves by the difference; before it, it stays.
         const caret = cursorPos ? cursorPos() : null;
-        if (placeCursor && caret != null && caret > at) placeCursor(caretThroughSwap(caret, at, tok.length, replacement.length));
+        if (placeCursor && caret != null && caret > at)
+            placeCursor(caretThroughSwap(caret, at, tok.length, replacement.length));
     };
     const onUploaded = (i, file, uploadedId, name) => {
         const reference = mediaReference({
@@ -595,8 +626,9 @@ export function useUploadCapture({
                 e.currentTarget.value = ''; // so picking the same file again re-fires
             }}
         />
-        ${uploadFiles &&
-        html`<${UploadFlow}
+        ${
+            uploadFiles &&
+            html`<${UploadFlow}
             root=${root}
             bucket=${bucket}
             files=${uploadFiles}
@@ -609,7 +641,8 @@ export function useUploadCapture({
                 const caret = cursorPos ? cursorPos() : null;
                 if (placeCursor && caret != null) placeCursor(caret, { focus: true });
             }}
-        />`}
+        />`
+        }
     `;
     // Text dropped in at the caret, the caret left after it - an image chosen from the picker
     // (Curtis, 2026-09-27), going in the way an upload's reference does.
@@ -648,7 +681,8 @@ export const FileDropper = ({ root }) => {
         const chosen = Array.from(list || []);
         if (chosen.length) setFiles(chosen);
     };
-    const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+    const hasFiles = (e) =>
+        Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
     return html`<div class="reader reader-empty">
         <div
             class=${over ? 'file-dropper over' : 'file-dropper'}

@@ -19,8 +19,13 @@ export const PEOPLE_SORTS = [{ key: 'trust' }, { key: 'interest' }, { key: 'rece
 export function sortContacts(rows, by) {
     const score = (r) => bandOrdinal((r.facts || {})[by]) ?? 0;
     const blocked = (r) => ((r.facts || {}).blocked === 'yes' ? 1 : 0);
-    const rank = by === 'recent' ? (a, b) => byRecentActivity(a.last_active, b.last_active) : (a, b) => score(b) - score(a);
-    return [...(rows || [])].sort((a, b) => blocked(a) - blocked(b) || rank(a, b) || (a.root < b.root ? -1 : 1));
+    const rank =
+        by === 'recent'
+            ? (a, b) => byRecentActivity(a.last_active, b.last_active)
+            : (a, b) => score(b) - score(a);
+    return [...(rows || [])].sort(
+        (a, b) => blocked(a) - blocked(b) || rank(a, b) || (a.root < b.root ? -1 : 1),
+    );
 }
 
 /// How many rows the shelf renders before "show more". The search-first rule (settled

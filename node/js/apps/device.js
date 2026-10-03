@@ -30,13 +30,29 @@ const html = htm.bind(h);
 /// The pages this app offers here: a desktop app has no Registration page (see above).
 // A desktop app's owner has the same sign-up choices a server's has (Curtis, 2026-09-28: every
 // desktop app is a localhost multi-user server now).
-const pages = () => (isDevice() ? ['registration', 'backups'] : ['registration', 'backups', 'customization']);
+const pages = () =>
+    isDevice() ? ['registration', 'backups'] : ['registration', 'backups', 'customization'];
 
 /// Each page's name and what it's for, as the landing lists them.
 const PAGE_WORDS = () => ({
-    registration: [t('device.registration', 'Registration'), t('device.who-may-sign-up-here', 'who may sign up here')],
-    backups: [t('device.backups', 'Backups'), t('device.copies-of-everything-to-keep-safe', 'copies of everything here, to keep somewhere safe')],
-    customization: [t('device.server-customization', 'Server customization'), t('device.the-front-pages-name-and-taglines', "the front page's name, and the taglines scrolling under it")],
+    registration: [
+        t('device.registration', 'Registration'),
+        t('device.who-may-sign-up-here', 'who may sign up here'),
+    ],
+    backups: [
+        t('device.backups', 'Backups'),
+        t(
+            'device.copies-of-everything-to-keep-safe',
+            'copies of everything here, to keep somewhere safe',
+        ),
+    ],
+    customization: [
+        t('device.server-customization', 'Server customization'),
+        t(
+            'device.the-front-pages-name-and-taglines',
+            "the front page's name, and the taglines scrolling under it",
+        ),
+    ],
 });
 
 export const DeviceApp = ({ page, admin }) => {
@@ -55,10 +71,12 @@ const Landing = () => html`
     <div class="device">
         <nav class="device-menu">
             ${pages().map(
-                (page) => html`<a class="removal-option" href=${`${appHref('device')}/${page}`} key=${page}>
+                (
+                    page,
+                ) => html`<a class="removal-option" href=${`${appHref('device')}/${page}`} key=${page}>
                     <span class="removal-option-title">${PAGE_WORDS()[page][0]}</span>
                     <span class="removal-option-sub">${PAGE_WORDS()[page][1]}</span>
-                </a>`
+                </a>`,
             )}
         </nav>
     </div>
@@ -68,8 +86,14 @@ const Landing = () => html`
 // Registration
 
 const MODE_WORDS = () => ({
-    open: [t('device.mode-open', 'open'), t('device.mode-open-sub', 'anyone who can reach this place may sign up')],
-    password: [t('device.mode-password', 'password-protected'), t('device.mode-password-sub', 'signing up asks for a password you choose and share')],
+    open: [
+        t('device.mode-open', 'open'),
+        t('device.mode-open-sub', 'anyone who can reach this place may sign up'),
+    ],
+    password: [
+        t('device.mode-password', 'password-protected'),
+        t('device.mode-password-sub', 'signing up asks for a password you choose and share'),
+    ],
     closed: [t('device.mode-closed', 'closed'), t('device.mode-closed-sub', 'nobody new')],
 });
 
@@ -87,10 +111,11 @@ const ModePicker = ({ modes, mode, setMode, password, setPassword, hasPassword }
                 >
                     <span class="removal-option-title">${words[m][0]}</span>
                     <span class="removal-option-sub">${words[m][1]}</span>
-                </button>`
+                </button>`,
             )}
-            ${mode === 'password' &&
-            html`<label class="device-field">
+            ${
+                mode === 'password' &&
+                html`<label class="device-field">
                 <span>${t('device.sign-up-password', 'sign-up password')}</span>
                 <input
                     type="password"
@@ -99,7 +124,8 @@ const ModePicker = ({ modes, mode, setMode, password, setPassword, hasPassword }
                     placeholder=${hasPassword ? t('device.leave-empty-to-keep-the-one-you-set', 'leave empty to keep the one you set') : ''}
                     onInput=${(e) => setPassword(e.currentTarget.value)}
                 />
-            </label>`}
+            </label>`
+            }
         </div>
     `;
 };
@@ -144,7 +170,10 @@ const Policy = ({ status, mode, setMode, onSaved }) => {
         setError('');
         setSaved(false);
         try {
-            await api('/api/admin/registration', { method: 'PUT', body: JSON.stringify({ mode, password: password || null }) });
+            await api('/api/admin/registration', {
+                method: 'PUT',
+                body: JSON.stringify({ mode, password: password || null }),
+            });
             setPassword('');
             setSaved(true);
             onSaved();
@@ -156,8 +185,10 @@ const Policy = ({ status, mode, setMode, onSaved }) => {
     };
     return html`
         <p class="null-sub">${t('device.who-may-make-an-account-here', 'Who may make an account here:')}</p>
-        ${isDevice() &&
-        html`<p class="null-sub">${t('device.only-this-computer', 'This app only answers this computer, so "anyone" means anyone who uses it.')}</p>`}
+        ${
+            isDevice() &&
+            html`<p class="null-sub">${t('device.only-this-computer', 'This app only answers this computer, so "anyone" means anyone who uses it.')}</p>`
+        }
         <${ModePicker}
             modes=${['open', 'password', 'closed']}
             mode=${mode}
@@ -176,7 +207,9 @@ const Policy = ({ status, mode, setMode, onSaved }) => {
 /// empty for none. Saved together - the node keeps them as one.
 const Limits = ({ status, mode, onSaved }) => {
     const l = status.limits || {};
-    const [maxAccounts, setMaxAccounts] = useState(l.max_accounts == null ? '' : String(l.max_accounts));
+    const [maxAccounts, setMaxAccounts] = useState(
+        l.max_accounts == null ? '' : String(l.max_accounts),
+    );
     const [diskPct, setDiskPct] = useState(l.disk_max_pct == null ? '' : String(l.disk_max_pct));
     const [group, setGroup] = useState(l.group_name || '');
     const [busy, setBusy] = useState(false);
@@ -190,7 +223,11 @@ const Limits = ({ status, mode, onSaved }) => {
         try {
             await api('/api/admin/registration/limits', {
                 method: 'PUT',
-                body: JSON.stringify({ max_accounts: number(maxAccounts), disk_max_pct: number(diskPct), group_name: group.trim() || null }),
+                body: JSON.stringify({
+                    max_accounts: number(maxAccounts),
+                    disk_max_pct: number(diskPct),
+                    group_name: group.trim() || null,
+                }),
             });
             setSaved(true);
             onSaved();
@@ -203,8 +240,9 @@ const Limits = ({ status, mode, onSaved }) => {
     // Closed, there are no sign-ups to limit (Curtis, 2026-10-02): the limits wait, kept, for a mode
     // that has some. (The group shows only under `password`, below.)
     return html`
-        ${mode !== 'closed' &&
-        html`<hr class="device-rule" />
+        ${
+            mode !== 'closed' &&
+            html`<hr class="device-rule" />
         <h3 class="computers-title">${t('device.limits', 'Limits')}</h3>
         <label class="device-field">
             <span>${t('device.most-accounts', 'the number of accounts that can exist before we stop accepting registrations (currently we have {n} accounts on this server) - leave empty for no limit', { n: status.accounts })}</span>
@@ -212,28 +250,40 @@ const Limits = ({ status, mode, onSaved }) => {
         </label>
         <label class="device-field">
             <span>
-                ${status.disk_used_pct == null
-                    ? t('device.disk-limit-unknown', "stop accepting sign-ups once the disk is fuller than this percentage (we can't read how full it is right now); leave empty for no limit")
-                    : t('device.disk-limit', "currently the disk is {pct}% full, stop accepting sign-ups once we've gone past this percentage; leave empty for no limit", { pct: status.disk_used_pct })}
+                ${
+                    status.disk_used_pct == null
+                        ? t(
+                              'device.disk-limit-unknown',
+                              "stop accepting sign-ups once the disk is fuller than this percentage (we can't read how full it is right now); leave empty for no limit",
+                          )
+                        : t(
+                              'device.disk-limit',
+                              "currently the disk is {pct}% full, stop accepting sign-ups once we've gone past this percentage; leave empty for no limit",
+                              { pct: status.disk_used_pct },
+                          )
+                }
             </span>
             <input type="number" min="1" max="100" value=${diskPct} onInput=${(e) => setDiskPct(e.currentTarget.value)} />
         </label>
         ${/* Each section its own save, though both send the three together (the node keeps them as one). */ ''}
-        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`}
-        ${mode === 'password' &&
-        html`<hr class="device-rule" />
+        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`
+        }
+        ${
+            mode === 'password' &&
+            html`<hr class="device-rule" />
         <h3 class="computers-title">${t('device.group', 'Group')}</h3>
         <p class="null-sub">
             ${t(
                 'device.group-explained',
-                "A group server: whoever signs up with the password joins the group. Their first persona and every other member - and you, and every administrator - begin knowing each other, low trust and low interest, tagged with the group's name. Nobody who was already here is added, and nobody's settings change later."
+                "A group server: whoever signs up with the password joins the group. Their first persona and every other member - and you, and every administrator - begin knowing each other, low trust and low interest, tagged with the group's name. Nobody who was already here is added, and nobody's settings change later.",
             )}
         </p>
         <label class="device-field">
             <span>${t('device.group-name', "the group's name - empty for none")}</span>
             <input maxlength="32" value=${group} onInput=${(e) => setGroup(e.currentTarget.value)} />
         </label>
-        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`}
+        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`
+        }
         ${error && html`<p class="form-error">${error}</p>`}
         ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
     `;
@@ -248,7 +298,10 @@ const AutoFollowList = ({ status, onSaved }) => {
     const add = async () => {
         setError('');
         try {
-            await api('/api/admin/auto-follow', { method: 'POST', body: JSON.stringify({ address, ...dials }) });
+            await api('/api/admin/auto-follow', {
+                method: 'POST',
+                body: JSON.stringify({ address, ...dials }),
+            });
             setAddress('');
             onSaved();
         } catch (e) {
@@ -275,16 +328,18 @@ const AutoFollowList = ({ status, onSaved }) => {
         <hr class="device-rule" />
         <h3 class="computers-title">${t('device.auto-follow', 'Starter Friends')}</h3>
         <p class="null-sub">${t('device.auto-follow-explained', 'Every persona made here starts out knowing these people, with these dials - as if they had set them.')}</p>
-        ${list.length > 0 &&
-        html`<ul class="device-follows">
+        ${
+            list.length > 0 &&
+            html`<ul class="device-follows">
             ${list.map(
                 (a) => html`<li key=${a.root}>
                     <span class="device-follow-who" title=${speakable(a.root)}>${a.name || wordsFor(a.root).join('-')}</span>
                     <span class="device-follow-dials">${t('device.dials', 'trust {trust} · interest {interest} · shares {rebroadcasts}', a)}</span>
                     <button class="device-follow-x" title=${t('device.take-off-the-list', 'take them off the list')} onClick=${() => remove(a.root)}>×</button>
-                </li>`
+                </li>`,
             )}
-        </ul>`}
+        </ul>`
+        }
         <label class="device-field">
             <span>${t('device.their-address', "their address - a page's link, or the address words")}</span>
             <input value=${address} onInput=${(e) => setAddress(e.currentTarget.value)} />
@@ -324,7 +379,11 @@ const Backups = () => {
                 })
                 .catch((e) => {
                     // A failed backup answers 500 with its ticket; anything else is a lost thread.
-                    setTicket({ ...ticket, status: 'failed', log: [...(ticket.log || []), e.message] });
+                    setTicket({
+                        ...ticket,
+                        status: 'failed',
+                        log: [...(ticket.log || []), e.message],
+                    });
                 });
         }, 1000);
         return () => clearTimeout(timer);
@@ -357,24 +416,29 @@ const Backups = () => {
             <button class="removal-go" disabled=${running} onClick=${start}>
                 ${running ? t('device.backing-up', 'backing up…') : t('device.make-a-backup-now', 'make a backup now')}
             </button>
-            ${ticket &&
-            html`<div class="device-ticket">
+            ${
+                ticket &&
+                html`<div class="device-ticket">
                 <p class="null-sub">
-                    ${finished
-                        ? t('device.backup-done', 'done')
-                        : failed
-                        ? t('device.backup-failed', 'the backup failed')
-                        : t('device.backup-running', 'working…')}
+                    ${
+                        finished
+                            ? t('device.backup-done', 'done')
+                            : failed
+                              ? t('device.backup-failed', 'the backup failed')
+                              : t('device.backup-running', 'working…')
+                    }
                 </p>
                 <ol class="device-log">${(ticket.log || []).map((line, i) => html`<li key=${i}>${line}</li>`)}</ol>
-            </div>`}
+            </div>`
+            }
             ${error && html`<p class="form-error">${error}</p>`}
             <h3 class="computers-subtitle">${t('device.backups-made', 'made so far')}</h3>
-            ${!archives
-                ? html`<p class="null-sub">${t('device.looking', 'looking…')}</p>`
-                : archives.length === 0
-                ? html`<p class="null-sub">${t('device.no-backups-yet', 'none yet')}</p>`
-                : html`<ul class="computer-list">
+            ${
+                !archives
+                    ? html`<p class="null-sub">${t('device.looking', 'looking…')}</p>`
+                    : archives.length === 0
+                      ? html`<p class="null-sub">${t('device.no-backups-yet', 'none yet')}</p>`
+                      : html`<ul class="computer-list">
                       ${archives.map((a) => {
                           const when = backupTime(a.name);
                           return html`<li class="computer-row" key=${a.name}>
@@ -382,12 +446,15 @@ const Backups = () => {
                                   ${when ? formatWhen(when) : a.name}
                                   <span class="computer-detail"> — ${sizeLabel(a.bytes)}</span>
                               </span>
-                              ${isDevice()
-                                  ? html`<button class="computer-remove" onClick=${() => reveal(a.name)}>${t('device.show-in-folder', 'show in folder')}</button>`
-                                  : html`<a class="computer-remove" href=${`/api/admin/backups/${a.name}`} download=${a.name}>${t('device.download', 'download')}</a>`}
+                              ${
+                                  isDevice()
+                                      ? html`<button class="computer-remove" onClick=${() => reveal(a.name)}>${t('device.show-in-folder', 'show in folder')}</button>`
+                                      : html`<a class="computer-remove" href=${`/api/admin/backups/${a.name}`} download=${a.name}>${t('device.download', 'download')}</a>`
+                              }
                           </li>`;
                       })}
-                  </ul>`}
+                  </ul>`
+            }
             <p class="null-sub">${t('device.restoring-is-not-here-yet', "Restoring from a backup isn't here yet.")}</p>
         </div>
     `;

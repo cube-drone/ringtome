@@ -55,9 +55,7 @@ pub fn tokens_of(title: &str, body: &str) -> String {
 
 /// Every term must prefix some token.
 pub fn hits(tokens: &str, terms: &[String]) -> bool {
-    terms
-        .iter()
-        .all(|t| tokens.split(' ').any(|tok| tok.starts_with(t.as_str())))
+    terms.iter().all(|t| tokens.split(' ').any(|tok| tok.starts_with(t.as_str())))
 }
 
 /// What a listing narrows by (2026-09-07): the words, the buckets, the tags, the kinds.
@@ -145,12 +143,16 @@ impl Narrow {
 
     /// Whether the judgment needs the posts' labels: a bucket or tag picked, either way.
     pub fn picks_labels(&self) -> bool {
-        !(self.buckets.is_empty() && self.tags.is_empty() && self.not_buckets.is_empty() && self.not_tags.is_empty())
+        !(self.buckets.is_empty()
+            && self.tags.is_empty()
+            && self.not_buckets.is_empty()
+            && self.not_tags.is_empty())
     }
 
     /// The kind half of the judgment.
     pub fn kinds_admit(&self, kind: &str) -> bool {
-        (self.kinds.is_empty() || self.kinds.iter().any(|k| k == kind)) && !self.not_kinds.iter().any(|k| k == kind)
+        (self.kinds.is_empty() || self.kinds.iter().any(|k| k == kind))
+            && !self.not_kinds.iter().any(|k| k == kind)
     }
 
     /// Words and labels judge posts only; a share has neither, so it answers the kind
@@ -194,8 +196,14 @@ struct BodyFacts {
 }
 
 async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<BodyFacts> {
-    if let Ok(Some(h)) = crate::fragments::serving_header(&state.node_db, author_hex, doc_id).await {
-        return Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only, sealed_title: h.sealed_title });
+    if let Ok(Some(h)) = crate::fragments::serving_header(&state.node_db, author_hex, doc_id).await
+    {
+        return Some(BodyFacts {
+            file_hash: h.file_hash,
+            format: h.format,
+            trusted_only: h.trusted_only,
+            sealed_title: h.sealed_title,
+        });
     }
     let db = state.user_dbs.get(author_hex).await.ok().flatten()?;
     let entry = crate::record::documents::public_header_entry(&db, doc_id).await.ok().flatten()?;
@@ -203,7 +211,12 @@ async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Op
         return None;
     };
     let h = ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()?;
-    Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only, sealed_title: h.sealed_title })
+    Some(BodyFacts {
+        file_hash: h.file_hash,
+        format: h.format,
+        trusted_only: h.trusted_only,
+        sealed_title: h.sealed_title,
+    })
 }
 
 async fn stored(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<(i64, String)>> {
@@ -237,7 +250,9 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     }
     let Ok(raw) = hex::decode(&c.doc_hex) else { return Ok(None) };
     let Ok(doc_id) = <[u8; 16]>::try_from(raw.as_slice()) else { return Ok(None) };
-    let Some(BodyFacts { file_hash: hash, format, trusted_only, sealed_title }) = body_facts(state, &c.author_root, &doc_id).await else {
+    let Some(BodyFacts { file_hash: hash, format, trusted_only, sealed_title }) =
+        body_facts(state, &c.author_root, &doc_id).await
+    else {
         return Ok(None);
     };
     let blob = iroh_blobs::Hash::from_bytes(hash);
@@ -326,7 +341,11 @@ async fn keep_bag(db: &Db, c: &Candidate, stamp: i64, tokens: &str) -> Result<()
 /// off the inverted index - when the rarest term names at most `cap` posts; `None` when every
 /// term is commoner than that, and walking the feed newest first is the cheaper road. Node-wide:
 /// the caller meets it with the reader's journal.
-pub async fn posts_with_terms(db: &Db, terms: &[String], cap: usize) -> Result<Option<std::collections::HashSet<(String, String)>>> {
+pub async fn posts_with_terms(
+    db: &Db,
+    terms: &[String],
+    cap: usize,
+) -> Result<Option<std::collections::HashSet<(String, String)>>> {
     if terms.is_empty() {
         return Ok(None);
     }
@@ -370,12 +389,18 @@ pub async fn posts_with_terms(db: &Db, terms: &[String], cap: usize) -> Result<O
 /// Judge `candidates` (newest first) against `narrow`: the indices of those that match, at
 /// most `RESULTS_CAP`. Labels first (one memo read for the whole set), then the words -
 /// indexing bodies on the way within `INDEX_PER_QUERY`, spent only on label survivors.
-pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>) -> Result<Vec<usize>> {
+pub async fn matching(
+    state: &AppState,
+    candidates: &[Candidate],
+    narrow: &Narrow,
+    viewer: Option<&str>,
+) -> Result<Vec<usize>> {
     admitted(state, candidates, narrow, viewer, RESULTS_CAP, None).await
 }
 
 /// Labels already read for a set of posts, as a reader may see them: `(author, doc) -> labels`.
-pub type Labels = std::collections::HashMap<(String, String), Vec<crate::annotations::KnownAnnotation>>;
+pub type Labels =
+    std::collections::HashMap<(String, String), Vec<crate::annotations::KnownAnnotation>>;
 
 /// `matching`'s judgment, stopping at `cap` matches (a listing's page) - or not at all, for the
 /// facet counts, which must not depend on where a page happened to end.
@@ -393,7 +418,8 @@ async fn admitted(
     } else if known.is_some() {
         known
     } else {
-        let pairs: Vec<(String, String)> = candidates.iter().map(|c| (c.author_root.clone(), c.doc_hex.clone())).collect();
+        let pairs: Vec<(String, String)> =
+            candidates.iter().map(|c| (c.author_root.clone(), c.doc_hex.clone())).collect();
         fetched = crate::annotations::for_posts(state, &pairs, viewer).await?;
         Some(&fetched)
     };
@@ -405,7 +431,11 @@ async fn admitted(
         }
         if let Some(known) = &labelled {
             let (mut buckets, mut tags) = (Vec::new(), Vec::new());
-            for a in known.get(&(c.author_root.clone(), c.doc_hex.clone())).map(|v| v.as_slice()).unwrap_or(&[]) {
+            for a in known
+                .get(&(c.author_root.clone(), c.doc_hex.clone()))
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+            {
                 match a.key.as_str() {
                     "bucket" if a.annotator == c.author_root => buckets.push(a.value.clone()),
                     "tag" => tags.push(a.value.clone()),
@@ -455,7 +485,13 @@ pub struct FacetSets {
     pub tags_out: [Option<Vec<usize>>; 3],
 }
 
-pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Narrow, viewer: Option<&str>, known: Option<&Labels>) -> Result<FacetSets> {
+pub async fn facet_sets(
+    state: &AppState,
+    candidates: &[Candidate],
+    narrow: &Narrow,
+    viewer: Option<&str>,
+    known: Option<&Labels>,
+) -> Result<FacetSets> {
     let all: Vec<usize> = (0..candidates.len()).collect();
     let judge = |n: Narrow| async move {
         if n.is_empty() {
@@ -476,16 +512,25 @@ pub async fn facet_sets(state: &AppState, candidates: &[Candidate], narrow: &Nar
     }
     let kinds_out = match narrow.not_kinds.is_empty() {
         true => None,
-        false => Some(judge(Narrow { kinds: Vec::new(), not_kinds: Vec::new(), ..narrow.clone() }).await?),
+        false => Some(
+            judge(Narrow { kinds: Vec::new(), not_kinds: Vec::new(), ..narrow.clone() }).await?,
+        ),
     };
     let buckets_out = match narrow.not_buckets.is_empty() {
         true => None,
-        false => Some(judge(Narrow { buckets: Vec::new(), not_buckets: Vec::new(), ..narrow.clone() }).await?),
+        false => Some(
+            judge(Narrow { buckets: Vec::new(), not_buckets: Vec::new(), ..narrow.clone() })
+                .await?,
+        ),
     };
     // Each tag family set aside alone; families with nothing picked share the whole narrow's set.
     let without = |family: usize, out_too: bool| Narrow {
         tags: narrow.tags.iter().filter(|t| tag_family(t) != family).cloned().collect(),
-        not_tags: if out_too { narrow.not_tags.iter().filter(|t| tag_family(t) != family).cloned().collect() } else { narrow.not_tags.clone() },
+        not_tags: if out_too {
+            narrow.not_tags.iter().filter(|t| tag_family(t) != family).cloned().collect()
+        } else {
+            narrow.not_tags.clone()
+        },
         ..narrow.clone()
     };
     let mut whole: Option<Vec<usize>> = None;
@@ -553,10 +598,23 @@ pub async fn facets_json_with(
 ) -> Result<serde_json::Value> {
     let sets = facet_sets(state, candidates, narrow, viewer, known).await?;
     let pairs = |set: &[usize]| -> Vec<(String, String)> {
-        set.iter().map(|&i| (candidates[i].author_root.clone(), candidates[i].doc_hex.clone())).collect()
+        set.iter()
+            .map(|&i| (candidates[i].author_root.clone(), candidates[i].doc_hex.clone()))
+            .collect()
     };
-    let shares_here = if (Narrow { kinds: Vec::new(), not_kinds: Vec::new(), ..narrow.clone() }).only_kinds() { shares } else { 0 };
-    let kinds_of = |set: &[usize]| kind_counts(set.iter().map(|&i| candidates[i].kind).chain(std::iter::repeat_n("rebroadcast", shares_here)));
+    let shares_here =
+        if (Narrow { kinds: Vec::new(), not_kinds: Vec::new(), ..narrow.clone() }).only_kinds() {
+            shares
+        } else {
+            0
+        };
+    let kinds_of = |set: &[usize]| {
+        kind_counts(
+            set.iter()
+                .map(|&i| candidates[i].kind)
+                .chain(std::iter::repeat_n("rebroadcast", shares_here)),
+        )
+    };
     let mut kinds = kinds_of(&sets.kinds);
     if let Some(out) = &sets.kinds_out {
         restore_left_out(&mut kinds, &kinds_of(out), &narrow.not_kinds);
@@ -579,7 +637,8 @@ pub async fn facets_json_with(
         let (_, mut counted) = labels_of(&sets.tags[family]).await?;
         counted.retain(|(t, _)| tag_family(t) == family);
         if let Some(out) = &sets.tags_out[family] {
-            let left: Vec<String> = narrow.not_tags.iter().filter(|t| tag_family(t) == family).cloned().collect();
+            let left: Vec<String> =
+                narrow.not_tags.iter().filter(|t| tag_family(t) == family).cloned().collect();
             let mut before = labels_of(out).await?.1;
             before.retain(|(t, _)| tag_family(t) == family);
             restore_left_out(&mut counted, &before, &left);
@@ -588,7 +647,9 @@ pub async fn facets_json_with(
     }
     tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
-        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
+        v.into_iter()
+            .map(|(value, count)| serde_json::json!({ "value": value, "count": count }))
+            .collect()
     };
     Ok(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) }))
 }
@@ -653,7 +714,8 @@ struct Cloud {
 }
 
 fn clouds() -> &'static std::sync::Mutex<std::collections::HashMap<String, Cloud>> {
-    static CLOUDS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Cloud>>> = std::sync::OnceLock::new();
+    static CLOUDS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Cloud>>> =
+        std::sync::OnceLock::new();
     CLOUDS.get_or_init(Default::default)
 }
 
@@ -681,9 +743,8 @@ pub fn keep_cloud(key: String, stamp: (u64, Option<i64>), value: serde_json::Val
 
 /// The slow beat: index the backlog behind every reader's journal, a bounded slice per pass.
 pub async fn index_pass(state: AppState) -> Result<()> {
-    let readers = crate::identity::hosted_roots(&state.node_db)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let readers =
+        crate::identity::hosted_roots(&state.node_db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut budget = INDEX_PER_BEAT;
     for reader in readers {
         if budget == 0 {
@@ -747,13 +808,21 @@ const WALK_ROWS: i64 = 1000;
 /// Where each reader's backlog walk stopped - process memory: a restart walks again from the
 /// newest, which costs only the stamps already stored.
 fn walked() -> &'static std::sync::Mutex<std::collections::HashMap<String, (i64, String)>> {
-    static WALKED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (i64, String)>>> = std::sync::OnceLock::new();
+    static WALKED: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, (i64, String)>>,
+    > = std::sync::OnceLock::new();
     WALKED.get_or_init(Default::default)
 }
 
 fn candidate(r: crate::fanout::FeedRow) -> Candidate {
     // The kind is the judge's business, not the index's.
-    Candidate { author_root: r.author_root, doc_hex: r.doc_id, title: r.title, updated_ms: r.updated_ms, kind: "post" }
+    Candidate {
+        author_root: r.author_root,
+        doc_hex: r.doc_id,
+        title: r.title,
+        updated_ms: r.updated_ms,
+        kind: "post",
+    }
 }
 
 /// Forget a post's bag (its author's eviction, a takedown).
@@ -774,7 +843,13 @@ mod tests {
     use super::*;
 
     fn cand(doc: &str, title: &str) -> Candidate {
-        Candidate { author_root: "aa".repeat(32), doc_hex: doc.to_string(), title: title.to_string(), updated_ms: 1, kind: "post" }
+        Candidate {
+            author_root: "aa".repeat(32),
+            doc_hex: doc.to_string(),
+            title: title.to_string(),
+            updated_ms: 1,
+            kind: "post",
+        }
     }
 
     /// The inverted index (node rung 0059): every term a prefix of some word, all of them required;
@@ -784,8 +859,12 @@ mod tests {
     async fn terms_find_posts_by_prefix_and_all_of_them() {
         let db = crate::db::test_node_db().await;
         let (loaf, bagel, ride) = ("11".repeat(16), "22".repeat(16), "33".repeat(16));
-        keep_bag(&db, &cand(&loaf, "Loaf"), 1, &tokens_of("Loaf", "a sourdough bread loaf")).await.unwrap();
-        keep_bag(&db, &cand(&bagel, "Bagels"), 1, &tokens_of("Bagels", "boiled bread")).await.unwrap();
+        keep_bag(&db, &cand(&loaf, "Loaf"), 1, &tokens_of("Loaf", "a sourdough bread loaf"))
+            .await
+            .unwrap();
+        keep_bag(&db, &cand(&bagel, "Bagels"), 1, &tokens_of("Bagels", "boiled bread"))
+            .await
+            .unwrap();
         keep_bag(&db, &cand(&ride, "Ride"), 1, &tokens_of("Ride", "a canal ride")).await.unwrap();
         let docs = |found: Option<std::collections::HashSet<(String, String)>>| {
             let mut v: Vec<String> = found.expect("a set").into_iter().map(|(_, d)| d).collect();
@@ -801,8 +880,15 @@ mod tests {
         assert_eq!(docs(find(&["bread"], 10).await), [loaf.clone(), bagel.clone()]);
         assert_eq!(docs(find(&["bread", "boil"], 10).await), vec![bagel.clone()], "every term");
         assert!(docs(find(&["bread", "canal"], 10).await).is_empty(), "no post has both");
-        assert!(find(&["bread"], 1).await.is_none(), "two posts past a cap of one: walk the feed instead");
-        assert_eq!(docs(find(&["bread", "sour"], 1).await), vec![loaf.clone()], "the rarer term names the set");
+        assert!(
+            find(&["bread"], 1).await.is_none(),
+            "two posts past a cap of one: walk the feed instead"
+        );
+        assert_eq!(
+            docs(find(&["bread", "sour"], 1).await),
+            vec![loaf.clone()],
+            "the rarer term names the set"
+        );
         keep_bag(&db, &cand(&loaf, "Loaf"), 2, &tokens_of("Loaf", "rye now")).await.unwrap();
         assert!(docs(find(&["sour"], 10).await).is_empty(), "indexed again, the old words go");
         assert_eq!(docs(find(&["rye"], 10).await), vec![loaf.clone()]);
@@ -833,7 +919,11 @@ mod tests {
         assert!(!n.labels_admit(&[], &s(&["micro"])), "a size alone is not the picked medium");
         assert!(!n.labels_admit(&[], &s(&["image", "long"])), "the medium, at a size not picked");
         let mixed = Narrow::parse(Some("tag=bread&tag=video"), None);
-        assert!(mixed.labels_admit(&[], &s(&["bread", "video"])) && !mixed.labels_admit(&[], &s(&["bread"])), "an ordinary tag and a medium narrow together too");
+        assert!(
+            mixed.labels_admit(&[], &s(&["bread", "video"]))
+                && !mixed.labels_admit(&[], &s(&["bread"])),
+            "an ordinary tag and a medium narrow together too"
+        );
     }
 
     /// The two families are exactly the implicit tags - a new size or medium cannot land in the
@@ -857,7 +947,10 @@ mod tests {
         assert!(!hits(&bag, &terms("bread cake")), "one missing term is a miss");
         assert!(hits(&bag, &terms("")), "no terms: everything matches");
         assert_eq!(terms("  sour-dough, ROSE "), vec!["dough", "rose", "sour"]);
-        assert!(terms("x").is_empty(), "a one-letter term is not a term - the box shows everything until a word");
+        assert!(
+            terms("x").is_empty(),
+            "a one-letter term is not a term - the box shows everything until a word"
+        );
     }
 
     /// Every row's "only" picks widen (OR), its "leave out" picks drop, and the raw query string
@@ -869,24 +962,49 @@ mod tests {
         assert_eq!(n.kinds, vec!["book"], "a kind the row does not know is dropped");
         assert!(n.kinds_admit("book") && !n.kinds_admit("post"));
         assert!(Narrow::default().kinds_admit("reply"), "nothing picked admits every kind");
-        assert_eq!(kind_counts(["post", "book", "post", "odd"].into_iter()), vec![("post".to_string(), 2), ("book".to_string(), 1)]);
+        assert_eq!(
+            kind_counts(["post", "book", "post", "odd"].into_iter()),
+            vec![("post".to_string(), 2), ("book".to_string(), 1)]
+        );
         assert_eq!(n.tags, vec!["bread", "slow"]);
         assert_eq!(n.terms, vec!["sour"]);
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-        assert!(n.labels_admit(&s(&["recipes"]), &s(&["bread", "extra"])), "either bucket, either tag");
+        assert!(
+            n.labels_admit(&s(&["recipes"]), &s(&["bread", "extra"])),
+            "either bucket, either tag"
+        );
         assert!(!n.labels_admit(&s(&["recipes"]), &s(&["cake"])), "none of the tags refuses");
         assert!(!n.labels_admit(&s(&["photos"]), &s(&["bread", "slow"])), "neither bucket refuses");
         assert!(Narrow::parse(None, None).is_empty());
         assert!(Narrow::default().labels_admit(&[], &[]), "nothing picked admits everything");
 
-        let out = Narrow::parse(Some("not_tag=nsfw&not_bucket=drafts&not_kind=reply&not_kind=nonsense"), None);
-        assert!(!out.is_empty() && out.only_kinds(), "leaving out is a pick, and needs no labels of a share");
+        let out = Narrow::parse(
+            Some("not_tag=nsfw&not_bucket=drafts&not_kind=reply&not_kind=nonsense"),
+            None,
+        );
+        assert!(
+            !out.is_empty() && out.only_kinds(),
+            "leaving out is a pick, and needs no labels of a share"
+        );
         assert_eq!(out.not_kinds, vec!["reply"]);
-        assert!(out.kinds_admit("post") && !out.kinds_admit("reply"), "a kind left out, the rest stay");
-        assert!(out.labels_admit(&s(&["feed"]), &s(&["bread"])), "nothing left out on it: it stays");
-        assert!(!out.labels_admit(&s(&["feed"]), &s(&["bread", "nsfw"])), "one tag left out drops it");
+        assert!(
+            out.kinds_admit("post") && !out.kinds_admit("reply"),
+            "a kind left out, the rest stay"
+        );
+        assert!(
+            out.labels_admit(&s(&["feed"]), &s(&["bread"])),
+            "nothing left out on it: it stays"
+        );
+        assert!(
+            !out.labels_admit(&s(&["feed"]), &s(&["bread", "nsfw"])),
+            "one tag left out drops it"
+        );
         assert!(!out.labels_admit(&s(&["drafts"]), &[]), "a bucket left out drops it");
         let both = Narrow::parse(Some("tag=bread&not_tag=slow"), None);
-        assert!(both.labels_admit(&[], &s(&["bread"])) && !both.labels_admit(&[], &s(&["bread", "slow"])), "only, less what's left out");
+        assert!(
+            both.labels_admit(&[], &s(&["bread"]))
+                && !both.labels_admit(&[], &s(&["bread", "slow"])),
+            "only, less what's left out"
+        );
     }
 }

@@ -29,7 +29,10 @@ export function lineDiff(before, after) {
     const a = String(before || '').split('\n');
     const b = String(after || '').split('\n');
     if (a.length > LINE_CAP || b.length > LINE_CAP) {
-        return [...a.map((text) => ({ kind: '-', text })), ...b.map((text) => ({ kind: '+', text }))];
+        return [
+            ...a.map((text) => ({ kind: '-', text })),
+            ...b.map((text) => ({ kind: '+', text })),
+        ];
     }
     const n = a.length;
     const m = b.length;
@@ -37,7 +40,8 @@ export function lineDiff(before, after) {
     const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
     for (let i = n - 1; i >= 0; i--) {
         for (let j = m - 1; j >= 0; j--) {
-            lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+            lcs[i][j] =
+                a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
         }
     }
     const out = [];

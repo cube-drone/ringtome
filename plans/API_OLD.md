@@ -11,10 +11,10 @@ got right, what it got wrong, and which lessons are load-bearing for Ringtome. I
 tales** (bugs and structural traps worth remembering when building the same feature the second
 time).
 
-A theme runs through the whole assessment: api_old was a *centralized multi-tenant* system, and its
+A theme runs through the whole assessment: api_old was a _centralized multi-tenant_ system, and its
 worst patterns are all workarounds for problems that Ringtome's architecture dissolves outright
 (the event bus vs. the IM-AOL, denormalized sessions vs. thin sessions, the super-admin community
-vs. per-node admin tags). The good patterns are mostly *infrastructure discipline* — and most of
+vs. per-node admin tags). The good patterns are mostly _infrastructure discipline_ — and most of
 those have already been ported into `node/`.
 
 ---
@@ -35,12 +35,12 @@ Also keep the PRAGMA discipline that came with it: `journal_mode = WAL`,
 
 ### 2. Typed auth extractors (`session/extractors.rs`) — partially ported
 
-Authorization levels encoded as Axum extractor *types*: `SessionExtractor`,
+Authorization levels encoded as Axum extractor _types_: `SessionExtractor`,
 `UnverifiedSessionExtractor`, `AdminSessionExtractor`. A handler's signature declares its
-authorization requirement, and it is impossible to forget an auth check because the check *is* the
+authorization requirement, and it is impossible to forget an auth check because the check _is_ the
 argument. The new `auth::Session` extractor carries this forward; as the identity layer grows,
-extend the family the same way (e.g. an extractor that resolves session → account → *unlocked
-identity*, or `NodeAdmin`-tag-gated extractors for the admin routes, which currently check tags
+extend the family the same way (e.g. an extractor that resolves session → account → _unlocked
+identity_, or `NodeAdmin`-tag-gated extractors for the admin routes, which currently check tags
 inside handlers).
 
 One refinement over the old version: api_old needed a third "unverified" tier because email/phone
@@ -63,8 +63,8 @@ in api_old:
 
 - **Good:** locking a user is `add_tag("locked")`; a new privilege level costs zero migrations.
 - **Watch out:** api_old drifted into tag soup — `has_password`, `has_email`, `has_phone`,
-  `prospective_email` (a column!), `email_verified` — using tags to model a *state machine*
-  (unverified → verified) rather than a *capability*. State that has invariants deserves columns
+  `prospective_email` (a column!), `email_verified` — using tags to model a _state machine_
+  (unverified → verified) rather than a _capability_. State that has invariants deserves columns
   and real transitions; tags are for flat, independent booleans. The new code's two admin tags are
   on the right side of this line.
 
@@ -83,8 +83,8 @@ audit trail:
 - The `should_audit()` filter distinguishing audit-worthy events from noise (heartbeats, message
   traffic).
 
-For Ringtome, note the layering: this is *node-local operational* audit (logins, grants, lock-outs
-on this node) — a different animal from the IM-AOL, which is the *user's* signed history. Both will
+For Ringtome, note the layering: this is _node-local operational_ audit (logins, grants, lock-outs
+on this node) — a different animal from the IM-AOL, which is the _user's_ signed history. Both will
 exist; don't conflate them.
 
 ### 6. Fixed-window rate limiting over a bounded cache (`rate_limiting.rs`) — already ported
@@ -92,12 +92,13 @@ exist; don't conflate them.
 Key = `identifier : window-size : bucket-index`, value = atomic counter, all inside a moka cache so
 old buckets evaporate on their own — a rate limiter with no cleanup job and bounded memory. The
 `ctx_limit_per_minute(key, &request_context, limit)` convenience shape (namespace + caller identity
-+ limit at the call site) is the right ergonomics. `node/src/rate_limit.rs` carries this forward.
+
+- limit at the call site) is the right ergonomics. `node/src/rate_limit.rs` carries this forward.
 
 ### 7. Version-stamped static assets (`/static/{version}/app.js` + `semver.rs`)
 
 Assets served under a URL containing the app version, so they can be cached forever; the server
-refuses to serve a version *greater* than the running one, so a cache can never be poisoned with a
+refuses to serve a version _greater_ than the running one, so a cache can never be poisoned with a
 "future" version that would then mask a real deploy. Plus the dev/prod split: `include_str!` baked
 bundles in prod, reload-from-disk in dev. Small, clever, and directly reusable when the node grows
 its web UI. `semver_to_comparable_integer` (bit-packing major/minor/patch into a u128) comes along
@@ -106,14 +107,14 @@ with it, tests included.
 ### 8. Invite codes and invite chains (`user.rs`)
 
 The mechanics are ordinary (UUID codes, once/unlimited use types), but the `invite_chain` table —
-persistently recording *who invited whom* — is a proto-trust-graph and philosophically the most
+persistently recording _who invited whom_ — is a proto-trust-graph and philosophically the most
 Ringtome-shaped thing in the old codebase. Admission-by-invitation is exactly the "trust gates who
 gets an account on a node" policy in PROJECT_PLAN.md's rehosting section, and the chain is the seed
 of a vouch edge. When node registration policy gets built, start here.
 
 ### 9. The live-update model (`live.rs`)
 
-The *protocol* is worth keeping even though the implementation will be replaced by iroh-gossip:
+The _protocol_ is worth keeping even though the implementation will be replaced by iroh-gossip:
 clients are notified only that a **system is dirty** ("messages changed — refetch"), never handed
 the data itself. Consequences that made it robust:
 
@@ -135,8 +136,9 @@ a typed boundary makes that a compile-time question. Keep the pattern; the ident
 profile vs. private chain data vs. node-local account data) will need it even more.
 
 The broader service/view split (service = storage + invariants, view = cross-service orchestration
-+ API shaping) is a reasonable seam too, though the new codebase's `module.rs` + `module/routes.rs`
-split covers the same need with less machinery so far.
+
+- API shaping) is a reasonable seam too, though the new codebase's `module.rs` + `module/routes.rs`
+  split covers the same need with less machinery so far.
 
 ### 11. TTL for unverified resources (`community.rs`)
 
@@ -169,7 +171,7 @@ Worth double-checking the new projection stays clean as fields accrue.)
 The heart of the old architecture, and the single biggest thing to leave behind. Every action sent
 an `EventEnvelope` down one `mpsc::channel(1000)`; one background task received them and manually
 called `on_event` on a hand-maintained list of services; `community_database.rs` then manually
-fanned out to *its* hand-maintained list of sub-services. Why it doesn't survive contact:
+fanned out to _its_ hand-maintained list of sub-services. Why it doesn't survive contact:
 
 - **Hand-maintained dispatch, twice.** Adding a listener means editing dispatch lists in `main.rs`
   and/or `community_database.rs`. The comment in `community_database.rs` admits it: async traits
@@ -179,7 +181,7 @@ fanned out to *its* hand-maintained list of sub-services. Why it doesn't survive
   `event_system`, `should_audit`) over a 40-variant enum. Every new event = five edits. This is
   metadata that wants to live in one place.
 - **Correctness by eventual side effect.** Security-relevant invariants — "a deleted user's
-  sessions die," "an un-admined user loses admin" — were enforced by *asynchronous listeners* on a
+  sessions die," "an un-admined user loses admin" — were enforced by _asynchronous listeners_ on a
   bounded fire-and-forget channel. A full channel, a dropped event, or a crash between action and
   dispatch silently breaks the invariant. Session revocation should be a synchronous part of the
   action, not a hoped-for echo.
@@ -215,21 +217,21 @@ nothing to salvage.
 ### 4. Sessions as denormalized snapshots (`session.rs`)
 
 The old session row copied user name, slug, tags, community name, tags, and a derived `is_admin`
-at login. That made every session a *cache with no invalidation story*: change a user's tags and
+at login. That made every session a _cache with no invalidation story_: change a user's tags and
 their live sessions still carry the old ones, which is why event listeners had to delete all
 sessions on un-admin (see Cut #1 for what enforcing security through the event bus is worth).
 The new model — session = opaque token → account_id, everything else resolved fresh per request —
 is right. The only piece worth stealing is the moka read-through cache in front of session lookup
-*if* it ever shows up in profiles, with the discipline that grants/revocations invalidate.
+_if_ it ever shows up in profiles, with the discipline that grants/revocations invalidate.
 
 ### 5. Dev-mode plaintext passwords (`user.rs :: hash_password`)
 
-In dev, passwords were stored and compared in plaintext. The *motivation* was legitimate and the
+In dev, passwords were stored and compared in plaintext. The _motivation_ was legitimate and the
 doc should not pretend otherwise: Argon2 at real parameters costs tens of milliseconds per hash by
 design, and an integration suite that registers/logs in on nearly every test spends ~95% of its
 runtime re-proving that a KDF is slow. Fast test loops are a feature worth engineering for.
 
-The problem is the *mechanism*: a plaintext branch forks the code path inside a security function.
+The problem is the _mechanism_: a plaintext branch forks the code path inside a security function.
 Dev never exercises PHC-string generation, salt handling, hash parsing, or verify — so bugs there
 ship untested — and the failure mode of a config mistake reaching prod is stored plaintext
 passwords.
@@ -293,22 +295,22 @@ statements whose "duplicate column" errors were caught by **string-matching the 
 (`audit.rs`). No versioning, no ordering, no rollback, migrations interleaved into a
 table-creation loop. The new crate's `sqlx::migrate!` with real versioned migration files
 (`migrations/node`, `migrations/user`) is the correct replacement — especially given the plan makes
-per-user DBs *disposable materialized views* that must be rebuildable at any schema version.
+per-user DBs _disposable materialized views_ that must be rebuildable at any schema version.
 
 ### 11. Dual/inconsistent timestamp storage
 
 Every table stored `created_at` (RFC-3339 TEXT) **and** `created_at_int` — with the integer being
 seconds in `session`, milliseconds in events, and microseconds in `user`/`audit`/`community`. Same
 concept, three precisions, two representations, and code comparing them has to know which is which
-(`community.rs` even filters one query on the *string* column). The new code's single
+(`community.rs` even filters one query on the _string_ column). The new code's single
 `created_at_ms INTEGER` convention is right. Human-readable timestamps are a rendering concern —
 `ringtome inspect` territory, not schema territory.
 
 ### 12. ActivityPub / webfinger stubs
 
 `webfinger` + actor endpoints, Mastodon-interop shaped, never finished (`activitypub.rs` is
-literally empty). Ringtome's federation model (key trees + IM-AOL sync + pkarr, deliberately *not*
-ActivityPub) supersedes it. Reference-only if an AP *bridge* is ever wanted; nothing to port now.
+literally empty). Ringtome's federation model (key trees + IM-AOL sync + pkarr, deliberately _not_
+ActivityPub) supersedes it. Reference-only if an AP _bridge_ is ever wanted; nothing to port now.
 
 ---
 
@@ -333,10 +335,10 @@ list:
    The new `accounts.username UNIQUE` constraint is the right pattern; keep constraints in the
    schema, not in application-level checks.
 4. **Fingerprints and dev-mode conditionals in security paths.** The request "fingerprint" was
-   `ip:forwarded_for:user_agent` as *plaintext*, stored in every audit row (PII-dense), and rate
+   `ip:forwarded_for:user_agent` as _plaintext_, stored in every audit row (PII-dense), and rate
    limiting was entirely disabled in dev (`is_dev() → Ok(())`) — so, like plaintext passwords,
    the enforcement path never ran during development. The new rate limiter's explicit
-   `enabled: bool` wired to local-*test* mode (not dev mode broadly) is the better shape.
+   `enabled: bool` wired to local-_test_ mode (not dev mode broadly) is the better shape.
 5. **Handlers doing service work.** `user/routes.rs` (812 lines) mixes HTTP parsing, rate-limit
    calls, service orchestration, cookie assembly, and event emission per handler. The new crate's
    discipline (thin `routes.rs`, logic in the module root) is worth defending as endpoints
@@ -364,29 +366,29 @@ list:
 
 ## Summary table
 
-| api_old pattern | Verdict | Status in `node/` |
-|---|---|---|
-| Per-tenant SQLite DBs | **Keep** | Ported (`UserDbManager`, moka + sqlx migrations) |
-| Typed auth extractors | **Keep** | Ported (`auth::Session`); extend for admin/identity tiers |
-| RequestContext + correlation IDs | **Keep** | Ported |
-| Tags for roles | **Keep** (capabilities, not state machines) | Ported (`account_tags`) |
-| Audit log w/ probabilistic pruning | **Keep** | Not yet built |
-| Bucketed rate limiting over moka | **Keep** | Ported |
-| Version-stamped assets + semver int | **Keep** | Not yet built (no UI yet) |
-| Invite codes + invite chains | **Keep** (proto-vouch) | Not yet built |
-| Dirty-flag live notifications | **Keep** (concept → iroh-gossip) | Not yet built |
-| Internal/external DTO split | **Keep** | Partially (small surface so far) |
-| TTL for unverified resources | **Keep** | Not yet built |
-| Integration tests + dev-only test routes | **Keep** | Ported |
-| Event bus | **Cut** | Correctly absent |
-| ServiceRegistry / set_registry | **Cut** | Correctly absent |
-| String-sniffed error statuses | **Cut** | Replaced (typed `AppError`) |
-| Denormalized session snapshots | **Cut** | Replaced (token → account) |
-| Dev-mode plaintext passwords | **Cut** (keep the goal: weak Argon2 params in test mode) | Done: minimal params under `RINGTOME_LOCAL_TEST` (suite: 29s → 0.3s) |
-| Admin-community backdoor | **Cut** | N/A by architecture |
-| Boot-time SMS/email | **Cut** | Replaced (`record_boot`) |
-| URL-index slug extraction | **Cut** | N/A (single-tenant routes) |
-| N+1 queries, random eviction | **Cut** | Replaced |
-| DDL-at-construction "migrations" | **Cut** | Replaced (`sqlx::migrate!`) |
-| Dual timestamp columns | **Cut** | Replaced (`*_ms` integers) |
-| ActivityPub stubs | **Cut** (reference only) | Correctly absent |
+| api_old pattern                          | Verdict                                                  | Status in `node/`                                                    |
+| ---------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| Per-tenant SQLite DBs                    | **Keep**                                                 | Ported (`UserDbManager`, moka + sqlx migrations)                     |
+| Typed auth extractors                    | **Keep**                                                 | Ported (`auth::Session`); extend for admin/identity tiers            |
+| RequestContext + correlation IDs         | **Keep**                                                 | Ported                                                               |
+| Tags for roles                           | **Keep** (capabilities, not state machines)              | Ported (`account_tags`)                                              |
+| Audit log w/ probabilistic pruning       | **Keep**                                                 | Not yet built                                                        |
+| Bucketed rate limiting over moka         | **Keep**                                                 | Ported                                                               |
+| Version-stamped assets + semver int      | **Keep**                                                 | Not yet built (no UI yet)                                            |
+| Invite codes + invite chains             | **Keep** (proto-vouch)                                   | Not yet built                                                        |
+| Dirty-flag live notifications            | **Keep** (concept → iroh-gossip)                         | Not yet built                                                        |
+| Internal/external DTO split              | **Keep**                                                 | Partially (small surface so far)                                     |
+| TTL for unverified resources             | **Keep**                                                 | Not yet built                                                        |
+| Integration tests + dev-only test routes | **Keep**                                                 | Ported                                                               |
+| Event bus                                | **Cut**                                                  | Correctly absent                                                     |
+| ServiceRegistry / set_registry           | **Cut**                                                  | Correctly absent                                                     |
+| String-sniffed error statuses            | **Cut**                                                  | Replaced (typed `AppError`)                                          |
+| Denormalized session snapshots           | **Cut**                                                  | Replaced (token → account)                                           |
+| Dev-mode plaintext passwords             | **Cut** (keep the goal: weak Argon2 params in test mode) | Done: minimal params under `RINGTOME_LOCAL_TEST` (suite: 29s → 0.3s) |
+| Admin-community backdoor                 | **Cut**                                                  | N/A by architecture                                                  |
+| Boot-time SMS/email                      | **Cut**                                                  | Replaced (`record_boot`)                                             |
+| URL-index slug extraction                | **Cut**                                                  | N/A (single-tenant routes)                                           |
+| N+1 queries, random eviction             | **Cut**                                                  | Replaced                                                             |
+| DDL-at-construction "migrations"         | **Cut**                                                  | Replaced (`sqlx::migrate!`)                                          |
+| Dual timestamp columns                   | **Cut**                                                  | Replaced (`*_ms` integers)                                           |
+| ActivityPub stubs                        | **Cut** (reference only)                                 | Correctly absent                                                     |

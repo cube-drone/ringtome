@@ -8,7 +8,8 @@ const assert = require('node:assert');
 
 let parseVersion, bumpVersion, releaseName, releaseTag, releaseUrl, WORDS;
 before(async () => {
-    ({ parseVersion, bumpVersion, releaseName, releaseTag, releaseUrl } = await import('../../../js/pure/releasename.js'));
+    ({ parseVersion, bumpVersion, releaseName, releaseTag, releaseUrl } =
+        await import('../../../js/pure/releasename.js'));
     ({ WORDS } = await import('../../../js/pure/words.js'));
 });
 
@@ -24,7 +25,11 @@ describe('release numbers', () => {
     it('reads a version, and refuses anything that is not one', () => {
         assert.deepEqual(parseVersion('1.2.3'), { major: 1, minor: 2, patch: 3 });
         assert.equal(parseVersion('1.2'), null);
-        assert.equal(parseVersion('1.2.3-lady-smirk'), null, 'a decorated version is not a version');
+        assert.equal(
+            parseVersion('1.2.3-lady-smirk'),
+            null,
+            'a decorated version is not a version',
+        );
         assert.equal(parseVersion(''), null);
         assert.throws(() => bumpVersion('1.2', 'minor'));
         assert.throws(() => bumpVersion('1.2.3', 'sideways'));
@@ -34,7 +39,8 @@ describe('release numbers', () => {
 describe('release names', () => {
     it('is the same name for the same version, every time', () => {
         const once = releaseName('0.1.0');
-        for (let i = 0; i < 50; i++) assert.equal(releaseName('0.1.0'), once, 'derived, never drawn');
+        for (let i = 0; i < 50; i++)
+            assert.equal(releaseName('0.1.0'), once, 'derived, never drawn');
         assert.equal(releaseTag('0.1.0'), `0.1.0-${once}`);
     });
 
@@ -50,7 +56,7 @@ describe('release names', () => {
     it('links a version to its release page, by the tag the release pushed', () => {
         assert.equal(
             releaseUrl('0.1.0'),
-            `https://github.com/cube-drone/ringtome/releases/tag/v0.1.0-${releaseName('0.1.0')}`
+            `https://github.com/cube-drone/ringtome/releases/tag/v0.1.0-${releaseName('0.1.0')}`,
         );
     });
 

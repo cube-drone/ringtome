@@ -316,7 +316,9 @@ export const Icons = {
 ///
 /// `device` is true in the desktop app, where an app with a `deviceIcon` wears it instead.
 export const iconFor = (app, device = false) =>
-    (app && device && app.deviceIcon && Icons[app.deviceIcon]) || (app && Icons[app.icon]) || Icons.page;
+    (app && device && app.deviceIcon && Icons[app.deviceIcon]) ||
+    (app && Icons[app.icon]) ||
+    Icons.page;
 
 /// The icon a MEDIA document's format earns in listings (tree rows, the note picker), or null
 /// for text formats - text rows keep their default look. Wire names from the server's

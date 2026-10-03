@@ -9,6 +9,7 @@ export const placeholderAt = (head, body, pick) => {
     if (head.endsWith(pick)) return head.length - pick.length;
     const lines = body.split('\n');
     const whole = lines.findIndex((l) => l === pick);
-    if (whole >= 0) return head.length + 1 + lines.slice(0, whole).reduce((n, l) => n + l.length + 1, 0);
+    if (whole >= 0)
+        return head.length + 1 + lines.slice(0, whole).reduce((n, l) => n + l.length + 1, 0);
     return head.length + 1 + body.indexOf(pick);
 };

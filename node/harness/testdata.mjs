@@ -58,8 +58,30 @@ const LABELS = ['goopy', 'mighty', 'saucy', 'gentle', 'loud', 'nice', 'odd', 'sh
 /// `SOUR`) - what the "best" orders score by (2026-09-28). Literals, like BUCKET_STYLES, so this
 /// harness stays out of the UI's module graph; a glyph that drifted from the rows would only be a
 /// reaction that scores nothing.
-const GLAD = ['\u2764\uFE0F', '\u{1F44D}', '\u{1F923}', '\u{1FAC2}', '\u{1F4AF}', '\u{1F434}', '\u{1F60D}', '\u{1F975}', '\u{1F60E}', '\u{1F446}'];
-const SOUR = ['\u{1F44E}', '\u{1F4A9}', '\u{1F644}', '\u{1F92E}', '\u{1F922}', '\u{1F92C}', '\u{1FAE0}', '\u{1F976}', '\u{1F910}', '\u{1F9CC}'];
+const GLAD = [
+    '\u2764\uFE0F',
+    '\u{1F44D}',
+    '\u{1F923}',
+    '\u{1FAC2}',
+    '\u{1F4AF}',
+    '\u{1F434}',
+    '\u{1F60D}',
+    '\u{1F975}',
+    '\u{1F60E}',
+    '\u{1F446}',
+];
+const SOUR = [
+    '\u{1F44E}',
+    '\u{1F4A9}',
+    '\u{1F644}',
+    '\u{1F92E}',
+    '\u{1F922}',
+    '\u{1F92C}',
+    '\u{1FAE0}',
+    '\u{1F976}',
+    '\u{1F910}',
+    '\u{1F9CC}',
+];
 
 /// React to somebody else's post from one of the picker's rows - sometimes twice, since a
 /// double-like is a thing people do and the score counts it. Two tags to a person on anybody
@@ -67,7 +89,8 @@ const SOUR = ['\u{1F44E}', '\u{1F4A9}', '\u{1F644}', '\u{1F92E}', '\u{1F922}', '
 async function react(ctx, p, rng, row) {
     p.labels = p.labels || [];
     const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-    const said = (item) => p.labels.filter((l) => l.author === item.author && l.doc_id === item.doc_id).length;
+    const said = (item) =>
+        p.labels.filter((l) => l.author === item.author && l.doc_id === item.doc_id).length;
     const theirs = (feed.items || []).filter((i) => i.author !== p.root && said(i) < 2);
     const item = ctx.pick(rng, theirs);
     if (!item) return;
@@ -78,10 +101,15 @@ async function react(ctx, p, rng, row) {
         if (!values.includes(v)) values.push(v);
     }
     for (const value of values) {
-        await api(p, 'PUT', `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`, {
-            key: 'tag',
-            value,
-        });
+        await api(
+            p,
+            'PUT',
+            `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`,
+            {
+                key: 'tag',
+                value,
+            },
+        );
         p.labels.push({ author: item.author, doc_id: item.doc_id, value });
     }
 }
@@ -144,7 +172,10 @@ const ACTIONS = [
         name: 'follow-someone',
         weight: 20,
         run: async (ctx, p, rng) => {
-            const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root));
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter((o) => o.root !== p.root),
+            );
             if (!them) return;
             // Follow the way a human does: from their page - which, for a persona on
             // another node, is also the fetch that makes the follow feed-capable.
@@ -153,18 +184,26 @@ const ACTIONS = [
                 await api(p, 'GET', `/api/id/${them.root}/profile?via=${via}`);
             }
             const level = ctx.pick(rng, ['low', 'medium', 'high', 'max']);
-            await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/interest`, {
-                value: level,
-            });
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/private/kv/contact:${them.root}/interest`,
+                {
+                    value: level,
+                },
+            );
             // The second dial, drawn independently (person.js offers both): whether what they
             // PASS ALONG arrives too. Not every follow wants it, which is why it is its own
             // rung rather than a consequence of the first - but most of them here do, because
             // a network where nobody accepts rebroadcasts is one where `rebroadcast-something`
             // writes pointers that reach no feed and the feature looks broken in the data.
             if (rng() < 0.6) {
-                await api(p, 'PUT',
+                await api(
+                    p,
+                    'PUT',
                     `/api/identity/${p.root}/private/kv/contact:${them.root}/interest_rebroadcasts`,
-                    { value: ctx.pick(rng, ['low', 'medium', 'high', 'max']) });
+                    { value: ctx.pick(rng, ['low', 'medium', 'high', 'max']) },
+                );
             }
         },
     },
@@ -172,14 +211,21 @@ const ACTIONS = [
         name: 'unfollow-someone',
         weight: 4,
         run: async (ctx, p, rng) => {
-            const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root));
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter((o) => o.root !== p.root),
+            );
             if (!them) return;
             // Both dials: an action named "unfollow" that leaves the rebroadcast rung standing
             // would seed a relationship no UI gesture makes, and the reader would go on
             // receiving this person's shares from a contact card that says they follow nobody.
             for (const key of ['interest', 'interest_rebroadcasts']) {
-                await api(p, 'PUT',
-                    `/api/identity/${p.root}/private/kv/contact:${them.root}/${key}`, { value: '' });
+                await api(
+                    p,
+                    'PUT',
+                    `/api/identity/${p.root}/private/kv/contact:${them.root}/${key}`,
+                    { value: '' },
+                );
             }
         },
     },
@@ -187,7 +233,10 @@ const ACTIONS = [
         name: 'trust-someone',
         weight: 10,
         run: async (ctx, p, rng) => {
-            const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root));
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter((o) => o.root !== p.root),
+            );
             if (!them) return;
             const stop = ctx.pick(rng, ['low', 'medium', 'high', 'max']);
             await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/trust`, {
@@ -196,9 +245,14 @@ const ACTIONS = [
             if (rng() < 0.3) {
                 // Some relationships are kept quiet - publication is the resting state, so
                 // the interesting exercise is the withholding path, not the consenting one.
-                await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/edges_public`, {
-                    value: 'no',
-                });
+                await api(
+                    p,
+                    'PUT',
+                    `/api/identity/${p.root}/private/kv/contact:${them.root}/edges_public`,
+                    {
+                        value: 'no',
+                    },
+                );
             }
         },
     },
@@ -206,7 +260,10 @@ const ACTIONS = [
         name: 'untrust-someone',
         weight: 3,
         run: async (ctx, p, rng) => {
-            const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root));
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter((o) => o.root !== p.root),
+            );
             if (!them) return;
             await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/trust`, {
                 value: '',
@@ -239,8 +296,11 @@ const ACTIONS = [
             });
             if (p.buckets.length && rng() < 0.8) {
                 const bucket = ctx.pick(rng, p.buckets);
-                await api(p, 'PUT',
-                    `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(bucket)}`);
+                await api(
+                    p,
+                    'PUT',
+                    `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(bucket)}`,
+                );
             }
             // Remembered so it can be edited, tagged and filed later - the deep behaviours
             // only exist if a note outlives the round that wrote it.
@@ -277,8 +337,11 @@ const ACTIONS = [
             // an author's own published post can carry `nsfw` and the default blur has
             // something to catch (2026-09-07).
             const tag = rng() < 0.125 ? ctx.pick(rng, LABELS) : ctx.pick(rng, WORDS);
-            await api(p, 'PUT',
-                `/api/identity/${p.root}/docs/${note.doc_id}/annotations/tags/${encodeURIComponent(tag)}`);
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/docs/${note.doc_id}/annotations/tags/${encodeURIComponent(tag)}`,
+            );
         },
     },
     {
@@ -296,8 +359,12 @@ const ACTIONS = [
                 p.taxonomies.push(made.taxonomy_id);
             }
             const list = ctx.pick(rng, p.taxonomies);
-            await api(p, 'PUT',
-                `/api/identity/${p.root}/taxonomies/${list}/members/${note.doc_id}`, {});
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/taxonomies/${list}/members/${note.doc_id}`,
+                {},
+            );
         },
     },
     {
@@ -309,13 +376,20 @@ const ACTIONS = [
         weight: 4,
         run: async (ctx, p, rng) => {
             const title = ctx.lorem(rng, 1).slice(0, 32).replace(/\.$/, '');
-            const made = await upload(p, `/api/identity/${p.root}/docs/binary`
-                + `?title=${encodeURIComponent(title)}&parents=`, ctx.picture);
+            const made = await upload(
+                p,
+                `/api/identity/${p.root}/docs/binary` +
+                    `?title=${encodeURIComponent(title)}&parents=`,
+                ctx.picture,
+            );
             if (!made.doc_id) return;
             if (p.buckets.length) {
                 const bucket = ctx.pick(rng, p.buckets);
-                await api(p, 'PUT',
-                    `/api/identity/${p.root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`);
+                await api(
+                    p,
+                    'PUT',
+                    `/api/identity/${p.root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
+                );
             }
         },
     },
@@ -329,9 +403,14 @@ const ACTIONS = [
         weight: 6,
         run: async (ctx, p, rng) => {
             const title = ctx.lorem(rng, 1).slice(0, 32).replace(/\.$/, '');
-            const made = await upload(p, `/api/identity/${p.root}/docs/binary`
-                + `?title=${encodeURIComponent(title)}&parents=`, ctx.picture);
-            if (!made.doc_id) throw new Error(`upload gave no doc_id: ${JSON.stringify(made).slice(0, 120)}`);
+            const made = await upload(
+                p,
+                `/api/identity/${p.root}/docs/binary` +
+                    `?title=${encodeURIComponent(title)}&parents=`,
+                ctx.picture,
+            );
+            if (!made.doc_id)
+                throw new Error(`upload gave no doc_id: ${JSON.stringify(made).slice(0, 120)}`);
             // File it at once, as the picker does: an unfiled, unreferenced media document
             // is the reaper's, and on a test node the reaper is quick (the bake found it
             // missing before the post that embeds it existed - 2026-09-08).
@@ -341,7 +420,9 @@ const ACTIONS = [
             // had not landed and failed their bakes - found 2026-09-08).
             let landed = false;
             for (let i = 0; i < 60 && !landed; i++) {
-                landed = (await p.fetch(`/api/identity/${p.root}/docs/${made.doc_id}/body`)).status === 200;
+                landed =
+                    (await p.fetch(`/api/identity/${p.root}/docs/${made.doc_id}/body`)).status ===
+                    200;
                 if (!landed) await new Promise((r) => setTimeout(r, 500));
             }
             if (!landed) throw new Error('the picture never finished ingesting');
@@ -352,9 +433,15 @@ const ACTIONS = [
             });
             await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
             for (let i = 0; i < 40; i++) {
-                const r = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {});
+                const r = await api(
+                    p,
+                    'POST',
+                    `/api/identity/${p.root}/docs/${d.doc_id}/publish`,
+                    {},
+                );
                 if (r && r.post_id) return;
-                if (r && (r.baking || []).some((b) => b.status === 'failed')) throw new Error(`bake failed: ${JSON.stringify(r.baking).slice(0, 300)}`);
+                if (r && (r.baking || []).some((b) => b.status === 'failed'))
+                    throw new Error(`bake failed: ${JSON.stringify(r.baking).slice(0, 300)}`);
                 await new Promise((res) => setTimeout(res, 500));
             }
             throw new Error('the publish never came to rest');
@@ -379,19 +466,46 @@ const ACTIONS = [
                     body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
                     format: 'marquee',
                 });
-                await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(name)}`);
+                await api(
+                    p,
+                    'PUT',
+                    `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(name)}`,
+                );
                 return d.doc_id;
             };
             const opening = await page(`on ${ctx.pick(rng, WORDS)}`);
             const chapters = [];
-            for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++) chapters.push(await page(`chapter ${i + 1}`));
-            const root = (await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: `wiki:${name}` })).taxonomy_id;
-            const part = (await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: 'part one' })).taxonomy_id;
-            await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${opening}`, {});
+            for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++)
+                chapters.push(await page(`chapter ${i + 1}`));
+            const root = (
+                await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, {
+                    title: `wiki:${name}`,
+                })
+            ).taxonomy_id;
+            const part = (
+                await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: 'part one' })
+            ).taxonomy_id;
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/taxonomies/${root}/members/${opening}`,
+                {},
+            );
             await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${part}`, {});
-            for (const c of chapters) await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${part}/members/${c}`, {});
-            await api(p, 'PUT', `/api/identity/${p.root}/private/kv/books/${encodeURIComponent(name)}`, { value: JSON.stringify({ mode: 'book' }) });
-            await api(p, 'POST', `/api/identity/${p.root}/books/${encodeURIComponent(name)}/rollout`, {});
+            for (const c of chapters)
+                await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${part}/members/${c}`, {});
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/private/kv/books/${encodeURIComponent(name)}`,
+                { value: JSON.stringify({ mode: 'book' }) },
+            );
+            await api(
+                p,
+                'POST',
+                `/api/identity/${p.root}/books/${encodeURIComponent(name)}/rollout`,
+                {},
+            );
         },
     },
     {
@@ -415,7 +529,10 @@ const ACTIONS = [
         name: 'mention-someone',
         weight: 8,
         run: async (ctx, p, rng) => {
-            const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root && o.served));
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter((o) => o.root !== p.root && o.served),
+            );
             if (!them) return;
             // Meet them first when they live elsewhere, as the picker's directory implies
             // - so the card can dress itself with their name on this node.
@@ -456,9 +573,13 @@ const ACTIONS = [
         weight: 10,
         run: async (ctx, p, rng) => {
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-            const theirs = (feed.items || []).filter((i) => !i.trusted_only && !i.settled) // a sealed or settled post is not passed along (2026-09-08)
-                .filter((i) =>
-                i.author !== p.root && !p.shares.some((s) => s.author === i.author && s.doc_id === i.doc_id));
+            const theirs = (feed.items || [])
+                .filter((i) => !i.trusted_only && !i.settled) // a sealed or settled post is not passed along (2026-09-08)
+                .filter(
+                    (i) =>
+                        i.author !== p.root &&
+                        !p.shares.some((s) => s.author === i.author && s.doc_id === i.doc_id),
+                );
             // Half the time, prefer something that reached this persona BY a share. Uniform
             // draws make a network where every post is passed along at most once, so the
             // crowd behind a row - `via_count`, `via_others`, the whole "Sam and four others"
@@ -518,22 +639,31 @@ const ACTIONS = [
             p.labels = p.labels || [];
             if (p.labels.length && rng() < 1 / 6) {
                 const said = ctx.pick(rng, p.labels);
-                await api(p, 'DELETE',
-                    `/api/identity/${p.root}/public-annotations/${said.author}/${said.doc_id}/tag/${encodeURIComponent(said.value)}`);
+                await api(
+                    p,
+                    'DELETE',
+                    `/api/identity/${p.root}/public-annotations/${said.author}/${said.doc_id}/tag/${encodeURIComponent(said.value)}`,
+                );
                 p.labels = p.labels.filter((l) => l !== said);
                 return;
             }
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
             // Two tags to a person on anybody else's post - words and reactions alike.
-            const said = (i) => p.labels.filter((l) => l.author === i.author && l.doc_id === i.doc_id).length;
+            const said = (i) =>
+                p.labels.filter((l) => l.author === i.author && l.doc_id === i.doc_id).length;
             const theirs = (feed.items || []).filter((i) => i.author !== p.root && said(i) < 2);
             const item = ctx.pick(rng, theirs);
             if (!item) return;
             const value = ctx.pick(rng, LABELS);
-            await api(p, 'PUT', `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`, {
-                key: 'tag',
-                value,
-            });
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`,
+                {
+                    key: 'tag',
+                    value,
+                },
+            );
             p.labels.push({ author: item.author, doc_id: item.doc_id, value });
         },
     },
@@ -584,18 +714,32 @@ const ACTIONS = [
             // persona lives. The pair is usually free there; a rare clash gets a suffix.
             let username = p.username;
             let creds = JSON.stringify({ username, password: PASSWORD });
-            let reg = await s.fetch('/api/auth/register', { method: 'POST', headers: J, body: creds });
+            let reg = await s.fetch('/api/auth/register', {
+                method: 'POST',
+                headers: J,
+                body: creds,
+            });
             if (reg.status >= 400) {
                 username = `${p.username}-${1 + Math.floor(rng() * 98)}`;
                 creds = JSON.stringify({ username, password: PASSWORD });
-                reg = await s.fetch('/api/auth/register', { method: 'POST', headers: J, body: creds });
+                reg = await s.fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: J,
+                    body: creds,
+                });
                 if (reg.status >= 400) return;
             }
             await s.fetch('/api/auth/login', { method: 'POST', headers: J, body: creds });
-            const begin = await (await s.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })).json();
-            const grant = await api(p, 'POST', `/api/identity/${p.root}/nodes`, { code: begin.code });
+            const begin = await (
+                await s.fetch('/api/identity/adopt/begin', { method: 'POST', headers: J })
+            ).json();
+            const grant = await api(p, 'POST', `/api/identity/${p.root}/nodes`, {
+                code: begin.code,
+            });
             const done = await s.fetch('/api/identity/adopt/complete', {
-                method: 'POST', headers: J, body: JSON.stringify({ code: grant.code }),
+                method: 'POST',
+                headers: J,
+                body: JSON.stringify({ code: grant.code }),
             });
             if (done.status === 200) p.bases.push(target);
         },
@@ -616,7 +760,8 @@ const ACTIONS = [
             });
             await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/chat`);
             const pub = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {
-                room: true, trusted_only,
+                room: true,
+                trusted_only,
             });
             ctx.rooms.push({ author: p.root, doc: pub.post_id, base: p.base, trusted_only });
         },
@@ -639,14 +784,24 @@ const ACTIONS = [
             }
             let entered = false;
             for (let tries = 0; tries < 6 && !entered; tries++) {
-                const knock = await p.fetch(`/api/identity/${p.root}/rooms/${room.author}/${room.doc}`);
+                const knock = await p.fetch(
+                    `/api/identity/${p.root}/rooms/${room.author}/${room.doc}`,
+                );
                 if (knock.status === 200) entered = true;
                 else if (tries < 5) await new Promise((res) => setTimeout(res, 300));
-                else throw new Error(`GET room ${room.doc} -> ${knock.status} ${(await knock.text()).slice(0, 120)}`);
+                else
+                    throw new Error(
+                        `GET room ${room.doc} -> ${knock.status} ${(await knock.text()).slice(0, 120)}`,
+                    );
             }
             for (let i = 0; i < 3; i++) {
                 const words = ctx.lorem(rng, 1).split('. ')[0].slice(0, 120);
-                await api(p, 'POST', `/api/identity/${p.root}/rooms/${room.author}/${room.doc}/messages`, { words });
+                await api(
+                    p,
+                    'POST',
+                    `/api/identity/${p.root}/rooms/${room.author}/${room.doc}/messages`,
+                    { words },
+                );
             }
         },
     },
@@ -693,15 +848,14 @@ async function api(p, method, path, body) {
 // The upload fixture, read once: the smallest bitmap in sample_media (~11KB). Small on
 // purpose - this exercises the ingest pipeline's SHAPE (quarantine, transcode, thumbnail),
 // and a bigger file would only measure the transcoder.
-const picture = fs.readFileSync(
-    new URL('../../sample_media/its_webp.webp', import.meta.url)
-);
+const picture = fs.readFileSync(new URL('../../sample_media/its_webp.webp', import.meta.url));
 
 // Deterministic RNG (mulberry32): same seed, same network.
 function mulberry32(seed) {
     let a = seed >>> 0;
     return () => {
-        a |= 0; a = (a + 0x6d2b79f5) | 0;
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
         let t = Math.imul(a ^ (a >>> 15), 1 | a);
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -733,8 +887,10 @@ const LOREM = [
 
 function lorem(rng, paragraphs) {
     const para = () =>
-        Array.from({ length: 1 + Math.floor(rng() * 4) }, () => LOREM[Math.floor(rng() * LOREM.length)])
-            .join(' ');
+        Array.from(
+            { length: 1 + Math.floor(rng() * 4) },
+            () => LOREM[Math.floor(rng() * LOREM.length)],
+        ).join(' ');
     return Array.from({ length: paragraphs }, para).join('\n\n');
 }
 
@@ -773,10 +929,14 @@ for (const port of candidatePorts) {
     }
 }
 if (!nodes.length) {
-    console.error('no nodes are up (tried ports ' + candidatePorts.join(', ') + ') - `just start` first');
+    console.error(
+        'no nodes are up (tried ports ' + candidatePorts.join(', ') + ') - `just start` first',
+    );
     process.exit(1);
 }
-console.log(`seed ${SEED} | nodes: ${nodes.join(', ')} | ${PERSONAS} personas x ${PER} actions each`);
+console.log(
+    `seed ${SEED} | nodes: ${nodes.join(', ')} | ${PERSONAS} personas x ${PER} actions each`,
+);
 
 const endpoints = new Map();
 const endpointOf = async (base) => {
@@ -802,16 +962,22 @@ for (const base of nodes) {
         for (let tries = 0; tries < 8 && !who; tries++) {
             const pair = namePair(rng);
             const creds = JSON.stringify({ username: pair.username, password: PASSWORD });
-            const reg = await s.fetch('/api/auth/register', { method: 'POST', headers: J, body: creds });
+            const reg = await s.fetch('/api/auth/register', {
+                method: 'POST',
+                headers: J,
+                body: creds,
+            });
             if (reg.status < 400) {
                 who = pair;
             } else {
                 const why = (await reg.text()).slice(0, 120);
                 if (!why.includes('taken')) {
-                    console.error(`registration refused on ${base}: ${why}`
-                        + (why.includes('password')
-                            ? ' (a network-facing node keeps the 8-char password floor)'
-                            : ''));
+                    console.error(
+                        `registration refused on ${base}: ${why}` +
+                            (why.includes('password')
+                                ? ' (a network-facing node keeps the 8-char password floor)'
+                                : ''),
+                    );
                     process.exit(1);
                 }
             }
@@ -821,13 +987,19 @@ for (const base of nodes) {
             process.exit(1);
         }
         await s.fetch('/api/auth/login', {
-            method: 'POST', headers: J,
+            method: 'POST',
+            headers: J,
             body: JSON.stringify({ username: who.username, password: PASSWORD }),
         });
         const made = await (await s.fetch('/api/identity', { method: 'POST', headers: J })).json();
         const p = {
-            base, bases: [base], root: made.root_pubkey, username: who.username,
-            fetch: s.fetch, buckets: [], name: who.display,
+            base,
+            bases: [base],
+            root: made.root_pubkey,
+            username: who.username,
+            fetch: s.fetch,
+            buckets: [],
+            name: who.display,
             served: false, // born dark; `go-public` flips it
             // What this persona has made, so the actions below have something to revisit:
             // private notes as { doc_id, head } (head is the parent an edit asserts), the
@@ -839,7 +1011,9 @@ for (const base of nodes) {
             // draws. The authoritative list is `GET /rebroadcasts`, and it is not consulted -
             // a generator that re-read it every round would spend its time asking rather than
             // seeding, and nothing else here writes shares for these personas.
-            notes: [], taxonomies: [], shares: [],
+            notes: [],
+            taxonomies: [],
+            shares: [],
         };
         await api(p, 'POST', `/api/identity/${p.root}/profile`, { field: 'name', value: p.name });
         personas.push(p);
@@ -879,23 +1053,37 @@ for (let round = 0; round < PER; round++) {
         const batch = personas.length * 10;
         const rate = ((now - lastReport) / Math.min(batch, done || 1)).toFixed(0);
         lastReport = now;
-        console.log(`  round ${round + 1}/${PER}: ${done} actions, ${failed} failed`
-            + ` (${rate}ms/action this stretch, ${((now - t0) / 1000).toFixed(0)}s total)`);
+        console.log(
+            `  round ${round + 1}/${PER}: ${done} actions, ${failed} failed` +
+                ` (${rate}ms/action this stretch, ${((now - t0) / 1000).toFixed(0)}s total)`,
+        );
     }
 }
 
 const statePath = new URL('./testdata-state.json', import.meta.url).pathname;
-fs.writeFileSync(statePath, JSON.stringify({
-    seed: SEED,
-    password: PASSWORD,
-    generated_at: new Date().toISOString(),
-    personas: personas.map((p) => ({
-        username: p.username, name: p.name, root: p.root, nodes: p.bases,
-    })),
-}, null, 2));
-console.log(`done: ${done} actions (${failed} failed`
-    + (failures.size ? `: ${[...failures].map(([k, v]) => `${k} x${v}`).join(', ')}` : '')
-    + `) in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+fs.writeFileSync(
+    statePath,
+    JSON.stringify(
+        {
+            seed: SEED,
+            password: PASSWORD,
+            generated_at: new Date().toISOString(),
+            personas: personas.map((p) => ({
+                username: p.username,
+                name: p.name,
+                root: p.root,
+                nodes: p.bases,
+            })),
+        },
+        null,
+        2,
+    ),
+);
+console.log(
+    `done: ${done} actions (${failed} failed` +
+        (failures.size ? `: ${[...failures].map(([k, v]) => `${k} x${v}`).join(', ')}` : '') +
+        `) in ${((Date.now() - t0) / 1000).toFixed(0)}s`,
+);
 
 // The roster: who you can walk around as. The login is the name.
 console.log(`\nlog in as any of these (password for everyone: ${PASSWORD}):`);

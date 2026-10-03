@@ -1,14 +1,14 @@
 # Popularity Problems: the 50k-follow investigation
 
-*2026-08-07 to 2026-08-08. Extracted from [`../HISTORY.md`](../HISTORY.md) when the arc
+_2026-08-07 to 2026-08-08. Extracted from [`../HISTORY.md`](../HISTORY.md) when the arc
 outgrew its tail - ten entries kept whole rather than folded, because the interesting part is
 the sequence: nearly every fix here was made smaller and better by a question asked after the
-first version of it was proposed.*
+first version of it was proposed._
 
 ## What it was
 
-A thought experiment - *"let's create a hypothetical, super popular user: 50,000 incoming
-follows, 50,000 outgoing ones: where does the platform get very slow?"* - answered by audit
+A thought experiment - _"let's create a hypothetical, super popular user: 50,000 incoming
+follows, 50,000 outgoing ones: where does the platform get very slow?"_ - answered by audit
 rather than by guess. The finding that framed everything after it: the follow ledger was
 assumed small in about nine distinct places (`subscriptions.rs` said so in as many words),
 one path was genuinely O(F squared), and every mitigation the codebase had was on the
@@ -200,11 +200,11 @@ rows now ship as per-socket diffs like the roster does, so saving one note among
 thousand sends one changed row and its search tokens, not the library. Two design upgrades
 over the roster's first draft, both of which then simplified the roster itself:
 
-* **Baselines hold fingerprints, never rows.** A blake3 of each serialized row, keyed by
+- **Baselines hold fingerprints, never rows.** A blake3 of each serialized row, keyed by
   doc_id/root - search token bags are the stream's biggest rows, and a socket must not hold
   a second copy of the store to know what it shipped. One generic `ship_kind` now serves all
   three keyed kinds.
-* **An unprimed baseline ships whole.** Yesterday's live-reconnect fix primed the roster
+- **An unprimed baseline ships whole.** Yesterday's live-reconnect fix primed the roster
   baseline with a read at connect; today's shape deletes that: a fresh socket's baseline is
   simply None, and a kind's FIRST movement ships the kind whole (which the client already
   applies as clear-and-replace, so removals are carried without any baseline) and primes it.
@@ -263,7 +263,7 @@ Curtis asked two questions about the memo refresh ("why ARE we looking for a sub
 that's not in a set? why on every post ingest?") and both answers turned out to be "no good
 reason", which made the fix smaller and better than the batching pass originally planned:
 
-* **The NOT IN literal was doing a job a timestamp already does.** The refresh is
+- **The NOT IN literal was doing a job a timestamp already does.** The refresh is
   clear-and-replace, and its removal half deleted the complement of an inlined keep-list -
   megabytes of quoted hex, re-parsed per call (giant constant IN-lists cost at PREPARE, not
   probe), and doomed anyway: SQLite refuses statements past its 1MB default length ceiling,
@@ -274,7 +274,7 @@ reason", which made the fix smaller and better than the batching pass originally
   rewrite computes eager_before for backfill detection, so it KNOWS who crossed out of the
   eager set - the excise now takes that delta (almost always one name) instead of deleting
   the complement of everything.
-* **The post-ingest refresh fired blind.** The hook exists so a dial turned on your phone
+- **The post-ingest refresh fired blind.** The hook exists so a dial turned on your phone
   reaches your laptop's memo by event rather than the ten-minute backstop - but it fired on
   ANY batch, and a batch of posts cannot carry a dial. Entry services ride in the clear, so
   the gate now reports whether a general-private entry was actually STORED
@@ -345,10 +345,10 @@ mentions" - and was using it in exactly one place, the anonymous doc-bytes probe
 call sites needed it, and the second one only surfaced because the first fix's test went
 red on a rerun after passing once:
 
-* **`fanout::backfill_follow`** - whose own doc comment had always claimed a persona "not
+- **`fanout::backfill_follow`** - whose own doc comment had always claimed a persona "not
   here yet" was skipped, which `get`'s create-on-open meant it never was. The doc described
   the intent; the code did the opposite.
-* **`idface::stored_tree_leaves`** - the real minter behind the flake, caught in the node log
+- **`idface::stored_tree_leaves`** - the real minter behind the flake, caught in the node log
   (`generated new database encryption key` for the stranger root, thirteen milliseconds
   before `background revalidation reached nobody`). Its doc said "callers must hold a reason
   to believe the mirror exists" - but one caller is the WAKE PASS, whose entire job is
@@ -382,10 +382,10 @@ instead of the callers.
 `UserDbManager::get` now returns `Result<Option<Db>>`, and the create-on-open half became
 its own verb. Three doors where there was one:
 
-* **`get` -> `Option`** - read if held. Absence is a value the compiler makes you handle.
-* **`held`** - read, where absence is a BUG (a persona this node hosts, whose database was
+- **`get` -> `Option`** - read if held. Absence is a value the compiler makes you handle.
+- **`held`** - read, where absence is a BUG (a persona this node hosts, whose database was
   minted at creation). Never mints, so the worst a misuse does is fail loudly.
-* **`create`** - mint if absent. The rare, deliberate half: identity creation, and both ends
+- **`create`** - mint if absent. The rare, deliberate half: identity creation, and both ends
   of a sync exchange, where a first arrival is the point.
 
 Twenty-nine call sites, compiler-driven, and the per-file totals came out IDENTICAL to
@@ -397,10 +397,10 @@ three - because a read path must never quietly become one.
 
 Both plants went red before green, and the first is the one worth keeping:
 
-* Deleting an absence check (`let db = ...get(x).await?` used as a `Db`) now **fails to
+- Deleting an absence check (`let db = ...get(x).await?` used as a `Db`) now **fails to
   compile** - `expected &Db, found &Option<Db>`. The bug that shipped twice in one afternoon
   and cost ~96 KB of empty database per stranger is now unwritable, not merely discouraged.
-* An added `create` in a read module turns the new cop red with the file named.
+- An added `create` in a read module turns the new cop red with the file named.
 
 Two things surfaced on the way past, and the first one was WRONG - corrected here the same
 day, in place, because a false claim in the log is worse than an ugly one. This entry

@@ -168,10 +168,8 @@ pub async fn refresh(
     let store = crate::record::store::open(state, account_id, root_hex)
         .await
         .map_err(|e| anyhow::anyhow!("opening {root_hex} to read its ledger: {e}"))?;
-    let contacts = store
-        .contacts()
-        .await
-        .map_err(|e| anyhow::anyhow!("reading the contact ledger: {e}"))?;
+    let contacts =
+        store.contacts().await.map_err(|e| anyhow::anyhow!("reading the contact ledger: {e}"))?;
 
     // The eager set BEFORE the rewrite, so the rewrite's delta is visible after: an edge
     // crossing from silent to eager is a new follow (backfill their page into this feed), and
@@ -262,11 +260,8 @@ pub async fn refresh(
     // in fanout (feed_journal is its table); both are idempotent, and both take the DELTA -
     // who crossed the eager line, either way - because this function is the one place that
     // knows it.
-    let unfollowed: Vec<String> = eager_before
-        .iter()
-        .filter(|a| !eager_now.contains(*a))
-        .cloned()
-        .collect();
+    let unfollowed: Vec<String> =
+        eager_before.iter().filter(|a| !eager_now.contains(*a)).cloned().collect();
     crate::fanout::excise_unfollowed(state, root_hex, &unfollowed)
         .await
         .context("excising unfollowed feeds")?;
@@ -396,10 +391,7 @@ pub async fn rebroadcast_follows_among(
 /// recomputed implicit set - including trust-only relationships neither feed worklist sees.
 pub async fn dialed_by(node_db: &crate::db::Db, foreign_root: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
-        .fetch_all(
-            "SELECT local_root FROM subscriptions WHERE foreign_root = ?1",
-            (foreign_root,),
-        )
+        .fetch_all("SELECT local_root FROM subscriptions WHERE foreign_root = ?1", (foreign_root,))
         .await
         .context("listing who dials a persona")?;
     Ok(rows.into_iter().map(|(r,)| r).collect())
@@ -490,7 +482,6 @@ pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, St
     Ok(rows)
 }
 
-
 /// One pass. `who` is the identity a write nudge named - a contact dial is a private-chain
 /// write like any other, so turning one wakes this with that persona's name on it. `None` (a
 /// tick, or a lag that can no longer say) rebuilds everyone's.
@@ -564,10 +555,7 @@ mod tests {
     use super::*;
 
     fn facts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
     #[test]

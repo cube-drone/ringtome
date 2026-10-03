@@ -8,57 +8,57 @@
     entry": no explanation, mid-action, and the post left sitting as a draft. The primary key is
     the backstop; it should not be what users meet.
 */
-const assert = require("node:assert");
-const { makeUserFetch } = require("./helpers.cjs");
+const assert = require('node:assert');
+const { makeUserFetch } = require('./helpers.cjs');
 
 let owner, root;
 
 before(async () => {
-    owner = await makeUserFetch({ prefix: "concur" });
-    const made = await (await owner("api/identity", { method: "POST" })).json();
+    owner = await makeUserFetch({ prefix: 'concur' });
+    const made = await (await owner('api/identity', { method: 'POST' })).json();
     root = made.root_pubkey;
 });
 
-describe("concurrent authorship", () => {
-    it("takes eight documents created at once, and loses none", async () => {
+describe('concurrent authorship', () => {
+    it('takes eight documents created at once, and loses none', async () => {
         const made = await Promise.all(
             Array.from({ length: 8 }, (_, i) =>
-                owner("api/identity/" + root + "/docs", {
-                    method: "POST",
-                    body: JSON.stringify({ title: `at once ${i}`, body: "x", format: "plaintext" }),
-                })
-            )
+                owner('api/identity/' + root + '/docs', {
+                    method: 'POST',
+                    body: JSON.stringify({ title: `at once ${i}`, body: 'x', format: 'plaintext' }),
+                }),
+            ),
         );
         for (const r of made) {
             assert.equal(r.status, 200, await r.text());
         }
         const list = await (await owner(`api/identity/${root}/docs`)).json();
         const docs = Array.isArray(list) ? list : list.docs || [];
-        const titles = docs.map((d) => d.title).filter((t) => t.startsWith("at once "));
-        assert.equal(new Set(titles).size, 8, "all eight are there, exactly once each");
+        const titles = docs.map((d) => d.title).filter((t) => t.startsWith('at once '));
+        assert.equal(new Set(titles).size, 8, 'all eight are there, exactly once each');
     });
 
     it("publishes while another write lands - Feed's own shape", async () => {
         const note = await (
             await owner(`api/identity/${root}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title: "Simultaneous", body: "said", format: "plaintext" }),
+                method: 'POST',
+                body: JSON.stringify({ title: 'Simultaneous', body: 'said', format: 'plaintext' }),
             })
         ).json();
         // Publish and mint the next draft together, which is exactly what the Feed app does
         // the moment you press Post.
         const [pub, mint] = await Promise.all([
-            owner(`api/identity/${root}/docs/${note.doc_id}/publish`, { method: "POST" }),
+            owner(`api/identity/${root}/docs/${note.doc_id}/publish`, { method: 'POST' }),
             owner(`api/identity/${root}/docs`, {
-                method: "POST",
-                body: JSON.stringify({ title: "", body: "", format: "marquee" }),
+                method: 'POST',
+                body: JSON.stringify({ title: '', body: '', format: 'marquee' }),
             }),
         ]);
         assert.equal(pub.status, 200, await pub.text());
         assert.equal(mint.status, 200, await mint.text());
     });
 
-    it("keeps the chain a chain - one entry per seq, no gaps", async () => {
+    it('keeps the chain a chain - one entry per seq, no gaps', async () => {
         const entries = await (await owner(`api/identity/${root}/entries?limit=500`)).json();
         const list = entries.items;
         const bySeq = new Map();
@@ -78,7 +78,7 @@ describe("concurrent authorship", () => {
             assert.deepEqual(
                 sorted,
                 sorted.map((_, i) => i),
-                `service ${service} runs 0..n without a gap`
+                `service ${service} runs 0..n without a gap`,
             );
         }
     });

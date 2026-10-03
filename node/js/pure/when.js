@@ -8,7 +8,10 @@
 // time) never shows a time it doesn't have: it is the day, with the year when it isn't this one.
 // Hover titles that exist to give the exact moment keep the whole of it, and don't come here.
 
-const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const sameDay = (a, b) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
 
 /// The `Intl.DateTimeFormat` options for showing `ms` to a reader whose now is `now`.
 export function whenOptions(ms, now = Date.now(), { time = true } = {}) {

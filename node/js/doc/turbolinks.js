@@ -76,7 +76,10 @@ const ROOM_ICON = `<svg class="rt-card-icon" viewBox="0 0 256 256" fill="current
 const BOOK_ICON = `<svg class="rt-card-book" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,56V200H160a32,32,0,0,0-32,32,32,32,0,0,0-32-32H24V56H96a32,32,0,0,1,32,32,32,32,0,0,1,32-32Z" opacity="0.2"/><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/></svg>`;
 
 const escapeHtml = (s) =>
-    String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    String(s).replace(
+        /[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+    );
 
 /// How many words a post card quotes (2026-09-28): a glance, not a read.
 const PREVIEW_WORDS = 30;
@@ -91,7 +94,8 @@ const PREVIEW_WORDS = 30;
 function firstPicture(words) {
     for (const m of (words || '').matchAll(/!\[[^\]\n]*\]\(([^)\s]+)\)/g)) {
         const path = mediaPath(m[1], typeof window === 'undefined' ? '' : window.location.origin);
-        if (path && ownMediaKind(path) === 'image') return path.replace(/\/body(\/[^/]*)?$/, '/thumb');
+        if (path && ownMediaKind(path) === 'image')
+            return path.replace(/\/body(\/[^/]*)?$/, '/thumb');
     }
     return '';
 }
@@ -99,10 +103,15 @@ function firstPicture(words) {
 async function previewOf(seg, root, doc, post) {
     if (post.trusted_only) return { preview: '', cover: '' };
     // A post that IS a picture (a published drawing): its own thumbnail, and its bytes are never words.
-    if (OWN_MEDIA_KINDS[post.format]) return { preview: '', cover: `/id/${root}/docs/${doc}/thumb` };
+    if (OWN_MEDIA_KINDS[post.format])
+        return { preview: '', cover: `/id/${root}/docs/${doc}/thumb` };
     try {
         const text = await apiText(`/id/${root}/docs/${doc}/body`);
-        if (post.format !== 'book') return { preview: excerpt(text, post.format || 'marquee', PREVIEW_WORDS) || '', cover: firstPicture(text) };
+        if (post.format !== 'book')
+            return {
+                preview: excerpt(text, post.format || 'marquee', PREVIEW_WORDS) || '',
+                cover: firstPicture(text),
+            };
         const book = parseBook(text);
         const page = book && book.cover && book.cover.post;
         if (!page) return { preview: '', cover: '' };
@@ -130,7 +139,8 @@ async function resolveRingtome(target) {
     // The profile first: for someone this node does not carry, asking is the peek that makes
     // their posts readable here at all.
     const profile = await api(`/api/id/${ref.seg}/profile${via}`).catch(() => null);
-    const field = (k) => (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
+    const field = (k) =>
+        (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
     const who = { root, name: field('name'), avatar: field('avatar') };
     if (!ref.kind) return { ...who, kind: 'person', href: ref.path, title: field('bio') };
     if (ref.kind === 'room') return resolveRoom(ref, who);
@@ -186,31 +196,48 @@ async function resolveRingtome(target) {
 /// what. As the reader sees them - a room the reader may not enter gives its title where that is
 /// public, and never its words.
 async function resolveRoom(ref, who) {
-    const card = { ...who, kind: 'room', href: ref.path, title: '', speaker: null, words: '', sealed: false };
+    const card = {
+        ...who,
+        kind: 'room',
+        href: ref.path,
+        title: '',
+        speaker: null,
+        words: '',
+        sealed: false,
+    };
     try {
         const post = await api(`/api/id/${ref.seg}/posts/${ref.doc}`);
         card.title = post.title || '';
         card.sealed = !!post.trusted_only;
         // A sealed room's title travels with its words, for whoever may have them.
-        if (!card.title && post.trusted_only) card.title = (await apiTextTitled(`/id/${who.root}/docs/${ref.doc}/body`).catch(() => ({}))).title || '';
+        if (!card.title && post.trusted_only)
+            card.title =
+                (await apiTextTitled(`/id/${who.root}/docs/${ref.doc}/body`).catch(() => ({})))
+                    .title || '';
     } catch {
         /* not on this node's shelf: the room may still answer its members */
     }
     // Whether this reader may enter: a sealed room refuses its history to anyone it does not admit.
     if (card.sealed && !ref.line && reader) {
-        const open = await api(`/api/identity/${reader}/rooms/${who.root}/${ref.doc}/messages?limit=1`)
+        const open = await api(
+            `/api/identity/${reader}/rooms/${who.root}/${ref.doc}/messages?limit=1`,
+        )
             .then(() => true)
             .catch(() => false);
         card.locked = !open;
     }
     if (ref.line && reader) {
         try {
-            const page = await api(`/api/identity/${reader}/rooms/${who.root}/${ref.doc}/messages?at=${ref.line}&limit=20`);
+            const page = await api(
+                `/api/identity/${reader}/rooms/${who.root}/${ref.doc}/messages?at=${ref.line}&limit=20`,
+            );
             const line = (page.items || []).find((m) => m.hash === ref.line);
             if (line && typeof line.words === 'string') {
                 card.words = excerpt(line.words, 'marquee') || line.words;
                 const profile = await api(`/api/id/${line.speaker}/profile`).catch(() => null);
-                const field = (k) => (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
+                const field = (k) =>
+                    (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value ||
+                    '';
                 card.speaker = { root: line.speaker, name: field('name'), avatar: field('avatar') };
                 card.when = line.said_ms || null;
             }
@@ -226,13 +253,25 @@ async function resolveRoom(ref, who) {
 function renderRoom(data, level) {
     // A room this reader may not enter says so (Curtis, 2026-09-28) - clicking it lands on the room's
     // own refusal, and the card should not promise more.
-    const room = data.title || (data.locked ? t('doc.turbolinks.a-private-chat-room', 'a private chat room') : t('doc.turbolinks.a-chat-room', 'a chat room'));
+    const room =
+        data.title ||
+        (data.locked
+            ? t('doc.turbolinks.a-private-chat-room', 'a private chat room')
+            : t('doc.turbolinks.a-chat-room', 'a chat room'));
     const owner = data.name || wordsFor(data.root).join('-');
     const speaker = data.speaker && (data.speaker.name || wordsFor(data.speaker.root).join('-'));
-    const face = data.speaker && (data.speaker.avatar ? `/id/${data.speaker.root}/docs/${data.speaker.avatar}/thumb` : identiconUri(data.speaker.root));
+    const face =
+        data.speaker &&
+        (data.speaker.avatar
+            ? `/id/${data.speaker.root}/docs/${data.speaker.avatar}/thumb`
+            : identiconUri(data.speaker.root));
     const when =
         level === 'full' && data.when
-            ? new Date(data.when).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+            ? new Date(data.when).toLocaleDateString(undefined, {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+              })
             : '';
     return (
         `<a class="rt-card rt-card-room" href="${escapeHtml(data.href)}">` +
@@ -252,7 +291,9 @@ function renderRingtome(data, level) {
     if (data.private) {
         return `<span class="rt-card rt-card-private">${escapeHtml(t('doc.turbolinks.this-document-is-private', '(THIS DOCUMENT IS PRIVATE)'))}</span>`;
     }
-    const face = data.avatar ? `/id/${data.root}/docs/${data.avatar}/thumb` : identiconUri(data.root);
+    const face = data.avatar
+        ? `/id/${data.root}/docs/${data.avatar}/thumb`
+        : identiconUri(data.root);
     const who = data.name || wordsFor(data.root).join('-');
     const line =
         data.kind === 'room'
@@ -264,17 +305,27 @@ function renderRingtome(data, level) {
     const preview = data.kind === 'post' && data.title ? data.preview : '';
     const when =
         level === 'full' && data.when
-            ? new Date(data.when).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+            ? new Date(data.when).toLocaleDateString(undefined, {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+              })
             : '';
     return (
         `<a class="rt-card rt-card-${data.kind}" href="${escapeHtml(data.href)}">` +
         `<img class="rt-card-face" src="${escapeHtml(face)}" alt="">` +
         `<span class="rt-card-text"><span class="rt-card-who">${escapeHtml(who)}</span>` +
-        (line ? `<span class="rt-card-title">${data.book ? BOOK_ICON : ''}${escapeHtml(line)}</span>` : '') +
-        (level === 'full' && preview ? `<span class="rt-card-preview">${escapeHtml(preview)}</span>` : '') +
+        (line
+            ? `<span class="rt-card-title">${data.book ? BOOK_ICON : ''}${escapeHtml(line)}</span>`
+            : '') +
+        (level === 'full' && preview
+            ? `<span class="rt-card-preview">${escapeHtml(preview)}</span>`
+            : '') +
         (when ? `<span class="rt-card-when">${escapeHtml(when)}</span>` : '') +
         `</span>` +
-        (level === 'full' && data.thumb ? `<img class="rt-card-thumb" src="${escapeHtml(data.thumb)}" alt="" loading="lazy">` : '') +
+        (level === 'full' && data.thumb
+            ? `<img class="rt-card-thumb" src="${escapeHtml(data.thumb)}" alt="" loading="lazy">`
+            : '') +
         `</a>`
     );
 }
@@ -339,7 +390,7 @@ export function useTurbolinks(source, format) {
             alive = false;
         };
     }, [source, format]);
-     
+
     return useMemo(
         () => ({
             // Ringtome's own media spellings (pure/mediakind.js) - `.apng` and `.opus` twins
@@ -355,6 +406,6 @@ export function useTurbolinks(source, format) {
         // counter is the only identity the renderer can see change. The memo exists to mint a
         // fresh profile object per resolution batch - "unnecessary" is exactly backwards.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [gen]
+        [gen],
     );
 }

@@ -10,7 +10,12 @@
 use crate::db::Db;
 use anyhow::{Context, Result};
 
-pub async fn remember(node_db: &Db, author_root: &str, doc_hex: &str, key: &[u8; 32]) -> Result<()> {
+pub async fn remember(
+    node_db: &Db,
+    author_root: &str,
+    doc_hex: &str,
+    key: &[u8; 32],
+) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO post_keys (author_root, doc_id, key, noted_ms) VALUES (?1, ?2, ?3, ?4)
@@ -35,7 +40,12 @@ pub async fn lookup(node_db: &Db, author_root: &str, doc_hex: &str) -> Result<Op
 
 /// The audience a post is sealed to, on the author's own node (PROJECT_PLAN's Contact tags,
 /// ruling 4): a contact tag, or None for everyone the author trusts.
-pub async fn set_audience(node_db: &Db, author_root: &str, doc_hex: &str, audience: Option<&str>) -> Result<()> {
+pub async fn set_audience(
+    node_db: &Db,
+    author_root: &str,
+    doc_hex: &str,
+    audience: Option<&str>,
+) -> Result<()> {
     node_db
         .execute(
             "UPDATE post_keys SET audience = ?3 WHERE author_root = ?1 AND doc_id = ?2",
@@ -67,7 +77,12 @@ pub const MENTIONED_AUDIENCE: &str = "@mentioned";
 pub const ONWARD_AUDIENCE: &str = "@onward";
 
 /// Replace a post's own audience with `members` (roots, hex).
-pub async fn set_members(node_db: &Db, author_root: &str, doc_hex: &str, members: &[String]) -> Result<()> {
+pub async fn set_members(
+    node_db: &Db,
+    author_root: &str,
+    doc_hex: &str,
+    members: &[String],
+) -> Result<()> {
     node_db
         .execute(
             "DELETE FROM post_audience_members WHERE author_root = ?1 AND doc_id = ?2",

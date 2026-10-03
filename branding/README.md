@@ -1,14 +1,14 @@
 # Branding
 
-Horse Drawing Tycoon 2's own pictures (README's *Two names*: the app is Horse Drawing Tycoon 2, the
+Horse Drawing Tycoon 2's own pictures (README's _Two names_: the app is Horse Drawing Tycoon 2, the
 protocol under it Ringtome).
 
-| file | what |
-|---|---|
-| `hdt_logo.kra`, `hdt_logo.png` | the logo: the horse in its purple ring. The source of every icon. 256×256, which is as large as it was drawn |
-| `hdt_logo_1024.png` | the logo scaled to 1024 (Lanczos), margins as drawn: the source for Windows, Linux and web icons |
-| `hdt_logo_1024_macos.png` | the logo at 824 on a transparent 1024 canvas - Apple's icon grid, so it sits at the same size as its neighbours in the Dock: the source for `icon.icns` only |
-| `hdt_2_banner.kra`, `hdt_2_banner.png` | the banner, 1024×768: a README / website / release-page picture, not an icon |
+| file                                   | what                                                                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `hdt_logo.kra`, `hdt_logo.png`         | the logo: the horse in its purple ring. The source of every icon. 256×256, which is as large as it was drawn                                                 |
+| `hdt_logo_1024.png`                    | the logo scaled to 1024 (Lanczos), margins as drawn: the source for Windows, Linux and web icons                                                             |
+| `hdt_logo_1024_macos.png`              | the logo at 824 on a transparent 1024 canvas - Apple's icon grid, so it sits at the same size as its neighbours in the Dock: the source for `icon.icns` only |
+| `hdt_2_banner.kra`, `hdt_2_banner.png` | the banner, 1024×768: a README / website / release-page picture, not an icon                                                                                 |
 
 ## Remaking the icons
 

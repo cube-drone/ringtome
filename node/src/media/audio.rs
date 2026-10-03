@@ -323,9 +323,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
         if !seen_tags {
             seen_tags = true;
             if !packet.data.starts_with(b"OpusTags") {
-                return Err(CrushError::Decode(
-                    "ogg opus stream missing OpusTags".into(),
-                ));
+                return Err(CrushError::Decode("ogg opus stream missing OpusTags".into()));
             }
             continue;
         }
@@ -366,9 +364,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
     {
         let mut writer = PacketWriter::new(Cursor::new(&mut out));
         let map_io = |e: std::io::Error| CrushError::Decode(format!("ogg write failed: {e}"));
-        writer
-            .write_packet(head.data, serial, PacketWriteEndInfo::EndPage, 0)
-            .map_err(map_io)?;
+        writer.write_packet(head.data, serial, PacketWriteEndInfo::EndPage, 0).map_err(map_io)?;
         writer
             .write_packet(minimal_opus_tags(), serial, PacketWriteEndInfo::EndPage, 0)
             .map_err(map_io)?;
@@ -382,9 +378,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
             } else {
                 PacketWriteEndInfo::NormalPacket
             };
-            writer
-                .write_packet(packet.data, serial, info, packet.granule)
-                .map_err(map_io)?;
+            writer.write_packet(packet.data, serial, info, packet.granule).map_err(map_io)?;
         }
     }
 
@@ -466,12 +460,7 @@ fn check_channel_bound(channels: usize) -> Result<(), CrushError> {
 fn probe_track(input: &[u8]) -> Result<ProbedTrack, CrushError> {
     let source = MediaSourceStream::new(Box::new(Cursor::new(input.to_vec())), Default::default());
     let probed = symphonia::default::get_probe()
-        .format(
-            &Hint::new(),
-            source,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )
+        .format(&Hint::new(), source, &FormatOptions::default(), &MetadataOptions::default())
         .map_err(|e| CrushError::Unsupported(format!("not a recognised audio format: {e}")))?;
     let format = probed.format;
 
@@ -547,14 +536,10 @@ fn measure_duration_ms(input: &[u8], max_ms: u64) -> Result<u64, CrushError> {
             .unwrap_or(0);
     }
     if ms == 0 {
-        return Err(CrushError::Decode(
-            "could not determine audio duration".into(),
-        ));
+        return Err(CrushError::Decode("could not determine audio duration".into()));
     }
     if ms > max_ms {
-        return Err(CrushError::TooLong(format!(
-            "audio runs {ms} ms, over the {max_ms} ms bound"
-        )));
+        return Err(CrushError::TooLong(format!("audio runs {ms} ms, over the {max_ms} ms bound")));
     }
     Ok(ms)
 }
@@ -649,11 +634,7 @@ fn decode_downmixed(
 
         // (Re)size the interleave buffer to this packet's frame capacity, reusing it when it fits.
         let needed = decoded.capacity() as u64;
-        if sample_buf
-            .as_ref()
-            .map(|b| b.capacity() < needed as usize * channels)
-            != Some(false)
-        {
+        if sample_buf.as_ref().map(|b| b.capacity() < needed as usize * channels) != Some(false) {
             sample_buf = Some(SampleBuffer::new(needed, spec));
         }
         let buf = sample_buf.as_mut().expect("buffer was just ensured");
@@ -676,11 +657,7 @@ fn decode_downmixed(
         }
 
         let mixed = downmix(interleaved, channels);
-        sink(PcmChunk {
-            samples: &mixed,
-            channels: channels.min(2),
-            rate: source_rate,
-        })?;
+        sink(PcmChunk { samples: &mixed, channels: channels.min(2), rate: source_rate })?;
     }
     Ok(())
 }
@@ -723,9 +700,7 @@ fn crush_via_decode(
             u64::from(bitrate_bps).saturating_mul(cap_bytes) / (pass.bytes.len().max(1) as u64);
         bitrate_bps = ((scaled * 98 / 100) as u32).max(FLOOR_BITRATE_BPS);
     }
-    Err(CrushError::TooLong(
-        "could not fit under the byte cap after re-encoding lower".into(),
-    ))
+    Err(CrushError::TooLong("could not fit under the byte cap after re-encoding lower".into()))
 }
 
 /// What one encode pass produces - [`Crushed`] before the fit-the-cap loop has settled the
@@ -952,9 +927,8 @@ impl StreamResampler {
             partial_len: Some(frames),
             active_channels_mask: None,
         };
-        let (_, produced) = resampler
-            .process_into_buffer(&input, &mut output, Some(&indexing))
-            .map_err(map_rs)?;
+        let (_, produced) =
+            resampler.process_into_buffer(&input, &mut output, Some(&indexing)).map_err(map_rs)?;
         let mut data = output.take_data();
         data.truncate(produced * self.channels);
         // Trim the startup delay off the front of the stream.
@@ -1015,9 +989,7 @@ impl LibopusEncoder {
             )
         };
         if st.is_null() || err != 0 {
-            return Err(CrushError::Decode(format!(
-                "opus encoder init failed (code {err})"
-            )));
+            return Err(CrushError::Decode(format!("opus encoder init failed (code {err})")));
         }
         let mut encoder = LibopusEncoder { st };
         encoder.set(OPUS_SET_BITRATE_REQUEST, bitrate_bps as i32)?;
@@ -1175,12 +1147,7 @@ fn mux_ogg_opus(encoded: &EncodedOpus, channels: u8) -> Result<Vec<u8>, CrushErr
             )
             .map_err(map_io)?;
         writer
-            .write_packet(
-                minimal_opus_tags(),
-                OGG_STREAM_SERIAL,
-                PacketWriteEndInfo::EndPage,
-                0,
-            )
+            .write_packet(minimal_opus_tags(), OGG_STREAM_SERIAL, PacketWriteEndInfo::EndPage, 0)
             .map_err(map_io)?;
 
         // A page's granule counts the samples decodable through it - INCLUDING the pre-skip
@@ -1239,10 +1206,7 @@ impl WaveformEnvelope {
     fn new(duration_ms: u64, source_rate: u32) -> Self {
         WaveformEnvelope {
             peaks: [0.0; WAVEFORM_BUCKETS],
-            expected_frames: duration_ms
-                .saturating_mul(u64::from(source_rate))
-                .max(1_000)
-                / 1_000,
+            expected_frames: duration_ms.saturating_mul(u64::from(source_rate)).max(1_000) / 1_000,
             position: 0,
         }
     }
@@ -1328,26 +1292,16 @@ mod tests {
     fn parse_ogg_opus(bytes: &[u8]) -> ParsedOpus {
         let mut reader = PacketReader::new(Cursor::new(bytes));
         let head = reader.read_packet().unwrap().expect("opus head");
-        assert!(
-            head.data.starts_with(b"OpusHead"),
-            "first packet is OpusHead"
-        );
+        assert!(head.data.starts_with(b"OpusHead"), "first packet is OpusHead");
         let serial = head.stream_serial();
         let tags = reader.read_packet().unwrap().expect("opus tags");
-        assert!(
-            tags.data.starts_with(b"OpusTags"),
-            "second packet is OpusTags"
-        );
+        assert!(tags.data.starts_with(b"OpusTags"), "second packet is OpusTags");
         let mut packets = Vec::new();
         while let Some(p) = reader.read_packet().unwrap() {
             assert_eq!(p.stream_serial(), serial, "single logical stream");
             packets.push((p.data.clone(), p.absgp_page()));
         }
-        ParsedOpus {
-            head: head.data,
-            tags: tags.data,
-            packets,
-        }
+        ParsedOpus { head: head.data, tags: tags.data, packets }
     }
 
     /// Duration in ms implied by the final page granule, per RFC 7845 (granule - pre-skip, 48 kHz).
@@ -1409,10 +1363,7 @@ mod tests {
             // SAFETY: valid create arguments; the state is null-checked and destroyed in Drop.
             let st =
                 unsafe { unsafe_libopus::opus_decoder_create(48_000, channels as i32, &mut err) };
-            assert!(
-                !st.is_null() && err == 0,
-                "opus decoder create failed ({err})"
-            );
+            assert!(!st.is_null() && err == 0, "opus decoder create failed ({err})");
             TestOpusDecoder { st, channels }
         }
 
@@ -1470,10 +1421,8 @@ mod tests {
     /// Decode `bytes` with ffmpeg (which applies pre-skip and end trim itself) and measure.
     /// Returns `None` where ffmpeg isn't installed, so CI without it still runs everything else.
     fn ffmpeg_stats(name: &str, bytes: &[u8]) -> Option<(f64, f32)> {
-        let path = std::env::temp_dir().join(format!(
-            "ringtome-audio-loudness-{}-{name}.ogg",
-            std::process::id()
-        ));
+        let path = std::env::temp_dir()
+            .join(format!("ringtome-audio-loudness-{}-{name}.ogg", std::process::id()));
         std::fs::write(&path, bytes).ok()?;
         let output = std::process::Command::new("ffmpeg")
             .args(["-v", "error", "-i"])
@@ -1482,17 +1431,9 @@ mod tests {
             .output();
         let _ = std::fs::remove_file(&path);
         let output = output.ok()?; // ffmpeg not installed: referee waived
-        assert!(
-            output.status.success(),
-            "ffmpeg failed decoding {name}'s crushed output"
-        );
-        let samples: Vec<f32> = output
-            .stdout
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|c| f32::from_le_bytes(*c))
-            .collect();
+        assert!(output.status.success(), "ffmpeg failed decoding {name}'s crushed output");
+        let samples: Vec<f32> =
+            output.stdout.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
         assert!(!samples.is_empty(), "{name}: ffmpeg decoded no samples");
         Some((rms_db_of(&samples), peak_of(&samples)))
     }
@@ -1614,10 +1555,7 @@ mod tests {
 
             assert!(!out.passthrough, "{name} takes the decode lane");
             assert_eq!(out.channels, 2, "{name} is stereo");
-            assert_eq!(
-                out.bitrate_bps, HOUSE_BITRATE_BPS,
-                "{name} gets house bitrate"
-            );
+            assert_eq!(out.bitrate_bps, HOUSE_BITRATE_BPS, "{name} gets house bitrate");
 
             let parsed = parse_ogg_opus(&out.bytes);
             let (channels, _) = parse_opus_head(&parsed.head).unwrap();
@@ -1638,10 +1576,7 @@ mod tests {
                 out.duration_ms
             );
 
-            if matches!(
-                name,
-                "buck-audio.wav" | "buck-audio.flac" | "buck-audio.mp3"
-            ) {
+            if matches!(name, "buck-audio.wav" | "buck-audio.flac" | "buck-audio.mp3") {
                 assert!(
                     out.bytes.len() < input.len(),
                     "{name} shrinks ({} -> {})",
@@ -1676,11 +1611,7 @@ mod tests {
         let src = parse_ogg_opus(&input);
         let ours = parse_ogg_opus(&out.bytes);
         assert_eq!(src.head, ours.head, "OpusHead preserved verbatim");
-        assert_eq!(
-            src.packets.len(),
-            ours.packets.len(),
-            "audio packet count preserved"
-        );
+        assert_eq!(src.packets.len(), ours.packets.len(), "audio packet count preserved");
         for (i, ((src_data, src_granule), (our_data, our_granule))) in
             src.packets.iter().zip(&ours.packets).enumerate()
         {
@@ -1689,18 +1620,10 @@ mod tests {
         }
 
         // OpusTags stripped to the minimal shape: our vendor string, zero user comments.
-        assert_eq!(
-            ours.tags,
-            minimal_opus_tags(),
-            "OpusTags is ours and minimal"
-        );
+        assert_eq!(ours.tags, minimal_opus_tags(), "OpusTags is ours and minimal");
         let src_vendor_len = u32::from_le_bytes(src.tags[8..12].try_into().unwrap());
         let src_vendor = &src.tags[12..12 + src_vendor_len as usize];
-        assert_ne!(
-            src_vendor,
-            OPUS_VENDOR.as_bytes(),
-            "fixture has a foreign vendor"
-        );
+        assert_ne!(src_vendor, OPUS_VENDOR.as_bytes(), "fixture has a foreign vendor");
         assert!(
             (19_000..=21_000).contains(&out.duration_ms),
             "duration from granules ≈20 s (got {} ms)",
@@ -1713,13 +1636,8 @@ mod tests {
     #[test]
     fn fit_to_cap_engages() {
         let cap: u64 = 60_000; // 480 kbit over ~20 s => ~24 kbps: between FLOOR and HOUSE
-        let out = crush(
-            &corpus("buck-audio.wav"),
-            CrushOpts {
-                max_bytes: Some(cap),
-            },
-        )
-        .expect("fit-to-cap crush succeeds");
+        let out = crush(&corpus("buck-audio.wav"), CrushOpts { max_bytes: Some(cap) })
+            .expect("fit-to-cap crush succeeds");
         assert!(!out.passthrough);
         let expected = fit_bitrate_bps(cap, out.duration_ms);
         assert!(
@@ -1751,13 +1669,8 @@ mod tests {
         // is proportionally fattest. The OLD formula answered ~13.4 kbps here: ~33 kB of
         // payload plus the container = over the cap, every time.
         let cap: u64 = 33_000;
-        let out = crush(
-            &corpus("buck-audio.wav"),
-            CrushOpts {
-                max_bytes: Some(cap),
-            },
-        )
-        .expect("near-floor crush succeeds");
+        let out = crush(&corpus("buck-audio.wav"), CrushOpts { max_bytes: Some(cap) })
+            .expect("near-floor crush succeeds");
         assert!(!out.passthrough);
         assert!(
             out.bitrate_bps < FLOOR_BITRATE_BPS + 1_000,
@@ -1776,16 +1689,8 @@ mod tests {
     #[test]
     fn too_long_rejected() {
         // 20_000 bytes at the 12 kbps floor is ~13.3 s of budget; the fixture runs 20 s.
-        let result = crush(
-            &corpus("buck-audio.flac"),
-            CrushOpts {
-                max_bytes: Some(20_000),
-            },
-        );
-        assert!(
-            matches!(result, Err(CrushError::TooLong(_))),
-            "expected TooLong, got {result:?}"
-        );
+        let result = crush(&corpus("buck-audio.flac"), CrushOpts { max_bytes: Some(20_000) });
+        assert!(matches!(result, Err(CrushError::TooLong(_))), "expected TooLong, got {result:?}");
     }
 
     /// Garbage in, clean Unsupported out - never a panic. Random bytes and a JPEG-shaped blob.
@@ -1826,25 +1731,12 @@ mod tests {
         assert!(!contains(&out.bytes, b"ID3"), "ID3 does not survive");
 
         let ogg = corpus("buck-audio.ogg");
-        assert!(
-            contains(&ogg, b"Lavf"),
-            "vorbis fixture carries an encoder vendor"
-        );
+        assert!(contains(&ogg, b"Lavf"), "vorbis fixture carries an encoder vendor");
         let out = crush(&ogg, CrushOpts::default()).expect("vorbis crushes");
-        assert!(
-            !contains(&out.bytes, b"Lavf"),
-            "source vendor does not survive"
-        );
-        assert!(
-            !contains(&out.bytes, b"libVorbis"),
-            "no vorbis vendor either"
-        );
+        assert!(!contains(&out.bytes, b"Lavf"), "source vendor does not survive");
+        assert!(!contains(&out.bytes, b"libVorbis"), "no vorbis vendor either");
         let parsed = parse_ogg_opus(&out.bytes);
-        assert_eq!(
-            parsed.tags,
-            minimal_opus_tags(),
-            "output metadata is ours, minimal"
-        );
+        assert_eq!(parsed.tags, minimal_opus_tags(), "output metadata is ours, minimal");
     }
 
     /// The resample path (absent from the 48 kHz corpus): a synthetic 44.1 kHz WAV comes out the

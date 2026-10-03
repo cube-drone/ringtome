@@ -38,10 +38,7 @@ impl EncKeyPair {
     /// Reconstruct a keypair from its secret bytes (public is derived).
     pub fn from_secret(secret: [u8; 32]) -> Self {
         let kp = KeyPair::from_secret_key(SecretKey::from(secret));
-        EncKeyPair {
-            public: *kp.public_key.as_ref(),
-            secret: *kp.secret_key.as_ref(),
-        }
+        EncKeyPair { public: *kp.public_key.as_ref(), secret: *kp.secret_key.as_ref() }
     }
 
     fn dryoc(&self) -> KeyPair {
@@ -85,10 +82,7 @@ fn derive(seed: &[u8; 32], context: &[u8]) -> [u8; 32] {
 pub fn derive_recovery(seed: &[u8; 32]) -> (SigningKey, EncKeyPair) {
     let sign_seed = derive(seed, b"ringtome-v0/recovery/sign");
     let enc_seed = derive(seed, b"ringtome-v0/recovery/enc");
-    (
-        SigningKey::from_bytes(&sign_seed),
-        EncKeyPair::from_secret(enc_seed),
-    )
+    (SigningKey::from_bytes(&sign_seed), EncKeyPair::from_secret(enc_seed))
 }
 
 #[cfg(test)]
@@ -102,21 +96,14 @@ mod tests {
         let secret = b"epoch key material goes here!!!!";
 
         let sealed = seal(secret, &alice.public).unwrap();
-        assert_eq!(
-            unseal(&sealed, &alice).unwrap(),
-            secret,
-            "recipient opens it"
-        );
+        assert_eq!(unseal(&sealed, &alice).unwrap(), secret, "recipient opens it");
         assert!(unseal(&sealed, &bob).is_none(), "non-recipient cannot");
     }
 
     #[test]
     fn from_secret_is_deterministic() {
         let s = [9u8; 32];
-        assert_eq!(
-            EncKeyPair::from_secret(s).public,
-            EncKeyPair::from_secret(s).public
-        );
+        assert_eq!(EncKeyPair::from_secret(s).public, EncKeyPair::from_secret(s).public);
     }
 
     #[test]

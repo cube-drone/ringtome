@@ -48,7 +48,10 @@ export const PushToggle = ({ root }) => {
         let live = true;
         (async () => {
             try {
-                const [{ endpoints }, sub] = await Promise.all([api(`/api/identity/${root}/push`), currentSubscription()]);
+                const [{ endpoints }, sub] = await Promise.all([
+                    api(`/api/identity/${root}/push`),
+                    currentSubscription(),
+                ]);
                 if (live) setOn(subscribedHere(sub && sub.endpoint, endpoints));
             } catch {
                 /* the control starts off; turning it on will say what went wrong */
@@ -74,7 +77,11 @@ export const PushToggle = ({ root }) => {
             let sub = await reg.pushManager.getSubscription();
             const wanted = keyBytes(public_key);
             const sameKey = (s) => {
-                const k = s && s.options && s.options.applicationServerKey && new Uint8Array(s.options.applicationServerKey);
+                const k =
+                    s &&
+                    s.options &&
+                    s.options.applicationServerKey &&
+                    new Uint8Array(s.options.applicationServerKey);
                 return !!k && k.length === wanted.length && k.every((b, i) => b === wanted[i]);
             };
             // A subscription made against another key (this node's key changed, or another node
@@ -83,8 +90,15 @@ export const PushToggle = ({ root }) => {
                 await sub.unsubscribe();
                 sub = null;
             }
-            if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wanted });
-            await api(`/api/identity/${root}/push`, { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+            if (!sub)
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: wanted,
+                });
+            await api(`/api/identity/${root}/push`, {
+                method: 'POST',
+                body: JSON.stringify(sub.toJSON()),
+            });
             setOn(true);
         } catch (e) {
             setError(e.message || String(e));
@@ -98,7 +112,11 @@ export const PushToggle = ({ root }) => {
         setError(null);
         try {
             const sub = await currentSubscription();
-            if (sub) await api(`/api/identity/${root}/push/forget`, { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) });
+            if (sub)
+                await api(`/api/identity/${root}/push/forget`, {
+                    method: 'POST',
+                    body: JSON.stringify({ endpoint: sub.endpoint }),
+                });
             setOn(false);
         } catch (e) {
             setError(e.message || String(e));
@@ -130,7 +148,7 @@ export const PushToggle = ({ root }) => {
         return html`<p class="push-note">${t('push.needs-https', 'notifications in this browser need https (or localhost)')}</p>`;
     }
     if (state === 'denied') {
-        return html`<p class="push-note">${t('push.blocked', 'notifications are blocked for this site - your browser\'s settings can allow them')}</p>`;
+        return html`<p class="push-note">${t('push.blocked', "notifications are blocked for this site - your browser's settings can allow them")}</p>`;
     }
     return html`<div class="push-toggle">
         <button class="push-button jag-line" disabled=${busy} onClick=${on ? turnOff : turnOn}>
@@ -138,14 +156,20 @@ export const PushToggle = ({ root }) => {
         </button>
         ${on && html`<button class="push-button jag-line" disabled=${busy} onClick=${sendTest}>${t('push.send-a-test', 'send a test')}</button>`}
         ${error && html`<span class="push-error">${error}</span>`}
-        ${report &&
-        html`<span class="push-note">
-            ${report.length === 0
-                ? t('push.no-browsers', 'no browser is subscribed for this persona')
-                : report.map((d) => `${d.service}: ${d.outcome}`).join(' · ')}
-            ${report.some((d) => d.outcome === 'delivered') &&
-            html` - ${t('push.delivered-but-nothing', 'delivered; if nothing popped up, look in your notification centre - a Focus mode like Do Not Disturb files them silently, and on a Mac System Settings > Notifications decides for this browser')}`}
-        </span>`}
+        ${
+            report &&
+            html`<span class="push-note">
+            ${
+                report.length === 0
+                    ? t('push.no-browsers', 'no browser is subscribed for this persona')
+                    : report.map((d) => `${d.service}: ${d.outcome}`).join(' · ')
+            }
+            ${
+                report.some((d) => d.outcome === 'delivered') &&
+                html` - ${t('push.delivered-but-nothing', 'delivered; if nothing popped up, look in your notification centre - a Focus mode like Do Not Disturb files them silently, and on a Mac System Settings > Notifications decides for this browser')}`
+            }
+        </span>`
+        }
     </div>`;
 };
 
@@ -157,7 +181,13 @@ export const PushRoutes = () => {
         if (!('serviceWorker' in navigator)) return undefined;
         const onMessage = (event) => {
             const d = event.data;
-            if (d && d.type === 'route' && typeof d.route === 'string' && (d.route.startsWith('/ringtome') || d.route.startsWith('/home'))) loc.route(d.route);
+            if (
+                d &&
+                d.type === 'route' &&
+                typeof d.route === 'string' &&
+                (d.route.startsWith('/ringtome') || d.route.startsWith('/home'))
+            )
+                loc.route(d.route);
         };
         navigator.serviceWorker.addEventListener('message', onMessage);
         return () => navigator.serviceWorker.removeEventListener('message', onMessage);

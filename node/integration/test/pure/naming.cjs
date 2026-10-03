@@ -9,18 +9,36 @@
 // is the client-side echo of proto's test vectors: an invariant rather than an example.
 const assert = require('node:assert');
 
-let slugify, bucketFor, bucketNameFor, needsTree, matchSlugPath, buildSlugPath, rootTitleFor,
-    HEX_ID, MEDIA_EXT, pathSegments;
+let slugify,
+    bucketFor,
+    bucketNameFor,
+    needsTree,
+    matchSlugPath,
+    buildSlugPath,
+    rootTitleFor,
+    HEX_ID,
+    MEDIA_EXT,
+    pathSegments;
 before(async () => {
-    ({ slugify, bucketFor, bucketNameFor, needsTree, matchSlugPath, buildSlugPath, rootTitleFor,
-       HEX_ID, MEDIA_EXT, pathSegments } = await import('../../../js/pure/naming.js'));
+    ({
+        slugify,
+        bucketFor,
+        bucketNameFor,
+        needsTree,
+        matchSlugPath,
+        buildSlugPath,
+        rootTitleFor,
+        HEX_ID,
+        MEDIA_EXT,
+        pathSegments,
+    } = await import('../../../js/pure/naming.js'));
 });
 
 // 32 hex chars, so ids look like the real thing (and HEX_ID accepts them).
 const id = (n) => String(n).padStart(2, '0').repeat(16);
 const doc = (n, title, buckets = ['default']) => ({ doc_id: id(n), title, buckets });
 const tax = (tid, title, members) => ({ taxonomy_id: tid, title, members });
-const inTree = (t) => ({ doc_id: t.taxonomy_id, taxonomy: t });   // a section member
+const inTree = (t) => ({ doc_id: t.taxonomy_id, taxonomy: t }); // a section member
 const leaf = (d) => ({ doc_id: d.doc_id, doc: { title: d.title } }); // a document member
 // A built path wears one of two floors (2026-09-08): `/home/<app>/...` or `/in/<bucket>/...`.
 const segsOf = (path) => path.replace(/^\/(home|in)\//, '').split('/');
@@ -134,7 +152,10 @@ describe('matchSlugPath', () => {
     const docs = [doc(1, 'Soup', ['Cook Book']), doc(2, 'Bread', ['Cook Book'])];
 
     it("a bare bucket is the bucket's own list; nothing at all is nothing (2026-09-08)", () => {
-        assert.deepEqual(matchSlugPath(['notes'], { roster, docs }), { appId: 'notes', docId: null });
+        assert.deepEqual(matchSlugPath(['notes'], { roster, docs }), {
+            appId: 'notes',
+            docId: null,
+        });
         assert.equal(matchSlugPath([], { roster, docs }), null);
         assert.equal(matchSlugPath(['no-such-bucket'], { roster, docs }), null);
     });
@@ -175,30 +196,50 @@ describe('matchSlugPath', () => {
         const both = [soup, other];
 
         it('walks sections by slugified title and matches the leaf inside', () => {
-            assert.equal(matchSlugPath(['cook-book', 'starters', 'soup'],
-                { roster, docs: both, tree }).docId, id(1));
-            assert.equal(matchSlugPath(['cook-book', 'mains', 'soup'],
-                { roster, docs: both, tree }).docId, id(2));
+            assert.equal(
+                matchSlugPath(['cook-book', 'starters', 'soup'], { roster, docs: both, tree })
+                    .docId,
+                id(1),
+            );
+            assert.equal(
+                matchSlugPath(['cook-book', 'mains', 'soup'], { roster, docs: both, tree }).docId,
+                id(2),
+            );
         });
 
         it('falls back to a bucket-wide title match when the section walk misses', () => {
             // A document dragged to a new section keeps its old links working: "puddings" is gone,
             // so the forgiving pass takes over and finds the lowest-id "Soup" in the bucket.
-            assert.equal(matchSlugPath(['cook-book', 'puddings', 'soup'],
-                { roster, docs: both, tree }).docId, id(1));
+            assert.equal(
+                matchSlugPath(['cook-book', 'puddings', 'soup'], { roster, docs: both, tree })
+                    .docId,
+                id(1),
+            );
         });
 
         it('falls back when the section exists but holds no such title', () => {
-            assert.equal(matchSlugPath(['cook-book', 'starters', 'bread'],
-                { roster, docs: [...both, doc(5, 'Bread', ['Cook Book'])], tree }).docId, id(5));
+            assert.equal(
+                matchSlugPath(['cook-book', 'starters', 'bread'], {
+                    roster,
+                    docs: [...both, doc(5, 'Bread', ['Cook Book'])],
+                    tree,
+                }).docId,
+                id(5),
+            );
         });
 
         it('walks two levels down', () => {
             const deep = tax('t0', 'wiki:Cook Book', [
                 inTree(tax('t1', 'Starters', [inTree(tax('t2', 'Cold', [leaf(soup)]))])),
             ]);
-            assert.equal(matchSlugPath(['cook-book', 'starters', 'cold', 'soup'],
-                { roster, docs: both, tree: deep }).docId, id(1));
+            assert.equal(
+                matchSlugPath(['cook-book', 'starters', 'cold', 'soup'], {
+                    roster,
+                    docs: both,
+                    tree: deep,
+                }).docId,
+                id(1),
+            );
         });
 
         it('breaks a duplicate SECTION title on the lowest taxonomy id', () => {
@@ -206,8 +247,14 @@ describe('matchSlugPath', () => {
                 inTree(tax('t9', 'Starters', [leaf(other)])),
                 inTree(tax('t1', 'Starters', [leaf(soup)])),
             ]);
-            assert.equal(matchSlugPath(['cook-book', 'starters', 'soup'],
-                { roster, docs: both, tree: dupes }).docId, id(1));
+            assert.equal(
+                matchSlugPath(['cook-book', 'starters', 'soup'], {
+                    roster,
+                    docs: both,
+                    tree: dupes,
+                }).docId,
+                id(1),
+            );
         });
 
         it('ignores a stub section (a second placement, carrying no members)', () => {
@@ -215,8 +262,14 @@ describe('matchSlugPath', () => {
                 inTree({ taxonomy_id: 't1', title: 'Starters' }), // no members: a stub
                 inTree(tax('t2', 'Starters', [leaf(soup)])),
             ]);
-            assert.equal(matchSlugPath(['cook-book', 'starters', 'soup'],
-                { roster, docs: both, tree: stubbed }).docId, id(1));
+            assert.equal(
+                matchSlugPath(['cook-book', 'starters', 'soup'], {
+                    roster,
+                    docs: both,
+                    tree: stubbed,
+                }).docId,
+                id(1),
+            );
         });
     });
 });
@@ -226,17 +279,31 @@ describe('where a notebook and a document live under /ringtome/ (2026-09-28)', (
         const n = await import('../../../js/pure/naming.js');
         assert.equal(n.bucketHref('default'), '/ringtome/notes');
         assert.equal(n.bucketHref('drawing'), '/ringtome/drawing');
-        assert.equal(n.bucketHref('Cook Book', [{ name: 'Cook Book', app: 'default' }]), '/ringtome/notes/notebook/cook-book');
+        assert.equal(
+            n.bucketHref('Cook Book', [{ name: 'Cook Book', app: 'default' }]),
+            '/ringtome/notes/notebook/cook-book',
+        );
     });
 
     it('a document opens in the notebook its address asks for, if it is filed there, else its first', async () => {
         const n = await import('../../../js/pure/naming.js');
-        const roster = [{ name: 'Cook Book', app: 'default' }, { name: 'Family Recipes', app: 'default' }];
+        const roster = [
+            { name: 'Cook Book', app: 'default' },
+            { name: 'Family Recipes', app: 'default' },
+        ];
         const soup = { doc_id: 'a'.repeat(32), buckets: ['Cook Book', 'Family Recipes'] };
         assert.equal(n.docPlacement(soup, roster, 'family-recipes').bucket, 'Family Recipes');
-        assert.equal(n.docPlacement(soup, roster, 'nowhere').bucket, 'Cook Book', 'a stale hint is harmless');
+        assert.equal(
+            n.docPlacement(soup, roster, 'nowhere').bucket,
+            'Cook Book',
+            'a stale hint is harmless',
+        );
         assert.equal(n.docPlacement(soup, roster, null).app.id, 'notes');
-        assert.equal(n.docPlacement({ buckets: [] }, roster, null).app.id, 'lost-found', 'unfiled: Lost & Found');
+        assert.equal(
+            n.docPlacement({ buckets: [] }, roster, null).app.id,
+            'lost-found',
+            'unfiled: Lost & Found',
+        );
         assert.equal(n.docPlacement({ buckets: ['drawing'] }, roster, null).app.id, 'drawing');
     });
 
@@ -244,22 +311,30 @@ describe('where a notebook and a document live under /ringtome/ (2026-09-28)', (
         const n = await import('../../../js/pure/naming.js');
         const soup = { buckets: ['Cook Book', 'Family Recipes'] };
         assert.equal(n.bucketHint(soup, 'Family Recipes'), 'family-recipes');
-        assert.equal(n.bucketHint({ buckets: ['Cook Book'] }, 'Cook Book'), null, 'filed once: no question');
+        assert.equal(
+            n.bucketHint({ buckets: ['Cook Book'] }, 'Cook Book'),
+            null,
+            'filed once: no question',
+        );
         assert.equal(n.bucketHint(soup, 'Somewhere Else'), null, 'not filed there: no hint');
     });
 });
 
 describe('buildSlugPath', () => {
     it('wears the app id for a home bucket', () => {
-        assert.equal(buildSlugPath(doc(1, 'Shopping List'), { docs: [doc(1, 'Shopping List')] }),
-            '/home/notes/shopping-list');
+        assert.equal(
+            buildSlugPath(doc(1, 'Shopping List'), { docs: [doc(1, 'Shopping List')] }),
+            '/home/notes/shopping-list',
+        );
     });
 
     it('wears a slugified name for a user bucket', () => {
         const roster = [{ name: 'Cook Book', app: 'feed' }];
         const d = doc(1, 'Soup', ['Cook Book']);
-        assert.equal(buildSlugPath(d, { roster, docs: [d], bucket: 'Cook Book' }),
-            '/in/cook-book/soup');
+        assert.equal(
+            buildSlugPath(d, { roster, docs: [d], bucket: 'Cook Book' }),
+            '/in/cook-book/soup',
+        );
     });
 
     it('falls back to the honest id when the title slugs to nothing', () => {
@@ -283,8 +358,7 @@ describe('buildSlugPath', () => {
         const tree = tax('t0', 'wiki:default', [
             inTree(tax('t1', 'Starters', [inTree(tax('t2', 'Cold', [leaf(d)]))])),
         ]);
-        assert.equal(buildSlugPath(d, { docs: [d], tree }),
-            '/home/notes/starters/cold/soup');
+        assert.equal(buildSlugPath(d, { docs: [d], tree }), '/home/notes/starters/cold/soup');
     });
 
     it('uses the FIRST occurrence of a diamond-placed document', () => {
@@ -304,8 +378,10 @@ describe('buildSlugPath', () => {
             inTree(tax('t1', 'Starters', [leaf(mine)])),
             inTree(tax('t2', 'Mains', [leaf(elsewhere)])),
         ]);
-        assert.equal(buildSlugPath(mine, { docs: [mine, elsewhere], tree }),
-            '/home/notes/starters/soup');
+        assert.equal(
+            buildSlugPath(mine, { docs: [mine, elsewhere], tree }),
+            '/home/notes/starters/soup',
+        );
     });
 
     it('is null for no document', () => {
@@ -319,7 +395,7 @@ describe('buildSlugPath', () => {
 // reproducible from its seed) over the shapes that actually break things: duplicate titles,
 // punctuation-only titles, unicode, sections that slugify alike, diamonds, and unfiled documents.
 describe('build -> match round trip', () => {
-    const lcg = (seed) => () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const lcg = (seed) => () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 
     const TITLES = ['Soup', 'soup', 'SOUP!', 'Bread', '', '!!!', 'Café', '日本語', 'a b', 'Bread'];
     const SECTIONS = ['Starters', 'starters', 'Mains', 'Odds & Ends', ''];
@@ -342,8 +418,9 @@ describe('build -> match round trip', () => {
                 const members = docs.filter(() => rand() < 0.5).map(leaf);
                 let node = tax(`t${s}`, SECTIONS[Math.floor(rand() * SECTIONS.length)], members);
                 if (rand() < 0.3) {
-                    node = tax(`t${s}o`, SECTIONS[Math.floor(rand() * SECTIONS.length)],
-                        [inTree(node)]);
+                    node = tax(`t${s}o`, SECTIONS[Math.floor(rand() * SECTIONS.length)], [
+                        inTree(node),
+                    ]);
                 }
                 sections.push(inTree(node));
             }
@@ -360,11 +437,18 @@ describe('build -> match round trip', () => {
             for (const row of docs) {
                 const path = buildSlugPath(row, { roster, docs, tree, bucket });
                 assert.ok(path, `seed ${seed}: no path for ${row.doc_id}`);
-                const hit = matchSlugPath(segsOf(path), { roster, docs, tree }, { cozy: cozyOf(path) });
+                const hit = matchSlugPath(
+                    segsOf(path),
+                    { roster, docs, tree },
+                    { cozy: cozyOf(path) },
+                );
                 assert.ok(hit, `seed ${seed}: ${path} resolved to nothing`);
-                assert.equal(hit.docId, row.doc_id,
+                assert.equal(
+                    hit.docId,
+                    row.doc_id,
                     `seed ${seed}: ${path} resolved to ${hit.docId}, wanted ${row.doc_id} ` +
-                    `(title ${JSON.stringify(row.title)})`);
+                        `(title ${JSON.stringify(row.title)})`,
+                );
                 checked++;
             }
         }
@@ -377,7 +461,11 @@ describe('build -> match round trip', () => {
             const { roster, docs, bucket } = world(rand);
             for (const row of docs) {
                 const path = buildSlugPath(row, { roster, docs, tree: null, bucket });
-                const hit = matchSlugPath(segsOf(path), { roster, docs, tree: null }, { cozy: cozyOf(path) });
+                const hit = matchSlugPath(
+                    segsOf(path),
+                    { roster, docs, tree: null },
+                    { cozy: cozyOf(path) },
+                );
                 assert.equal(hit && hit.docId, row.doc_id, `seed ${seed}: ${path}`);
             }
         }

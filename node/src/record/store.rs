@@ -127,19 +127,16 @@ pub struct PublicView {
 /// Open an identity's data for a logged-in owner: ownership check, signing key, epoch keys, and
 /// the per-identity database, assembled once.
 pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result<Store, AppError> {
-    let root = crate::pubkey::decode(root_hex)
-        .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey", "bad root pubkey")))?;
+    let root = crate::pubkey::decode(root_hex).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey", "bad root pubkey"))
+    })?;
     let signer =
         crate::identity::load_signing_key(&state.node_db, &state.keystore, account_id, root_hex)
             .await?;
     let leaf = signer.verifying_key().to_bytes();
     let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
         .map_err(AppError::Internal)?;
-    let db = state
-        .user_dbs
-        .held(root_hex)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(root_hex).await.map_err(AppError::Internal)?;
     let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
     // The persona did something here, signed in: today's heartbeat, once (heartbeat.rs).
     crate::heartbeat::note(state, root_hex);
@@ -155,19 +152,21 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
 /// (the scheduled-publish pass first). The inbox's key pattern: the node's leaf for the
 /// root, its encryption keypair, and the epochs that leaf can unseal.
 pub async fn open_agented(state: &AppState, root_hex: &str) -> Result<Store, AppError> {
-    let root = crate::pubkey::decode(root_hex)
-        .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey-2", "bad root pubkey")))?;
+    let root = crate::pubkey::decode(root_hex).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey-2", "bad root pubkey"))
+    })?;
     let signer = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex)
         .await?
-        .ok_or_else(|| AppError::NotFound(crate::msg!("record.store.this-node-does-not-agent", "this node does not agent that persona")))?;
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "record.store.this-node-does-not-agent",
+                "this node does not agent that persona"
+            ))
+        })?;
     let leaf = signer.verifying_key().to_bytes();
     let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
         .map_err(AppError::Internal)?;
-    let db = state
-        .user_dbs
-        .held(root_hex)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(root_hex).await.map_err(AppError::Internal)?;
     let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
     Ok(Store {
         db,
@@ -181,13 +180,12 @@ pub async fn open_agented(state: &AppState, root_hex: &str) -> Result<Store, App
 /// 404 when the node doesn't agent it.
 pub async fn read_public(state: &AppState, root_hex: &str) -> Result<PublicView, AppError> {
     if !crate::identity::is_agented(&state.node_db, root_hex).await? {
-        return Err(AppError::NotFound(crate::msg!("record.store.identity-not-found", "identity not found")));
+        return Err(AppError::NotFound(crate::msg!(
+            "record.store.identity-not-found",
+            "identity not found"
+        )));
     }
-    let db = state
-        .user_dbs
-        .held(root_hex)
-        .await
-        .map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(root_hex).await.map_err(AppError::Internal)?;
     Ok(PublicView { db })
 }
 
@@ -204,10 +202,7 @@ impl Store {
     /// A named private LWW-register collection ("contacts", "config", ...). Collections are
     /// created by writing to them; Tier 5's vouch/contact features will claim named ones.
     pub fn private_registers<'s>(&'s self, collection: &'s str) -> PrivateRegisters<'s> {
-        PrivateRegisters {
-            store: self,
-            collection,
-        }
+        PrivateRegisters { store: self, collection }
     }
 
     /// Every contact the ledger knows: one row per `contact:<root>` collection, its
@@ -233,10 +228,7 @@ impl Store {
             if out.last().is_none_or(|(last, _)| last != root) {
                 out.push((root.to_string(), std::collections::BTreeMap::new()));
             }
-            out.last_mut()
-                .expect("pushed above")
-                .1
-                .insert(r.key, r.value);
+            out.last_mut().expect("pushed above").1.insert(r.key, r.value);
         }
         Ok(out)
     }
@@ -288,10 +280,7 @@ impl Store {
 
     /// A named private LWW-element-set collection ("follows", ...).
     pub fn private_set<'s>(&'s self, collection: &'s str) -> PrivateSet<'s> {
-        PrivateSet {
-            store: self,
-            collection,
-        }
+        PrivateSet { store: self, collection }
     }
 
     /// Private labels for the identity's own keys ("macbook-curtis", not `dd7ee7d7...`) -
@@ -471,7 +460,6 @@ impl PublicEdges<'_> {
     ) -> Result<std::collections::BTreeMap<String, imaol::PublishedRow>, AppError> {
         imaol::published_edges(&self.store.db).await
     }
-
 }
 
 /// Sealing outbound notices. Its own door rather than a method on the edges: a notice is the
@@ -646,20 +634,13 @@ impl Devices<'_> {
                 limit = Self::MAX_NAME_BYTES,
             )));
         }
-        self.store
-            .private_registers(DEVICES_COLLECTION)
-            .set(&hex::encode(leaf), name)
-            .await
+        self.store.private_registers(DEVICES_COLLECTION).set(&hex::encode(leaf), name).await
     }
 
     /// Every named key, `pubkey hex → label`, merged across the identity's nodes. Empty labels
     /// read as unnamed (clearing a name is writing an empty one).
     pub async fn all(&self) -> Result<BTreeMap<String, String>, AppError> {
-        let (registers, _) = self
-            .store
-            .private_registers(DEVICES_COLLECTION)
-            .all()
-            .await?;
+        let (registers, _) = self.store.private_registers(DEVICES_COLLECTION).all().await?;
         Ok(registers
             .into_iter()
             .filter(|r| !r.value.is_empty())
@@ -683,7 +664,6 @@ impl Store {
         )
         .await
     }
-
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -720,10 +700,7 @@ fn ids_in(view: &private::PrivateView, collection: &str) -> BTreeSet<[u8; 16]> {
 /// The same parse for roster elements read per-collection (the `deleted()`/`pinned()` door,
 /// which seeks the memo instead of folding a view).
 fn ids_from(elements: Vec<private::SetElement>) -> BTreeSet<[u8; 16]> {
-    elements
-        .into_iter()
-        .filter_map(|e| hex::decode(&e.element).ok()?.try_into().ok())
-        .collect()
+    elements.into_iter().filter_map(|e| hex::decode(&e.element).ok()?.try_into().ok()).collect()
 }
 
 pub struct Documents<'s> {
@@ -754,7 +731,10 @@ impl Documents<'_> {
     }
 
     /// Save one version (the client asserts its parents). Returns the new version's hash.
-    pub async fn save(&self, mut save: crate::record::documents::Save) -> Result<[u8; 32], AppError> {
+    pub async fn save(
+        &self,
+        mut save: crate::record::documents::Save,
+    ) -> Result<[u8; 32], AppError> {
         // The header's embed index, DERIVED here - the one door every private save passes -
         // never trusted from the caller: `refs` is a claim about the body, and the body is in
         // hand. Marquee only (plaintext embeds nothing), own private documents only, external
@@ -814,9 +794,16 @@ impl Documents<'_> {
 
     /// One document of the view, without building the rest of it (`materialize_one`): what
     /// every single-document read asks for. None when nothing of it is stored.
-    pub async fn one(&self, doc_id: &[u8; 16]) -> Result<Option<crate::record::documents::Doc>, AppError> {
-        crate::record::documents::materialize_one(&self.store.db, &self.store.authorship.epoch_keys, doc_id)
-            .await
+    pub async fn one(
+        &self,
+        doc_id: &[u8; 16],
+    ) -> Result<Option<crate::record::documents::Doc>, AppError> {
+        crate::record::documents::materialize_one(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            doc_id,
+        )
+        .await
     }
 
     /// Which of `ids` the view holds (`held_of`): the embed checks, without the view.
@@ -829,9 +816,7 @@ impl Documents<'_> {
     /// and annotation text (field values and tags, so a long description is exactly as
     /// findable as body prose). Stale rows refresh on this read, the same catch-up-on-read
     /// discipline as every view; the stream ships these to the mirror, where queries run local.
-    pub async fn search_rows(
-        &self,
-    ) -> Result<Vec<crate::record::documents::SearchRow>, AppError> {
+    pub async fn search_rows(&self) -> Result<Vec<crate::record::documents::SearchRow>, AppError> {
         // Annotation text per doc, own-root collections only: value text and tag names, in
         // stable order so the staleness fingerprint can't wobble.
         let view = self.store.doc_meta_view().await?;
@@ -859,10 +844,7 @@ impl Documents<'_> {
             }
         }
         // Deleted docs drop out of search too, read from the same view we already folded.
-        let deleted: BTreeSet<String> = deleted_from_view(&view)
-            .iter()
-            .map(hex::encode)
-            .collect();
+        let deleted: BTreeSet<String> = deleted_from_view(&view).iter().map(hex::encode).collect();
         let rows = crate::record::documents::search_rows(
             &self.store.db,
             &self.store.authorship.epoch_keys,
@@ -871,10 +853,7 @@ impl Documents<'_> {
             &hex::encode(self.store.root),
         )
         .await?;
-        Ok(rows
-            .into_iter()
-            .filter(|r| !deleted.contains(&r.doc_id))
-            .collect())
+        Ok(rows.into_iter().filter(|r| !deleted.contains(&r.doc_id)).collect())
     }
 
     /// Delete a document: add its id to the tombstone roster (an LWW set-add on doc-meta). The
@@ -1023,8 +1002,14 @@ impl Documents<'_> {
     /// tag the note by its last count (a clean refresh is one query and some hashing).
     pub async fn implicit_tags(&self) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
         self.search_rows().await?;
-        let deleted: std::collections::HashSet<[u8; 16]> = self.deleted().await?.into_iter().collect();
-        crate::record::documents::private_implicit_tags(&self.store.db, &self.store.authorship.epoch_keys, &deleted).await
+        let deleted: std::collections::HashSet<[u8; 16]> =
+            self.deleted().await?.into_iter().collect();
+        crate::record::documents::private_implicit_tags(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            &deleted,
+        )
+        .await
     }
 
     /// Memoized display rows for a specific set of documents (the docs-by-tag read). Doc ids
@@ -1041,10 +1026,7 @@ impl Documents<'_> {
         )
         .await?;
         let deleted = self.deleted().await?;
-        Ok(rows
-            .into_iter()
-            .filter(|r| !deleted.contains(&r.doc_id))
-            .collect())
+        Ok(rows.into_iter().filter(|r| !deleted.contains(&r.doc_id)).collect())
     }
 
     /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
@@ -1066,10 +1048,7 @@ impl Documents<'_> {
     pub async fn blob(&self, hash: [u8; 32]) -> Result<Option<Vec<u8>>, AppError> {
         self.store
             .files
-            .get_decrypted(
-                iroh_blobs::Hash::from_bytes(hash),
-                &self.store.authorship.epoch_keys,
-            )
+            .get_decrypted(iroh_blobs::Hash::from_bytes(hash), &self.store.authorship.epoch_keys)
             .await
             .map_err(AppError::Internal)
     }
@@ -1105,15 +1084,26 @@ impl Documents<'_> {
         reply: Option<crate::record::documents::ReplyLinks>,
         flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
-        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of, seal_of, onward, room, im } = flags;
+        let crate::record::documents::PublishFlags {
+            settled,
+            trusted_only,
+            dated_ms,
+            part_of,
+            seal_of,
+            onward,
+            room,
+            im,
+        } = flags;
         // The one note, not the view (2026-10-02: a small edit to a big old post took ages to
         // publish - every publish folded the persona's whole notebook to find the note it was).
-        let doc = self
-            .one(doc_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(crate::msg!("record.store.no-such-document", "no such document")))?;
+        let doc = self.one(doc_id).await?.ok_or_else(|| {
+            AppError::NotFound(crate::msg!("record.store.no-such-document", "no such document"))
+        })?;
         if doc.diverged() {
-            return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "save this note once more before publishing")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.this-note-is-diverged--",
+                "save this note once more before publishing"
+            )));
         }
         let resolved = self.resolved(&doc).await?;
         let post_key = self.post_key_if(doc_id, trusted_only).await?;
@@ -1122,7 +1112,10 @@ impl Documents<'_> {
         let body = match body_override {
             Some(prepared) => prepared,
             None => resolved.body.ok_or_else(|| {
-                AppError::BadRequest(crate::msg!("record.store.this-notes-words-havent-arrived", "this note's words haven't arrived on this computer yet"))
+                AppError::BadRequest(crate::msg!(
+                    "record.store.this-notes-words-havent-arrived",
+                    "this note's words haven't arrived on this computer yet"
+                ))
             })?,
         };
         let format = doc
@@ -1133,9 +1126,14 @@ impl Documents<'_> {
         // into a picture and hands this a Marquee body embedding that picture, so the post is
         // words-and-a-picture like any other, and the drawing keeps `published_as` as a draft does.
         let format = match format {
-            crate::record::documents::Format::Drawing if prepared => crate::record::documents::Format::Marquee,
+            crate::record::documents::Format::Drawing if prepared => {
+                crate::record::documents::Format::Marquee
+            }
             crate::record::documents::Format::Drawing => {
-                return Err(AppError::BadRequest(crate::msg!("record.store.a-drawing-publishes-as-a-picture", "a drawing publishes as a picture, by its own door")));
+                return Err(AppError::BadRequest(crate::msg!(
+                    "record.store.a-drawing-publishes-as-a-picture",
+                    "a drawing publishes as a picture, by its own door"
+                )));
             }
             other => other,
         };
@@ -1143,7 +1141,10 @@ impl Documents<'_> {
             format,
             crate::record::documents::Format::Plaintext | crate::record::documents::Format::Marquee
         ) {
-            return Err(AppError::BadRequest(crate::msg!("record.store.media-publishes-by-its-own", "media publishes by its own door, not this one")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.media-publishes-by-its-own",
+                "media publishes by its own door, not this one"
+            )));
         }
         // A room (CHAT.md, ruling 1): the draft stays Marquee; the POST is a room.
         let format = if room { crate::record::documents::Format::Room } else { format };
@@ -1215,10 +1216,7 @@ impl Documents<'_> {
             },
         )
         .await?;
-        self.store
-            .annotations()
-            .set_field(doc_id, PUBLISHED_AS, &hex::encode(post))
-            .await?;
+        self.store.annotations().set_field(doc_id, PUBLISHED_AS, &hex::encode(post)).await?;
         Ok(post)
     }
 
@@ -1231,7 +1229,11 @@ impl Documents<'_> {
     /// so a draft that already holds a key hands it over whether or not THIS request says
     /// trusted-only. The edit flow never says it (Curtis, 2026-09-03: "a trusted-only mint
     /// arrived without its key" on editing a post), and a fresh trusted wish mints one.
-    pub async fn post_key_if(&self, doc_id: &[u8; 16], wanted: bool) -> Result<Option<[u8; 32]>, AppError> {
+    pub async fn post_key_if(
+        &self,
+        doc_id: &[u8; 16],
+        wanted: bool,
+    ) -> Result<Option<[u8; 32]>, AppError> {
         let existing = self
             .store
             .annotations()
@@ -1262,10 +1264,7 @@ impl Documents<'_> {
                     use rand::RngCore;
                     rand::rngs::OsRng.fill_bytes(&mut k);
                 }
-                self.store
-                    .annotations()
-                    .set_field(doc_id, TRUSTED_KEY, &hex::encode(k))
-                    .await?;
+                self.store.annotations().set_field(doc_id, TRUSTED_KEY, &hex::encode(k)).await?;
                 k
             }
         })
@@ -1299,13 +1298,18 @@ impl Documents<'_> {
         // The one document, not the view (2026-10-02): a post's every picture asked twice -
         // here and in `media_bytes_present` - so a fifteen-picture publish built a 1500-note
         // persona's whole view thirty times.
-        let doc = self
-            .one(media_doc)
-            .await?
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.an-embedded-media-document-is", "an embedded media document is missing")))?;
-        let head = doc
-            .display_head()
-            .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.embedded-media-has-no-readable", "embedded media has no readable head")))?;
+        let doc = self.one(media_doc).await?.ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "record.store.an-embedded-media-document-is",
+                "an embedded media document is missing"
+            ))
+        })?;
+        let head = doc.display_head().ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "record.store.embedded-media-has-no-readable",
+                "embedded media has no readable head"
+            ))
+        })?;
         let format = crate::record::documents::Format::from_wire(head.header.format);
         // Video joined the twins on 2026-09-03 (Curtis: "video that we've already encoded, a
         // relatively easy one to share across the internet"). The 2026-08-06 scope line kept
@@ -1320,7 +1324,10 @@ impl Documents<'_> {
             | crate::record::documents::Format::OggOpus
             | crate::record::documents::Format::WebmAv1 => {}
             _ => {
-                return Err(AppError::BadRequest(crate::msg!("record.store.an-embedded-target-is-not", "an embedded target is not a media document")));
+                return Err(AppError::BadRequest(crate::msg!(
+                    "record.store.an-embedded-target-is-not",
+                    "an embedded target is not a media document"
+                )));
             }
         }
         // Already baked by an earlier post? The same twin serves every embed of it -
@@ -1340,13 +1347,17 @@ impl Documents<'_> {
                 .and_then(|v| hex::decode(v).ok())
                 .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
             {
-                if crate::record::documents::public_head(&self.store.db, &existing).await?.is_some() {
+                if crate::record::documents::public_head(&self.store.db, &existing).await?.is_some()
+                {
                     return Ok((existing, format, head.header.animation));
                 }
             }
         }
         let body = self.body(head).await?.ok_or_else(|| {
-            AppError::BadRequest(crate::msg!("record.store.this-medias-bytes-havent-arrived", "this media's bytes haven't arrived on this computer yet"))
+            AppError::BadRequest(crate::msg!(
+                "record.store.this-medias-bytes-havent-arrived",
+                "this media's bytes haven't arrived on this computer yet"
+            ))
         })?;
         let thumb_avif = match head.header.thumb_hash {
             Some(h) => self.blob(h).await?,
@@ -1390,11 +1401,7 @@ impl Documents<'_> {
         &self,
         doc: &crate::record::documents::Doc,
     ) -> Result<crate::record::documents::ResolvedDoc, AppError> {
-        let (registers, _) = self
-            .store
-            .private_registers(DEVICES_COLLECTION)
-            .all()
-            .await?;
+        let (registers, _) = self.store.private_registers(DEVICES_COLLECTION).all().await?;
         let names: BTreeMap<[u8; 32], String> = registers
             .into_iter()
             .filter(|r| !r.value.is_empty())
@@ -1491,7 +1498,9 @@ impl Annotations<'_> {
                 if r.key != PUBLISHED_AS {
                     continue;
                 }
-                if let Some(post) = hex::decode(&r.value).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+                if let Some(post) =
+                    hex::decode(&r.value).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+                {
                     claimed.entry(post).or_insert(doc_id);
                 }
             }
@@ -1677,9 +1686,7 @@ impl Annotations<'_> {
                 }
             }
             // Insertion order, matching the per-doc `tags()` read (LWW-stamp total order).
-            entry
-                .tags
-                .extend(view.set_elements_ordered(collection).into_iter().map(|e| e.element));
+            entry.tags.extend(view.set_elements_ordered(collection).into_iter().map(|e| e.element));
         }
         Ok(rows.into_values().filter(|r| !r.is_empty()).collect())
     }
@@ -1696,10 +1703,7 @@ impl Annotations<'_> {
             tag,
         )
         .await?;
-        Ok(collections
-            .iter()
-            .filter_map(|name| parse_annot_collection(name))
-            .collect())
+        Ok(collections.iter().filter_map(|name| parse_annot_collection(name)).collect())
     }
 
     /// The identity's OWN documents currently tagged `tag` - the docs-by-tag listing's spine.
@@ -1775,7 +1779,10 @@ impl Buckets<'_> {
     fn clean(bucket: &str) -> Result<String, AppError> {
         let name = bucket.trim().to_string();
         if name.is_empty() {
-            return Err(AppError::BadRequest(crate::msg!("record.store.bucket-name-is-empty", "bucket name is empty")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.bucket-name-is-empty",
+                "bucket name is empty"
+            )));
         }
         if name.len() > Self::MAX_NAME_BYTES {
             return Err(AppError::BadRequest(crate::msg!(
@@ -1891,11 +1898,8 @@ impl Buckets<'_> {
             if root != self.store.root {
                 continue;
             }
-            let mut names: Vec<String> = view
-                .set_elements(collection)
-                .into_iter()
-                .map(|e| e.element)
-                .collect();
+            let mut names: Vec<String> =
+                view.set_elements(collection).into_iter().map(|e| e.element).collect();
             if names.is_empty() {
                 continue;
             }
@@ -1956,10 +1960,7 @@ impl Buckets<'_> {
             BUCKET_REGISTRY,
         )
         .await?;
-        Ok(registers
-            .into_iter()
-            .find(|r| r.key == name && !r.value.is_empty())
-            .map(|r| r.value))
+        Ok(registers.into_iter().find(|r| r.key == name && !r.value.is_empty()).map(|r| r.value))
     }
 
     /// This identity's own documents currently in `bucket` - the app view's spine (the inverse
@@ -2077,10 +2078,7 @@ impl Taxonomies<'_> {
             )
             .await?;
         if !title.is_empty() {
-            self.store
-                .annotations()
-                .set_field(&taxonomy_id, "title", title)
-                .await?;
+            self.store.annotations().set_field(&taxonomy_id, "title", title).await?;
         }
         Ok(taxonomy_id)
     }
@@ -2118,11 +2116,7 @@ impl Taxonomies<'_> {
                     .map(|r| r.value)
                     .unwrap_or_default();
                 let members = view.set_elements(&tax_collection(&taxonomy_id)).len();
-                Some(TaxonomySummary {
-                    taxonomy_id,
-                    title,
-                    members,
-                })
+                Some(TaxonomySummary { taxonomy_id, title, members })
             })
             .collect();
         out.sort_by(|a, b| (&a.title, a.taxonomy_id).cmp(&(&b.title, b.taxonomy_id)));
@@ -2185,7 +2179,10 @@ impl Taxonomies<'_> {
             && Self::is_on_roster(&view, doc_id)
             && Self::reaches(&view, &self.store.root, doc_id, taxonomy_id)
         {
-            return Err(AppError::BadRequest(crate::msg!("record.store.placing-this-list-here-would", "a list can't go inside itself")));
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.placing-this-list-here-would",
+                "a list can't go inside itself"
+            )));
         }
 
         let element = member_element(root, doc_id);
@@ -2215,9 +2212,7 @@ impl Taxonomies<'_> {
 
     fn is_on_roster(view: &private::PrivateView, id: &[u8; 16]) -> bool {
         let id_hex = hex::encode(id);
-        view.set_elements(TAXONOMY_ROSTER)
-            .iter()
-            .any(|e| e.element == id_hex)
+        view.set_elements(TAXONOMY_ROSTER).iter().any(|e| e.element == id_hex)
     }
 
     /// Is `target` reachable from `from` through this identity's own membership edges, in the
@@ -2280,12 +2275,7 @@ impl Taxonomies<'_> {
         Ok(TaxonomyNode {
             taxonomy_id: *taxonomy_id,
             title: Self::title_of(&view, &self.store.root, taxonomy_id),
-            members: Some(Self::expand(
-                &view,
-                &self.store.root,
-                taxonomy_id,
-                &mut visited,
-            )),
+            members: Some(Self::expand(&view, &self.store.root, taxonomy_id, &mut visited)),
         })
     }
 
@@ -2317,11 +2307,7 @@ impl Taxonomies<'_> {
                             members,
                         }
                     });
-                TreeMember {
-                    root: m.root,
-                    doc_id: m.doc_id,
-                    taxonomy,
-                }
+                TreeMember { root: m.root, doc_id: m.doc_id, taxonomy }
             })
             .collect()
     }
@@ -2426,9 +2412,7 @@ impl AppendLog<'_> {
 impl Store {
     /// Append to this identity's posts chain with the store's own authorship.
     pub async fn append_post(&self, payload_bytes: Vec<u8>) -> Result<SignedEntry, AppError> {
-        self.posts()
-            .append(&self.authorship.signer, payload_bytes)
-            .await
+        self.posts().append(&self.authorship.signer, payload_bytes).await
     }
 }
 
@@ -2445,15 +2429,9 @@ mod tests {
         let signer = SigningKey::from_bytes(&[11u8; 32]);
         let leaf = signer.verifying_key().to_bytes();
         let enc = EncKeyPair::generate();
-        private::mint_epoch(
-            &db,
-            &signer,
-            0,
-            &private::fresh_epoch_key(),
-            &[(leaf, enc.public)],
-        )
-        .await
-        .unwrap();
+        private::mint_epoch(&db, &signer, 0, &private::fresh_epoch_key(), &[(leaf, enc.public)])
+            .await
+            .unwrap();
         let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await.unwrap();
 
         Store {
@@ -2518,9 +2496,8 @@ mod tests {
                 format!("![i](/api/identity/{root_hex}/docs/{}/body/x.avif)\n\n", hex::encode(id))
             })
             .collect();
-        let refused = docs
-            .create("hoard", over.as_bytes(), crate::record::documents::Format::Marquee)
-            .await;
+        let refused =
+            docs.create("hoard", over.as_bytes(), crate::record::documents::Format::Marquee).await;
         assert!(refused.is_err(), "fifty-one embedded documents is not one note");
 
         let exactly: String = (0..ringtome_proto::DocHeaderPlain::MAX_REFS)
@@ -2548,7 +2525,13 @@ mod tests {
             .unwrap();
         let twins = vec![[5u8; 16], [6u8; 16]];
         let post = docs
-            .publish(&doc_id, Some("the words".into()), twins.clone(), None, crate::record::documents::PublishFlags::default())
+            .publish(
+                &doc_id,
+                Some("the words".into()),
+                twins.clone(),
+                None,
+                crate::record::documents::PublishFlags::default(),
+            )
             .await
             .unwrap();
         let entry = crate::record::documents::public_header_entry(&store.db, &post)
@@ -2568,11 +2551,7 @@ mod tests {
     async fn profile_is_a_schema_not_a_junk_drawer() {
         let store = test_store().await;
         store.profile().set("name", "Hats Ahoy").await.unwrap();
-        assert!(store
-            .profile()
-            .set("favorite_crime", "arson")
-            .await
-            .is_err());
+        assert!(store.profile().set("favorite_crime", "arson").await.is_err());
 
         let profile = store.profile().all().await.unwrap();
         assert_eq!(profile.len(), 1);
@@ -2583,21 +2562,9 @@ mod tests {
     async fn private_collections_round_trip_through_the_handles() {
         let store = test_store().await;
 
-        store
-            .private_registers("contacts")
-            .set("dave", "Dave")
-            .await
-            .unwrap();
-        store
-            .private_set("follows")
-            .add("aabb", None)
-            .await
-            .unwrap();
-        store
-            .private_set("follows")
-            .add("ccdd", None)
-            .await
-            .unwrap();
+        store.private_registers("contacts").set("dave", "Dave").await.unwrap();
+        store.private_set("follows").add("aabb", None).await.unwrap();
+        store.private_set("follows").add("ccdd", None).await.unwrap();
         store.private_set("follows").remove("aabb").await.unwrap();
 
         let (registers, undecryptable) = store.private_registers("contacts").all().await.unwrap();
@@ -2653,20 +2620,10 @@ mod tests {
             crate::pubkey::decode(&first_page[2].hash_hex).unwrap(),
         );
         let second_page = store.posts().page(3, Some(cursor)).await.unwrap();
-        assert_eq!(
-            second_page.len(),
-            2,
-            "pagination drains the log exactly once"
-        );
+        assert_eq!(second_page.len(), 2, "pagination drains the log exactly once");
 
-        let all: Vec<u64> = store
-            .posts()
-            .page(10, None)
-            .await
-            .unwrap()
-            .iter()
-            .map(|item| item.seq)
-            .collect();
+        let all: Vec<u64> =
+            store.posts().page(10, None).await.unwrap().iter().map(|item| item.seq).collect();
         assert_eq!(all, vec![4, 3, 2, 1, 0], "newest first");
     }
 
@@ -2683,16 +2640,8 @@ mod tests {
             .unwrap();
         // LWW conflict: two writes to the same field; the later stamp wins (the authoring
         // clamp guarantees same-chain successors never stamp backwards).
-        store
-            .annotations()
-            .set_field(&doc_id, "artist", "someone")
-            .await
-            .unwrap();
-        store
-            .annotations()
-            .set_field(&doc_id, "artist", "Corff Burblepunk")
-            .await
-            .unwrap();
+        store.annotations().set_field(&doc_id, "artist", "someone").await.unwrap();
+        store.annotations().set_field(&doc_id, "artist", "Corff Burblepunk").await.unwrap();
 
         let fields = store.annotations().fields(&doc_id).await.unwrap();
         assert_eq!(fields.len(), 2);
@@ -2700,11 +2649,7 @@ mod tests {
         assert_eq!(fields["artist"], "Corff Burblepunk", "later write wins");
 
         // Clearing is an LWW write of an absent value: the field disappears from reads.
-        store
-            .annotations()
-            .clear_field(&doc_id, "artist")
-            .await
-            .unwrap();
+        store.annotations().clear_field(&doc_id, "artist").await.unwrap();
         let fields = store.annotations().fields(&doc_id).await.unwrap();
         assert_eq!(fields.len(), 1);
         assert!(!fields.contains_key("artist"));
@@ -2752,11 +2697,8 @@ mod tests {
         use crate::record::documents::Format;
         let store = test_store().await;
 
-        let (keep, _) = store
-            .documents()
-            .create("keeper", b"the good one", Format::Plaintext)
-            .await
-            .unwrap();
+        let (keep, _) =
+            store.documents().create("keeper", b"the good one", Format::Plaintext).await.unwrap();
         let (gone, _) = store
             .documents()
             .create("regret", b"braise the pork", Format::Plaintext)
@@ -2793,16 +2735,8 @@ mod tests {
     async fn pinning_flags_a_document_without_hiding_it_and_unpin_clears_it() {
         use crate::record::documents::Format;
         let store = test_store().await;
-        let (a, _) = store
-            .documents()
-            .create("a", b"one", Format::Plaintext)
-            .await
-            .unwrap();
-        let (b, _) = store
-            .documents()
-            .create("b", b"two", Format::Plaintext)
-            .await
-            .unwrap();
+        let (a, _) = store.documents().create("a", b"one", Format::Plaintext).await.unwrap();
+        let (b, _) = store.documents().create("b", b"two", Format::Plaintext).await.unwrap();
 
         assert!(store.documents().pinned().await.unwrap().is_empty());
 
@@ -2829,11 +2763,7 @@ mod tests {
 
         // Exactly at the cap is fine; one byte past it is refused, and the error says why.
         let at_cap = "d".repeat(Annotations::MAX_VALUE_BYTES);
-        store
-            .annotations()
-            .set_field(&doc_id, "description", &at_cap)
-            .await
-            .unwrap();
+        store.annotations().set_field(&doc_id, "description", &at_cap).await.unwrap();
         let err = store
             .annotations()
             .set_field(&doc_id, "description", &format!("{at_cap}!"))
@@ -2857,21 +2787,13 @@ mod tests {
             .await
             .unwrap();
 
-        let public = crate::net::sync::local_frontiers(&store.db, false)
-            .await
-            .unwrap();
+        let public = crate::net::sync::local_frontiers(&store.db, false).await.unwrap();
         assert!(
-            !public
-                .iter()
-                .any(|f| f.service == service::DOC_META_PRIVATE),
+            !public.iter().any(|f| f.service == service::DOC_META_PRIVATE),
             "doc-meta frontiers must not be offered to unproven peers"
         );
-        let member = crate::net::sync::local_frontiers(&store.db, true)
-            .await
-            .unwrap();
-        assert!(member
-            .iter()
-            .any(|f| f.service == service::DOC_META_PRIVATE));
+        let member = crate::net::sync::local_frontiers(&store.db, true).await.unwrap();
+        assert!(member.iter().any(|f| f.service == service::DOC_META_PRIVATE));
     }
 
     /// Annotations are a view over the log, so they survive drop + refold: `rebuild_views`
@@ -2892,14 +2814,8 @@ mod tests {
 
         imaol::rebuild_views(&store.db).await.unwrap();
 
-        assert_eq!(
-            store.annotations().fields(&doc_id).await.unwrap(),
-            fields_before
-        );
-        assert_eq!(
-            store.annotations().tags(&doc_id).await.unwrap(),
-            tags_before
-        );
+        assert_eq!(store.annotations().fields(&doc_id).await.unwrap(), fields_before);
+        assert_eq!(store.annotations().tags(&doc_id).await.unwrap(), tags_before);
         assert_eq!(
             store.annotations().docs_tagged("ark").await.unwrap(),
             vec![(store.root, doc_id)]
@@ -2912,55 +2828,27 @@ mod tests {
         let (a, b, c) = ([1u8; 16], [2u8; 16], [3u8; 16]);
         let root = store.root;
 
-        let list = store
-            .taxonomies()
-            .create("BOOK ABOUT HORSES")
-            .await
-            .unwrap();
+        let list = store.taxonomies().create("BOOK ABOUT HORSES").await.unwrap();
 
         // Appends land in insertion order.
         for doc in [&a, &b, &c] {
-            store
-                .taxonomies()
-                .place(&list, &root, doc, None)
-                .await
-                .unwrap();
+            store.taxonomies().place(&list, &root, doc, None).await.unwrap();
         }
         let order = |ms: &[TaxonomyMember]| ms.iter().map(|m| m.doc_id).collect::<Vec<_>>();
-        assert_eq!(
-            order(&store.taxonomies().members(&list).await.unwrap()),
-            [a, b, c]
-        );
+        assert_eq!(order(&store.taxonomies().members(&list).await.unwrap()), [a, b, c]);
 
         // Move: place c at the front. One write, nothing else renumbered.
-        store
-            .taxonomies()
-            .place(&list, &root, &c, Some(0))
-            .await
-            .unwrap();
-        assert_eq!(
-            order(&store.taxonomies().members(&list).await.unwrap()),
-            [c, a, b]
-        );
+        store.taxonomies().place(&list, &root, &c, Some(0)).await.unwrap();
+        assert_eq!(order(&store.taxonomies().members(&list).await.unwrap()), [c, a, b]);
 
         // Insert into the middle.
         let d = [4u8; 16];
-        store
-            .taxonomies()
-            .place(&list, &root, &d, Some(1))
-            .await
-            .unwrap();
-        assert_eq!(
-            order(&store.taxonomies().members(&list).await.unwrap()),
-            [c, d, a, b]
-        );
+        store.taxonomies().place(&list, &root, &d, Some(1)).await.unwrap();
+        assert_eq!(order(&store.taxonomies().members(&list).await.unwrap()), [c, d, a, b]);
 
         // Remove.
         store.taxonomies().remove(&list, &root, &a).await.unwrap();
-        assert_eq!(
-            order(&store.taxonomies().members(&list).await.unwrap()),
-            [c, d, b]
-        );
+        assert_eq!(order(&store.taxonomies().members(&list).await.unwrap()), [c, d, b]);
 
         // The roster listing carries title and count.
         let all = store.taxonomies().all().await.unwrap();
@@ -2969,37 +2857,19 @@ mod tests {
         assert_eq!(all[0].members, 3);
 
         // Rename is just the title annotation - no taxonomy machinery involved.
-        store
-            .annotations()
-            .set_field(&list, "title", "EQUINE COMPENDIUM")
-            .await
-            .unwrap();
-        assert_eq!(
-            store.taxonomies().all().await.unwrap()[0].title,
-            "EQUINE COMPENDIUM"
-        );
+        store.annotations().set_field(&list, "title", "EQUINE COMPENDIUM").await.unwrap();
+        assert_eq!(store.taxonomies().all().await.unwrap()[0].title, "EQUINE COMPENDIUM");
     }
 
     #[tokio::test]
     async fn an_empty_taxonomy_exists_and_a_deleted_one_does_not() {
         let store = test_store().await;
         let list = store.taxonomies().create("someday pile").await.unwrap();
-        assert_eq!(
-            store.taxonomies().all().await.unwrap().len(),
-            1,
-            "empty list exists"
-        );
+        assert_eq!(store.taxonomies().all().await.unwrap().len(), 1, "empty list exists");
 
-        store
-            .taxonomies()
-            .place(&list, &store.root, &[9u8; 16], None)
-            .await
-            .unwrap();
+        store.taxonomies().place(&list, &store.root, &[9u8; 16], None).await.unwrap();
         store.taxonomies().delete(&list).await.unwrap();
-        assert!(
-            store.taxonomies().all().await.unwrap().is_empty(),
-            "deleted list is gone"
-        );
+        assert!(store.taxonomies().all().await.unwrap().is_empty(), "deleted list is gone");
 
         // Deletion is a roster fact, so re-creating the id (LWW re-add) un-hides the members:
         // it is the same taxonomy coming back, not a new one born clean.
@@ -3021,19 +2891,11 @@ mod tests {
     #[tokio::test]
     async fn a_taxonomy_can_reference_someone_elses_documents() {
         let store = test_store().await;
-        let list = store
-            .taxonomies()
-            .create("their greatest hits")
-            .await
-            .unwrap();
+        let list = store.taxonomies().create("their greatest hits").await.unwrap();
         let stranger_root = [0xEE; 32];
         let their_doc = [7u8; 16];
 
-        store
-            .taxonomies()
-            .place(&list, &stranger_root, &their_doc, None)
-            .await
-            .unwrap();
+        store.taxonomies().place(&list, &stranger_root, &their_doc, None).await.unwrap();
         let members = store.taxonomies().members(&list).await.unwrap();
         assert_eq!(members[0].root, stranger_root);
         assert_eq!(members[0].doc_id, their_doc);
@@ -3044,26 +2906,15 @@ mod tests {
         let store = test_store().await;
         let list = store.taxonomies().create("flood insurance").await.unwrap();
         for doc in [[1u8; 16], [2u8; 16]] {
-            store
-                .taxonomies()
-                .place(&list, &store.root, &doc, None)
-                .await
-                .unwrap();
+            store.taxonomies().place(&list, &store.root, &doc, None).await.unwrap();
         }
-        store
-            .taxonomies()
-            .place(&list, &store.root, &[2u8; 16], Some(0))
-            .await
-            .unwrap();
+        store.taxonomies().place(&list, &store.root, &[2u8; 16], Some(0)).await.unwrap();
         let before = store.taxonomies().members(&list).await.unwrap();
 
         imaol::rebuild_views(&store.db).await.unwrap();
 
         assert_eq!(store.taxonomies().members(&list).await.unwrap(), before);
-        assert_eq!(
-            store.taxonomies().all().await.unwrap()[0].title,
-            "flood insurance"
-        );
+        assert_eq!(store.taxonomies().all().await.unwrap()[0].title, "flood insurance");
     }
 
     #[tokio::test]
@@ -3080,11 +2931,7 @@ mod tests {
 
         // Self, inverse, and transitive-inverse placements all name the cycle.
         for (list, member) in [(&a, &a), (&b, &a), (&c, &a), (&c, &b)] {
-            let err = store
-                .taxonomies()
-                .place(list, &root, member, None)
-                .await
-                .unwrap_err();
+            let err = store.taxonomies().place(list, &root, member, None).await.unwrap_err();
             assert!(
                 err.to_string().contains("inside itself"),
                 "refusal names the cycle, plainly: {err}"
@@ -3092,40 +2939,20 @@ mod tests {
         }
 
         // A foreign taxonomy's contents aren't ours to walk: placing one is never refused.
-        store
-            .taxonomies()
-            .place(&c, &[0xEE; 32], &a, None)
-            .await
-            .unwrap();
+        store.taxonomies().place(&c, &[0xEE; 32], &a, None).await.unwrap();
     }
 
     #[tokio::test]
     async fn the_tree_read_expands_nests_and_stubs_repeats() {
         let store = test_store().await;
         let root = store.root;
-        let book = store
-            .taxonomies()
-            .create("BOOK ABOUT HORSES")
-            .await
-            .unwrap();
+        let book = store.taxonomies().create("BOOK ABOUT HORSES").await.unwrap();
         let anatomy = store.taxonomies().create("Horse Anatomy").await.unwrap();
         let doc = [7u8; 16];
 
-        store
-            .taxonomies()
-            .place(&book, &root, &doc, None)
-            .await
-            .unwrap();
-        store
-            .taxonomies()
-            .place(&book, &root, &anatomy, None)
-            .await
-            .unwrap();
-        store
-            .taxonomies()
-            .place(&anatomy, &root, &[8u8; 16], None)
-            .await
-            .unwrap();
+        store.taxonomies().place(&book, &root, &doc, None).await.unwrap();
+        store.taxonomies().place(&book, &root, &anatomy, None).await.unwrap();
+        store.taxonomies().place(&anatomy, &root, &[8u8; 16], None).await.unwrap();
 
         let tree = store.taxonomies().tree(&book).await.unwrap();
         assert_eq!(tree.title, "BOOK ABOUT HORSES");
@@ -3134,44 +2961,23 @@ mod tests {
         assert!(members[0].taxonomy.is_none(), "a plain doc is not expanded");
         let nested = members[1].taxonomy.as_ref().unwrap();
         assert_eq!(nested.title, "Horse Anatomy");
-        assert_eq!(
-            nested.members.as_ref().unwrap().len(),
-            1,
-            "expanded in place"
-        );
+        assert_eq!(nested.members.as_ref().unwrap().len(), 1, "expanded in place");
 
         // A diamond: a second list also containing Anatomy. First encounter (list order)
         // expands; the second is a stub - present and titled, members: None.
         let vet = store.taxonomies().create("Vet Notes").await.unwrap();
-        store
-            .taxonomies()
-            .place(&vet, &root, &anatomy, None)
-            .await
-            .unwrap();
-        store
-            .taxonomies()
-            .place(&book, &root, &vet, None)
-            .await
-            .unwrap();
+        store.taxonomies().place(&vet, &root, &anatomy, None).await.unwrap();
+        store.taxonomies().place(&book, &root, &vet, None).await.unwrap();
         let tree = store.taxonomies().tree(&book).await.unwrap();
         let members = tree.members.as_ref().unwrap();
         let first = members[1].taxonomy.as_ref().unwrap();
-        let via_vet = members[2]
-            .taxonomy
-            .as_ref()
-            .unwrap()
-            .members
-            .as_ref()
-            .unwrap()[0]
+        let via_vet = members[2].taxonomy.as_ref().unwrap().members.as_ref().unwrap()[0]
             .taxonomy
             .as_ref()
             .unwrap();
         assert!(first.members.is_some());
         assert_eq!(via_vet.title, "Horse Anatomy", "the stub keeps its title");
-        assert!(
-            via_vet.members.is_none(),
-            "the diamond's second visit is a stub"
-        );
+        assert!(via_vet.members.is_none(), "the diamond's second visit is a stub");
     }
 
     #[tokio::test]
@@ -3199,15 +3005,9 @@ mod tests {
 
         let tree = store.taxonomies().tree(&a).await.unwrap();
         let b_node = tree.members.as_ref().unwrap()[0].taxonomy.as_ref().unwrap();
-        let a_again = b_node.members.as_ref().unwrap()[0]
-            .taxonomy
-            .as_ref()
-            .unwrap();
+        let a_again = b_node.members.as_ref().unwrap()[0].taxonomy.as_ref().unwrap();
         assert_eq!(a_again.taxonomy_id, a);
-        assert!(
-            a_again.members.is_none(),
-            "the loop closes as a stub, visibly"
-        );
+        assert!(a_again.members.is_none(), "the loop closes as a stub, visibly");
     }
 
     #[tokio::test]

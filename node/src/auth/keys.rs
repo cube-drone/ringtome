@@ -54,7 +54,10 @@ pub async fn account_for_key(db: &Db, key: &str) -> Result<Option<(Account, Stri
         return Ok(None);
     }
     let row: Option<(String, String, Option<i64>)> = db
-        .fetch_optional("SELECT id, account_id, last_used_ms FROM api_keys WHERE key_hash = ?1", (hash(key),))
+        .fetch_optional(
+            "SELECT id, account_id, last_used_ms FROM api_keys WHERE key_hash = ?1",
+            (hash(key),),
+        )
         .await
         .context("reading an api key")
         .map_err(AppError::Internal)?;
@@ -95,7 +98,10 @@ pub fn identity_by_browser(session: &Session) -> Result<(), AppError> {
 }
 
 /// GET `/api/auth/keys`: the account's keys - never the keys themselves, which nobody holds.
-pub async fn list_handler(State(state): State<AppState>, session: Session) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn list_handler(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Json<serde_json::Value>, AppError> {
     by_browser(&session)?;
     let rows: Vec<(String, String, i64, Option<i64>)> = state
         .node_db
@@ -119,11 +125,18 @@ pub struct NewKey {
 }
 
 /// POST `/api/auth/keys`: make one. The answer carries the key - the only time anyone sees it.
-pub async fn create_handler(State(state): State<AppState>, session: Session, Json(req): Json<NewKey>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn create_handler(
+    State(state): State<AppState>,
+    session: Session,
+    Json(req): Json<NewKey>,
+) -> Result<Json<serde_json::Value>, AppError> {
     by_browser(&session)?;
     let name = req.name.trim().to_string();
     if name.is_empty() || name.chars().count() > NAME_MAX {
-        return Err(AppError::BadRequest(crate::msg!("auth.keys.name-the-key", "give the key a name, up to 80 characters")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.keys.name-the-key",
+            "give the key a name, up to 80 characters"
+        )));
     }
     let account = session.account.id.to_string();
     let (held,): (i64,) = state
@@ -133,7 +146,10 @@ pub async fn create_handler(State(state): State<AppState>, session: Session, Jso
         .context("counting api keys")
         .map_err(AppError::Internal)?;
     if held >= KEYS_MAX {
-        return Err(AppError::BadRequest(crate::msg!("auth.keys.too-many-keys", "that's 25 keys already - revoke one first")));
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.keys.too-many-keys",
+            "that's 25 keys already - revoke one first"
+        )));
     }
     let key = new_key();
     let id = hex::encode(&blake3::hash(key.as_bytes()).as_bytes()[..8]);
@@ -152,11 +168,18 @@ pub async fn create_handler(State(state): State<AppState>, session: Session, Jso
 }
 
 /// DELETE `/api/auth/keys/{id}`: revoke it - it stops working at once.
-pub async fn revoke_handler(State(state): State<AppState>, session: Session, Path(id): Path<String>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn revoke_handler(
+    State(state): State<AppState>,
+    session: Session,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
     by_browser(&session)?;
     state
         .node_db
-        .execute("DELETE FROM api_keys WHERE id = ?1 AND account_id = ?2", (id.as_str(), session.account.id.to_string()))
+        .execute(
+            "DELETE FROM api_keys WHERE id = ?1 AND account_id = ?2",
+            (id.as_str(), session.account.id.to_string()),
+        )
         .await
         .context("revoking an api key")
         .map_err(AppError::Internal)?;

@@ -173,12 +173,16 @@ export const ColourPicker = ({ value, onChange }) => {
 
     const at = (e) => {
         const rect = canvasRef.current.getBoundingClientRect();
-        return [((e.clientX - rect.left) * SIZE) / rect.width, ((e.clientY - rect.top) * SIZE) / rect.height];
+        return [
+            ((e.clientX - rect.left) * SIZE) / rect.width,
+            ((e.clientY - rect.top) * SIZE) / rect.height,
+        ];
     };
     const apply = (x, y) => {
         const { c, tri } = geometry();
         if (drag.current === 'hue') set({ ...hsv, h: hueAt(x, y, c, c) });
-        else if (drag.current === 'sv') set({ ...hsv, ...pointToSv([x, y], triangleCorners(hsv.h, c, c, tri)) });
+        else if (drag.current === 'sv')
+            set({ ...hsv, ...pointToSv([x, y], triangleCorners(hsv.h, c, c, tri)) });
     };
     const down = (e) => {
         const [x, y] = at(e);

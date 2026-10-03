@@ -35,27 +35,51 @@ function chunk(arr, n) {
 function appBlurb(app, device) {
     switch (app.id) {
         case 'persona':
-            return t('console.blurb-persona', 'you: your profile, your personas, your computers and your settings');
+            return t(
+                'console.blurb-persona',
+                'you: your profile, your personas, your computers and your settings',
+            );
         case 'drawing':
             return t('console.blurb-drawing', 'draw and publish pictures of mostly horses');
         case 'people':
             return t('console.blurb-people', 'the people you know, follow and trust');
         case 'notes':
-            return t('console.blurb-notes', 'your notebooks: private pages, published when you choose');
+            return t(
+                'console.blurb-notes',
+                'your notebooks: private pages, published when you choose',
+            );
         case 'feed':
-            return t('console.blurb-feed', "horse-based social networking: check what's happening on the information superhorseway");
+            return t(
+                'console.blurb-feed',
+                "horse-based social networking: check what's happening on the information superhorseway",
+            );
         case 'chat':
             return t('console.blurb-chat', 'rooms, and private conversations');
         case 'notifications':
-            return t('console.blurb-notifications', 'notifications, pings, pokes, and other things that might be of interest');
+            return t(
+                'console.blurb-notifications',
+                'notifications, pings, pokes, and other things that might be of interest',
+            );
         case 'bank':
-            return t('console.blurb-bank', 'your horse capital: every HorseBuck, and where it came from');
+            return t(
+                'console.blurb-bank',
+                'your horse capital: every HorseBuck, and where it came from',
+            );
         case 'lost-found':
-            return t('console.blurb-lost-found', 'every private file from every notebook, where nothing gets lost');
+            return t(
+                'console.blurb-lost-found',
+                'every private file from every notebook, where nothing gets lost',
+            );
         case 'device':
             return device
-                ? t('console.blurb-device', "this computer's settings: who may sign up, and its backups")
-                : t('console.blurb-server', "this server's settings: who may sign up, and its backups");
+                ? t(
+                      'console.blurb-device',
+                      "this computer's settings: who may sign up, and its backups",
+                  )
+                : t(
+                      'console.blurb-server',
+                      "this server's settings: who may sign up, and its backups",
+                  );
         default:
             return '';
     }
@@ -79,11 +103,13 @@ function Hex(app, key, onLaunch, personaName, me) {
         ? ''
         : html`
               ${face ? html`<img class="app-tile-face" src=${face.src} alt="" />` : html`<span class="app-tile-icon"><${iconFor(app, isDevice())} /></span>`}
-              ${named &&
-              html`<span
+              ${
+                  named &&
+                  html`<span
                   class="app-tile-name"
                   style=${scale === 1 ? undefined : `font-size: ${scale}rem`}
-              >${text}</span>`}
+              >${text}</span>`
+              }
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
     // The whole tile's tooltip, not just the nameplate's: its name, and what it is for.
@@ -105,10 +131,10 @@ export const Console = ({ onLaunch, personaName, me, admin }) => {
                     (row, ri) => html`
                         <div class=${ri % 2 ? 'hex-row shift' : 'hex-row'} key=${ri}>
                             ${row.map((app, ci) =>
-                                Hex(app, ri * columns + ci, onLaunch, personaName, me)
+                                Hex(app, ri * columns + ci, onLaunch, personaName, me),
                             )}
                         </div>
-                    `
+                    `,
                 )}
             </div>
         </div>

@@ -33,10 +33,7 @@ const EDGES_PUBLIC: &str = "edges_public";
 /// scale all read as "no opinion", never as a publishable word. Proto's band list is the source
 /// of truth - the mint must never sign a word the wire format rejects.
 fn band(facts: &BTreeMap<String, String>, key: &str) -> Option<String> {
-    facts
-        .get(key)
-        .filter(|v| PublicEdge::BANDS.contains(&v.as_str()))
-        .cloned()
+    facts.get(key).filter(|v| PublicEdge::BANDS.contains(&v.as_str())).cloned()
 }
 
 /// What one contact's ledger wants published: the bands, unless withheld, if any are set. A
@@ -51,10 +48,7 @@ fn desired_of(facts: &BTreeMap<String, String>) -> Option<PublishedEdge> {
     if facts.get(EDGES_PUBLIC).map(String::as_str) == Some("no") {
         return None;
     }
-    let edge = PublishedEdge {
-        trust: band(facts, TRUST),
-        interest: band(facts, INTEREST),
-    };
+    let edge = PublishedEdge { trust: band(facts, TRUST), interest: band(facts, INTEREST) };
     (!edge.is_empty()).then_some(edge)
 }
 
@@ -68,10 +62,8 @@ pub async fn reconcile(
     contacts: &[(String, BTreeMap<String, String>)],
 ) -> Result<Vec<String>> {
     let edges = store.public_edges();
-    let published = edges
-        .published()
-        .await
-        .map_err(|e| anyhow::anyhow!("folding published edges: {e}"))?;
+    let published =
+        edges.published().await.map_err(|e| anyhow::anyhow!("folding published edges: {e}"))?;
 
     let mut changed = Vec::new();
     let mut desired_subjects: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
@@ -90,8 +82,11 @@ pub async fn reconcile(
         // Whether this statement is NEWS to its subject (Curtis, 2026-10-02: a follower turning
         // their interest down rang his bell): a first follow, or a first trust. A level moving
         // within a fact already said is published like any statement, and knocks on nobody's door.
-        let first = |was: Option<&Option<String>>, now: &Option<String>| was.is_none_or(|w| w.is_none()) && now.is_some();
-        let news = first(before.map(|e| &e.interest), &desired.interest) || first(before.map(|e| &e.trust), &desired.trust);
+        let first = |was: Option<&Option<String>>, now: &Option<String>| {
+            was.is_none_or(|w| w.is_none()) && now.is_some()
+        };
+        let news = first(before.map(|e| &e.interest), &desired.interest)
+            || first(before.map(|e| &e.trust), &desired.trust);
         let evidence = edges
             .publish(&subject, desired.trust.clone(), desired.interest.clone())
             .await
@@ -155,10 +150,7 @@ mod tests {
     use super::*;
 
     fn facts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
     #[test]

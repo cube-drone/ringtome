@@ -10,32 +10,31 @@
     follow is a taste judgment". Withdrawal sweeps both memos: a vouch taken back recedes
     from the graph, and the compositions built on it recede from every reader's set.
 */
-const assert = require("node:assert");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { sql, HOST_C } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
-const { beat } = require("./beat.cjs");
-
+const { sql, HOST_C } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
+const { beat } = require('./beat.cjs');
 
 const base58 = async (host) => {
-    const { toBase58 } = await import("../../js/speakable.js");
-    return toBase58((await (await host("api/node")).json()).endpoint_id);
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await host('api/node')).json()).endpoint_id);
 };
 
-(HOST_C ? describe : describe.skip)("the edge graph and the implicit fold", function () {
+(HOST_C ? describe : describe.skip)('the edge graph and the implicit fold', function () {
     this.timeout(1200000);
 
     let friend, friendRoot, cora, coraRoot;
     // Bare roots the friend vouches for - subjects need no presence, only a name.
-    const target = "11".repeat(32);
-    const targetLow = "22".repeat(32);
-    const tasteTarget = "33".repeat(32);
+    const target = '11'.repeat(32);
+    const targetLow = '22'.repeat(32);
+    const tasteTarget = '33'.repeat(32);
 
     const dialOn = (who, root) => async (subject, register, value) =>
         who(`api/identity/${root}/private/kv/contact:${subject}/${register}`, {
-            method: "PUT",
+            method: 'PUT',
             body: JSON.stringify({ value }),
         });
 
@@ -46,22 +45,22 @@ const base58 = async (host) => {
     };
 
     before(async function () {
-        friend = await makeUserFetch({ prefix: "edgefriend" });
-        friendRoot = (await (await friend("api/identity", { method: "POST" })).json()).root_pubkey;
-        await friend(`api/identity/${friendRoot}/serve`, { method: "POST" });
+        friend = await makeUserFetch({ prefix: 'edgefriend' });
+        friendRoot = (await (await friend('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await friend(`api/identity/${friendRoot}/serve`, { method: 'POST' });
 
-        cora = await makeUserFetch({ prefix: "edgecora", host: HOST_C });
-        coraRoot = (await (await cora("api/identity", { method: "POST" })).json()).root_pubkey;
-        await cora(`api/identity/${coraRoot}/serve`, { method: "POST" });
+        cora = await makeUserFetch({ prefix: 'edgecora', host: HOST_C });
+        coraRoot = (await (await cora('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await cora(`api/identity/${coraRoot}/serve`, { method: 'POST' });
     });
 
     it("a friend's vouches become implicit rows, composed and capped", async function () {
         // The friend vouches, publicly (edges_public rests open): two trust bands and one
         // interest band, minted onto their follows-public chain by the dial writes.
         const friendDial = dialOn(friend, friendRoot);
-        await friendDial(target, "trust", "high");
-        await friendDial(targetLow, "trust", "low");
-        await friendDial(tasteTarget, "interest", "high");
+        await friendDial(target, 'trust', 'high');
+        await friendDial(targetLow, 'trust', 'low');
+        await friendDial(tasteTarget, 'interest', 'high');
 
         // Cora meets the friend: the fetch mirrors their chains - statements included - and
         // the dials make them an introducer. Trust high; rebroadcast LOW beside interest
@@ -71,65 +70,68 @@ const base58 = async (host) => {
         if ((await cora(`api/id/${friendRoot}/profile?via=${viaFriend}`)).status !== 200)
             this.skip();
         const coraDial = dialOn(cora, coraRoot);
-        await coraDial(friendRoot, "trust", "high");
-        await coraDial(friendRoot, "interest", "high");
-        await coraDial(friendRoot, "interest_rebroadcasts", "low");
+        await coraDial(friendRoot, 'trust', 'high');
+        await coraDial(friendRoot, 'interest', 'high');
+        await coraDial(friendRoot, 'interest_rebroadcasts', 'low');
 
         // The node half: the friend's node mints the statements and pushes; cora's node
         // folds them into the graph.
-        await beat(undefined, "mint", friendRoot);
-        await beat(undefined, "demand-push", friendRoot);
-        await beat(HOST_C, "fold", friendRoot);
+        await beat(undefined, 'mint', friendRoot);
+        await beat(undefined, 'demand-push', friendRoot);
+        await beat(HOST_C, 'fold', friendRoot);
         {
             const { rows } = await sql(
                 `SELECT subject_root, trust, interest FROM edge_graph WHERE author_root = '${friendRoot}'`,
-                HOST_C
+                HOST_C,
             );
-            assert.ok(rows.length >= 3, "the friend's published edges assembled into the node-level graph");
+            assert.ok(
+                rows.length >= 3,
+                "the friend's published edges assembled into the node-level graph",
+            );
         }
 
         // The user half: the compositions, each capped by its weaker side.
-        await beat(HOST_C, "fold", coraRoot);
+        await beat(HOST_C, 'fold', coraRoot);
         const rows = await implicitRows();
-        assert.ok(rows.length >= 3, "the implicit fold produced rows");
+        assert.ok(rows.length >= 3, 'the implicit fold produced rows');
         const find = (t, lane) => rows.find((r) => r.target_root === t && r.lane === lane);
 
-        const strong = find(target, "trust");
-        assert.ok(strong, "the high-trust vouch is an implicit row");
-        assert.equal(strong.level, "high", "high dial x high vouch composes high");
+        const strong = find(target, 'trust');
+        assert.ok(strong, 'the high-trust vouch is an implicit row');
+        assert.equal(strong.level, 'high', 'high dial x high vouch composes high');
         assert.equal(strong.introducer_root, friendRoot);
         assert.equal(strong.depth, 2);
-        assert.equal(strong.introducer_vouches, 2, "the friend spends two trust vouches");
+        assert.equal(strong.introducer_vouches, 2, 'the friend spends two trust vouches');
 
-        const weak = find(targetLow, "trust");
-        assert.equal(weak.level, "low", "the friend's low vouch caps the composition");
+        const weak = find(targetLow, 'trust');
+        assert.equal(weak.level, 'low', "the friend's low vouch caps the composition");
 
-        const taste = find(tasteTarget, "taste");
-        assert.ok(taste, "the interest vouch lands on the taste lane");
+        const taste = find(tasteTarget, 'taste');
+        assert.ok(taste, 'the interest vouch lands on the taste lane');
         assert.equal(
             taste.level,
-            "low",
-            "capped by cora's REBROADCAST dial, not her interest dial - taste is taste"
+            'low',
+            "capped by cora's REBROADCAST dial, not her interest dial - taste is taste",
         );
-        assert.equal(taste.introducer_vouches, 1, "one interest vouch spent");
+        assert.equal(taste.introducer_vouches, 1, 'one interest vouch spent');
 
         // Withdrawal: the friend takes the low vouch back. The retraction mints, the graph
         // row sweeps, and the composition built on it recedes from cora's set.
-        await friendDial(targetLow, "trust", "");
-        await beat(undefined, "mint", friendRoot);
-        await beat(undefined, "demand-push", friendRoot);
-        await beat(HOST_C, "fold", friendRoot);
-        await beat(HOST_C, "fold", coraRoot);
+        await friendDial(targetLow, 'trust', '');
+        await beat(undefined, 'mint', friendRoot);
+        await beat(undefined, 'demand-push', friendRoot);
+        await beat(HOST_C, 'fold', friendRoot);
+        await beat(HOST_C, 'fold', coraRoot);
         {
             const { rows: graph } = await sql(
                 `SELECT 1 AS present FROM edge_graph WHERE author_root = '${friendRoot}' AND subject_root = '${targetLow}' AND trust IS NOT NULL`,
-                HOST_C
+                HOST_C,
             );
-            assert.equal(graph.length, 0, "the withdrawn vouch left the graph");
+            assert.equal(graph.length, 0, 'the withdrawn vouch left the graph');
             const implicit = await implicitRows();
             assert.ok(
                 !implicit.some((r) => r.target_root === targetLow),
-                "a withdrawn vouch recedes from the implicit set"
+                'a withdrawn vouch recedes from the implicit set',
             );
         }
     });

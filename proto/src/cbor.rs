@@ -201,8 +201,7 @@ impl<'a> Reader<'a> {
 
     pub fn bytes_fixed<const N: usize>(&mut self) -> Result<[u8; N], ProtoError> {
         let b = self.bytes()?;
-        b.try_into()
-            .map_err(|_| ProtoError::Malformed("byte string of unexpected length"))
+        b.try_into().map_err(|_| ProtoError::Malformed("byte string of unexpected length"))
     }
 
     pub fn text(&mut self) -> Result<&'a str, ProtoError> {
@@ -233,11 +232,7 @@ impl<'a> Reader<'a> {
     /// future payload type could forget.
     pub fn int_map(&mut self) -> Result<MapReader<'_, 'a>, ProtoError> {
         let declared_entries = self.map()?;
-        Ok(MapReader {
-            reader: self,
-            remaining: declared_entries,
-            last_key: None,
-        })
+        Ok(MapReader { reader: self, remaining: declared_entries, last_key: None })
     }
 
     /// Skip one value of any supported shape - this is what makes unknown-field carry-through
@@ -379,17 +374,7 @@ mod tests {
 
     #[test]
     fn round_trips() {
-        for v in [
-            0u64,
-            23,
-            24,
-            255,
-            256,
-            65535,
-            65536,
-            u64::from(u32::MAX) + 1,
-            u64::MAX,
-        ] {
+        for v in [0u64, 23, 24, 255, 256, 65535, 65536, u64::from(u32::MAX) + 1, u64::MAX] {
             let bytes = write_uint(v);
             let mut r = Reader::new(&bytes);
             assert_eq!(r.uint().unwrap(), v);
@@ -401,36 +386,21 @@ mod tests {
     fn rejects_non_minimal_heads() {
         // 23 encoded with a one-byte argument instead of packed into the head.
         let mut r = Reader::new(&[0x18, 0x17]);
-        assert_eq!(
-            r.uint(),
-            Err(ProtoError::NonCanonical("non-minimal integer head"))
-        );
+        assert_eq!(r.uint(), Err(ProtoError::NonCanonical("non-minimal integer head")));
         // 255 encoded as two bytes.
         let mut r = Reader::new(&[0x19, 0x00, 0xff]);
-        assert_eq!(
-            r.uint(),
-            Err(ProtoError::NonCanonical("non-minimal integer head"))
-        );
+        assert_eq!(r.uint(), Err(ProtoError::NonCanonical("non-minimal integer head")));
         // 65535 encoded as four bytes.
         let mut r = Reader::new(&[0x1a, 0x00, 0x00, 0xff, 0xff]);
-        assert_eq!(
-            r.uint(),
-            Err(ProtoError::NonCanonical("non-minimal integer head"))
-        );
+        assert_eq!(r.uint(), Err(ProtoError::NonCanonical("non-minimal integer head")));
     }
 
     #[test]
     fn rejects_indefinite_lengths() {
         let mut r = Reader::new(&[0x5f]); // indefinite-length byte string
-        assert_eq!(
-            r.bytes(),
-            Err(ProtoError::NonCanonical("indefinite-length item"))
-        );
+        assert_eq!(r.bytes(), Err(ProtoError::NonCanonical("indefinite-length item")));
         let mut r = Reader::new(&[0x9f]); // indefinite-length array
-        assert_eq!(
-            r.array(),
-            Err(ProtoError::NonCanonical("indefinite-length item"))
-        );
+        assert_eq!(r.array(), Err(ProtoError::NonCanonical("indefinite-length item")));
     }
 
     #[test]
@@ -457,10 +427,7 @@ mod tests {
         // The decomposed encoding itself is rejected on read.
         let decomposed = [0x63, 0x65, 0xcc, 0x81];
         let mut r = Reader::new(&decomposed);
-        assert_eq!(
-            r.text(),
-            Err(ProtoError::NonCanonical("text is not NFC-normalized"))
-        );
+        assert_eq!(r.text(), Err(ProtoError::NonCanonical("text is not NFC-normalized")));
     }
 
     #[test]
@@ -547,12 +514,7 @@ mod tests {
 
     #[test]
     fn truncated_inputs_error_cleanly() {
-        for bad in [
-            &[0x18][..],
-            &[0x19, 0x01][..],
-            &[0x58, 0x05, 0x01][..],
-            &[0x82, 0x00][..],
-        ] {
+        for bad in [&[0x18][..], &[0x19, 0x01][..], &[0x58, 0x05, 0x01][..], &[0x82, 0x00][..]] {
             let mut r = Reader::new(bad);
             assert!(r.skip_value().is_err());
         }

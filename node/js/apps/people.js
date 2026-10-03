@@ -12,7 +12,13 @@ import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
 import { PersonRow } from '../person.js';
 import { api } from '../net.js';
-import { PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts, standingFacts } from '../pure/people.js';
+import {
+    PEOPLE_SORTS,
+    PEOPLE_SHELF_SLICE,
+    filterContacts,
+    sortContacts,
+    standingFacts,
+} from '../pure/people.js';
 import { t } from '../i18n.js';
 import { LabelFacets, usePicks } from '../facets.js';
 import { tagCounts, rowsTagged } from '../pure/contacttags.js';
@@ -43,7 +49,9 @@ export const PeopleLookup = ({ query, onQuery }) => {
         const ref = parseIdReference(value || '');
         if (ref && parseSpeakable(ref.seg)) {
             onQuery(''); // the address was a destination, never a filter to come back to
-            loc.route(`/ringtome/user/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`);
+            loc.route(
+                `/ringtome/user/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`,
+            );
             return;
         }
         onQuery(value);
@@ -148,7 +156,15 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
     useEffect(() => {
         let live = true;
         api('/api/identity')
-            .then((mine) => live && setAlsoMe((mine || []).filter((p) => p.root_pubkey !== root && p.standing === 'active')))
+            .then(
+                (mine) =>
+                    live &&
+                    setAlsoMe(
+                        (mine || []).filter(
+                            (p) => p.root_pubkey !== root && p.standing === 'active',
+                        ),
+                    ),
+            )
             .catch(() => live && setAlsoMe([]));
         return () => {
             live = false;
@@ -172,7 +188,7 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
         (suggestedRaw || [])
             .filter((s) => s.root !== root && !onShelf.has(s.root))
             .map((s) => ({ ...s, words: s.speakable })),
-        filter
+        filter,
     ).slice(0, PEOPLE_SHELF_SLICE);
 
     // Known around here, minus everyone already on your shelf above (and minus you): the
@@ -188,7 +204,7 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
             .filter((d) => d.root !== root && !onShelf.has(d.root) && !suggestedRoots.has(d.root))
             // Directory rows already carry their speakable spelling from the server.
             .map((d) => ({ ...d, words: d.speakable })),
-        filter
+        filter,
     ).slice(0, PEOPLE_SHELF_SLICE);
 
     // The bottom of the page: people you USED to know - a relationship created and then
@@ -201,15 +217,16 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
     const knownRoots = new Set(known.map((d) => d.root));
     const usedToKnow = filterContacts(
         cleared.filter(
-            (c) => c.root !== root && !suggestedRoots.has(c.root) && !knownRoots.has(c.root)
+            (c) => c.root !== root && !suggestedRoots.has(c.root) && !knownRoots.has(c.root),
         ),
-        filter
+        filter,
     ).slice(0, PEOPLE_SHELF_SLICE);
 
     return html`
         <div class="people-inner">
-            ${alsoMe.length > 0 &&
-            html`<div class="people-known people-also-me">
+            ${
+                alsoMe.length > 0 &&
+                html`<div class="people-known people-also-me">
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.people-who-are-also-me', 'people who are also me')}</span>
                 </div>
@@ -221,10 +238,11 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
                             current=${current}
                             storage=${standingOf(p.root_pubkey)}
                             aside=${t('apps.people.also-you', 'also you')}
-                        />`
+                        />`,
                     )}
                 </div>
-            </div>`}
+            </div>`
+            }
             <${LabelFacets} labels=${{ kinds: [], buckets: [], tags: tagRow }} picks=${picks} onPicks=${setPicks} />
             <div class="people-shelf-head">
                 <span class="people-shelf-title">${t('apps.people.everyone-you-know', 'everyone you know')}</span>
@@ -234,30 +252,38 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
                             key=${s.key}
                             class=${sortBy === s.key ? 'people-sort people-sort-on' : 'people-sort'}
                             onClick=${() => setSortBy(s.key)}
-                        >${SORT_WORDS[s.key]()}</button>`
+                        >${SORT_WORDS[s.key]()}</button>`,
                     )}
                 </span>
             </div>
-            ${sorted.length === 0 &&
-            html`<p class="people-empty">
-                ${filter
-                    ? html`${t('apps.people.nobody-matches---try-fewer', 'nobody matches "{filter}" - try fewer letters, or their address words.', { filter })}`
-                    : html`${t('apps.people.nobody-yet---open-someones', "nobody yet - open someone's page and set your relationship, and they'll appear here.")}`}
-            </p>`}
+            ${
+                sorted.length === 0 &&
+                html`<p class="people-empty">
+                ${
+                    filter
+                        ? html`${t('apps.people.nobody-matches---try-fewer', 'nobody matches "{filter}" - try fewer letters, or their address words.', { filter })}`
+                        : html`${t('apps.people.nobody-yet---open-someones', "nobody yet - open someone's page and set your relationship, and they'll appear here.")}`
+                }
+            </p>`
+            }
             <div class="people-list">
                 ${visible.map(
-                    (row) => html`<${PersonRow} key=${row.root} root=${row.root} current=${current} storage=${standingOf(row.root)} />`
+                    (row) =>
+                        html`<${PersonRow} key=${row.root} root=${row.root} current=${current} storage=${standingOf(row.root)} />`,
                 )}
             </div>
-            ${sorted.length > visible.length &&
-            html`<button
+            ${
+                sorted.length > visible.length &&
+                html`<button
                 class="people-more"
                 onClick=${() => setShown(shown + PEOPLE_SHELF_SLICE)}
             >
                 ${t('apps.people.show-more-of', 'show more ({length} of {p1})', { length: visible.length, p1: sorted.length })}
-            </button>`}
-            ${suggested.length > 0 &&
-            html`<div class="people-known">
+            </button>`
+            }
+            ${
+                suggested.length > 0 &&
+                html`<div class="people-known">
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.people-you-might-know', 'people you might know')}</span>
                     <span class="people-known-note">
@@ -270,27 +296,35 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
                             key=${s.root}
                             root=${s.root}
                             current=${current}
-                            profile=${/* the suggestion row IS the profile the widget needs -
+                            profile=${
+                                /* the suggestion row IS the profile the widget needs -
                                 same zero-fetch argument as the directory below. `foreign` is
                                 always true here: a suggested persona is by definition not
                                 hosted, or the ordinary machinery would already own them. */ {
-                                fields: [
-                                    s.name && { field: 'name', value: s.name },
-                                    s.avatar && { field: 'avatar', value: s.avatar },
-                                ].filter(Boolean),
-                                hosted: false,
-                                foreign: true,
-                                via: [],
-                            }}
-                            aside=${s.introducer_name
-                                ? t('apps.people.via-name', 'via {name}', { name: s.introducer_name })
-                                : t('apps.people.via-a-friend', 'via a friend')}
-                        />`
+                                    fields: [
+                                        s.name && { field: 'name', value: s.name },
+                                        s.avatar && { field: 'avatar', value: s.avatar },
+                                    ].filter(Boolean),
+                                    hosted: false,
+                                    foreign: true,
+                                    via: [],
+                                }
+                            }
+                            aside=${
+                                s.introducer_name
+                                    ? t('apps.people.via-name', 'via {name}', {
+                                          name: s.introducer_name,
+                                      })
+                                    : t('apps.people.via-a-friend', 'via a friend')
+                            }
+                        />`,
                     )}
                 </div>
-            </div>`}
-            ${known.length > 0 &&
-            html`<div class="people-known">
+            </div>`
+            }
+            ${
+                known.length > 0 &&
+                html`<div class="people-known">
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.known-around-here', 'known around here')}</span>
                 </div>
@@ -300,23 +334,27 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
                             key=${d.root}
                             root=${d.root}
                             current=${current}
-                            profile=${/* the directory row IS the profile the widget needs -
+                            profile=${
+                                /* the directory row IS the profile the widget needs -
                                 handing it down keeps this list from fetching (and the server
                                 from opening) one profile per face */ {
-                                fields: [
-                                    d.name && { field: 'name', value: d.name },
-                                    d.avatar && { field: 'avatar', value: d.avatar },
-                                ].filter(Boolean),
-                                hosted: d.hosted,
-                                foreign: !d.hosted,
-                                via: [],
-                            }}
-                        />`
+                                    fields: [
+                                        d.name && { field: 'name', value: d.name },
+                                        d.avatar && { field: 'avatar', value: d.avatar },
+                                    ].filter(Boolean),
+                                    hosted: d.hosted,
+                                    foreign: !d.hosted,
+                                    via: [],
+                                }
+                            }
+                        />`,
                     )}
                 </div>
-            </div>`}
-            ${usedToKnow.length > 0 &&
-            html`<div class="people-known">
+            </div>`
+            }
+            ${
+                usedToKnow.length > 0 &&
+                html`<div class="people-known">
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.you-used-to-know', 'you used to know')}</span>
                     <span class="people-known-note">
@@ -330,10 +368,11 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
                             root=${c.root}
                             current=${current}
                             aside=${t('apps.people.cleared', 'cleared')}
-                        />`
+                        />`,
                     )}
                 </div>
-            </div>`}
+            </div>`
+            }
         </div>
     `;
 };

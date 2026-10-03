@@ -11,7 +11,18 @@ import htm from 'htm';
 
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
-import { MIN_ZOOM, MAX_ZOOM, FIT, SLIDER_STEPS, zoomIn, zoomOut, zoomToSlider, sliderToZoom, visibleFraction, scrollToCentre } from '../pure/viewport.js';
+import {
+    MIN_ZOOM,
+    MAX_ZOOM,
+    FIT,
+    SLIDER_STEPS,
+    zoomIn,
+    zoomOut,
+    zoomToSlider,
+    sliderToZoom,
+    visibleFraction,
+    scrollToCentre,
+} from '../pure/viewport.js';
 
 const html = htm.bind(h);
 

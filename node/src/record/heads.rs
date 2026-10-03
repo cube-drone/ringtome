@@ -99,10 +99,7 @@ impl EphemeralHeads {
             Err(_) => BTreeMap::new(), // absent: nothing ever checkpointed
         };
         Ok(EphemeralHeads {
-            inner: Arc::new(Mutex::new(HeadsInner {
-                path: path.to_path_buf(),
-                chains,
-            })),
+            inner: Arc::new(Mutex::new(HeadsInner { path: path.to_path_buf(), chains })),
         })
     }
 
@@ -110,24 +107,22 @@ impl EphemeralHeads {
     /// duplicate, reordered, or replayed checkpoint can never re-arm the under-recording
     /// failure. Fsynced and renamed into place before returning - this is the write-ahead
     /// half, and the caller inserts the entry only after it succeeds.
-    pub fn record(&self, author_hex: &str, service: u32, instance: Option<[u8; 16]>, seq: u64, hash: &[u8; 32]) -> Result<()> {
+    pub fn record(
+        &self,
+        author_hex: &str,
+        service: u32,
+        instance: Option<[u8; 16]>,
+        seq: u64,
+        hash: &[u8; 32],
+    ) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
         let key = key_of(author_hex, service, instance);
         if inner.chains.get(&key).is_some_and(|held| held.seq >= seq) {
             return Ok(());
         }
-        inner.chains.insert(
-            key,
-            Head {
-                seq,
-                hash: hex::encode(hash),
-            },
-        );
-        let body = serde_json::to_vec_pretty(&FileBody {
-            v: 1,
-            chains: inner.chains.clone(),
-        })
-        .context("encoding the heads checkpoint")?;
+        inner.chains.insert(key, Head { seq, hash: hex::encode(hash) });
+        let body = serde_json::to_vec_pretty(&FileBody { v: 1, chains: inner.chains.clone() })
+            .context("encoding the heads checkpoint")?;
         let tmp = inner.path.with_extension("heads.tmp");
         {
             let mut file = std::fs::File::create(&tmp)
@@ -142,7 +137,12 @@ impl EphemeralHeads {
 
     /// The recorded head for one chain, if any - what `imaol::append` continues from when the
     /// database has forgotten a chain the checkpoint remembers.
-    pub fn head_of(&self, author_hex: &str, service: u32, instance: Option<[u8; 16]>) -> Option<(u64, [u8; 32])> {
+    pub fn head_of(
+        &self,
+        author_hex: &str,
+        service: u32,
+        instance: Option<[u8; 16]>,
+    ) -> Option<(u64, [u8; 32])> {
         let inner = self.inner.lock().unwrap();
         let held = inner.chains.get(&key_of(author_hex, service, instance))?;
         let mut hash = [0u8; 32];

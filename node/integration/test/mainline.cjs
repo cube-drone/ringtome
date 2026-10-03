@@ -24,26 +24,32 @@
     Unlike the rest of the suite this file spawns its own node processes - it has to, because
     the restart in act 3 is the whole point. The harness does not boot nodes for it.
 */
-const assert = require("node:assert");
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawn } = require("node:child_process");
-const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first");
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
 
-const { makeFetch } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeFetch } = require('./fetch.cjs');
+const { makeUserFetch } = require('./helpers.cjs');
 
 const ARMED = !!process.env.RINGTOME_TEST_MAINLINE;
 
-const WORKSPACE = path.resolve(__dirname, "..", "..", "..");
-const BINARY = process.env.RINGTOME_TEST_BINARY
-    || path.join(WORKSPACE, "target", "debug", process.platform === "win32" ? "ringtome.exe" : "ringtome");
-const DATA_ROOT = path.join(WORKSPACE, "data", "test-mainline");
+const WORKSPACE = path.resolve(__dirname, '..', '..', '..');
+const BINARY =
+    process.env.RINGTOME_TEST_BINARY ||
+    path.join(
+        WORKSPACE,
+        'target',
+        'debug',
+        process.platform === 'win32' ? 'ringtome.exe' : 'ringtome',
+    );
+const DATA_ROOT = path.join(WORKSPACE, 'data', 'test-mainline');
 // The SPARE lane of this checkout's band (base+25/+26), so a smoke run cannot collide with the
 // dev network, the integration rig, or another checkout - see the port map at the top of
 // node/justfile, or run `just ports`.
-const PORT_BASE = parseInt(process.env.RINGTOME_PORT_BASE || "5280", 10);
+const PORT_BASE = parseInt(process.env.RINGTOME_PORT_BASE || '5280', 10);
 const PORT_A = PORT_BASE + 25;
 const PORT_B = PORT_BASE + 26;
 
@@ -75,16 +81,16 @@ function spawnNode(name, port) {
     const dataDir = path.join(DATA_ROOT, name);
     const logPath = path.join(DATA_ROOT, `${name}.log`);
     fs.mkdirSync(DATA_ROOT, { recursive: true });
-    const log = fs.openSync(logPath, "a");
+    const log = fs.openSync(logPath, 'a');
     const child = spawn(BINARY, [], {
         env: {
             ...process.env,
             RINGTOME_PORT: String(port),
             RINGTOME_DATA_DIRECTORY: dataDir,
-            RINGTOME_DISCOVERY: "mainline",
-            RINGTOME_LOCAL_TEST: "1",
+            RINGTOME_DISCOVERY: 'mainline',
+            RINGTOME_LOCAL_TEST: '1',
         },
-        stdio: ["ignore", log, log],
+        stdio: ['ignore', log, log],
     });
     fs.closeSync(log);
     return { name, port, logPath, child, host: `127.0.0.1:${port}` };
@@ -99,25 +105,25 @@ async function waitHealthy(node) {
 
 async function stopNode(node) {
     if (!node || node.child.exitCode !== null) return;
-    const exited = new Promise((r) => node.child.once("exit", r));
+    const exited = new Promise((r) => node.child.once('exit', r));
     node.child.kill();
-    const timeout = new Promise((r) => setTimeout(r, 5000, "timeout"));
-    if ((await Promise.race([exited, timeout])) === "timeout") {
-        node.child.kill("SIGKILL");
+    const timeout = new Promise((r) => setTimeout(r, 5000, 'timeout'));
+    if ((await Promise.race([exited, timeout])) === 'timeout') {
+        node.child.kill('SIGKILL');
         await exited;
     }
 }
 
 function logTail(node, lines = 60) {
     try {
-        const all = fs.readFileSync(node.logPath, "utf8").split("\n");
-        return all.slice(-lines).join("\n");
+        const all = fs.readFileSync(node.logPath, 'utf8').split('\n');
+        return all.slice(-lines).join('\n');
     } catch (e) {
         return `(no log: ${e})`;
     }
 }
 
-(ARMED ? describe : describe.skip)("mainline field test (REAL public DHT)", function () {
+(ARMED ? describe : describe.skip)('mainline field test (REAL public DHT)', function () {
     // Every act waits on the public internet; budget accordingly.
     this.timeout(15 * 60 * 1000);
 
@@ -127,11 +133,11 @@ function logTail(node, lines = 60) {
     before(async function () {
         assert.ok(
             fs.existsSync(BINARY),
-            `no node binary at ${BINARY} - build first (just mainline-smoke does)`
+            `no node binary at ${BINARY} - build first (just mainline-smoke does)`,
         );
         fs.rmSync(DATA_ROOT, { recursive: true, force: true });
-        nodeA = spawnNode("a", PORT_A);
-        nodeB = spawnNode("b", PORT_B);
+        nodeA = spawnNode('a', PORT_A);
+        nodeB = spawnNode('b', PORT_B);
         await waitHealthy(nodeA);
         await waitHealthy(nodeB);
     });
@@ -142,7 +148,7 @@ function logTail(node, lines = 60) {
     });
 
     afterEach(function () {
-        if (this.currentTest && this.currentTest.state === "failed") {
+        if (this.currentTest && this.currentTest.state === 'failed') {
             for (const node of [nodeA, nodeB]) {
                 if (!node) continue;
                 console.error(`\n--- ${node.name} log tail (${node.logPath}) ---`);
@@ -151,58 +157,67 @@ function logTail(node, lines = 60) {
         }
     });
 
-    it("publishes, resolves, adopts, and rediscovers over public infrastructure", async function () {
+    it('publishes, resolves, adopts, and rediscovers over public infrastructure', async function () {
         // --- Rung 1: a record into the DHT and back out the other side.
-        const alice = await makeUserFetch({ prefix: "mainline", host: nodeA.host });
-        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const alice = await makeUserFetch({ prefix: 'mainline', host: nodeA.host });
+        const created = await (await alice('api/identity', { method: 'POST' })).json();
         const root = created.root_pubkey;
         await alice(`api/identity/${root}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Mainline Milly" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Mainline Milly' }),
         });
 
-        const nodeInfoA = await (await alice("api/node")).json();
+        const nodeInfoA = await (await alice('api/node')).json();
         const endpointIdA = nodeInfoA.endpoint_id;
 
-        const serveResp = await (await alice(`api/identity/${root}/serve`, { method: "POST" })).json();
-        assert.equal(serveResp.served, true, "the publication act must report success");
+        const serveResp = await (
+            await alice(`api/identity/${root}/serve`, { method: 'POST' })
+        ).json();
+        assert.equal(serveResp.served, true, 'the publication act must report success');
 
         // B's pkarr client pulls the record from the real DHT. On the creating node the serving
         // leaf IS the root, so the record is published under the root key.
         const anonOnB = makeFetch(nodeB.host);
-        const resolved = await eventually("B resolves A's serving record", RESOLVE_TIMEOUT_MS, 5000, async () => {
-            const resp = await anonOnB(`test/resolve-serving/${root}`);
-            assert.equal(resp.status, 200);
-            const body = await resp.json();
-            assert.ok(body.found, "record not yet resolvable from the DHT");
-            return body;
-        });
-        assert.equal(resolved.root, root, "resolved record names the served root");
+        const resolved = await eventually(
+            "B resolves A's serving record",
+            RESOLVE_TIMEOUT_MS,
+            5000,
+            async () => {
+                const resp = await anonOnB(`test/resolve-serving/${root}`);
+                assert.equal(resp.status, 200);
+                const body = await resp.json();
+                assert.ok(body.found, 'record not yet resolvable from the DHT');
+                return body;
+            },
+        );
+        assert.equal(resolved.root, root, 'resolved record names the served root');
         assert.equal(resolved.node_key, root, "creating node's serving leaf is the root");
         assert.equal(resolved.endpoint_id, endpointIdA, "resolved record points at A's endpoint");
 
         // --- Rung 2: the adoption ceremony (bootstrap addresses by design - not a discovery test).
-        const aliceOnB = await makeUserFetch({ prefix: "mainlineb", host: nodeB.host });
-        const request = await (await aliceOnB("api/identity/adopt/begin", { method: "POST" })).json();
+        const aliceOnB = await makeUserFetch({ prefix: 'mainlineb', host: nodeB.host });
+        const request = await (
+            await aliceOnB('api/identity/adopt/begin', { method: 'POST' })
+        ).json();
         const grant = await (
             await alice(`api/identity/${root}/nodes`, {
-                method: "POST",
+                method: 'POST',
                 body: JSON.stringify({ code: request.code }),
             })
         ).json();
         const adopted = await (
-            await aliceOnB("api/identity/adopt/complete", {
-                method: "POST",
+            await aliceOnB('api/identity/adopt/complete', {
+                method: 'POST',
                 body: JSON.stringify({ code: grant.code }),
             })
         ).json();
-        assert.equal(adopted.root_pubkey, root, "B now agents the identity");
+        assert.equal(adopted.root_pubkey, root, 'B now agents the identity');
 
         const profileOnB = await (await aliceOnB(`api/identity/${root}/profile`)).json();
         assert.equal(
-            (profileOnB.find((f) => f.field === "name") || {}).value,
-            "Mainline Milly",
-            "adoption synced the profile"
+            (profileOnB.find((f) => f.field === 'name') || {}).value,
+            'Mainline Milly',
+            'adoption synced the profile',
         );
 
         // --- Rung 3: restart BOTH nodes. Address caches are gone and both endpoints rebind on
@@ -210,27 +225,34 @@ function logTail(node, lines = 60) {
         // through iroh's public machinery.
         await stopNode(nodeA);
         await stopNode(nodeB);
-        nodeA = spawnNode("a", PORT_A);
-        nodeB = spawnNode("b", PORT_B);
+        nodeA = spawnNode('a', PORT_A);
+        nodeB = spawnNode('b', PORT_B);
         await waitHealthy(nodeA);
         await waitHealthy(nodeB);
 
         // Sessions are node.db-backed and the cookie jars survived, so the same fetches work.
         await alice(`api/identity/${root}/profile`, {
-            method: "POST",
-            body: JSON.stringify({ field: "name", value: "Post-Restart Pat" }),
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: 'Post-Restart Pat' }),
         });
 
-        const rediscovered = await eventually("B re-syncs from A by bare endpoint id", REDISCOVER_TIMEOUT_MS, 10_000, async () => {
-            const results = await (await aliceOnB(`api/identity/${root}/sync`, { method: "POST" })).json();
-            const toA = results.find((r) => r.peer === endpointIdA);
-            assert.ok(toA, `A's endpoint id not among B's peers: ${JSON.stringify(results)}`);
-            assert.ok(toA.ok, `dial-by-id to A failed: ${toA.error}`);
-            const profile = await (await aliceOnB(`api/identity/${root}/profile`)).json();
-            const name = (profile.find((f) => f.field === "name") || {}).value;
-            assert.equal(name, "Post-Restart Pat", "post-restart write has not propagated yet");
-            return toA;
-        });
-        assert.ok(rediscovered.stats, "the rediscovered sync reported stats");
+        const rediscovered = await eventually(
+            'B re-syncs from A by bare endpoint id',
+            REDISCOVER_TIMEOUT_MS,
+            10_000,
+            async () => {
+                const results = await (
+                    await aliceOnB(`api/identity/${root}/sync`, { method: 'POST' })
+                ).json();
+                const toA = results.find((r) => r.peer === endpointIdA);
+                assert.ok(toA, `A's endpoint id not among B's peers: ${JSON.stringify(results)}`);
+                assert.ok(toA.ok, `dial-by-id to A failed: ${toA.error}`);
+                const profile = await (await aliceOnB(`api/identity/${root}/profile`)).json();
+                const name = (profile.find((f) => f.field === 'name') || {}).value;
+                assert.equal(name, 'Post-Restart Pat', 'post-restart write has not propagated yet');
+                return toA;
+            },
+        );
+        assert.ok(rediscovered.stats, 'the rediscovered sync reported stats');
     });
 });

@@ -54,9 +54,8 @@ pub const MURMUR_KEEP: u64 = 512;
 /// integration harness may shrink both tiers with RINGTOME_TEST_INBOX_KEEP.
 fn keep_depth(service_id: u32) -> u64 {
     if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
-        if let Some(n) = std::env::var("RINGTOME_TEST_INBOX_KEEP")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
+        if let Some(n) =
+            std::env::var("RINGTOME_TEST_INBOX_KEEP").ok().and_then(|v| v.parse::<u64>().ok())
         {
             return n.max(1); // the head must survive; a zero-depth chain is a re-genesis bomb
         }
@@ -192,9 +191,8 @@ pub async fn accept(
     let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))
         .map_err(|e| anyhow!("{e}"))?;
     let db = state.user_dbs.held(recipient_root).await?;
-    let keys = private::unseal_epoch_keys(&db, &leaf_pub, &enc)
-        .await
-        .map_err(|e| anyhow!("{e}"))?;
+    let keys =
+        private::unseal_epoch_keys(&db, &leaf_pub, &enc).await.map_err(|e| anyhow!("{e}"))?;
     let (epoch, epoch_key) = keys
         .current()
         .ok_or_else(|| anyhow!("{recipient_root} has no epoch key to seal a notice under"))?;
@@ -237,11 +235,9 @@ pub async fn accept(
 
     // (7) Transcribe: the envelope verbatim, sealed under the persona's epoch key, signed by
     // this node's own leaf. The sender never writes the chain - nobody but the persona can.
-    let record = private::encrypt_notice(epoch, &epoch_key, signed.bytes())
-        .map_err(|e| anyhow!("{e}"))?;
-    let payload = record
-        .encode()
-        .map_err(|e| anyhow!("encoding a notice record: {e}"))?;
+    let record =
+        private::encrypt_notice(epoch, &epoch_key, signed.bytes()).map_err(|e| anyhow!("{e}"))?;
+    let payload = record.encode().map_err(|e| anyhow!("encoding a notice record: {e}"))?;
     crate::record::imaol::append(
         &db,
         &leaf,
@@ -288,10 +284,9 @@ async fn contact_facts(
     sender_hex: &str,
 ) -> Result<std::collections::BTreeMap<String, String>> {
     let collection = format!("contact:{sender_hex}");
-    let (rows, _) =
-        private::collection_registers(db, keys, service::GENERAL_PRIVATE, &collection)
-            .await
-            .map_err(|e| anyhow!("{e}"))?;
+    let (rows, _) = private::collection_registers(db, keys, service::GENERAL_PRIVATE, &collection)
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
     Ok(rows.into_iter().map(|r| (r.key, r.value)).collect())
 }
 
@@ -353,15 +348,10 @@ async fn held_envelope(db: &Db, sender_hex: &str, kind: &str) -> Result<Option<V
 /// what is actually stored, so the memo heals on its own beat. What peers see meanwhile is
 /// `local_frontiers`, which reads the entries table directly and is correct immediately.
 async fn enforce_retention(db: &Db) -> Result<()> {
-    for service_id in [
-        service::INBOX_TRUSTED,
-        service::INBOX_STRANGER,
-        service::INBOX_MURMURS,
-    ] {
+    for service_id in [service::INBOX_TRUSTED, service::INBOX_STRANGER, service::INBOX_MURMURS] {
         let keep = keep_depth(service_id);
-        for (author_hex, instance, head_seq, len) in crate::record::imaol::chain_spans(db, service_id)
-            .await
-            .map_err(|e| anyhow!("{e}"))?
+        for (author_hex, instance, head_seq, len) in
+            crate::record::imaol::chain_spans(db, service_id).await.map_err(|e| anyhow!("{e}"))?
         {
             if len <= keep {
                 continue;
@@ -394,11 +384,7 @@ async fn enforce_retention(db: &Db) -> Result<()> {
 /// is that evidence crosses wires while opinions stay home. A notice whose claim no longer
 /// checks out is skipped, not stored.
 pub(crate) async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<()> {
-    for service_id in [
-        service::INBOX_TRUSTED,
-        service::INBOX_STRANGER,
-        service::INBOX_MURMURS,
-    ] {
+    for service_id in [service::INBOX_TRUSTED, service::INBOX_STRANGER, service::INBOX_MURMURS] {
         let entries =
             crate::record::imaol::entries_past_watermarks(db, service_id, entry_type::INBOX_NOTICE)
                 .await
@@ -549,7 +535,17 @@ pub async fn page(db: &Db, keys: &EpochKeys, limit: u32) -> Result<Vec<Notice>, 
     Ok(rows
         .into_iter()
         .map(
-            |(sender_root, kind, trust, interest, doc_id, timestamp_ms, service, display_name, detail)| {
+            |(
+                sender_root,
+                kind,
+                trust,
+                interest,
+                doc_id,
+                timestamp_ms,
+                service,
+                display_name,
+                detail,
+            )| {
                 Notice {
                     sender_root,
                     kind,
@@ -571,10 +567,7 @@ mod tests {
     use super::*;
 
     fn facts(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
-        pairs
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
     use ringtome_proto::deliver::notice_kind;
@@ -621,12 +614,13 @@ mod tests {
     /// the stranger pool otherwise.
     #[test]
     fn a_comment_notice_is_first_class_and_tiers_by_sender() {
-        assert_eq!(
-            classify(notice_kind::COMMENT, &facts(&[("interest", "high")])),
-            Tier::Trusted
-        );
+        assert_eq!(classify(notice_kind::COMMENT, &facts(&[("interest", "high")])), Tier::Trusted);
         assert_eq!(classify(notice_kind::COMMENT, &facts(&[])), Tier::Stranger);
-        assert_eq!(classify(notice_kind::MENTIONED, &facts(&[])), Tier::Stranger, "a mention tiers by sender");
+        assert_eq!(
+            classify(notice_kind::MENTIONED, &facts(&[])),
+            Tier::Stranger,
+            "a mention tiers by sender"
+        );
         assert_eq!(classify(notice_kind::MENTIONED, &facts(&[("trust", "high")])), Tier::Trusted);
     }
 

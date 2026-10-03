@@ -41,7 +41,10 @@ for (let t = 0; t < 30 && !view; t++) {
     view = content && content.cmTile && content.cmTile.view;
 }
 if (!view) {
-    console.log('no CodeMirror view appeared; body:', JSON.stringify(doc.body.textContent).slice(0, 300));
+    console.log(
+        'no CodeMirror view appeared; body:',
+        JSON.stringify(doc.body.textContent).slice(0, 300),
+    );
     process.exit(1);
 }
 console.log('editor up; doc holds', JSON.stringify(view.state.doc.toString()).slice(0, 80));

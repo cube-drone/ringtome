@@ -1,8 +1,8 @@
 # Ringtome — Style
 
-* If we've taken on tech debt, record it in [REFACTOR.md](./REFACTOR.md).
-* Write all code defensively under the assumption that _context will disappear rapidly_: Curtis is forgetful
-    and LLMs don't maintain it at all.
+- If we've taken on tech debt, record it in [REFACTOR.md](./REFACTOR.md).
+- Write all code defensively under the assumption that _context will disappear rapidly_: Curtis is forgetful
+  and LLMs don't maintain it at all.
 
 ## Names
 
@@ -25,12 +25,12 @@
 
 ## Comments
 
-- **Comments carry context, not narration.** The module doc argues *why this design*; a function
+- **Comments carry context, not narration.** The module doc argues _why this design_; a function
   doc states the contract and its non-obvious constraints; nothing restates what the next line
   does. If a comment explains a decision, cite the source (PROJECT_PLAN section, API_OLD lesson).
 - **Context rots; scars do not.** A comment recording a decision and its evidence ("field-found
   2026-07-25 pasting a ~600KB document, which never saved") stays true forever and is worth
-  paragraphs. A comment recording *where the build was* ("v0", "phase two adds…", "comes later")
+  paragraphs. A comment recording _where the build was_ ("v0", "phase two adds…", "comes later")
   is false within the month and lies to whoever trusts it next. Write the first kind; when you
   catch the second, it is not tidying, it is a fix.
 - **A stale context comment is a bug.** These comments are load-bearing, so they are maintained
@@ -75,10 +75,10 @@
 ## Boundaries
 
 - **Explain and design at the boundary: inputs, outputs, signatures.** Types encode requirements
-  so misuse fails at compile time — auth as extractor types (a handler's signature *is* its
+  so misuse fails at compile time — auth as extractor types (a handler's signature _is_ its
   authorization), internal vs. API-facing structs (password hashes cannot leak through a typed
   boundary), typed `AppError` variants choosing HTTP statuses (never sniff error strings).
-- Wire formats encode *value domains* (a timestamp is "a CBOR uint ≤ i64::MAX"); host types are
+- Wire formats encode _value domains_ (a timestamp is "a CBOR uint ≤ i64::MAX"); host types are
   chosen for cast-free arithmetic and storage. One unit per concept system-wide (time is `i64`
   milliseconds, everywhere).
 - Errors: typed `AppError` at the HTTP boundary, `anyhow` + `.context()` in leaf modules, every
@@ -103,8 +103,8 @@
   key-tree resolution, LWW folds, crypto round-trips.
 - **Logic that can be a value-in, value-out function belongs in a file that is one** - gathered
   where it can be interrogated without a node, a browser, or a fixture (`ringtome-proto`;
-  `node/js/pure/`). Extract freely when the logic is a *decision over values the caller already
-  holds* - ordering, matching, formatting, arithmetic, predicates. **The tell that you have gone
+  `node/js/pure/`). Extract freely when the logic is a _decision over values the caller already
+  holds_ - ordering, matching, formatting, arithmetic, predicates. **The tell that you have gone
   too far: extracting it requires a new parameter that is a callback.** At that point the logic
   IS the effect sequence - what to write first so a failure leaves a duplicate rather than a
   loss, what to await, what invalidates what - and a "pure" version of it only tests your mocks.
@@ -142,7 +142,7 @@
 ## Abstraction and pragmatism
 
 - **Build the specific, concrete product. No inner platforms.** No generalized frameworks for
-  *imagined* futures; do the first thing that works and keep it shippable. Boilerplate is fine —
+  _imagined_ futures; do the first thing that works and keep it shippable. Boilerplate is fine —
   often good, because it signposts a clear modular structure; four similar-but-honest decode
   functions beat one parameterized decode engine.
 - **YAGNI applies to speculation, not to the plan.** With the build plan in hand (NEXT_STEPS is
@@ -163,22 +163,22 @@
   there is no data to lose and nobody to migrate: breaking changes are always on the table,
   file formats may churn (schemas squashed into `0001` until 0.1.0; see above),
   and safe-update machinery — migration paths, compat shims, upgrade gates — is deferred until
-  an install base exists to be safe *for*. Any invariant whose justification quietly assumes
+  an install base exists to be safe _for_. Any invariant whose justification quietly assumes
   active users ("upgrades must round-trip", "we can't change that column") should be challenged
-  on sight. Two things this rule does **not** license: sloppy *design* of formats (they are
+  on sight. Two things this rule does **not** license: sloppy _design_ of formats (they are
   still designed to last, because ship day freezes them — the wire format gets test vectors
   precisely so it can survive its own success), and forgetting that **ship day flips this rule
   permanently** — the discipline that once squashed migrations now writes them forever after.
 - **The second copy is the finding.** Every deduplication worth doing in this codebase announced
-  itself the same way: the same code written twice, the copies drifting, and *one of them missing
-  a clause* - a reader that never retried a pending body, a filter silently lacking its
+  itself the same way: the same code written twice, the copies drifting, and _one of them missing
+  a clause_ - a reader that never retried a pending body, a filter silently lacking its
   catch-all, three fetch wrappers disagreeing about whether an error carries its status. The bug
   lives in the drift, not the repetition, which is why "I am writing this a second time" is the
   moment to stop rather than a tidying task for later.
 - **But measure before you consolidate: a shared thing its consumers must undo is a wrong
   average.** Seven near-identical buttons turned out to disagree on colour, opacity and hover -
   five of seven would have had to cancel part of any primitive covering them, and what was
-  genuinely shared came to three lines of boilerplate. Compare the *effective* behaviour of the
+  genuinely shared came to three lines of boilerplate. Compare the _effective_ behaviour of the
   copies, not their shape. Honest boilerplate beats a wrong abstraction; this is the nameability
   test's other half.
 - **Prove a behaviour-preserving change by comparing output, not by reading it.** A mechanical
@@ -188,7 +188,7 @@
   on the result, and it is the difference between "should be identical" and "is".
 - **Tech debt is a mortgage**: taking it on to ship is correct and normal, as long as the balance
   is recorded and serviced. REFACTOR.md is the mortgage statement — known compromises live there
-  with reasons, not in anyone's memory. Purity is not a goal; *managed* imperfection is.
+  with reasons, not in anyone's memory. Purity is not a goal; _managed_ imperfection is.
 - **Good-enough speed.** Fast enough not to annoy a human (~100–500ms for interactions) is fast
   enough. Architecture may be chosen for model fit (per-identity DB files, recompute-on-read
   views); functions are not optimized below the annoyance threshold without a measurement.
@@ -203,4 +203,3 @@
 - Plans and docs move in the same commit as the code that changes them (NEXT_STEPS status,
   PROJECT_PLAN sections, this file). The documents are load-bearing; see Comments.
 - Preserve the humor you find. Nobody is required to generate any.
-

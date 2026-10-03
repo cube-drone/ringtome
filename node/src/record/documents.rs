@@ -165,9 +165,8 @@ pub fn fresh_window_ms() -> i64 {
         return runtime;
     }
     if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
-        if let Some(ms) = std::env::var("RINGTOME_TEST_FRESH_WINDOW_MS")
-            .ok()
-            .and_then(|v| v.parse::<i64>().ok())
+        if let Some(ms) =
+            std::env::var("RINGTOME_TEST_FRESH_WINDOW_MS").ok().and_then(|v| v.parse::<i64>().ok())
         {
             return ms;
         }
@@ -217,36 +216,23 @@ impl Doc {
     /// counts as claimed: the child is a head either way), then the read-time folding decides
     /// which heads carry distinct words.
     fn thread(&mut self) {
-        let claimed: HashSet<[u8; 32]> = self
-            .versions
-            .values()
-            .flat_map(|v| v.header.parents.iter().copied())
-            .collect();
-        self.heads = self
-            .versions
-            .keys()
-            .filter(|h| !claimed.contains(*h))
-            .copied()
-            .collect();
+        let claimed: HashSet<[u8; 32]> =
+            self.versions.values().flat_map(|v| v.header.parents.iter().copied()).collect();
+        self.heads = self.versions.keys().filter(|h| !claimed.contains(*h)).copied().collect();
         self.compute_logical_heads();
     }
 
     /// A version's substance: what the twin collapse and the echo fold compare. Body fingerprint AND title - a
     /// rename is real content, so a head that only renamed never folds.
     fn content_of(&self, hash: &[u8; 32]) -> Option<([u8; 32], &str)> {
-        self.versions
-            .get(hash)
-            .map(|v| (v.header.body_hash, v.header.title.as_str()))
+        self.versions.get(hash).map(|v| (v.header.body_hash, v.header.title.as_str()))
     }
 
     /// All proper ancestors of a version we hold headers for (walks stop at retention gaps).
     fn ancestors(&self, of: &[u8; 32]) -> HashSet<[u8; 32]> {
         let mut out = HashSet::new();
-        let mut stack: Vec<[u8; 32]> = self
-            .versions
-            .get(of)
-            .map(|v| v.header.parents.clone())
-            .unwrap_or_default();
+        let mut stack: Vec<[u8; 32]> =
+            self.versions.get(of).map(|v| v.header.parents.clone()).unwrap_or_default();
         while let Some(h) = stack.pop() {
             if out.insert(h) {
                 if let Some(v) = self.versions.get(&h) {
@@ -282,11 +268,7 @@ impl Doc {
         let mut maximal: Vec<[u8; 32]> = common
             .iter()
             .copied()
-            .filter(|c| {
-                !common
-                    .iter()
-                    .any(|d| d != c && self.ancestors(d).contains(c))
-            })
+            .filter(|c| !common.iter().any(|d| d != c && self.ancestors(d).contains(c)))
             .collect();
         // DETERMINISTIC order (claimed stamp, hash tiebreak - the house total order). The
         // intersection above iterates a HashSet, and the recursive virtual base is
@@ -294,10 +276,7 @@ impl Doc {
         // identical DAGs - caught as a test flake by the test-unit tee, diagnosed as a
         // convergence bug.
         maximal.sort_by_key(|h| {
-            self.versions
-                .get(h)
-                .map(|v| (v.timestamp_ms, v.hash))
-                .unwrap_or((i64::MIN, *h))
+            self.versions.get(h).map(|v| (v.timestamp_ms, v.hash)).unwrap_or((i64::MIN, *h))
         });
         maximal
     }
@@ -343,9 +322,7 @@ impl Doc {
                 for other in logical.iter().filter(|o| *o != h) {
                     let forks = self.fork_points(h, other);
                     if !forks.is_empty()
-                        && forks
-                            .iter()
-                            .all(|f| self.content_of(f) == self.content_of(h))
+                        && forks.iter().all(|f| self.content_of(f) == self.content_of(h))
                     {
                         folded = Some(i);
                         break 'search;
@@ -433,9 +410,8 @@ pub async fn save_version(
     save: Save,
 ) -> Result<[u8; 32], AppError> {
     let body_hash = DocHeaderPlain::body_hash(&save.doc_id, &save.body);
-    let (epoch, epoch_key) = keys
-        .current()
-        .ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
+    let (epoch, epoch_key) =
+        keys.current().ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
 
     // ONE document, not the corpus (2026-08-10). This used to `materialize` every version of
     // every document and thread all of their DAGs to look at one - so saving a note paid for
@@ -472,10 +448,7 @@ pub async fn save_version(
     // A fresh put is HELD (`files::Put`) until the append below has landed the header that
     // names it - the reaper's blind spot between a blob and its row.
     let (file_hash, held_body) = match doc.and_then(|d| {
-        d.versions
-            .values()
-            .find(|v| v.header.body_hash == body_hash)
-            .map(|v| v.header.file_hash)
+        d.versions.values().find(|v| v.header.body_hash == body_hash).map(|v| v.header.file_hash)
     }) {
         Some(existing) => (existing, None),
         None => {
@@ -506,9 +479,9 @@ pub async fn save_version(
         genesis_ms: None, // a PUBLIC anchor: how old a post is, for keeping its copies current
         reply_to: None, // replies are public speech; the link enters at publish (PROJECT_PLAN's Replies)
         thread_root: None,
-    sealed_title: None,
-    seal_of: None,
-    onward: false,
+        sealed_title: None,
+        seal_of: None,
+        onward: false,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -541,9 +514,8 @@ pub async fn retitle(
     doc_id: [u8; 16],
     title: &str,
 ) -> Result<[u8; 32], AppError> {
-    let (epoch, epoch_key) = keys
-        .current()
-        .ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
+    let (epoch, epoch_key) =
+        keys.current().ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
     // One document's DAG, not the corpus's (see save_version's twin note). Retitle genuinely
     // needs the threading: `doc_heads` memoizes the resolved head and how MANY logical heads
     // there are, but the new version must parent on every logical head by hash, and only the
@@ -557,7 +529,10 @@ pub async fn retitle(
         )));
     }
     let head = doc.display_head().ok_or_else(|| {
-        AppError::NotFound(crate::msg!("record.documents.the-document-has-no-version", "the document has no version yet (still processing?)"))
+        AppError::NotFound(crate::msg!(
+            "record.documents.the-document-has-no-version",
+            "the document has no version yet (still processing?)"
+        ))
     })?;
     // The retitle no-op bounce: same name, nothing diverged to settle - the chain doesn't grow.
     if head.header.title == title && doc.logical_heads.len() == 1 {
@@ -585,9 +560,9 @@ pub async fn retitle(
         reply_to: head.header.reply_to,
         thread_root: head.header.thread_root,
         genesis_ms: head.header.genesis_ms,
-    sealed_title: None,
-    seal_of: None,
-    onward: false,
+        sealed_title: None,
+        seal_of: None,
+        onward: false,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -638,22 +613,14 @@ pub async fn save_public_media(
         None => *crate::files::FileStore::public_hash(&ingested.body).as_bytes(),
     };
     // Both puts are HELD (`files::Put`) until the append below has landed the twin's header.
-    let held_body = files
-        .put_public(&stored_body)
-        .await
-        .map_err(AppError::Internal)?;
+    let held_body = files.put_public(&stored_body).await.map_err(AppError::Internal)?;
     let mut held_thumb = None;
     if let Some(thumb) = &ingested.thumb_avif {
         let stored_thumb = match &post_key {
             Some(key) => crate::record::private::seal_post_body(key, thumb)?,
             None => thumb.clone(),
         };
-        held_thumb = Some(
-            files
-                .put_public(&stored_thumb)
-                .await
-                .map_err(AppError::Internal)?,
-        );
+        held_thumb = Some(files.put_public(&stored_thumb).await.map_err(AppError::Internal)?);
     }
     let thumb_hash = held_thumb.as_ref().map(|p| *p.hash.as_bytes());
     // A sealed twin's title is sealed too (ruling 5): a picture called "ultrasound" is
@@ -685,16 +652,16 @@ pub async fn save_public_media(
         thumb_hash,
         preview_hash: None,
         animation: ingested.animation,
-        part_of: None, // a twin belongs to the page that embeds it, not to the book
+        part_of: None,    // a twin belongs to the page that embeds it, not to the book
         refs: Vec::new(), // media documents are leaves - they embed nothing
         genesis_ms: None, // and they never edit: absent genesis IS frozen-from-birth
-        reply_to: None, // media twins ride their post; the post carries the thread link
+        reply_to: None,   // media twins ride their post; the post carries the thread link
         thread_root: None,
         settled: false, // the post carries the wish; its media twins are plumbing
         trusted_only: post_key.is_some(),
         sealed_title,
         seal_of,
-    onward,
+        onward,
     };
     let payload = header
         .encode()
@@ -771,7 +738,22 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, seal_of, onward, dated_ms, part_of, im } = text;
+    let PublicText {
+        onto,
+        title,
+        body,
+        format,
+        refs,
+        reply,
+        settled,
+        trusted_only,
+        post_key,
+        seal_of,
+        onward,
+        dated_ms,
+        part_of,
+        im,
+    } = text;
     let mut format = format;
     // The post's age anchor, carried in the SIGNED header so a holder of only a copy knows how
     // long to keep it current (`fresh_window_ms`). A mint anchors at its own moment; a further
@@ -780,64 +762,94 @@ pub async fn save_public_text(
     // A page stays a page across re-publication (PROJECT_PLAN's Books, ruling 4, 2026-09-05): the book
     // it belongs to is carried like the reply link, never re-supplied by the feed's door.
     let mut inherited_part_of: Option<[u8; 16]> = None;
-    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only, onward, im) = match onto {
-        Some((id, parents)) => {
-            // CARRIED from the previous header's own claim, never re-derived: the mint's
-            // claim and the entry's stamp are minted milliseconds apart, so a re-derivation
-            // (the chain's parentless minimum) would differ from the claim by those
-            // milliseconds - and the shelf's drift check would then refuse every honest
-            // edit as "genesis moved" (caught by five cascade tests on this slice's first
-            // run). A header that predates the anchor starts one from the chain's value.
-            let carried = match public_header_entry(db, &id).await? {
-                Some(entry) => match &entry.entry().payload {
-                    ringtome_proto::Payload::Inline(payload) => {
-                        DocHeaderPlain::decode(payload)
-                            .ok()
-                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only, h.onward, h.part_of, h.format, h.im))
-                    }
-                    _ => None,
-                },
-                None => None,
-            };
-            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted, carried_onward, carried_part_of, carried_format, carried_im) =
-                carried.unwrap_or_default();
-            inherited_part_of = carried_part_of;
-            // Once a room, always a room (CHAT.md, ruling 1): the format is the post's
-            // identity, carried like the reply link, whatever the draft says this time.
-            if carried_format == Some(ringtome_proto::registry::doc_format::ROOM) {
-                format = Format::Room;
+    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only, onward, im) =
+        match onto {
+            Some((id, parents)) => {
+                // CARRIED from the previous header's own claim, never re-derived: the mint's
+                // claim and the entry's stamp are minted milliseconds apart, so a re-derivation
+                // (the chain's parentless minimum) would differ from the claim by those
+                // milliseconds - and the shelf's drift check would then refuse every honest
+                // edit as "genesis moved" (caught by five cascade tests on this slice's first
+                // run). A header that predates the anchor starts one from the chain's value.
+                let carried = match public_header_entry(db, &id).await? {
+                    Some(entry) => match &entry.entry().payload {
+                        ringtome_proto::Payload::Inline(payload) => {
+                            DocHeaderPlain::decode(payload).ok().map(|h| {
+                                (
+                                    h.genesis_ms,
+                                    h.reply_to,
+                                    h.thread_root,
+                                    h.settled,
+                                    h.trusted_only,
+                                    h.onward,
+                                    h.part_of,
+                                    h.format,
+                                    h.im,
+                                )
+                            })
+                        }
+                        _ => None,
+                    },
+                    None => None,
+                };
+                let (
+                    carried_genesis,
+                    carried_reply,
+                    carried_root,
+                    carried_settled,
+                    carried_trusted,
+                    carried_onward,
+                    carried_part_of,
+                    carried_format,
+                    carried_im,
+                ) = carried.unwrap_or_default();
+                inherited_part_of = carried_part_of;
+                // Once a room, always a room (CHAT.md, ruling 1): the format is the post's
+                // identity, carried like the reply link, whatever the draft says this time.
+                if carried_format == Some(ringtome_proto::registry::doc_format::ROOM) {
+                    format = Format::Room;
+                }
+                let genesis = match carried_genesis {
+                    Some(g) => g,
+                    None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
+                };
+                // The reply link is CARRIED like genesis, never re-supplied: what a post replies
+                // to is a fact of its first publication (PROJECT_PLAN's Replies), and a re-publication that
+                // could re-parent would let an edit move a reply under a different conversation.
+                // The wish is carried like genesis - but a fresh request during the edit
+                // window may still change the author's mind (their post, their door).
+                (
+                    id,
+                    parents,
+                    genesis,
+                    carried_reply,
+                    carried_root,
+                    settled || carried_settled,
+                    trusted_only || carried_trusted,
+                    onward || carried_onward,
+                    // Once an IM, always an IM (ruling 12): the pair's chat cannot be
+                    // re-published into an ordinary room, where it could be closed or shared.
+                    im || carried_im,
+                )
             }
-            let genesis = match carried_genesis {
-                Some(g) => g,
-                None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
-            };
-            // The reply link is CARRIED like genesis, never re-supplied: what a post replies
-            // to is a fact of its first publication (PROJECT_PLAN's Replies), and a re-publication that
-            // could re-parent would let an edit move a reply under a different conversation.
-            // The wish is carried like genesis - but a fresh request during the edit
-            // window may still change the author's mind (their post, their door).
-            (
-                id,
-                parents,
-                genesis,
-                carried_reply,
-                carried_root,
-                settled || carried_settled,
-                trusted_only || carried_trusted,
-                onward || carried_onward,
-                // Once an IM, always an IM (ruling 12): the pair's chat cannot be
-                // re-published into an ordinary room, where it could be closed or shared.
-                im || carried_im,
-            )
-        }
-        None => {
-            let (reply_to, thread_root) = match reply {
-                Some((parent, root)) => (Some(parent), Some(root)),
-                None => (None, None),
-            };
-            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled, trusted_only, onward, im)
-        }
-    };
+            None => {
+                let (reply_to, thread_root) = match reply {
+                    Some((parent, root)) => (Some(parent), Some(root)),
+                    None => (None, None),
+                };
+                (
+                    new_doc_id(),
+                    vec![],
+                    crate::clock::now_ms(),
+                    reply_to,
+                    thread_root,
+                    settled,
+                    trusted_only,
+                    onward,
+                    im,
+                )
+            }
+        };
     // A trusted-only body is SEALED at mint (PROJECT_PLAN's Post visibility slice 2b): the ciphertext is
     // what the store holds and the blob lane spreads - harmless anywhere - and the key is
     // the gated thing. `file_hash` names the ciphertext; `body_hash` keeps the keyed
@@ -852,13 +864,13 @@ pub async fn save_public_text(
             DocHeaderPlain::body_hash(&doc_id, body.as_bytes()),
         )
     } else {
-        (body.as_bytes().to_vec(), *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes())
+        (
+            body.as_bytes().to_vec(),
+            *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes(),
+        )
     };
     // HELD (`files::Put`) until the append below has landed the header that names it.
-    let held_body = files
-        .put_public(&stored)
-        .await
-        .map_err(AppError::Internal)?;
+    let held_body = files.put_public(&stored).await.map_err(AppError::Internal)?;
     // The sealed title (PROJECT_PLAN's Replies under the author's seal, ruling 5): a sealed
     // post's public header carries no title. The words the reader would see are sealed
     // under the same post key, with their own nonce, and ride the header beside the body -
@@ -900,8 +912,8 @@ pub async fn save_public_text(
         animation: false, // words, never a loop
         im,
         part_of: part_of.or(inherited_part_of),
-    seal_of,
-    onward,
+        seal_of,
+        onward,
     };
     let payload = header
         .encode()
@@ -1105,7 +1117,12 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
     if quarantined(db).await? {
         return Ok(None);
     }
-    let text_only = format!("(format IS NULL OR format IN ({}, {}, {}))", doc_format::MARQUEE, doc_format::BOOK, doc_format::ROOM);
+    let text_only = format!(
+        "(format IS NULL OR format IN ({}, {}, {}))",
+        doc_format::MARQUEE,
+        doc_format::BOOK,
+        doc_format::ROOM
+    );
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
         Vec<u8>,
@@ -1139,7 +1156,23 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         .map_err(AppError::Internal)?;
     match row {
         None => Ok(None),
-        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, onward, dated_ms, part_of)) => Ok(Some(PublicDoc {
+        Some((
+            doc_id,
+            title,
+            format,
+            genesis_ms,
+            head_ms,
+            thumb_hash,
+            rr,
+            rd,
+            tr,
+            td,
+            settled,
+            trusted_only,
+            onward,
+            dated_ms,
+            part_of,
+        )) => Ok(Some(PublicDoc {
             settled: settled != 0,
             trusted_only: trusted_only != 0,
             onward: onward != 0,
@@ -1210,7 +1243,12 @@ pub async fn public_docs(
         return Ok(Vec::new());
     }
     // NULL is plaintext (absent on the wire); the only other text format is marquee.
-    let text_only = format!("(format IS NULL OR format IN ({}, {}, {}))", doc_format::MARQUEE, doc_format::BOOK, doc_format::ROOM);
+    let text_only = format!(
+        "(format IS NULL OR format IN ({}, {}, {}))",
+        doc_format::MARQUEE,
+        doc_format::BOOK,
+        doc_format::ROOM
+    );
     // Retracted documents leave THIS shelf too (2026-08-14). `public_doc_ids` had the filter
     // from the day tombstones landed, and every feed reconciliation inherited it - but this
     // query is what the anonymous /id surfaces actually page, so a takedown vanished from
@@ -1238,8 +1276,8 @@ pub async fn public_docs(
                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
                    trusted_only, onward, dated_ms, part_of";
     let rows: Vec<Row> = match after {
-        None => db
-            .fetch_all(
+        None => {
+            db.fetch_all(
                 &format!(
                     "SELECT {columns} FROM doc_heads
                      WHERE lane = 'public' AND {text_only} AND {not_retracted}
@@ -1247,9 +1285,10 @@ pub async fn public_docs(
                 ),
                 (limit,),
             )
-            .await,
-        Some((ms, doc)) => db
-            .fetch_all(
+            .await
+        }
+        Some((ms, doc)) => {
+            db.fetch_all(
                 &format!(
                     "SELECT {columns} FROM doc_heads
                      WHERE lane = 'public' AND {text_only} AND {not_retracted}
@@ -1259,7 +1298,8 @@ pub async fn public_docs(
                 ),
                 (ms, ms, doc.to_vec(), limit),
             )
-            .await,
+            .await
+        }
     }
     .context("listing public documents")
     .map_err(AppError::Internal)?;
@@ -1311,7 +1351,23 @@ type PublicDocRow = (
 );
 
 fn public_doc_from_row(row: PublicDocRow) -> Result<PublicDoc, AppError> {
-    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, onward, dated_ms, part_of) = row;
+    let (
+        doc_id,
+        title,
+        format,
+        genesis_ms,
+        head_ms,
+        thumb_hash,
+        rr,
+        rd,
+        tr,
+        td,
+        settled,
+        trusted_only,
+        onward,
+        dated_ms,
+        part_of,
+    ) = row;
     Ok(PublicDoc {
         settled: settled != 0,
         trusted_only: trusted_only != 0,
@@ -1349,7 +1405,12 @@ pub async fn public_docs_updated_since(
     if quarantined(db).await? {
         return Ok(Vec::new());
     }
-    let text_only = format!("(format IS NULL OR format IN ({}, {}, {}))", doc_format::MARQUEE, doc_format::BOOK, doc_format::ROOM);
+    let text_only = format!(
+        "(format IS NULL OR format IN ({}, {}, {}))",
+        doc_format::MARQUEE,
+        doc_format::BOOK,
+        doc_format::ROOM
+    );
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
         Vec<u8>,
@@ -1452,11 +1513,7 @@ pub async fn public_doc_ids(db: &Db) -> Result<std::collections::HashSet<String>
         .await
         .context("listing public document ids")
         .map_err(AppError::Internal)?;
-    Ok(rows
-        .into_iter()
-        .map(|(id,)| hex::encode(id))
-        .filter(|id| !retracted.contains(id))
-        .collect())
+    Ok(rows.into_iter().map(|(id,)| hex::encode(id)).filter(|id| !retracted.contains(id)).collect())
 }
 
 /// Which public documents are withdrawn, as hex - the shelf's filter.
@@ -1487,9 +1544,7 @@ pub(crate) async fn retracted_doc_ids(
 /// crown adjudicates). Individual bodies stay fetchable by exact id - the quarantine is
 /// about presentation, and the evidence handling needs the bytes to remain resolvable.
 async fn quarantined(db: &Db) -> Result<bool, AppError> {
-    crate::net::sync::has_public_equivocation(db)
-        .await
-        .map_err(AppError::Internal)
+    crate::net::sync::has_public_equivocation(db).await.map_err(AppError::Internal)
 }
 
 /// A public document's display facts, for the anonymous serving routes: format and blob
@@ -1526,10 +1581,7 @@ pub async fn public_genesis(db: &Db, doc_id: &[u8; 16]) -> Result<Option<i64>, A
     Ok(row.map(|(g,)| g))
 }
 
-pub async fn public_head(
-    db: &Db,
-    doc_id: &[u8; 16],
-) -> Result<Option<PublicHead>, AppError> {
+pub async fn public_head(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicHead>, AppError> {
     catch_up_public_lane(db).await?;
     // A retracted document has no public head, full stop (filter added 2026-08-14, when the
     // take-it-down button became reachable and its first real use showed the gap): the head
@@ -1697,10 +1749,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
 
     let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
     for signed in entries {
-        by_author
-            .entry(hex::encode(signed.entry().chain.author))
-            .or_default()
-            .push(signed);
+        by_author.entry(hex::encode(signed.entry().chain.author)).or_default().push(signed);
     }
 
     let mut undecryptable = 0usize;
@@ -1789,26 +1838,16 @@ pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, 
     // folded by a pass that then advanced past headers, or the reverse, loses entries silently.
     // (This is the same constraint that put rebroadcasts on their own chain; here the two types
     // genuinely belong on one chain, so the fold is what has to widen.)
-    let mut public_entries = crate::record::imaol::entries_past_watermarks(
-        db,
-        service::POSTS,
-        entry_type::DOC_HEADER,
-    )
-    .await?;
+    let mut public_entries =
+        crate::record::imaol::entries_past_watermarks(db, service::POSTS, entry_type::DOC_HEADER)
+            .await?;
     public_entries.extend(
-        crate::record::imaol::entries_past_watermarks(
-            db,
-            service::POSTS,
-            entry_type::POST_RETRACT,
-        )
-        .await?,
+        crate::record::imaol::entries_past_watermarks(db, service::POSTS, entry_type::POST_RETRACT)
+            .await?,
     );
     let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
     for signed in public_entries {
-        by_author
-            .entry(hex::encode(signed.entry().chain.author))
-            .or_default()
-            .push(signed);
+        by_author.entry(hex::encode(signed.entry().chain.author)).or_default().push(signed);
     }
     let mut changed: BTreeSet<[u8; 16]> = BTreeSet::new();
     let mut advances: Vec<(String, u64)> = Vec::new();
@@ -1820,17 +1859,18 @@ pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, 
         for signed in chain {
             if let Payload::Inline(payload) = &signed.entry().payload {
                 match signed.entry().entry_type {
-                    entry_type::POST_RETRACT => match ringtome_proto::PostRetraction::decode(payload)
-                    {
-                        Ok(tombstone) => {
-                            changed.insert(tombstone.doc_id);
-                            fold_retraction(db, &signed, &tombstone).await?;
+                    entry_type::POST_RETRACT => {
+                        match ringtome_proto::PostRetraction::decode(payload) {
+                            Ok(tombstone) => {
+                                changed.insert(tombstone.doc_id);
+                                fold_retraction(db, &signed, &tombstone).await?;
+                            }
+                            Err(_) => tracing::warn!(
+                                seq = signed.entry().seq,
+                                "skipping undecodable post retraction"
+                            ),
                         }
-                        Err(_) => tracing::warn!(
-                            seq = signed.entry().seq,
-                            "skipping undecodable post retraction"
-                        ),
-                    },
+                    }
                     _ => match ringtome_proto::DocHeaderPlain::decode(payload) {
                         Ok(header) => {
                             changed.insert(header.doc_id);
@@ -1956,7 +1996,8 @@ pub async fn retract_public(
 /// holds, on their own. Publish states them as ordinary tags, because a reader on another node
 /// knows nothing of how they were derived and needs none of it - and a republish that no longer
 /// earns one retracts it like any tag the draft stopped carrying. In this order wherever listed.
-pub const IMPLICIT_TAGS: [&str; 7] = ["image", "video", "audio", "micro", "short", "medium", "long"];
+pub const IMPLICIT_TAGS: [&str; 7] =
+    ["image", "video", "audio", "micro", "short", "medium", "long"];
 
 /// How many words a body holds: whitespace-separated runs with a letter or digit in them, so
 /// punctuation alone isn't a word and a link counts as one.
@@ -1989,8 +2030,12 @@ pub fn media_tag(format: Option<u64>, animation: bool) -> Option<&'static str> {
 }
 
 /// A document's own tags joined with the kinds of what it names, in [`IMPLICIT_TAGS`] order.
-fn implicit_of(own: &[Option<&'static str>], named: impl Iterator<Item = Option<&'static str>>) -> Vec<&'static str> {
-    let have: HashSet<&'static str> = own.iter().copied().flatten().chain(named.flatten()).collect();
+fn implicit_of(
+    own: &[Option<&'static str>],
+    named: impl Iterator<Item = Option<&'static str>>,
+) -> Vec<&'static str> {
+    let have: HashSet<&'static str> =
+        own.iter().copied().flatten().chain(named.flatten()).collect();
     IMPLICIT_TAGS.into_iter().filter(|t| have.contains(t)).collect()
 }
 
@@ -1998,7 +2043,11 @@ fn implicit_of(own: &[Option<&'static str>], named: impl Iterator<Item = Option<
 /// search rows' word counts - three reads, no body opened. The counts are as fresh as the search
 /// index's last refresh ([`search_rows`]; the stream refreshes it before it builds the list).
 /// `gone` are documents to count as absent (the deleted). Only documents that have any appear.
-pub async fn private_implicit_tags(db: &Db, keys: &EpochKeys, gone: &HashSet<[u8; 16]>) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
+pub async fn private_implicit_tags(
+    db: &Db,
+    keys: &EpochKeys,
+    gone: &HashSet<[u8; 16]>,
+) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
     catch_up(db, keys).await?;
     let heads: Vec<(Vec<u8>, Option<i64>, i64)> = db
         .fetch_all("SELECT doc_id, format, animation FROM doc_heads WHERE lane = 'private'", ())
@@ -2027,7 +2076,10 @@ pub async fn private_implicit_tags(db: &Db, keys: &EpochKeys, gone: &HashSet<[u8
         .filter_map(|(id, r)| Some((<[u8; 16]>::try_from(id.as_slice()).ok()?, decode_refs(&r))))
         .collect();
     let words: BTreeMap<Vec<u8>, i64> = db
-        .fetch_all::<(Vec<u8>, i64)>("SELECT doc_id, words FROM doc_search WHERE words IS NOT NULL", ())
+        .fetch_all::<(Vec<u8>, i64)>(
+            "SELECT doc_id, words FROM doc_search WHERE words IS NOT NULL",
+            (),
+        )
         .await
         .context("reading word counts for implicit tags")
         .map_err(AppError::Internal)?
@@ -2047,7 +2099,10 @@ pub async fn private_implicit_tags(db: &Db, keys: &EpochKeys, gone: &HashSet<[u8
 /// A public post's implicit tags: what its header's refs - the pictures, films and sounds it
 /// publishes, as public twins - are. Read off the post as minted, so it says what the post
 /// carries, foreign pictures copied in included.
-pub async fn public_implicit_tags(db: &Db, post_id: &[u8; 16]) -> Result<Vec<&'static str>, AppError> {
+pub async fn public_implicit_tags(
+    db: &Db,
+    post_id: &[u8; 16],
+) -> Result<Vec<&'static str>, AppError> {
     let Some(entry) = public_header_entry(db, post_id).await? else {
         return Ok(Vec::new());
     };
@@ -2060,11 +2115,16 @@ pub async fn public_implicit_tags(db: &Db, post_id: &[u8; 16]) -> Result<Vec<&'s
     let mut named = Vec::new();
     for r in &header.refs {
         let row: Option<(Option<i64>, i64)> = db
-            .fetch_optional("SELECT format, animation FROM doc_heads WHERE doc_id = ?1 AND lane = 'public'", (r.to_vec(),))
+            .fetch_optional(
+                "SELECT format, animation FROM doc_heads WHERE doc_id = ?1 AND lane = 'public'",
+                (r.to_vec(),),
+            )
             .await
             .context("reading a twin's format for implicit tags")
             .map_err(AppError::Internal)?;
-        named.push(row.and_then(|(format, animation)| media_tag(format.map(|f| f as u64), animation != 0)));
+        named.push(
+            row.and_then(|(format, animation)| media_tag(format.map(|f| f as u64), animation != 0)),
+        );
     }
     Ok(implicit_of(&[], named.into_iter()))
 }
@@ -2190,12 +2250,8 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
         // The claimed stamp of the document's genesis: its parentless version(s) - earliest
         // wins if retention/criss-cross left several - falling back to the earliest version we
         // hold when the true genesis is outside retention.
-        let earliest = doc
-            .versions
-            .values()
-            .map(|v| v.timestamp_ms)
-            .min()
-            .unwrap_or(head.timestamp_ms);
+        let earliest =
+            doc.versions.values().map(|v| v.timestamp_ms).min().unwrap_or(head.timestamp_ms);
         let genesis_ms = doc
             .versions
             .values()
@@ -2298,22 +2354,16 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
 /// folded facts AND the memoized resolutions. The next keyed materialize refolds both from the
 /// log (a refold re-derives every doc's `doc_heads` row, since every doc changes in that pass).
 pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
-    for sql in [
-        "DELETE FROM doc_versions",
-        "DELETE FROM doc_heads",
-        "DELETE FROM doc_search",
-    ] {
-        db.execute(sql, ())
-            .await
-            .context("clearing document views")
-            .map_err(AppError::Internal)?;
+    for sql in ["DELETE FROM doc_versions", "DELETE FROM doc_heads", "DELETE FROM doc_search"] {
+        db.execute(sql, ()).await.context("clearing document views").map_err(AppError::Internal)?;
     }
     Ok(())
 }
 
 /// A 16-byte id off a memo column (a document id, e.g. `part_of`).
 fn hash16(b: &[u8]) -> Result<[u8; 16], AppError> {
-    <[u8; 16]>::try_from(b).map_err(|_| AppError::Internal(anyhow!("a memo column holds an id of the wrong width")))
+    <[u8; 16]>::try_from(b)
+        .map_err(|_| AppError::Internal(anyhow!("a memo column holds an id of the wrong width")))
 }
 
 fn hash32(bytes: &[u8]) -> Result<[u8; 32], AppError> {
@@ -2346,10 +2396,10 @@ type VersionRow = (
     Option<String>,  // reply_to_doc
     Option<String>,  // thread_root_root
     Option<String>,  // thread_root_doc
-    i64,             // settled (PROJECT_PLAN's Post visibility: the author's no-shares-no-replies wish)
-    i64,             // trusted_only (PROJECT_PLAN's Post visibility slice 2)
-    i64,             // onward (header key 22; Contact tags, ruling 7)
-    Option<i64>,     // dated_ms (PUBLISH.md)
+    i64, // settled (PROJECT_PLAN's Post visibility: the author's no-shares-no-replies wish)
+    i64, // trusted_only (PROJECT_PLAN's Post visibility slice 2)
+    i64, // onward (header key 22; Contact tags, ruling 7)
+    Option<i64>, // dated_ms (PUBLISH.md)
 );
 
 /// Rehydrate one stored version from its `doc_versions` row.
@@ -2420,18 +2470,10 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         reply_to,
         thread_root,
         settled: settled != 0,
-    sealed_title: None,
-    seal_of: None,
+        sealed_title: None,
+        seal_of: None,
     };
-    Ok((
-        doc_id,
-        Version {
-            hash,
-            header,
-            timestamp_ms,
-            author,
-        },
-    ))
+    Ok((doc_id, Version { hash, header, timestamp_ms, author }))
 }
 
 /// Load ONE document's DAG from the persisted fold and thread it - the memoizer's input,
@@ -2507,17 +2549,10 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
         .context("reading doc versions")
         .map_err(AppError::Internal)?;
 
-    let mut view = DocumentsView {
-        undecryptable,
-        ..Default::default()
-    };
+    let mut view = DocumentsView { undecryptable, ..Default::default() };
     for row in rows {
         let (doc_id, version) = version_from_row(row)?;
-        view.docs
-            .entry(doc_id)
-            .or_default()
-            .versions
-            .insert(version.hash, version);
+        view.docs.entry(doc_id).or_default().versions.insert(version.hash, version);
     }
 
     // Lanes ride beside the versions (one per doc, whole): a separate cheap map keeps
@@ -2550,7 +2585,11 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
 /// was only seen at scale (2026-10-02): a search page opens a snippet read per result, so 128
 /// reads at once each folded a 1500-note persona, queued on its one connection, and every page
 /// of that persona waited ten seconds.
-pub async fn materialize_one(db: &Db, keys: &EpochKeys, doc_id: &[u8; 16]) -> Result<Option<Doc>, AppError> {
+pub async fn materialize_one(
+    db: &Db,
+    keys: &EpochKeys,
+    doc_id: &[u8; 16],
+) -> Result<Option<Doc>, AppError> {
     catch_up(db, keys).await?;
     let doc = load_doc(db, doc_id).await?;
     Ok((!doc.versions.is_empty()).then_some(doc))
@@ -2584,7 +2623,11 @@ pub async fn version_blobs(db: &Db) -> Result<Vec<([u8; 16], [u8; 32])>, AppErro
 /// Which of `ids` this persona holds any version of - `materialize(..).docs.contains_key`, per
 /// id, one indexed probe each instead of the whole view (the embed checks of a publish or a
 /// chat line, which name a handful of documents among thousands).
-pub async fn held_of(db: &Db, keys: &EpochKeys, ids: &[[u8; 16]]) -> Result<BTreeSet<[u8; 16]>, AppError> {
+pub async fn held_of(
+    db: &Db,
+    keys: &EpochKeys,
+    ids: &[[u8; 16]],
+) -> Result<BTreeSet<[u8; 16]>, AppError> {
     catch_up(db, keys).await?;
     let mut held = BTreeSet::new();
     for id in ids {
@@ -2804,7 +2847,10 @@ pub async fn search_rows(
         .context("reading heads for search")
         .map_err(AppError::Internal)?;
     let cached: BTreeMap<Vec<u8>, (Vec<u8>, String, String)> = db
-        .fetch_all::<(Vec<u8>, Vec<u8>, String, String)>("SELECT doc_id, fp, tokens, links FROM doc_search", ())
+        .fetch_all::<(Vec<u8>, Vec<u8>, String, String)>(
+            "SELECT doc_id, fp, tokens, links FROM doc_search",
+            (),
+        )
         .await
         .context("reading search rows")
         .map_err(AppError::Internal)?
@@ -2863,13 +2909,15 @@ pub async fn search_rows(
                 let resolved = resolve(files, keys, &doc, &BTreeMap::new()).await?;
                 // Words only: a drawing's body is strokes (DRAWING.md) - ids and colours are not
                 // anything a person searches for - so a drawing is found by its title and tags.
-                let is_words = Format::from_wire(doc.display_head().and_then(|v| v.header.format)).is_mergeable_text();
+                let is_words = Format::from_wire(doc.display_head().and_then(|v| v.header.format))
+                    .is_mergeable_text();
                 if let Some(body) = resolved.body.as_ref().filter(|_| is_words) {
                     tokenize_into(body, &mut tokens);
                     words = Some(word_count(body));
                 }
                 // Links are Marquee's: a plain page's brackets are only brackets.
-                let marquee = Format::from_wire(doc.display_head().and_then(|v| v.header.format)) == Format::Marquee;
+                let marquee = Format::from_wire(doc.display_head().and_then(|v| v.header.format))
+                    == Format::Marquee;
                 if let Some(body) = resolved.body.as_ref().filter(|_| marquee) {
                     links = crate::record::bake::doc_links(body, root_hex);
                 }
@@ -2884,11 +2932,7 @@ pub async fn search_rows(
             .await
             .context("writing search row")
             .map_err(AppError::Internal)?;
-            out.push(SearchRow {
-                doc_id: hex::encode(id),
-                tokens,
-                links,
-            });
+            out.push(SearchRow { doc_id: hex::encode(id), tokens, links });
         }
     }
     out.sort_by(|a, b| a.doc_id.cmp(&b.doc_id));
@@ -2912,9 +2956,8 @@ pub async fn fetch_missing_bodies(
     // (headers pushed onward before their bodies arrive here) can be made deterministic
     // instead of lucky - the fanout probe sets this on the middle node. Production ignores it.
     if state.config.local_test {
-        if let Some(ms) = std::env::var("RINGTOME_TEST_BODY_LAG_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
+        if let Some(ms) =
+            std::env::var("RINGTOME_TEST_BODY_LAG_MS").ok().and_then(|v| v.parse::<u64>().ok())
         {
             tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         }
@@ -2952,7 +2995,8 @@ pub async fn fetch_missing_bodies(
         // fills before the backlog. The author's pins, their bodies moved to the front.
         if !missing.is_empty() {
             let mut front: Vec<iroh_blobs::Hash> = Vec::new();
-            for doc_id in crate::record::imaol::pinned_docs(&db, root_hex).await.unwrap_or_default() {
+            for doc_id in crate::record::imaol::pinned_docs(&db, root_hex).await.unwrap_or_default()
+            {
                 if let Ok(Some(head)) = public_head(&db, &doc_id).await {
                     for h in std::iter::once(head.file_hash).chain(head.thumb_hash) {
                         let hash = iroh_blobs::Hash::from_bytes(h);
@@ -3097,11 +3141,7 @@ fn side_label(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
 /// The opening line of one Marquee variant - the attr shape is the renderers' contract:
 /// `label` and `when` are advisory display text shown verbatim, so `when` is civil time.
 fn variant_open(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
-    format!(
-        ":::variant label=\"{}\" when=\"{}\"\n",
-        side_who(v, names),
-        civil_utc(v.timestamp_ms)
-    )
+    format!(":::variant label=\"{}\" when=\"{}\"\n", side_who(v, names), civil_utc(v.timestamp_ms))
 }
 
 /// One stretch of an N-way merge: lines every head agrees on, or a region where two-plus
@@ -3187,10 +3227,8 @@ fn align_heads(base: &str, sides: &[&str]) -> Vec<Segment> {
     let per_side: Vec<Vec<(usize, usize, Vec<String>)>> =
         sides.iter().map(|s| edit_runs(base, s)).collect();
 
-    let mut all: Vec<(usize, usize)> = per_side
-        .iter()
-        .flat_map(|runs| runs.iter().map(|(s, e, _)| (*s, *e)))
-        .collect();
+    let mut all: Vec<(usize, usize)> =
+        per_side.iter().flat_map(|runs| runs.iter().map(|(s, e, _)| (*s, *e))).collect();
     all.sort_unstable();
     let mut groups: Vec<(usize, usize)> = Vec::new();
     for (s, e) in all {
@@ -3253,11 +3291,7 @@ fn render_segments(
                     for (i, (side, lines)) in props.iter().enumerate() {
                         out.push_str(&format!("<<<<<<< {}\n", side_label(heads[*side], names)));
                         push_lines(&mut out, lines);
-                        out.push_str(if i + 1 == props.len() {
-                            ">>>>>>>\n"
-                        } else {
-                            "=======\n"
-                        });
+                        out.push_str(if i + 1 == props.len() { ">>>>>>>\n" } else { "=======\n" });
                     }
                 }
                 Format::Marquee | Format::Room => {
@@ -3269,7 +3303,12 @@ fn render_segments(
                     }
                     out.push_str("::: conflict\n");
                 }
-                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book | Format::Drawing => {
+                Format::Avif
+                | Format::Apng
+                | Format::WebmAv1
+                | Format::OggOpus
+                | Format::Book
+                | Format::Drawing => {
                     unreachable!("media and drawings never reach text merge")
                 }
             },
@@ -3288,7 +3327,12 @@ fn whole_version_conflict(
     names: &BTreeMap<[u8; 32], String>,
 ) -> String {
     match format {
-        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book | Format::Drawing => {
+        Format::Avif
+        | Format::Apng
+        | Format::WebmAv1
+        | Format::OggOpus
+        | Format::Book
+        | Format::Drawing => {
             unreachable!("media conflicts are keep-both and drawings merge stroke-wise: never synthesized text")
         }
         // Git-style marker fences: every side in full.
@@ -3300,11 +3344,7 @@ fn whole_version_conflict(
                 if !body.ends_with('\n') {
                     out.push('\n');
                 }
-                out.push_str(if i + 1 == sides.len() {
-                    ">>>>>>>\n"
-                } else {
-                    "=======\n"
-                });
+                out.push_str(if i + 1 == sides.len() { ">>>>>>>\n" } else { "=======\n" });
             }
             out
         }
@@ -3340,17 +3380,11 @@ pub async fn resolve(
     names: &BTreeMap<[u8; 32], String>,
 ) -> Result<ResolvedDoc, AppError> {
     // Deterministic side order: oldest claimed stamp first (hash tiebreak).
-    let mut heads: Vec<&Version> = doc
-        .logical_heads
-        .iter()
-        .filter_map(|h| doc.versions.get(h))
-        .collect();
+    let mut heads: Vec<&Version> =
+        doc.logical_heads.iter().filter_map(|h| doc.versions.get(h)).collect();
     heads.sort_by_key(|v| (v.timestamp_ms, v.hash));
 
-    let display_title = doc
-        .display_head()
-        .map(|v| v.header.title.clone())
-        .unwrap_or_default();
+    let display_title = doc.display_head().map(|v| v.header.title.clone()).unwrap_or_default();
     // The document's format governs presentation. Read from the display head; a document's
     // versions all carry the same format.
     let format = Format::from_wire(doc.display_head().and_then(|v| v.header.format));
@@ -3362,7 +3396,11 @@ pub async fn resolve(
         let mut bodies = Vec::new();
         for v in &heads {
             let Some(body) = read_body(files, keys, v).await? else {
-                return Ok(ResolvedDoc { resolution: Resolution::Single, title: display_title, body: None });
+                return Ok(ResolvedDoc {
+                    resolution: Resolution::Single,
+                    title: display_title,
+                    body: None,
+                });
             };
             bodies.push(body);
         }
@@ -3378,16 +3416,9 @@ pub async fn resolve(
     // images, or inline a webp into JSON). One logical head or keep-both; the bytes are served
     // separately via the binary endpoint. Never run diffy/utf8 over binary.
     if !format.is_mergeable_text() {
-        let resolution = if doc.logical_heads.len() > 1 {
-            Resolution::Conflict
-        } else {
-            Resolution::Single
-        };
-        return Ok(ResolvedDoc {
-            resolution,
-            title: display_title,
-            body: None,
-        });
+        let resolution =
+            if doc.logical_heads.len() > 1 { Resolution::Conflict } else { Resolution::Single };
+        return Ok(ResolvedDoc { resolution, title: display_title, body: None });
     }
 
     let [a, b] = match heads.as_slice() {
@@ -3441,10 +3472,8 @@ pub async fn resolve(
                     let disputed = segments.iter().any(|s| matches!(s, Segment::Disputed(_)));
                     // The field-wise title merge, generalized: exactly one head renamed (relative to the fork)
                     // → the rename wins; otherwise the display head's title stands.
-                    let renamed: Vec<&&Version> = many
-                        .iter()
-                        .filter(|v| v.header.title != fv.header.title)
-                        .collect();
+                    let renamed: Vec<&&Version> =
+                        many.iter().filter(|v| v.header.title != fv.header.title).collect();
                     let title = match renamed.as_slice() {
                         [one] => one.header.title.clone(),
                         _ => display_title,
@@ -3468,10 +3497,9 @@ pub async fn resolve(
         }
     };
 
-    let (Some(body_a), Some(body_b)) = (
-        read_body(files, keys, a).await?,
-        read_body(files, keys, b).await?,
-    ) else {
+    let (Some(body_a), Some(body_b)) =
+        (read_body(files, keys, a).await?, read_body(files, keys, b).await?)
+    else {
         return Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
             title: display_title,
@@ -3529,11 +3557,7 @@ pub async fn resolve(
     // git dialect (field-found 2026-08-01). Plaintext keeps diffy's marked output verbatim -
     // markers ARE its vocabulary, and the same ambiguity is git's own native hazard there.
     match merge_lines(&base, &text_a, &text_b) {
-        Ok(merged) => Ok(ResolvedDoc {
-            resolution: Resolution::Merged,
-            title,
-            body: Some(merged),
-        }),
+        Ok(merged) => Ok(ResolvedDoc { resolution: Resolution::Merged, title, body: Some(merged) }),
         Err(marked) => Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
             title,
@@ -3545,7 +3569,12 @@ pub async fn resolve(
                     let segments = align_heads(&base, &[text_a.as_str(), text_b.as_str()]);
                     render_segments(format, &segments, &[a, b], names)
                 }
-                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book | Format::Drawing => {
+                Format::Avif
+                | Format::Apng
+                | Format::WebmAv1
+                | Format::OggOpus
+                | Format::Book
+                | Format::Drawing => {
                     unreachable!("media and drawings never reach text merge")
                 }
             }),
@@ -3560,9 +3589,7 @@ pub async fn resolve(
 /// hash-order-dependent test flake; the leak is structurally closed with the base section
 /// gone, since the SIDES are always real user text).
 fn merge_lines(base: &str, a: &str, b: &str) -> Result<String, String> {
-    diffy::MergeOptions::new()
-        .set_conflict_style(diffy::ConflictStyle::Merge)
-        .merge(base, a, b)
+    diffy::MergeOptions::new().set_conflict_style(diffy::ConflictStyle::Merge).merge(base, a, b)
 }
 
 /// The three-way base for a pair of heads, as text - git's recursive strategy, bounded. One
@@ -3637,10 +3664,7 @@ pub async fn read_body(
     version: &Version,
 ) -> Result<Option<Vec<u8>>, AppError> {
     let hash = iroh_blobs::Hash::from_bytes(version.header.file_hash);
-    files
-        .get_decrypted(hash, keys)
-        .await
-        .map_err(AppError::Internal)
+    files.get_decrypted(hash, keys).await.map_err(AppError::Internal)
 }
 
 #[cfg(test)]
@@ -3658,8 +3682,14 @@ mod tests {
         assert_eq!(media_tag(Format::OggOpus.to_wire(), false), Some("audio"));
         assert_eq!(media_tag(Format::Marquee.to_wire(), false), None);
         assert_eq!(media_tag(Format::Drawing.to_wire(), false), None);
-        assert_eq!(implicit_of(&[], [Some("audio"), None, Some("image"), Some("image")].into_iter()), vec!["image", "audio"]);
-        assert_eq!(implicit_of(&[Some("short")], [Some("image")].into_iter()), vec!["image", "short"]);
+        assert_eq!(
+            implicit_of(&[], [Some("audio"), None, Some("image"), Some("image")].into_iter()),
+            vec!["image", "audio"]
+        );
+        assert_eq!(
+            implicit_of(&[Some("short")], [Some("image")].into_iter()),
+            vec!["image", "short"]
+        );
     }
 
     /// The length tags' bounds (Curtis, 2026-10-01): under 75 micro, 75 to 500 short, 500 to 2,000
@@ -3683,14 +3713,17 @@ mod tests {
     #[test]
     fn a_claimed_date_is_local_and_a_bare_day_takes_the_publish_hour() {
         const MAY_4: i64 = 1_556_928_000_000; // 2019-05-04T00:00Z
-        // Publishing at 20:00 local in UTC-7 (offset +420): a bare day lands at 20:00 local
-        // on that day = 03:00Z the next morning.
+                                              // Publishing at 20:00 local in UTC-7 (offset +420): a bare day lands at 20:00 local
+                                              // on that day = 03:00Z the next morning.
         let now = MAY_4 + 30 * 86_400_000 + (20 * 3_600 + 7 * 3_600) * 1_000;
         assert_eq!(super::claimed_ms("2019-05-04", now, 420), Some(MAY_4 + 27 * 3_600_000));
         // In UTC, a bare day is that day at the current UTC time-of-day.
         assert_eq!(super::claimed_ms("2019-05-04", MAY_4 + 5_000_000, 0), Some(MAY_4 + 5_000_000));
         // A date-time claim is local wall-clock, shifted to UTC by the offset.
-        assert_eq!(super::claimed_ms("2019-05-04T15:35", now, 420), Some(1_556_984_100_000 + 420 * 60_000));
+        assert_eq!(
+            super::claimed_ms("2019-05-04T15:35", now, 420),
+            Some(1_556_984_100_000 + 420 * 60_000)
+        );
         assert_eq!(super::claimed_ms("2019-05-04T15:35", now, 0), Some(1_556_984_100_000));
         assert_eq!(super::claimed_ms("2019-13-01", now, 0), None);
         assert_eq!(super::claimed_ms("yesterday", now, 0), None);
@@ -3725,11 +3758,11 @@ mod tests {
             preview_hash: None,
             refs: Vec::new(),
             genesis_ms: None,
-        reply_to: None,
-        thread_root: None,
-        sealed_title: None,
-        seal_of: None,
-        onward: false,
+            reply_to: None,
+            thread_root: None,
+            sealed_title: None,
+            seal_of: None,
+            onward: false,
         };
         crate::record::imaol::append(
             db,
@@ -3741,7 +3774,6 @@ mod tests {
         .await
         .unwrap();
     }
-
 
     /// The gap this whole slice exists to close: before the public tombstone, a deleted post
     /// stayed on the shelf forever from every other node's point of view, because the only
@@ -3801,10 +3833,7 @@ mod tests {
         mint_public_header(&db, &key, &kept, "stays, edited").await;
 
         let shelf = public_doc_ids(&db).await.unwrap();
-        assert!(
-            !shelf.contains(&hex::encode(withdrawn)),
-            "the withdrawn document is gone"
-        );
+        assert!(!shelf.contains(&hex::encode(withdrawn)), "the withdrawn document is gone");
         assert!(
             !shelf.contains(&hex::encode(kept)),
             "and so is the other one - both tombstones folded, neither skipped by the shared \
@@ -3896,17 +3925,7 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "shopping",
-            b"eggs",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "shopping", b"eggs").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -4019,25 +4038,12 @@ mod tests {
         )
         .await;
         // The stale phone tab: same parent, older text, NEWER wall-clock claim.
-        let phone = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "draft",
-            b"start!",
-        )
-        .await;
+        let phone = save(&db, &key, &keys, &files, doc_id, vec![v1], "draft", b"start!").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
 
-        assert!(
-            doc.diverged(),
-            "two saves sharing a parent must be detected"
-        );
+        assert!(doc.diverged(), "two saves sharing a parent must be detected");
         let mut heads = doc.heads.clone();
         heads.sort();
         let mut expect = vec![pc, phone];
@@ -4075,28 +4081,9 @@ mod tests {
         // Edit, then revert to the ORIGINAL content: parent is the edit, so this is a real
         // event, not a no-op - the revert must be written (content matches the grandparent,
         // never the parent).
-        let edited = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![renamed],
-            "t2",
-            b"start, oops",
-        )
-        .await;
-        let reverted = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![edited],
-            "t2",
-            b"start",
-        )
-        .await;
+        let edited =
+            save(&db, &key, &keys, &files, doc_id, vec![renamed], "t2", b"start, oops").await;
+        let reverted = save(&db, &key, &keys, &files, doc_id, vec![edited], "t2", b"start").await;
         assert_ne!(reverted, edited);
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -4123,14 +4110,12 @@ mod tests {
             media: None,
             refs: Vec::new(),
         };
-        let converted = save_version(&db, &key, &keys, &files, convert(vec![reverted]))
-            .await
-            .unwrap();
+        let converted =
+            save_version(&db, &key, &keys, &files, convert(vec![reverted])).await.unwrap();
         assert_ne!(converted, reverted, "conversion must not bounce");
         // And saving again in the SAME format bounces as ever.
-        let bounced_again = save_version(&db, &key, &keys, &files, convert(vec![converted]))
-            .await
-            .unwrap();
+        let bounced_again =
+            save_version(&db, &key, &keys, &files, convert(vec![converted])).await.unwrap();
         assert_eq!(bounced_again, converted);
     }
 
@@ -4172,28 +4157,8 @@ mod tests {
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
         // Both "devices" apply the same edit from the same parent (each dodges the bounce:
         // the content differs from v1).
-        let a = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, fixed",
-        )
-        .await;
-        let b = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, fixed",
-        )
-        .await;
+        let a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, fixed").await;
+        let b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, fixed").await;
         assert_ne!(a, b, "distinct saves, distinct versions");
 
         let view = materialize(&db, &keys).await.unwrap();
@@ -4214,29 +4179,10 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
-        let pc = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, then an afternoon",
-        )
-        .await;
+        let pc = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, then an afternoon")
+            .await;
         // The phone: a real edit, then a revert back to the fork point's exact content.
-        let typo = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, typo",
-        )
-        .await;
+        let typo = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, typo").await;
         let revert = save(&db, &key, &keys, &files, doc_id, vec![typo], "t", b"start").await;
 
         let view = materialize(&db, &keys).await.unwrap();
@@ -4246,11 +4192,7 @@ mod tests {
         let mut expect = vec![pc, revert];
         expect.sort();
         assert_eq!(dag_heads, expect, "the DAG truthfully holds both");
-        assert_eq!(
-            doc.logical_heads,
-            vec![pc],
-            "the echo folds; the afternoon stands"
-        );
+        assert_eq!(doc.logical_heads, vec![pc], "the echo folds; the afternoon stands");
         assert!(!doc.diverged());
     }
 
@@ -4265,48 +4207,14 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v0 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"draft one").await;
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v0],
-            "t",
-            b"draft two",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![v0], "t", b"draft two").await;
         // Fork at v1: one side writes on; the other reverts all the way to v0's content.
-        let _on = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"draft three",
-        )
-        .await;
-        let _back = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"draft one",
-        )
-        .await;
+        let _on = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"draft three").await;
+        let _back = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"draft one").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
-        assert_eq!(
-            doc.logical_heads.len(),
-            2,
-            "both sides changed the fork's content"
-        );
+        assert_eq!(doc.logical_heads.len(), 2, "both sides changed the fork's content");
         assert!(doc.diverged());
     }
 
@@ -4322,47 +4230,14 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
-        let _pc = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, more",
-        )
-        .await;
-        let typo = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, typo",
-        )
-        .await;
-        let _renamed_revert = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![typo],
-            "better title",
-            b"start",
-        )
-        .await;
+        let _pc = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, more").await;
+        let typo = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, typo").await;
+        let _renamed_revert =
+            save(&db, &key, &keys, &files, doc_id, vec![typo], "better title", b"start").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
-        assert_eq!(
-            doc.logical_heads.len(),
-            2,
-            "the rename survives as its own head"
-        );
+        assert_eq!(doc.logical_heads.len(), 2, "the rename survives as its own head");
         assert!(doc.diverged());
     }
 
@@ -4373,9 +4248,7 @@ mod tests {
         doc_id: &[u8; 16],
     ) -> ResolvedDoc {
         let view = materialize(db, keys).await.unwrap();
-        resolve(files, keys, view.docs.get(doc_id).unwrap(), &BTreeMap::new())
-            .await
-            .unwrap()
+        resolve(files, keys, view.docs.get(doc_id).unwrap(), &BTreeMap::new()).await.unwrap()
     }
 
     /// The three-way line merge, the clean case: edits to different lines weave together with nobody asked.
@@ -4387,47 +4260,15 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            b"alpha\nbeta\ngamma\n",
-        )
-        .await;
-        let _a = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"ALPHA\nbeta\ngamma\n",
-        )
-        .await;
-        let _b = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"alpha\nbeta\nGAMMA\n",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"alpha\nbeta\ngamma\n").await;
+        let _a =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"ALPHA\nbeta\ngamma\n").await;
+        let _b =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"alpha\nbeta\nGAMMA\n").await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Merged);
-        assert_eq!(
-            r.body.unwrap(),
-            "ALPHA\nbeta\nGAMMA\n",
-            "both edits present, no questions"
-        );
+        assert_eq!(r.body.unwrap(), "ALPHA\nbeta\nGAMMA\n", "both edits present, no questions");
     }
 
     /// The inline conflict: the same line edited both ways - the conflict rides inline, labeled, and both
@@ -4440,53 +4281,17 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            b"the hat is red\n",
-        )
-        .await;
-        let _a = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"the hat is blue\n",
-        )
-        .await;
-        let _b = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"the hat is green\n",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is red\n").await;
+        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is blue\n").await;
+        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is green\n").await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
         assert!(body.contains("the hat is blue"), "ours present:\n{body}");
         assert!(body.contains("the hat is green"), "theirs present:\n{body}");
-        assert!(
-            body.contains("<<<<<<<") && body.contains(">>>>>>>"),
-            "markers present:\n{body}"
-        );
-        assert!(
-            body.contains("from computer "),
-            "sides carry device labels:\n{body}"
-        );
+        assert!(body.contains("<<<<<<<") && body.contains(">>>>>>>"), "markers present:\n{body}");
+        assert!(body.contains("from computer "), "sides carry device labels:\n{body}");
     }
 
     /// The field-wise title merge: a rename on one side, a body edit on the other - orthogonal fields, both win.
@@ -4498,48 +4303,18 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "scratch",
-            b"alpha\nbeta\n",
-        )
-        .await;
-        let _rename = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "the hat essay",
-            b"alpha\nbeta\n",
-        )
-        .await;
-        let _edit = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "scratch",
-            b"alpha\nbeta\nnew line\n",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "scratch", b"alpha\nbeta\n").await;
+        let _rename =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "the hat essay", b"alpha\nbeta\n")
+                .await;
+        let _edit =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "scratch", b"alpha\nbeta\nnew line\n")
+                .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Merged);
         assert_eq!(r.title, "the hat essay", "the rename wins the title");
-        assert_eq!(
-            r.body.unwrap(),
-            "alpha\nbeta\nnew line\n",
-            "the edit wins the body"
-        );
+        assert_eq!(r.body.unwrap(), "alpha\nbeta\nnew line\n", "the edit wins the body");
     }
 
     /// Three-plus genuinely distinct heads: the whole-document conflict - every side in full.
@@ -4577,62 +4352,25 @@ mod tests {
 
         let doc_id = new_doc_id();
         let m = Format::Marquee;
-        let v1 = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            b"the hat is *red*\n",
-            m,
-        )
-        .await;
-        let _a = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"the hat is *blue*\n",
-            m,
-        )
-        .await;
-        let _b = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"the hat is *green*\n",
-            m,
-        )
-        .await;
+        let v1 =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is *red*\n", m).await;
+        let _a =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is *blue*\n", m)
+                .await;
+        let _b =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is *green*\n", m)
+                .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
-        assert!(
-            body.contains(":::conflict"),
-            "marquee vocabulary, not markers:\n{body}"
-        );
+        assert!(body.contains(":::conflict"), "marquee vocabulary, not markers:\n{body}");
         assert!(
             body.contains(":::variant"),
             "one variant block per side (the renderers' name - not \"version\"):\n{body}"
         );
-        assert!(
-            !body.contains("<<<<<<<"),
-            "no git markers in a marquee doc:\n{body}"
-        );
-        assert!(
-            body.contains("*blue*") && body.contains("*green*"),
-            "both sides' words present"
-        );
+        assert!(!body.contains("<<<<<<<"), "no git markers in a marquee doc:\n{body}");
+        assert!(body.contains("*blue*") && body.contains("*green*"), "both sides' words present");
     }
 
     /// The mixed-dialect trap (field-found 2026-08-01: "the first half of the conflict wore
@@ -4652,18 +4390,9 @@ mod tests {
 
         let doc_id = new_doc_id();
         let m = Format::Marquee;
-        let v1 = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            b"intro\nalpha\ntail\n",
-            m,
-        )
-        .await;
+        let v1 =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"intro\nalpha\ntail\n", m)
+                .await;
         let _a = save_fmt(
             &db,
             &key,
@@ -4725,46 +4454,13 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            b"the hat is red\n",
-        )
-        .await;
-        let _a = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"the hat is blue\n",
-        )
-        .await;
-        let _b = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"the hat is green\n",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is red\n").await;
+        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is blue\n").await;
+        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is green\n").await;
 
         let body = resolve_doc(&db, &keys, &files, &doc_id).await.body.unwrap();
         assert!(body.contains("<<<<<<<"), "plaintext gets markers:\n{body}");
-        assert!(
-            !body.contains(":::conflict"),
-            "and never marquee vocabulary"
-        );
+        assert!(!body.contains(":::conflict"), "and never marquee vocabulary");
     }
 
     /// The image case: a binary body round-trips as a document, byte-for-byte, and `resolve`
@@ -4786,18 +4482,8 @@ mod tests {
         .concat();
 
         let doc_id = new_doc_id();
-        let v1 = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "sunset",
-            &webp,
-            Format::Avif,
-        )
-        .await;
+        let v1 =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![], "sunset", &webp, Format::Avif).await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -4815,18 +4501,9 @@ mod tests {
 
         // Diverge it: two different images from one parent. Keep-both, still no merge attempt.
         let other = [b"RIFF\x1a\x00\x00\x00WEBP".as_slice(), &[0x01, 0x02, 0x03]].concat();
-        let _a = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "sunset",
-            &other,
-            Format::Avif,
-        )
-        .await;
+        let _a =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &other, Format::Avif)
+                .await;
         let _b = save_fmt(
             &db,
             &key,
@@ -4842,11 +4519,7 @@ mod tests {
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
-        assert_eq!(
-            r.resolution,
-            Resolution::Conflict,
-            "two images diverge -> keep both"
-        );
+        assert_eq!(r.resolution, Resolution::Conflict, "two images diverge -> keep both");
         assert!(doc.diverged());
     }
 
@@ -4866,92 +4539,29 @@ mod tests {
 
         // Two devices replace the same original with the SAME new image, same title.
         let doc_id = new_doc_id();
-        let v1 = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "pic",
-            &img,
-            Format::Avif,
-        )
-        .await;
-        let a = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "pic",
-            &replacement,
-            Format::Avif,
-        )
-        .await;
-        let b = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "pic",
-            &replacement,
-            Format::Avif,
-        )
-        .await;
+        let v1 =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![], "pic", &img, Format::Avif).await;
+        let a =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "pic", &replacement, Format::Avif)
+                .await;
+        let b =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "pic", &replacement, Format::Avif)
+                .await;
         assert_ne!(a, b, "distinct versions on distinct saves");
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert_eq!(doc.heads.len(), 2, "the DAG truthfully holds both");
-        assert_eq!(
-            doc.logical_heads.len(),
-            1,
-            "same bytes + title -> not a real divergence"
-        );
+        assert_eq!(doc.logical_heads.len(), 1, "same bytes + title -> not a real divergence");
         assert!(!doc.diverged());
 
         // Same replacement bytes, DIFFERENT title -> a real difference, stays diverged.
         let doc2 = new_doc_id();
-        let w1 = save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc2,
-            vec![],
-            "pic",
-            &img,
-            Format::Avif,
-        )
-        .await;
-        save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc2,
-            vec![w1],
-            "sunset",
-            &replacement,
-            Format::Avif,
-        )
-        .await;
-        save_fmt(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc2,
-            vec![w1],
-            "sunrise",
-            &replacement,
-            Format::Avif,
-        )
-        .await;
+        let w1 = save_fmt(&db, &key, &keys, &files, doc2, vec![], "pic", &img, Format::Avif).await;
+        save_fmt(&db, &key, &keys, &files, doc2, vec![w1], "sunset", &replacement, Format::Avif)
+            .await;
+        save_fmt(&db, &key, &keys, &files, doc2, vec![w1], "sunrise", &replacement, Format::Avif)
+            .await;
         let view = materialize(&db, &keys).await.unwrap();
         assert_eq!(
             view.docs.get(&doc2).unwrap().logical_heads.len(),
@@ -4977,17 +4587,8 @@ mod tests {
         let real = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"real start").await;
         // Sibling claims a parent that was never written.
         let phantom = [0xAB; 32];
-        let orphan = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![phantom],
-            "t",
-            b"orphan words",
-        )
-        .await;
+        let orphan =
+            save(&db, &key, &keys, &files, doc_id, vec![phantom], "t", b"orphan words").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -5013,40 +4614,17 @@ mod tests {
         let files = FileStore::memory();
 
         let other_doc = new_doc_id();
-        let alien = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            other_doc,
-            vec![],
-            "other",
-            b"other doc body",
-        )
-        .await;
+        let alien =
+            save(&db, &key, &keys, &files, other_doc, vec![], "other", b"other doc body").await;
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"mine").await;
-        let child = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![alien],
-            "t",
-            b"mine, edited",
-        )
-        .await;
+        let child = save(&db, &key, &keys, &files, doc_id, vec![alien], "t", b"mine, edited").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         // v1 and child are both heads (child's only claimed parent lives in another doc).
-        assert_eq!(
-            doc.versions.len(),
-            2,
-            "the alien parent is not pulled into this doc"
-        );
+        assert_eq!(doc.versions.len(), 2, "the alien parent is not pulled into this doc");
         assert!(doc.heads.contains(&v1) && doc.heads.contains(&child));
         let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert!(r.body.unwrap().contains("mine, edited"), "no words lost");
@@ -5064,54 +4642,20 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base").await;
-        let v2 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"level two",
-        )
-        .await;
-        let real = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v2],
-            "t",
-            b"the real thing",
-        )
-        .await;
+        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"level two").await;
+        let real = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"the real thing").await;
         // Each echo is an edit-then-revert (the only shape the no-op bounce lets through): the
         // parent differs, but the content lands back on a fork point. One reverts to v1's
         // content, one to v2's - distinct content, distinct fork depths, so they're not twins.
         let junk_a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"typo a").await;
         let _shallow = save(&db, &key, &keys, &files, doc_id, vec![junk_a], "t", b"base").await;
         let junk_b = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"typo b").await;
-        let _deep = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![junk_b],
-            "t",
-            b"level two",
-        )
-        .await;
+        let _deep = save(&db, &key, &keys, &files, doc_id, vec![junk_b], "t", b"level two").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert_eq!(doc.heads.len(), 3, "three live heads: real + two reverts");
-        assert_eq!(
-            doc.logical_heads,
-            vec![real],
-            "both echoes fold; the real head stands"
-        );
+        assert_eq!(doc.logical_heads, vec![real], "both echoes fold; the real head stands");
         assert!(!doc.diverged());
     }
 
@@ -5128,17 +4672,7 @@ mod tests {
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base").await;
         // Five devices independently make the identical edit from v1: five twins.
         for _ in 0..5 {
-            save(
-                &db,
-                &key,
-                &keys,
-                &files,
-                doc_id,
-                vec![v1],
-                "t",
-                b"base, fixed",
-            )
-            .await;
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"base, fixed").await;
         }
 
         let a = materialize(&db, &keys).await.unwrap();
@@ -5167,28 +4701,8 @@ mod tests {
         // Two roots (both genesis - no parents), then two children each merging both roots.
         let r1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"root one").await;
         let r2 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"root two").await;
-        let m1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![r1, r2],
-            "t",
-            b"merge left",
-        )
-        .await;
-        let m2 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![r1, r2],
-            "t",
-            b"merge right",
-        )
-        .await;
+        let m1 = save(&db, &key, &keys, &files, doc_id, vec![r1, r2], "t", b"merge left").await;
+        let m2 = save(&db, &key, &keys, &files, doc_id, vec![r1, r2], "t", b"merge right").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -5197,11 +4711,7 @@ mod tests {
         let mut expect = vec![m1, m2];
         expect.sort();
         assert_eq!(heads, expect);
-        assert_eq!(
-            doc.fork_points(&m1, &m2).len(),
-            2,
-            "two maximal common ancestors"
-        );
+        assert_eq!(doc.fork_points(&m1, &m2).len(), 2, "two maximal common ancestors");
         let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
@@ -5219,49 +4729,17 @@ mod tests {
 
         let sneaky = "notes on git:\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>>\n";
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            sneaky.as_bytes(),
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", sneaky.as_bytes()).await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Single);
-        assert_eq!(
-            r.body.unwrap(),
-            sneaky,
-            "marker-laden prose survives verbatim"
-        );
+        assert_eq!(r.body.unwrap(), sneaky, "marker-laden prose survives verbatim");
 
         // Now force a real conflict on top - must still contain both bodies' words.
-        let _a = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            "one edit\n".as_bytes(),
-        )
-        .await;
-        let _b = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            "other edit\n".as_bytes(),
-        )
-        .await;
+        let _a =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", "one edit\n".as_bytes()).await;
+        let _b =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", "other edit\n".as_bytes()).await;
         let r2 = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert!(r2.body.unwrap().contains("one edit") || r2.resolution == Resolution::Conflict);
     }
@@ -5276,36 +4754,14 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![],
-            "t",
-            b"keep\nthis\n",
-        )
-        .await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"keep\nthis\n").await;
         let _cleared = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"").await;
-        let _added = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"keep\nthis\nand more\n",
-        )
-        .await;
+        let _added =
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"keep\nthis\nand more\n").await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert!(r.body.is_some(), "a body was produced, no panic");
-        assert!(
-            r.body.unwrap().contains("and more"),
-            "the added words survive"
-        );
+        assert!(r.body.unwrap().contains("and more"), "the added words survive");
     }
 
     /// A fork off a MID-HISTORY version (not a current head) still diverges correctly.
@@ -5318,49 +4774,16 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"one\n").await;
-        let v2 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"one\ntwo\n",
-        )
-        .await;
-        let _v3 = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v2],
-            "t",
-            b"one\ntwo\nthree\n",
-        )
-        .await;
+        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one\ntwo\n").await;
+        let _v3 = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"one\ntwo\nthree\n").await;
         // Someone forks off v1, deep behind the current head v3.
-        let _alt = save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"one\nBRANCH\n",
-        )
-        .await;
+        let _alt = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one\nBRANCH\n").await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert!(doc.diverged(), "the deep fork is a real divergence");
         let body = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap().body.unwrap();
-        assert!(
-            body.contains("three") && body.contains("BRANCH"),
-            "both branches present"
-        );
+        assert!(body.contains("three") && body.contains("BRANCH"), "both branches present");
     }
 
     #[tokio::test]
@@ -5371,17 +4794,7 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        save(
-            &db,
-            &key,
-            &write_keys,
-            &files,
-            doc_id,
-            vec![],
-            "secret",
-            b"x",
-        )
-        .await;
+        save(&db, &key, &write_keys, &files, doc_id, vec![], "secret", b"x").await;
 
         // A device that never got epoch 3 (revoked before, or adopted without the re-seal).
         let wrong_keys = EpochKeys::single(3, [1u8; 32]);
@@ -5415,12 +4828,9 @@ mod tests {
         );
 
         async fn rows(db: &Db) -> Vec<(Vec<u8>,)> {
-            db.fetch_all(
-                "SELECT entry_hash FROM doc_versions ORDER BY entry_hash",
-                (),
-            )
-            .await
-            .unwrap()
+            db.fetch_all("SELECT entry_hash FROM doc_versions ORDER BY entry_hash", ())
+                .await
+                .unwrap()
         }
         let before = rows(&db).await;
         assert_eq!(before.len(), 2, "one row per version");
@@ -5483,28 +4893,8 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
-        save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, more",
-        )
-        .await;
-        save(
-            &db,
-            &key,
-            &keys,
-            &files,
-            doc_id,
-            vec![v1],
-            "t",
-            b"start, other",
-        )
-        .await;
+        save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, more").await;
+        save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, other").await;
 
         let (rows, undecryptable) = list_heads(&db, &keys).await.unwrap();
         assert_eq!(undecryptable, 0);
@@ -5515,10 +4905,7 @@ mod tests {
         let doc = view.docs.get(&doc_id).unwrap();
         let head = doc.display_head().unwrap();
         assert_eq!(row.doc_id, doc_id);
-        assert_eq!(
-            row.head, head.hash,
-            "memo names the resolver's display head"
-        );
+        assert_eq!(row.head, head.hash, "memo names the resolver's display head");
         assert_eq!(row.title, head.header.title);
         assert_eq!(row.file_hash, head.header.file_hash);
         assert_eq!(row.logical_heads, doc.logical_heads.len());
@@ -5532,10 +4919,7 @@ mod tests {
 
         // Rebuild wipes the memo (the disposability proof)...
         crate::record::imaol::rebuild_views(&db).await.unwrap();
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM doc_heads", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM doc_heads", ()).await.unwrap();
         assert_eq!(count, 0, "rebuild clears the memoized view");
 
         // ...and the next keyed read re-derives the exact same answer from the log.
@@ -5570,10 +4954,8 @@ mod tests {
         // Computer two: inserts mid-document and appends, three autosaves deep.
         let b1 = save(&db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nX\nB\nC\nD\n").await;
         let b2 = save(&db, &key, &keys, &files, doc_id, vec![b1], "t", b"A\nX\nB\nY\nC\nD\n").await;
-        let b3 = save(
-            &db, &key, &keys, &files, doc_id, vec![b2], "t", b"A\nX\nB\nY\nC\nD\nZZZ\n",
-        )
-        .await;
+        let b3 =
+            save(&db, &key, &keys, &files, doc_id, vec![b2], "t", b"A\nX\nB\nY\nC\nD\nZZZ\n").await;
         let _ = (a2, b3);
 
         let view = materialize(&db, &keys).await.unwrap();
@@ -5615,23 +4997,24 @@ mod tests {
         let g = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"A\nB\nC\nD\n").await;
         let h1 = save(&db, &key, &keys, &files, doc_id, vec![g], "t", b"A\nB\nC\nD\nfoo\n").await;
         let h2 = save(&db, &key, &keys, &files, doc_id, vec![g], "t", b"A\nB\nC\nD\nbar\n").await;
-        let m1 = save(
-            &db, &key, &keys, &files, doc_id, vec![h1, h2], "t", b"A\nB\nC\nD\n",
-        )
-        .await;
-        let m2 = save(
-            &db, &key, &keys, &files, doc_id, vec![h1, h2], "t", b"A\nB\nC\nD\n!\n",
-        )
-        .await;
+        let m1 = save(&db, &key, &keys, &files, doc_id, vec![h1, h2], "t", b"A\nB\nC\nD\n").await;
+        let m2 =
+            save(&db, &key, &keys, &files, doc_id, vec![h1, h2], "t", b"A\nB\nC\nD\n!\n").await;
 
         // On the scarred document, the user's clean two-sided edit: appends on one side,
         // mid-document insertions plus a different tail on the other.
-        let e1 = save(
-            &db, &key, &keys, &files, doc_id, vec![m1, m2], "t", b"A\nB\nC\nD\n!\nE\nF\n",
-        )
-        .await;
+        let e1 =
+            save(&db, &key, &keys, &files, doc_id, vec![m1, m2], "t", b"A\nB\nC\nD\n!\nE\nF\n")
+                .await;
         let e2 = save(
-            &db, &key, &keys, &files, doc_id, vec![m1, m2], "t", b"A\nX\nB\nY\nC\nD\n!\nZZZ\n",
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![m1, m2],
+            "t",
+            b"A\nX\nB\nY\nC\nD\n!\nZZZ\n",
         )
         .await;
         let _ = (e1, e2);
@@ -5671,15 +5054,14 @@ mod tests {
 
         let doc_id = new_doc_id();
         let m = Format::Marquee;
-        let base = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"A\nB\nC\nD\n", m).await;
-        let _ours = save_fmt(
-            &db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nB\nC\nD\nE\nF\n", m,
-        )
-        .await;
-        let _theirs = save_fmt(
-            &db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nX\nB\nC\nD\nZZZ\n", m,
-        )
-        .await;
+        let base =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"A\nB\nC\nD\n", m).await;
+        let _ours =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nB\nC\nD\nE\nF\n", m)
+                .await;
+        let _theirs =
+            save_fmt(&db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nX\nB\nC\nD\nZZZ\n", m)
+                .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Conflict);
@@ -5746,11 +5128,7 @@ mod tests {
             1,
             "one disputed region, not a whole-document conflict:\n{body}"
         );
-        assert_eq!(
-            body.matches(":::variant").count(),
-            3,
-            "three proposals inside it:\n{body}"
-        );
+        assert_eq!(body.matches(":::variant").count(), 3, "three proposals inside it:\n{body}");
         for one in ["1111111", "2222222", "33333333"] {
             assert!(body.contains(one), "every proposal present:\n{body}");
         }
@@ -5785,8 +5163,7 @@ mod tests {
         assert_eq!(r.resolution, Resolution::Merged, "disjoint edits weave clean");
         let body = r.body.unwrap();
         assert_eq!(
-            body,
-            "### One\nAAAA\n\n### Two\nBBBB\n\n### Five\nEEEE\n",
+            body, "### One\nAAAA\n\n### Two\nBBBB\n\n### Five\nEEEE\n",
             "all three edits present, no scaffolding"
         );
     }
@@ -5803,8 +5180,7 @@ mod tests {
         let base = save(&db, &signer(1), &keys, &files, doc_id, vec![], "t", b"A\nB\nC\n").await;
         for (byte, first) in [(1u8, "X"), (2, "Y"), (3, "Z")] {
             let body = format!("{first}\nB\nC\n");
-            save(&db, &signer(byte), &keys, &files, doc_id, vec![base], "t", body.as_bytes())
-                .await;
+            save(&db, &signer(byte), &keys, &files, doc_id, vec![base], "t", body.as_bytes()).await;
         }
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
@@ -5829,8 +5205,8 @@ mod tests {
 
         let doc_id = new_doc_id();
         let m = Format::Marquee;
-        let root = save_fmt(&db, &signer(1), &keys, &files, doc_id, vec![], "t", b"SHARED\n", m)
-            .await;
+        let root =
+            save_fmt(&db, &signer(1), &keys, &files, doc_id, vec![], "t", b"SHARED\n", m).await;
         let v1 =
             save_fmt(&db, &signer(1), &keys, &files, doc_id, vec![root], "t", b"SHARED\nv1\n", m)
                 .await;
@@ -5882,11 +5258,8 @@ mod tests {
         let keys = EpochKeys::single(0, [5u8; 32]);
         let files = FileStore::memory();
         let doc_id = new_doc_id();
-        save(
-            &db, &key, &keys, &files, doc_id, vec![], "Quick Fox",
-            b"The QUICK brown fox. A x!",
-        )
-        .await;
+        save(&db, &key, &keys, &files, doc_id, vec![], "Quick Fox", b"The QUICK brown fox. A x!")
+            .await;
 
         let rows = search_rows(&db, &keys, &files, &BTreeMap::new(), "").await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
@@ -5912,14 +5285,30 @@ mod tests {
         let (note, target, plain) = (new_doc_id(), new_doc_id(), new_doc_id());
         let target_hex = hex::encode(target);
         let body = format!("see [the other one](/ringtome/user/{root_hex}/doc/{target_hex}) and [the web](https://example.com)");
-        let v1 = save_fmt(&db, &key, &keys, &files, note, vec![], "linker", body.as_bytes(), Format::Marquee).await;
+        let v1 = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            note,
+            vec![],
+            "linker",
+            body.as_bytes(),
+            Format::Marquee,
+        )
+        .await;
         save(&db, &key, &keys, &files, plain, vec![], "plain", body.as_bytes()).await;
 
         let rows = search_rows(&db, &keys, &files, &BTreeMap::new(), &root_hex).await.unwrap();
-        let links_of = |rows: &[SearchRow], id: &[u8; 16]| rows.iter().find(|r| r.doc_id == hex::encode(id)).unwrap().links.clone();
+        let links_of = |rows: &[SearchRow], id: &[u8; 16]| {
+            rows.iter().find(|r| r.doc_id == hex::encode(id)).unwrap().links.clone()
+        };
         let links = links_of(&rows, &note);
         assert_eq!(links.len(), 2);
-        assert_eq!((links[0].text.as_str(), links[0].doc.as_deref()), ("the other one", Some(target_hex.as_str())));
+        assert_eq!(
+            (links[0].text.as_str(), links[0].doc.as_deref()),
+            ("the other one", Some(target_hex.as_str()))
+        );
         assert_eq!((links[1].to.as_str(), links[1].doc.as_deref()), ("https://example.com", None));
         assert!(links_of(&rows, &plain).is_empty(), "a plain page has no links");
 
@@ -5927,7 +5316,18 @@ mod tests {
         let again = search_rows(&db, &keys, &files, &BTreeMap::new(), &root_hex).await.unwrap();
         assert_eq!(links_of(&again, &note), links);
 
-        save_fmt(&db, &key, &keys, &files, note, vec![v1], "linker", b"no links now", Format::Marquee).await;
+        save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            note,
+            vec![v1],
+            "linker",
+            b"no links now",
+            Format::Marquee,
+        )
+        .await;
         let after = search_rows(&db, &keys, &files, &BTreeMap::new(), &root_hex).await.unwrap();
         assert!(links_of(&after, &note).is_empty(), "the edit dropped them");
     }
@@ -6016,14 +5416,15 @@ mod tests {
 
         // Deliver the writer's header entries into the reader's log (what sync sends), leaving
         // the body blob behind in the writer's store - exactly the headers-ahead-of-bodies gap.
-        let (raw, _) =
-            crate::record::imaol::entry_bytes_page(&writer, crate::record::imaol::BACKFILL_BATCH, None)
-                .await
-                .unwrap();
+        let (raw, _) = crate::record::imaol::entry_bytes_page(
+            &writer,
+            crate::record::imaol::BACKFILL_BATCH,
+            None,
+        )
+        .await
+        .unwrap();
         let root = key.verifying_key().to_bytes();
-        crate::net::sync::ingest_batch(&reader, root, raw, true, None, None)
-            .await
-            .unwrap();
+        crate::net::sync::ingest_batch(&reader, root, raw, true, None, None).await.unwrap();
 
         // Before the blob (reader's own empty store): title indexes, body doesn't.
         let rows = search_rows(&reader, &keys, &no_blob, &BTreeMap::new(), "").await.unwrap();
@@ -6068,18 +5469,15 @@ mod tests {
                 preview_hash: None,
                 refs: Vec::new(),
                 genesis_ms: None,
-            reply_to: None,
-            thread_root: None,
-            sealed_title: None,
-            seal_of: None,
-            onward: false,
+                reply_to: None,
+                thread_root: None,
+                sealed_title: None,
+                seal_of: None,
+                onward: false,
             },
         };
         let build = |lane: &str, edit_at: i64| {
-            let mut doc = Doc {
-                lane: lane.to_string(),
-                ..Doc::default()
-            };
+            let mut doc = Doc { lane: lane.to_string(), ..Doc::default() };
             let v1 = version(1, 1_000, vec![]);
             let v2 = version(2, edit_at, vec![v1.hash]);
             doc.versions.insert(v1.hash, v1);
@@ -6090,10 +5488,13 @@ mod tests {
 
         // The same day, a day after, and four hundred days after: the edit is the head.
         for at in [1_000 + day - 1, 1_000 + day + 1, 1_000 + day * 400] {
-            assert_eq!(build("public", at).display_head().unwrap().header.title, "v2", "an edit at {at}");
+            assert_eq!(
+                build("public", at).display_head().unwrap().header.title,
+                "v2",
+                "an edit at {at}"
+            );
         }
         // And a private note, as ever.
         assert_eq!(build("private", 1_000 + day * 400).display_head().unwrap().header.title, "v2");
     }
-
 }

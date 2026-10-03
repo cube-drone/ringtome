@@ -20,7 +20,7 @@ This document is the plan: the model first, because everything else hangs off it
 
 ### A drawing is a versioned document whose body is its strokes
 
-PROJECT_PLAN's *Versioned Documents* already is this: a document is a stable `doc_id` whose versions
+PROJECT_PLAN's _Versioned Documents_ already is this: a document is a stable `doc_id` whose versions
 form a DAG, each version a **whole snapshot** of the body, with auto-merge a **per-format
 capability** layered on top. A drawing is a new **format**, `drawing`, whose body is the complete
 list of its strokes. Nothing on the chain changes: a drawing version is a version header like a
@@ -132,12 +132,12 @@ The transform tool (Curtis, 2026-09-27) turns, stretches and slants the whole cu
 dashed frame sits round what the layer has painted, a handle at each corner, and where a drag begins
 decides what it does - with **shift** making it "perfect":
 
-| drag from | does | with shift |
-|---|---|---|
-| a corner | slants: sideways leans the top or bottom edge, up or down the side edge; the opposite corner stays, the frame stays a parallelogram | scales the whole, about the opposite corner |
-| an edge | stretches across it, the opposite edge staying | scales the whole, evenly |
-| inside | moves | - |
-| outside (the stage round the drawing too) | turns about the frame's middle | in 15-degree steps |
+| drag from                                 | does                                                                                                                                | with shift                                  |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| a corner                                  | slants: sideways leans the top or bottom edge, up or down the side edge; the opposite corner stays, the frame stays a parallelogram | scales the whole, about the opposite corner |
+| an edge                                   | stretches across it, the opposite edge staying                                                                                      | scales the whole, evenly                    |
+| inside                                    | moves                                                                                                                               | -                                           |
+| outside (the stage round the drawing too) | turns about the frame's middle                                                                                                      | in 15-degree steps                          |
 
 The pointer says what a press would do: resize arrows on the corners and edges, the move cross
 inside, and outside Phosphor's clockwise arrow as a custom cursor (CSS has no rotate cursor; the
@@ -146,19 +146,20 @@ next drag); an undo, a sync
 or another layer draws it afresh round what is painted.
 
 One entry per drag: `{ "tool": "transform", "m": [a, b, c, d, e, f] }` - an affine matrix (`x' = a x
-+ c y + e`, `y' = b x + d y + f`) that **everything before it on the layer passes through**, as a
-grab's `move` shifts it (a move is the translation-only case). The six numbers are fixed point,
-times 1,000,000, whole - as every number in a body is.
 
-- **It merges** like every entry, by the union. Two computers' transforms apply in the one `(t, id)`
+- c y + e`, `y' = b x + d y + f`) that **everything before it on the layer passes through**, as a
+grab's `move` shifts it (a move is the translation-only case). The six numbers are fixed point,
+  times 1,000,000, whole - as every number in a body is.
+
+* **It merges** like every entry, by the union. Two computers' transforms apply in the one `(t, id)`
   order - matrices do not commute, but every computer composes them the same way round, so every
   computer paints the same picture. A stroke drawn elsewhere meanwhile is transformed exactly when it
   came earlier in that order - the grab's rule.
-- **It stays sharp**: the layer is redrawn through the matrices (`matricesOf`), never warped as a
+* **It stays sharp**: the layer is redrawn through the matrices (`matricesOf`), never warped as a
   picture. (Hence no free-corner distort - Curtis, 2026-09-27: a corner that lands exactly where it is
   dropped needs a perspective warp, which could only be an approximation of the picture, compounding
   with every warp and drifting from the pour's walls.)
-- **Pours** meet the lines through the same matrices. A turned, stretched or slanted line's wall is
+* **Pours** meet the lines through the same matrices. A turned, stretched or slanted line's wall is
   its points through the matrix, as wide as the line times the matrix's average stretch (the square
   root of its area scale): a slanted line is not evenly wide, so this is the one place a pour and
   what is painted can part by a hair - the same hair on every computer.
@@ -291,7 +292,7 @@ which is why they are not called square and circle.
 - **A line is a brush stroke** of two points - round-ended, as every stroke is. It needs no entry of
   its own, so everything a stroke does it already did: merge, undo, erase, grab, hold a pour back.
 - **A rectangle or an ellipse** is `{ "tool": "rect" | "ellipse", "color", "size", "points": [l, t,
-  r, b] }` - the box it was dragged out in, absolute, left-top then right-bottom. A rectangle's
+r, b] }` - the box it was dragged out in, absolute, left-top then right-bottom. A rectangle's
   corners are mitred: sharp.
 - **They hold a pour back** as lines do. A rectangle's walls are exact - the box grown and shrunk by
   the line's core, square at the corners as it is painted. An ellipse's walls are its outline as 256

@@ -107,7 +107,12 @@ fn bounded(rows: Vec<MemoRow>) -> Vec<MemoRow> {
             if r.annotator == r.target_author {
                 return !is_emoji_tag(&r.value);
             }
-            kept.contains(&(r.target_author.clone(), r.target_doc.clone(), r.annotator.clone(), r.value.clone()))
+            kept.contains(&(
+                r.target_author.clone(),
+                r.target_doc.clone(),
+                r.annotator.clone(),
+                r.value.clone(),
+            ))
         })
         .collect()
 }
@@ -122,18 +127,19 @@ fn reaction_flag(key: &str, value: &str) -> i64 {
 
 /// Who may see an opened sealed row: the holder themself, or anyone the holder publishes
 /// trust for (the body door's rule, PROJECT_PLAN's Replies under the author's seal).
-async fn holder_admits(state: &AppState, holder: &str, holder_doc: &str, viewer: Option<&str>) -> bool {
+async fn holder_admits(
+    state: &AppState,
+    holder: &str,
+    holder_doc: &str,
+    viewer: Option<&str>,
+) -> bool {
     let Some(v) = viewer else { return false };
     crate::idface::seal_lists(state, holder, holder_doc, v, None).await
 }
 
 /// Which of these rows the viewer may see: every open row, and a sealed row only when its
 /// holder admits the viewer - judged once per holder. Raw `sealed` rows never.
-async fn admitted(
-    state: &AppState,
-    rows: Vec<MemoRow>,
-    viewer: Option<&str>,
-) -> Vec<MemoRow> {
+async fn admitted(state: &AppState, rows: Vec<MemoRow>, viewer: Option<&str>) -> Vec<MemoRow> {
     let mut verdicts: std::collections::HashMap<String, bool> = Default::default();
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
@@ -192,7 +198,16 @@ struct MemoRow {
 type MemoTuple = (String, String, String, String, String, i64, Option<String>, Option<String>);
 
 fn memo_row((ta, td, annotator, key, value, sealed, holder, holder_doc): MemoTuple) -> MemoRow {
-    MemoRow { target_author: ta, target_doc: td, annotator, key, value, sealed: sealed != 0, holder, holder_doc }
+    MemoRow {
+        target_author: ta,
+        target_doc: td,
+        annotator,
+        key,
+        value,
+        sealed: sealed != 0,
+        holder,
+        holder_doc,
+    }
 }
 
 /// Open every raw sealed statement about one post with its key, in place: the row becomes
@@ -229,7 +244,7 @@ pub async fn open_sealed(
             )
             .await
             .context("opening a sealed label")?;
-            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         node_db
             .execute(
                 "DELETE FROM doc_annotations
@@ -238,7 +253,7 @@ pub async fn open_sealed(
             )
             .await
             .context("retiring a raw sealed label")?;
-            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         if k == TAG_KEY && !opened.contains(&annotator) {
             opened.push(annotator);
         }
@@ -276,7 +291,7 @@ async fn note_sealed(
                 )
                 .await
                 .context("noting an opened sealed label")?;
-                crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         }
         None => {
             node_db
@@ -290,7 +305,7 @@ async fn note_sealed(
                 )
                 .await
                 .context("noting a raw sealed label")?;
-                crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
         }
     }
     Ok(())
@@ -320,9 +335,8 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
     let Ok(Some(db)) = state.user_dbs.get(annotator).await else {
         return Ok(());
     };
-    let rows = crate::record::imaol::public_annotations(&db)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let rows =
+        crate::record::imaol::public_annotations(&db).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     drop(db);
     let mark = if force { None } else { state.sweep_marks.last("annotations", annotator) };
     if let Some(newest) = rows.iter().map(|r| r.received_at_ms).max() {
@@ -340,7 +354,8 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
             touched.push((r.target_author.clone(), doc_hex.clone(), annotator.to_string()));
         }
         if r.present && r.key == SEALED_KEY {
-            note_sealed(&state.node_db, &r.target_author, &doc_hex, annotator, &r.value, "chain").await?;
+            note_sealed(&state.node_db, &r.target_author, &doc_hex, annotator, &r.value, "chain")
+                .await?;
         } else if r.present {
             note(&state.node_db, &r.target_author, &doc_hex, annotator, &r.key, &r.value, "chain")
                 .await?;
@@ -373,11 +388,20 @@ pub async fn note(
              ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
                noted_ms = excluded.noted_ms,
                learned_via = excluded.learned_via",
-            (target_author, target_doc, annotator, key, value, now_ms(), learned_via, reaction_flag(key, value)),
+            (
+                target_author,
+                target_doc,
+                annotator,
+                key,
+                value,
+                now_ms(),
+                learned_via,
+                reaction_flag(key, value),
+            ),
         )
         .await
         .context("noting an annotation")?;
-        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
@@ -399,7 +423,7 @@ pub async fn forget(
         )
         .await
         .context("forgetting an annotation")?;
-        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     if key == SEALED_KEY {
         // The lane retracts the ciphertext; the memo may hold it opened.
         node_db
@@ -410,7 +434,7 @@ pub async fn forget(
             )
             .await
             .context("forgetting an opened sealed annotation")?;
-            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     }
     Ok(())
 }
@@ -491,7 +515,12 @@ pub async fn for_posts(
 /// when there are more, and walking the feed newest first is the cheaper road. Node-wide, and a
 /// superset: whose bucket, the two-tag rule and sealed admission are the caller's exact judgment
 /// (search.rs `matching`) to apply to what this finds.
-pub async fn posts_labelled(node_db: &Db, key: &str, value: &str, cap: usize) -> Result<Option<Vec<(String, String)>>> {
+pub async fn posts_labelled(
+    node_db: &Db,
+    key: &str,
+    value: &str,
+    cap: usize,
+) -> Result<Option<Vec<(String, String)>>> {
     let posts: Vec<(String, String)> = node_db
         .fetch_all(
             "SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
@@ -508,7 +537,10 @@ pub async fn posts_labelled(node_db: &Db, key: &str, value: &str, cap: usize) ->
 /// author's word counts - a label anyone else put on anything never names the author's post.
 /// The emoji reactions others put on a persona's posts, as this node holds them, for their
 /// HorseBucks (bank.rs, 2026-09-29): `(annotator, post doc hex, emoji, noted_ms)`.
-pub async fn emoji_received(node_db: &Db, author_hex: &str) -> Result<Vec<(String, String, String, i64)>> {
+pub async fn emoji_received(
+    node_db: &Db,
+    author_hex: &str,
+) -> Result<Vec<(String, String, String, i64)>> {
     node_db
         .fetch_all(
             "SELECT annotator, target_doc, value, noted_ms FROM doc_annotations
@@ -519,7 +551,11 @@ pub async fn emoji_received(node_db: &Db, author_hex: &str) -> Result<Vec<(Strin
         .context("listing emoji reactions received")
 }
 
-pub async fn published_from(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<String>> {
+pub async fn published_from(
+    node_db: &Db,
+    author_hex: &str,
+    doc_hex: &str,
+) -> Result<Option<String>> {
     let row: Option<(String,)> = node_db
         .fetch_optional(
             "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
@@ -554,10 +590,16 @@ pub async fn for_journal_since(
         .fetch_all(JOURNAL_LABELS, (reader, since_ms))
         .await
         .context("reading a journal window's labels")?;
-    let rows = bounded(admitted(state, rows.into_iter().map(memo_row).collect(), Some(reader)).await);
-    let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> = Default::default();
+    let rows =
+        bounded(admitted(state, rows.into_iter().map(memo_row).collect(), Some(reader)).await);
+    let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> =
+        Default::default();
     for MemoRow { target_author, target_doc, annotator, key, value, .. } in rows {
-        out.entry((target_author, target_doc)).or_default().push(KnownAnnotation { annotator, key, value });
+        out.entry((target_author, target_doc)).or_default().push(KnownAnnotation {
+            annotator,
+            key,
+            value,
+        });
     }
     Ok(out)
 }
@@ -599,11 +641,7 @@ async fn for_posts_inner(
         Default::default();
     for MemoRow { target_author: ta, target_doc: td, annotator, key, value, .. } in rows {
         if posts.contains(&(ta.clone(), td.clone())) {
-            out.entry((ta, td)).or_default().push(KnownAnnotation {
-                annotator,
-                key,
-                value,
-            });
+            out.entry((ta, td)).or_default().push(KnownAnnotation { annotator, key, value });
         }
     }
     Ok(out)
@@ -715,16 +753,12 @@ pub async fn proofs_for(
 ) -> Vec<ringtome_proto::fragment::AnnotationProof> {
     // A stranger's view: no sealed label rides a fragment (a raw ciphertext could, but the
     // memo's raw rows are retired as they open, so the lane is the sealed road for now).
-    let rows = match for_posts(
-        state,
-        &[(target_author.to_string(), target_doc.to_string())],
-        None,
-    )
-    .await
+    let rows = match for_posts(state, &[(target_author.to_string(), target_doc.to_string())], None)
+        .await
     {
-        Ok(mut known) => known
-            .remove(&(target_author.to_string(), target_doc.to_string()))
-            .unwrap_or_default(),
+        Ok(mut known) => {
+            known.remove(&(target_author.to_string(), target_doc.to_string())).unwrap_or_default()
+        }
         Err(e) => {
             tracing::debug!(error = ?e, "annotation proofs read failed");
             return Vec::new();
@@ -748,11 +782,7 @@ pub async fn proofs_for(
             break;
         }
         spent += cost;
-        out.push(ringtome_proto::fragment::AnnotationProof {
-            annotator,
-            entry,
-            auth_path,
-        });
+        out.push(ringtome_proto::fragment::AnnotationProof { annotator, entry, auth_path });
     }
     out
 }
@@ -786,19 +816,12 @@ async fn resolve_proof(
     let doc_bytes = hex::decode(target_doc).ok()?;
     let doc_id = <[u8; 16]>::try_from(doc_bytes.as_slice()).ok()?;
     let db = state.user_dbs.get(&row.annotator).await.ok().flatten()?;
-    let entry = crate::record::imaol::annotation_entry(
-        &db,
-        target_author,
-        &doc_id,
-        &row.key,
-        &row.value,
-    )
-    .await
-    .ok()
-    .flatten()?;
-    let path = crate::record::documents::auth_path_for(&db, &row.annotator, &entry)
-        .await
-        .ok()?;
+    let entry =
+        crate::record::imaol::annotation_entry(&db, target_author, &doc_id, &row.key, &row.value)
+            .await
+            .ok()
+            .flatten()?;
+    let path = crate::record::documents::auth_path_for(&db, &row.annotator, &entry).await.ok()?;
     Some((entry.bytes().to_vec(), path))
 }
 
@@ -850,17 +873,19 @@ pub async fn learn_proofs(
             )
             .await;
             match noted {
-                Ok(()) => keep_proof(
-                    &state.node_db,
-                    &annotator_hex,
-                    &author_hex,
-                    &doc_hex,
-                    &a.key,
-                    &a.value,
-                    &p.entry,
-                    &p.auth_path,
-                )
-                .await,
+                Ok(()) => {
+                    keep_proof(
+                        &state.node_db,
+                        &annotator_hex,
+                        &author_hex,
+                        &doc_hex,
+                        &a.key,
+                        &a.value,
+                        &p.entry,
+                        &p.auth_path,
+                    )
+                    .await
+                }
                 e => e,
             }
         } else {
@@ -869,8 +894,15 @@ pub async fn learn_proofs(
                     .await;
             match forgot {
                 Ok(()) => {
-                    drop_proof(&state.node_db, &annotator_hex, &author_hex, &doc_hex, &a.key, &a.value)
-                        .await
+                    drop_proof(
+                        &state.node_db,
+                        &annotator_hex,
+                        &author_hex,
+                        &doc_hex,
+                        &a.key,
+                        &a.value,
+                    )
+                    .await
                 }
                 e => e,
             }
@@ -920,16 +952,33 @@ mod tests {
         ];
         let kept: Vec<(String, String)> =
             bounded(rows).into_iter().map(|r| (r.annotator, r.value)).collect();
-        let by = |who: &str| kept.iter().filter(|(a, _)| a == who).map(|(_, v)| v.as_str()).collect::<Vec<_>>();
-        assert_eq!(by("a"), ["mighty", "saucy", "third"], "the author's words all stand, their reaction falls");
-        assert_eq!(by("b"), ["zebra", "alpha", "alpha", "words"], "an emoji sorts after every letter; the description is no tag");
+        let by = |who: &str| {
+            kept.iter().filter(|(a, _)| a == who).map(|(_, v)| v.as_str()).collect::<Vec<_>>()
+        };
+        assert_eq!(
+            by("a"),
+            ["mighty", "saucy", "third"],
+            "the author's words all stand, their reaction falls"
+        );
+        assert_eq!(
+            by("b"),
+            ["zebra", "alpha", "alpha", "words"],
+            "an emoji sorts after every letter; the description is no tag"
+        );
         assert_eq!(by("c"), ["only"]);
     }
 
     /// The client's vectors (integration/test/pure/annotations.cjs), so the two rules agree.
     #[test]
     fn one_emoji_is_the_clients_rule() {
-        for v in ["\u{2764}\u{FE0F}", "\u{1F44D}", "\u{1F44D}\u{1F3FD}", "\u{1FAC2}", "\u{1F469}\u{200D}\u{1F469}\u{200D}\u{1F466}", "\u{1F4A9}"] {
+        for v in [
+            "\u{2764}\u{FE0F}",
+            "\u{1F44D}",
+            "\u{1F44D}\u{1F3FD}",
+            "\u{1FAC2}",
+            "\u{1F469}\u{200D}\u{1F469}\u{200D}\u{1F466}",
+            "\u{1F4A9}",
+        ] {
             assert!(is_emoji_tag(v), "one emoji: {v}");
         }
         for v in ["beef", "beef \u{1F914}", "asshole 100", "100", "\u{1F525}\u{1F525}", ""] {
@@ -947,7 +996,10 @@ mod tests {
     #[tokio::test]
     async fn node_rung_56_climbs_onto_a_labelled_memo() {
         let db = crate::db::test_memory_db().await;
-        let at = crate::migrations::NODE.iter().position(|r| r.version == 56).expect("rung 56 is on the ladder");
+        let at = crate::migrations::NODE
+            .iter()
+            .position(|r| r.version == 56)
+            .expect("rung 56 is on the ladder");
         crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
         db.execute(
             "INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value, noted_ms)
@@ -957,10 +1009,8 @@ mod tests {
         .await
         .unwrap();
         crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
-        let (value, emoji): (String, i64) = db
-            .fetch_one("SELECT value, emoji FROM doc_annotations", ())
-            .await
-            .unwrap();
+        let (value, emoji): (String, i64) =
+            db.fetch_one("SELECT value, emoji FROM doc_annotations", ()).await.unwrap();
         assert_eq!((value.as_str(), emoji), ("bread", 0));
     }
 
@@ -969,13 +1019,17 @@ mod tests {
     #[tokio::test]
     async fn the_journal_window_labels_read_walks_its_indexes() {
         let db = crate::db::test_node_db().await;
-        let plan: Vec<(i64, i64, i64, String)> = db
-            .fetch_all(&format!("EXPLAIN QUERY PLAN {JOURNAL_LABELS}"), ())
-            .await
-            .unwrap();
+        let plan: Vec<(i64, i64, i64, String)> =
+            db.fetch_all(&format!("EXPLAIN QUERY PLAN {JOURNAL_LABELS}"), ()).await.unwrap();
         let p = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
-        assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "the window alone: {p}");
-        assert!(p.contains("doc_annotations_1 (target_author=? AND target_doc=?"), "labels probed by key: {p}");
+        assert!(
+            p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"),
+            "the window alone: {p}"
+        );
+        assert!(
+            p.contains("doc_annotations_1 (target_author=? AND target_doc=?"),
+            "labels probed by key: {p}"
+        );
         assert!(!p.contains("SORTER"), "no sort: {p}");
     }
 
@@ -1025,11 +1079,15 @@ mod tests {
         }
         let since = now - 365 * 24 * 3600 * 1000;
         let t = std::time::Instant::now();
-        let filter = crate::fanout::JournalFilter { since_ms: Some(since), ..crate::fanout::JournalFilter::feed(&reader) };
+        let filter = crate::fanout::JournalFilter {
+            since_ms: Some(since),
+            ..crate::fanout::JournalFilter::feed(&reader)
+        };
         let rows = crate::fanout::journal_all(&db, &filter).await.unwrap();
         eprintln!("a year of the journal: {} rows in {:?}", rows.len(), t.elapsed());
         let t = std::time::Instant::now();
-        let labels: Vec<MemoTuple> = db.fetch_all(JOURNAL_LABELS, (reader.as_str(), since)).await.unwrap();
+        let labels: Vec<MemoTuple> =
+            db.fetch_all(JOURNAL_LABELS, (reader.as_str(), since)).await.unwrap();
         eprintln!("its labels: {} rows in {:?}", labels.len(), t.elapsed());
         let t = std::time::Instant::now();
         let kept = bounded(labels.into_iter().map(memo_row).collect());
@@ -1054,7 +1112,11 @@ mod tests {
             note(&db, "a", &d.repeat(16), "b", "tag", "bread", "chain").await.unwrap();
         }
         assert_eq!(posts_labelled(&db, "tag", "bread", 5).await.unwrap().map(|v| v.len()), Some(3));
-        assert_eq!(posts_labelled(&db, "tag", "bread", 2).await.unwrap(), None, "three past a cap of two");
+        assert_eq!(
+            posts_labelled(&db, "tag", "bread", 2).await.unwrap(),
+            None,
+            "three past a cap of two"
+        );
         assert_eq!(posts_labelled(&db, "tag", "rye", 2).await.unwrap(), Some(Vec::new()));
     }
 
@@ -1107,17 +1169,36 @@ mod tests {
         assert_eq!(open_statement(&sealed, &[8u8; 32]), None, "the wrong key opens nothing");
         note_sealed(&db, &a, &d, &a, &sealed, "chain").await.unwrap();
         let raw = rows_of(&db, &d).await;
-        assert_eq!((raw[0].key.as_str(), raw[0].sealed, raw[0].holder.is_none()), (SEALED_KEY, true, true), "folded raw");
+        assert_eq!(
+            (raw[0].key.as_str(), raw[0].sealed, raw[0].holder.is_none()),
+            (SEALED_KEY, true, true),
+            "folded raw"
+        );
         open_sealed(&db, &a, &d, &a, &d, &key).await.unwrap();
         let opened = rows_of(&db, &d).await;
         assert_eq!(opened.len(), 1, "the raw row retired as it opened");
-        assert_eq!((opened[0].key.as_str(), opened[0].value.as_str(), opened[0].sealed, opened[0].holder.as_deref()), ("tag", "divorce", true, Some(a.as_str())));
+        assert_eq!(
+            (
+                opened[0].key.as_str(),
+                opened[0].value.as_str(),
+                opened[0].sealed,
+                opened[0].holder.as_deref()
+            ),
+            ("tag", "divorce", true, Some(a.as_str()))
+        );
         forget(&db, &a, &d, &a, SEALED_KEY, &sealed).await.unwrap();
-        assert!(rows_of(&db, &d).await.is_empty(), "retracting the ciphertext takes the opened row");
+        assert!(
+            rows_of(&db, &d).await.is_empty(),
+            "retracting the ciphertext takes the opened row"
+        );
         // Held key at fold time: opened on the spot.
         crate::postkeys::remember(&db, &a, &d, &key).await.unwrap();
         note_sealed(&db, &a, &d, &"bb".repeat(32), &sealed, "chain").await.unwrap();
         let now = rows_of(&db, &d).await;
-        assert_eq!((now[0].key.as_str(), now[0].value.as_str()), ("tag", "divorce"), "opened as it folded");
+        assert_eq!(
+            (now[0].key.as_str(), now[0].value.as_str()),
+            ("tag", "divorce"),
+            "opened as it folded"
+        );
     }
 }

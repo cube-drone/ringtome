@@ -60,35 +60,22 @@ fn sidecar_path(quarantine_path: &str) -> String {
 
 impl Ingest {
     pub fn new(quarantine_dir: PathBuf) -> Self {
-        Self {
-            quarantine_dir,
-            progress: Default::default(),
-        }
+        Self { quarantine_dir, progress: Default::default() }
     }
 
     /// Record the processing job's progress (called from the crush's blocking thread).
     pub fn set_progress(&self, job_id: &str, pct: u8) {
-        self.progress
-            .lock()
-            .expect("ingest progress poisoned")
-            .insert(job_id.to_string(), pct);
+        self.progress.lock().expect("ingest progress poisoned").insert(job_id.to_string(), pct);
     }
 
     /// The processing job's last-reported progress, if any.
     pub fn progress_of(&self, job_id: &str) -> Option<u8> {
-        self.progress
-            .lock()
-            .expect("ingest progress poisoned")
-            .get(job_id)
-            .copied()
+        self.progress.lock().expect("ingest progress poisoned").get(job_id).copied()
     }
 
     /// Drop a finished job's meter (done or failed alike - the row's status takes over).
     pub fn clear_progress(&self, job_id: &str) {
-        self.progress
-            .lock()
-            .expect("ingest progress poisoned")
-            .remove(job_id);
+        self.progress.lock().expect("ingest progress poisoned").remove(job_id);
     }
 
     /// Create the quarantine directory if absent, `0700` on unix (the plaintext staged here is
@@ -127,12 +114,7 @@ impl Ingest {
                 .map_err(|e| AppError::Internal(anyhow!("writing quarantine sidecar: {e}")))?;
         }
 
-        let parents_csv = up
-            .parents
-            .iter()
-            .map(hex::encode)
-            .collect::<Vec<_>>()
-            .join(",");
+        let parents_csv = up.parents.iter().map(hex::encode).collect::<Vec<_>>().join(",");
         node_db
             .execute(
                 "INSERT INTO ingest_job \
@@ -254,9 +236,8 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
     let db = state.user_dbs.held(&job.root).await?;
     let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
-    let (epoch, epoch_key) = keys
-        .current()
-        .ok_or_else(|| anyhow!("no epoch key to write media under"))?;
+    let (epoch, epoch_key) =
+        keys.current().ok_or_else(|| anyhow!("no epoch key to write media under"))?;
 
     // The thumbnail (when the lane produced one - image thumb, audio waveform; video has none yet)
     // is its own sibling blob, never inline in the header. The body - the crushed AVIF/WebM/APNG/
@@ -321,10 +302,7 @@ fn tombstone(te: &CrushError) -> String {
 
 async fn finish_job(node_db: &Db, job_id: &str) -> anyhow::Result<()> {
     node_db
-        .execute(
-            "UPDATE ingest_job SET status = 'done', error = NULL WHERE job_id = ?1",
-            (job_id,),
-        )
+        .execute("UPDATE ingest_job SET status = 'done', error = NULL WHERE job_id = ?1", (job_id,))
         .await
         .context("marking ingest job done")?;
     Ok(())
@@ -444,24 +422,20 @@ pub async fn jobs_for_account(
 
     Ok(rows
         .into_iter()
-        .map(
-            |(job_id, doc_id, title, status, error, bytes_in, created_ms, position)| {
-                let progress = (status == "processing")
-                    .then(|| ingest.progress_of(&job_id))
-                    .flatten();
-                JobStatus {
-                    job_id,
-                    doc_id,
-                    title,
-                    status,
-                    error,
-                    bytes_in,
-                    created_ms,
-                    position,
-                    progress,
-                }
-            },
-        )
+        .map(|(job_id, doc_id, title, status, error, bytes_in, created_ms, position)| {
+            let progress = (status == "processing").then(|| ingest.progress_of(&job_id)).flatten();
+            JobStatus {
+                job_id,
+                doc_id,
+                title,
+                status,
+                error,
+                bytes_in,
+                created_ms,
+                position,
+                progress,
+            }
+        })
         .collect())
 }
 
@@ -485,10 +459,7 @@ pub async fn latest_job_for_doc(
 
 fn parse_doc_id(s: &str) -> anyhow::Result<[u8; 16]> {
     let bytes = hex::decode(s).context("decoding job doc_id")?;
-    bytes
-        .as_slice()
-        .try_into()
-        .map_err(|_| anyhow!("job doc_id is not 16 bytes"))
+    bytes.as_slice().try_into().map_err(|_| anyhow!("job doc_id is not 16 bytes"))
 }
 
 fn parse_parents(csv: &str) -> anyhow::Result<Vec<[u8; 32]>> {
@@ -496,10 +467,7 @@ fn parse_parents(csv: &str) -> anyhow::Result<Vec<[u8; 32]>> {
         .filter(|s| !s.is_empty())
         .map(|s| {
             let bytes = hex::decode(s.trim()).context("decoding job parent hash")?;
-            bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| anyhow!("job parent hash is not 32 bytes"))
+            bytes.as_slice().try_into().map_err(|_| anyhow!("job parent hash is not 32 bytes"))
         })
         .collect()
 }
@@ -554,10 +522,7 @@ mod tests {
             .unwrap();
 
         // Both blobs staged: the frames under the job id, the audio as its `.audio` sibling.
-        assert_eq!(
-            tokio::fs::read(dir.join(&job_id)).await.unwrap(),
-            b"apng frames"
-        );
+        assert_eq!(tokio::fs::read(dir.join(&job_id)).await.unwrap(), b"apng frames");
         assert_eq!(
             tokio::fs::read(dir.join(format!("{job_id}.audio"))).await.unwrap(),
             b"ogg opus bytes"
@@ -575,16 +540,11 @@ mod tests {
         let dir = scratch_dir("enqueue");
         let ingest = Ingest::new(dir.clone());
 
-        let job_id = ingest
-            .enqueue(&db, upload([3u8; 16], "sunset", b"raw upload bytes"))
-            .await
-            .unwrap();
+        let job_id =
+            ingest.enqueue(&db, upload([3u8; 16], "sunset", b"raw upload bytes")).await.unwrap();
 
         // The raw bytes are on disk, in the clear, under the job id.
-        assert_eq!(
-            tokio::fs::read(dir.join(&job_id)).await.unwrap(),
-            b"raw upload bytes"
-        );
+        assert_eq!(tokio::fs::read(dir.join(&job_id)).await.unwrap(), b"raw upload bytes");
         // And the job is visible to the owner as pending, carrying its doc_id - the pending state.
         let jobs = jobs_for_account(&db, &test_ingest(), "acct-1").await.unwrap();
         assert_eq!(jobs.len(), 1);
@@ -602,14 +562,8 @@ mod tests {
         let db = node_db().await;
         let dir = scratch_dir("claim");
         let ingest = Ingest::new(dir.clone());
-        ingest
-            .enqueue(&db, upload([1u8; 16], "first", b"1"))
-            .await
-            .unwrap();
-        ingest
-            .enqueue(&db, upload([2u8; 16], "second", b"2"))
-            .await
-            .unwrap();
+        ingest.enqueue(&db, upload([1u8; 16], "first", b"1")).await.unwrap();
+        ingest.enqueue(&db, upload([2u8; 16], "second", b"2")).await.unwrap();
 
         // Oldest first, and claiming one flips it to processing so the next claim skips it.
         let a = claim_next(&db).await.unwrap().unwrap();
@@ -617,10 +571,7 @@ mod tests {
         assert_eq!(a.doc_id, [1u8; 16]);
         let b = claim_next(&db).await.unwrap().unwrap();
         assert_eq!(b.title, "second");
-        assert!(
-            claim_next(&db).await.unwrap().is_none(),
-            "nothing left to claim"
-        );
+        assert!(claim_next(&db).await.unwrap().is_none(), "nothing left to claim");
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -630,10 +581,7 @@ mod tests {
         let db = node_db().await;
         let dir = scratch_dir("retitle");
         let ingest = Ingest::new(dir.clone());
-        let job_id = ingest
-            .enqueue(&db, upload([7u8; 16], "IMG_4021.jpeg", b"pix"))
-            .await
-            .unwrap();
+        let job_id = ingest.enqueue(&db, upload([7u8; 16], "IMG_4021.jpeg", b"pix")).await.unwrap();
 
         // Pending: the rename lands, and the owner's queue view shows the new name.
         assert!(retitle_job(&db, "acct-1", &job_id, "the lighthouse").await.unwrap());
@@ -657,20 +605,12 @@ mod tests {
         let db = node_db().await;
         let dir = scratch_dir("reconcile");
         let ingest = Ingest::new(dir.clone());
-        let survivor = ingest
-            .enqueue(&db, upload([1u8; 16], "survivor", b"aa"))
-            .await
-            .unwrap();
-        let lost = ingest
-            .enqueue(&db, upload([2u8; 16], "lost", b"bb"))
-            .await
-            .unwrap();
+        let survivor = ingest.enqueue(&db, upload([1u8; 16], "survivor", b"aa")).await.unwrap();
+        let lost = ingest.enqueue(&db, upload([2u8; 16], "lost", b"bb")).await.unwrap();
 
         // Simulate a crash mid-run: both were claimed (processing), and one quarantine file was
         // wiped (a /tmp reboot, say) while the other survived.
-        db.execute("UPDATE ingest_job SET status = 'processing'", ())
-            .await
-            .unwrap();
+        db.execute("UPDATE ingest_job SET status = 'processing'", ()).await.unwrap();
         tokio::fs::remove_file(dir.join(&lost)).await.unwrap();
 
         reconcile_on_boot(&db).await.unwrap();
@@ -679,11 +619,7 @@ mod tests {
         let by = |id: &str| jobs.iter().find(|j| j.job_id == id).unwrap();
         assert_eq!(by(&survivor).status, "pending", "file present -> requeued");
         assert_eq!(by(&lost).status, "failed", "file gone -> failed");
-        assert!(by(&lost)
-            .error
-            .as_deref()
-            .unwrap()
-            .contains("lost on restart"));
+        assert!(by(&lost).error.as_deref().unwrap().contains("lost on restart"));
 
         std::fs::remove_dir_all(&dir).ok();
     }

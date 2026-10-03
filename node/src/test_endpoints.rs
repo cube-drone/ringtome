@@ -221,7 +221,10 @@ pub struct CreditRequest {
 
 /// Credit (or debit) a persona's HorseBucks ledger directly (bank.rs `credit_for_test`): no overdraft
 /// means no test can buy its way into debt any more (2026-09-30).
-pub async fn credit(State(state): State<AppState>, Json(req): Json<CreditRequest>) -> Result<Json<Value>, AppError> {
+pub async fn credit(
+    State(state): State<AppState>,
+    Json(req): Json<CreditRequest>,
+) -> Result<Json<Value>, AppError> {
     let data = crate::record::store::open_agented(&state, &req.root).await?;
     crate::bank::catch_up(&state, &data, &req.root).await.map_err(AppError::Internal)?;
     crate::bank::credit_for_test(&data, req.pennies).await.map_err(AppError::Internal)?;
@@ -238,12 +241,21 @@ pub struct HeartbeatRequest {
 /// Record a heartbeat for a given day (HORSE_BASED_CURRENCIES.md, 2026-09-29): HorseBonds pay per
 /// heartbeat day, and no test can wait a hundred of them. Written as the node writes a real one -
 /// the profile's `heartbeat` field, signed with the node's key for the persona.
-pub async fn heartbeat(State(state): State<AppState>, Json(req): Json<HeartbeatRequest>) -> Result<Json<Value>, AppError> {
+pub async fn heartbeat(
+    State(state): State<AppState>,
+    Json(req): Json<HeartbeatRequest>,
+) -> Result<Json<Value>, AppError> {
     if crate::heartbeat::day_of_date(&req.date).is_none() {
         return Err(AppError::BadRequest(crate::msg!("test_endpoints.not-a-date", "not a date")));
     }
     let data = crate::record::store::open_agented(&state, &req.root).await?;
-    crate::record::imaol::set_profile_field(data.db(), data.signer(), crate::heartbeat::FIELD, &req.date).await?;
+    crate::record::imaol::set_profile_field(
+        data.db(),
+        data.signer(),
+        crate::heartbeat::FIELD,
+        &req.date,
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "date": req.date })))
 }
 
@@ -274,20 +286,13 @@ pub async fn raw_sql(
 ) -> Result<Json<SqlResponse>, AppError> {
     tracing::warn!(sql = %req.sql, "LOCAL_TEST raw SQL passthrough");
 
-    let (column_names, raw) = state
-        .node_db
-        .query_drained(&req.sql, ())
-        .await
-        .map_err(|e| AppError::BadRequest(crate::msg!("test_endpoints.sql-error-e", "sql error: {e}", e = e)))?;
-    let rows: Vec<serde_json::Map<String, Value>> = raw
-        .into_iter()
-        .map(|values| row_to_json(&values, &column_names))
-        .collect();
+    let (column_names, raw) = state.node_db.query_drained(&req.sql, ()).await.map_err(|e| {
+        AppError::BadRequest(crate::msg!("test_endpoints.sql-error-e", "sql error: {e}", e = e))
+    })?;
+    let rows: Vec<serde_json::Map<String, Value>> =
+        raw.into_iter().map(|values| row_to_json(&values, &column_names)).collect();
 
-    Ok(Json(SqlResponse {
-        rows,
-        rows_affected: None,
-    }))
+    Ok(Json(SqlResponse { rows, rows_affected: None }))
 }
 
 #[derive(Serialize)]
@@ -316,11 +321,7 @@ pub async fn resolve_serving(
     Path(leaf_hex): Path<String>,
 ) -> Result<Json<ResolveServingResponse>, AppError> {
     let leaf = crate::pubkey::require(&leaf_hex, "leaf pubkey")?;
-    let resolved = state
-        .directory
-        .resolve_serving(&leaf)
-        .await
-        .map_err(AppError::Internal)?;
+    let resolved = state.directory.resolve_serving(&leaf).await.map_err(AppError::Internal)?;
     let Some(signed) = resolved else {
         return Ok(Json(ResolveServingResponse {
             found: false,
@@ -391,10 +392,7 @@ pub async fn unplug(
     let req = body.map(|Json(req)| req).unwrap_or_default();
 
     let names: Vec<&'static str> = match req.alpns {
-        None => crate::net::p2p::ALPNS
-            .iter()
-            .map(|(name, _)| *name)
-            .collect(),
+        None => crate::net::p2p::ALPNS.iter().map(|(name, _)| *name).collect(),
         Some(asked) => {
             let mut resolved = Vec::with_capacity(asked.len());
             for name in &asked {
@@ -431,36 +429,22 @@ pub async fn unplug(
     };
 
     let refusals = crate::net::p2p::Refusals {
-        inbound: if gate_inbound {
-            names.iter().copied().collect()
-        } else {
-            Default::default()
-        },
-        outbound: if gate_outbound {
-            names.iter().copied().collect()
-        } else {
-            Default::default()
-        },
+        inbound: if gate_inbound { names.iter().copied().collect() } else { Default::default() },
+        outbound: if gate_outbound { names.iter().copied().collect() } else { Default::default() },
     };
     tracing::warn!(
         inbound = ?refusals.inbound,
         outbound = ?refusals.outbound,
         "LOCAL_TEST transport gate armed"
     );
-    state
-        .unplugged
-        .arm(&state.config, refusals)
-        .map_err(AppError::Internal)?;
+    state.unplugged.arm(&state.config, refusals).map_err(AppError::Internal)?;
     Ok(Json(state.unplugged.refusals().into()))
 }
 
 /// Plug the node back in: refuse nothing. Idempotent, and safe to call on a node that was never
 /// unplugged - which is what lets the suite's root hook fire it without asking first.
 pub async fn plug_in(State(state): State<AppState>) -> Result<Json<UnplugResponse>, AppError> {
-    state
-        .unplugged
-        .arm(&state.config, Default::default())
-        .map_err(AppError::Internal)?;
+    state.unplugged.arm(&state.config, Default::default()).map_err(AppError::Internal)?;
     Ok(Json(state.unplugged.refusals().into()))
 }
 
@@ -475,9 +459,7 @@ pub async fn unplug_state(State(state): State<AppState>) -> Json<UnplugResponse>
 /// itself: shortening the beat globally races every strike test's own choreography (the
 /// prune lands mid-test and the struck peer vanishes before the strike is delivered).
 pub async fn derive_pass(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    crate::net::sync::derive_peers(state)
-        .await
-        .map_err(AppError::Internal)?;
+    crate::net::sync::derive_peers(state).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "derived": true })))
 }
 
@@ -486,9 +468,7 @@ pub async fn derive_pass(State(state): State<AppState>) -> Result<Json<Value>, A
 /// carried this, not the queue" needs to ring exactly one batch at a chosen moment rather than
 /// race a cadence.
 pub async fn reap_pass(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    crate::fragments::reap(&state)
-        .await
-        .map_err(AppError::Internal)?;
+    crate::fragments::reap(&state).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "reaped": true })))
 }
 
@@ -516,8 +496,11 @@ pub struct ForeignRevalidateRequest {
 
 /// Override how long a fetched foreign profile is served before a visit revalidates it - a
 /// suite cannot sit out the real thirty seconds to watch it happen (the fresh-window idiom).
-pub async fn foreign_revalidate(Json(req): Json<ForeignRevalidateRequest>) -> Result<Json<Value>, AppError> {
-    crate::idface::FOREIGN_REVALIDATE_OVERRIDE.store(req.ms.max(0), std::sync::atomic::Ordering::Relaxed);
+pub async fn foreign_revalidate(
+    Json(req): Json<ForeignRevalidateRequest>,
+) -> Result<Json<Value>, AppError> {
+    crate::idface::FOREIGN_REVALIDATE_OVERRIDE
+        .store(req.ms.max(0), std::sync::atomic::Ordering::Relaxed);
     tracing::warn!(ms = req.ms, "LOCAL_TEST foreign revalidate override");
     Ok(Json(serde_json::json!({ "ms": req.ms })))
 }
@@ -530,7 +513,9 @@ pub struct PublishInlineRequest {
 
 /// Override how long a publish waits inline before handing back a poll (`publishing`): a suite
 /// watches the 202 road without minting enough pictures to outlast the real eight seconds.
-pub async fn publish_inline(Json(req): Json<PublishInlineRequest>) -> Result<Json<Value>, AppError> {
+pub async fn publish_inline(
+    Json(req): Json<PublishInlineRequest>,
+) -> Result<Json<Value>, AppError> {
     crate::publishing::INLINE_OVERRIDE.store(req.ms.max(-1), std::sync::atomic::Ordering::Relaxed);
     tracing::warn!(ms = req.ms, "LOCAL_TEST publish inline-wait override");
     Ok(Json(serde_json::json!({ "ms": req.ms })))
@@ -547,11 +532,11 @@ pub async fn blob_present(
         .ok()
         .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
         .ok_or_else(|| {
-            AppError::BadRequest(crate::msg!(
-                "test.endpoints.not-a-blob-hash",
-                "not a blob hash: 64 hex characters expected"
-            ))
-        })?;
+        AppError::BadRequest(crate::msg!(
+            "test.endpoints.not-a-blob-hash",
+            "not a blob hash: 64 hex characters expected"
+        ))
+    })?;
     let present = state.files.has(iroh_blobs::Hash::from_bytes(bytes)).await;
     Ok(Json(serde_json::json!({ "present": present })))
 }
@@ -632,9 +617,11 @@ pub async fn score_check(
     let data = crate::record::store::open_agented(&state, &q.root).await?;
     let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
     crate::score::refresh_dials(&state, &q.root, &facts).await.map_err(AppError::Internal)?;
-    let kept = crate::score::all_stored(&state.node_db, &q.root).await.map_err(AppError::Internal)?;
+    let kept =
+        crate::score::all_stored(&state.node_db, &q.root).await.map_err(AppError::Internal)?;
     crate::score::rebuild(&state, &q.root, &facts).await.map_err(AppError::Internal)?;
-    let rebuilt = crate::score::all_stored(&state.node_db, &q.root).await.map_err(AppError::Internal)?;
+    let rebuilt =
+        crate::score::all_stored(&state.node_db, &q.root).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "kept": kept, "rebuilt": rebuilt })))
 }
 
@@ -646,7 +633,9 @@ pub async fn window_account(State(state): State<AppState>) -> Json<serde_json::V
 
 /// GET `/test/shell` - everything the node has asked of a desktop shell (shell.rs), oldest first:
 /// what a device node in the rig would have had its app do.
-pub async fn shell_requests(State(state): State<AppState>) -> Json<Vec<crate::shell::ShellRequest>> {
+pub async fn shell_requests(
+    State(state): State<AppState>,
+) -> Json<Vec<crate::shell::ShellRequest>> {
     Json(state.shell.recorded())
 }
 
@@ -662,7 +651,9 @@ pub struct BackupVerify {
 /// would (backup.rs): the keystore beside it, `node.db` (climbing its migrations), and one persona
 /// through the ordinary user-database manager - which validates its journal and replays it if the
 /// database came back empty. Answers what it found, so a claim can check a backup RESTORES.
-pub async fn backup_verify(Json(req): Json<BackupVerify>) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn backup_verify(
+    Json(req): Json<BackupVerify>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let dir = std::path::PathBuf::from(&req.dir);
     let found: anyhow::Result<serde_json::Value> = async {
         let keystore = crate::keystore::Keystore::load(&dir)?;

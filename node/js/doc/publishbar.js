@@ -83,11 +83,25 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             // The bar turns at once (2026-10-01): the answer said what the mirror will, so the row
             // wears it now and the stream settles it (pure/optimistic.js).
             if (made && made.scheduled_for) {
-                await holdDoc(root, docId, (r) => withScheduled(r, made.scheduled_for), scheduledSettled);
+                await holdDoc(
+                    root,
+                    docId,
+                    (r) => withScheduled(r, made.scheduled_for),
+                    scheduledSettled,
+                );
             } else if (made && made.post_id) {
-                await holdDoc(root, docId, (r) => withPublished(r, made.post_id), publishedSettled(made.post_id));
+                await holdDoc(
+                    root,
+                    docId,
+                    (r) => withPublished(r, made.post_id),
+                    publishedSettled(made.post_id),
+                );
             }
-            setPublishNote(made && made.scheduled_for ? { kind: 'scheduled', at: made.scheduled_for } : { kind: 'published' });
+            setPublishNote(
+                made && made.scheduled_for
+                    ? { kind: 'scheduled', at: made.scheduled_for }
+                    : { kind: 'published' },
+            );
             if (onPublished) onPublished();
         } catch (e) {
             setPublishError(e.message);
@@ -100,7 +114,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         setPublishError(null);
         try {
             await optimisticDoc(root, docId, withoutPublication, unpublishedSettled, () =>
-                api(`/api/identity/${root}/posts/${postId}`, { method: 'DELETE' })
+                api(`/api/identity/${root}/posts/${postId}`, { method: 'DELETE' }),
             );
             setPublishNote({ kind: 'unpublished' });
         } catch (e) {
@@ -115,7 +129,9 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         setPublishError(null);
         try {
             await optimisticDoc(root, docId, withoutSchedule, unscheduledSettled, () =>
-                api(`/api/identity/${root}/docs/${docId}/annotations/fields/publish_plan`, { method: 'DELETE' })
+                api(`/api/identity/${root}/docs/${docId}/annotations/fields/publish_plan`, {
+                    method: 'DELETE',
+                }),
             );
             setPublishNote({ kind: 'unscheduled' });
         } catch (e) {
@@ -145,19 +161,22 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 : t('doc.editor.published', 'published');
 
     return html`<div
-        class=${standing === 'scheduled'
-            ? 'publish-bar publish-bar-scheduled'
-            : standing === 'public'
-              ? 'publish-bar publish-bar-public'
-              : 'publish-bar publish-bar-private'}
+        class=${
+            standing === 'scheduled'
+                ? 'publish-bar publish-bar-scheduled'
+                : standing === 'public'
+                  ? 'publish-bar publish-bar-public'
+                  : 'publish-bar publish-bar-private'
+        }
     >
         <span class="publish-bar-standing">
             <${standing === 'scheduled' ? Icons.scheduled : standing === 'public' ? Icons.docPublic : Icons.docPrivate} />
             ${standingWords()}
         </span>
         <span class="publish-bar-acts">
-        ${standing === 'private' &&
-        html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turn off comments')}>
+        ${
+            standing === 'private' &&
+            html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turn off comments')}>
                 <input
                     type="checkbox"
                     checked=${wishes.settled}
@@ -172,45 +191,57 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                     onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))}
                 />
                 ${t('doc.editor.trusted-only', 'trusted only')}
-            </label>`}
-            ${standing === 'private' &&
-            html`<button
+            </label>`
+        }
+            ${
+                standing === 'private' &&
+                html`<button
                 class="publish-bar-publish jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.publish---makes-this-content', 'publish')}
                 onClick=${publishNow}
-            ><${Icons.docPublic} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.publish', 'publish')}</button>`}
-            ${standing === 'public' &&
-            html`<a
+            ><${Icons.docPublic} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.publish', 'publish')}</button>`
+            }
+            ${
+                standing === 'public' &&
+                html`<a
                 class="publish-bar-view jag-line"
                 href=${postHref(root, postId)}
                 title=${t('doc.editor.open-the-public-version', 'open the public version')}
-            ><${Icons.docPublic} /> ${t('doc.editor.view', 'view')}</a>`}
-            ${standing === 'public' &&
-            differs &&
-            diffHref &&
-            html`<a
+            ><${Icons.docPublic} /> ${t('doc.editor.view', 'view')}</a>`
+            }
+            ${
+                standing === 'public' &&
+                differs &&
+                diffHref &&
+                html`<a
                 class="publish-bar-diff jag-line"
                 href=${diffHref}
                 title=${t('doc.editor.what-differs-between-these-words', 'what differs between these words and the public version')}
-            ><${Icons.conflict} /> ${t('doc.editor.diff', 'diff')}</a>`}
-            ${standing === 'public' &&
-            differs &&
-            html`<button
+            ><${Icons.conflict} /> ${t('doc.editor.diff', 'diff')}</a>`
+            }
+            ${
+                standing === 'public' &&
+                differs &&
+                html`<button
                 class="publish-bar-update jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.make-your-changes-public', 'make your changes public')}
                 onClick=${publishNow}
-            ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>`}
-            ${standing === 'public' &&
-            html`<button
+            ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>`
+            }
+            ${
+                standing === 'public' &&
+                html`<button
                 class="publish-bar-unpublish jag-line"
                 disabled=${publishing}
                 title=${t('doc.editor.take-this-post-back-off', 'take this post back off the network')}
                 onClick=${() => setAskingTakedown(true)}
-            ><${Icons.unpublish} /> ${t('doc.editor.unpublish', 'unpublish')}</button>`}
-            ${standing === 'scheduled' &&
-            html`<button
+            ><${Icons.unpublish} /> ${t('doc.editor.unpublish', 'unpublish')}</button>`
+            }
+            ${
+                standing === 'scheduled' &&
+                html`<button
                     class="publish-bar-update jag-line"
                     disabled=${publishing}
                     title=${t('doc.editor.re-read-the-date-and', 'publish, or reschedule')}
@@ -221,15 +252,19 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                     disabled=${publishing}
                     title=${t('doc.editor.cancel-the-schedule---the', 'cancel the schedule - the words stay private')}
                     onClick=${cancelSchedule}
-                ><${Icons.unpublish} /> ${t('doc.editor.cancel', 'cancel')}</button>`}
+                ><${Icons.unpublish} /> ${t('doc.editor.cancel', 'cancel')}</button>`
+            }
         </span>
-        ${publishNote &&
-        html`<span class="publish-bar-note">
+        ${
+            publishNote &&
+            html`<span class="publish-bar-note">
             ${noteWords(publishNote)}
-        </span>`}
+        </span>`
+        }
         ${publishError && html`<span class="publish-bar-error">${publishError}</span>`}
-        ${askingTakedown &&
-        html`<${Modal}
+        ${
+            askingTakedown &&
+            html`<${Modal}
             title=${t('doc.editor.take-it-down', 'take it down')}
             onClose=${() => {
                 if (!publishing) setAskingTakedown(false);
@@ -246,7 +281,8 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                     ${t('doc.editor.keep-it', 'keep it')}
                 </button>
             </div>
-        </${Modal}>`}
+        </${Modal}>`
+        }
         <${BakeModal} items=${baking} />
     </div>`;
 };

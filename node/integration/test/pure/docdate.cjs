@@ -1,7 +1,13 @@
 // The claimed-display-date helpers - pure ordering/format logic, no browser.
 const assert = require('node:assert');
 
-let claimedMs, createdMs, hasClaimedDate, parseClaimed, formatClaimed, splitClaimed, joinClaimed,
+let claimedMs,
+    createdMs,
+    hasClaimedDate,
+    parseClaimed,
+    formatClaimed,
+    splitClaimed,
+    joinClaimed,
     DISPLAY_DATE_FIELD;
 before(async () => {
     ({
@@ -69,7 +75,10 @@ describe('claimed display date', () => {
     it('splits and rejoins the two controls, and a time needs a date', () => {
         assert.deepEqual(splitClaimed('2015-07-31'), { date: '2015-07-31', time: '' });
         assert.deepEqual(splitClaimed('2015-07-31T15:35'), { date: '2015-07-31', time: '15:35' });
-        assert.deepEqual(splitClaimed('2015-07-31T15:35:00'), { date: '2015-07-31', time: '15:35' });
+        assert.deepEqual(splitClaimed('2015-07-31T15:35:00'), {
+            date: '2015-07-31',
+            time: '15:35',
+        });
         assert.deepEqual(splitClaimed(''), { date: '', time: '' });
 
         assert.equal(joinClaimed('2015-07-31', ''), '2015-07-31');
@@ -98,8 +107,11 @@ describe('createdMs', () => {
             { doc_id: 'b', created_ms: 200, updated_ms: 200 },
         ];
         const newestFirst = stream.slice().sort((x, y) => createdMs(y) - createdMs(x));
-        assert.deepEqual(newestFirst.map((d) => d.doc_id), ['b', 'a'],
-            'the edit did not jump a to the top');
+        assert.deepEqual(
+            newestFirst.map((d) => d.doc_id),
+            ['b', 'a'],
+            'the edit did not jump a to the top',
+        );
     });
 
     it('still lets a CLAIMED date win - the author outranks both clocks', () => {
@@ -112,7 +124,7 @@ describe('createdMs', () => {
         assert.equal(
             createdMs(backdated),
             parseClaimed('2015-07-31'),
-            'filed under the year the author claims, not the day the row was made'
+            'filed under the year the author claims, not the day the row was made',
         );
     });
 

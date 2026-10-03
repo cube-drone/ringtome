@@ -42,17 +42,29 @@ export const LinksColumn = ({ root, docId, docs, onTuck }) => {
     const outgoing = outgoingOf(rows, docId);
     return html`<aside class="links-column">
         <${PaneHead} icon=${Icons.link} label=${t('doc.linkcol.links', 'links')} onTuck=${onTuck} />
-        ${!docId
-            ? html`<p class="null-sub">${t('doc.linkcol.open-a-note', 'open a note to see what links to it, and what it links to.')}</p>`
-            : html`
+        ${
+            !docId
+                ? html`<p class="null-sub">${t('doc.linkcol.open-a-note', 'open a note to see what links to it, and what it links to.')}</p>`
+                : html`
                   <h3 class="links-head">${t('doc.linkcol.linking-here', 'linking here')}</h3>
-                  ${incoming.length === 0
-                      ? html`<p class="null-sub">${t('doc.linkcol.nothing-links-here', 'nothing links here yet.')}</p>`
-                      : incoming.map((d) => html`<a class="links-row" key=${d.doc_id} data-settles href=${docHref(root, d.doc_id, { row: d })}>${titleOf(d)}</a>`)}
+                  ${
+                      incoming.length === 0
+                          ? html`<p class="null-sub">${t('doc.linkcol.nothing-links-here', 'nothing links here yet.')}</p>`
+                          : incoming.map(
+                                (d) =>
+                                    html`<a class="links-row" key=${d.doc_id} data-settles href=${docHref(root, d.doc_id, { row: d })}>${titleOf(d)}</a>`,
+                            )
+                  }
                   <h3 class="links-head">${t('doc.linkcol.linked-from-here', 'linked from here')}</h3>
-                  ${outgoing.length === 0
-                      ? html`<p class="null-sub">${t('doc.linkcol.links-nowhere', "this note doesn't link anywhere yet.")}</p>`
-                      : outgoing.map((link) => html`<${Outgoing} key=${link.to} root=${root} link=${link} byId=${byId} />`)}
-              `}
+                  ${
+                      outgoing.length === 0
+                          ? html`<p class="null-sub">${t('doc.linkcol.links-nowhere', "this note doesn't link anywhere yet.")}</p>`
+                          : outgoing.map(
+                                (link) =>
+                                    html`<${Outgoing} key=${link.to} root=${root} link=${link} byId=${byId} />`,
+                            )
+                  }
+              `
+        }
     </aside>`;
 };

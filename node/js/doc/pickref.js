@@ -12,7 +12,21 @@ export async function pickedReference(root, pick, bodyFormat = 'marquee') {
     if (pick.format === 'drawing') {
         const copy = await drawingAsPicture(root, pick.doc);
         // The copy is a still PNG the node makes an AVIF, like any still picture.
-        return crushedReference({ root, docFormat: 'avif', docId: copy.doc, title: copy.title, animation: false, bodyFormat });
+        return crushedReference({
+            root,
+            docFormat: 'avif',
+            docId: copy.doc,
+            title: copy.title,
+            animation: false,
+            bodyFormat,
+        });
     }
-    return crushedReference({ root, docFormat: pick.format, docId: pick.doc, title: pick.title, animation: !!pick.animation, bodyFormat });
+    return crushedReference({
+        root,
+        docFormat: pick.format,
+        docId: pick.doc,
+        title: pick.title,
+        animation: !!pick.animation,
+        bodyFormat,
+    });
 }

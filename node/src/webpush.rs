@@ -57,8 +57,11 @@ impl WebPush {
     /// it is minted once and kept.
     pub fn load(keystore: &crate::keystore::Keystore, allow_http: bool) -> Result<Self> {
         let key = if keystore.contains(KEY_NAME) {
-            let bytes = keystore.load_key(KEY_NAME, KEY_NAME.as_bytes()).context("opening the VAPID key")?;
-            p256::ecdsa::SigningKey::from_slice(&bytes).map_err(|e| anyhow!("the VAPID key is not a P-256 key: {e}"))?
+            let bytes = keystore
+                .load_key(KEY_NAME, KEY_NAME.as_bytes())
+                .context("opening the VAPID key")?;
+            p256::ecdsa::SigningKey::from_slice(&bytes)
+                .map_err(|e| anyhow!("the VAPID key is not a P-256 key: {e}"))?
         } else {
             let key = p256::ecdsa::SigningKey::random(&mut rand_core_compat::OsRng);
             keystore
@@ -109,7 +112,8 @@ fn encrypt_with(
     use hkdf::Hkdf;
     use sha2::Sha256;
 
-    let ua_key = p256::PublicKey::from_sec1_bytes(ua_public).map_err(|_| anyhow!("the browser's key is not a P-256 point"))?;
+    let ua_key = p256::PublicKey::from_sec1_bytes(ua_public)
+        .map_err(|_| anyhow!("the browser's key is not a P-256 point"))?;
     let as_public = as_secret.public_key().to_encoded_point(false);
     let shared = p256::ecdh::diffie_hellman(as_secret.to_nonzero_scalar(), ua_key.as_affine());
 
@@ -125,14 +129,17 @@ fn encrypt_with(
     // CEK and NONCE from the salt (RFC 8188).
     let prk = Hkdf::<Sha256>::new(Some(salt), &ikm);
     let mut cek = [0u8; 16];
-    prk.expand(b"Content-Encoding: aes128gcm\0", &mut cek).map_err(|_| anyhow!("HKDF expand (cek)"))?;
+    prk.expand(b"Content-Encoding: aes128gcm\0", &mut cek)
+        .map_err(|_| anyhow!("HKDF expand (cek)"))?;
     let mut nonce = [0u8; 12];
-    prk.expand(b"Content-Encoding: nonce\0", &mut nonce).map_err(|_| anyhow!("HKDF expand (nonce)"))?;
+    prk.expand(b"Content-Encoding: nonce\0", &mut nonce)
+        .map_err(|_| anyhow!("HKDF expand (nonce)"))?;
 
     // One record, so it is the last: the plaintext, then the 0x02 delimiter, no padding.
     let mut record = plaintext.to_vec();
     record.push(0x02);
-    let cipher = aes_gcm::Aes128Gcm::new_from_slice(&cek).map_err(|_| anyhow!("AES-128-GCM key"))?;
+    let cipher =
+        aes_gcm::Aes128Gcm::new_from_slice(&cek).map_err(|_| anyhow!("AES-128-GCM key"))?;
     let sealed = cipher
         .encrypt(aes_gcm::Nonce::from_slice(&nonce), record.as_slice())
         .map_err(|_| anyhow!("AES-128-GCM seal"))?;
@@ -195,7 +202,8 @@ pub async fn subscribe(state: &AppState, root: &str, sub: &Subscription) -> Resu
     if !(https || http_ok) || url.host_str().is_none() || sub.endpoint.len() > 1024 {
         bail!("the endpoint must be an https URL");
     }
-    let p256dh = B64.decode(sub.keys.p256dh.trim_end_matches('=')).context("p256dh is not base64url")?;
+    let p256dh =
+        B64.decode(sub.keys.p256dh.trim_end_matches('=')).context("p256dh is not base64url")?;
     let auth = B64.decode(sub.keys.auth.trim_end_matches('=')).context("auth is not base64url")?;
     if p256::PublicKey::from_sec1_bytes(&p256dh).is_err() || p256dh.len() != 65 {
         bail!("p256dh is not an uncompressed P-256 point");
@@ -313,7 +321,11 @@ pub async fn push_test(state: &AppState, root: &str) -> Result<Vec<Delivery>> {
 }
 
 /// `always`: show even when a tab of ours is in front - the test, which is clicked from one.
-async fn push_to_all(state: &AppState, alert: &crate::attention::Alert, always: bool) -> Vec<Delivery> {
+async fn push_to_all(
+    state: &AppState,
+    alert: &crate::attention::Alert,
+    always: bool,
+) -> Vec<Delivery> {
     let subs = match subscriptions(&state.node_db, &alert.root).await {
         Ok(subs) if !subs.is_empty() => subs,
         _ => return Vec::new(),
@@ -371,7 +383,13 @@ enum Outcome {
     Refused(u16, String),
 }
 
-async fn push_one(state: &AppState, endpoint: &str, p256dh: &[u8], auth: &[u8], payload: &[u8]) -> Result<Outcome> {
+async fn push_one(
+    state: &AppState,
+    endpoint: &str,
+    p256dh: &[u8],
+    auth: &[u8],
+    payload: &[u8],
+) -> Result<Outcome> {
     let body = encrypt(payload, p256dh, auth)?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
     let response = state
@@ -411,7 +429,9 @@ mod tests {
     #[test]
     fn rfc_8291_example_encrypts_byte_for_byte() {
         let plaintext = b"When I grow up, I want to be a watermelon";
-        let as_secret = p256::SecretKey::from_slice(&b64("yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw")).unwrap();
+        let as_secret =
+            p256::SecretKey::from_slice(&b64("yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"))
+                .unwrap();
         assert_eq!(
             B64.encode(as_secret.public_key().to_encoded_point(false).as_bytes()),
             "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"
@@ -441,7 +461,8 @@ mod tests {
         let verifying = p256::ecdsa::VerifyingKey::from_sec1_bytes(&b64(k)).unwrap();
         let signature = p256::ecdsa::Signature::from_slice(&b64(sig)).unwrap();
         verifying.verify(signed.as_bytes(), &signature).expect("the signature verifies");
-        let claims: serde_json::Value = serde_json::from_slice(&b64(signed.split('.').nth(1).unwrap())).unwrap();
+        let claims: serde_json::Value =
+            serde_json::from_slice(&b64(signed.split('.').nth(1).unwrap())).unwrap();
         assert_eq!(claims["aud"], "https://fcm.googleapis.com");
         assert!(claims["exp"].as_u64().unwrap() > 1_000);
         assert_eq!(claims["sub"], VAPID_SUBJECT);

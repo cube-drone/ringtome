@@ -3,28 +3,43 @@ const assert = require('node:assert');
 
 let PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts;
 before(async () => {
-    ({ PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts } = await import(
-        '../../../js/pure/people.js'
-    ));
+    ({ PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts } =
+        await import('../../../js/pure/people.js'));
 });
 
 const row = (root, facts) => ({ root, facts });
 
 describe('the People shelf', () => {
     it('offers the orderings: trust, interest and recent activity', () => {
-        assert.deepEqual(PEOPLE_SORTS.map((s) => s.key), ['trust', 'interest', 'recent']);
+        assert.deepEqual(
+            PEOPLE_SORTS.map((s) => s.key),
+            ['trust', 'interest', 'recent'],
+        );
     });
 
     it('orders by the chosen fact, descending', () => {
-        const rows = [row('bb', { trust: 'low' }), row('aa', { trust: 'high' }), row('cc', { trust: 'medium' })];
-        assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['aa', 'cc', 'bb']);
+        const rows = [
+            row('bb', { trust: 'low' }),
+            row('aa', { trust: 'high' }),
+            row('cc', { trust: 'medium' }),
+        ];
+        assert.deepEqual(
+            sortContacts(rows, 'trust').map((r) => r.root),
+            ['aa', 'cc', 'bb'],
+        );
         const byInterest = [row('aa', { interest: 'low' }), row('bb', { interest: 'max' })];
-        assert.deepEqual(sortContacts(byInterest, 'interest').map((r) => r.root), ['bb', 'aa']);
+        assert.deepEqual(
+            sortContacts(byInterest, 'interest').map((r) => r.root),
+            ['bb', 'aa'],
+        );
     });
 
     it('missing or garbage facts score zero, and ties break by root - stable everywhere', () => {
         const rows = [row('cc', {}), row('aa', { trust: 'what' }), row('bb', { trust: 'none' })];
-        assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['aa', 'bb', 'cc']);
+        assert.deepEqual(
+            sortContacts(rows, 'trust').map((r) => r.root),
+            ['aa', 'bb', 'cc'],
+        );
     });
 
     it('recent activity: the newest heartbeat first, the never-seen after, blocked still last (2026-09-29)', () => {
@@ -34,21 +49,27 @@ describe('the People shelf', () => {
             { ...row('cc', { blocked: 'yes' }), last_active: '2026-09-29' },
             { ...row('dd', {}), last_active: '2026-09-28' },
         ];
-        assert.deepEqual(sortContacts(rows, 'recent').map((r) => r.root), ['dd', 'aa', 'bb', 'cc']);
+        assert.deepEqual(
+            sortContacts(rows, 'recent').map((r) => r.root),
+            ['dd', 'aa', 'bb', 'cc'],
+        );
     });
 
     it('blocked personas sink to the bottom regardless of score - visible, never outranking', () => {
-        const rows = [
-            row('aa', { trust: 'max', blocked: 'yes' }),
-            row('bb', { trust: 'low' }),
-        ];
-        assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['bb', 'aa']);
+        const rows = [row('aa', { trust: 'max', blocked: 'yes' }), row('bb', { trust: 'low' })];
+        assert.deepEqual(
+            sortContacts(rows, 'trust').map((r) => r.root),
+            ['bb', 'aa'],
+        );
     });
 
     it('never mutates its input (the mirror hands out live arrays)', () => {
         const rows = [row('bb', { trust: 'low' }), row('aa', { trust: 'medium' })];
         sortContacts(rows, 'trust');
-        assert.deepEqual(rows.map((r) => r.root), ['bb', 'aa']);
+        assert.deepEqual(
+            rows.map((r) => r.root),
+            ['bb', 'aa'],
+        );
     });
 });
 
@@ -104,6 +125,9 @@ describe('standing on the shelf', () => {
         assert.ok(!standingFacts(undefined), 'no row is no standing');
         assert.ok(standingFacts({ interest: 'high' }), 'a live dial stands');
         assert.ok(standingFacts({ trust: '', nickname: 'moss' }), 'a nickname alone stands');
-        assert.ok(standingFacts({ blocked: 'yes' }), 'blocked stands - hidden would mean unfindable');
+        assert.ok(
+            standingFacts({ blocked: 'yes' }),
+            'blocked stands - hidden would mean unfindable',
+        );
     });
 });

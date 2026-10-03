@@ -7,9 +7,21 @@ before(async () => {
 
 describe("a note's links, both ways (2026-09-30)", () => {
     const rows = [
-        { doc_id: 'a', links: [{ to: '/x/b', text: 'bee', doc: 'b' }, { to: 'https://example.com/', text: '' }] },
+        {
+            doc_id: 'a',
+            links: [
+                { to: '/x/b', text: 'bee', doc: 'b' },
+                { to: 'https://example.com/', text: '' },
+            ],
+        },
         { doc_id: 'b', links: [{ to: '/x/b', text: 'myself', doc: 'b' }] },
-        { doc_id: 'c', links: [{ to: '/x/b', text: 'bee', doc: 'b' }, { to: '/x/b2', text: 'bee again', doc: 'b' }] },
+        {
+            doc_id: 'c',
+            links: [
+                { to: '/x/b', text: 'bee', doc: 'b' },
+                { to: '/x/b2', text: 'bee again', doc: 'b' },
+            ],
+        },
         { doc_id: 'd' },
     ];
 
@@ -21,7 +33,10 @@ describe("a note's links, both ways (2026-09-30)", () => {
     });
 
     it("outgoing: the note's own links, in its order", () => {
-        assert.deepEqual(outgoingOf(rows, 'a').map((l) => l.to), ['/x/b', 'https://example.com/']);
+        assert.deepEqual(
+            outgoingOf(rows, 'a').map((l) => l.to),
+            ['/x/b', 'https://example.com/'],
+        );
         assert.deepEqual(outgoingOf(rows, 'd'), [], 'a row without links');
         assert.deepEqual(outgoingOf(rows, 'zzz'), [], 'a note not indexed yet');
     });
@@ -39,7 +54,10 @@ describe("a note's links, both ways (2026-09-30)", () => {
                 ],
             },
         ];
-        assert.deepEqual(outgoingOf(dupes, 'e').map((l) => l.text), ['first', 'web', 'elsewhere']);
+        assert.deepEqual(
+            outgoingOf(dupes, 'e').map((l) => l.text),
+            ['first', 'web', 'elsewhere'],
+        );
     });
 
     it('a wordless link reads as where it goes', () => {

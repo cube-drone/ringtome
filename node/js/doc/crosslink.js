@@ -31,11 +31,14 @@ export function startDocDrag(e, root, doc, bucket) {
         const slug = slugify(label).replace(/-/g, '_') || 'file';
         e.dataTransfer.setData(
             'text/plain',
-            `![${label}](/api/identity/${root}/docs/${doc.doc_id}/body/${slug}.${ext})`
+            `![${label}](/api/identity/${root}/docs/${doc.doc_id}/body/${slug}.${ext})`,
         );
         return; // the byte URL is already final - nothing to swap
     }
-    e.dataTransfer.setData('text/plain', `[${label}](${docHref(root, doc.doc_id, { row: doc, bucket })})`);
+    e.dataTransfer.setData(
+        'text/plain',
+        `[${label}](${docHref(root, doc.doc_id, { row: doc, bucket })})`,
+    );
 }
 
 /// The receiving editor claims a dropped doc-drag's cozy swap (by the exact inserted text).

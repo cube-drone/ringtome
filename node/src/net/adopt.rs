@@ -45,17 +45,13 @@ async fn write_json<T: serde::Serialize>(send: &mut SendStream, value: &T) -> Re
 
 async fn read_json<T: serde::de::DeserializeOwned>(recv: &mut RecvStream) -> Result<T> {
     let mut len_bytes = [0u8; 4];
-    recv.read_exact(&mut len_bytes)
-        .await
-        .context("reading adopt frame length")?;
+    recv.read_exact(&mut len_bytes).await.context("reading adopt frame length")?;
     let len = u32::from_be_bytes(len_bytes) as usize;
     if len > MAX_ADOPT_FRAME {
         return Err(anyhow!("adopt frame of {len} bytes exceeds limit"));
     }
     let mut body = vec![0u8; len];
-    recv.read_exact(&mut body)
-        .await
-        .context("reading adopt frame body")?;
+    recv.read_exact(&mut body).await.context("reading adopt frame body")?;
     serde_json::from_slice(&body).context("decoding adopt frame")
 }
 
@@ -89,14 +85,8 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let grant: GrantCode = read_json(&mut recv).await?;
 
     let ack = match complete_delivered(&state, grant).await {
-        Ok(()) => DeliveryAck {
-            ok: true,
-            message: "moved in".into(),
-        },
-        Err(e) => DeliveryAck {
-            ok: false,
-            message: e.to_string(),
-        },
+        Ok(()) => DeliveryAck { ok: true, message: "moved in".into() },
+        Err(e) => DeliveryAck { ok: false, message: e.to_string() },
     };
     write_json(&mut send, &ack).await?;
     send.finish().context("finishing adopt ack")?;

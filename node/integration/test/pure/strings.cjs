@@ -78,7 +78,7 @@ describe('the string tool finds messages however the source wrapped them', funct
         assert.equal(
             unescapeRust('trailing space kept \\\n   after'),
             'trailing space kept after',
-            'the space before the backslash is the author\'s, and survives',
+            "the space before the backslash is the author's, and survives",
         );
     });
 

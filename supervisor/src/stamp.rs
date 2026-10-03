@@ -8,10 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Seconds since the epoch, now.
 pub fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
 /// `secs` since the epoch as `YYYYMMDDTHHMMSSZ` (civil-from-days, Howard Hinnant's algorithm).
@@ -26,12 +23,7 @@ pub fn utc_stamp(secs: i64) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
-    format!(
-        "{year:04}{month:02}{day:02}T{:02}{:02}{:02}Z",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
+    format!("{year:04}{month:02}{day:02}T{:02}{:02}{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60)
 }
 
 /// Seconds from `now` until the next time the UTC clock reads `hour`:00:00 (never zero: at exactly
@@ -62,11 +54,7 @@ mod tests {
     #[test]
     fn the_next_hour_is_ahead_and_within_a_day() {
         let four_am = 1_790_308_800; // 2026-09-25 04:00:00 UTC
-        assert_eq!(
-            secs_until_utc_hour(four_am, 4),
-            86_400,
-            "exactly on it: tomorrow"
-        );
+        assert_eq!(secs_until_utc_hour(four_am, 4), 86_400, "exactly on it: tomorrow");
         assert_eq!(secs_until_utc_hour(four_am - 60, 4), 60);
         assert_eq!(secs_until_utc_hour(four_am + 60, 4), 86_400 - 60);
     }

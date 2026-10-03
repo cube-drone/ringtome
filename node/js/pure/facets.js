@@ -43,14 +43,19 @@ export const SIZE_TAGS = ['micro', 'short', 'medium', 'long'];
 export const MEDIA_TAGS = ['audio', 'image', 'video'];
 
 /// Which family a tag is: 'size', 'media', or 'tags' for the ordinary ones.
-export const tagFamily = (tag) => (SIZE_TAGS.includes(tag) ? 'size' : MEDIA_TAGS.includes(tag) ? 'media' : 'tags');
+export const tagFamily = (tag) =>
+    SIZE_TAGS.includes(tag) ? 'size' : MEDIA_TAGS.includes(tag) ? 'media' : 'tags';
 
 /// The tag row split three ways: `{ size, media, tags }`, sizes and media in their fixed order
 /// (smallest first, then a-z), the ordinary tags as the node counted them.
 export function tagRows(tags) {
     const all = tags || [];
     const inOrder = (order) => order.map((v) => all.find((f) => f.value === v)).filter(Boolean);
-    return { size: inOrder(SIZE_TAGS), media: inOrder(MEDIA_TAGS), tags: all.filter((f) => tagFamily(f.value) === 'tags') };
+    return {
+        size: inOrder(SIZE_TAGS),
+        media: inOrder(MEDIA_TAGS),
+        tags: all.filter((f) => tagFamily(f.value) === 'tags'),
+    };
 }
 
 /// How many lines a row's chips would wrap onto if it opened (Curtis, 2026-10-02: "more" should open

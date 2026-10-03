@@ -30,7 +30,8 @@ export const SlugPage = ({ slug, current, persona, session, onTitle, searchQuery
             live = false;
         };
     }, [slug, loc]);
-    if (who === undefined) return html`<div class="persona-page id-page"><p class="id-quiet">${t('slugpage.looking', 'looking…')}</p></div>`;
+    if (who === undefined)
+        return html`<div class="persona-page id-page"><p class="id-quiet">${t('slugpage.looking', 'looking…')}</p></div>`;
     if (who === null || !who.speakable) {
         return html`<div class="persona-page id-page">
             <h1 class="persona-page-title">${t('slugpage.nobody-here-by-that-name', 'nobody on this node goes by that name')}</h1>

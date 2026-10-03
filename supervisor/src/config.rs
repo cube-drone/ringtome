@@ -107,9 +107,7 @@ fn absolute(path: PathBuf) -> Result<PathBuf> {
     if path.is_absolute() {
         return Ok(path);
     }
-    Ok(env::current_dir()
-        .context("reading the working directory")?
-        .join(path))
+    Ok(env::current_dir().context("reading the working directory")?.join(path))
 }
 
 /// Is `inner` the same as, or inside, `outer`? Lexical - both are absolute, neither need exist.
@@ -136,9 +134,7 @@ impl Config {
                 .unwrap_or_else(|| "ringtome-supervisor".into()),
         )?;
         let data_directory = absolute(
-            var("RINGTOME_DATA_DIRECTORY")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| "data".into()),
+            var("RINGTOME_DATA_DIRECTORY").map(PathBuf::from).unwrap_or_else(|| "data".into()),
         )?;
         let backup_directory = absolute(
             var("RINGTOME_BACKUP_DIRECTORY")
@@ -165,9 +161,7 @@ impl Config {
             );
         }
         let backup_strategy = BackupStrategy::parse(
-            var("RINGTOME_BACKUP_STRATEGY")
-                .as_deref()
-                .unwrap_or("on-update"),
+            var("RINGTOME_BACKUP_STRATEGY").as_deref().unwrap_or("on-update"),
         )?;
         let backup_retention = match var("RINGTOME_BACKUP_RETENTION") {
             None => 7,
@@ -260,10 +254,7 @@ pub(crate) mod tests {
 
     #[test]
     fn containment_is_by_component_not_by_prefix() {
-        assert!(is_within(
-            Path::new("/srv/data/backups"),
-            Path::new("/srv/data")
-        ));
+        assert!(is_within(Path::new("/srv/data/backups"), Path::new("/srv/data")));
         assert!(is_within(Path::new("/srv/data"), Path::new("/srv/data")));
         assert!(
             !is_within(Path::new("/srv/data-backups"), Path::new("/srv/data")),

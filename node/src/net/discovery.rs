@@ -125,10 +125,7 @@ impl Directory {
 /// mainline mode, the LocalDirectory needs it, Off publishes nothing.
 pub async fn republish_endpoint_pass(state: crate::AppState) -> Result<()> {
     let addrs = crate::net::p2p::addr_strings(&state.endpoint);
-    state
-        .directory
-        .publish_endpoint(&state.endpoint.id().to_string(), &addrs)
-        .await
+    state.directory.publish_endpoint(&state.endpoint.id().to_string(), &addrs).await
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -143,10 +140,7 @@ pub struct LocalDirectory {
 impl LocalDirectory {
     pub fn new(dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&dir).context("creating local discovery directory")?;
-        Ok(Self {
-            dir,
-            ttl: LOCAL_RECORD_TTL,
-        })
+        Ok(Self { dir, ttl: LOCAL_RECORD_TTL })
     }
 
     #[cfg(test)]
@@ -211,9 +205,7 @@ pub struct MainlineDirectory {
 
 impl MainlineDirectory {
     pub fn new() -> Result<Self> {
-        let client = pkarr::Client::builder()
-            .build()
-            .context("building pkarr client")?;
+        let client = pkarr::Client::builder().build().context("building pkarr client")?;
         Ok(Self { client })
     }
 
@@ -229,12 +221,8 @@ impl MainlineDirectory {
         let b64 = base64::engine::general_purpose::STANDARD.encode(record.bytes());
         let packet = pkarr::SignedPacket::builder()
             .txt(
-                "_ringtome"
-                    .try_into()
-                    .map_err(|_| anyhow!("bad record name"))?,
-                b64.as_str()
-                    .try_into()
-                    .map_err(|_| anyhow!("record too large for TXT"))?,
+                "_ringtome".try_into().map_err(|_| anyhow!("bad record name"))?,
+                b64.as_str().try_into().map_err(|_| anyhow!("record too large for TXT"))?,
                 MAINLINE_TTL_SECS,
             )
             .build(&keypair)
@@ -249,9 +237,7 @@ impl MainlineDirectory {
     async fn publish_serving(&self, _record: &SignedServingRecord) -> Result<()> {
         // Reached only via the enum wrapper, which doesn't carry the secret; the publish task
         // calls `publish_serving_with_key` directly for mainline.
-        Err(anyhow!(
-            "mainline publishing requires the leaf secret (internal path)"
-        ))
+        Err(anyhow!("mainline publishing requires the leaf secret (internal path)"))
     }
 
     async fn resolve_serving(&self, node_key: &[u8; 32]) -> Result<Option<SignedServingRecord>> {
@@ -285,14 +271,10 @@ mod tests {
     use ringtome_proto::directory::{ServingRecord, RECORD_VERSION};
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "ringtome-disc-{tag}-{}-{nanos}",
-            std::process::id()
-        ));
+        let nanos =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir()
+            .join(format!("ringtome-disc-{tag}-{}-{nanos}", std::process::id()));
         dir
     }
 
@@ -316,10 +298,8 @@ mod tests {
         let (_key, signed) = sample_record(9);
 
         local.publish_serving(&signed).unwrap();
-        let resolved = local
-            .resolve_serving(&signed.record().node_key)
-            .unwrap()
-            .expect("record present");
+        let resolved =
+            local.resolve_serving(&signed.record().node_key).unwrap().expect("record present");
         assert_eq!(resolved, signed);
 
         // An unknown key resolves to nothing.
@@ -334,10 +314,7 @@ mod tests {
         let (_key, signed) = sample_record(9);
         local.publish_serving(&signed).unwrap();
         // TTL zero: everything is already too old - expiry-as-liveness, compressed.
-        assert!(local
-            .resolve_serving(&signed.record().node_key)
-            .unwrap()
-            .is_none());
+        assert!(local.resolve_serving(&signed.record().node_key).unwrap().is_none());
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -349,11 +326,8 @@ mod tests {
         let local = LocalDirectory::new(dir.clone()).unwrap();
         let (_key, signed) = sample_record(9);
         let other_key = [7u8; 32];
-        std::fs::write(
-            dir.join(format!("s_{}.bin", hex::encode(other_key))),
-            signed.bytes(),
-        )
-        .unwrap();
+        std::fs::write(dir.join(format!("s_{}.bin", hex::encode(other_key))), signed.bytes())
+            .unwrap();
         assert!(local.resolve_serving(&other_key).is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -362,9 +336,7 @@ mod tests {
     fn local_directory_round_trips_endpoint_records() {
         let dir = temp_dir("ep");
         let local = LocalDirectory::new(dir.clone()).unwrap();
-        local
-            .publish_endpoint("someendpointid", &["127.0.0.1:5299".into()])
-            .unwrap();
+        local.publish_endpoint("someendpointid", &["127.0.0.1:5299".into()]).unwrap();
         assert_eq!(
             local.resolve_endpoint("someendpointid").unwrap().unwrap(),
             vec!["127.0.0.1:5299".to_string()]

@@ -9,7 +9,13 @@ before(async () => {
 });
 
 const at = (iso) => Date.parse(iso);
-const line = (kind, when, pennies, detail = {}, source = Math.random().toString(16)) => ({ kind, source, pennies: String(pennies), at_ms: at(when), detail });
+const line = (kind, when, pennies, detail = {}, source = Math.random().toString(16)) => ({
+    kind,
+    source,
+    pennies: String(pennies),
+    at_ms: at(when),
+    detail,
+});
 
 describe('groupLedger', () => {
     it('slams a run together, summing its pennies and counts', () => {
@@ -31,7 +37,10 @@ describe('groupLedger', () => {
             line('words', '2026-09-27T11:00:00Z', 75, { title: 'b', count: 3 }),
             line('chat', '2026-09-27T10:00:00Z', 500),
         ]);
-        assert.deepEqual(rows.map((r) => r.count), [1, 1, 1, 1]);
+        assert.deepEqual(
+            rows.map((r) => r.count),
+            [1, 1, 1, 1],
+        );
     });
 
     it('gathers emoji and people', () => {

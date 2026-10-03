@@ -66,4 +66,5 @@ export const releaseTag = (version) => `${version}-${releaseName(version)}`;
 /// Every release, listed.
 export const RELEASES_URL = 'https://github.com/cube-drone/ringtome/releases';
 
-export const releaseUrl = (version) => `https://github.com/cube-drone/ringtome/releases/tag/v${releaseTag(version)}`;
+export const releaseUrl = (version) =>
+    `https://github.com/cube-drone/ringtome/releases/tag/v${releaseTag(version)}`;

@@ -22,16 +22,20 @@ self.addEventListener('push', (event) => {
     }
     event.waitUntil(
         (async () => {
-            const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            const windows = await self.clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true,
+            });
             // The test push (webpush.rs's push_test) is clicked FROM a focused tab: it always shows.
-            if (!alert.always && windows.some((w) => w.focused && w.visibilityState === 'visible')) return;
+            if (!alert.always && windows.some((w) => w.focused && w.visibilityState === 'visible'))
+                return;
             const image = await pictureOf(alert.image);
             await self.registration.showNotification(alert.title || 'Horse Drawing Tycoon 2', {
                 body: alert.body || '',
                 data: { route: alert.route || '/ringtome' },
                 ...(image ? { image } : {}),
             });
-        })()
+        })(),
     );
 });
 
@@ -42,9 +46,13 @@ self.addEventListener('push', (event) => {
 // (Chrome shows `image` on Windows, Linux and Android; macOS's native banners, Safari and Firefox
 // leave it out.)
 async function pictureOf(path) {
-    if (typeof path !== 'string' || !(path.startsWith('/ringtome/') || path.startsWith('/id/'))) return null;
+    if (typeof path !== 'string' || !(path.startsWith('/ringtome/') || path.startsWith('/id/')))
+        return null;
     try {
-        const response = await fetch(path, { credentials: 'same-origin', signal: AbortSignal.timeout(5000) });
+        const response = await fetch(path, {
+            credentials: 'same-origin',
+            signal: AbortSignal.timeout(5000),
+        });
         if (!response.ok) return null;
         const blob = await response.blob();
         const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -62,10 +70,14 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     // Only our own app's addresses (`/ringtome/…`, and the old `/home/…`, which the app redirects).
     const wanted = (event.notification.data && event.notification.data.route) || '/ringtome';
-    const route = wanted.startsWith('/ringtome') || wanted.startsWith('/home') ? wanted : '/ringtome';
+    const route =
+        wanted.startsWith('/ringtome') || wanted.startsWith('/home') ? wanted : '/ringtome';
     event.waitUntil(
         (async () => {
-            const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            const windows = await self.clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true,
+            });
             for (const w of windows) {
                 if ('focus' in w) {
                     await w.focus();
@@ -74,6 +86,6 @@ self.addEventListener('notificationclick', (event) => {
                 }
             }
             await self.clients.openWindow(route);
-        })()
+        })(),
     );
 });

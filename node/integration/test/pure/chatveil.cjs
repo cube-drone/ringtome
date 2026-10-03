@@ -15,7 +15,7 @@ before(async () => {
 const ME = 'me';
 const THEM = 'them';
 
-describe('the veil over a chat line\'s media', () => {
+describe("the veil over a chat line's media", () => {
     it('knows a line that embeds something from one that only talks about it', () => {
         assert.equal(embedsMedia('![a picture](/id/r/docs/d/body/p.avif)'), true);
         assert.equal(embedsMedia(':::media target=/id/r/docs/d/body/v.webm:::'), true);
@@ -24,26 +24,58 @@ describe('the veil over a chat line\'s media', () => {
         assert.equal(embedsMedia(null), false);
     });
 
-    it('veils a stranger\'s picture and nobody else\'s', () => {
+    it("veils a stranger's picture and nobody else's", () => {
         const line = { words: '![](/id/r/docs/d/body/p.avif)', me: ME, author: 'host', im: false };
-        assert.equal(veilsMedia({ ...line, speaker: THEM, trusted: false }), true, 'a stranger in a room');
-        assert.equal(veilsMedia({ ...line, speaker: THEM, trusted: true }), false, 'somebody placed');
+        assert.equal(
+            veilsMedia({ ...line, speaker: THEM, trusted: false }),
+            true,
+            'a stranger in a room',
+        );
+        assert.equal(
+            veilsMedia({ ...line, speaker: THEM, trusted: true }),
+            false,
+            'somebody placed',
+        );
         assert.equal(veilsMedia({ ...line, speaker: ME, trusted: false }), false, "one's own");
-        assert.equal(veilsMedia({ ...line, speaker: 'host', trusted: false }), false, 'the room\'s creator, whose room this is');
-        assert.equal(veilsMedia({ ...line, words: 'just words', speaker: THEM, trusted: false }), false, 'nothing to veil');
-        assert.equal(veilsMedia({ ...line, words: null, speaker: THEM, trusted: false }), false, 'words this computer cannot open');
+        assert.equal(
+            veilsMedia({ ...line, speaker: 'host', trusted: false }),
+            false,
+            "the room's creator, whose room this is",
+        );
+        assert.equal(
+            veilsMedia({ ...line, words: 'just words', speaker: THEM, trusted: false }),
+            false,
+            'nothing to veil',
+        );
+        assert.equal(
+            veilsMedia({ ...line, words: null, speaker: THEM, trusted: false }),
+            false,
+            'words this computer cannot open',
+        );
     });
 
-    it('lifts the creator\'s exemption in a chat for two - there the creator is the other person', () => {
+    it("lifts the creator's exemption in a chat for two - there the creator is the other person", () => {
         const line = { words: '![](/id/r/docs/d/body/p.avif)', me: ME, author: THEM, im: true };
-        assert.equal(veilsMedia({ ...line, speaker: THEM, trusted: false }), true, 'they opened the chat; that is not trust');
-        assert.equal(veilsMedia({ ...line, speaker: THEM, trusted: true }), false, 'trust placed, veil lifted');
-        assert.equal(veilsMedia({ ...line, speaker: ME, trusted: false }), false, "one's own, in one's own chat");
+        assert.equal(
+            veilsMedia({ ...line, speaker: THEM, trusted: false }),
+            true,
+            'they opened the chat; that is not trust',
+        );
+        assert.equal(
+            veilsMedia({ ...line, speaker: THEM, trusted: true }),
+            false,
+            'trust placed, veil lifted',
+        );
+        assert.equal(
+            veilsMedia({ ...line, speaker: ME, trusted: false }),
+            false,
+            "one's own, in one's own chat",
+        );
         // The same line in the room the same person hosts reads the other way.
         assert.equal(
             veilsMedia({ ...line, im: false, speaker: THEM, trusted: false }),
             false,
-            'a room is a place you chose to enter'
+            'a room is a place you chose to enter',
         );
     });
 });

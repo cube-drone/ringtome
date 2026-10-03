@@ -42,7 +42,12 @@ export function createdMs(doc) {
 
 /** Does this doc carry a user-claimed date? */
 export function hasClaimedDate(doc) {
-    return !!(doc && doc.fields && doc.fields[DISPLAY_DATE_FIELD] && parseClaimed(doc.fields[DISPLAY_DATE_FIELD]) !== null);
+    return !!(
+        doc &&
+        doc.fields &&
+        doc.fields[DISPLAY_DATE_FIELD] &&
+        parseClaimed(doc.fields[DISPLAY_DATE_FIELD]) !== null
+    );
 }
 
 /** Parse a claimed value - "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" - to ms in LOCAL time. A

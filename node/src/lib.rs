@@ -22,29 +22,32 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // was written as a binary's innards, where `pub` meant nothing. What an embedder actually
 // calls is four names - `run`, `Config`, `init_tracing`, `inspect` - and a reader asking
 // "what may I call from outside" should read those rather than the tree.
+pub mod annotations;
+pub mod attention;
 pub mod auth;
+pub mod backup;
+pub mod bank;
+pub mod books;
+pub mod builtin;
+pub mod census;
+pub mod chat;
 pub mod clock;
 pub mod config;
 pub mod db;
 pub mod downloads;
-pub mod frontdoor;
 pub mod drawing;
 pub mod edgegraph;
 pub mod error;
+pub mod eviction;
 pub mod fanout;
-pub mod fragments;
-pub mod groups;
-pub mod postkeys;
-pub mod scheduled;
-pub mod bank;
-pub mod books;
-pub mod census;
-pub mod builtin;
-pub mod chat;
 pub mod files;
 pub mod fold;
+pub mod fragments;
+pub mod frontdoor;
+pub mod groups;
 pub mod heartbeat;
 pub mod identity;
+pub mod idface;
 pub mod inbox;
 pub mod ingest;
 pub mod inspect;
@@ -57,39 +60,36 @@ pub mod migrations;
 pub mod net;
 pub mod nodeface;
 pub mod nodeshelf;
-pub mod slugs;
 pub mod notifications;
 pub mod outbox;
-pub mod score;
-pub mod starters;
-pub mod search;
-pub mod selectivity;
+pub mod postkeys;
 pub mod profiles;
 pub mod pubkey;
 pub mod publish;
 pub mod publishing;
 pub mod rate_limit;
-pub mod rebroadcast;
-pub mod registration;
-pub mod rss;
-pub mod shell;
-pub mod annotations;
-pub mod attention;
-pub mod backup;
-pub mod webpush;
-pub mod replies;
 pub mod reaper;
+pub mod rebroadcast;
 pub mod record;
+pub mod registration;
+pub mod replies;
 pub mod request_context;
+pub mod rss;
+pub mod scheduled;
+pub mod score;
 pub mod seal;
+pub mod search;
+pub mod selectivity;
 pub mod semver;
-pub mod eviction;
-pub mod speculative;
-pub mod idface;
+pub mod shell;
+pub mod slugs;
 pub mod speakable;
+pub mod speculative;
+pub mod starters;
 pub mod storage;
 pub mod test_endpoints;
 pub mod ui;
+pub mod webpush;
 
 use config::{Config, PublicConfig};
 use error::AppError;
@@ -207,12 +207,7 @@ impl ViewEpochs {
     }
 
     pub fn get(&self, root: &str) -> u64 {
-        self.0
-            .lock()
-            .expect("view epochs poisoned")
-            .get(root)
-            .copied()
-            .unwrap_or(0)
+        self.0.lock().expect("view epochs poisoned").get(root).copied().unwrap_or(0)
     }
 }
 
@@ -226,16 +221,9 @@ struct Health {
 /// a node whose database is wedged is not healthy.
 async fn health(State(state): State<AppState>) -> Result<Json<Health>, AppError> {
     // fetch, not execute: turso's execute refuses statements that return rows.
-    state
-        .node_db
-        .fetch_one::<(i64,)>("SELECT 1", ())
-        .await
-        .map_err(AppError::Internal)?;
+    state.node_db.fetch_one::<(i64,)>("SELECT 1", ()).await.map_err(AppError::Internal)?;
 
-    Ok(Json(Health {
-        status: "ok",
-        version: state.config.app_version.clone(),
-    }))
+    Ok(Json(Health { status: "ok", version: state.config.app_version.clone() }))
 }
 
 async fn get_config(State(state): State<AppState>) -> Result<Json<PublicConfig>, AppError> {
@@ -255,12 +243,7 @@ struct NodeInfo {
 async fn node_info(_session: auth::Session, State(state): State<AppState>) -> Json<NodeInfo> {
     Json(NodeInfo {
         endpoint_id: state.endpoint.id().to_string(),
-        bound_sockets: state
-            .endpoint
-            .bound_sockets()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect(),
+        bound_sockets: state.endpoint.bound_sockets().into_iter().map(|s| s.to_string()).collect(),
     })
 }
 
@@ -281,7 +264,10 @@ async fn unfurl_handler(
     match state.unfurl.unfurl(&q.url).await {
         Ok(summary) => Ok(Json(summary)),
         Err(net::unfurl::Refusal::BadTarget(m)) => Err(AppError::BadRequest(m)),
-        Err(net::unfurl::Refusal::RateLimited) => Err(AppError::TooManyRequests(crate::msg!("lib.the-nodes-unfurl-budget-is", "link previews are paused for now"))),
+        Err(net::unfurl::Refusal::RateLimited) => Err(AppError::TooManyRequests(crate::msg!(
+            "lib.the-nodes-unfurl-budget-is",
+            "link previews are paused for now"
+        ))),
     }
 }
 
@@ -344,7 +330,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     // running in the caller's process. The binary hardly noticed, since a failed bind exits;
     // an embedder means to answer a taken port by picking another, and it can only do that if
     // the failure costs nothing and says nothing.
-    let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.bind_address, config.port)).await?;
+    let listener =
+        tokio::net::TcpListener::bind(format!("{}:{}", config.bind_address, config.port)).await?;
     let addr = listener.local_addr()?;
 
     tracing::info!(
@@ -433,13 +420,13 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let admission = net::admission::Admission::from_config(&config);
     // A gossip frame is one signed message (16KB at most) or a presence beacon; the cap
     // leaves headroom and refuses the rest at the door.
-    let gossip = iroh_gossip::net::Gossip::builder()
-        .max_message_size(32 * 1024)
-        .spawn(endpoint.clone());
+    let gossip =
+        iroh_gossip::net::Gossip::builder().max_message_size(32 * 1024).spawn(endpoint.clone());
     // Read before `config` moves into the state: the recorder is a local-test fixture, and so is
     // a push endpoint over plain http (the rig's fake push service).
     let record_attention = config.local_test;
-    let webpush = webpush::WebPush::load(&keystore, config.local_test).map_err(|e| e.context("loading the Web Push key"))?;
+    let webpush = webpush::WebPush::load(&keystore, config.local_test)
+        .map_err(|e| e.context("loading the Web Push key"))?;
     let state = AppState {
         config,
         node_db,
@@ -496,7 +483,12 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         crate::record::bake::bake_pass,
     );
     // The network's daily actives: sketches swapped with the nodes this one talks to (census.rs).
-    loops::periodic("census", std::time::Duration::from_secs(10 * 60), state.clone(), crate::census::pass);
+    loops::periodic(
+        "census",
+        std::time::Duration::from_secs(10 * 60),
+        state.clone(),
+        crate::census::pass,
+    );
     // Sealed posts' keys, asked for while their authors' nodes are up rather than when somebody
     // reads them later (keyprefetch.rs, 2026-09-29).
     loops::periodic(
@@ -614,7 +606,12 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     } else {
         std::time::Duration::from_secs(300)
     };
-    loops::periodic("speculative-acquire", speculative_beat, state.clone(), speculative::acquire_pass);
+    loops::periodic(
+        "speculative-acquire",
+        speculative_beat,
+        state.clone(),
+        speculative::acquire_pass,
+    );
     // The history dig (fanout::fill_pass): every follow edge's feed extended backward, one
     // page per pair per beat, until the year horizon. Local reads feeding local writes - the
     // pace exists to bound shelf opens per beat and node.db growth, not network politeness,
@@ -663,10 +660,20 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     // slow beat, never the journal fill's (2026-09-08): on the rig the fill beat is a
     // second, and an index walk every second beside the fill pass loaded the dig's claim
     // into the red; the test door rings the index directly when a claim wants it.
-    loops::periodic("search-index", std::time::Duration::from_secs(60), state.clone(), search::index_pass);
+    loops::periodic(
+        "search-index",
+        std::time::Duration::from_secs(60),
+        state.clone(),
+        search::index_pass,
+    );
     // Storage accounting (storage.rs): retally the personas whose files moved, a few per beat - the
     // admin's People figures; a person's own files browser retallies their persona on ask.
-    loops::periodic("storage-tally", std::time::Duration::from_secs(300), state.clone(), storage::pass);
+    loops::periodic(
+        "storage-tally",
+        std::time::Duration::from_secs(300),
+        state.clone(),
+        storage::pass,
+    );
     // Scheduled publishes (PUBLISH.md slice 2): drafts whose preferred date lay in the
     // future mint when their moment comes. A minute is plenty - the date is a day at an
     // hour, never a deadline - and LOCAL_TEST may shorten it.
@@ -740,7 +747,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // A document's bytes at its `/ringtome/` address (2026-09-28): what a picture embeds as
         // now. Static segments beat the page wildcard, as under /id.
         .route("/ringtome/user/{seg}/doc/{doc}/body", get(idface::public_body_route))
-        .route("/ringtome/user/{seg}/doc/{doc}/body/{filename}", get(idface::public_body_named_route))
+        .route(
+            "/ringtome/user/{seg}/doc/{doc}/body/{filename}",
+            get(idface::public_body_named_route),
+        )
         .route("/ringtome/user/{seg}/doc/{doc}/thumb", get(idface::public_thumb_route))
         .route("/ringtome/user/{seg}/rss.xml", get(rss::rss_handler))
         .route("/ringtome/user/{seg}", get(idface::idface))
@@ -751,10 +761,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // Public document bytes: static segments beat the page wildcard below, so these
         // resolve first (matchit's specificity, relied on deliberately).
         .route("/id/{seg}/docs/{doc}/body", get(idface::public_body_route))
-        .route(
-            "/id/{seg}/docs/{doc}/body/{filename}",
-            get(idface::public_body_named_route),
-        )
+        .route("/id/{seg}/docs/{doc}/body/{filename}", get(idface::public_body_named_route))
         .route("/id/{seg}/docs/{doc}/thumb", get(idface::public_thumb_route))
         .route("/id/{seg}/{*rest}", get(idface::legacy_id_deep))
         .route("/api/id/{seg}/profile", get(idface::id_profile))
@@ -787,23 +794,23 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/identity/{root}/storage", get(storage::persona_handler))
         .route("/api/node/storage", get(storage::node_handler))
         .route("/api/identity/{root}/bank/instruments", axum::routing::post(bank::buy_handler))
-        .route("/api/identity/{root}/bank/instruments/{id}/sell", axum::routing::post(bank::sell_handler))
+        .route(
+            "/api/identity/{root}/bank/instruments/{id}/sell",
+            axum::routing::post(bank::sell_handler),
+        )
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/front", get(frontdoor::front_handler))
         .route("/api/admin/front", axum::routing::put(frontdoor::set_handler))
-        .route("/api/admin/super-pins/{author}/{doc}", axum::routing::put(frontdoor::pin_handler).delete(frontdoor::unpin_handler))
+        .route(
+            "/api/admin/super-pins/{author}/{doc}",
+            axum::routing::put(frontdoor::pin_handler).delete(frontdoor::unpin_handler),
+        )
         .route("/api/node/feed/labels", get(nodeface::node_feed_labels))
         .route("/api/node/personas", get(nodeface::node_personas))
         .route("/api/node/slugs/{slug}", get(nodeface::slug_resolve))
         .route("/@{slug}", get(nodeface::slug_page))
-        .route(
-            "/api/identity/{root}/slug",
-            get(nodeface::slug_get).put(nodeface::slug_put),
-        )
-        .route(
-            "/api/identity/{root}/listed",
-            get(nodeface::listed_get).put(nodeface::listed_put),
-        )
+        .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
+        .route("/api/identity/{root}/listed", get(nodeface::listed_get).put(nodeface::listed_put))
         .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
         .merge(registration::routes::router())
@@ -817,7 +824,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/shell/open-in-browser", axum::routing::post(shell::open_in_browser_handler))
         .route(
             "/api/shell/save",
-            axum::routing::post(shell::save_handler).layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
+            axum::routing::post(shell::save_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
         )
         .merge(identity::router(body_limits));
 
@@ -834,52 +842,28 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/beat", axum::routing::post(test_endpoints::beat))
             .route("/test/heartbeat", axum::routing::post(test_endpoints::heartbeat))
             .route("/test/credit", axum::routing::post(test_endpoints::credit))
-            .route(
-                "/test/revalidation",
-                axum::routing::post(test_endpoints::revalidation_mode),
-            )
+            .route("/test/revalidation", axum::routing::post(test_endpoints::revalidation_mode))
             .route(
                 "/test/resolve-serving/{leaf}",
                 axum::routing::get(test_endpoints::resolve_serving),
             )
-            .route(
-                "/test/derive",
-                axum::routing::post(test_endpoints::derive_pass),
-            )
+            .route("/test/derive", axum::routing::post(test_endpoints::derive_pass))
             .route("/test/reap", axum::routing::post(test_endpoints::reap_pass))
-            .route(
-                "/test/fresh-window",
-                axum::routing::post(test_endpoints::fresh_window),
-            )
+            .route("/test/fresh-window", axum::routing::post(test_endpoints::fresh_window))
             .route(
                 "/test/foreign-revalidate",
                 axum::routing::post(test_endpoints::foreign_revalidate),
             )
-            .route(
-                "/test/publish-inline",
-                axum::routing::post(test_endpoints::publish_inline),
-            )
-            .route(
-                "/test/blob/{hash}",
-                axum::routing::get(test_endpoints::blob_present),
-            )
+            .route("/test/publish-inline", axum::routing::post(test_endpoints::publish_inline))
+            .route("/test/blob/{hash}", axum::routing::get(test_endpoints::blob_present))
             // The transport gate: simulate a partition on the shared rig without killing a node.
             .route(
                 "/test/unplug",
                 axum::routing::post(test_endpoints::unplug).get(test_endpoints::unplug_state),
             )
-            .route(
-                "/test/plug-in",
-                axum::routing::post(test_endpoints::plug_in),
-            )
-            .route(
-                "/test/attention",
-                axum::routing::get(test_endpoints::attention),
-            )
-            .route(
-                "/test/backup-verify",
-                axum::routing::post(test_endpoints::backup_verify),
-            )
+            .route("/test/plug-in", axum::routing::post(test_endpoints::plug_in))
+            .route("/test/attention", axum::routing::get(test_endpoints::attention))
+            .route("/test/backup-verify", axum::routing::post(test_endpoints::backup_verify))
             .route("/test/score-check", axum::routing::post(test_endpoints::score_check))
             .route("/test/shell", axum::routing::get(test_endpoints::shell_requests))
             .route("/test/window", axum::routing::get(test_endpoints::window_account));
@@ -891,18 +875,16 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // Sliding sessions (2026-10-01): a renewed session's cookie goes out again on the response.
         .layer(axum::middleware::from_fn_with_state(state.clone(), auth::renew_cookie))
         .with_state(state)
-        .layer(
-            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
-                info_span!(
-                    "req",
-                    method = %req.method(),
-                    uri = %req.uri(),
-                    c_id = tracing::field::Empty,
-                    remote_ip = tracing::field::Empty,
-                    forwarded_for = tracing::field::Empty,
-                )
-            }),
-        )
+        .layer(TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
+            info_span!(
+                "req",
+                method = %req.method(),
+                uri = %req.uri(),
+                c_id = tracing::field::Empty,
+                remote_ip = tracing::field::Empty,
+                forwarded_for = tracing::field::Empty,
+            )
+        }))
         .into_make_service_with_connect_info::<SocketAddr>();
 
     Ok(Bound { listener, service: app, addr, attention, shell })

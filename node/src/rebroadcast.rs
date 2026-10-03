@@ -58,11 +58,8 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str, force: bool) ->
         return Ok(());
     }
     tracing::debug!(sharer = %sharer_root, "rebroadcast fold: this identity has a share chain");
-    let Some(db) = state
-        .user_dbs
-        .get(sharer_root)
-        .await
-        .context("opening the sharer's database")?
+    let Some(db) =
+        state.user_dbs.get(sharer_root).await.context("opening the sharer's database")?
     else {
         return Ok(());
     };
@@ -83,10 +80,7 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str, force: bool) ->
     let mark = if force { None } else { state.sweep_marks.last("shares", sharer_root) };
     let newest = pointers.iter().map(|r| r.received_at_ms).max();
     let pointers: Vec<_> = match mark {
-        Some(m) => pointers
-            .into_iter()
-            .filter(|r| r.received_at_ms >= m)
-            .collect(),
+        Some(m) => pointers.into_iter().filter(|r| r.received_at_ms >= m).collect(),
         None => pointers,
     };
     if let Some(n) = newest {
@@ -108,10 +102,7 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str, force: bool) ->
     // sharers - that is the whole normal case, a reader on one node following a sharer on
     // another - and gating it on hosting made a synced share do nothing at all, which is the
     // bug this split fixes.
-    if crate::identity::is_agented(&state.node_db, sharer_root)
-        .await
-        .unwrap_or(false)
-    {
+    if crate::identity::is_agented(&state.node_db, sharer_root).await.unwrap_or(false) {
         for row in &pointers {
             // A withdrawn share drops its pin in the same pass that folds the retraction. This
             // is the "speech deletes" half: stop sharing and this node stops carrying, without
@@ -189,10 +180,7 @@ async fn unpin(
 /// answers for them.
 pub async fn forget_holder(node_db: &Db, holder_root: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM rebroadcast_pins WHERE holder_root = ?1",
-            (holder_root,),
-        )
+        .execute("DELETE FROM rebroadcast_pins WHERE holder_root = ?1", (holder_root,))
         .await
         .context("dropping a departing persona's pins")?;
     Ok(())
@@ -206,7 +194,11 @@ mod tests {
         crate::db::test_node_db().await
     }
 
-    fn row(author: &str, doc: [u8; 16], version: Option<[u8; 32]>) -> crate::record::imaol::RebroadcastRow {
+    fn row(
+        author: &str,
+        doc: [u8; 16],
+        version: Option<[u8; 32]>,
+    ) -> crate::record::imaol::RebroadcastRow {
         crate::record::imaol::RebroadcastRow {
             author_root: author.to_string(),
             doc_id: doc,
@@ -229,24 +221,17 @@ mod tests {
         let alice = "a".repeat(64);
         let me = "b".repeat(64);
 
-        pin(&db, &me, &row(&alice, [1u8; 16], Some([9u8; 32])))
-            .await
-            .unwrap();
+        pin(&db, &me, &row(&alice, [1u8; 16], Some([9u8; 32]))).await.unwrap();
 
         assert!(
-            crate::net::subscriptions::followed_foreign(&db)
-                .await
-                .unwrap()
-                .is_empty(),
+            crate::net::subscriptions::followed_foreign(&db).await.unwrap().is_empty(),
             "a share must never become a chain subscription - that is the fan-out this whole \
              design refuses, arriving through the door marked accountable"
         );
 
         // But the node does record that it shares the document, because it owes a fresh copy.
-        let (pins,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ())
-            .await
-            .unwrap();
+        let (pins,): (i64,) =
+            db.fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ()).await.unwrap();
         assert_eq!(pins, 1, "the obligation is to the DOCUMENT, and it is recorded");
     }
 
@@ -260,17 +245,11 @@ mod tests {
 
         pin(&db, &me, &row(&alice, [1u8; 16], Some([9u8; 32]))).await.unwrap();
         pin(&db, &me, &row(&alice, [2u8; 16], Some([8u8; 32]))).await.unwrap();
-        let (n,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ())
-            .await
-            .unwrap();
+        let (n,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ()).await.unwrap();
         assert_eq!(n, 2);
 
         unpin(&db, &me, &alice, &[1u8; 16]).await.unwrap();
-        let (n,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ())
-            .await
-            .unwrap();
+        let (n,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ()).await.unwrap();
         assert_eq!(n, 1, "the other share still obliges us");
     }
 

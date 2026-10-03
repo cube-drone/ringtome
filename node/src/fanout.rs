@@ -65,7 +65,11 @@ async fn journal_mark(node_db: &crate::db::Db, author_root: &str) -> Result<Opti
 
 /// Advance the mark, monotone - the chain_heads discipline: lagging under-reports, and an
 /// under-report re-upserts idempotently; leading would skip rows forever.
-async fn record_journal_mark(node_db: &crate::db::Db, author_root: &str, newest_ms: i64) -> Result<()> {
+async fn record_journal_mark(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    newest_ms: i64,
+) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO journal_marks (author_root, newest_ms) VALUES (?1, ?2)
@@ -189,9 +193,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let mut readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
     // Your own posts appear in your own feed, as if you had written them - which you did
     // (Curtis, 2026-08-05). The author follows nobody to get this; being hosted is enough.
-    if crate::identity::is_agented(&state.node_db, author_root)
-        .await
-        .unwrap_or(false)
+    if crate::identity::is_agented(&state.node_db, author_root).await.unwrap_or(false)
         && !readers.iter().any(|r| r == author_root)
     {
         readers.push(author_root.to_string());
@@ -268,8 +270,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
         // umbrella - and a gated post advertised there is a hollow card for strangers.
         // Followers still get the row (they chose the author; untrusted ones read the
         // honest hollow line), and the sharer-scoped lane is slice 2b's own gate.
-        let suggested: Vec<&JournalRow> =
-            first_page.iter().filter(|r| !r.trusted_only).collect();
+        let suggested: Vec<&JournalRow> = first_page.iter().filter(|r| !r.trusted_only).collect();
         if let Err(e) =
             journal_rows_suggested(&state.node_db, author_root, &wanting, &suggested).await
         {
@@ -334,9 +335,7 @@ async fn shelf_page(
             published_ms: p.display_ms(),
             doc_id_hex: hex::encode(p.doc_id),
             title: p.title,
-            format: crate::record::documents::Format::from_wire(p.format)
-                .as_str()
-                .to_string(),
+            format: crate::record::documents::Format::from_wire(p.format).as_str().to_string(),
             updated_ms: p.head_ms,
             settled: p.settled,
             trusted_only: p.trusted_only,
@@ -382,9 +381,7 @@ async fn shelf_updated_since(
             published_ms: p.display_ms(),
             doc_id_hex: hex::encode(p.doc_id),
             title: p.title,
-            format: crate::record::documents::Format::from_wire(p.format)
-                .as_str()
-                .to_string(),
+            format: crate::record::documents::Format::from_wire(p.format).as_str().to_string(),
             updated_ms: p.head_ms,
             settled: p.settled,
             trusted_only: p.trusted_only,
@@ -457,10 +454,8 @@ async fn journal_rows(
     via_root: Option<&str>,
 ) -> Result<()> {
     let now = now_ms();
-    let pairs: Vec<(&String, &&JournalRow)> = readers
-        .iter()
-        .flat_map(|reader| rows.iter().map(move |row| (reader, row)))
-        .collect();
+    let pairs: Vec<(&String, &&JournalRow)> =
+        readers.iter().flat_map(|reader| rows.iter().map(move |row| (reader, row))).collect();
     for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
@@ -545,7 +540,7 @@ async fn journal_rows(
             .execute(&sql, turso::params_from_iter(params))
             .await
             .context("journaling arrivals")?;
-            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     }
     if let Some(via) = via_root {
         remember_sharer(node_db, author_root, readers, rows, via, now).await?;
@@ -576,7 +571,7 @@ pub async fn excise_suggested(node_db: &crate::db::Db, author_root: &str) -> Res
         )
         .await
         .context("excising an evicted author's speculative rows")?;
-        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
@@ -597,8 +592,20 @@ async fn journal_rows_suggested(
                 let b = i * 14;
                 format!(
                     "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
-                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11,
-                    b + 12, b + 13, b + 14
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6,
+                    b + 7,
+                    b + 8,
+                    b + 9,
+                    b + 10,
+                    b + 11,
+                    b + 12,
+                    b + 13,
+                    b + 14
                 )
             })
             .collect();
@@ -638,7 +645,7 @@ async fn journal_rows_suggested(
             .execute(&sql, turso::params_from_iter(params))
             .await
             .context("journaling speculative rows")?;
-            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     }
     Ok(())
 }
@@ -666,13 +673,7 @@ async fn remember_sharer(
                        (reader_root, author_root, doc_id, via_root, shared_ms)
                      VALUES (?1, ?2, ?3, ?4, ?5)
                      ON CONFLICT (reader_root, author_root, doc_id, via_root) DO NOTHING",
-                    (
-                        reader.as_str(),
-                        author_root,
-                        row.doc_id_hex.as_str(),
-                        via_root,
-                        now,
-                    ),
+                    (reader.as_str(), author_root, row.doc_id_hex.as_str(), via_root, now),
                 )
                 .await
                 .context("noting who passed a document along")?;
@@ -708,10 +709,7 @@ pub async fn forget_sharer(
 /// everybody else's. The counterpart to `rebroadcast::forget_holder`, for the same moment.
 pub async fn forget_reader_shares(node_db: &crate::db::Db, root: &str) -> Result<()> {
     node_db
-        .execute(
-            "DELETE FROM feed_shares WHERE reader_root = ?1 OR via_root = ?1",
-            (root,),
-        )
+        .execute("DELETE FROM feed_shares WHERE reader_root = ?1 OR via_root = ?1", (root,))
         .await
         .context("dropping a departing persona's share crowd")?;
     Ok(())
@@ -763,10 +761,7 @@ async fn journal_shares_of(
     let mut by_holder: std::collections::BTreeMap<String, Vec<JournalRow>> = Default::default();
     for (holder, doc_hex, shared_ms) in pins {
         if let Some(row) = fresh.iter().find(|r| r.doc_id_hex == doc_hex) {
-            by_holder
-                .entry(holder)
-                .or_default()
-                .push(as_shared(row, shared_ms));
+            by_holder.entry(holder).or_default().push(as_shared(row, shared_ms));
         }
     }
 
@@ -802,10 +797,7 @@ async fn journal_shares_of(
 /// `updated_ms` keeps the author's own, because that answers a different question: the share is
 /// when this reached you, and `updated_ms` is when the words last changed.
 fn as_shared(row: &JournalRow, shared_ms: i64) -> JournalRow {
-    JournalRow {
-        published_ms: shared_ms,
-        ..row.clone()
-    }
+    JournalRow { published_ms: shared_ms, ..row.clone() }
 }
 
 /// Journal one share whose content arrived late - the delivery the original fold could not
@@ -836,10 +828,7 @@ pub async fn sharers_of_doc(
 /// The per-AUTHOR union of the same - the blob-healing candidates: bodies are wanted per
 /// author, and any sharer of ANY of their documents this node journals is a node that holds
 /// (or knows who holds) that author's public bytes.
-pub async fn sharers_of_author(
-    node_db: &crate::db::Db,
-    author_root: &str,
-) -> Result<Vec<String>> {
+pub async fn sharers_of_author(node_db: &crate::db::Db, author_root: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(
             "SELECT via_root FROM feed_shares WHERE author_root = ?1
@@ -862,14 +851,8 @@ pub(crate) async fn journal_late_share(
         _ => return,
     };
     let shared = as_shared(row, now_ms());
-    if let Err(e) = journal_rows(
-        &state.node_db,
-        author_root,
-        &readers,
-        &[&shared],
-        Some(sharer_root),
-    )
-    .await
+    if let Err(e) =
+        journal_rows(&state.node_db, author_root, &readers, &[&shared], Some(sharer_root)).await
     {
         tracing::warn!(sharer = %sharer_root, author = %author_root, error = ?e, "late share journal failed");
     }
@@ -881,9 +864,7 @@ pub(crate) async fn journal_late_share(
 async fn share_readers(state: &AppState, sharer_root: &str) -> Result<Vec<String>> {
     let mut readers =
         crate::net::subscriptions::rebroadcast_followers_of(&state.node_db, sharer_root).await?;
-    if crate::identity::is_agented(&state.node_db, sharer_root)
-        .await
-        .unwrap_or(false)
+    if crate::identity::is_agented(&state.node_db, sharer_root).await.unwrap_or(false)
         && !readers.iter().any(|r| r == sharer_root)
     {
         readers.push(sharer_root.to_string());
@@ -931,8 +912,10 @@ pub async fn journal_shares_by(
 
     // Group by author so each author's shelf is opened once, however many of their documents
     // this sharer carries.
-    let mut by_author: std::collections::BTreeMap<&str, Vec<&crate::record::imaol::RebroadcastRow>> =
-        Default::default();
+    let mut by_author: std::collections::BTreeMap<
+        &str,
+        Vec<&crate::record::imaol::RebroadcastRow>,
+    > = Default::default();
     for row in pointers.iter().filter(|r| !r.is_retracted()) {
         by_author.entry(&row.author_root).or_default().push(row);
     }
@@ -949,9 +932,8 @@ pub async fn journal_shares_by(
         // stale since 2026-08-11: a share obliges a copy, never a subscription.) Empty is
         // the NORMAL case on a reader's node, and the fragment path below is the whole
         // point of this feature: a reader gets one document, never a subscription.
-        let hunch_held = crate::speculative::speculative_only(state, author_root)
-            .await
-            .unwrap_or(false);
+        let hunch_held =
+            crate::speculative::speculative_only(state, author_root).await.unwrap_or(false);
         let page = if hunch_held {
             Vec::new()
         } else {
@@ -979,14 +961,8 @@ pub async fn journal_shares_by(
             continue;
         }
         let refs: Vec<&JournalRow> = wanted.iter().collect();
-        if let Err(e) = journal_rows(
-            &state.node_db,
-            author_root,
-            &readers,
-            &refs,
-            Some(sharer_root),
-        )
-        .await
+        if let Err(e) =
+            journal_rows(&state.node_db, author_root, &readers, &refs, Some(sharer_root)).await
         {
             tracing::warn!(sharer = %sharer_root, author = %author_root, error = ?e, "journaling a share failed");
         }
@@ -1115,9 +1091,8 @@ pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &
 /// request wide and no test has fallen into it.
 pub async fn fill_pass(state: AppState) -> Result<()> {
     let mut pairs = crate::net::subscriptions::eager_follows(&state.node_db).await?;
-    for root in crate::identity::hosted_roots(&state.node_db)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?
+    for root in
+        crate::identity::hosted_roots(&state.node_db).await.map_err(|e| anyhow::anyhow!("{e}"))?
     {
         pairs.push((root.clone(), root)); // your own posts, in your own feed (2026-08-05)
     }
@@ -1149,10 +1124,8 @@ pub async fn fill_pass(state: AppState) -> Result<()> {
         if advanced >= FILL_PAIRS_PER_BEAT {
             break;
         }
-        let (cursor, done) = memo
-            .get(&(reader.clone(), author.clone()))
-            .cloned()
-            .unwrap_or((None, false));
+        let (cursor, done) =
+            memo.get(&(reader.clone(), author.clone())).cloned().unwrap_or((None, false));
         if done {
             continue;
         }
@@ -1198,14 +1171,7 @@ async fn dig_one(
     let horizon = now_ms() - FILL_HORIZON_MS;
     let keep: Vec<&JournalRow> = raw.iter().filter(|r| r.published_ms >= horizon).collect();
     if !keep.is_empty() {
-        journal_rows(
-            &state.node_db,
-            author_root,
-            &[reader_root.to_string()],
-            &keep,
-            None,
-        )
-        .await?;
+        journal_rows(&state.node_db, author_root, &[reader_root.to_string()], &keep, None).await?;
     }
     let last = raw.last();
     let done = raw.len() < crate::idface::POSTS_PAGE as usize
@@ -1349,7 +1315,7 @@ async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> R
         )
         .await
         .context("retracting vanished documents from the feed journal")?;
-        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(stale.len() as u64)
 }
 
@@ -1375,10 +1341,10 @@ pub(crate) async fn excise_shared(
         )
         .await
         .context("retracting a forgotten fragment from feeds")?;
-        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
-    // The crowd goes with the row. Nobody's share survives a document that no longer exists here,
-    // and a `feed_shares` row outliving its `feed_journal` row would count toward a byline that
-    // has nothing left to byline.
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+                                              // The crowd goes with the row. Nobody's share survives a document that no longer exists here,
+                                              // and a `feed_shares` row outliving its `feed_journal` row would count toward a byline that
+                                              // has nothing left to byline.
     node_db
         .execute(
             "DELETE FROM feed_shares WHERE author_root = ?1 AND doc_id = ?2",
@@ -1404,7 +1370,7 @@ pub(crate) async fn retitle_shared(
         )
         .await
         .context("refreshing a shared document's title")?;
-        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
@@ -1436,10 +1402,10 @@ pub async fn excise_unfollowed(
             )
             .await
             .context("excising an unfollowed author from the feed journal")?;
-            crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
-        // The dig's memo goes with the rows it described: a re-follow must start a fresh
-        // dig, or it would inherit a cursor pointing below rows this excise just deleted
-        // and leave the refollowed history permanently hollow above it.
+        crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+                                                  // The dig's memo goes with the rows it described: a re-follow must start a fresh
+                                                  // dig, or it would inherit a cursor pointing below rows this excise just deleted
+                                                  // and leave the refollowed history permanently hollow above it.
         state
             .node_db
             .execute(
@@ -1599,7 +1565,8 @@ pub async fn followed_sharers(
         .into_iter()
         .collect();
     let followed =
-        crate::net::subscriptions::rebroadcast_follows_among(node_db, reader_root, &sharers).await?;
+        crate::net::subscriptions::rebroadcast_follows_among(node_db, reader_root, &sharers)
+            .await?;
 
     // Earliest share first, sharer as the tiebreak so a page renders the same way twice.
     let mut ordered = shares;
@@ -1667,7 +1634,12 @@ fn hex_in_list<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
 /// Who introduced one document to one reader here: the feed journal's byline (CHAT.md;
 /// Curtis, 2026-09-19). The onward hop's `via` for a door the client reached by address
 /// rather than by card - a room's, which the address bar names and no card dresses.
-pub async fn introducer(node_db: &crate::db::Db, reader_root: &str, author_root: &str, doc_hex: &str) -> Option<String> {
+pub async fn introducer(
+    node_db: &crate::db::Db,
+    reader_root: &str,
+    author_root: &str,
+    doc_hex: &str,
+) -> Option<String> {
     node_db
         .fetch_optional::<(Option<String>,)>(
             "SELECT via_root FROM feed_journal WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3",
@@ -1682,7 +1654,10 @@ pub async fn introducer(node_db: &crate::db::Db, reader_root: &str, author_root:
 /// The newest trusted-only posts in any reader's feed here - `(reader, author, doc, via)`, newest
 /// arrival first - what the key prefetch walks (`keyprefetch.rs`, 2026-09-29): a sealed post's
 /// key is asked for while its author's node is known to be up, not when somebody opens it later.
-pub async fn sealed_rows(node_db: &crate::db::Db, limit: i64) -> Result<Vec<(String, String, String, Option<String>)>> {
+pub async fn sealed_rows(
+    node_db: &crate::db::Db,
+    limit: i64,
+) -> Result<Vec<(String, String, String, Option<String>)>> {
     node_db
         .fetch_all(
             "SELECT reader_root, author_root, doc_id, via_root FROM feed_journal
@@ -1710,7 +1685,12 @@ pub async fn rooms_in_feeds(node_db: &crate::db::Db) -> Result<Vec<(String, Stri
 /// room moves up to `latest_ms` when that is newer than where the row sits. Rooms only,
 /// and only forward - the keyset the feed pages by is `published_ms`, so a moved row simply
 /// sorts where a fresh post would.
-pub async fn bump_room_time(node_db: &crate::db::Db, author_root: &str, doc_hex: &str, latest_ms: i64) -> Result<u64> {
+pub async fn bump_room_time(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    doc_hex: &str,
+    latest_ms: i64,
+) -> Result<u64> {
     node_db
         .execute(
             "UPDATE feed_journal SET published_ms = ?3
@@ -1905,7 +1885,9 @@ fn scored_sql(filter: &JournalFilter<'_>, above: bool, cursor: bool, by_window: 
             filter.clause("j."),
         )
     };
-    let head = format!("SELECT {columns}, p.milli FROM {tables} WHERE p.reader_root = ?1 AND {sign} AND {clause}");
+    let head = format!(
+        "SELECT {columns}, p.milli FROM {tables} WHERE p.reader_root = ?1 AND {sign} AND {clause}"
+    );
     if cursor {
         format!(
             "{head} AND (p.milli < ?2 OR (p.milli = ?2 AND (j.published_ms < ?3 OR (j.published_ms = ?3 AND j.doc_id < ?4))))
@@ -1954,20 +1936,47 @@ pub async fn hot_page(
 ) -> Result<Vec<(crate::score::HotRank, FeedRow, i64)>> {
     use crate::score::{hot_of, HotRank, HOT_MS_PER_MILLI};
     let (lowest, highest): (Option<i64>, Option<i64>) = node_db
-        .fetch_one("SELECT MIN(milli), MAX(milli) FROM post_scores WHERE reader_root = ?1", (filter.reader,))
+        .fetch_one(
+            "SELECT MIN(milli), MAX(milli) FROM post_scores WHERE reader_root = ?1",
+            (filter.reader,),
+        )
         .await
         .context("reading the reach of a reader's scores")?;
     let reach_up = highest.unwrap_or(0).max(0).saturating_mul(HOT_MS_PER_MILLI);
     let reach_down = lowest.unwrap_or(0).min(0).saturating_mul(HOT_MS_PER_MILLI);
     // The unscored: a page of them, their hot key their time.
-    let cursor = after.as_ref().map(|r| crate::score::Rank { milli: 0, published_ms: r.hot_ms, doc_id: r.doc_id.clone() });
+    let cursor = after.as_ref().map(|r| crate::score::Rank {
+        milli: 0,
+        published_ms: r.hot_ms,
+        doc_id: r.doc_id.clone(),
+    });
     let unscored = unscored_run(node_db, filter, cursor.as_ref(), limit).await?;
     // Below this page's last unscored post, the next page takes over.
-    let floor = if unscored.len() as i64 == limit { unscored.last().map_or(i64::MIN, |(r, _)| r.published_ms) } else { i64::MIN };
+    let floor = if unscored.len() as i64 == limit {
+        unscored.last().map_or(i64::MIN, |(r, _)| r.published_ms)
+    } else {
+        i64::MIN
+    };
     let ceiling = after.as_ref().map_or(i64::MAX, |r| r.hot_ms);
     // The scored whose hot key can fall in [floor, ceiling]: published within the reach of it.
     let (from, to) = (floor.saturating_sub(reach_up), ceiling.saturating_sub(reach_down));
-    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, i64, Option<i64>, i64, i64);
+    type Row = (
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        Option<String>,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        Option<i64>,
+        i64,
+        i64,
+    );
     let rows: Vec<Row> = node_db
         .fetch_all(&hot_scored_sql(filter), (filter.reader, from, to))
         .await
@@ -2016,9 +2025,27 @@ async fn scored_run(
     after: Option<&crate::score::Rank>,
     limit: i64,
 ) -> Result<Vec<(crate::score::Rank, FeedRow)>> {
-    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, i64, Option<i64>, i64, i64);
+    type Row = (
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        Option<String>,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        Option<i64>,
+        i64,
+        i64,
+    );
     // A month or less: read by the window; a year: off the score index.
-    let by_window = filter.since_ms.is_some_and(|since| crate::clock::now_ms() - since <= 31 * 24 * 3600 * 1000);
+    let by_window = filter
+        .since_ms
+        .is_some_and(|since| crate::clock::now_ms() - since <= 31 * 24 * 3600 * 1000);
     let sql = scored_sql(filter, above, after.is_some(), by_window);
     let rows: Vec<Row> = match after {
         None => node_db.fetch_all(&sql, (filter.reader, limit)).await,
@@ -2033,7 +2060,14 @@ async fn scored_run(
         .into_iter()
         .map(|(a, b, c, d, e, f, g, h, i, j, k, l, m, n, milli)| {
             let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n));
-            (crate::score::Rank { milli, published_ms: row.published_ms, doc_id: row.doc_id.clone() }, row)
+            (
+                crate::score::Rank {
+                    milli,
+                    published_ms: row.published_ms,
+                    doc_id: row.doc_id.clone(),
+                },
+                row,
+            )
         })
         .collect())
 }
@@ -2049,14 +2083,23 @@ async fn unscored_run(
     let sql = unscored_sql(filter, after.is_some());
     let rows: Vec<JournalTuple> = match after {
         None => node_db.fetch_all(&sql, (filter.reader, limit)).await,
-        Some(r) => node_db.fetch_all(&sql, (filter.reader, r.published_ms, r.doc_id.as_str(), limit)).await,
+        Some(r) => {
+            node_db.fetch_all(&sql, (filter.reader, r.published_ms, r.doc_id.as_str(), limit)).await
+        }
     }
     .context("reading a best page's unscored run")?;
     Ok(rows
         .into_iter()
         .map(|t| {
             let row = journal_row(t);
-            (crate::score::Rank { milli: 0, published_ms: row.published_ms, doc_id: row.doc_id.clone() }, row)
+            (
+                crate::score::Rank {
+                    milli: 0,
+                    published_ms: row.published_ms,
+                    doc_id: row.doc_id.clone(),
+                },
+                row,
+            )
         })
         .collect())
 }
@@ -2081,7 +2124,11 @@ fn page_sql(filter: &JournalFilter<'_>, cursor: bool) -> String {
 /// These posts' rows in a reader's journal, through `filter` - each found by the journal's key, for
 /// a search or a pick that has already named a small set of posts (search.rs, annotations.rs). In
 /// no order; posts not in the reader's feed, or not through the filter, are simply absent.
-pub async fn journal_rows_for(node_db: &crate::db::Db, filter: &JournalFilter<'_>, posts: &[(String, String)]) -> Result<Vec<FeedRow>> {
+pub async fn journal_rows_for(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+    posts: &[(String, String)],
+) -> Result<Vec<FeedRow>> {
     let sql = format!(
         "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY sqlite_autoindex_feed_journal_1
          WHERE {} AND author_root = ?2 AND doc_id = ?3",
@@ -2102,8 +2149,12 @@ pub async fn journal_rows_for(node_db: &crate::db::Db, filter: &JournalFilter<'_
 /// picks a small kind (`room`, off the rooms index), or a window (the tag cloud's year, off the
 /// time index) - never the whole of a journal. Pinned either way: this engine's planner picks
 /// badly on its own.
-pub async fn journal_all(node_db: &crate::db::Db, filter: &JournalFilter<'_>) -> Result<Vec<FeedRow>> {
-    let index = if filter.formats == ["room"] { "feed_journal_by_format" } else { "feed_journal_by_time" };
+pub async fn journal_all(
+    node_db: &crate::db::Db,
+    filter: &JournalFilter<'_>,
+) -> Result<Vec<FeedRow>> {
+    let index =
+        if filter.formats == ["room"] { "feed_journal_by_format" } else { "feed_journal_by_time" };
     let rows: Vec<JournalTuple> = node_db
         .fetch_all(
             &format!(
@@ -2118,10 +2169,40 @@ pub async fn journal_all(node_db: &crate::db::Db, filter: &JournalFilter<'_>) ->
 }
 
 /// One journal row's columns, as every journal SELECT lists them.
-type JournalTuple = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, i64, Option<i64>, i64);
+type JournalTuple = (
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    Option<String>,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    Option<i64>,
+    i64,
+);
 
 fn journal_row(
-    (author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms): JournalTuple,
+    (
+        author_root,
+        via_root,
+        suggested_via,
+        doc_id,
+        title,
+        format,
+        published_ms,
+        updated_ms,
+        arrived_ms,
+        settled,
+        trusted_only,
+        onward,
+        dated_ms,
+        minted_ms,
+    ): JournalTuple,
 ) -> FeedRow {
     FeedRow {
         author_root,
@@ -2153,7 +2234,11 @@ mod tests {
         assert_eq!(journal_mark(&db, "aa").await.unwrap(), None);
         record_journal_mark(&db, "aa", 100).await.unwrap();
         record_journal_mark(&db, "aa", 90).await.unwrap();
-        assert_eq!(journal_mark(&db, "aa").await.unwrap(), Some(100), "a lagging report cannot drag it back");
+        assert_eq!(
+            journal_mark(&db, "aa").await.unwrap(),
+            Some(100),
+            "a lagging report cannot drag it back"
+        );
         record_journal_mark(&db, "aa", 110).await.unwrap();
         assert_eq!(journal_mark(&db, "aa").await.unwrap(), Some(110));
     }
@@ -2200,22 +2285,15 @@ mod tests {
                 arrived_ms, via_root)
              VALUES (?1, ?2, ?3, 'shared', 'plaintext', 1, 1, 1, ?4),
                     (?1, ?2, 'other', 'mine', 'plaintext', 1, 1, 1, NULL)",
-            (
-                "cc".repeat(32),
-                author.as_str(),
-                doc.as_str(),
-                "bb".repeat(32),
-            ),
+            ("cc".repeat(32), author.as_str(), doc.as_str(), "bb".repeat(32)),
         )
         .await
         .unwrap();
 
         excise_shared(&db, &author, &doc).await.unwrap();
 
-        let rows: Vec<(String,)> = db
-            .fetch_all("SELECT title FROM feed_journal ORDER BY title", ())
-            .await
-            .unwrap();
+        let rows: Vec<(String,)> =
+            db.fetch_all("SELECT title FROM feed_journal ORDER BY title", ()).await.unwrap();
         assert_eq!(
             rows.iter().map(|(t,)| t.as_str()).collect::<Vec<_>>(),
             vec!["mine"],
@@ -2250,26 +2328,20 @@ mod tests {
 
         // Speculative first: the row lands marked.
         journal_rows_suggested(&db, &author, &wanting, &rows).await.unwrap();
-        let marked: Vec<(Option<String>,)> = db
-            .fetch_all("SELECT suggested_via FROM feed_journal", ())
-            .await
-            .unwrap();
+        let marked: Vec<(Option<String>,)> =
+            db.fetch_all("SELECT suggested_via FROM feed_journal", ()).await.unwrap();
         assert_eq!(marked, vec![(Some(introducer.clone()),)], "the row lands marked");
 
         // A real (follow) arrival converts in place: one row, marking shed.
         journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, None).await.unwrap();
-        let converted: Vec<(Option<String>, Option<String>)> = db
-            .fetch_all("SELECT suggested_via, via_root FROM feed_journal", ())
-            .await
-            .unwrap();
+        let converted: Vec<(Option<String>, Option<String>)> =
+            db.fetch_all("SELECT suggested_via, via_root FROM feed_journal", ()).await.unwrap();
         assert_eq!(converted, vec![(None, None)], "one row, real, marking gone");
 
         // And never the reverse: a late speculative write leaves the real row untouched.
         journal_rows_suggested(&db, &author, &wanting, &rows).await.unwrap();
-        let still: Vec<(Option<String>,)> = db
-            .fetch_all("SELECT suggested_via FROM feed_journal", ())
-            .await
-            .unwrap();
+        let still: Vec<(Option<String>,)> =
+            db.fetch_all("SELECT suggested_via FROM feed_journal", ()).await.unwrap();
         assert_eq!(still, vec![(None,)], "speculation never downgrades a real row");
     }
 
@@ -2309,10 +2381,8 @@ mod tests {
         journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, Some(&sharer))
             .await
             .unwrap();
-        let converted: Vec<(Option<String>, Option<String>)> = db
-            .fetch_all("SELECT suggested_via, via_root FROM feed_journal", ())
-            .await
-            .unwrap();
+        let converted: Vec<(Option<String>, Option<String>)> =
+            db.fetch_all("SELECT suggested_via, via_root FROM feed_journal", ()).await.unwrap();
         assert_eq!(
             converted,
             vec![(None, Some(sharer.clone()))],
@@ -2320,22 +2390,14 @@ mod tests {
         );
 
         // The ladder above shares still holds: a follow arrival outranks the byline...
-        journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, None)
-            .await
-            .unwrap();
+        journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, None).await.unwrap();
         // ...and a genuine follow row is never re-bylined by a later share.
         journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, Some(&sharer))
             .await
             .unwrap();
-        let follow: Vec<(Option<String>, Option<String>)> = db
-            .fetch_all("SELECT suggested_via, via_root FROM feed_journal", ())
-            .await
-            .unwrap();
-        assert_eq!(
-            follow,
-            vec![(None, None)],
-            "a follow row outranks a share byline, still"
-        );
+        let follow: Vec<(Option<String>, Option<String>)> =
+            db.fetch_all("SELECT suggested_via, via_root FROM feed_journal", ()).await.unwrap();
+        assert_eq!(follow, vec![(None, None)], "a follow row outranks a share byline, still");
     }
 
     /// The curiosity dial in SQL (`selectivity::stop_predicate`) against the rule it restates
@@ -2354,10 +2416,18 @@ mod tests {
         let sharers: Vec<String> = (0..bands.len()).map(|v| root(0xbb, v)).collect();
         for (v, band) in bands.iter().enumerate() {
             if let Some(b) = band {
-                facts.entry(sharers[v].clone()).or_default().insert("interest_rebroadcasts".into(), b.to_string());
+                facts
+                    .entry(sharers[v].clone())
+                    .or_default()
+                    .insert("interest_rebroadcasts".into(), b.to_string());
             }
         }
-        struct Row { author: String, doc: String, via: Option<String>, suggested: Option<String> }
+        struct Row {
+            author: String,
+            doc: String,
+            via: Option<String>,
+            suggested: Option<String>,
+        }
         let mut rows: Vec<Row> = Vec::new();
         let mut n = 0;
         for dial in bands {
@@ -2365,13 +2435,21 @@ mod tests {
                 let author = root(0xaa, n);
                 n += 1;
                 if let Some(d) = dial {
-                    facts.entry(author.clone()).or_default().insert("interest".into(), d.to_string());
+                    facts
+                        .entry(author.clone())
+                        .or_default()
+                        .insert("interest".into(), d.to_string());
                 }
                 if let Some(l) = level {
                     levels.insert(author.clone(), l.to_string());
                 }
                 let mut push = |via: Option<String>, suggested: Option<String>| {
-                    rows.push(Row { author: author.clone(), doc: format!("{:032x}", rows.len()), via, suggested });
+                    rows.push(Row {
+                        author: author.clone(),
+                        doc: format!("{:032x}", rows.len()),
+                        via,
+                        suggested,
+                    });
                 };
                 push(None, None);
                 for s in &sharers {
@@ -2380,7 +2458,12 @@ mod tests {
                 push(None, Some(root(0xcc, 0)));
             }
         }
-        rows.push(Row { author: reader.clone(), doc: format!("{:032x}", rows.len()), via: None, suggested: None });
+        rows.push(Row {
+            author: reader.clone(),
+            doc: format!("{:032x}", rows.len()),
+            via: None,
+            suggested: None,
+        });
         for (i, r) in rows.iter().enumerate() {
             db.execute(
                 "INSERT INTO feed_journal
@@ -2391,7 +2474,15 @@ mod tests {
             .await
             .unwrap();
         }
-        for stop in ["explorer", "highly-speculative", "speculative", "interest", "medium", "high", "nonsense"] {
+        for stop in [
+            "explorer",
+            "highly-speculative",
+            "speculative",
+            "interest",
+            "medium",
+            "high",
+            "nonsense",
+        ] {
             let want: std::collections::BTreeSet<&str> = rows
                 .iter()
                 .filter(|r| {
@@ -2402,18 +2493,29 @@ mod tests {
                                 author: &r.author,
                                 via: r.via.as_deref(),
                                 suggested_via: r.suggested.as_deref(),
-                                suggested_level: r.suggested.as_ref().and_then(|_| levels.get(&r.author)).map(String::as_str),
+                                suggested_level: r
+                                    .suggested
+                                    .as_ref()
+                                    .and_then(|_| levels.get(&r.author))
+                                    .map(String::as_str),
                             },
                             &facts,
                         )
                 })
                 .map(|r| r.doc.as_str())
                 .collect();
-            let filter = JournalFilter { stop: stop_rule(stop, &facts, &levels), ..JournalFilter::feed(&reader) };
+            let filter = JournalFilter {
+                stop: stop_rule(stop, &facts, &levels),
+                ..JournalFilter::feed(&reader)
+            };
             let got = journal_all(&db, &filter).await.unwrap();
-            let got: std::collections::BTreeSet<&str> = got.iter().map(|r| r.doc_id.as_str()).collect();
+            let got: std::collections::BTreeSet<&str> =
+                got.iter().map(|r| r.doc_id.as_str()).collect();
             assert_eq!(got, want, "the {stop} stop");
-            assert!(want.len() < rows.len() || matches!(stop, "explorer" | "nonsense"), "the {stop} stop keeps something back - a case worth the name");
+            assert!(
+                want.len() < rows.len() || matches!(stop, "explorer" | "nonsense"),
+                "the {stop} stop keeps something back - a case worth the name"
+            );
         }
     }
 
@@ -2424,8 +2526,13 @@ mod tests {
         let db = crate::db::test_node_db().await;
         let reader = "ee".repeat(32);
         let other = "aa".repeat(32);
-        let row = |author: &str, doc: String, format: &str, ms: i64| (author.to_string(), doc, format.to_string(), ms);
-        let mut rows = vec![row(&other, "d-room".into(), "room", 1), row(&reader, "d-mine".into(), "marquee", 2)];
+        let row = |author: &str, doc: String, format: &str, ms: i64| {
+            (author.to_string(), doc, format.to_string(), ms)
+        };
+        let mut rows = vec![
+            row(&other, "d-room".into(), "room", 1),
+            row(&reader, "d-mine".into(), "marquee", 2),
+        ];
         for i in 0..6000 {
             rows.push(row(&other, format!("d-{i:05}"), "marquee", 10 + i));
         }
@@ -2439,25 +2546,63 @@ mod tests {
             .await
             .unwrap();
         }
-        let rooms = journal_all(&db, &JournalFilter { formats: &["room"], ..JournalFilter::feed(&reader) }).await.unwrap();
-        assert_eq!(rooms.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-room"], "under 6000 newer posts");
+        let rooms =
+            journal_all(&db, &JournalFilter { formats: &["room"], ..JournalFilter::feed(&reader) })
+                .await
+                .unwrap();
+        assert_eq!(
+            rooms.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(),
+            ["d-room"],
+            "under 6000 newer posts"
+        );
         let first = journal_page(&db, &JournalFilter::feed(&reader), None, 2).await.unwrap();
-        assert_eq!(first.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-05999", "d-05998"], "no media");
-        let next = journal_page(&db, &JournalFilter::feed(&reader), Some((first[1].published_ms, first[1].doc_id.clone())), 2)
-            .await
-            .unwrap();
-        assert_eq!(next.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-05997", "d-05996"]);
-        let oldest = journal_page(&db, &JournalFilter { since_ms: None, ..JournalFilter::feed(&reader) }, Some((10, "d-00000".into())), 5)
-            .await
-            .unwrap();
-        assert_eq!(oldest.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-mine", "d-room"], "paged to the very end");
-        let not_mine = journal_page(&db, &JournalFilter { own: Own::Out, ..JournalFilter::feed(&reader) }, Some((10, "d-00000".into())), 5)
-            .await
-            .unwrap();
+        assert_eq!(
+            first.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(),
+            ["d-05999", "d-05998"],
+            "no media"
+        );
+        let next = journal_page(
+            &db,
+            &JournalFilter::feed(&reader),
+            Some((first[1].published_ms, first[1].doc_id.clone())),
+            2,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            next.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(),
+            ["d-05997", "d-05996"]
+        );
+        let oldest = journal_page(
+            &db,
+            &JournalFilter { since_ms: None, ..JournalFilter::feed(&reader) },
+            Some((10, "d-00000".into())),
+            5,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            oldest.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(),
+            ["d-mine", "d-room"],
+            "paged to the very end"
+        );
+        let not_mine = journal_page(
+            &db,
+            &JournalFilter { own: Own::Out, ..JournalFilter::feed(&reader) },
+            Some((10, "d-00000".into())),
+            5,
+        )
+        .await
+        .unwrap();
         assert_eq!(not_mine.iter().map(|r| r.doc_id.as_str()).collect::<Vec<_>>(), ["d-room"]);
-        let window = journal_page(&db, &JournalFilter { since_ms: Some(6008), ..JournalFilter::feed(&reader) }, None, 100)
-            .await
-            .unwrap();
+        let window = journal_page(
+            &db,
+            &JournalFilter { since_ms: Some(6008), ..JournalFilter::feed(&reader) },
+            None,
+            100,
+        )
+        .await
+        .unwrap();
         assert_eq!(window.len(), 2, "published at or after the window's start");
     }
 
@@ -2529,7 +2674,8 @@ mod tests {
         let plan = |sql: String| {
             let db = db.clone();
             async move {
-                let rows: Vec<(i64, i64, i64, String)> = db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), ()).await.unwrap();
+                let rows: Vec<(i64, i64, i64, String)> =
+                    db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), ()).await.unwrap();
                 rows.into_iter().map(|(_, _, _, d)| d).collect::<Vec<_>>().join(" | ")
             }
         };
@@ -2544,31 +2690,64 @@ mod tests {
             assert!(!p.contains("SORTER"), "{name} streams, never sorts: {p}");
         }
         let p = plan(unscored_sql(&filter, false)).await;
-        assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a score probed by key: {p}");
+        assert!(
+            p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"),
+            "a score probed by key: {p}"
+        );
         // Hot's scored posts: a bounded range of the time index, each score by key.
         let p = plan(hot_scored_sql(&filter)).await;
-        assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=? AND published_ms<=?)"), "hot reads a bounded range: {p}");
-        assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "hot probes each score by key: {p}");
+        assert!(
+            p.contains(
+                "feed_journal_by_time (reader_root=? AND published_ms>=? AND published_ms<=?)"
+            ),
+            "hot reads a bounded range: {p}"
+        );
+        assert!(
+            p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"),
+            "hot probes each score by key: {p}"
+        );
         // A search's or a pick's small set, met with the journal by key.
         let p = plan(format!(
             "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY sqlite_autoindex_feed_journal_1 WHERE {} AND author_root = ?2 AND doc_id = ?3",
             filter.clause("")
         ))
         .await;
-        assert!(p.contains("feed_journal_1 (reader_root=? AND author_root=? AND doc_id=?)"), "a post by its key: {p}");
+        assert!(
+            p.contains("feed_journal_1 (reader_root=? AND author_root=? AND doc_id=?)"),
+            "a post by its key: {p}"
+        );
         // The tag cloud's year, and the chats column's rooms.
-        let p = plan(format!("SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY feed_journal_by_time WHERE {}", filter.clause(""))).await;
-        assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "a window reads only the window: {p}");
+        let p = plan(format!(
+            "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY feed_journal_by_time WHERE {}",
+            filter.clause("")
+        ))
+        .await;
+        assert!(
+            p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"),
+            "a window reads only the window: {p}"
+        );
         // The scored runs: which table drives, and the other probed by key. Left to itself the
         // planner drove the year's run from the journal and rescanned every score per row - a
         // page that never finished at 131,072 posts.
         for above in [true, false] {
             let p = plan(scored_sql(&filter, above, true, true)).await;
-            assert!(p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"), "a month or less reads only its window: {p}");
-            assert!(p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"), "and probes each score by key: {p}");
+            assert!(
+                p.contains("feed_journal_by_time (reader_root=? AND published_ms>=?)"),
+                "a month or less reads only its window: {p}"
+            );
+            assert!(
+                p.contains("post_scores_1 (reader_root=? AND author_root=? AND doc_id=?)"),
+                "and probes each score by key: {p}"
+            );
             let p = plan(scored_sql(&filter, above, true, false)).await;
-            assert!(p.starts_with("SEARCH p USING INDEX post_scores_by_score"), "a year is driven from the score index: {p}");
-            assert!(p.contains("feed_journal_1 (reader_root=? AND author_root=? AND doc_id=?)"), "and probes the journal by key: {p}");
+            assert!(
+                p.starts_with("SEARCH p USING INDEX post_scores_by_score"),
+                "a year is driven from the score index: {p}"
+            );
+            assert!(
+                p.contains("feed_journal_1 (reader_root=? AND author_root=? AND doc_id=?)"),
+                "and probes the journal by key: {p}"
+            );
         }
     }
 
@@ -2636,10 +2815,22 @@ mod tests {
                 let page = hot_page(&db, &filter, Some(c), 21).await.unwrap();
                 cursor = page.last().map(|(r, _, _)| r.clone());
             }
-            eprintln!("hot: first page {first_ms:?} ({} rows); next 50 pages {:?}", first.len(), t.elapsed());
+            eprintln!(
+                "hot: first page {first_ms:?} ({} rows); next 50 pages {:?}",
+                first.len(),
+                t.elapsed()
+            );
         }
-        for (name, window) in [("day", Some("day")), ("week", Some("week")), ("month", Some("month")), ("year", Some("year"))] {
-            let filter = JournalFilter { since_ms: Some(now - crate::score::window_ms(window)), ..JournalFilter::feed(&reader) };
+        for (name, window) in [
+            ("day", Some("day")),
+            ("week", Some("week")),
+            ("month", Some("month")),
+            ("year", Some("year")),
+        ] {
+            let filter = JournalFilter {
+                since_ms: Some(now - crate::score::window_ms(window)),
+                ..JournalFilter::feed(&reader)
+            };
             let t = std::time::Instant::now();
             let first = best_page(&db, &filter, None, 21).await.unwrap();
             let first_ms = t.elapsed();
@@ -2654,7 +2845,12 @@ mod tests {
                 }
                 cursor = page.last().map(|(r, _)| r.clone());
             }
-            eprintln!("{name}: first page {:?} ({} rows); next {pages} pages {:?}", first_ms, first.len(), t.elapsed());
+            eprintln!(
+                "{name}: first page {:?} ({} rows); next {pages} pages {:?}",
+                first_ms,
+                first.len(),
+                t.elapsed()
+            );
         }
     }
 
@@ -2678,10 +2874,7 @@ mod tests {
 
         excise_shared(&db, &author, &doc).await.unwrap();
 
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM feed_journal", ()).await.unwrap();
         assert_eq!(count, 1, "following them is a claim of our own");
     }
 
@@ -2708,13 +2901,9 @@ mod tests {
             "and the words' own history is untouched - that answers a different question"
         );
 
-        journal_rows(&db, &author, &reader, &[&restamped], Some(&sharer))
-            .await
-            .unwrap();
-        let (published, updated): (i64, i64) = db
-            .fetch_one("SELECT published_ms, updated_ms FROM feed_journal", ())
-            .await
-            .unwrap();
+        journal_rows(&db, &author, &reader, &[&restamped], Some(&sharer)).await.unwrap();
+        let (published, updated): (i64, i64) =
+            db.fetch_one("SELECT published_ms, updated_ms FROM feed_journal", ()).await.unwrap();
         assert_eq!(published, shared_at);
         assert_eq!(updated, ancient.updated_ms);
     }
@@ -2735,10 +2924,8 @@ mod tests {
         let via = |db: &crate::db::Db| {
             let db = db.clone();
             async move {
-                let row: (Option<String>,) = db
-                    .fetch_one("SELECT via_root FROM feed_journal", ())
-                    .await
-                    .unwrap();
+                let row: (Option<String>,) =
+                    db.fetch_one("SELECT via_root FROM feed_journal", ()).await.unwrap();
                 row.0
             }
         };
@@ -2771,10 +2958,7 @@ mod tests {
         journal_rows(&db, &author, &reader, &refs, Some(&"b1".repeat(32))).await.unwrap();
         journal_rows(&db, &author, &reader, &refs, Some(&"b2".repeat(32))).await.unwrap();
 
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM feed_journal", ()).await.unwrap();
         assert_eq!(count, 1, "popularity does not duplicate a post in one feed");
     }
 
@@ -2787,32 +2971,23 @@ mod tests {
         let db = crate::db::test_node_db().await;
         let author = "aa".repeat(32);
         let readers: Vec<String> = (0..3).map(|i| format!("{i:0>64}")).collect();
-        let posts: Vec<JournalRow> = (0..40)
-            .map(|i| post(&i.to_string(), "first words", 2_000 + i))
-            .collect();
+        let posts: Vec<JournalRow> =
+            (0..40).map(|i| post(&i.to_string(), "first words", 2_000 + i)).collect();
         let refs: Vec<&JournalRow> = posts.iter().collect();
 
         // 3 readers x 40 posts = 120 pairs: two chunks, the second partial.
         journal_rows(&db, &author, &readers, &refs, None).await.unwrap();
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM feed_journal", ()).await.unwrap();
         assert_eq!(count, 120);
 
         // The upsert half: re-journal one edited post. A sentinel arrival stamp proves the
         // conflict arm ran an UPDATE (not insert-or-ignore) and left arrived_ms alone.
-        db.execute("UPDATE feed_journal SET arrived_ms = 42", ())
-            .await
-            .unwrap();
+        db.execute("UPDATE feed_journal SET arrived_ms = 42", ()).await.unwrap();
         let edited = [post("0", "better words", 9_000)];
         let edited_refs: Vec<&JournalRow> = edited.iter().collect();
         journal_rows(&db, &author, &readers, &edited_refs, None).await.unwrap();
 
-        let (count,): (i64,) = db
-            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
-            .await
-            .unwrap();
+        let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM feed_journal", ()).await.unwrap();
         assert_eq!(count, 120, "an edit rewrites rows, never adds them");
         let rows: Vec<(String, i64, i64)> = db
             .fetch_all(
@@ -2869,8 +3044,11 @@ mod tests {
         );
 
         let by_author = sharers_of_author(&db, &alice).await.unwrap();
-        assert_eq!(by_author, vec![kim.clone(), sam.clone(), bob.clone()],
-            "the per-author union spans documents, earliest stand first");
+        assert_eq!(
+            by_author,
+            vec![kim.clone(), sam.clone(), bob.clone()],
+            "the per-author union spans documents, earliest stand first"
+        );
 
         assert!(
             sharers_of_doc(&db, &alice, &hex::encode([9u8; 16])).await.unwrap().is_empty(),

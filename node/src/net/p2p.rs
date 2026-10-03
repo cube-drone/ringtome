@@ -37,10 +37,7 @@ pub const ALPNS: [(&str, &[u8]); 6] = [
 /// The short house name for a wire ALPN; `None` for an ALPN this node does not speak (which the
 /// endpoint cannot negotiate, since it advertises [`ALPNS`] and nothing else).
 pub fn alpn_name(alpn: &[u8]) -> Option<&'static str> {
-    ALPNS
-        .iter()
-        .find(|(_, wire)| *wire == alpn)
-        .map(|(name, _)| *name)
+    ALPNS.iter().find(|(_, wire)| *wire == alpn).map(|(name, _)| *name)
 }
 
 /// Resolve a caller's spelling to the table's OWN `&'static str`, or `None` if this node speaks no
@@ -48,10 +45,7 @@ pub fn alpn_name(alpn: &[u8]) -> Option<&'static str> {
 /// gate that quietly refuses nothing, and it means [`Refusals`] can only ever hold names that are
 /// in [`ALPNS`] - there is no way to spell a refusal the accept loop will not recognise.
 pub fn alpn_named(name: &str) -> Option<&'static str> {
-    ALPNS
-        .iter()
-        .find(|(house, _)| *house == name)
-        .map(|(house, _)| *house)
+    ALPNS.iter().find(|(house, _)| *house == name).map(|(house, _)| *house)
 }
 
 /// The test-only transport gate: which ALPNs this node is refusing right now, in which direction.
@@ -121,12 +115,7 @@ impl Unplugged {
     /// Refuse an inbound connection on this ALPN? Called once per accepted connection.
     pub fn refuses_inbound(&self, alpn: &[u8]) -> bool {
         match alpn_name(alpn) {
-            Some(name) => self
-                .0
-                .lock()
-                .expect("unplug gate poisoned")
-                .inbound
-                .contains(name),
+            Some(name) => self.0.lock().expect("unplug gate poisoned").inbound.contains(name),
             None => false,
         }
     }
@@ -134,12 +123,7 @@ impl Unplugged {
     /// Refuse to dial on this ALPN? Called once per outbound connection, from [`dial`].
     pub fn refuses_outbound(&self, alpn: &[u8]) -> bool {
         match alpn_name(alpn) {
-            Some(name) => self
-                .0
-                .lock()
-                .expect("unplug gate poisoned")
-                .outbound
-                .contains(name),
+            Some(name) => self.0.lock().expect("unplug gate poisoned").outbound.contains(name),
             None => false,
         }
     }
@@ -207,10 +191,8 @@ fn load_or_create_node_key(keystore: &Keystore) -> Result<SecretKey> {
         let bytes = keystore
             .load_key(NODE_KEY_NAME, NODE_KEY_NAME.as_bytes())
             .context("opening node key")?;
-        let arr: [u8; 32] = bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| anyhow!("node key has wrong length"))?;
+        let arr: [u8; 32] =
+            bytes.as_slice().try_into().map_err(|_| anyhow!("node key has wrong length"))?;
         Ok(SecretKey::from_bytes(&arr))
     } else {
         let secret = SecretKey::generate();
@@ -365,7 +347,9 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                             if let Err(e) = state.gossip.handle_connection(conn).await {
                                 tracing::debug!(%remote, "gossip connection ended with error: {e:#}");
                             }
-                        } else if let Err(e) = crate::net::sync::serve(conn, state, &mut permit).await {
+                        } else if let Err(e) =
+                            crate::net::sync::serve(conn, state, &mut permit).await
+                        {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");
                         }
                         drop(permit);
@@ -382,13 +366,9 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
 // Frame IO: 4-byte big-endian length prefix + canonical CBOR message body.
 
 pub async fn write_frame(send: &mut SendStream, msg: &SyncMessage) -> Result<()> {
-    let body = msg
-        .encode()
-        .map_err(|e| anyhow!("encoding sync frame: {e}"))?;
+    let body = msg.encode().map_err(|e| anyhow!("encoding sync frame: {e}"))?;
     let len = u32::try_from(body.len()).map_err(|_| anyhow!("frame too large"))?;
-    send.write_all(&len.to_be_bytes())
-        .await
-        .context("writing frame length")?;
+    send.write_all(&len.to_be_bytes()).await.context("writing frame length")?;
     send.write_all(&body).await.context("writing frame body")?;
     Ok(())
 }
@@ -406,9 +386,7 @@ pub async fn read_frame(recv: &mut RecvStream) -> Result<Option<SyncMessage>> {
         return Err(anyhow!("sync frame of {len} bytes exceeds limit"));
     }
     let mut body = vec![0u8; len];
-    recv.read_exact(&mut body)
-        .await
-        .context("reading frame body")?;
+    recv.read_exact(&mut body).await.context("reading frame body")?;
     let msg = SyncMessage::decode(&body).map_err(|e| anyhow!("undecodable sync frame: {e}"))?;
     Ok(Some(msg))
 }
@@ -420,7 +398,8 @@ mod port_tests {
     fn scratch(tag: &str) -> std::path::PathBuf {
         static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = UNIQUE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("ringtome-p2p-port-{tag}-{}-{n}", std::process::id()));
+        let dir = std::env::temp_dir()
+            .join(format!("ringtome-p2p-port-{tag}-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -439,19 +418,23 @@ mod port_tests {
         let port = free_udp_port();
         let dir = scratch("a");
         let ks = Keystore::load(&dir).unwrap();
-        let ep = build_endpoint(&ks, &crate::net::discovery::DiscoveryMode::Off, Some(port)).await.unwrap();
+        let ep = build_endpoint(&ks, &crate::net::discovery::DiscoveryMode::Off, Some(port))
+            .await
+            .unwrap();
         let bound: Vec<u16> = ep.bound_sockets().iter().map(|s| s.port()).collect();
         assert!(bound.contains(&port), "bound {bound:?}, asked for {port}");
 
         let dir_b = scratch("b");
         let ks_b = Keystore::load(&dir_b).unwrap();
-        let second = build_endpoint(&ks_b, &crate::net::discovery::DiscoveryMode::Off, Some(port)).await;
+        let second =
+            build_endpoint(&ks_b, &crate::net::discovery::DiscoveryMode::Off, Some(port)).await;
         assert!(second.is_err(), "a taken port fails the boot");
 
         // And unset keeps iroh's own choice: some port, not ours.
         let dir_c = scratch("c");
         let ks_c = Keystore::load(&dir_c).unwrap();
-        let free = build_endpoint(&ks_c, &crate::net::discovery::DiscoveryMode::Off, None).await.unwrap();
+        let free =
+            build_endpoint(&ks_c, &crate::net::discovery::DiscoveryMode::Off, None).await.unwrap();
         assert!(free.bound_sockets().iter().all(|s| s.port() != port));
 
         ep.close().await;

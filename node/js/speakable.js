@@ -35,7 +35,9 @@ const hexToBytes = (hex) => {
 export function wordsFor(rootHex) {
     const h = blake3(hexToBytes(rootHex));
     const pick = (o) =>
-        WORDS[((h[o] * 16777216 + h[o + 1] * 65536 + h[o + 2] * 256 + h[o + 3]) >>> 0) % WORDS.length];
+        WORDS[
+            ((h[o] * 16777216 + h[o + 1] * 65536 + h[o + 2] * 256 + h[o + 3]) >>> 0) % WORDS.length
+        ];
     return [pick(0), pick(4)];
 }
 
@@ -66,7 +68,9 @@ export function fromBase58(s) {
     let hex = n.toString(16);
     let zeros = 0;
     while (zeros < s.length && s[zeros] === '1') zeros++;
-    hex = '00'.repeat(zeros) + (hex === '0' && zeros ? '' : hex.padStart(hex.length + (hex.length % 2), '0'));
+    hex =
+        '00'.repeat(zeros) +
+        (hex === '0' && zeros ? '' : hex.padStart(hex.length + (hex.length % 2), '0'));
     if (hex.length > 64) return null;
     return hex.padStart(64, '0');
 }

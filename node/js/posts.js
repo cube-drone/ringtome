@@ -80,7 +80,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
         try {
             const cursor = postCursor(list);
             const page = await api(
-                `/api/id/${root}/posts?after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}${current ? `&as=${current.root}` : ''}`
+                `/api/id/${root}/posts?after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}${current ? `&as=${current.root}` : ''}`,
             );
             setExtra((e) => mergePosts(e, page.posts));
             // Trust the server's own answer about whether the shelf goes further, rather than
@@ -97,33 +97,38 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // they pass along pins too (2026-09-29), so a pin is keyed by whose post it is, not its id alone.
     const pinKey = (p) => `${p.kind === 'share' ? p.author : root}:${p.doc_id}`;
     const pinnedKeys = new Set((pinned || []).map(pinKey));
-    const pinnedItems = (pinned || []).map((p) => p.kind === 'share' ? shelfItem(p, { root, authorName, authorAvatar, mine }) : ({
-        author: root,
-        doc_id: p.doc_id,
-        title: p.title,
-        format: p.format,
-        published_ms: p.published_ms,
-        dated_ms: p.dated_ms,
-        minted_ms: p.minted_ms,
-        // When its words last changed - beside `minted_ms`, the "edited" mark's two moments.
-        updated_ms: p.updated_ms,
-        replies: p.replies,
-        reply_to: p.reply_to,
-        thread_root: p.thread_root,
-        trusted_only: p.trusted_only,
-        settled: p.settled,
-        annotations: p.annotations,
-        author_name: authorName,
-        author_avatar: authorAvatar,
-        mine,
-    }));
+    const pinnedItems = (pinned || []).map((p) =>
+        p.kind === 'share'
+            ? shelfItem(p, { root, authorName, authorAvatar, mine })
+            : {
+                  author: root,
+                  doc_id: p.doc_id,
+                  title: p.title,
+                  format: p.format,
+                  published_ms: p.published_ms,
+                  dated_ms: p.dated_ms,
+                  minted_ms: p.minted_ms,
+                  // When its words last changed - beside `minted_ms`, the "edited" mark's two moments.
+                  updated_ms: p.updated_ms,
+                  replies: p.replies,
+                  reply_to: p.reply_to,
+                  thread_root: p.thread_root,
+                  trusted_only: p.trusted_only,
+                  settled: p.settled,
+                  annotations: p.annotations,
+                  author_name: authorName,
+                  author_avatar: authorAvatar,
+                  mine,
+              },
+    );
 
     // The profile's rows, dressed as the card's item (pure/shelf.js - one mapper for this
     // road and the narrowed one below).
     const dress = { root, authorName, authorAvatar, mine };
-    const items = [...scheduledItems, ...list
-        .filter((p) => !pinnedKeys.has(pinKey(p)))
-        .map((p) => shelfItem(p, dress))];
+    const items = [
+        ...scheduledItems,
+        ...list.filter((p) => !pinnedKeys.has(pinKey(p))).map((p) => shelfItem(p, dress)),
+    ];
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
@@ -131,19 +136,26 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     const viewer = current ? `?as=${current.root}` : '';
     // The picks thin the lists (Curtis, 2026-09-27; search.rs facet_sets) - the words stay out.
     const pickQuery = narrowParams('', picks);
-    const labels = useLabels(`/api/id/${root}/labels${viewer}${pickQuery ? `${viewer ? '&' : '?'}${pickQuery}` : ''}`, (posts || []).length);
+    const labels = useLabels(
+        `/api/id/${root}/labels${viewer}${pickQuery ? `${viewer ? '&' : '?'}${pickQuery}` : ''}`,
+        (posts || []).length,
+    );
     const search = useSearch(`/api/id/${root}/posts${viewer}`, searchQuery, picks);
     // A narrowed shelf comes back in the door's own shape: a post is this persona's, a
     // share keeps its ORIGINAL author and wears this persona as its via (Curtis,
     // 2026-09-08: the kind row asked the page's persona for words somebody else wrote).
-    const shownItems = search.active ? (search.results || []).map((p) => shelfItem(p, dress)) : items;
+    const shownItems = search.active
+        ? (search.results || []).map((p) => shelfItem(p, dress))
+        : items;
     const shownPinned = search.active ? [] : pinnedItems;
-    if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length) return null; // nothing said in public yet
+    if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length)
+        return null; // nothing said in public yet
 
     return html`
         <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} />
-        ${shownPinned.length > 0 &&
-        html`<section class="public-posts public-posts-pinned">
+        ${
+            shownPinned.length > 0 &&
+            html`<section class="public-posts public-posts-pinned">
             <h2 class="public-posts-head">${t('posts.pinned', 'pinned')}</h2>
             ${shownPinned.map(
                 (item) => html`<${PostEntry}
@@ -151,33 +163,40 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
                     item=${item}
                     current=${current}
                     editing=${mine && item.kind !== 'share' ? editingFor(item.doc_id) : null}
-                />`
+                />`,
             )}
-        </section>`}
+        </section>`
+        }
         <section class="public-posts">
             <h2 class="public-posts-head">
                 ${t('posts.recent-posts', 'recent posts')}
             </h2>
-            ${search.active &&
-            search.searching &&
-            html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`}
-            ${search.active &&
-            !search.searching &&
-            shownItems.length === 0 &&
-            html`<p class="null-sub">${search.error || t('posts.nothing-they-said-says-that', 'nothing they said says that.')}</p>`}
+            ${
+                search.active &&
+                search.searching &&
+                html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`
+            }
+            ${
+                search.active &&
+                !search.searching &&
+                shownItems.length === 0 &&
+                html`<p class="null-sub">${search.error || t('posts.nothing-they-said-says-that', 'nothing they said says that.')}</p>`
+            }
             ${shownItems.map(
                 (item) => html`<${PostEntry}
                     key=${`${item.kind || 'post'}:${item.doc_id}`}
                     item=${item}
                     current=${current}
                     editing=${mine && item.kind !== 'share' ? editingFor(item.doc_id) : null}
-                />`
+                />`,
             )}
             ${error && html`<p class="form-error">${error}</p>`}
-            ${hasMore &&
-            html`<button class="public-posts-more" disabled=${loading} onClick=${loadMore}>
+            ${
+                hasMore &&
+                html`<button class="public-posts-more" disabled=${loading} onClick=${loadMore}>
                 ${loading ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
-            </button>`}
+            </button>`
+            }
         </section>
     `;
 };

@@ -92,10 +92,7 @@ fn valid_prefix_len(buf: &[u8]) -> Result<usize> {
     // torn one (mid-length or mid-body) ends the valid prefix.
     while let Some(len_bytes) = buf.get(end..end + FRAME_LEN_BYTES) {
         let len = u32::from_le_bytes(len_bytes.try_into().expect("sliced 4 bytes")) as usize;
-        if buf
-            .get(end + FRAME_LEN_BYTES..end + FRAME_LEN_BYTES + len)
-            .is_none()
-        {
+        if buf.get(end + FRAME_LEN_BYTES..end + FRAME_LEN_BYTES + len).is_none() {
             break;
         }
         end += FRAME_LEN_BYTES + len;
@@ -110,11 +107,9 @@ fn decode_frames(buf: &[u8]) -> Result<Vec<Vec<u8>>> {
     let mut frames = Vec::new();
     let mut at = HEADER_LEN.min(end);
     while at < end {
-        let len = u32::from_le_bytes(
-            buf[at..at + FRAME_LEN_BYTES]
-                .try_into()
-                .expect("sliced 4 bytes"),
-        ) as usize;
+        let len =
+            u32::from_le_bytes(buf[at..at + FRAME_LEN_BYTES].try_into().expect("sliced 4 bytes"))
+                as usize;
         at += FRAME_LEN_BYTES;
         frames.push(buf[at..at + len].to_vec());
         at += len;
@@ -155,10 +150,7 @@ impl Journal {
             .open(path)
             .with_context(|| format!("reopening journal {}", path.display()))?;
         Ok(Journal {
-            inner: Arc::new(JournalInner {
-                path: path.to_path_buf(),
-                file: Mutex::new(file),
-            }),
+            inner: Arc::new(JournalInner { path: path.to_path_buf(), file: Mutex::new(file) }),
         })
     }
 
@@ -198,13 +190,9 @@ impl Journal {
             .append(true)
             .open(path)
             .with_context(|| format!("opening journal {}", path.display()))?;
-        file.sync_data()
-            .with_context(|| format!("syncing journal {}", path.display()))?;
+        file.sync_data().with_context(|| format!("syncing journal {}", path.display()))?;
         Ok(Journal {
-            inner: Arc::new(JournalInner {
-                path: path.to_path_buf(),
-                file: Mutex::new(file),
-            }),
+            inner: Arc::new(JournalInner { path: path.to_path_buf(), file: Mutex::new(file) }),
         })
     }
 
@@ -236,8 +224,7 @@ impl Journal {
             file.write_all(&frame)
                 .with_context(|| format!("appending to journal {}", self.inner.path.display()))?;
         }
-        file.sync_data()
-            .with_context(|| format!("syncing journal {}", self.inner.path.display()))
+        file.sync_data().with_context(|| format!("syncing journal {}", self.inner.path.display()))
     }
 }
 
@@ -330,10 +317,7 @@ mod tests {
     // The filesystem layer: two blunt tests against real files.
 
     fn temp_dir() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let dir = std::env::temp_dir().join(format!(
             "ringtome-journal-test-{}-{}",
             std::process::id(),
@@ -382,21 +366,11 @@ mod tests {
 
         // Write through the normal store path; the journal rides along write-ahead.
         let key = SigningKey::from_bytes(&[7u8; 32]);
-        imaol::set_profile_field(&db, &key, "name", "Hats Ahoy")
+        imaol::set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
+        imaol::set_profile_field(&db, &key, "bio", "purveyor of hats").await.unwrap();
+        imaol::append(&db, &key, service::POSTS, entry_type::POST, Payload::Inline(vec![0xa0, 1]))
             .await
             .unwrap();
-        imaol::set_profile_field(&db, &key, "bio", "purveyor of hats")
-            .await
-            .unwrap();
-        imaol::append(
-            &db,
-            &key,
-            service::POSTS,
-            entry_type::POST,
-            Payload::Inline(vec![0xa0, 1]),
-        )
-        .await
-        .unwrap();
 
         // A brand-new database, fed nothing but the journal file.
         let root = key.verifying_key().to_bytes();
@@ -409,12 +383,8 @@ mod tests {
         let (after, _) = imaol::list_entries(&fresh, imaol::ENTRIES_PAGE_MAX, None).await.unwrap();
         assert_eq!(before.len(), after.len());
         let author_hex = hex::encode(root);
-        let mut heads_before = imaol::chain_heads_for_author(&db, &author_hex)
-            .await
-            .unwrap();
-        let mut heads_after = imaol::chain_heads_for_author(&fresh, &author_hex)
-            .await
-            .unwrap();
+        let mut heads_before = imaol::chain_heads_for_author(&db, &author_hex).await.unwrap();
+        let mut heads_after = imaol::chain_heads_for_author(&fresh, &author_hex).await.unwrap();
         heads_before.sort();
         heads_after.sort();
         assert_eq!(heads_before, heads_after);

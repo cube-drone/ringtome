@@ -29,9 +29,9 @@ node keeps its own room whole, which is where "all of it" lives.
 1. **A room is a post.** Format `room`, minted and published like any post, carried on the
    POSTS chain with a title (the room's name) and words (its description, Marquee). It wears
    every post rule unchanged: open, or sealed to everyone the author trusts, a contact tag, or
-   the people mentioned (*Contact tags*, rulings 4 and 5), or to the people they trust and
+   the people mentioned (_Contact tags_, rulings 4 and 5), or to the people they trust and
    onward (ruling 7); shares allowed on an open or onward room and refused on any other
-   sealed one (*Post visibility*); the feed, the shelf and the front page show it
+   sealed one (_Post visibility_); the feed, the shelf and the front page show it
    as a card that says "a room" and opens it. Deleting the post is the takedown every post has,
    and a room whose post is gone is gone: no surface assembles it, and clients leave the space
    (ruling 10 has the two powers, close and delete, and what each one honestly does).
@@ -39,24 +39,24 @@ node keeps its own room whole, which is where "all of it" lives.
    `seal_admits(holder, key document, subject)`, is the room's door: an open room admits
    anyone; a sealed room admits whoever its seal admits, and the room's key IS the post's key.
    A participant in a sealed room seals their messages under that key, as a reply under the
-   author's seal does (*Replies under the author's seal*). Being admitted later opens the
+   author's seal does (_Replies under the author's seal_). Being admitted later opens the
    history; being tagged out closes the future, and what was already read stays read - the
    bound every seal carries.
 3. **A message is an entry on its author's own chain, on the room's lane.** Single-writer is
-   foundational (*Chains: One Per Key, Per Service*): a room is N chains, one per participant,
+   foundational (_Chains: One Per Key, Per Service_): a room is N chains, one per participant,
    interleaved at read by the ordering contract, exactly the sealed pair's "two chains, not
    one" at any N. Nothing shared is ever written, so there is nothing to conflict, and the
    creator deleting the post cannot delete a participant's words - only orphan them, as a
    takedown orphans its replies. **The lane is per room**: a chain keyed `(author, CHAT, room
-   id)` - the first per-instance chain class, which the sealed pair needs too and does not yet
+id)` - the first per-instance chain class, which the sealed pair needs too and does not yet
    have (a wire change: the chain key grows a third element, absent for every existing
    service). The alternative, one CHAT chain per author carrying every room's messages tagged
    by room, is rejected: syncing one room would pull the author's every other room too, and a
    sealed room's traffic would ride beside an open one's under one gate. (Open question 1.)
 4. **The room's lane is gated by the room's door.** A room chain is served to a requester who
    proves they may open the room post: the public predicate for an open room, the seal's for a
-   sealed one - the gated lane's "predicate is the parameter" (*Lanes: Public, Gated,
-   Private*), with the room post as the parameter. Being in a room means syncing every
+   sealed one - the gated lane's "predicate is the parameter" (_Lanes: Public, Gated,
+   Private_), with the room post as the parameter. Being in a room means syncing every
    participant's room chain, which is what a follow means for posts. **There is no roster**:
    a room's membership is the set of people who have spoken, and it is learned two ways that
    cover each other. The creator's node is the directory of record - it archives every
@@ -69,9 +69,9 @@ node keeps its own room whole, which is where "all of it" lives.
    every other's, so nothing depends on an author being online. The bounds: a room with
    nobody live and the creator dark is unreachable, which is when nothing is happening in it;
    and a lurker who never speaks has no chain and is visible only as presence.
-   *Built 2026-09-29 (Curtis: "just keeping track of the last 20-50 people to post in a room
+   _Built 2026-09-29 (Curtis: "just keeping track of the last 20-50 people to post in a room
    should be loads for anybody to get bootstrapped"), as a remembered directory rather than a
-   gossip frontier:* every node that holds a room answers the directory ask with its fifty most
+   gossip frontier:_ every node that holds a room answers the directory ask with its fifty most
    recent speakers, and the newer ask (`WantRoomReach`) says where each is served, because a
    newcomer holds no speaker's key tree and a root alone finds no node. A node remembers every
    directory it is told (`room_directory`), and the room pulse learns it for rooms in a feed
@@ -103,7 +103,7 @@ node keeps its own room whole, which is where "all of it" lives.
    creator deleting the post does on purpose, arriving by accident.
 7. **The room view.** A Chat app at `/home/chat`: the rooms this persona may see (room posts
    in the feed and on followed shelves, plus rooms joined by link), each with its name, who is
-   live, and an unread mark moved by a deliberate act, never by scrolling (*One Cursor*). A
+   live, and an unread mark moved by a deliberate act, never by scrolling (_One Cursor_). A
    room is the message list newest at the bottom, the composer - Marquee with the user-card
    picker and the emoji picker, Enter sends, Shift-Enter breaks a line - and a presence rail
    of live participants. Messages render with the card's own machinery: a mention is a user
@@ -130,157 +130,157 @@ node keeps its own room whole, which is where "all of it" lives.
    leaving is the reader's remedy and deleting the room is the creator's; anything finer is
    open question 2.
 10. **Close and delete are two powers (settled 2026-09-18).** They answer different needs
-   and the post machinery already has the shape of each. **Close is the settled wish** on
-   the room post - the same flag that turns a post's comments off, set at any time through
-   the door that exists: the post stays, the history stays, every participant may still
-   read, and no honest client appends another message to any room chain, nor serves one
-   minted after the close. A wish, not cryptography, honoured exactly by honest parties.
-   It is the lifecycle act - the conversation ended, the record stands - and ruling 6's
-   archive keeps its promise through it. **Delete is the takedown every post has**, the
-   rarer and stronger act: the creator disowns the room and no honest surface assembles
-   it. What it does to the messages is stated honestly: it ORPHANS them, as a takedown
-   orphans replies. A room of twelve is twelve chains, single-writer; the creator can
-   strand the other eleven's words, never destroy them, and each participant's own
-   messages stay on their chain, retractable one by one (ruling 8). Neither power is
-   "close" collapsed into "delete": letting one person hide a whole conversation from
-   everyone else is a bigger power than deleting one's own post, and close gives the
-   creator the moderation outcome without it. Slice 2's message gate refuses an entry
-   whose room post is settled; the takedown's own machinery does the rest.
+    and the post machinery already has the shape of each. **Close is the settled wish** on
+    the room post - the same flag that turns a post's comments off, set at any time through
+    the door that exists: the post stays, the history stays, every participant may still
+    read, and no honest client appends another message to any room chain, nor serves one
+    minted after the close. A wish, not cryptography, honoured exactly by honest parties.
+    It is the lifecycle act - the conversation ended, the record stands - and ruling 6's
+    archive keeps its promise through it. **Delete is the takedown every post has**, the
+    rarer and stronger act: the creator disowns the room and no honest surface assembles
+    it. What it does to the messages is stated honestly: it ORPHANS them, as a takedown
+    orphans replies. A room of twelve is twelve chains, single-writer; the creator can
+    strand the other eleven's words, never destroy them, and each participant's own
+    messages stay on their chain, retractable one by one (ruling 8). Neither power is
+    "close" collapsed into "delete": letting one person hide a whole conversation from
+    everyone else is a bigger power than deleting one's own post, and close gives the
+    creator the moderation outcome without it. Slice 2's message gate refuses an entry
+    whose room post is settled; the takedown's own machinery does the rest.
 11. **Media rides the room the way it rides a share (settled 2026-09-18).** "Chats should
-   carry embedded media content." A message is a 16KB entry and a picture is not, so a
-   message never carries bytes: it carries REFERENCES, exactly as a post does, and the
-   post's media machinery is reused whole rather than given a chat-shaped twin. Today the
-   room composer is a bare textarea, and a message that pasted a reference to a published
-   picture renders only for readers who FOLLOW the speaker - the twin lives on the speaker's
-   posts chain, which the room lane (ruling 4) does not carry, so a reader who reached the
-   room by link sees a broken image, and in a sealed room the born-public twin leaks the
-   picture while the words stay sealed. The plumbing, in the order it stacks:
-   - **Say bakes.** The say door runs the publication bake on the message body: the
-     picker's private media documents become public twins, the references are rewritten to
-     them, and the message's refs are derived from the rewritten body, as `bake::publish`
-     does for a post. The composer swap (the post composer with its colon emoji picker and
-     its bang image picker, in place of the textarea) is the last step, not the first,
-     because a picker's output means nothing until say bakes it.
-   - **The wire.** `ChatMessage` gains an additive `refs` list of the twins the body embeds,
-     capped as a header's refs are (`MAX_REFS`), and the reader's fold trusts a message's
-     refs the way it trusts a header's: a claim about the body, self-scoped, over-claim
-     obliging the speaker's own archives and under-claim breaking the speaker's own images.
-   - **The reader's obligation.** The memo fold, seeing a message with refs, mints cover rows
-     with a new covering kind - a room message, never a post - and wants the twins: the
-     header over the fragment lane's `Want`/`Have`, the bytes over blobs by hash, first from
-     the creator's node (the archive, ruling 6, holds them) and then from the speaker's own
-     nodes. The serve side's fragment gate learns the room rule the sync lane already has:
-     a twin a room message names is served under the room's door to a dialer the room
-     admits. No fold or sweep ever parses foreign Marquee - the refs say what to fetch.
-   - **Retention.** A pruned message releases its covers, so media dies with the line on a
-     budgeted node and lives at the archive; the archive's obligation grows from messages to
-     bytes, and a room gets a MEDIA budget beside its message budget - the post's
-     `media_budget` per message, and a room-wide ceiling the operator's full-sync accepts
-     knowingly. The reaper's rule holds: a twin nothing covers is nobody's to keep.
-   - **Sealed rooms seal their twins.** A twin embedded in a sealed room is sealed under the
-     room's key, title included (the sealed-bodies machinery, sealed titles slice 2), not
-     born public - and its key is the room's key, so admission to the room is admission to
-     the picture and nothing new is granted. Until that lands, a sealed room's say REFUSES
-     a body with media rather than leak it: refusal is honest, a public twin is not.
-   - **Deletion comes free.** The twin is a document on the speaker's posts chain, so the
-     speaker's ordinary takedown tombstones it and the fragment lane's revalidation carries
-     the death; retracting the message (ruling 8) releases its covers the way an edit
-     releases a post's. Sound and video ride the same road - the crush trilogy already
-     makes every upload a bounded twin, and a room line embeds whatever a post can.
+    carry embedded media content." A message is a 16KB entry and a picture is not, so a
+    message never carries bytes: it carries REFERENCES, exactly as a post does, and the
+    post's media machinery is reused whole rather than given a chat-shaped twin. Today the
+    room composer is a bare textarea, and a message that pasted a reference to a published
+    picture renders only for readers who FOLLOW the speaker - the twin lives on the speaker's
+    posts chain, which the room lane (ruling 4) does not carry, so a reader who reached the
+    room by link sees a broken image, and in a sealed room the born-public twin leaks the
+    picture while the words stay sealed. The plumbing, in the order it stacks:
+    - **Say bakes.** The say door runs the publication bake on the message body: the
+      picker's private media documents become public twins, the references are rewritten to
+      them, and the message's refs are derived from the rewritten body, as `bake::publish`
+      does for a post. The composer swap (the post composer with its colon emoji picker and
+      its bang image picker, in place of the textarea) is the last step, not the first,
+      because a picker's output means nothing until say bakes it.
+    - **The wire.** `ChatMessage` gains an additive `refs` list of the twins the body embeds,
+      capped as a header's refs are (`MAX_REFS`), and the reader's fold trusts a message's
+      refs the way it trusts a header's: a claim about the body, self-scoped, over-claim
+      obliging the speaker's own archives and under-claim breaking the speaker's own images.
+    - **The reader's obligation.** The memo fold, seeing a message with refs, mints cover rows
+      with a new covering kind - a room message, never a post - and wants the twins: the
+      header over the fragment lane's `Want`/`Have`, the bytes over blobs by hash, first from
+      the creator's node (the archive, ruling 6, holds them) and then from the speaker's own
+      nodes. The serve side's fragment gate learns the room rule the sync lane already has:
+      a twin a room message names is served under the room's door to a dialer the room
+      admits. No fold or sweep ever parses foreign Marquee - the refs say what to fetch.
+    - **Retention.** A pruned message releases its covers, so media dies with the line on a
+      budgeted node and lives at the archive; the archive's obligation grows from messages to
+      bytes, and a room gets a MEDIA budget beside its message budget - the post's
+      `media_budget` per message, and a room-wide ceiling the operator's full-sync accepts
+      knowingly. The reaper's rule holds: a twin nothing covers is nobody's to keep.
+    - **Sealed rooms seal their twins.** A twin embedded in a sealed room is sealed under the
+      room's key, title included (the sealed-bodies machinery, sealed titles slice 2), not
+      born public - and its key is the room's key, so admission to the room is admission to
+      the picture and nothing new is granted. Until that lands, a sealed room's say REFUSES
+      a body with media rather than leak it: refusal is honest, a public twin is not.
+    - **Deletion comes free.** The twin is a document on the speaker's posts chain, so the
+      speaker's ordinary takedown tombstones it and the fragment lane's revalidation carries
+      the death; retracting the message (ruling 8) releases its covers the way an edit
+      releases a post's. Sound and video ride the same road - the crush trilogy already
+      makes every upload a bounded twin, and a room line embeds whatever a post can.
 
 12. **An IM is a room sealed to one person (settled 2026-09-20).** Curtis: a button on
-   anybody's page opens "a Chat window that's sealed to Just Them". A two-person chat is not
-   a second chat system - it is a room (ruling 1) wearing the pair's rules: sealed to exactly
-   one other person through the post's own audience (*Contact tags*, ruling 5) with one
-   member, and marked `im` on the SIGNED header, so every door knows what it is holding
-   without opening a seal. The header says THAT there is a pair, never who: the audience
-   stays the author's own memo, as every audience is. *Direct Messages: The Sealed Pair*
-   argued the case for two - "the only size at which membership is not a mutable object" -
-   and this is that shape carried by the room machinery rather than an epoch of its own: the
-   key is the post's key, the pair is the author plus the one person the seal admits, and
-   there is no roster, no admission and no ejection. What differs from a room, and why:
-   - **Nobody owns it.** The post has an author because a post does; the conversation does
-     not. Both sides keep the WHOLE of it - both are its archive (ruling 6), both sync it
-     whole and neither prunes it to a budget, because a room only its pair can hold is not
-     a cache to trim. An IM never falls off the sync beat either, however long since anyone
-     looked.
-   - **No moderation, no takedown.** Mute, the deputy's badge, close and delete are refused
-     at the door and absent from the chrome. Every one of them is a power over the other
-     person's record, and between two people the honest powers are to stop talking and to
-     block. There is no third party to protect anybody from.
-   - **It does not travel.** A sealed post that is not "onward" already refuses shares, and
-     an IM is never onward, so there is nothing to pass along. The room's post does sit in
-     the feed - for the two of them, which is what sealing to one person means (Curtis,
-     2026-09-20) - and the chat window carries no link to it: the post is the plumbing,
-     not the conversation.
-   - **Trust is not a dial here - except over media.** "Hide lines from people you don't
-     trust" has no say in an IM: it is one person's words, and if you did not want them you
-     would not be in it. The VEIL is a different question and it stands (Curtis, 2026-09-20):
-     a picture arrives unasked wherever it is said, so a stranger's media waits behind a
-     click here as it does in a room. The room rule exempts the CREATOR, because you chose to
-     enter their room; the exemption lifts in a chat for two, where the creator is the other
-     person and opening a chat with you is not a relationship with you. One rule, with its
-     own vectors, read by the chat floor and the feed's room card alike
-     (`js/pure/chatveil.js`).
-   - **One chat per pair.** Opening a chat with somebody who already has one open with you
-     opens theirs. Which side minted the post is bookkeeping - the window wears the other
-     person's face and their name as this reader calls them TODAY (a nickname when one is
-     set, else the name they answer to now), never the title the post was minted under.
-   - **Its own shelf.** The chats column files IMs between the rooms and the rooms one has
-     left.
+    anybody's page opens "a Chat window that's sealed to Just Them". A two-person chat is not
+    a second chat system - it is a room (ruling 1) wearing the pair's rules: sealed to exactly
+    one other person through the post's own audience (_Contact tags_, ruling 5) with one
+    member, and marked `im` on the SIGNED header, so every door knows what it is holding
+    without opening a seal. The header says THAT there is a pair, never who: the audience
+    stays the author's own memo, as every audience is. _Direct Messages: The Sealed Pair_
+    argued the case for two - "the only size at which membership is not a mutable object" -
+    and this is that shape carried by the room machinery rather than an epoch of its own: the
+    key is the post's key, the pair is the author plus the one person the seal admits, and
+    there is no roster, no admission and no ejection. What differs from a room, and why:
+    - **Nobody owns it.** The post has an author because a post does; the conversation does
+      not. Both sides keep the WHOLE of it - both are its archive (ruling 6), both sync it
+      whole and neither prunes it to a budget, because a room only its pair can hold is not
+      a cache to trim. An IM never falls off the sync beat either, however long since anyone
+      looked.
+    - **No moderation, no takedown.** Mute, the deputy's badge, close and delete are refused
+      at the door and absent from the chrome. Every one of them is a power over the other
+      person's record, and between two people the honest powers are to stop talking and to
+      block. There is no third party to protect anybody from.
+    - **It does not travel.** A sealed post that is not "onward" already refuses shares, and
+      an IM is never onward, so there is nothing to pass along. The room's post does sit in
+      the feed - for the two of them, which is what sealing to one person means (Curtis,
+      2026-09-20) - and the chat window carries no link to it: the post is the plumbing,
+      not the conversation.
+    - **Trust is not a dial here - except over media.** "Hide lines from people you don't
+      trust" has no say in an IM: it is one person's words, and if you did not want them you
+      would not be in it. The VEIL is a different question and it stands (Curtis, 2026-09-20):
+      a picture arrives unasked wherever it is said, so a stranger's media waits behind a
+      click here as it does in a room. The room rule exempts the CREATOR, because you chose to
+      enter their room; the exemption lifts in a chat for two, where the creator is the other
+      person and opening a chat with you is not a relationship with you. One rule, with its
+      own vectors, read by the chat floor and the feed's room card alike
+      (`js/pure/chatveil.js`).
+    - **One chat per pair.** Opening a chat with somebody who already has one open with you
+      opens theirs. Which side minted the post is bookkeeping - the window wears the other
+      person's face and their name as this reader calls them TODAY (a nickname when one is
+      set, else the name they answer to now), never the title the post was minted under.
+    - **Its own shelf.** The chats column files IMs between the rooms and the rooms one has
+      left.
 
 13. **A chat from a stranger is a request (settled 2026-09-20).** Curtis, reading what ruling
-   12 had built: "any user can start a chat with any other user, sight unseen, no trust
-   relationship at all?" Yes - and *The Inbound Gate: One Floor, Three Surfaces* names a DM
-   as the first of its three surfaces, gated by a trust floor that has not shipped, so the
-   gate's only live refusal today is a block. The answer taken (Curtis's choice among the
-   floor, requests, and both) is **requests**, which leaks nothing to the sender and needs no
-   number nobody has yet:
-   - **A request is an IM opened by somebody this persona has not placed** - no trust and no
-     interest on their own ledger - and not yet accepted. A dial will not do as the test: the
-     chat machinery writes one itself when it pulls a room, and a relationship is something a
-     person says, never something their computer says for them.
-   - **It rings nothing.** No bell for the words, and none for the chat's post either - "they
-     mentioned you in a post" pointing at a chat's plumbing is news about nothing. The chats
-     column's own pile is where it waits, because that is where it can be answered.
-   - **It syncs nothing.** Looking at a request is not accepting it: its words are pulled once
-     so there is something to judge, and the room goes on no beat and into no register.
-   - **Three answers.** Accept - which joining is, and which saying something also is, because
-     talking to somebody IS agreeing to talk to them. Block, which ends it. And walking away,
-     which leaves it sitting there and tells them nothing at all.
-   - **What it is not.** It is consent, not safety, and not spam-proofing: the knock still
-     costs proof-of-work and the stranger tier is still a ring, and neither of those is what
-     this is for. The floor returns when Trust ships, in front of this rather than instead of
-     it.
+    12 had built: "any user can start a chat with any other user, sight unseen, no trust
+    relationship at all?" Yes - and _The Inbound Gate: One Floor, Three Surfaces_ names a DM
+    as the first of its three surfaces, gated by a trust floor that has not shipped, so the
+    gate's only live refusal today is a block. The answer taken (Curtis's choice among the
+    floor, requests, and both) is **requests**, which leaks nothing to the sender and needs no
+    number nobody has yet:
+    - **A request is an IM opened by somebody this persona has not placed** - no trust and no
+      interest on their own ledger - and not yet accepted. A dial will not do as the test: the
+      chat machinery writes one itself when it pulls a room, and a relationship is something a
+      person says, never something their computer says for them.
+    - **It rings nothing.** No bell for the words, and none for the chat's post either - "they
+      mentioned you in a post" pointing at a chat's plumbing is news about nothing. The chats
+      column's own pile is where it waits, because that is where it can be answered.
+    - **It syncs nothing.** Looking at a request is not accepting it: its words are pulled once
+      so there is something to judge, and the room goes on no beat and into no register.
+    - **Three answers.** Accept - which joining is, and which saying something also is, because
+      talking to somebody IS agreeing to talk to them. Block, which ends it. And walking away,
+      which leaves it sitting there and tells them nothing at all.
+    - **What it is not.** It is consent, not safety, and not spam-proofing: the knock still
+      costs proof-of-work and the stranger tier is still a ring, and neither of those is what
+      this is for. The floor returns when Trust ships, in front of this rather than instead of
+      it.
 
 14. **A chat for two answers to its key, and a node holding its words is in it (settled
-   2026-09-20).** Found while testing ruling 13: a line said in an IM reached the other side
-   perhaps half the time under load, and the half that failed failed forever - the word was
-   on its sayer's chain and nowhere else. Three things had to be true for the first word of a
-   chat to arrive, and none of them was:
-   - **The creator's node must know who to ask.** Its directory of a room is the people it
-     has already heard from (ruling 4), which at the first word is nobody. It also knows who
-     the SEAL admits - for an IM, the one other person - and that is who it now asks. The
-     push a say makes is one attempt at the first endpoint that answers; nothing stood behind
-     it.
-   - **The other node must serve its own words.** A sealed room's lane asks who the dialing
-     endpoint serves, off the peer ledger - and a pair who do not follow each other have no
-     such rows about each other, so the answer was nobody and the lane stayed shut. An IM now
-     answers to the room's KEY, as an onward room does (ruling 7's door). The reservation
-     that keeps a plain sealed room strict - its audience can change, and an untrust must
-     stop what comes next - does not apply to a pair, which is the one size whose membership
-     cannot change (*Direct Messages*), so there the key is the whole story.
-   - **A node that has SPOKEN in a room is in it.** "In" was `rooms_open` or one's own post,
-     which is a window being open, not a record being held. A node holding a room's words is
-     in that room by the only definition the lane needs, so the memo answers too.
-   Each of the three was reverted in turn and the claim failed each time, which is how they
-   are known to be load-bearing rather than plausible.
+    2026-09-20).** Found while testing ruling 13: a line said in an IM reached the other side
+    perhaps half the time under load, and the half that failed failed forever - the word was
+    on its sayer's chain and nowhere else. Three things had to be true for the first word of a
+    chat to arrive, and none of them was:
+    - **The creator's node must know who to ask.** Its directory of a room is the people it
+      has already heard from (ruling 4), which at the first word is nobody. It also knows who
+      the SEAL admits - for an IM, the one other person - and that is who it now asks. The
+      push a say makes is one attempt at the first endpoint that answers; nothing stood behind
+      it.
+    - **The other node must serve its own words.** A sealed room's lane asks who the dialing
+      endpoint serves, off the peer ledger - and a pair who do not follow each other have no
+      such rows about each other, so the answer was nobody and the lane stayed shut. An IM now
+      answers to the room's KEY, as an onward room does (ruling 7's door). The reservation
+      that keeps a plain sealed room strict - its audience can change, and an untrust must
+      stop what comes next - does not apply to a pair, which is the one size whose membership
+      cannot change (_Direct Messages_), so there the key is the whole story.
+    - **A node that has SPOKEN in a room is in it.** "In" was `rooms_open` or one's own post,
+      which is a window being open, not a record being held. A node holding a room's words is
+      in that room by the only definition the lane needs, so the memo answers too.
+      Each of the three was reverted in turn and the claim failed each time, which is how they
+      are known to be load-bearing rather than plausible.
 
 ## Slices
 
 0. **The chain key.** `(author, service, instance)` on the wire and in the node - its own
    arc, no chat in it, green under the existing suites before slice one. **Built 2026-09-18**
-   (*Chains: One Per Key, Per Service*): `ChainId`, `Frontier` and `Anchor` each carry an
+   (_Chains: One Per Key, Per Service_): `ChainId`, `Frontier` and `Anchor` each carry an
    optional instance, absent on the wire when none; `entries`, `equivocations` and
    `chain_heads` carry it as a column; `imaol::append_on` writes a per-instance chain and
    the crown keeps a ceiling per instance.
@@ -375,14 +375,14 @@ node keeps its own room whole, which is where "all of it" lives.
    `ChatMessage.mentions` (key 4, additive, capped): the personas the body's user cards
    name, derived at say, never the speaker, and in a sealed room only those the seal admits
    - in the clear on the chain, which travels only under the room's door, so the notice can
-   be checked without the room's key. The notice is `notice_kind::ROOM_MENTION` (6), the
-   mention's own envelope road: the message as evidence, its `doc_id` the room and its
-   `detail` the room's author. Two follow-edge exemptions, since no fold reads a room
-   chain: the inbox gate accepts it from a followed sender, and the bell keeps it. A left
-   room rings nothing - the recipient's own `rooms` register says so, and the door accepts
-   and keeps nothing. The bell's row reads "mentioned you in <room>", a link into the room
-   worn as its name. The `@` picker in the room offers who has spoken there first, then
-   contacts and the directory. Suite: the feed suite's bell claim.
+     be checked without the room's key. The notice is `notice_kind::ROOM_MENTION` (6), the
+     mention's own envelope road: the message as evidence, its `doc_id` the room and its
+     `detail` the room's author. Two follow-edge exemptions, since no fold reads a room
+     chain: the inbox gate accepts it from a followed sender, and the bell keeps it. A left
+     room rings nothing - the recipient's own `rooms` register says so, and the door accepts
+     and keeps nothing. The bell's row reads "mentioned you in <room>", a link into the room
+     worn as its name. The `@` picker in the room offers who has spoken there first, then
+     contacts and the directory. Suite: the feed suite's bell claim.
 7. **Closing & Deleting Rooms.** **Built 2026-09-19.** Both powers are ruling 10's and
    both doors already stood: close is the settled wish re-published on the room's own draft
    (the page finds the draft on the mirror by its publication), delete is the post's
@@ -428,31 +428,31 @@ node keeps its own room whole, which is where "all of it" lives.
    suite's sticker claim, across two nodes.
 10. **The Mute List**
 11. **IMs.** **Built 2026-09-20** (ruling 12). The header grows `im` (key 23), absent when
-   false and carried forward on re-publication - once an IM, always an IM. The publish door
-   checks the shape rather than the word: a room, sealed to `@mentioned`, naming exactly one
-   person who is not the author, else it refuses. The chat's words ARE that user card, so
-   the audience, the mention notice that tells the other person it exists, and the feed card
-   all come from the one thing the mint writes. `GET /ims/{other}` answers the chat already
-   going - mine by its audience memo, theirs by the rooms this persona may see - and the
-   client mints only when that 404s, which is what keeps one chat per pair. The refusals:
-   mute and deputize at the room's doors, close at the publish door, delete at the takedown
-   door. Every word said in an IM names the other person, so the room-mention notice is the
-   road that reaches them (the settled question below has why), and the room's door and the
-   chats column both ask the key lane before refusing.
-   `archivist_here` says yes to any node holding an IM (only the pair can hold one),
-   so neither side's budget ever prunes it, and the sync beat picks up IMs however stale.
-   The chats column files them under "IMs" between the rooms and the left pile; the window
-   wears the other person, drops the trust filter, the post link, leave, close and delete,
-   and offers the block in their place.
-   **Ruling 14, the same day:** the first word of a chat now arrives without the sayer's push
-   landing - the creator's node asks whoever the seal admits, at the address it has, showing
-   the room's key at a door that a chat for two answers to, and a node that has spoken in a
-   room serves it. Claim: bea says a chat's first word with her node dead to the network, and
-   ada's node goes and gets it.
-   **Ruling 13, the same day:** an IM from somebody this persona has not placed lists as a
-   REQUEST - its own pile in the column, no bell (the chat's post is hushed too), no sync, no
-   join - until it is accepted by the button or by answering, which the say door treats as
-   the same act. Suite: `ims.cjs`.
+    false and carried forward on re-publication - once an IM, always an IM. The publish door
+    checks the shape rather than the word: a room, sealed to `@mentioned`, naming exactly one
+    person who is not the author, else it refuses. The chat's words ARE that user card, so
+    the audience, the mention notice that tells the other person it exists, and the feed card
+    all come from the one thing the mint writes. `GET /ims/{other}` answers the chat already
+    going - mine by its audience memo, theirs by the rooms this persona may see - and the
+    client mints only when that 404s, which is what keeps one chat per pair. The refusals:
+    mute and deputize at the room's doors, close at the publish door, delete at the takedown
+    door. Every word said in an IM names the other person, so the room-mention notice is the
+    road that reaches them (the settled question below has why), and the room's door and the
+    chats column both ask the key lane before refusing.
+    `archivist_here` says yes to any node holding an IM (only the pair can hold one),
+    so neither side's budget ever prunes it, and the sync beat picks up IMs however stale.
+    The chats column files them under "IMs" between the rooms and the left pile; the window
+    wears the other person, drops the trust filter, the post link, leave, close and delete,
+    and offers the block in their place.
+    **Ruling 14, the same day:** the first word of a chat now arrives without the sayer's push
+    landing - the creator's node asks whoever the seal admits, at the address it has, showing
+    the room's key at a door that a chat for two answers to, and a node that has spoken in a
+    room serves it. Claim: bea says a chat's first word with her node dead to the network, and
+    ada's node goes and gets it.
+    **Ruling 13, the same day:** an IM from somebody this persona has not placed lists as a
+    REQUEST - its own pile in the column, no bell (the chat's post is hushed too), no sync, no
+    join - until it is accepted by the button or by answering, which the say door treats as
+    the same act. Suite: `ims.cjs`.
 
 ## Settled questions and residuals
 

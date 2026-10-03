@@ -81,7 +81,8 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
             }
             // Already public (a hand publish beat the sweep, or a sibling device minted
             // before the plan reached us)? Then the plan is spent, nothing to mint.
-            if let Ok(Some(existing)) = data.annotations().field(&doc_id, store::PUBLISHED_AS).await {
+            if let Ok(Some(existing)) = data.annotations().field(&doc_id, store::PUBLISHED_AS).await
+            {
                 if !existing.trim().is_empty() {
                     let _ = data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, "").await;
                     continue;

@@ -10,7 +10,13 @@ import htm from 'htm';
 import { api } from './net.js';
 import { t } from './i18n.js';
 import { MAX_TAG_CHARS } from './pure/annotations.js';
-import { DEFAULT_BLUR, DEFAULT_HIDE, parseTagList, serializeTagList, normalizeTag } from './pure/warnings.js';
+import {
+    DEFAULT_BLUR,
+    DEFAULT_HIDE,
+    parseTagList,
+    serializeTagList,
+    normalizeTag,
+} from './pure/warnings.js';
 
 const html = htm.bind(h);
 
@@ -23,7 +29,10 @@ async function load(root) {
     try {
         const r = await api(`/api/identity/${root}/private/kv/${COLLECTION}`);
         const val = (key) => ((r.values || []).find((v) => v.key === key) || {}).value;
-        store.set(root, { blur: parseTagList(val('blur'), DEFAULT_BLUR), hide: parseTagList(val('hide'), DEFAULT_HIDE) });
+        store.set(root, {
+            blur: parseTagList(val('blur'), DEFAULT_BLUR),
+            hide: parseTagList(val('hide'), DEFAULT_HIDE),
+        });
     } catch {
         store.set(root, { blur: [...DEFAULT_BLUR], hide: [...DEFAULT_HIDE] });
     }
@@ -85,7 +94,7 @@ const TagList = ({ root, which, label, hint }) => {
                         title=${t('warnings.remove', 'remove')}
                         onClick=${() => commit(list.filter((g) => g !== tag))}
                     >×</button>
-                </span>`
+                </span>`,
             )}
             <input
                 class="warn-add"

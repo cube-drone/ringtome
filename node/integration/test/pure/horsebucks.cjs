@@ -37,7 +37,11 @@ describe('formatHorseBucks', () => {
         assert.equal(formatHorseBucks('183928000000'), 'H$ 1.83 billion');
         assert.equal(formatHorseBucks('100000000'), 'H$ 1.00 million');
         assert.equal(formatHorseBucks('-4250000000'), '-H$ 42.50 million');
-        assert.equal(formatHorseBucks(`293${'0'.repeat(324)}00`), 'H$ 293.00 salsajillion', '293 x 10^324');
+        assert.equal(
+            formatHorseBucks(`293${'0'.repeat(324)}00`),
+            'H$ 293.00 salsajillion',
+            '293 x 10^324',
+        );
     });
     it('reads nonsense as nothing', () => {
         assert.equal(formatHorseBucks('horse'), 'H$ 0.00');

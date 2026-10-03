@@ -30,7 +30,8 @@ export function groupLedger(lines) {
             last.pennies = String(BigInt(last.pennies) + BigInt(line.pennies));
             last.n += d.count || 0;
             if (d.emoji) last.emoji.push(d.emoji);
-            for (const who of [d.by, d.of]) if (who && !last.people.includes(who)) last.people.push(who);
+            for (const who of [d.by, d.of])
+                if (who && !last.people.includes(who)) last.people.push(who);
             last.lines.push(line);
             continue;
         }

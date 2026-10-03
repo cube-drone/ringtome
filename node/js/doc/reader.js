@@ -60,7 +60,13 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const isMedia = doc && doc.format !== 'marquee' && doc.format !== 'plaintext';
     const copyLink = async () => {
         const p = isMedia
-            ? decoratedBodyUrl(root, docId, doc.format, doc.title, !!(doc.media && doc.media.animation))
+            ? decoratedBodyUrl(
+                  root,
+                  docId,
+                  doc.format,
+                  doc.title,
+                  !!(doc.media && doc.media.animation),
+              )
             : await shareUrl(docHref(root, docId));
         if (!p) return;
         try {
@@ -84,7 +90,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     api(`/api/identity/${root}/docs/${docId}/title`, {
                         method: 'PATCH',
                         body: JSON.stringify({ title }),
-                    })
+                    }),
             );
         } catch (e) {
             setWriteError(e.message);
@@ -108,7 +114,10 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                 docId,
                 (r) => r && { ...r, pinned: !pinned },
                 (r) => !!r && !!r.pinned === !pinned,
-                () => api(`/api/identity/${root}/docs/${docId}/pin`, { method: pinned ? 'DELETE' : 'PUT' })
+                () =>
+                    api(`/api/identity/${root}/docs/${docId}/pin`, {
+                        method: pinned ? 'DELETE' : 'PUT',
+                    }),
             );
         } catch (e) {
             setWriteError(e.message);
@@ -118,8 +127,12 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const remove = async () => {
         if (!confirm('Delete this document? It leaves the list right away.')) return;
         try {
-            await optimisticDoc(root, docId, () => null, (r) => !r, () =>
-                api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' })
+            await optimisticDoc(
+                root,
+                docId,
+                () => null,
+                (r) => !r,
+                () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
             );
             onDeleted && onDeleted();
         } catch (e) {
@@ -141,12 +154,19 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
         </div>`;
     }
     if (error) return html`<div class="reader"><p class="form-error">${error}</p></div>`;
-    if (!doc) return html`<div class="reader"><p class="null-sub">${t('doc.reader.opening', 'opening…')}</p></div>`;
+    if (!doc)
+        return html`<div class="reader"><p class="null-sub">${t('doc.reader.opening', 'opening…')}</p></div>`;
 
     // The DECORATED byte URL, not the bare /body: right-click -> "copy image address" on the
     // rendered media must yield a URL that re-embeds when pasted into a document, and the
     // embed sniff reads the extension (upload.js, decoratedBodyUrl).
-    const mediaUrl = decoratedBodyUrl(root, docId, doc.format, doc.title, !!(doc.media && doc.media.animation));
+    const mediaUrl = decoratedBodyUrl(
+        root,
+        docId,
+        doc.format,
+        doc.title,
+        !!(doc.media && doc.media.animation),
+    );
     let body;
     if (doc.format === 'plaintext') {
         body = html`<pre class="reader-plain jag-line">${doc.body ?? t('doc.reader.body-not-on-this-computer', '(body not on this computer yet)')}</pre>`;
@@ -178,44 +198,62 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                 />
                 <span class="reader-chips">
                     ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
-                    ${onDeleted &&
-                    !doc.builtin &&
-                    html`<${Chip}
+                    ${
+                        onDeleted &&
+                        !doc.builtin &&
+                        html`<${Chip}
                         icon=${Icons.trash}
                         modifier="chip-delete"
                         title=${t('doc.reader.delete-removes-this-document-from', 'delete')}
                         onClick=${remove}
-                    />`}
-                    ${!doc.builtin &&
-                    html`<${Chip}
+                    />`
+                    }
+                    ${
+                        !doc.builtin &&
+                        html`<${Chip}
                         icon=${Icons.copy}
                         title=${t('doc.reader.copy-into-private-notes', 'copy this note into another bucket')}
                         onClick=${() => setCopying(true)}
-                    />`}
-                    ${copying &&
-                    html`<${CopyIntoModal}
+                    />`
+                    }
+                    ${
+                        copying &&
+                        html`<${CopyIntoModal}
                         current=${{ root }}
                         source=${{ author: root, doc_id: docId, private: true }}
                         onClose=${() => setCopying(false)}
-                    />`}
-                    ${doc.diverged &&
-                    (doc.resolution === t('doc.reader.conflict-2', 'conflict')
-                        ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited on two computers at once. Both versions are below.')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
-                        : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'merged from two computers')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)}
+                    />`
+                    }
+                    ${
+                        doc.diverged &&
+                        (doc.resolution === t('doc.reader.conflict-2', 'conflict')
+                            ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited on two computers at once. Both versions are below.')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
+                            : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'merged from two computers')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)
+                    }
                     <${Chip}>${doc.format}</${Chip}>
-                    ${bytes > 0 &&
-                    html`<${Chip} title=${t('doc.reader.size-title', 'what this file takes: every version of it')}>${sizeLabel(bytes)}</${Chip}>`}
+                    ${
+                        bytes > 0 &&
+                        html`<${Chip} title=${t('doc.reader.size-title', 'what this file takes: every version of it')}>${sizeLabel(bytes)}</${Chip}>`
+                    }
                     ${/* The app's own pictures (builtin.rs, 2026-09-29): nobody's to delete or rename. */ ''}
                     ${doc.builtin && html`<${Chip} title=${t('doc.reader.builtin-title', 'this picture comes with the app: anyone can use it, nobody can delete it')}>${t('doc.reader.builtin', 'comes with the app')}</${Chip}>`}
                     <${Chip}>${t('doc.reader.read-only', 'read-only')}</${Chip}>
                     <${Chip}
                         icon=${Icons.link}
                         on=${linkCopied}
-                        title=${linkCopied
-                            ? t('doc.reader.copied', 'Copied!')
-                            : isMedia
-                            ? t('doc.reader.copy-the-files-address-paste', "copy the file's address")
-                            : t('doc.reader.copy-a-link-to-this', 'Copy a link to this document (paste it into another document to crosslink)')}
+                        title=${
+                            linkCopied
+                                ? t('doc.reader.copied', 'Copied!')
+                                : isMedia
+                                  ? t(
+                                        'doc.reader.copy-the-files-address-paste',
+                                        "copy the file's address",
+                                    )
+                                  : t(
+                                        'doc.reader.copy-a-link-to-this',
+                                        'Copy a link to this document (paste it into another document to crosslink)',
+                                    )
+                        }
                         onClick=${copyLink}
                     />
                     <${Chip}
@@ -224,21 +262,33 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         title=${t('doc.reader.tags-date-description', 'tags, date & description')}
                         onClick=${() => setShowMeta((v) => !v)}
                     />
-                    ${(features || featuresOf()).pin &&
-                    html`<${Chip}
+                    ${
+                        (features || featuresOf()).pin &&
+                        html`<${Chip}
                         icon=${Icons.pin}
                         modifier=${pinned ? 'chip-pinned' : null}
-                        title=${pinned
-                            ? t('doc.reader.pinned-click-to-unpin-it', 'Pinned — click to unpin it from the top of the list')
-                            : t('doc.reader.not-pinned-click-to-pin', 'Not pinned — click to pin it to the top of the list')}
+                        title=${
+                            pinned
+                                ? t(
+                                      'doc.reader.pinned-click-to-unpin-it',
+                                      'Pinned — click to unpin it from the top of the list',
+                                  )
+                                : t(
+                                      'doc.reader.not-pinned-click-to-pin',
+                                      'Not pinned — click to pin it to the top of the list',
+                                  )
+                        }
                         onClick=${togglePin}
-                    />`}
+                    />`
+                    }
                     <${NavChips} nav=${nav} />
                 </span>
-                ${showMeta &&
-                html`<div class="editor-meta jag-line">
+                ${
+                    showMeta &&
+                    html`<div class="editor-meta jag-line">
                     <${Annotations} root=${root} docId=${docId} />
-                </div>`}
+                </div>`
+                }
             </header>
             <div class="reader-scroll">${body}</div>
         </div>
@@ -248,9 +298,22 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
 // Exported: the wiki mounts this too, so a media page there opens the Reader, not a text editor.
-export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket, book, dropper = false }) => {
+export const RightColumn = ({
+    root,
+    docId,
+    docs,
+    features,
+    onDeleted,
+    nav,
+    bucket,
+    book,
+    dropper = false,
+}) => {
     // Nothing open: hrseFiles offers a place to drop files (`dropper`); the rest say to pick one.
-    if (!docId) return dropper ? html`<${FileDropper} root=${root} />` : html`<${Reader} root=${root} docId=${null} />`;
+    if (!docId)
+        return dropper
+            ? html`<${FileDropper} root=${root} />`
+            : html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
     // A drawing opens on its canvas (DRAWING.md), wherever it is listed - the Drawing app, or Lost &
