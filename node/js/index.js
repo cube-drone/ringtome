@@ -745,6 +745,10 @@ const AppRoute = ({ app: appId, doc, current, searchQuery, searchKind, bucket })
     />`;
 };
 
+/// Where this page last opened one of your documents - the app and the notebook - so an address whose
+/// document isn't there says so in that notebook, beside its list (2026-10-03), not on a bare page.
+let lastPlace = null; // { root, app, bucket }
+
 /// A document's own address (2026-09-28). Yours opens in the app of the notebook the shell placed
 /// it in (`appHere`); anyone else's goes to the resolver - a public post, or private.
 const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket }) => {
@@ -763,28 +767,44 @@ const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket 
     // The mirror not holding it is not the document not existing (Curtis, 2026-10-03: a flash of
     // "that isn't here", then the whole page): a mirror carried over from the last visit holds the
     // documents it held then, and one made since arrives with the stream a moment later. So the node
-    // is asked, and only its 404 says "isn't here"; anything else waits for the row.
+    // is asked, and only its 404 - or its word that the document is deleted - says "isn't here";
+    // anything else waits for the row.
     const [gone, setGone] = useState(false);
     useEffect(() => {
         setGone(false);
         if (!mine || row !== null) return undefined;
         let live = true;
-        api(`/api/identity/${current.root}/docs/${doc}`).catch(
-            (e) => live && e && e.status === 404 && setGone(true),
-        );
+        // A deleted document still reads (delete hides, it never erases), and says so.
+        api(`/api/identity/${current.root}/docs/${doc}`)
+            .then((d) => live && d && d.deleted && setGone(true))
+            .catch((e) => live && e && e.status === 404 && setGone(true));
         return () => {
             live = false;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mine, current && current.root, doc, row === null]);
     if (!mine) return html`<${DocResolve} seg=${seg} doc=${doc} current=${current} />`;
-    if (row === null && gone)
+    if (row === null && gone) {
+        const place = lastPlace && lastPlace.root === current.root ? lastPlace : null;
+        if (place)
+            return html`<${DocsApp}
+                key=${place.app.id}
+                app=${place.app}
+                current=${current}
+                docId=${null}
+                missing=${true}
+                searchQuery=${searchQuery}
+                searchKind=${searchKind}
+                bucket=${place.bucket}
+            />`;
         return html`<div class="null-state">
             <p class="null-title">${t('index.not-here', "that isn't here - it was deleted, or hasn't reached this computer yet.")}</p>
         </div>`;
+    }
     if (!row)
         return html`<div class="console"><p class="null-sub"><span class="status-spin"><${Icons.spinner} /></span> ${t('index.looking-that-up', 'looking that up…')}</p></div>`;
     if (!row || !appHere) return html`<${PrivateDoc} />`;
+    lastPlace = { root: current.root, app: appHere, bucket };
     return html`<${DocsApp}
         key=${appHere.id}
         app=${appHere}

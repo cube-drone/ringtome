@@ -126,17 +126,24 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
 
     const remove = async () => {
         if (!confirm('Delete this document? It leaves the list right away.')) return;
+        // Leave at once, as the editor does (doc/session.js): a refusal comes back said out loud,
+        // with the document in the list again.
+        const going = optimisticDoc(
+            root,
+            docId,
+            () => null,
+            (r) => !r,
+            () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
+        );
+        onDeleted && onDeleted();
         try {
-            await optimisticDoc(
-                root,
-                docId,
-                () => null,
-                (r) => !r,
-                () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
-            );
-            onDeleted && onDeleted();
+            await going;
         } catch (e) {
-            setWriteError(e.message);
+            alert(
+                t('doc.session.couldnt-delete', "couldn't delete it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 
@@ -308,7 +315,14 @@ export const RightColumn = ({
     bucket,
     book,
     dropper = false,
+    missing = false,
 }) => {
+    // The document the address named isn't there (2026-10-03): said here, in its notebook, with the
+    // list beside it - not on a page of its own.
+    if (!docId && missing)
+        return html`<div class="reader reader-empty">
+            <p class="null-sub">${t('index.not-here', "that isn't here - it was deleted, or hasn't reached this computer yet.")}</p>
+        </div>`;
     // Nothing open: hrseFiles offers a place to drop files (`dropper`); the rest say to pick one.
     if (!docId)
         return dropper

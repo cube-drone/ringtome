@@ -2878,19 +2878,38 @@ pub async fn search_rows(
             .try_into()
             .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?;
         let annot_text = annots.get(&id).map(String::as_str).unwrap_or("");
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(&heads_fp);
-        for chunk in head_bodies.chunks(32) {
-            let present = match <[u8; 32]>::try_from(chunk) {
-                Ok(h) => files.has(iroh_blobs::Hash::from_bytes(h)).await,
-                Err(_) => false,
-            };
-            hasher.update(&[present as u8]);
-        }
-        hasher.update(title.as_bytes());
-        hasher.update(&[0xff]); // title/annot seam: "ab"+"c" must not equal "a"+"bc"
-        hasher.update(annot_text.as_bytes());
-        let fp = hasher.finalize().as_bytes().to_vec();
+        let fingerprint = |present: &[bool]| {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(&heads_fp);
+            for p in present {
+                hasher.update(&[*p as u8]);
+            }
+            hasher.update(title.as_bytes());
+            hasher.update(&[0xff]); // title/annot seam: "ab"+"c" must not equal "a"+"bc"
+            hasher.update(annot_text.as_bytes());
+            hasher.finalize().as_bytes().to_vec()
+        };
+        // Which bodies are here is part of the fingerprint (a body that arrives re-indexes its
+        // words), but asking costs a round trip to the node-wide blob store per document - and
+        // this ran per document on every call, one after another (Curtis, 2026-10-03: a 30 s
+        // notebook tree read, every other request queued behind it). So first the fingerprint as
+        // if every body were here: a row indexed whole, its inputs unchanged, matches it and is
+        // fresh with no question asked. Only a changed document, or one indexed while a body was
+        // missing, asks the store - and its fingerprint is exactly what it always was.
+        let slots = head_bodies.chunks(32).count();
+        let whole = fingerprint(&vec![true; slots]);
+        let fp = if cached.get(&doc_id).is_some_and(|(have, _, _)| *have == whole) {
+            whole
+        } else {
+            let mut present = Vec::with_capacity(slots);
+            for chunk in head_bodies.chunks(32) {
+                present.push(match <[u8; 32]>::try_from(chunk) {
+                    Ok(h) => files.has(iroh_blobs::Hash::from_bytes(h)).await,
+                    Err(_) => false,
+                });
+            }
+            fingerprint(&present)
+        };
         match cached.get(&doc_id) {
             Some((have, tokens, links)) if *have == fp => out.push(SearchRow {
                 doc_id: hex::encode(id),

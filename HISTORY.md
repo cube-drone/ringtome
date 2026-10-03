@@ -16717,3 +16717,51 @@ shows a spinner and "looking that up…" in the console's frame, and asks the no
 for the stream to bring the row. `harness/docroute-probe.mjs`: a real document
 never shows the words, and a missing one reaches them through the 404 rather
 than spinning. `just strings-check` and `just ui-check` green.
+
+**2026-10-03 - deleting leaves at once, and "that isn't here" stays in its
+notebook.** Curtis, with a large private notes collection on
+horsedrawingtycoon.com: deleting a note held him on a bright, bare "THAT ISN'T
+HERE" for four seconds before carrying him back to the notes. The delete was
+already optimistic - gone from every list at once - but the editor (and the
+reader) only navigated away once the node confirmed, and in between the
+document's own address found its row gone. Now both leave the moment the delete
+is confirmed by the person; the request runs behind, and a refusal is said out
+loud (an alert - the surface that asked is gone by then) with the document back
+in the list. And the address's "that isn't here" is said inside the notebook the
+page last opened a document in - its list beside it, the message in the editor
+pane (`RightColumn`'s `missing`) - rather than on a page of its own;
+resume-the-last-document stands down there, so the page doesn't bounce into
+another note. Found on the way: yesterday's "ask the node before saying isn't
+here" would have spun forever on a DELETED document's address, since a deleted
+document still reads (delete hides, it never erases). The detail now says
+`deleted: true`, and the address counts that as gone; `docs.cjs` claims it. The
+slow "new note" (eight seconds to mint, six to open, on the live server) does
+not reproduce here - 2,000 notes with the app open, create ~25 ms and the
+editor's first read ~60 ms - so it waits on the server's own log. `just ci`
+green.
+
+**2026-10-03 - a notebook's tree reads in milliseconds, and stops holding
+everything else up.** Curtis's browser timings on horsedrawingtycoon.com, alone
+on the server, while making a note: `GET /taxonomies/<the notebook's tree>` at
+30-36 s, three times in the run, and everything else on the persona slowed
+behind it - the kv reads 1.5 s, the create 3.9 s, the editor's first read 8.7
+s - because a persona's statements queue on its one connection. The tree read
+now logs `taxonomy tree steps` (tree, annotations, buckets, pins, implicit tags,
+summaries, render), and locally, 1,500 filed notes, the first read after a burst
+of writes was 4.2 s, 3.9 of it `implicit_tags`: it refreshed the search index
+before reading the word counts the length tags come from. Two fixes. The tree
+read takes the implicit tags as the index last counted them
+(`implicit_tags_as_indexed`) - a length a beat behind on a row costs nothing,
+and the stream keeps the index fresh. And the index's refresh stopped asking the
+node-wide blob store, one document after another, whether each head's body is
+here: the fingerprint is first computed as if every body were, and a row indexed
+whole whose inputs haven't moved matches it and is fresh with no question asked;
+only a changed document, or one indexed while a body was missing, asks - and
+gets the very fingerprint it always had, so nothing re-indexes. (The one
+behaviour that moves: a body evicted after it was indexed keeps its words
+searchable.) After: the same tree's first read 0.31 s, warm 0.25 s; implicit
+15-32 ms. Tried and backed out: sharing one in-flight tree read between the tree
+pane and the Publish column - one read per load and one per filing either way in
+the harness, so nothing to show for it. Whether the live server's 30 s was the
+blob store queueing behind its other work is for its own `taxonomy tree steps`
+line to say, once deployed. `just ci` green.

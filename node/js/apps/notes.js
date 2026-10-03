@@ -459,7 +459,15 @@ const FileBrowser = ({
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 // `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
 // params, an object), which would shadow a prop of that name and break the string search.
-export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }) => {
+export const DocsApp = ({
+    app,
+    current,
+    docId,
+    searchQuery,
+    searchKind,
+    bucket,
+    missing = false,
+}) => {
     const root = current.root;
     const feat = featuresOf(app);
     const noun = itemNoun(app); // what this app calls one of its things, and many of them
@@ -477,6 +485,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
         app,
         docId,
         bucket,
+        { resume: !missing },
     );
     // The notebook switcher heads the list column (2026-09-30; it was in the app header). A switcher
     // over one notebook offers a choice that isn't one.
@@ -794,6 +803,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                 <${RightColumn}
                     root=${root}
                     docId=${selected}
+                    missing=${missing && !selected}
                     dropper=${!!app.everything}
                     docs=${docs}
                     nav=${nav}

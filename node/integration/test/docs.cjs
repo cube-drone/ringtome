@@ -318,6 +318,16 @@ describe('versioned documents (notes)', function () {
         // it does not erase (Immutable Chains != Immutable Content).
         const detail = await getDoc(user, root, gone.doc_id);
         assert.equal(detail.title, 'regret', 'the document itself is still on the chain');
+        assert.equal(
+            detail.deleted,
+            true,
+            'and says it is deleted - its address says "isn\'t here"',
+        );
+        assert.equal(
+            (await getDoc(user, root, keep.doc_id)).deleted,
+            undefined,
+            'a kept one says nothing',
+        );
 
         // Deleting again is idempotent (a no-op re-add), not an error.
         const again = await user(`api/identity/${root}/docs/${gone.doc_id}`, { method: 'DELETE' });

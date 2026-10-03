@@ -37,7 +37,7 @@ const lastDocMemory = new Map();
  * - `bumpTree` exists because deleting a document never touches the taxonomy roster, so the tree
  *   pane has no way to notice on its own.
  */
-export function useDocApp(root, app, docId, bucket) {
+export function useDocApp(root, app, docId, bucket, { resume = true } = {}) {
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
 
@@ -65,6 +65,9 @@ export function useDocApp(root, app, docId, bucket) {
         if (restored.current || !docs) return; // wait for the mirror, then decide exactly once
         restored.current = true;
         if (selected) return; // already on a document - nothing to restore
+        // An address whose document isn't there stays put, saying so (2026-10-03) - never
+        // bounced into whatever was open last.
+        if (!resume) return;
         const last = lastDocMemory.get(`${root}:${app.id}`);
         if (last && docs.some((d) => d.doc_id === last && bucketHolds(d, app, bucket))) {
             loc.route(hrefOf(last), true);

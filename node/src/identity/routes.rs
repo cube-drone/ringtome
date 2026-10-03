@@ -7035,6 +7035,10 @@ struct DocDetail {
     /// One of the app's own pictures (`builtin.rs`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     builtin: bool,
+    /// Deleted: off every list, still whole on its chain - so still readable here, but the
+    /// document's own address says "that isn't here" for it (2026-10-03), as it does for a 404.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    deleted: bool,
 }
 
 /// One document: all its heads, with bodies.
@@ -7062,6 +7066,7 @@ async fn docs_get_handler(
             }],
             save_parents: Vec::new(),
             builtin: true,
+            deleted: false,
         }));
     }
     let doc = data.documents().one(&doc_id).await?.ok_or_else(|| {
@@ -7117,6 +7122,7 @@ async fn docs_get_handler(
         heads,
         save_parents,
         builtin: false,
+        deleted: data.documents().deleted().await?.contains(&doc_id),
     }))
 }
 
@@ -7514,24 +7520,49 @@ async fn taxonomy_get_handler(
         AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey", "bad root pubkey"))
     })?;
 
+    // Each step timed (Curtis, 2026-10-03: a notebook's tree read took 30-36 s on the live server,
+    // and held the persona's one connection while it did - every other request queued behind it).
+    let started = std::time::Instant::now();
+    let lap = |since: &mut std::time::Instant| {
+        let ms = since.elapsed().as_millis() as u64;
+        *since = std::time::Instant::now();
+        ms
+    };
+    let mut at = std::time::Instant::now();
     let tree = data.taxonomies().tree(&taxonomy_id).await?;
+    let tree_ms = lap(&mut at);
 
     // One summaries query for every own document in the whole tree.
     let mut own_ids = Vec::new();
     collect_doc_ids(&tree, &own_root, &mut own_ids);
     let annots = annotation_map(&data).await?;
+    let annots_ms = lap(&mut at);
     let buckets = bucket_map(&data).await?;
+    let buckets_ms = lap(&mut at);
     let pinned = data.documents().pinned().await?;
-    let implicit = data.documents().implicit_tags().await?;
-    let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
-        .documents()
-        .summaries_for(&own_ids)
-        .await?
+    let pinned_ms = lap(&mut at);
+    let implicit = data.documents().implicit_tags_as_indexed().await?;
+    let implicit_ms = lap(&mut at);
+    let summaries = data.documents().summaries_for(&own_ids).await?;
+    let summaries_ms = lap(&mut at);
+    let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = summaries
         .into_iter()
         .map(|r| (r.doc_id, summarize(r, &annots, &buckets, &pinned, &implicit)))
         .collect();
-
-    Ok(Json(render_tree(tree, &rows)))
+    let rendered = render_tree(tree, &rows);
+    tracing::info!(
+        docs = own_ids.len(),
+        total_ms = started.elapsed().as_millis() as u64,
+        tree_ms,
+        annots_ms,
+        buckets_ms,
+        pinned_ms,
+        implicit_ms,
+        summaries_ms,
+        render_ms = lap(&mut at),
+        "taxonomy tree steps"
+    );
+    Ok(Json(rendered))
 }
 
 /// Every own-root, non-taxonomy member id in the tree - the ids `doc_heads` can answer for.

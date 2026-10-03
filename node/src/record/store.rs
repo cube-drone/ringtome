@@ -1002,6 +1002,16 @@ impl Documents<'_> {
     /// tag the note by its last count (a clean refresh is one query and some hashing).
     pub async fn implicit_tags(&self) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
         self.search_rows().await?;
+        self.implicit_tags_as_indexed().await
+    }
+
+    /// The implicit tags as the search index last counted them, without refreshing it first - for
+    /// a read that only decorates rows (a notebook's tree, 2026-10-03), where a length a beat
+    /// behind costs nothing and a refresh held the persona's one connection while it ran. The
+    /// stream keeps the index fresh.
+    pub async fn implicit_tags_as_indexed(
+        &self,
+    ) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
         let deleted: std::collections::HashSet<[u8; 16]> =
             self.deleted().await?.into_iter().collect();
         crate::record::documents::private_implicit_tags(

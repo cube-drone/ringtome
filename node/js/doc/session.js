@@ -237,19 +237,26 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         const m = machine.current;
         m.dirty = false;
         if (m.timer) clearTimeout(m.timer);
+        // Gone from every list at once, back if the delete fails (pure/optimistic.js) - and the
+        // page leaves it at once too (Curtis, 2026-10-03: four seconds on a bare "that isn't here"
+        // while the node confirmed). This surface is gone by the time a refusal could come back,
+        // so a refusal is said out loud, and the document is in the list again to show it.
+        const going = optimisticDoc(
+            root,
+            docId,
+            () => null,
+            (r) => !r,
+            () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
+        );
+        onDeleted && onDeleted();
         try {
-            // Gone from every list at once, back if the delete fails (pure/optimistic.js).
-            await optimisticDoc(
-                root,
-                docId,
-                () => null,
-                (r) => !r,
-                () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
-            );
-            onDeleted && onDeleted();
+            await going;
         } catch (e) {
-            setError(e.message);
-            setStatus('error');
+            alert(
+                t('doc.session.couldnt-delete', "couldn't delete it: {message}", {
+                    message: e.message,
+                }),
+            );
         }
     };
 

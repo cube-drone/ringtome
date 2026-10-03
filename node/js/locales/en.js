@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1418 phrases across 88 files.
+// 1419 phrases across 88 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -738,6 +738,7 @@ export default {
     'doc.editor.keep-it': 'keep it',
 
     // --- node/js/doc/reader.js ---
+    'doc.session.couldnt-delete': "couldn't delete it: {message}",
     'doc.reader.pick-something-on-the-left': 'pick something on the left, or make something new.',
     'doc.reader.opening': 'opening…',
     'doc.reader.body-not-on-this-computer': '(body not on this computer yet)',
@@ -761,6 +762,7 @@ export default {
     'doc.reader.tags-date-description': 'tags, date & description',
     'doc.reader.pinned-click-to-unpin-it': 'Pinned — click to unpin it from the top of the list',
     'doc.reader.not-pinned-click-to-pin': 'Not pinned — click to pin it to the top of the list',
+    'index.not-here': "that isn't here - it was deleted, or hasn't reached this computer yet.",
 
     // --- node/js/doc/session.js ---
     'doc.session.embed-removed-over-cap': '(“{alt}” removed — one page holds {cap} embedded files)',
@@ -873,7 +875,6 @@ export default {
     'index.back-to-the-list': 'back to the list',
     'index.close-this-app': 'close this app',
     'index.loading': 'Loading…',
-    'index.not-here': "that isn't here - it was deleted, or hasn't reached this computer yet.",
     'index.looking-that-up': 'looking that up…',
     'index.people': 'people',
     'index.feed': 'feed',
