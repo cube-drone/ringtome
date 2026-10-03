@@ -6,7 +6,9 @@
 // out, horse-relax, but on a person's page theirs all the same.
 //
 // The last one worn is kept in this browser, and put on before anything draws, so a witchlight
-// persona's reload doesn't flash beige before their profile arrives.
+// persona's reload doesn't flash beige before their profile arrives - by index.html's first script
+// (2026-10-02; the bundle runs after the first paint), which also wears a person's own when the
+// server names it in their page's head (`page-colorway`). This module starts from the same place.
 import { useEffect } from 'preact/hooks';
 
 export const COLORWAYS = ['horse-relax', 'witchlight', 'doors-xp', 'bosc', 'micross', 'terminal'];
@@ -24,10 +26,14 @@ const wear = (colorway) => {
 
 const apply = () => wear(known(page) || known(own) || DEFAULT_COLORWAY);
 
-// Before the first paint: the last one this browser wore.
+// Where index.html left it: a person's page named by the server (theirs until their profile says,
+// and `usePageColorway` takes over), else the last one this browser wore.
 try {
-    const kept = known(localStorage.getItem(KEPT));
-    if (kept) wear(kept);
+    const named =
+        typeof document !== 'undefined' && document.querySelector('meta[name="page-colorway"]');
+    page = known(named && named.content);
+    own = known(localStorage.getItem(KEPT));
+    apply();
 } catch {
     /* no storage: the default until a profile says otherwise */
 }
@@ -46,14 +52,21 @@ export function useOwnColorway(value) {
     }, [value]);
 }
 
-/// While a person's page is showing: their colourway, until it closes.
+/// While a person's page is showing: their colourway, until it closes. `undefined` is "their profile
+/// hasn't arrived": whatever is worn stays (the colourway their page's head named, if any) rather
+/// than flashing the reader's own until it does; `null` is "they chose none".
 export function usePageColorway(value) {
     useEffect(() => {
+        if (value === undefined) return;
         page = known(value);
         apply();
-        return () => {
+    }, [value]);
+    // Leaving their page, by any road - their profile arrived or never did - takes theirs off.
+    useEffect(
+        () => () => {
             page = null;
             apply();
-        };
-    }, [value]);
+        },
+        [],
+    );
 }

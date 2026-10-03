@@ -119,6 +119,17 @@ pub(crate) fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -
     fields.iter().find(|f| f.field == name).map(|f| f.value.as_str())
 }
 
+/// The person's colourway, named in their page's head (Curtis, 2026-10-02: the light default
+/// flashed before the app put a colourway on). index.html's first script wears it before anything
+/// draws, as the app's `usePageColorway` will once their profile arrives; nothing when they chose
+/// none. Which names are colourways is the page's business - it ignores one it does not know.
+fn colorway_meta(fields: &[imaol::ProfileField]) -> String {
+    profile_value(fields, "colorway")
+        .filter(|c| !c.trim().is_empty())
+        .map(|c| format!("\n<meta name=\"page-colorway\" content=\"{}\">", esc(c)))
+        .unwrap_or_default()
+}
+
 /// GET `/id/{seg}/{*rest}` - any deeper path under a persona. Its own handler because axum
 /// extracts path params POSITIONALLY: a two-parameter route destructured as one `Path<String>`
 /// is a 500, not a fallback (found 2026-08-03 by the first deep /id link the app ever
@@ -225,6 +236,7 @@ async fn post_page(
     if let Some(picture) = picture {
         head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(&picture)));
     }
+    head.push_str(&colorway_meta(&fields));
     Ok(Some(
         (
             StatusCode::OK,
@@ -499,6 +511,7 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
             esc(doc)
         ));
     }
+    head.push_str(&colorway_meta(&fields));
     let status = if hosted { StatusCode::OK } else { StatusCode::NOT_FOUND };
     Ok((
         status,

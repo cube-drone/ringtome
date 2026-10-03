@@ -3,6 +3,20 @@
 <head>
     $HEAD$
     <meta name="app-version" content="$VERSION$">$BRANCH$
+    <script>
+        // The colourway before anything draws (Curtis, 2026-10-02: the bundle put it on after the
+        // first paint, and the light default flashed): a person's page wears theirs, which its
+        // head names; anywhere else, the one this browser last wore (colorway.js keeps it). The
+        // names are colorway.js's COLORWAYS - a pure test holds the two lists together.
+        try {
+            var colorways = ['horse-relax', 'witchlight', 'doors-xp', 'bosc', 'micross', 'terminal'];
+            var named = document.querySelector('meta[name="page-colorway"]');
+            var colorway = named ? named.content : localStorage.getItem('colorway');
+            if (colorways.indexOf(colorway) >= 0) document.documentElement.dataset.colorway = colorway;
+        } catch (e) {
+            /* no storage: the default until a profile says otherwise */
+        }
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" type="text/css" href="/static/$VERSION$/app.css">

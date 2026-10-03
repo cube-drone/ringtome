@@ -183,9 +183,10 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
         };
     }, [root, via, viewer]);
 
-    // Their page wears their colourway (Curtis, 2026-09-30), a public field of their profile.
+    // Their page wears their colourway (Curtis, 2026-09-30), a public field of their profile - and
+    // until it arrives, whatever their page's head already put on (colorway.js).
     const theirColorway = ((profile && profile.fields) || []).find((f) => f.field === 'colorway');
-    usePageColorway(theirColorway ? theirColorway.value : null);
+    usePageColorway(profile ? (theirColorway ? theirColorway.value : null) : undefined);
 
     // Your nickname for them, live off the contacts mirror - first of the three names a
     // person wears (nickname / self-name / speakable words).

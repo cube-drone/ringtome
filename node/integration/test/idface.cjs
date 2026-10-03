@@ -653,6 +653,27 @@ describe("a post's own head, for the unfurlers outside", function () {
         );
     });
 
+    it("names the person's colourway in the head, so the page wears it before anything draws (2026-10-02)", async () => {
+        const { post } = await publish('Witchy', 'words in the dark');
+        const meta = '<meta name="page-colorway"';
+        assert.ok(
+            !(await headOf(`ringtome/user/${short}`)).includes(meta),
+            'none chosen, none named',
+        );
+        await owner(`api/identity/${root}/profile`, {
+            method: 'POST',
+            body: JSON.stringify({ field: 'colorway', value: 'witchlight' }),
+        });
+        for (const path of [`ringtome/user/${short}`, `ringtome/user/${short}/post/${post}`]) {
+            const head = await headOf(path);
+            assert.ok(head.includes(`${meta} content="witchlight">`), `${path}: ${head}`);
+        }
+        await owner(`api/identity/${root}/profile`, {
+            method: 'POST',
+            body: JSON.stringify({ field: 'colorway', value: '' }),
+        });
+    });
+
     it("an untitled post is called by its first words; the author's description outranks the excerpt", async () => {
         const untitled = await publish(
             '',

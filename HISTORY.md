@@ -16581,3 +16581,23 @@ book, its title page heads the notebook's list above every pin, an implicit pin
 wearing Phosphor's `Books` (`orderDocs`'s `first`, worked out from the tree each
 render - nothing stored, so switching the book off or reordering the tree moves
 it at once). `just strings-check` and `just ui-check` green.
+
+**2026-10-02 - the colourway goes on before the first paint.** Curtis: "the
+colorway change to the UI is loaded pretty late in the page's load cycle, which
+leads to frequent visible flashes of the light-mode version of the site".
+colorway.js already kept the last colourway worn in this browser for exactly
+this, but put it on when the bundle ran - after the stylesheet had painted the
+default. Now index.html's first script, in the head before anything draws, wears
+it: the colourway a person's page names (`<meta name="page-colorway">`, which
+`idface` writes into both a person's head and their posts' heads when they've
+chosen one), else the one this browser last wore. colorway.js starts from the
+same place, and `usePageColorway` now tells "their profile hasn't arrived"
+(`undefined`: keep what's on) from "they chose none" (`null`), so the app no
+longer flips a person's page to the reader's own colourway while their profile
+loads; leaving their page takes theirs off by any road, loaded or not. The early
+script repeats colorway.js's names (it runs before any module), so
+`pure/colorway.cjs` holds the two lists and the storage key together. A person
+this node doesn't host gets no named colourway in their head - nothing of theirs
+is held to name - so their page still shows the reader's own until their profile
+arrives. `idface.cjs` claims the meta on both heads and its absence when none is
+chosen. `just ci` green.
