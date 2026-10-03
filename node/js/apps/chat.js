@@ -19,6 +19,7 @@ import { agoUnit } from '../pure/ago.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { openMirror, useLive } from '../mirror.js';
+import { unlandedLines } from '../pure/optimistic.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { contactCollection } from '../pure/contact.js';
 import { isEmojiTag, MAX_TAG_CHARS } from '../pure/annotations.js';
@@ -628,6 +629,8 @@ const Line = ({
     hushed,
     found,
     room,
+    onRetry,
+    onDiscard,
 }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
@@ -649,6 +652,9 @@ const Line = ({
         cont ? 'chat-line-cont' : '',
         untrusted ? 'chat-line-untrusted' : '',
         onlyEmoji(m.words) ? 'chat-line-emoji' : '',
+        // Sent, not yet said back (2026-10-02): on the floor at once, a little faded until it lands.
+        m.pending ? 'chat-line-pending' : '',
+        m.failed ? 'chat-line-failed' : '',
     ]
         .filter(Boolean)
         .join(' ');
@@ -781,6 +787,14 @@ const Line = ({
             </span>`
             }
         </div>
+    ${
+        m.failed &&
+        html`<div class="chat-line-unsent">
+            <span>${t('apps.chat.not-sent', "didn't send: {why}", { why: m.failed })}</span>
+            <button class="chat-line-unsent-act" type="button" onClick=${() => onRetry && onRetry(m)}>${t('apps.chat.try-again', 'try again')}</button>
+            <button class="chat-line-unsent-act" type="button" onClick=${() => onDiscard && onDiscard(m)}>${t('apps.chat.discard', 'discard')}</button>
+        </div>`
+    }
     </li>`;
 };
 
@@ -852,6 +866,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     const keepOffset = useRef(null); // the floor's height before older lines landed
     const [draft, setDraft] = useState('');
     const [sending, setSending] = useState(false);
+    // Lines sent and not yet said back (2026-10-02): on the floor at once, in a queue so they reach
+    // the room in the order typed (pure/optimistic.js `unlandedLines` says when each has landed).
+    const [pendingLines, setPendingLines] = useState([]);
+    const sayQueue = useRef(Promise.resolve());
+    const pendingMade = useRef(0);
     const [sendError, setSendError] = useState(null);
     const [typing, setTyping] = useState([]);
     // Editing (CHAT.md, slice 8): the line's words load into the composer, and the next
@@ -972,6 +991,8 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         let live = true;
         setRoom(undefined);
         setHistory(floorsSeen.get(`${root}/${author}/${doc}`) || null);
+        // Another room's stand-ins are not this one's (a send in flight still lands where it was typed).
+        setPendingLines([]);
         atEnd.current = true;
         api(`/api/identity/${root}/rooms/${author}/${doc}`)
             .then((r) => live && setRoom(r))
@@ -1027,6 +1048,13 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc, !!room]);
+    // A sent line the history now holds is the history's to show: its stand-in goes.
+    useEffect(() => {
+        setPendingLines((p) => {
+            const left = unlandedLines(p, history && history.items, root);
+            return left.length === p.length ? p : left;
+        });
+    }, [history, root]);
     // The live lane (CHAT.md, ruling 5): the room's socket says when the floor moved and
     // who is here; it reconnects with backoff, and the poll above is the backstop.
     useEffect(() => {
@@ -1114,7 +1142,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             el.scrollTop = el.scrollHeight - keepOffset.current.height + keepOffset.current.top;
             keepOffset.current = null;
         } else if (atEnd.current) el.scrollTop = el.scrollHeight;
-    }, [history, words.body, typing, at]);
+    }, [history, words.body, typing, at, pendingLines]);
     // The full-sync button (ruling 6): the node's operator makes this node keep the room
     // whole, or lets the budget apply again.
     const setArchive = async (on) => {
@@ -1153,22 +1181,59 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     };
     const draftBytes = byteLength(draft);
     const overLong = draftBytes > MAX_MESSAGE_BYTES;
+    // One line through the queue: said in turn, then marked with what the node answered (so the
+    // floor can tell when it has landed), or with why it didn't.
+    const sayPending = (line) => {
+        const mark = (fields) =>
+            setPendingLines((p) => p.map((x) => (x.hash === line.hash ? { ...x, ...fields } : x)));
+        sayQueue.current = sayQueue.current.then(async () => {
+            try {
+                const r = await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
+                    method: 'POST',
+                    body: JSON.stringify({ words: line.words }),
+                });
+                mark({ seq: r.seq, landed_ms: r.said_ms });
+                readHistory();
+            } catch (e) {
+                mark({ failed: e.message || String(e) });
+            }
+        });
+    };
+    const retryLine = (line) => {
+        setPendingLines((p) => p.map((x) => (x.hash === line.hash ? { ...x, failed: null } : x)));
+        sayPending(line);
+    };
+    const discardLine = (line) => setPendingLines((p) => p.filter((x) => x.hash !== line.hash));
     const send = async () => {
         const said = draft.trim();
         if (!said || sending || overLong) return;
-        setSending(true);
         setSendError(null);
+        atEnd.current = true; // your own line always brings you to the end
+        // A new line is on the floor at once (Curtis, 2026-10-02) and the composer is free for the
+        // next; an edit still waits for the room, since it rewrites a line already there.
+        if (!editingLine) {
+            const line = {
+                hash: `pending-${++pendingMade.current}`,
+                speaker: root,
+                said_ms: Date.now(),
+                words: said,
+                pending: true,
+            };
+            setPendingLines((p) => [...p, line]);
+            setDraft('');
+            sayTyping(false);
+            sayPending(line);
+            return;
+        }
+        setSending(true);
         try {
             await api(`/api/identity/${root}/rooms/${author}/${doc}/messages`, {
                 method: 'POST',
-                body: JSON.stringify(
-                    editingLine ? { words: said, edits: editingLine.hash } : { words: said },
-                ),
+                body: JSON.stringify({ words: said, edits: editingLine.hash }),
             });
             setDraft('');
             setEditingLine(null);
             sayTyping(false);
-            atEnd.current = true; // your own line always brings you to the end
             readHistory();
         } catch (e) {
             setSendError(e.message || String(e));
@@ -1491,6 +1556,8 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         }
         lines.push(m);
     }
+    // Then what this reader has sent and the room hasn't said back yet, newest last, as it was typed.
+    for (const m of unlandedLines(pendingLines, history && history.items, root)) lines.push(m);
     return html`<section class="chat-room">
         <header class="chat-room-head">
             <h2 class="chat-room-name">${room.im ? name : html`<${RoomTitle}>${name}</${RoomTitle}>`}</h2>
@@ -1791,10 +1858,12 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                                       trusted: hasTrust(trustOf.get(m.speaker)),
                                   })
                               }
-                              onReact=${m.post || room.left || (history && history.closed) ? null : react}
-                              onEdit=${m.post || room.left || (history && history.closed) ? null : beginEdit}
-                              onDelete=${m.post || room.left || (history && history.closed) ? null : setDeletingLine}
-                              onMute=${iModerate && !m.post && !room.left ? (who) => setMuted(who, true) : null}
+                              onReact=${m.post || m.pending || room.left || (history && history.closed) ? null : react}
+                              onEdit=${m.post || m.pending || room.left || (history && history.closed) ? null : beginEdit}
+                              onDelete=${m.post || m.pending || room.left || (history && history.closed) ? null : setDeletingLine}
+                              onMute=${iModerate && !m.post && !m.pending && !room.left ? (who) => setMuted(who, true) : null}
+                              onRetry=${m.pending ? retryLine : null}
+                              onDiscard=${m.pending ? discardLine : null}
                               ${
                                   /* A muted reader's react, edit and delete would be seen by
                                   nobody: the menu stands down with the composer. */ ''

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1415 phrases across 88 files.
+// 1418 phrases across 88 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -116,6 +116,9 @@ export default {
     'apps.chat.sealed-words-you-cannot-open': 'sealed words this computer cannot open',
     'apps.chat.media-from-someone-you-dont-trust': "media from someone you don't trust - click to see",
     'apps.chat.who-said-click-to-take-yours-back': '{who} - click to take yours back',
+    'apps.chat.not-sent': "didn't send: {why}",
+    'apps.chat.try-again': 'try again',
+    'apps.chat.discard': 'discard',
     'apps.chat.upload-never-finished': 'that upload never finished processing - try it again',
     'apps.chat.knocking': 'knocking…',
     'apps.chat.this-room-is-not-open-to-you': 'this room is not open to you',

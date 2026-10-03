@@ -7,7 +7,7 @@
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::header::{
-    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS,
+    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, ETAG, X_CONTENT_TYPE_OPTIONS,
 };
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -6514,8 +6514,9 @@ async fn docs_body_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Response, AppError> {
-    docs_body_impl(session, state, root, doc_id).await
+    docs_body_impl(session, state, root, doc_id, if_none_match(&headers)).await
 }
 
 /// The decorative-filename twin (`…/body/{filename}`): the name is ignored entirely - it exists
@@ -6525,15 +6526,29 @@ async fn docs_body_named_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id, _filename)): Path<(String, String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Response, AppError> {
-    docs_body_impl(session, state, root, doc_id).await
+    docs_body_impl(session, state, root, doc_id, if_none_match(&headers)).await
 }
+
+fn if_none_match(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers.get(axum::http::header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()).map(str::to_string)
+}
+
+/// How a private body may be kept (Curtis, 2026-10-02: clicking around his files, every one loaded
+/// again, every time - the body said nothing about caching, so a browser kept nothing). The address
+/// names the DOCUMENT, which can take a new version (a drawing, at every save), so it is never
+/// `immutable`; the blob under it is content-addressed, so its hash is a perfect ETag. Kept by the
+/// reader's browser alone (`private`: behind a session, never a CDN's) and asked about at every use
+/// (`no-cache`): an unchanged file costs a 304 - no blob read, no decryption, no bytes.
+const PRIVATE_BODY_CACHE: &str = "private, no-cache";
 
 async fn docs_body_impl(
     session: Session,
     state: AppState,
     root: String,
     doc_id: String,
+    if_none_match: Option<String>,
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
@@ -6552,6 +6567,14 @@ async fn docs_body_impl(
         ))
     })?;
     let format = crate::record::documents::Format::from_wire(head.header.format);
+    let etag = format!("\"{}\"", hex::encode(head.header.file_hash));
+    if if_none_match.as_deref().is_some_and(|inm| crate::idface::etag_matches(inm, &etag)) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [(ETAG, etag.as_str()), (CACHE_CONTROL, PRIVATE_BODY_CACHE)],
+        )
+            .into_response());
+    }
     let bytes = data.documents().body(head).await?.ok_or_else(|| {
         AppError::NotFound(crate::msg!(
             "identity.routes.body-not-on-this-node",
@@ -6563,6 +6586,8 @@ async fn docs_body_impl(
             (CONTENT_TYPE, format.mime()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (CONTENT_SECURITY_POLICY, "sandbox"),
+            (CACHE_CONTROL, PRIVATE_BODY_CACHE),
+            (ETAG, etag.as_str()),
         ],
         bytes,
     )

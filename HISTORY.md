@@ -16609,3 +16609,40 @@ colourway outright; the deployed build has the same). `undefined` is "not known
 yet" there too now, and only signing out (`null`) clears. The cost: switching to
 a persona that never chose a colourway keeps the last one worn until they
 choose. `just ui-check` green.
+
+**2026-10-02 - a chat line is on the floor the moment it's sent.** Curtis: "As
+SOON as I type a chat message I want to see it hit the chat box, rather than
+after it bounces to the server and back." The composer used to wait on the say,
+then re-read the history. Now a new line goes onto the floor at once as a
+stand-in (faded, `chat-line-pending`) and the composer clears for the next; the
+sends go through a queue, so lines typed quickly reach the room in the order
+typed. The say answers with the line's `seq` and `said_ms`, and the history line
+with this speaker, that seq and that moment is the same line, so the stand-in
+goes when the history holds it (`unlandedLines`, pure/optimistic.js). A send the
+room refuses stays on the floor, saying why, with "try again" and "discard".
+Stand-ins wear no menu - there's no line yet to react to, edit or delete - and a
+room change clears them (a send in flight still lands in the room it was typed
+in). Edits stay as they were: an edit rewrites a line already on the floor and
+waits for the room. Pictures and uploads also still wait.
+`harness/chat-optimistic-probe.mjs` holds the send and finds the line already
+showing, then lets it through and finds it landed once; refuses one and finds it
+failed and discardable. `just strings-check` and `just ui-check` green.
+
+**2026-10-02 - your own files are kept by your browser.** Curtis, clicking
+around his files on horsedrawingtycoon.com: "it feels like they take a long time
+to load, and I have to pay that cost every time I load them. Does the CDN or my
+browser not cache files at all?" The CDN can't, by design - a private body is
+behind a session - and the browser didn't, because
+`GET /api/identity/{root}/docs/{doc}/body` said nothing about caching: no
+`Cache-Control`, no `ETag`, so every view fetched, read and decrypted the whole
+file again. (Thumbnails were fine - `?v=<head>`, immutable for a year - and
+public media has been cached since this morning.) Now the private body carries
+an ETag of its blob's content hash with `private, no-cache`: the browser keeps
+it, asks at each use, and an unchanged file is a 304 before the blob is read -
+no read, no decryption, no bytes. Never `immutable`: the address names the
+document, and a document can take a new version (a drawing, at every save). Both
+this door and the public one now match `If-None-Match` the RFC's weak way
+(`idface::etag_matches`: `W/`, lists, `*`), since a CDN that compresses a
+response can hand the browser a weakened tag that an exact compare would miss
+every time. `docs.cjs` claims the headers and the 304 on both spellings of the
+address. `just ci` green.

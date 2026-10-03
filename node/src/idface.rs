@@ -1844,7 +1844,7 @@ pub(crate) async fn public_doc_bytes(
     // 304 and no bytes, an edited one arrives the moment the card asks.
     let etag = format!("\"{}\"", hex::encode(hash));
     let cache = cache_policy(format, trusted_only);
-    if if_none_match.is_some_and(|inm| inm == etag) {
+    if if_none_match.is_some_and(|inm| etag_matches(inm, &etag)) {
         return Ok((
             StatusCode::NOT_MODIFIED,
             [(header::ETAG, etag.as_str()), (header::CACHE_CONTROL, cache)],
@@ -2141,6 +2141,16 @@ pub(crate) async fn seal_key_for(
             "you can't label words you can't read"
         ))),
     }
+}
+
+/// Whether an `If-None-Match` names this ETag (RFC 9110 13.1.2, the weak comparison a GET uses): any
+/// in a comma-separated list, weak (`W/`) or strong, or `*`. A CDN that compresses a response may
+/// hand the browser a weakened ETag, which it then sends back weak - an exact string compare would
+/// miss it every time and send the bytes anyway.
+pub(crate) fn etag_matches(if_none_match: &str, etag: &str) -> bool {
+    let bare = |t: &str| t.trim().trim_start_matches("W/").to_string();
+    let ours = bare(etag);
+    if_none_match.split(',').any(|t| t.trim() == "*" || bare(t) == ours)
 }
 
 /// How long a public document's bytes may be kept (Curtis, 2026-10-02: back from a post, "all of the
@@ -3739,6 +3749,17 @@ mod refresh_order_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_etag_matches_weak_strong_listed_or_star() {
+        let ours = "\"abc\"";
+        assert!(super::etag_matches("\"abc\"", ours));
+        assert!(super::etag_matches("W/\"abc\"", ours), "a CDN-weakened tag still matches");
+        assert!(super::etag_matches("\"x\", W/\"abc\"", ours), "anywhere in a list");
+        assert!(super::etag_matches("*", ours));
+        assert!(!super::etag_matches("\"abd\"", ours));
+        assert!(!super::etag_matches("", ours));
+    }
+
     use super::*;
 
     /// The address before `/ringtome/` goes to its new spelling, the hints kept, and a book's

@@ -682,6 +682,32 @@
 }
 
 /* Edited: a quiet word beside the time (CHAT.md, slice 8). */
+/* A line sent and not yet said back (2026-10-02): on the floor at once, faded until it lands; one the
+ * room refused stays, with why and what to do. */
+.chat-line-pending {
+    opacity: 0.6;
+}
+.chat-line-failed {
+    opacity: 1;
+}
+.chat-line-unsent {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8em;
+    color: var(--coral);
+}
+.chat-line-unsent-act {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
 .chat-line-edited {
     font-size: 0.75em;
     color: var(--muted);

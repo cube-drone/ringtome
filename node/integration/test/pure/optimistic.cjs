@@ -157,3 +157,40 @@ describe('tag edits laid over a note (2026-10-02)', () => {
         assert.equal(o.tagOpsSettled([], {}), true, 'nothing in flight');
     });
 });
+
+describe('chat lines on the floor before the room says them back (2026-10-02)', () => {
+    const me = 'aa';
+    const sent = (n, over = {}) => ({
+        hash: `pending-${n}`,
+        speaker: me,
+        words: `line ${n}`,
+        ...over,
+    });
+    it('keeps a line still in flight, and one that failed', () => {
+        const pending = [sent(1), sent(2, { failed: 'no' })];
+        assert.deepEqual(o.unlandedLines(pending, [], me), pending);
+    });
+    it('lets a line go once the history holds the one the node answered with', () => {
+        const pending = [
+            sent(1, { seq: 7, landed_ms: 1000 }),
+            sent(2, { seq: 8, landed_ms: 1001 }),
+        ];
+        const items = [{ speaker: me, seq: 7, said_ms: 1000, hash: 'h7' }];
+        assert.deepEqual(
+            o.unlandedLines(pending, items, me).map((p) => p.hash),
+            ['pending-2'],
+        );
+    });
+    it("never takes someone else's line, or the same seq at another moment, for it", () => {
+        const pending = [sent(1, { seq: 7, landed_ms: 1000 })];
+        assert.equal(
+            o.unlandedLines(pending, [{ speaker: 'bb', seq: 7, said_ms: 1000 }], me).length,
+            1,
+        );
+        assert.equal(
+            o.unlandedLines(pending, [{ speaker: me, seq: 7, said_ms: 999 }], me).length,
+            1,
+        );
+        assert.equal(o.unlandedLines(pending, null, me).length, 1, 'no history yet');
+    });
+});

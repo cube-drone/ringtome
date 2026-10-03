@@ -167,3 +167,15 @@ export function tagOpsSettled(tags, ops) {
         op === 'adding' ? have.includes(t) : !have.includes(t),
     );
 }
+
+/// The chat lines a room's floor shows that the room hasn't said back yet (2026-10-02: a line is
+/// on the floor the moment it's sent, not a round trip later). `pending` are this reader's sends,
+/// oldest first; a send the node answered carries the `seq` and `landed_ms` it answered with, and
+/// the history line with this speaker, that seq and that moment is the same line - so the stand-in
+/// goes. One still in flight, or one that failed, matches nothing and stays.
+export function unlandedLines(pending, items, me) {
+    const landed = new Set(
+        (items || []).filter((m) => m.speaker === me).map((m) => `${m.seq}:${m.said_ms}`),
+    );
+    return (pending || []).filter((p) => p.seq == null || !landed.has(`${p.seq}:${p.landed_ms}`));
+}

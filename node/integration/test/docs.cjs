@@ -217,6 +217,19 @@ describe('versioned documents (notes)', function () {
         assertIsAvif(back, 'served body');
         assert.ok(!back.equals(png), 'the upload was transcoded, not stored byte-for-byte');
 
+        // Kept by the reader's browser and asked about at each use (2026-10-02: every file loaded
+        // again, every time): the blob's hash is the ETag, and an unchanged file is a 304, no bytes.
+        assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+        const etag = res.headers.get('etag');
+        assert.ok(/^"[0-9a-f]{64}"$/.test(etag || ''), `an ETag of the blob's hash: ${etag}`);
+        for (const path of ['body', 'body/sunset.avif']) {
+            const again = await user(`api/identity/${root}/docs/${queued.doc_id}/${path}`, {
+                headers: { 'If-None-Match': etag },
+            });
+            assert.equal(again.status, 304, `${path}: the same file is not sent twice`);
+            assert.equal((await again.arrayBuffer()).byteLength, 0);
+        }
+
         // Thumbnail: its own sibling blob, also a real AVIF.
         const thumb = await user(`api/identity/${root}/docs/${queued.doc_id}/thumb`);
         assert.equal(thumb.status, 200);
