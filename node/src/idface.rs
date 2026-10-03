@@ -2668,9 +2668,18 @@ pub async fn id_posts(
         && session.is_some()
         && posts.len() as i64 <= POSTS_PAGE
         && posts_floor(&state, &root_hex).await > 0
-        && tokio::time::timeout(std::time::Duration::from_secs(8), backfill(&state, &root_hex))
-            .await
-            .unwrap_or(false)
+        && crate::net::waited(
+            "older posts (backfill)",
+            &root_hex,
+            tokio::time::timeout(std::time::Duration::from_secs(8), backfill(&state, &root_hex)),
+            |r| match r {
+                Ok(true) => "got some",
+                Ok(false) => "nothing more",
+                Err(_) => "timed out",
+            },
+        )
+        .await
+        .unwrap_or(false)
     {
         if let Some(db) = &dbh {
             posts = crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)

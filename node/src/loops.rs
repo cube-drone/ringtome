@@ -123,8 +123,16 @@ fn periodic_inner<S, F, Fut>(
             }
             for who in batch {
                 // Each pass runs in its own task so a panic is contained (and logged as a
-                // join error) instead of killing the loop.
-                match tokio::spawn(job(state.clone(), who)).await {
+                // join error) instead of killing the loop. It carries a database tally, as a
+                // request does (db.rs), so a slow pass says whether it worked or queued.
+                let tally =
+                    std::sync::Arc::new(std::sync::Mutex::new(crate::db::DbTally::default()));
+                let started = std::time::Instant::now();
+                let pass =
+                    crate::db::DB_TALLY.scope(tally.clone(), job(state.clone(), who.clone()));
+                let outcome = tokio::spawn(pass).await;
+                note_slow_pass(name, who.as_deref(), started.elapsed(), &tally);
+                match outcome {
                     Ok(Ok(())) => {}
                     Ok(Err(e)) => tracing::warn!(loop_name = name, "background pass failed: {e:#}"),
                     Err(join_error) => {
@@ -134,6 +142,35 @@ fn periodic_inner<S, F, Fut>(
             }
         }
     });
+}
+
+/// A background pass this long is named in the log.
+const SLOW_PASS: Duration = Duration::from_secs(1);
+
+/// Say a slow pass (2026-10-03): which loop, for whom, how long, and how much of it was the
+/// database - waiting for a persona's connection or working on it. Background work held that
+/// connection while requests queued behind it, and nothing said so.
+fn note_slow_pass(
+    name: &'static str,
+    who: Option<&str>,
+    took: Duration,
+    tally: &std::sync::Mutex<crate::db::DbTally>,
+) {
+    if took < SLOW_PASS {
+        return;
+    }
+    let t = tally.lock().map(|mut t| std::mem::take(&mut *t)).unwrap_or_default();
+    tracing::info!(
+        loop_name = name,
+        root = who.unwrap_or("(everyone)"),
+        total_ms = took.as_millis() as u64,
+        db_wait_ms = t.wait.as_millis() as u64,
+        db_exec_ms = t.exec.as_millis() as u64,
+        statements = t.statements,
+        slowest_ms = t.slowest.as_millis() as u64,
+        slowest_sql = %t.slowest_sql,
+        "slow background pass"
+    );
 }
 
 #[cfg(test)]

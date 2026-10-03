@@ -1972,8 +1972,13 @@ pub async fn history(
         let oldest = rows.last().map(|r| r.3).unwrap_or(ceiling);
         let want = limit - rows.len() as i64;
         let held: std::collections::HashSet<Vec<u8>> = rows.iter().map(|r| r.4.clone()).collect();
-        let (archived, archive_total) =
-            archive_history(state, viewer_hex, author_hex, doc, oldest, want).await;
+        let (archived, archive_total) = crate::net::waited(
+            "a room's archive",
+            author_hex,
+            archive_history(state, viewer_hex, author_hex, doc, oldest, want),
+            |(lines, _)| if lines.is_empty() { "nothing" } else { "got lines" },
+        )
+        .await;
         total = total.max(archive_total);
         let mut lines_from_archive = 0i64;
         // An archived line's edits arrive beside it (slice 8): the newest stands in.

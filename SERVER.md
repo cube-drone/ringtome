@@ -260,7 +260,7 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_MAX_UPLOAD_BYTES`     | 128 MiB (multi) / 1 GiB (single) | the largest raw upload the node will accept                                                                               |
 | `RINGTOME_QUARANTINE_DIRECTORY` | the system temp dir              | where uploads wait for processing; disposable                                                                             |
 | `RINGTOME_MEDIA_THREADS`        | the CPUs, less one (at least 1)  | how many threads encode pictures, sound and video - see _How much computer_                                               |
-| `RUST_LOG`                      | `info` for the node              | log filter, in the usual `tracing` syntax                                                                                 |
+| `RUST_LOG`                      | node and requests at `debug`     | log filter, `tracing` syntax; `ringtome_node=info` is quieter                                                             |
 
 The rest (sync and admission budgets, proof-of-work prices) have defaults sized
 for a small hosted node and are documented where they are read, in

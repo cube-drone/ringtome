@@ -1369,7 +1369,7 @@ pub async fn journalable(
     // held-hit, entomb-skip, and each fetch outcome were all silent, and the dig burned its
     // hours proving healthy layers healthy instead of reading which branch swallowed the doc.
     if let Ok(Some(f)) = held(&state.node_db, author_root, &doc_hex).await {
-        tracing::debug!(author = %author_root, doc = %doc_hex, "journalable: held, journaling");
+        tracing::trace!(author = %author_root, doc = %doc_hex, "journalable: held, journaling");
         let mut row = row_of(&f, &doc_hex);
         // The shelf's thin row knows no header flags, and "corrected later" never came for
         // this road (the two-hop claim caught a shared sealed post journaling flagless, so
@@ -1388,7 +1388,7 @@ pub async fn journalable(
     // on every frontier move they make, so without this the node would dial out for the same
     // dead document forever, and throw the answer away every time.
     if entombed(&state.node_db, author_root, doc_id).await.unwrap_or(false) {
-        tracing::debug!(author = %author_root, doc = %doc_hex, "journalable: entombed, skipping");
+        tracing::trace!(author = %author_root, doc = %doc_hex, "journalable: entombed, skipping");
         return None;
     }
 
@@ -1675,7 +1675,7 @@ async fn revalidate_one(
     }
     match crate::net::fragment::revalidate(state, origin_root, &author, &doc_id).await {
         crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
-            tracing::debug!(
+            tracing::trace!(
                 author = %author_hex, doc = %doc_hex, origin = %origin_root,
                 title = %verified.header.title,
                 "fragment sweep: still served"
@@ -1716,7 +1716,7 @@ async fn revalidate_one(
             forget(&state.node_db, author_hex, doc_hex).await?;
         }
         crate::net::fragment::Fetched::Unknown => {
-            tracing::debug!(
+            tracing::trace!(
                 author = %author_hex, origin = %origin_root, doc = %doc_hex,
                 "fragment sweep: nobody could answer"
             );

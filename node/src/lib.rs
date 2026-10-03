@@ -877,16 +877,23 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // Each request's time in the database, waiting and working (db.rs, 2026-10-03).
         .layer(axum::middleware::from_fn(db::tally_requests))
         .with_state(state)
-        .layer(TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
-            info_span!(
-                "req",
-                method = %req.method(),
-                uri = %req.uri(),
-                c_id = tracing::field::Empty,
-                remote_ip = tracing::field::Empty,
-                forwarded_for = tracing::field::Empty,
-            )
-        }))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|req: &axum::http::Request<_>| {
+                    info_span!(
+                        "req",
+                        method = %req.method(),
+                        uri = %req.uri(),
+                        c_id = tracing::field::Empty,
+                        remote_ip = tracing::field::Empty,
+                        forwarded_for = tracing::field::Empty,
+                    )
+                })
+                // No "started processing request" (2026-10-03): it was half of every request's
+                // lines and said nothing the "finished" line - same span, plus latency and
+                // status - doesn't.
+                .on_request(()),
+        )
         .into_make_service_with_connect_info::<SocketAddr>();
 
     Ok(Bound { listener, service: app, addr, attention, shell })

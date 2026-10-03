@@ -12,6 +12,31 @@
 //!   - [`unfurl`]: outbound OpenGraph fetches for the browser's turbolinks (SSRF-guarded,
 //!     globally rate-limited, cached).
 
+/// A network wait a person may be sitting through (2026-10-03): past a second, it is named in the
+/// log - what was asked for, of whom, how long, and how it ended (`outcome` reads the answer) -
+/// so a slow page that waited on the network is not mistaken for one that waited on the
+/// database. Background work uses it too; the line says which by what it asked for.
+pub(crate) async fn waited<T>(
+    what: &'static str,
+    whom: &str,
+    work: impl std::future::Future<Output = T>,
+    outcome: impl FnOnce(&T) -> &'static str,
+) -> T {
+    let started = std::time::Instant::now();
+    let answer = work.await;
+    let took = started.elapsed();
+    if took >= std::time::Duration::from_secs(1) {
+        tracing::info!(
+            what,
+            whom,
+            took_ms = took.as_millis() as u64,
+            outcome = outcome(&answer),
+            "slow network wait"
+        );
+    }
+    answer
+}
+
 pub mod admission;
 pub mod adopt;
 pub mod bodies;

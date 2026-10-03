@@ -16802,3 +16802,26 @@ format, blob, ETag), the blob read by hash. A note saved 1,500 times: body and
 304 in ~4.7 ms, the same as a fresh note's; its detail read, which still builds
 the history, 17 ms - saves and the detail are the next of that kind. `just ci`
 green.
+
+**2026-10-03 - the log says less that nobody reads, and more that answers "why
+was that slow".** Curtis's server logs at debug - the node's default, it turns
+out (`ringtome_node=debug,tower_http=debug`; SERVER.md said `info`, and now says
+what is true). Measured on a full integration run's five nodes (134,574 lines):
+a request's `started processing request` line was a fifth of everything and said
+nothing its `finished` line (same span, plus latency and status) doesn't - gone
+(`on_request(())`). The per-item sweep chatter - `fragment sweep: still served`
+/ `nobody could answer`, `journalable: held` / `entombed`,
+`missing-body sweep: candidate tried`, `key lane candidate list`,
+`key ask failed`, `death cursor ask failed`,
+`share fold: resolving shared documents` - one line per item per pass, mostly
+"nothing changed", is at `trace` now; per-pass summaries and the step timings
+(`fold legs`, `journal_for steps`, `publish job steps`, `taxonomy tree steps`)
+stay. Added: a background pass past a second says so (`slow background pass`:
+the loop, for whom, how long, and its database waiting vs working - every pass
+now carries the same tally a request does), since background work holding a
+persona's connection was what requests queued behind and nothing named it; and a
+network wait past a second says what it waited for, of whom, and how it ended
+(`slow network wait`, `net::waited`) - a sealed post's key (which covers the
+room list's key asks), a person's older posts (the 8 s backfill), a room's
+archive - so a page that waited on the network isn't mistaken for one that
+waited on the database. `just ci` green.

@@ -903,7 +903,7 @@ pub async fn journal_shares_by(
             return;
         }
     };
-    tracing::debug!(
+    tracing::trace!(
         sharer = %sharer_root,
         readers = readers.len(),
         pointers = pointers.len(),

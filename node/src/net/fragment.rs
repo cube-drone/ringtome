@@ -437,6 +437,22 @@ pub async fn fetch_key(
     for_root: &[u8; 32],
     via: Option<&str>,
 ) -> Option<[u8; 32]> {
+    crate::net::waited(
+        "a sealed post's key",
+        &hex::encode(author),
+        fetch_key_from_anyone(state, author, doc_id, for_root, via),
+        |key| if key.is_some() { "got it" } else { "nobody gave it" },
+    )
+    .await
+}
+
+async fn fetch_key_from_anyone(
+    state: &AppState,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+    for_root: &[u8; 32],
+    via: Option<&str>,
+) -> Option<[u8; 32]> {
     let for_hex = hex::encode(for_root);
     let author_hex = hex::encode(author);
     let mut endpoints: Vec<String> = Vec::new();
@@ -502,7 +518,7 @@ pub async fn fetch_key(
             endpoints.push(ep);
         }
     }
-    tracing::debug!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
+    tracing::trace!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
     let mut refused_by_someone = false;
     for endpoint_id in endpoints {
         match tokio::time::timeout(
@@ -542,7 +558,7 @@ pub async fn fetch_key(
                 refused_by_someone = true;
                 continue;
             }
-            Ok(Err(e)) => tracing::debug!(endpoint = %endpoint_id, error = ?e, "key ask failed"),
+            Ok(Err(e)) => tracing::trace!(endpoint = %endpoint_id, error = ?e, "key ask failed"),
             Err(_) => tracing::debug!(endpoint = %endpoint_id, "key ask timed out"),
         }
     }
@@ -1008,7 +1024,7 @@ pub async fn fetch_deaths(
         match asked {
             Ok(Ok(answer)) => return Some(answer),
             Ok(Err(e)) => {
-                tracing::debug!(origin = %origin_root, error = ?e, "death cursor ask failed")
+                tracing::trace!(origin = %origin_root, error = ?e, "death cursor ask failed")
             }
             Err(_) => tracing::debug!(origin = %origin_root, "death cursor ask timed out"),
         }

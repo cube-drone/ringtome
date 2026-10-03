@@ -328,7 +328,7 @@ pub async fn sweep(state: AppState) -> Result<()> {
             // discover references nothing had noted yet.
             let here = fetch_wanted(&state, &root, addr.clone()).await
                 + crate::record::documents::fetch_missing_bodies(&state, &root, addr).await;
-            tracing::debug!(root = %root, candidate = %candidate, healed = here,
+            tracing::trace!(root = %root, candidate = %candidate, healed = here,
                 "missing-body sweep: candidate tried");
             healed += here;
             if remaining(&state.node_db, &root).await? == 0 {
