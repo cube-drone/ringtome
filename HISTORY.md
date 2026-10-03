@@ -16600,4 +16600,12 @@ script repeats colorway.js's names (it runs before any module), so
 this node doesn't host gets no named colourway in their head - nothing of theirs
 is held to name - so their page still shows the reader's own until their profile
 arrives. `idface.cjs` claims the meta on both heads and its absence when none is
-chosen. `just ci` green.
+chosen. `just ci` green. Then the same mistake on the reader's own side, found
+while reading for the PWA question: `useOwnColorway` took the mirror's first
+answer - nothing yet, before the read finished - as "none chosen", deleted the
+kept colourway and put the default on, so the flash came back one render after
+index.html had avoided it (and a device whose mirror is empty lost its kept
+colourway outright; the deployed build has the same). `undefined` is "not known
+yet" there too now, and only signing out (`null`) clears. The cost: switching to
+a persona that never chose a colourway keeps the last one worn until they
+choose. `just ui-check` green.

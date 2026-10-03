@@ -38,9 +38,14 @@ try {
     /* no storage: the default until a profile says otherwise */
 }
 
-/// The reader's own colourway, or null (signed out, or not chosen). Kept for the next reload.
+/// The reader's own colourway. Kept for the next reload. `undefined` is "not known yet" - the
+/// profile hasn't been read, or hasn't arrived on this computer - and changes nothing: what's worn
+/// stays (2026-10-02: the first render, before the mirror answered, took the kept colourway off and
+/// put the default on, so the page flashed it right after index.html had avoided it). `null` is
+/// "signed out", and clears it.
 export function useOwnColorway(value) {
     useEffect(() => {
+        if (value === undefined) return;
         own = known(value);
         try {
             if (own) localStorage.setItem(KEPT, own);

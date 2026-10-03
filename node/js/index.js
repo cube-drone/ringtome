@@ -284,7 +284,8 @@ const Inside = ({ session }) => {
         () => (root ? openMirror(root).profile.get('colorway') : null),
         [root],
     );
-    useOwnColorway(colorwayRow && colorwayRow.value);
+    // No row yet - still reading, or the profile not yet here - is not "none" (colorway.js).
+    useOwnColorway(colorwayRow ? colorwayRow.value : undefined);
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
