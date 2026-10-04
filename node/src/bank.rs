@@ -53,6 +53,54 @@ const MAGIC_WORDS: [&str; 9] = [
     "porntipsguzzardo",
 ];
 
+// ---- contracts (Curtis, 2026-10-04) ----
+//
+// A contract is a goal: reach it and it pays, once. Completion is a fact on the persona's PRIVATE
+// chain (`contracts`: id -> the moment it was recorded) - it syncs, so every computer of the persona
+// knows it, pays it once (`contract` / id, like any line), and only the computer that RECORDED it
+// says so in hrseMsg: a message shown once, however many computers there are.
+
+/// The private register completions are recorded in.
+const CONTRACTS_KV: &str = "contracts";
+
+/// One contract: its id (stable - the key everywhere), its name as the player reads it, its reward.
+pub struct Contract {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub pennies: i64,
+}
+
+/// Every contract, in the order the column lists them.
+pub const CONTRACTS: [Contract; 1] = [Contract {
+    id: "draw-a-horse",
+    name: "Draw a horse in hrseDrawing™",
+    pennies: 5_000 * HORSEBUCK,
+}];
+
+/// The completed contracts, as the private chain records them: id -> when.
+async fn contracts_done(data: &Store) -> Result<HashMap<String, i64>> {
+    let (recorded, _) = data.private_registers(CONTRACTS_KV).all().await?;
+    Ok(recorded
+        .into_iter()
+        .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|at| (r.key, at)))
+        .collect())
+}
+
+/// A drawing's marking strokes - what "draw" counts: a move, copy, crop or transform moves marks
+/// already made, and an eraser takes them away.
+fn marks_in(body: &[u8]) -> usize {
+    crate::drawing::read(body)
+        .strokes
+        .iter()
+        .filter(|s| !matches!(s.tool, "move" | "copy" | "crop" | "transform" | "eraser"))
+        .count()
+}
+
+/// Drawing heads already looked at for "Draw a horse", process-wide: each head is read at most once
+/// while the contract is open - a version's body never changes, so its answer never does.
+static DRAWINGS_LOOKED_AT: LazyLock<Mutex<HashSet<[u8; 32]>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
 /// The first of the magic words a post says, any case. Run on words the publication pass has
 /// already read - nine substring checks, never a read of its own.
 fn magic_words_in(body: &[u8]) -> Option<&'static str> {
@@ -401,6 +449,60 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             at_ms: v.timestamp_ms,
             detail: json!({ "title": v.header.title, "post": hex::encode(post_id), "words": words, "strokes": strokes, "images": images, "bonus": bonus, "rules": PUBLICATION_RULES }),
         });
+    }
+
+    // Contracts: what the private chain says is done, and what is done now that it doesn't say yet.
+    let mut done = contracts_done(data).await?;
+    if !done.contains_key("draw-a-horse") {
+        // The current head of each drawing, read once ever while the contract is open.
+        let mut drew = false;
+        for doc in view.docs.values() {
+            if doc.lane != "private" {
+                continue;
+            }
+            let Some(head) = doc.display_head() else { continue };
+            if Format::from_wire(head.header.format) != Format::Drawing {
+                continue;
+            }
+            if DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").contains(&head.hash) {
+                continue;
+            }
+            // A body not here yet is asked again on a later pass; one read is remembered.
+            let Some(body) = body_of(head).await else { continue };
+            DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").insert(head.hash);
+            if marks_in(&body) >= 3 {
+                drew = true;
+                break;
+            }
+        }
+        if drew {
+            // Recorded on the private chain first; the message follows from the recording - so a
+            // second computer, finding it recorded, pays and says nothing.
+            let at = crate::clock::now_ms();
+            data.private_registers(CONTRACTS_KV).set("draw-a-horse", &at.to_string()).await?;
+            done.insert("draw-a-horse".to_string(), at);
+            if let Some(c) = CONTRACTS.iter().find(|c| c.id == "draw-a-horse") {
+                let detail =
+                    json!({ "name": c.name, "pennies": c.pennies.to_string() }).to_string();
+                if let Err(e) =
+                    crate::notifications::note_contract(&state.node_db, root_hex, c.id, &detail)
+                        .await
+                {
+                    tracing::warn!(error = ?e, "a completed contract's message wasn't stored");
+                }
+            }
+        }
+    }
+    for c in &CONTRACTS {
+        if let Some(at) = done.get(c.id).filter(|_| is_new("contract", c.id)) {
+            lines.push(Line {
+                kind: "contract",
+                source: c.id.to_string(),
+                pennies: c.pennies,
+                at_ms: *at, // the recorded moment: the same line on every computer
+                detail: json!({ "title": c.name }),
+            });
+        }
     }
 
     // Heartbeats: one a day, however many computers sent one.
@@ -914,14 +1016,43 @@ pub async fn bank_handler(
         .rev()
         .map(|(m, (count, pennies))| json!({ "month": m, "lines": count, "pennies": pennies.to_string() }))
         .collect();
+    // The Contracts column (2026-10-04): every contract, done or not, with when.
+    let done = contracts_done(&data).await.map_err(crate::error::AppError::Internal)?;
+    let contracts: Vec<serde_json::Value> = CONTRACTS
+        .iter()
+        .map(|c| json!({ "id": c.id, "name": c.name, "pennies": c.pennies.to_string(), "completed_ms": done.get(c.id) }))
+        .collect();
     Ok(axum::Json(
-        json!({ "balance": total.to_string(), "by_kind": by_kind, "instruments": instruments, "months": months, "month": month, "lines": lines }),
+        json!({ "balance": total.to_string(), "by_kind": by_kind, "instruments": instruments, "months": months, "month": month, "lines": lines, "contracts": contracts }),
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// "Draw" counts marks: a brush stroke is one, and a move, copy, crop, transform or eraser
+    /// stroke isn't - three marks is a horse, as far as the contract is concerned.
+    #[test]
+    fn a_drawing_s_marks_are_its_strokes_that_mark() {
+        let stroke = |tool: &str, n: u32| serde_json::json!({ "id": format!("{n:016x}"), "t": n, "tool": tool, "color": "#112233", "size": 4, "points": [n, n, 1, 2] });
+        let body =
+            |strokes: Vec<serde_json::Value>| serde_json::json!({ "strokes": strokes }).to_string();
+        assert_eq!(marks_in(body(vec![stroke("brush", 1), stroke("brush", 2)]).as_bytes()), 2);
+        assert_eq!(
+            marks_in(
+                body(vec![
+                    stroke("brush", 1),
+                    stroke("eraser", 2),
+                    stroke("brush", 3),
+                    stroke("brush", 4)
+                ])
+                .as_bytes()
+            ),
+            3
+        );
+        assert_eq!(marks_in(b"not a drawing"), 0);
+    }
 
     /// The magic words are found in any case, inside other words' company, and the first one said
     /// is the one named; nothing like them is them.

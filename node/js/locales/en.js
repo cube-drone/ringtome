@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1420 phrases across 88 files.
+// 1429 phrases across 89 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -31,6 +31,11 @@ export default {
     'apps.bank.kind-bond-sold': 'hrseBonds sold',
     'apps.bank.kind-debt-interest': 'interest on debt',
     'apps.bank.kind-magic-words': 'the magic words',
+    'apps.bank.kind-contract': 'contracts completed',
+    'apps.bank.active-contracts': 'Active Contracts',
+    'apps.bank.every-contract-done': 'every contract is done - more to come.',
+    'apps.bank.completed-contracts': 'Completed Contracts',
+    'apps.bank.none-yet': 'none yet.',
     'apps.bank.untitled': 'something untitled',
     'apps.bank.wrote-n-words-in': 'wrote {n} new words in',
     'apps.bank.over-n-saves': ' · {count} saves',
@@ -59,6 +64,7 @@ export default {
     'apps.bank.sold-a-hrsebond': 'sold a hrseBond',
     'apps.bank.interest-on-debt': 'interest on your debt, at 2% a day',
     'apps.bank.used-the-magic-words': 'used the magic words',
+    'apps.bank.completed-the-contract': 'completed the contract',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
     'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
@@ -72,6 +78,7 @@ export default {
     'apps.bank.sell': 'sell',
     'apps.bank.market': 'market',
     'apps.bank.portfolio': 'portfolio',
+    'apps.bank.contracts': 'contracts',
     'apps.bank.nothing-yet': 'nothing earned yet - write something, draw something, say something.',
 
     // --- node/js/apps/chat.js ---
@@ -329,6 +336,7 @@ export default {
     // --- node/js/apps/notifications.js ---
     'apps.notifications.a-room': 'a room',
     'apps.notifications.what-they-call-themselves-unverified': 'unverified name',
+    'apps.notifications.you-completed-the-contract': 'You completed the {name} contract! Have {money}!',
     'apps.notifications.labelled-words': 'labelled "{words}"',
     'apps.notifications.labelled-a-post-words': 'labelled one of your posts "{words}"',
     'apps.notifications.labelled': 'labelled',
@@ -465,6 +473,9 @@ export default {
     'console.blurb-lost-found': 'every private file from every notebook, where nothing gets lost',
     'console.blurb-device': "this computer's settings: who may sign up, and its backups",
     'console.blurb-server': "this server's settings: who may sign up, and its backups",
+
+    // --- node/js/contracts.js ---
+    'contracts.draw-a-horse': 'Draw a horse in hrseDrawing™',
 
     // --- node/js/copyinto.js ---
     'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',

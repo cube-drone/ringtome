@@ -111,6 +111,71 @@ describe('HorseBucks: the ledger', function () {
         assert.equal(again.balance, b.balance, 'asking again pays nothing twice');
     });
 
+    it('a contract: draw a horse (three strokes) and it pays H$ 5,000 once, with one message (2026-10-04)', async () => {
+        const cal = await makeUserFetch({ prefix: 'bankcal' });
+        const calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const stroke = (n) => ({
+            id: n.toString(16).padStart(16, '0'),
+            t: n,
+            tool: 'brush',
+            color: '#112233',
+            size: 4,
+            points: [n * 10, n * 10, 5, 0, 5, 0],
+        });
+        const bankOf = async () => (await cal(`api/identity/${calRoot}/bank`)).json();
+        const contract = (b) => (b.contracts || []).find((c) => c.id === 'draw-a-horse');
+        const made = await (
+            await j(cal, `api/identity/${calRoot}/docs`, {
+                title: 'a horse',
+                body: JSON.stringify({ strokes: [stroke(1), stroke(2)] }),
+                format: 'drawing',
+            })
+        ).json();
+        let b = await bankOf();
+        assert.ok(contract(b) && !contract(b).completed_ms, 'two strokes is not yet a horse');
+        assert.equal(contract(b).pennies, '500000', 'the reward, in horsepennies');
+        const got = await (await cal(`api/identity/${calRoot}/docs/${made.doc_id}`)).json();
+        const saved = await j(
+            cal,
+            `api/identity/${calRoot}/docs/${made.doc_id}`,
+            {
+                title: 'a horse',
+                body: JSON.stringify({ strokes: [stroke(1), stroke(2), stroke(3)] }),
+                parents: got.save_parents,
+                format: 'drawing',
+            },
+            'PUT',
+        );
+        assert.equal(saved.status, 200, await saved.text());
+        b = await bankOf();
+        assert.ok(contract(b).completed_ms, 'the third stroke completes it');
+        const paid = b.lines.filter((l) => l.kind === 'contract');
+        assert.deepEqual(
+            paid.map((l) => Number(l.pennies)),
+            [500000],
+            'paid once',
+        );
+        const kv = await (await cal(`api/identity/${calRoot}/private/kv/contracts`)).json();
+        assert.ok(
+            (kv.values || []).some((v) => v.key === 'draw-a-horse'),
+            'recorded on the private chain',
+        );
+        const told = async () =>
+            (
+                (await (await cal(`api/identity/${calRoot}/notifications`)).json()).items || []
+            ).filter((n) => n.kind === 'contract');
+        const messages = await told();
+        assert.equal(messages.length, 1, 'one message in hrseMsg');
+        assert.equal(JSON.parse(messages[0].detail).name, 'Draw a horse in hrseDrawing™');
+        b = await bankOf();
+        assert.equal(
+            b.lines.filter((l) => l.kind === 'contract').length,
+            1,
+            'asking again pays nothing',
+        );
+        assert.equal((await told()).length, 1, 'and says nothing again');
+    });
+
     it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {
         const bea = await makeUserFetch({ prefix: 'bankbea' });
         const beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;

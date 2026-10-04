@@ -40,6 +40,74 @@
     overflow-y: auto;
 }
 
+/* Contracts (2026-10-04): goals that pay once, the open ones above the done. */
+.bank-columns .bank-contracts-column {
+    width: var(--w-contracts, 220px);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+.bank-contracts {
+    padding: 0.4rem 0.6rem 1rem;
+}
+.bank-contracts-head {
+    margin: 0.6rem 0 0.3rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+/* The top active contract, dressed like the hrseBond window (2026-10-04): heavy border, icon. */
+.bank-contract-top {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.9rem;
+    margin-bottom: 0.6rem;
+    background: var(--surface);
+    border: 4px solid var(--ink);
+}
+.bank-contract-top-name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--ink);
+}
+.bank-contract-top-name svg {
+    flex-shrink: 0;
+    font-size: 1.3rem;
+}
+.bank-contract-top-reward {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-weight: 700;
+    color: var(--ink);
+}
+.bank-contract-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.bank-contract {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.88rem;
+}
+.bank-contract-done {
+    color: var(--ink-soft);
+}
+.bank-contract-reward {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
 .bank {
     flex: 1;
     min-width: 0;

@@ -49,6 +49,28 @@ pub const KIND_MENTIONED: &str = "mentioned";
 /// Envelope road only - no fold derives it, since a room chain is nobody's feed.
 pub const KIND_ROOM_MENTION: &str = "room-mention";
 
+/// "You completed a contract." The bank's own news (2026-10-04): written once, by the computer
+/// that first recorded the completion on the persona's private chain (bank.rs), so the row's author
+/// is the reader themselves and its doc is the contract's id; `detail` carries the contract's name
+/// and reward as JSON for the client to word. The primary key makes it one row per contract, ever.
+pub const KIND_CONTRACT: &str = "contract";
+
+/// Tell a persona they completed a contract (bank.rs decides when, and only once).
+pub async fn note_contract(node_db: &Db, root: &str, contract: &str, detail: &str) -> Result<()> {
+    upsert_row(
+        node_db,
+        root,
+        root,
+        KIND_CONTRACT,
+        contract,
+        None,
+        None,
+        Some(detail),
+        crate::clock::now_ms(),
+    )
+    .await
+}
+
 /// One notification, as the endpoint serves it.
 #[derive(Debug, serde::Serialize)]
 pub struct NotificationRow {

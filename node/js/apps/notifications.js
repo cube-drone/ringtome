@@ -12,9 +12,11 @@
 import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
+import { formatHorseBucks } from '../pure/horsebucks.js';
+import { contractName } from '../contracts.js';
 
 import { api, apiTextTitled } from '../net.js';
-import { t } from '../i18n.js';
+import { t, tNodes } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
 import { MiniPost } from '../postentry.js';
@@ -64,6 +66,26 @@ const Subject = ({ row }) => {
     }
     const known = !row.stranger && row.author_name;
     return html`<strong class="notif-subject">${known || speakable(row.author)}</strong>`;
+};
+
+/// A completed contract's message (bank.rs, 2026-10-04): the node's own news, so the whole sentence,
+/// no subject - "You completed the Draw a horse contract! Have H$ 5,000!".
+const contractWords = (r) => {
+    let said = {};
+    try {
+        said = JSON.parse(r.detail || '{}');
+    } catch {
+        said = {};
+    }
+    // The contract's name in bold (2026-10-04): placed as an element, so `tNodes`.
+    return tNodes(
+        'apps.notifications.you-completed-the-contract',
+        'You completed the {name} contract! Have {money}!',
+        {
+            name: html`<strong>${contractName(r.doc_id, said.name || '')}</strong>`,
+            money: formatHorseBucks(said.pennies || '0'),
+        },
+    );
 };
 
 const sentence = (r) => {
@@ -245,8 +267,7 @@ export const NotificationsApp = ({ current }) => {
                                           unverified claim MORE prominent than a real name, which
                                           is the exact inversion this design is trying to avoid. */ ''
                                       }
-                                      <${Subject} row=${r} />
-                                      ${sentence(r)}
+                                      ${r.kind === 'contract' ? contractWords(r) : html`<${Subject} row=${r} /> ${sentence(r)}`}
                                       ${
                                           /* The mini-card: the referenced post as a dressed
                                           link to its own page - title joined server-side

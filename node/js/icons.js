@@ -7,6 +7,7 @@
 import {
     Archive,
     Books,
+    Scroll,
     PiggyBank,
     CrownSimple,
     Rss,
@@ -260,6 +261,8 @@ export const Icons = {
     book: BookOpen,
     // A book's title page, pinned above every pin in its notebook's list (2026-10-02).
     titlePage: Books,
+    // A contract in hrseBank (2026-10-04): a goal that pays once.
+    contract: Scroll,
     hidden: EyeSlash,
     // Rooms (CHAT.md): the app tile, and the chip a room post wears.
     chat: ChatsCircle,

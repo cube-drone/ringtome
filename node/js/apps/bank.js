@@ -10,6 +10,7 @@ import { t } from '../i18n.js';
 import { PersonChip } from '../person.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { contractName } from '../contracts.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
 import { formatWhen } from '../pure/when.js';
@@ -36,6 +37,43 @@ const KINDS = {
     bond_sold: () => t('apps.bank.kind-bond-sold', 'hrseBonds sold'),
     debt_interest: () => t('apps.bank.kind-debt-interest', 'interest on debt'),
     magic_words: () => t('apps.bank.kind-magic-words', 'the magic words'),
+    contract: () => t('apps.bank.kind-contract', 'contracts completed'),
+};
+
+/// The Contracts column (Curtis, 2026-10-04): goals that pay once - the ones still open, then the
+/// ones done. Completion is the node's to judge and record (bank.rs); this lists what it says.
+const Contracts = ({ contracts }) => {
+    const active = contracts.filter((c) => !c.completed_ms);
+    const done = contracts.filter((c) => c.completed_ms);
+    const [top, ...rest] = active;
+    const item = (
+        c,
+    ) => html`<li class=${c.completed_ms ? 'bank-contract bank-contract-done' : 'bank-contract'} key=${c.id}>
+        <span class="bank-contract-name">${c.completed_ms ? html`<${Icons.done} /> ` : ''}${contractName(c.id, c.name)}</span>
+        <span class="bank-contract-reward">${formatHorseBucks(c.pennies)}</span>
+    </li>`;
+    return html`<div class="bank-contracts">
+        <p class="bank-contracts-head">${t('apps.bank.active-contracts', 'Active Contracts')}</p>
+        ${
+            /* The top active contract is the special one (Curtis, 2026-10-04): dressed like the
+            hrseBond window - heavy border, icon - with the rest listed under it. */ ''
+        }
+        ${
+            top
+                ? html`<section class="bank-contract-top">
+                  <h3 class="bank-contract-top-name"><${Icons.contract} /> ${contractName(top.id, top.name)}</h3>
+                  <span class="bank-contract-top-reward">${formatHorseBucks(top.pennies)}</span>
+              </section>`
+                : html`<p class="null-sub">${t('apps.bank.every-contract-done', 'every contract is done - more to come.')}</p>`
+        }
+        ${rest.length > 0 && html`<ul class="bank-contract-list">${rest.map(item)}</ul>`}
+        <p class="bank-contracts-head">${t('apps.bank.completed-contracts', 'Completed Contracts')}</p>
+        ${
+            done.length
+                ? html`<ul class="bank-contract-list">${done.map(item)}</ul>`
+                : html`<p class="null-sub">${t('apps.bank.none-yet', 'none yet.')}</p>`
+        }
+    </div>`;
 };
 
 /// A line's amount with its own sign: earnings rise, purchases and debt fall.
@@ -114,6 +152,8 @@ const RowWords = ({ row, current }) => {
             return t('apps.bank.interest-on-debt', 'interest on your debt, at 2% a day');
         case 'magic_words':
             return t('apps.bank.used-the-magic-words', 'used the magic words');
+        case 'contract':
+            return html`${t('apps.bank.completed-the-contract', 'completed the contract')} <em>${contractName(row.source, row.title)}</em>`;
         default:
             return row.kind;
     }
@@ -264,9 +304,10 @@ export const BankApp = ({ current }) => {
     const [lines, setLines] = useState({});
     const [open, setOpen] = useState(new Set());
     const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'bank');
-    const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio'], {
+    const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio', 'contracts'], {
         market: 240,
         portfolio: 200,
+        contracts: 200,
     });
     const [asked, setAsked] = useState(0); // bumped after a purchase or a sale: ask the ledger again
     useEffect(() => {
@@ -331,6 +372,14 @@ export const BankApp = ({ current }) => {
                       onSold=${() => setAsked((n) => n + 1)}
                   />
               </aside>${resizer('portfolio')}`
+        }
+        ${
+            tucked.has('contracts')
+                ? html`<${Rail} icon=${Icons.contract} label=${t('apps.bank.contracts', 'contracts')} onClick=${() => toggleTuck('contracts')} />`
+                : html`${tab('contracts', Icons.contract, t('apps.bank.contracts', 'contracts'))}<aside class="bank-contracts-column">
+                  <${PaneHead} icon=${Icons.contract} label=${t('apps.bank.contracts', 'contracts')} onTuck=${() => toggleTuck('contracts')} />
+                  <${Contracts} contracts=${bank.contracts || []} />
+              </aside>${resizer('contracts')}`
         }
         <div class="bank">
         <p class="bank-balance">${formatHorseBucks(bank.balance)}</p>

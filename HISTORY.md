@@ -16938,3 +16938,33 @@ now on are heard: an already-banked publication isn't re-read, and re-reading
 them all would be the one expensive way to do it. `bank.cjs` claims a plain post
 pays nothing, the first magic post pays 1,000,000 horsepennies, and a second
 pays nothing. `just ci` green.
+
+**2026-10-04 - contracts in hrseBank.** Curtis: a contract is a goal - reach it
+and it pays HorseBucks, once ever - in a new Contracts column of the bank, split
+into Active Contracts and Completed Contracts; the first, "Draw a horse in
+hrseDrawing™", H$ 5,000 for any drawing with at least three strokes; completing
+one says "You completed the $QuestName contract! Have $Money!" in hrseMsg, and
+the completion is kept on the private chain so the message is never said twice.
+Contracts are a registry in bank.rs (`CONTRACTS`: id, name, reward). Completion
+is a private register (`contracts`: id -> the moment), written once by the
+computer that first sees the goal reached; that same computer, and only it,
+writes the hrseMsg row (`notifications::note_contract`, kind `contract`, one row
+per contract by its key, the contract's name and reward as JSON for the client
+to word). Every computer that holds the register pays the line (`contract` / id,
+dated at the recorded moment, so every computer's ledger agrees) - a second
+computer, finding it recorded, pays and says nothing. "Draw a horse" looks at
+each private drawing's current head for three marking strokes (`marks_in`: a
+move, copy, crop, transform or eraser stroke isn't a mark), each head read at
+most once per process while the contract is open, and never once it's done; a
+body not on this computer yet is asked again later. The bank's answer lists
+every contract with its completion; the client draws the column, the ledger line
+("completed the contract …") and the message (`contractWords`, no subject - it's
+the node's own news). `bank.cjs` claims two strokes don't, the third does, it
+pays 500,000 horsepennies once, it's recorded on the private chain, and one
+message is said once. `just ci` green. Then, per Curtis: the top active contract
+wears the hrseBond window's dress - a heavy-bordered card with the contract's
+icon, the rest listed under it - and a contract's name is localized:
+`js/contracts.js` names each contract by id with one literal `t()` apiece (never
+a key built from the id), and the column, the ledger's line and the hrseMsg
+message all read it, the node's English name the fallback for an id the table
+doesn't know yet. `just strings-check` and `just ui-check` green.
