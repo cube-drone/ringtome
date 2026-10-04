@@ -413,27 +413,32 @@ pub async fn save_version(
     let (epoch, epoch_key) =
         keys.current().ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
 
-    // ONE document, not the corpus (2026-08-10). This used to `materialize` every version of
-    // every document and thread all of their DAGs to look at one - so saving a note paid for
-    // resolving the whole notebook, on the path a human is waiting on. `load_doc` reads the
-    // same rows through `doc_versions_by_doc` and runs the same resolver; the fold itself
-    // (`catch_up`) is watermarked and incremental either way.
+    // Two point lookups, never the document's history (2026-10-03). This once threaded the
+    // whole notebook (until 2026-08-10), then the whole document - every version it ever had,
+    // decoded and threaded on the path a person is waiting on, so an autosaving note or drawing
+    // saved slower the longer it lived. A save asks two things of its history - is the parent
+    // this very save, and has this body been stored before - and both are column reads on
+    // `doc_versions`. The fold (`catch_up`) is watermarked and incremental, and puts every
+    // version where these reads look.
     catch_up(db, keys).await?;
-    let doc = load_doc(db, &save.doc_id).await?;
-    // An unknown document loads EMPTY rather than absent, which answers every lookup below
-    // exactly as the old `Option<&Doc>` did - a genesis save has no parent to bounce against
-    // and no history to reuse a blob from.
-    let doc = (!doc.versions.is_empty()).then_some(&doc);
 
     // The no-op bounce: an ordinary save whose fingerprint, title, AND format match its own
     // parent. Format participates because conversion (plaintext → marquee, same bytes) is a
     // real save - a bounce that ignored it would silently swallow the explicit act the format
     // doctrine promises (NOTES_APP: reinterpretation arrives via this field).
     if let [parent] = save.parents.as_slice() {
-        if let Some(version) = doc.and_then(|d| d.versions.get(parent)) {
-            if version.header.body_hash == body_hash
-                && version.header.title == save.title
-                && version.header.format == save.format.to_wire()
+        let held: Option<(Vec<u8>, String, Option<i64>)> = db
+            .fetch_optional(
+                "SELECT body_hash, title, format FROM doc_versions WHERE entry_hash = ?1 AND doc_id = ?2",
+                (parent.to_vec(), save.doc_id.to_vec()),
+            )
+            .await
+            .context("reading a save's parent")
+            .map_err(AppError::Internal)?;
+        if let Some((parent_body, parent_title, parent_format)) = held {
+            if parent_body == body_hash
+                && parent_title == save.title
+                && parent_format.map(|f| f as u64) == save.format.to_wire()
             {
                 return Ok(*parent);
             }
@@ -447,9 +452,16 @@ pub async fn save_version(
     // (Scoped to one document by construction: body_hash is doc_id-keyed.)
     // A fresh put is HELD (`files::Put`) until the append below has landed the header that
     // names it - the reaper's blind spot between a blob and its row.
-    let (file_hash, held_body) = match doc.and_then(|d| {
-        d.versions.values().find(|v| v.header.body_hash == body_hash).map(|v| v.header.file_hash)
-    }) {
+    let reused: Option<(Vec<u8>,)> = db
+        .fetch_optional(
+            "SELECT file_hash FROM doc_versions WHERE doc_id = ?1 AND body_hash = ?2 LIMIT 1",
+            (save.doc_id.to_vec(), body_hash.to_vec()),
+        )
+        .await
+        .context("looking for this body among the document's versions")
+        .map_err(AppError::Internal)?;
+    let reused: Option<[u8; 32]> = reused.and_then(|(h,)| h.try_into().ok());
+    let (file_hash, held_body) = match reused {
         Some(existing) => (existing, None),
         None => {
             let put = files.put_encrypted(epoch, &epoch_key, &save.body).await?;

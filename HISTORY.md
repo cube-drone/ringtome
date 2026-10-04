@@ -16825,3 +16825,22 @@ network wait past a second says what it waited for, of whom, and how it ended
 room list's key asks), a person's older posts (the 8 s backfill), a room's
 archive - so a page that waited on the network isn't mistaken for one that
 waited on the database. `just ci` green.
+
+**2026-10-03 - a save asks its history two questions, not for all of it.** The
+performance burndown's first item: saves got slower the longer a document
+lived - an autosaving note or drawing pays this on every save. `save_version`
+loaded and threaded every version the document ever had, to answer two things:
+is this save a no-op against its parent (same body, title, format), and has this
+body been stored before (reuse its blob). Both are column reads on
+`doc_versions` now - the parent by its primary key, the body by `doc_id` +
+`body_hash` - with no decode and no threading;
+`no_op_saves_bounce_but_reverts_do_not` (bounce, the revert's reused blob,
+format-as-a-real-save) holds. Measured, a note saved 1,500 times: a save went
+36.3 ms → 26.6 ms (a fresh note's is ~13 ms either way). The rest of the growth
+is `catch_up`'s `refresh_doc_heads`, which re-memoizes a changed document by
+threading its whole history again. A fast path for the common case - one new
+version, fast-forwarding the only head - is a question of which heads are TRUE
+heads, and the memo keeps only the logical count (two devices saving the same
+words leave two true heads folded into one logical one), so doing it safely
+wants the true head set memoized: a migration rung, not taken today. `just ci`
+green.
