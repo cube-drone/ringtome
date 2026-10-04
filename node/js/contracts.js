@@ -15,6 +15,15 @@ const NAMES = {
     'write-a-note': () => t('contracts.write-a-note', 'Create a private note in hrseWriter™'),
     'upload-an-image': () => t('contracts.upload-an-image', 'Upload an image to hrseFiles™'),
     'set-a-profile-picture': () => t('contracts.set-a-profile-picture', 'Set your profile picture'),
+    'choose-a-colorway': () => t('contracts.choose-a-colorway', 'Customize your Colorway'),
+    'say-hello': () => t('contracts.say-hello', 'Say hello in a hrseChat™ room'),
+    'tag-a-public-post': () => t('contracts.tag-a-public-post', 'Tag a public post'),
+    'tag-a-private-note': () => t('contracts.tag-a-private-note', 'Tag a private note'),
+    'react-to-a-post': () => t('contracts.react-to-a-post', "React to someone else's post"),
+    'link-two-notes': () => t('contracts.link-two-notes', 'Link one private note to another'),
+    'organize-a-note': () => t('contracts.organize-a-note', 'Organize a note into a tree section'),
+    'start-a-room': () => t('contracts.start-a-room', 'Start a chat room'),
+    'buy-a-horsebond': () => t('contracts.buy-a-horsebond', 'Buy a hrseBond'),
 };
 
 /// The fine print (Curtis, 2026-10-04): exactly what reaching the goal takes, said on hover over a
@@ -68,6 +77,69 @@ const FINE_PRINT = {
             'Open your profile and choose a picture of yourself - upload one, or use one of your drawings.',
         ),
         href: personaPageHref('profile'),
+    }),
+    'choose-a-colorway': () => ({
+        text: t(
+            'contracts.choose-a-colorway-fine-print',
+            'Open your profile and choose a colorway - the colors the whole app wears, for you and for everyone who visits your page.',
+        ),
+        href: personaPageHref('profile'),
+    }),
+    'say-hello': () => ({
+        text: t(
+            'contracts.say-hello-fine-print',
+            'Open the hrseChat™ application, go into any room, and say something.',
+        ),
+        href: appHref('chat'),
+    }),
+    'tag-a-public-post': () => ({
+        text: t(
+            'contracts.tag-a-public-post-fine-print',
+            "Put a tag on any post in the hrseFeed™ - one of yours, or someone else's.",
+        ),
+        href: appHref('feed'),
+    }),
+    'tag-a-private-note': () => ({
+        text: t(
+            'contracts.tag-a-private-note-fine-print',
+            'Open a note in hrseWriter™ and give it a tag.',
+        ),
+        href: appHref('notes'),
+    }),
+    'react-to-a-post': () => ({
+        text: t(
+            'contracts.react-to-a-post-fine-print',
+            "React to someone else's post in the hrseFeed™ with an emoji.",
+        ),
+        href: appHref('feed'),
+    }),
+    'link-two-notes': () => ({
+        text: t(
+            'contracts.link-two-notes-fine-print',
+            'In hrseWriter™, write a link in one of your notes that points to another of your notes.',
+        ),
+        href: appHref('notes'),
+    }),
+    'organize-a-note': () => ({
+        text: t(
+            'contracts.organize-a-note-fine-print',
+            "In hrseWriter™, open a notebook's tree, make a section, and put a note in it.",
+        ),
+        href: appHref('notes'),
+    }),
+    'start-a-room': () => ({
+        text: t(
+            'contracts.start-a-room-fine-print',
+            'Open the hrseChat™ application and start a room of your own.',
+        ),
+        href: appHref('chat'),
+    }),
+    'buy-a-horsebond': () => ({
+        text: t(
+            'contracts.buy-a-horsebond-fine-print',
+            'Open the market in hrseBank™ and buy a hrseBond.',
+        ),
+        href: appHref('bank'),
     }),
 };
 

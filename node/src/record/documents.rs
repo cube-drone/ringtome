@@ -2973,6 +2973,25 @@ pub struct SearchRow {
     pub links: Vec<crate::record::bake::DocLink>,
 }
 
+/// Every document's links as the search index last stored them - no refresh, no body opened: for a
+/// question that a beat-old answer serves (the bank's "link two notes" contract, 2026-10-04).
+pub async fn stored_links(
+    db: &Db,
+) -> Result<Vec<([u8; 16], Vec<crate::record::bake::DocLink>)>, AppError> {
+    let rows: Vec<(Vec<u8>, String)> = db
+        .fetch_all("SELECT doc_id, links FROM doc_search WHERE links <> '[]'", ())
+        .await
+        .context("reading stored links")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, links)| {
+            let id: [u8; 16] = id.try_into().ok()?;
+            Some((id, serde_json::from_str(&links).unwrap_or_default()))
+        })
+        .collect())
+}
+
 /// Normalize text into the bag: lowercase alphanumeric runs, 2..=32 chars. Unicode-aware
 /// (`char::is_alphanumeric`), so accented words and CJK runs index as written.
 pub(crate) fn tokenize_into(text: &str, out: &mut std::collections::BTreeSet<String>) {

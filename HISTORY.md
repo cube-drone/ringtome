@@ -17071,3 +17071,33 @@ and every active persona's daily heartbeat is one - but no colourway), which
 wears the default; or not known (no profile here at all yet), which keeps what's
 worn. A brand-new persona with nothing on its profile yet keeps the previous
 colourway until its first heartbeat. `just ui-check` green.
+
+**2026-10-04 - the eighth contract: customize your colourway.** "Customize your
+Colorway", H$ 2,500. Done when the persona's profile carries a `colorway`
+field - any one, the default `horse-relax` too (Curtis: opening the picker and
+choosing it on purpose counts; never choosing is what doesn't). Nothing sets a
+colourway but the person. It shares one read of the profile with "Set your
+profile picture", made only while either is open. The fine print's link goes to
+the profile page, where the picker is. `bank.cjs` claims never chosen isn't
+done, horse-relax chosen is, 250,000 horsepennies, and choosing again pays
+nothing more. `just ci` green.
+
+**2026-10-04 - eight quick contracts at once.** Curtis's batch, each H$ 2,500:
+"Say hello in a hrseChat™ room", "Tag a public post", "Tag a private note",
+"React to someone else's post", "Link one private note to another", "Organize a
+note into a tree section", "Start a chat room", "Buy a hrseBond". The contract
+checks moved to the end of the bank's pass, just before its lines are written,
+so a check can read this pass's new lines as well as what's banked: "say hello"
+and "react" are the bank's own `chat` and `post_reaction` lines, the bond a bond
+held, the room a published post of format `room` (an IM is a room too). The tags
+are chosen ones only (`chosen_tag`): not an emoji (a reaction) and not one of
+the implicit tags a post says of itself - publishing restates a draft's tags as
+the author's own public labels, implicit ones included, so without that every
+first post would "tag a public post". A link is the search index's stored links,
+read without a refresh (`documents::stored_links`), naming another of the
+persona's private notes; a section is a taxonomy inside a notebook's tree
+(`wiki:` roots) holding a note directly (`organized_a_note`). Names and fine
+print in js/contracts.js, each link to where the act is done. `bank.cjs` walks
+one persona through all eight and, after each act, claims exactly the expected
+contracts done - an emoji on someone's post completes the reaction and not the
+tag; a word completes the tag. `just ci` green.

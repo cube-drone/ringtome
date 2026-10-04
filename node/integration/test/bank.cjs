@@ -9,7 +9,7 @@ const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch, makePng } = require('./helpers.cjs');
-const { sql } = require('./fetch.cjs');
+const { sql, makeFetch } = require('./fetch.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -482,6 +482,172 @@ describe('HorseBucks: the ledger', function () {
         assert.equal(set.status, 200, await set.text());
         assert.deepEqual(await pictured(), { done: true, paid: [250000] }, 'an avatar chosen is');
         assert.deepEqual(await pictured(), { done: true, paid: [250000] }, 'and it pays once');
+    });
+
+    it('a contract: customize your colorway - any chosen, the default too - pays H$ 2,500 once (2026-10-04)', async () => {
+        const nia = await makeUserFetch({ prefix: 'banknia' });
+        const root = (await (await nia('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const chosen = async () => {
+            const b = await (await nia(`api/identity/${root}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'choose-a-colorway');
+            const paid = b.lines.filter(
+                (l) => l.kind === 'contract' && l.source === 'choose-a-colorway',
+            );
+            return { done: !!(c && c.completed_ms), paid: paid.map((l) => Number(l.pennies)) };
+        };
+        assert.equal((await chosen()).done, false, 'never chosen, not done');
+        await j(nia, `api/identity/${root}/profile`, { field: 'colorway', value: 'horse-relax' });
+        assert.deepEqual(
+            await chosen(),
+            { done: true, paid: [250000] },
+            'the default, chosen on purpose, counts',
+        );
+        await j(nia, `api/identity/${root}/profile`, { field: 'colorway', value: 'witchlight' });
+        assert.deepEqual(
+            await chosen(),
+            { done: true, paid: [250000] },
+            'and choosing again pays nothing more',
+        );
+    });
+
+    it('the quick contracts: each action completes its own contract, and nothing else (2026-10-04)', async () => {
+        const opal = await makeUserFetch({ prefix: 'bankopal' });
+        const root = (await (await opal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const other = await makeUserFetch({ prefix: 'bankother' });
+        const otherRoot = (await (await other('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        const { toBase58 } = await import('../../js/speakable.js');
+        const quick = [
+            'say-hello',
+            'tag-a-public-post',
+            'tag-a-private-note',
+            'react-to-a-post',
+            'link-two-notes',
+            'organize-a-note',
+            'start-a-room',
+            'buy-a-horsebond',
+        ];
+        const doneNow = async () => {
+            const b = await (await opal(`api/identity/${root}/bank`)).json();
+            return (b.contracts || [])
+                .filter((c) => quick.includes(c.id) && c.completed_ms)
+                .map((c) => c.id)
+                .sort();
+        };
+        const expect = async (ids, what) =>
+            assert.deepEqual(await doneNow(), [...ids].sort(), what);
+        const note = async (title, body, bucket = 'default') => {
+            const d = await (
+                await j(opal, `api/identity/${root}/docs`, { title, body, format: 'marquee' })
+            ).json();
+            await opal(`api/identity/${root}/docs/${d.doc_id}/buckets/${bucket}`, {
+                method: 'PUT',
+            });
+            return d.doc_id;
+        };
+        await expect([], 'none yet');
+
+        // Tag a private note.
+        const tagged = await note('tagged', 'words');
+        await opal(`api/identity/${root}/docs/${tagged}/annotations/tags/soup`, { method: 'PUT' });
+        await expect(['tag-a-private-note'], 'a tag on a note');
+
+        // Link one note to another (the index stores links when a list asks for it).
+        const target = await note('target', 'here');
+        await note(
+            'linking',
+            `see [the other one](/ringtome/user/${toBase58(root)}/doc/${target})`,
+        );
+        await opal(`api/identity/${root}/docs`);
+        await expect(['tag-a-private-note', 'link-two-notes'], 'a note linking another');
+
+        // Organize a note into a section of a notebook's tree.
+        const tax = (title) =>
+            j(opal, `api/identity/${root}/taxonomies`, { title }).then((r) => r.json());
+        const treeRoot = (await tax('wiki:default')).taxonomy_id;
+        const section = (await tax('part one')).taxonomy_id;
+        await j(opal, `api/identity/${root}/taxonomies/${treeRoot}/members/${section}`, {}, 'PUT');
+        await j(opal, `api/identity/${root}/taxonomies/${section}/members/${target}`, {}, 'PUT');
+        await expect(
+            ['tag-a-private-note', 'link-two-notes', 'organize-a-note'],
+            'a note in a section',
+        );
+
+        // Start a room, then say hello in it.
+        const draft = await note('a room', 'a place to talk', 'chat');
+        const room = (
+            await (
+                await j(opal, `api/identity/${root}/docs/${draft}/publish`, { room: true })
+            ).json()
+        ).post_id;
+        await expect(
+            ['tag-a-private-note', 'link-two-notes', 'organize-a-note', 'start-a-room'],
+            'a room started',
+        );
+        await j(opal, `api/identity/${root}/rooms/${root}/${room}/messages`, { words: 'hello!' });
+        await expect(
+            [
+                'tag-a-private-note',
+                'link-two-notes',
+                'organize-a-note',
+                'start-a-room',
+                'say-hello',
+            ],
+            'a line said',
+        );
+
+        // Someone else's post: an emoji on it is a reaction; a word on it is a tag.
+        const theirs = await (
+            await j(other, `api/identity/${otherRoot}/docs`, {
+                title: 'hi',
+                body: 'x',
+                format: 'marquee',
+            })
+        ).json();
+        const theirPost = (
+            await (
+                await j(other, `api/identity/${otherRoot}/docs/${theirs.doc_id}/publish`, {})
+            ).json()
+        ).post_id;
+        const label = (value) =>
+            opal(`api/identity/${root}/public-annotations/${otherRoot}/${theirPost}`, {
+                method: 'PUT',
+                body: JSON.stringify({ key: 'tag', value }),
+            });
+        assert.equal((await label('🐴')).status, 200);
+        await expect(
+            [
+                'tag-a-private-note',
+                'link-two-notes',
+                'organize-a-note',
+                'start-a-room',
+                'say-hello',
+                'react-to-a-post',
+            ],
+            'an emoji on their post is a reaction, not a tag',
+        );
+        assert.equal((await label('lovely')).status, 200);
+        await expect(
+            [
+                'tag-a-private-note',
+                'link-two-notes',
+                'organize-a-note',
+                'start-a-room',
+                'say-hello',
+                'react-to-a-post',
+                'tag-a-public-post',
+            ],
+            'a word on it is a tag',
+        );
+
+        // Buy a hrseBond (the rig credits the price).
+        await j(makeFetch(), 'test/credit', { root, pennies: 400000 });
+        const bought = await j(opal, `api/identity/${root}/bank/instruments`, {
+            kind: 'horsebond',
+            pennies: '200000',
+        });
+        assert.equal(bought.status, 200, await bought.text());
+        await expect(quick, 'and a bond bought: every one');
     });
 
     it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {

@@ -71,7 +71,7 @@ pub struct Contract {
 }
 
 /// Every contract, in the order the column lists them.
-pub const CONTRACTS: [Contract; 7] = [
+pub const CONTRACTS: [Contract; 16] = [
     Contract {
         id: "draw-a-horse",
         name: "Draw a horse in hrseDrawing™",
@@ -99,6 +99,33 @@ pub const CONTRACTS: [Contract; 7] = [
         name: "Set your profile picture",
         pennies: 2_500 * HORSEBUCK,
     },
+    Contract {
+        id: "choose-a-colorway",
+        name: "Customize your Colorway",
+        pennies: 2_500 * HORSEBUCK,
+    },
+    Contract {
+        id: "say-hello", name: "Say hello in a hrseChat™ room", pennies: 2_500 * HORSEBUCK
+    },
+    Contract { id: "tag-a-public-post", name: "Tag a public post", pennies: 2_500 * HORSEBUCK },
+    Contract { id: "tag-a-private-note", name: "Tag a private note", pennies: 2_500 * HORSEBUCK },
+    Contract {
+        id: "react-to-a-post",
+        name: "React to someone else's post",
+        pennies: 2_500 * HORSEBUCK,
+    },
+    Contract {
+        id: "link-two-notes",
+        name: "Link one private note to another",
+        pennies: 2_500 * HORSEBUCK,
+    },
+    Contract {
+        id: "organize-a-note",
+        name: "Organize a note into a tree section",
+        pennies: 2_500 * HORSEBUCK,
+    },
+    Contract { id: "start-a-room", name: "Start a chat room", pennies: 2_500 * HORSEBUCK },
+    Contract { id: "buy-a-horsebond", name: "Buy a hrseBond", pennies: 2_500 * HORSEBUCK },
 ];
 
 /// Has this persona uploaded an image? A private document whose current head is a picture - a
@@ -291,6 +318,60 @@ async fn posted_a_drawing(
             );
         }
         if head.header.refs.iter().any(|r| flat.as_ref().is_some_and(|f| f.contains(r))) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// A tag a person chose, as a contract counts one: not an emoji (a reaction) and not one of the
+/// implicit tags a post says of itself (a length, a medium).
+fn chosen_tag(tag: &str) -> bool {
+    let tag = tag.trim();
+    !tag.is_empty()
+        && !crate::annotations::is_emoji_tag(tag)
+        && !crate::record::documents::IMPLICIT_TAGS.contains(&tag)
+}
+
+/// Has one of this persona's private notes a link to another? The search index's stored links
+/// (no refresh), each naming the document it points at when it's one of ours.
+async fn linked_two_notes(
+    data: &Store,
+    view: &crate::record::documents::DocumentsView,
+) -> Result<bool> {
+    let private = |hex: &str| {
+        hex::decode(hex)
+            .ok()
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            .and_then(|id| view.docs.get(&id))
+            .is_some_and(|d| d.lane == "private")
+    };
+    let rows = crate::record::documents::stored_links(data.db())
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(rows.into_iter().any(|(from, links)| {
+        view.docs.get(&from).is_some_and(|d| d.lane == "private")
+            && links
+                .iter()
+                .filter_map(|l| l.doc.as_deref())
+                .any(|to| to != hex::encode(from) && private(to))
+    }))
+}
+
+/// Has a note been filed in a section of a notebook's tree? A section is a taxonomy inside a
+/// notebook's tree (the `wiki:` roots); one holding a document directly is a note organized.
+async fn organized_a_note(data: &Store) -> Result<bool> {
+    fn section_holds_a_note(node: &crate::record::store::TaxonomyNode, depth: usize) -> bool {
+        node.members.iter().flatten().any(|m| match &m.taxonomy {
+            Some(sub) => section_holds_a_note(sub, depth + 1),
+            None => depth > 0,
+        })
+    }
+    let roots = data.taxonomies().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    for root in roots.iter().filter(|t| t.title.starts_with("wiki:")) {
+        let tree =
+            data.taxonomies().tree(&root.taxonomy_id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        if section_holds_a_note(&tree, 0) {
             return Ok(true);
         }
     }
@@ -694,74 +775,6 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         });
     }
 
-    // Contracts: what the private chain says is done, and what is done now that it doesn't say yet.
-    let mut done = contracts_done(data).await?;
-    if !done.contains_key("draw-a-horse") {
-        // The current head of each drawing, read once ever while the contract is open.
-        let mut drew = false;
-        for doc in view.docs.values() {
-            if doc.lane != "private" {
-                continue;
-            }
-            let Some(head) = doc.display_head() else { continue };
-            if Format::from_wire(head.header.format) != Format::Drawing {
-                continue;
-            }
-            if DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").contains(&head.hash) {
-                continue;
-            }
-            // A body not here yet is asked again on a later pass; one read is remembered.
-            let Some(body) = body_of(head).await else { continue };
-            DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").insert(head.hash);
-            if marks_in(&body) >= 3 {
-                drew = true;
-                break;
-            }
-        }
-        if drew {
-            complete_contract(state, data, root_hex, "draw-a-horse", &mut done).await?;
-        }
-    }
-    // "Post your horse": a published post holding a drawing - posts from before the contract count.
-    if !done.contains_key("post-a-horse") && posted_a_drawing(data, &view, &claimed).await? {
-        complete_contract(state, data, root_hex, "post-a-horse", &mut done).await?;
-    }
-    // "Follow a stranger": interest set, of the person's own accord, in somebody.
-    if !done.contains_key("follow-a-stranger") && followed_a_stranger(state, data, root_hex).await?
-    {
-        complete_contract(state, data, root_hex, "follow-a-stranger", &mut done).await?;
-    }
-    // "Create a private note": one, in a Writer notebook.
-    if !done.contains_key("write-a-note") && wrote_a_private_note(data, &view).await? {
-        complete_contract(state, data, root_hex, "write-a-note", &mut done).await?;
-    }
-    // "Upload an image": a picture of the person's own, not a drawing's copy.
-    if !done.contains_key("upload-an-image") && uploaded_an_image(data, &view).await? {
-        complete_contract(state, data, root_hex, "upload-an-image", &mut done).await?;
-    }
-    // "Set your profile picture": an avatar chosen - nothing sets one but the person.
-    if !done.contains_key("set-a-profile-picture") {
-        let profile = data.profile().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
-        if profile.iter().any(|f| f.field == "avatar" && !f.value.trim().is_empty()) {
-            complete_contract(state, data, root_hex, "set-a-profile-picture", &mut done).await?;
-        }
-    }
-    // "Get a follower": the same, turned round.
-    if !done.contains_key("get-a-follower") && got_a_follower(state, root_hex).await? {
-        complete_contract(state, data, root_hex, "get-a-follower", &mut done).await?;
-    }
-    for c in &CONTRACTS {
-        if let Some(at) = done.get(c.id).filter(|_| is_new("contract", c.id)) {
-            lines.push(Line {
-                kind: "contract",
-                source: c.id.to_string(),
-                pennies: c.pennies,
-                at_ms: *at, // the recorded moment: the same line on every computer
-                detail: json!({ "title": c.name }),
-            });
-        }
-    }
-
     // Heartbeats: one a day, however many computers sent one.
     if let Ok(entries) = crate::record::imaol::entries_of_type(
         data.db(),
@@ -886,6 +899,124 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                 pennies: PER_FOLLOW,
                 at_ms: crate::clock::now_ms(),
                 detail: json!({ "by": author }),
+            });
+        }
+    }
+
+    // Contracts: what the private chain says is done, and what is done now that it doesn't say yet.
+    let mut done = contracts_done(data).await?;
+    if !done.contains_key("draw-a-horse") {
+        // The current head of each drawing, read once ever while the contract is open.
+        let mut drew = false;
+        for doc in view.docs.values() {
+            if doc.lane != "private" {
+                continue;
+            }
+            let Some(head) = doc.display_head() else { continue };
+            if Format::from_wire(head.header.format) != Format::Drawing {
+                continue;
+            }
+            if DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").contains(&head.hash) {
+                continue;
+            }
+            // A body not here yet is asked again on a later pass; one read is remembered.
+            let Some(body) = body_of(head).await else { continue };
+            DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").insert(head.hash);
+            if marks_in(&body) >= 3 {
+                drew = true;
+                break;
+            }
+        }
+        if drew {
+            complete_contract(state, data, root_hex, "draw-a-horse", &mut done).await?;
+        }
+    }
+    // "Post your horse": a published post holding a drawing - posts from before the contract count.
+    if !done.contains_key("post-a-horse") && posted_a_drawing(data, &view, &claimed).await? {
+        complete_contract(state, data, root_hex, "post-a-horse", &mut done).await?;
+    }
+    // "Follow a stranger": interest set, of the person's own accord, in somebody.
+    if !done.contains_key("follow-a-stranger") && followed_a_stranger(state, data, root_hex).await?
+    {
+        complete_contract(state, data, root_hex, "follow-a-stranger", &mut done).await?;
+    }
+    // "Create a private note": one, in a Writer notebook.
+    if !done.contains_key("write-a-note") && wrote_a_private_note(data, &view).await? {
+        complete_contract(state, data, root_hex, "write-a-note", &mut done).await?;
+    }
+    // "Upload an image": a picture of the person's own, not a drawing's copy.
+    if !done.contains_key("upload-an-image") && uploaded_an_image(data, &view).await? {
+        complete_contract(state, data, root_hex, "upload-an-image", &mut done).await?;
+    }
+    // The profile's contracts, off one read of it: a picture, a colourway - each set only by the
+    // person (nothing sets an avatar or a colourway for them).
+    if !done.contains_key("set-a-profile-picture") || !done.contains_key("choose-a-colorway") {
+        let profile = data.profile().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        let set =
+            |field: &str| profile.iter().any(|f| f.field == field && !f.value.trim().is_empty());
+        // "Set your profile picture": an avatar chosen.
+        if !done.contains_key("set-a-profile-picture") && set("avatar") {
+            complete_contract(state, data, root_hex, "set-a-profile-picture", &mut done).await?;
+        }
+        // "Customize your Colorway": any colourway chosen - the default too, chosen on purpose
+        // (Curtis, 2026-10-04: opening the picker and choosing horse-relax counts).
+        if !done.contains_key("choose-a-colorway") && set("colorway") {
+            complete_contract(state, data, root_hex, "choose-a-colorway", &mut done).await?;
+        }
+    }
+    // "Get a follower": the same, turned round.
+    if !done.contains_key("get-a-follower") && got_a_follower(state, root_hex).await? {
+        complete_contract(state, data, root_hex, "get-a-follower", &mut done).await?;
+    }
+    // The quick ones (2026-10-04): most read what this pass already holds.
+    let said =
+        |kind: &str| have.iter().any(|(k, _)| k == kind) || lines.iter().any(|l| l.kind == kind);
+    if !done.contains_key("say-hello") && said("chat") {
+        complete_contract(state, data, root_hex, "say-hello", &mut done).await?;
+    }
+    if !done.contains_key("react-to-a-post") && said("post_reaction") {
+        complete_contract(state, data, root_hex, "react-to-a-post", &mut done).await?;
+    }
+    if !done.contains_key("start-a-room")
+        && view.docs.values().any(|d| {
+            d.lane == "public"
+                && d.display_head()
+                    .is_some_and(|h| Format::from_wire(h.header.format) == Format::Room)
+        })
+    {
+        complete_contract(state, data, root_hex, "start-a-room", &mut done).await?;
+    }
+    if !done.contains_key("buy-a-horsebond") && !bonds(data).await?.is_empty() {
+        complete_contract(state, data, root_hex, "buy-a-horsebond", &mut done).await?;
+    }
+    if !done.contains_key("tag-a-private-note") {
+        let rows = data.annotations().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        if rows.iter().any(|r| r.tags.iter().any(|t| chosen_tag(t))) {
+            complete_contract(state, data, root_hex, "tag-a-private-note", &mut done).await?;
+        }
+    }
+    if !done.contains_key("tag-a-public-post") {
+        let said_tags = crate::record::imaol::public_annotations(data.db())
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        if said_tags.iter().any(|a| a.present && a.key == "tag" && chosen_tag(&a.value)) {
+            complete_contract(state, data, root_hex, "tag-a-public-post", &mut done).await?;
+        }
+    }
+    if !done.contains_key("link-two-notes") && linked_two_notes(data, &view).await? {
+        complete_contract(state, data, root_hex, "link-two-notes", &mut done).await?;
+    }
+    if !done.contains_key("organize-a-note") && organized_a_note(data).await? {
+        complete_contract(state, data, root_hex, "organize-a-note", &mut done).await?;
+    }
+    for c in &CONTRACTS {
+        if let Some(at) = done.get(c.id).filter(|_| is_new("contract", c.id)) {
+            lines.push(Line {
+                kind: "contract",
+                source: c.id.to_string(),
+                pennies: c.pennies,
+                at_ms: *at, // the recorded moment: the same line on every computer
+                detail: json!({ "title": c.name }),
             });
         }
     }

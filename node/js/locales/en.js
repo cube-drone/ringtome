@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1443 phrases across 89 files.
+// 1461 phrases across 89 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -483,6 +483,15 @@ export default {
     'contracts.write-a-note': 'Create a private note in hrseWriter™',
     'contracts.upload-an-image': 'Upload an image to hrseFiles™',
     'contracts.set-a-profile-picture': 'Set your profile picture',
+    'contracts.choose-a-colorway': 'Customize your Colorway',
+    'contracts.say-hello': 'Say hello in a hrseChat™ room',
+    'contracts.tag-a-public-post': 'Tag a public post',
+    'contracts.tag-a-private-note': 'Tag a private note',
+    'contracts.react-to-a-post': "React to someone else's post",
+    'contracts.link-two-notes': 'Link one private note to another',
+    'contracts.organize-a-note': 'Organize a note into a tree section',
+    'contracts.start-a-room': 'Start a chat room',
+    'contracts.buy-a-horsebond': 'Buy a hrseBond',
     'contracts.draw-a-horse-fine-print': 'Please open the hrseDrawing™ application and draw anything you like. It must contain at least three brush-strokes to qualify.',
     'contracts.post-a-horse-fine-print': 'Open the hrseFeed™ application, and create and share a post containing any drawing.',
     'contracts.follow-a-stranger-fine-print': "Use the hrsePeople™ application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
@@ -490,6 +499,15 @@ export default {
     'contracts.write-a-note-fine-print': 'Open the hrseWriter™ application and make a new note. It stays private - only you can see it.',
     'contracts.upload-an-image-fine-print': "Open the hrseFiles™ application and upload a picture of your own - a photo, a GIF, anything. A copy of one of your drawings doesn't count.",
     'contracts.set-a-profile-picture-fine-print': 'Open your profile and choose a picture of yourself - upload one, or use one of your drawings.',
+    'contracts.choose-a-colorway-fine-print': 'Open your profile and choose a colorway - the colors the whole app wears, for you and for everyone who visits your page.',
+    'contracts.say-hello-fine-print': 'Open the hrseChat™ application, go into any room, and say something.',
+    'contracts.tag-a-public-post-fine-print': "Put a tag on any post in the hrseFeed™ - one of yours, or someone else's.",
+    'contracts.tag-a-private-note-fine-print': 'Open a note in hrseWriter™ and give it a tag.',
+    'contracts.react-to-a-post-fine-print': "React to someone else's post in the hrseFeed™ with an emoji.",
+    'contracts.link-two-notes-fine-print': 'In hrseWriter™, write a link in one of your notes that points to another of your notes.',
+    'contracts.organize-a-note-fine-print': "In hrseWriter™, open a notebook's tree, make a section, and put a note in it.",
+    'contracts.start-a-room-fine-print': 'Open the hrseChat™ application and start a room of your own.',
+    'contracts.buy-a-horsebond-fine-print': 'Open the market in hrseBank™ and buy a hrseBond.',
 
     // --- node/js/copyinto.js ---
     'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',
