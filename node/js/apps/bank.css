@@ -92,6 +92,20 @@
     color: var(--muted);
     cursor: help;
 }
+.bank-contract-fine-text {
+    display: none;
+}
+@media (max-width: 900px) {
+    .bank-contract-fine {
+        cursor: pointer;
+    }
+    .bank-contract-fine-label {
+        display: none;
+    }
+    .bank-contract-fine-text {
+        display: inline;
+    }
+}
 .bank-contract-list {
     list-style: none;
     margin: 0;

@@ -46,9 +46,13 @@ const KINDS = {
 const FinePrint = ({ id }) => {
     const fine = contractFinePrint(id);
     if (!fine) return null;
-    return html`<a class="bank-contract-fine" href=${fine.href} title=${fine.text} data-settles
-        >${t('apps.bank.fine-print', 'fine print')}</a
-    >`;
+    // A phone can't hover (2026-10-04): under 900px the terms themselves show, in small text, where
+    // the label was (apps/bank.css). The hover belongs to the label alone, so terms on show aren't
+    // said twice.
+    return html`<a class="bank-contract-fine" href=${fine.href} data-settles>
+        <span class="bank-contract-fine-label" title=${fine.text}>${t('apps.bank.fine-print', 'fine print')}</span>
+        <span class="bank-contract-fine-text">${fine.text}</span>
+    </a>`;
 };
 
 const Contracts = ({ contracts }) => {
