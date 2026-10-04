@@ -16967,4 +16967,9 @@ icon, the rest listed under it - and a contract's name is localized:
 `js/contracts.js` names each contract by id with one literal `t()` apiece (never
 a key built from the id), and the column, the ledger's line and the hrseMsg
 message all read it, the node's English name the fallback for an id the table
-doesn't know yet. `just strings-check` and `just ui-check` green.
+doesn't know yet. And each contract can carry fine print (`contractFinePrint`,
+the same table): a very small "fine print" link under an open contract, its
+exact terms on hover - "Draw a horse": open hrseDrawing™ and draw anything, at
+least three brush-strokes - and a click goes where the work is done
+(hrseDrawing). The bold contract name in the hrseMsg message is the sentence's
+own element (`tNodes`). `just strings-check` and `just ui-check` green.

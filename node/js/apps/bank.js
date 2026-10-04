@@ -10,7 +10,7 @@ import { t } from '../i18n.js';
 import { PersonChip } from '../person.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
-import { contractName } from '../contracts.js';
+import { contractName, contractFinePrint } from '../contracts.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
 import { formatWhen } from '../pure/when.js';
@@ -42,6 +42,15 @@ const KINDS = {
 
 /// The Contracts column (Curtis, 2026-10-04): goals that pay once - the ones still open, then the
 /// ones done. Completion is the node's to judge and record (bank.rs); this lists what it says.
+/// A contract's fine print: a very small link, its exact terms on hover (2026-10-04).
+const FinePrint = ({ id }) => {
+    const fine = contractFinePrint(id);
+    if (!fine) return null;
+    return html`<a class="bank-contract-fine" href=${fine.href} title=${fine.text} data-settles
+        >${t('apps.bank.fine-print', 'fine print')}</a
+    >`;
+};
+
 const Contracts = ({ contracts }) => {
     const active = contracts.filter((c) => !c.completed_ms);
     const done = contracts.filter((c) => c.completed_ms);
@@ -51,6 +60,7 @@ const Contracts = ({ contracts }) => {
     ) => html`<li class=${c.completed_ms ? 'bank-contract bank-contract-done' : 'bank-contract'} key=${c.id}>
         <span class="bank-contract-name">${c.completed_ms ? html`<${Icons.done} /> ` : ''}${contractName(c.id, c.name)}</span>
         <span class="bank-contract-reward">${formatHorseBucks(c.pennies)}</span>
+        ${!c.completed_ms && html`<${FinePrint} id=${c.id} />`}
     </li>`;
     return html`<div class="bank-contracts">
         <p class="bank-contracts-head">${t('apps.bank.active-contracts', 'Active Contracts')}</p>
@@ -63,6 +73,7 @@ const Contracts = ({ contracts }) => {
                 ? html`<section class="bank-contract-top">
                   <h3 class="bank-contract-top-name"><${Icons.contract} /> ${contractName(top.id, top.name)}</h3>
                   <span class="bank-contract-top-reward">${formatHorseBucks(top.pennies)}</span>
+                  <${FinePrint} id=${top.id} />
               </section>`
                 : html`<p class="null-sub">${t('apps.bank.every-contract-done', 'every contract is done - more to come.')}</p>`
         }

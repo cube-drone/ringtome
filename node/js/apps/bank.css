@@ -85,6 +85,13 @@
     font-weight: 700;
     color: var(--ink);
 }
+/* The fine print (2026-10-04): very small, its terms on hover. */
+.bank-contract-fine {
+    align-self: flex-start;
+    font-size: 0.68rem;
+    color: var(--muted);
+    cursor: help;
+}
 .bank-contract-list {
     list-style: none;
     margin: 0;
