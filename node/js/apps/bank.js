@@ -82,6 +82,7 @@ const Contracts = ({ contracts }) => {
                 : html`<p class="null-sub">${t('apps.bank.every-contract-done', 'every contract is done - more to come.')}</p>`
         }
         ${rest.length > 0 && html`<ul class="bank-contract-list">${rest.map(item)}</ul>`}
+        <hr class="bank-rule" />
         <p class="bank-contracts-head">${t('apps.bank.completed-contracts', 'Completed Contracts')}</p>
         ${
             done.length

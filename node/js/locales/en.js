@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1431 phrases across 89 files.
+// 1433 phrases across 89 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -477,7 +477,9 @@ export default {
 
     // --- node/js/contracts.js ---
     'contracts.draw-a-horse': 'Draw a horse in hrseDrawing™',
+    'contracts.post-a-horse': 'Post your horse to the hrseFeed™',
     'contracts.draw-a-horse-fine-print': 'Please open the hrseDrawing™ application and draw anything you like. It must contain at least three brush-strokes to qualify.',
+    'contracts.post-a-horse-fine-print': 'Open the hrseFeed™ application, and create and share a post containing any drawing.',
 
     // --- node/js/copyinto.js ---
     'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',

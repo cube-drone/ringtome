@@ -176,6 +176,99 @@ describe('HorseBucks: the ledger', function () {
         assert.equal((await told()).length, 1, 'and says nothing again');
     });
 
+    it('a contract: post your horse - a drawing published, or a post with a drawing in it - pays H$ 10,000 once (2026-10-04)', async () => {
+        const fresh = async (prefix) => {
+            const who = await makeUserFetch({ prefix });
+            const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+            return { who, root };
+        };
+        const posted = async ({ who, root }) => {
+            const b = await (await who(`api/identity/${root}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'post-a-horse');
+            const paid = b.lines.filter(
+                (l) => l.kind === 'contract' && l.source === 'post-a-horse',
+            );
+            return { done: !!(c && c.completed_ms), paid: paid.map((l) => Number(l.pennies)) };
+        };
+        const upload = async ({ who, root }, title) => {
+            const pic = await (
+                await who(`api/identity/${root}/docs/binary?title=${title}`, {
+                    method: 'POST',
+                    body: makePng(24, 24),
+                    file: true,
+                })
+            ).json();
+            for (let i = 0; i < 60; i++) {
+                if ((await who(`api/identity/${root}/docs/${pic.doc_id}/body`)).status === 200)
+                    break;
+                await wait(250);
+            }
+            return pic.doc_id;
+        };
+        const postWith = async ({ who, root }, picture) => {
+            const made = await (
+                await j(who, `api/identity/${root}/docs`, {
+                    title: 'look',
+                    body: `![look](/api/identity/${root}/docs/${picture}/body/look.avif)`,
+                    format: 'marquee',
+                })
+            ).json();
+            const pub = await j(who, `api/identity/${root}/docs/${made.doc_id}/publish`, {});
+            assert.equal(pub.status, 200, await pub.text());
+        };
+
+        // The picker's road: a picture is not a drawing until it is a drawing's flattened copy.
+        const eve = await fresh('bankeve');
+        await postWith(eve, await upload(eve, 'a photo'));
+        assert.equal((await posted(eve)).done, false, 'a post with a photo in it is not a horse');
+        const drawing = await (
+            await j(eve.who, `api/identity/${eve.root}/docs`, {
+                title: 'pony',
+                body: '{"strokes":[]}',
+                format: 'drawing',
+            })
+        ).json();
+        const copy = await upload(eve, 'pony');
+        await j(
+            eve.who,
+            `api/identity/${eve.root}/docs/${copy}/annotations/fields/flattened_from`,
+            { value: drawing.doc_id },
+            'PUT',
+        );
+        await postWith(eve, copy);
+        assert.deepEqual(
+            await posted(eve),
+            { done: true, paid: [1000000] },
+            "a drawing's copy in a post is",
+        );
+
+        // The drawing's own road: published as itself.
+        const dan = await fresh('bankdan');
+        const own = await (
+            await j(dan.who, `api/identity/${dan.root}/docs`, {
+                title: 'horse',
+                body: '{"strokes":[]}',
+                format: 'drawing',
+            })
+        ).json();
+        const pub = await dan.who(`api/identity/${dan.root}/docs/${own.doc_id}/publish/drawing`, {
+            method: 'POST',
+            body: makePng(40, 30),
+            file: true,
+        });
+        assert.equal(pub.status, 200, await pub.text());
+        assert.deepEqual(
+            await posted(dan),
+            { done: true, paid: [1000000] },
+            'a drawing published is',
+        );
+        assert.deepEqual(await posted(dan), { done: true, paid: [1000000] }, 'and it pays once');
+        const told = (
+            (await (await dan.who(`api/identity/${dan.root}/notifications`)).json()).items || []
+        ).filter((n) => n.kind === 'contract' && n.doc_id === 'post-a-horse');
+        assert.equal(told.length, 1, 'one message');
+    });
+
     it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {
         const bea = await makeUserFetch({ prefix: 'bankbea' });
         const beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;

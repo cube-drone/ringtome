@@ -71,11 +71,83 @@ pub struct Contract {
 }
 
 /// Every contract, in the order the column lists them.
-pub const CONTRACTS: [Contract; 1] = [Contract {
-    id: "draw-a-horse",
-    name: "Draw a horse in hrseDrawing™",
-    pennies: 5_000 * HORSEBUCK,
-}];
+pub const CONTRACTS: [Contract; 2] = [
+    Contract {
+        id: "draw-a-horse",
+        name: "Draw a horse in hrseDrawing™",
+        pennies: 5_000 * HORSEBUCK,
+    },
+    Contract {
+        id: "post-a-horse",
+        name: "Post your horse to the hrseFeed™",
+        pennies: 10_000 * HORSEBUCK,
+    },
+];
+
+/// The private annotation a drawing's flattened copy carries - the drawing it is a picture of
+/// (js/pure/flatcopy.js `FLAT_FROM`): how a picture in a post is known to be a drawing.
+const FLAT_FROM: &str = "flattened_from";
+
+/// Has this persona published a post holding a drawing? A drawing published as itself, or a note
+/// whose embeds include a drawing's flattened copy (the image picker's road). Lookups in what the
+/// pass already holds - which note each post came from, and that note's embeds - and the
+/// annotations read once, only if some published note embeds anything. No body is opened.
+async fn posted_a_drawing(
+    data: &Store,
+    view: &crate::record::documents::DocumentsView,
+    claimed: &HashMap<[u8; 16], [u8; 16]>,
+) -> Result<bool> {
+    let mut flat: Option<HashSet<[u8; 16]>> = None;
+    for (post_id, post) in &view.docs {
+        if post.lane != "public" || post.display_head().is_none() {
+            continue;
+        }
+        let Some(note) = claimed.get(post_id).and_then(|n| view.docs.get(n)) else { continue };
+        let Some(head) = note.display_head() else { continue };
+        if Format::from_wire(head.header.format) == Format::Drawing {
+            return Ok(true);
+        }
+        if head.header.refs.is_empty() {
+            continue;
+        }
+        if flat.is_none() {
+            let rows = data.annotations().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+            flat = Some(
+                rows.into_iter()
+                    .filter(|r| r.fields.contains_key(FLAT_FROM))
+                    .filter_map(|r| hex::decode(&r.doc_id).ok()?.try_into().ok())
+                    .collect(),
+            );
+        }
+        if head.header.refs.iter().any(|r| flat.as_ref().is_some_and(|f| f.contains(r))) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// A contract reached: recorded on the private chain first, then said in hrseMsg - by this
+/// computer alone, the one that recorded it; a second computer, finding it recorded, pays and
+/// says nothing.
+async fn complete_contract(
+    state: &AppState,
+    data: &Store,
+    root_hex: &str,
+    id: &str,
+    done: &mut HashMap<String, i64>,
+) -> Result<()> {
+    let Some(c) = CONTRACTS.iter().find(|c| c.id == id) else { return Ok(()) };
+    let at = crate::clock::now_ms();
+    data.private_registers(CONTRACTS_KV).set(c.id, &at.to_string()).await?;
+    done.insert(c.id.to_string(), at);
+    let detail = json!({ "name": c.name, "pennies": c.pennies.to_string() }).to_string();
+    if let Err(e) =
+        crate::notifications::note_contract(&state.node_db, root_hex, c.id, &detail).await
+    {
+        tracing::warn!(error = ?e, "a completed contract's message wasn't stored");
+    }
+    Ok(())
+}
 
 /// The completed contracts, as the private chain records them: id -> when.
 async fn contracts_done(data: &Store) -> Result<HashMap<String, i64>> {
@@ -476,22 +548,12 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             }
         }
         if drew {
-            // Recorded on the private chain first; the message follows from the recording - so a
-            // second computer, finding it recorded, pays and says nothing.
-            let at = crate::clock::now_ms();
-            data.private_registers(CONTRACTS_KV).set("draw-a-horse", &at.to_string()).await?;
-            done.insert("draw-a-horse".to_string(), at);
-            if let Some(c) = CONTRACTS.iter().find(|c| c.id == "draw-a-horse") {
-                let detail =
-                    json!({ "name": c.name, "pennies": c.pennies.to_string() }).to_string();
-                if let Err(e) =
-                    crate::notifications::note_contract(&state.node_db, root_hex, c.id, &detail)
-                        .await
-                {
-                    tracing::warn!(error = ?e, "a completed contract's message wasn't stored");
-                }
-            }
+            complete_contract(state, data, root_hex, "draw-a-horse", &mut done).await?;
         }
+    }
+    // "Post your horse": a published post holding a drawing - posts from before the contract count.
+    if !done.contains_key("post-a-horse") && posted_a_drawing(data, &view, &claimed).await? {
+        complete_contract(state, data, root_hex, "post-a-horse", &mut done).await?;
     }
     for c in &CONTRACTS {
         if let Some(at) = done.get(c.id).filter(|_| is_new("contract", c.id)) {

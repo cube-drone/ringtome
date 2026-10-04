@@ -9,6 +9,7 @@ import { appHref } from './links.js';
 
 const NAMES = {
     'draw-a-horse': () => t('contracts.draw-a-horse', 'Draw a horse in hrseDrawing™'),
+    'post-a-horse': () => t('contracts.post-a-horse', 'Post your horse to the hrseFeed™'),
 };
 
 /// The fine print (Curtis, 2026-10-04): exactly what reaching the goal takes, said on hover over a
@@ -20,6 +21,13 @@ const FINE_PRINT = {
             'Please open the hrseDrawing™ application and draw anything you like. It must contain at least three brush-strokes to qualify.',
         ),
         href: appHref('drawing'),
+    }),
+    'post-a-horse': () => ({
+        text: t(
+            'contracts.post-a-horse-fine-print',
+            'Open the hrseFeed™ application, and create and share a post containing any drawing.',
+        ),
+        href: appHref('feed'),
     }),
 };
 

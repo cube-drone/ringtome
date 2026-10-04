@@ -16973,3 +16973,20 @@ exact terms on hover - "Draw a horse": open hrseDrawing™ and draw anything, at
 least three brush-strokes - and a click goes where the work is done
 (hrseDrawing). The bold contract name in the hrseMsg message is the sentence's
 own element (`tNodes`). `just strings-check` and `just ui-check` green.
+
+**2026-10-04 - the second contract: post your horse.** "Post your horse to the
+hrseFeed™" - open the hrseFeed™ application, and create and share a post
+containing any drawing - for H$ 10,000. A drawing reaches a post two ways, and
+the node knows both without opening a body (`posted_a_drawing`): a drawing
+published as itself (its post is claimed by the drawing's own note), or a note
+embedding a drawing's flattened copy - the image picker never embeds the
+drawing, it embeds a still picture the client flattens and marks
+`flattened_from` the drawing (js/pure/flatcopy.js). So a published post counts
+when the note it came from is a drawing, or embeds a document carrying
+`flattened_from`; the annotations are read once, only if some published note
+embeds anything. Posts from before the contract count. Completion moved into one
+step both contracts share (`complete_contract`: the private-chain record, then
+the one message). The name and fine print sit in js/contracts.js, the fine
+print's link going to hrseFeed. `bank.cjs` claims a photo post doesn't, a
+drawing's copy in a post does, a drawing published does, each pays 1,000,000
+horsepennies once, with one message. `just ci` green.
