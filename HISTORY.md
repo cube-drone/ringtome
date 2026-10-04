@@ -16907,3 +16907,34 @@ new version instead of the memo, it fails. Writing it caught its own first draft
 comparing the row from before each save (a save's version folds on the next
 catch-up). Measured, a note saved 1,500 times: a save 14.9 ms, a fresh note's
 13.9 - from 36.3 this morning. `just ci` green.
+
+**2026-10-04 - the thing-selector stands leftmost in Writer and Chat.** Curtis:
+in most apps the column that picks the thing - the notes, the chats - is
+leftmost, and Writer and Chat put their tags column before it. Now Writer reads
+notes, tags, tree, links, publish (links moved before publish the same day), and
+Chat reads chats, tags, then the room. Widths are per-column CSS variables, so
+nothing about them moves but their listing order; no CSS keyed on position.
+`just strings` re-sorted the catalog to the code's new order.
+`just strings-check` and `just ui-check` green.
+
+**2026-10-04 - the apps in a new order.** Curtis: you first (the persona's own
+card, where it was), then People, Feed, Msg; then Drawing, Writer, Chat, Files,
+Bank, Server. The registry's order is the launcher's honeycomb and the dock's,
+so the change is the order of `APPS` (pure/apps.js), each entry moved whole with
+its comments; the trailing blank cell stays last. Drawing's comment no longer
+calls it "first of the apps". `just ui-check` green.
+
+**2026-10-04 - the magic words.** Curtis: a public post saying "glittering
+prizes", "show me the money", "pot of gold", "greedisgood", "rosebud",
+"klapaucius", "mother lode", "robin hood" or "porntipsguzzardo" grants H$
+10,000, "used the magic words" - if it can be done very, very efficiently. It
+rides the bank's publication pass, which already reads each newly published
+post's words to count them: nine lowercase substring checks on text in hand, no
+read of its own (`magic_words_in`). Once per persona, ever (`magic_words` /
+`once`) - per post it would be a press for money, and the bank's other guards
+are the same shape (shingles, one tick a day). The line names the words said and
+the post; a drawing's strokes are never read for them. Only posts published from
+now on are heard: an already-banked publication isn't re-read, and re-reading
+them all would be the one expensive way to do it. `bank.cjs` claims a plain post
+pays nothing, the first magic post pays 1,000,000 horsepennies, and a second
+pays nothing. `just ci` green.

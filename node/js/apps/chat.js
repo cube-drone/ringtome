@@ -2121,7 +2121,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     useEffect(() => {
         if (author && doc) settle();
     }, [author, doc, settle]);
-    const { resizer, colStyle } = useColWidths(root, APP_ID, ['tags', 'rooms'], {
+    const { resizer, colStyle } = useColWidths(root, APP_ID, ['rooms', 'tags'], {
         rooms: 180,
         tags: 150,
     });
@@ -2173,17 +2173,6 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     return html`<div class="chat">
         <div class="chat-columns panes" style=${colStyle}>
             ${
-                tucked.has('tags')
-                    ? html`<${Rail} icon=${Icons.tag} label=${t('apps.chat.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
-                    : html`${tab('tags', Icons.tag, t('apps.chat.tags', 'tags'))}<${TagColumn}
-                      cloud=${cloud}
-                      active=${tagFilter}
-                      label=${t('apps.chat.tags', 'tags')}
-                      onToggleTag=${(tag) => setTagFilter((have) => (have.includes(tag) ? have.filter((x) => x !== tag) : [...have, tag]))}
-                      onTuck=${() => toggleTuck('tags')}
-                  />${resizer('tags')}`
-            }
-            ${
                 tucked.has('rooms')
                     ? html`<${Rail} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onClick=${() => toggleTuck('rooms')} />`
                     : html`${tab('rooms', Icons.chat, t('apps.chat.chats', 'chats'))}<${RoomsColumn}
@@ -2193,6 +2182,21 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                       filtered=${tagFilter.length > 0}
                       onTuck=${() => toggleTuck('rooms')}
                   />${resizer('rooms')}`
+            }
+            ${
+                /* The tags come after the chats (Curtis, 2026-10-04): the thing-selector stands
+                leftmost in every app, and the filters beside it. */ ''
+            }
+            ${
+                tucked.has('tags')
+                    ? html`<${Rail} icon=${Icons.tag} label=${t('apps.chat.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
+                    : html`${tab('tags', Icons.tag, t('apps.chat.tags', 'tags'))}<${TagColumn}
+                      cloud=${cloud}
+                      active=${tagFilter}
+                      label=${t('apps.chat.tags', 'tags')}
+                      onToggleTag=${(tag) => setTagFilter((have) => (have.includes(tag) ? have.filter((x) => x !== tag) : [...have, tag]))}
+                      onTuck=${() => toggleTuck('tags')}
+                  />${resizer('tags')}`
             }
             <section class="chat-main">
                 ${

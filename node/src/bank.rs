@@ -39,6 +39,26 @@ const PER_CHAT_LINE: i64 = 5 * HORSEBUCK;
 const PER_REACTION_GIVEN: i64 = HORSEBUCK;
 const PER_REACTION_RECEIVED: i64 = 5 * HORSEBUCK;
 const PER_HEARTBEAT: i64 = 10 * HORSEBUCK;
+/// The magic words (Curtis, 2026-10-04): the old cheat codes, said in public, pay once.
+const PER_MAGIC_WORDS: i64 = 10_000 * HORSEBUCK;
+const MAGIC_WORDS: [&str; 9] = [
+    "glittering prizes",
+    "show me the money",
+    "pot of gold",
+    "greedisgood",
+    "rosebud",
+    "klapaucius",
+    "mother lode",
+    "robin hood",
+    "porntipsguzzardo",
+];
+
+/// The first of the magic words a post says, any case. Run on words the publication pass has
+/// already read - nine substring checks, never a read of its own.
+fn magic_words_in(body: &[u8]) -> Option<&'static str> {
+    let text = String::from_utf8_lossy(body).to_lowercase();
+    MAGIC_WORDS.into_iter().find(|w| text.contains(w))
+}
 
 // The instruments (HORSE_BASED_CURRENCIES.md, "HorseBonds"; Curtis, 2026-09-29).
 /// Where purchases live: the persona's private registers, one key per purchase, synced to their
@@ -325,6 +345,8 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // Publications: once per note, the private amounts again plus the size bonus. Who claims
     // each post, read once for them all (a fold per post was minutes at 700 posts, 2026-10-01).
     let claimed = data.annotations().notes_claiming().await.unwrap_or_default();
+    // The magic words pay once per persona, ever - per post, they'd be a press for money.
+    let mut magic_pending = is_new("magic_words", "once");
     for (post_id, doc) in &view.docs {
         if doc.lane != "public" {
             continue;
@@ -355,6 +377,18 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             None => None,
         };
         let Some(body) = body else { continue };
+        if magic_pending && note_format != Some(Format::Drawing) {
+            if let Some(said) = magic_words_in(&body) {
+                magic_pending = false;
+                lines.push(Line {
+                    kind: "magic_words",
+                    source: "once".to_string(),
+                    pennies: PER_MAGIC_WORDS,
+                    at_ms: v.timestamp_ms,
+                    detail: json!({ "title": v.header.title, "post": hex::encode(post_id), "said": said }),
+                });
+            }
+        }
         let (words, strokes) = publication_measure(note_format, &body);
         let images = v.header.refs.iter().collect::<HashSet<_>>().len() as i64;
         let size = words + 50 * images + strokes / 2;
@@ -888,6 +922,17 @@ pub async fn bank_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The magic words are found in any case, inside other words' company, and the first one said
+    /// is the one named; nothing like them is them.
+    #[test]
+    fn the_magic_words_are_heard_in_any_case() {
+        assert_eq!(magic_words_in(b"well, SHOW ME THE MONEY then"), Some("show me the money"));
+        assert_eq!(magic_words_in(b"<b>Rosebud</b>"), Some("rosebud"));
+        assert_eq!(magic_words_in(b"a pot of golden retrievers"), Some("pot of gold"));
+        assert_eq!(magic_words_in(b"show me the honey"), None);
+        assert_eq!(magic_words_in(b""), None);
+    }
 
     /// Words are what's new: a paragraph pasted twice is one paragraph's shingles, and case and
     /// punctuation don't make a word new.

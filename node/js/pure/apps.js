@@ -22,25 +22,6 @@ export const APPS = [
     // is excluded from the document-app routes. Its dock tile wears the persona's own name.
     { id: 'persona', name: 'hrsePersona™', icon: 'persona', live: true, system: true },
     {
-        id: 'drawing',
-        // The horse-drawing part of Horse Drawing Tycoon 2 (DRAWING.md) - first of the apps, right
-        // before People, being of paramount horseportance (Curtis, 2026-09-27): a documents app whose
-        // documents are drawings - a canvas, brush and eraser, strokes as the history. Writer's
-        // list and columns (apps/notes.js), with the drawing surface (doc/drawing.js) where the
-        // editor would be; the surface brings its own tools column.
-        name: 'hrseDrawing™',
-        icon: 'drawing',
-        style: 'drawing',
-        live: true,
-        // Notebooks of drawings (Curtis, 2026-09-27): a switcher like Writer's, over the drawing-
-        // typed buckets only - `drawing` first - as Writer's is over the writing ones.
-        bucketNoun: 'Sketchbook',
-        itemNoun: 'drawing',
-        // What "+ new drawing" makes (notes.js, createNew): a blank drawing, not a Marquee page.
-        newFormat: 'drawing',
-        features: { tree: false, tagColumn: false, bookColumn: false, publish: false },
-    },
-    {
         id: 'people',
         name: 'hrsePeople™',
         icon: 'people',
@@ -53,34 +34,6 @@ export const APPS = [
         // People brings its own control to the header's search slot: a LOOKUP, not a filter
         // (apps/people.js, PeopleLookup). The shell renders it in place of the search box.
         lookup: true,
-    },
-    // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
-    // bucket is called, Capitalised because it lands in titles and prompts ("New Notebook",
-    // "Delete this Notebook…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
-    // because it lands mid-sentence ("+ new note", "a new page in this section"). A notebook holds
-    // notes and a feed holds posts; neither of them holds "items".
-    {
-        id: 'notes',
-        // Writer (renamed from Writer, 2026-09-02, the day the Journal was retired): the
-        // core notes-and-editing primitive of the whole application. The route id stays
-        // `notes` - it is a persisted key, and the word is right.
-        name: 'hrseWriter™',
-        icon: 'notes',
-        style: 'default',
-        live: true,
-        bucketNoun: 'Notebook',
-        itemNoun: 'note',
-        // The everything-app, and now the ONLY notebook app. Recipes and Wikibook lived here
-        // until 2026-08-08, and the cut is the point: each was this surface with one column
-        // taken away - Recipes was the tag column plus the list, Wikibook was the list plus
-        // the tree - so shipping them separately bought two app tiles and two vocabularies for
-        // no capability. What made the single "complicated notes app" safe to embrace was the
-        // tucking: `startsTucked` opens on the plain list, and the tag column and the tree are
-        // rails until someone wants them. It is only as monstrous as you choose to make it.
-        features: { tagColumn: true, tree: true, bookColumn: true, linkColumn: true },
-        // Columns tucked until this device says otherwise (panes.js `useColTucks`). The list is
-        // the app; the others are the powers it can grow.
-        startsTucked: ['tags', 'tree', 'publish', 'links'],
     },
     {
         id: 'feed',
@@ -116,6 +69,65 @@ export const APPS = [
         },
     },
     {
+        id: 'notifications',
+        name: 'hrseMsg™',
+        icon: 'notifications',
+        live: true,
+        // The derived-events surface (PROJECT_PLAN, Arrival and Attention: the follow-edge
+        // rule): things people you follow did that point at you, folded locally from chains
+        // this node already syncs - today, published relationship edges. Not a documents app
+        // and not the inbox: strangers' knocks are the future envelope path, not this list.
+        itemNoun: 'notification',
+    },
+    {
+        id: 'drawing',
+        // The horse-drawing part of Horse Drawing Tycoon 2 (DRAWING.md), of paramount horseportance
+        // (Curtis, 2026-09-27) - first of the making apps since 2026-10-04's order (you, people,
+        // feed, messages; then drawing, writing, chat, files, bank, server): a documents app whose
+        // documents are drawings - a canvas, brush and eraser, strokes as the history. Writer's
+        // list and columns (apps/notes.js), with the drawing surface (doc/drawing.js) where the
+        // editor would be; the surface brings its own tools column.
+        name: 'hrseDrawing™',
+        icon: 'drawing',
+        style: 'drawing',
+        live: true,
+        // Notebooks of drawings (Curtis, 2026-09-27): a switcher like Writer's, over the drawing-
+        // typed buckets only - `drawing` first - as Writer's is over the writing ones.
+        bucketNoun: 'Sketchbook',
+        itemNoun: 'drawing',
+        // What "+ new drawing" makes (notes.js, createNew): a blank drawing, not a Marquee page.
+        newFormat: 'drawing',
+        features: { tree: false, tagColumn: false, bookColumn: false, publish: false },
+    },
+    // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
+    // bucket is called, Capitalised because it lands in titles and prompts ("New Notebook",
+    // "Delete this Notebook…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
+    // because it lands mid-sentence ("+ new note", "a new page in this section"). A notebook holds
+    // notes and a feed holds posts; neither of them holds "items".
+    {
+        id: 'notes',
+        // Writer (renamed from Writer, 2026-09-02, the day the Journal was retired): the
+        // core notes-and-editing primitive of the whole application. The route id stays
+        // `notes` - it is a persisted key, and the word is right.
+        name: 'hrseWriter™',
+        icon: 'notes',
+        style: 'default',
+        live: true,
+        bucketNoun: 'Notebook',
+        itemNoun: 'note',
+        // The everything-app, and now the ONLY notebook app. Recipes and Wikibook lived here
+        // until 2026-08-08, and the cut is the point: each was this surface with one column
+        // taken away - Recipes was the tag column plus the list, Wikibook was the list plus
+        // the tree - so shipping them separately bought two app tiles and two vocabularies for
+        // no capability. What made the single "complicated notes app" safe to embrace was the
+        // tucking: `startsTucked` opens on the plain list, and the tag column and the tree are
+        // rails until someone wants them. It is only as monstrous as you choose to make it.
+        features: { tagColumn: true, tree: true, bookColumn: true, linkColumn: true },
+        // Columns tucked until this device says otherwise (panes.js `useColTucks`). The list is
+        // the app; the others are the powers it can grow.
+        startsTucked: ['tags', 'tree', 'publish', 'links'],
+    },
+    {
         id: 'chat',
         name: 'hrseChat™',
         icon: 'chat',
@@ -130,17 +142,6 @@ export const APPS = [
         searchable: true,
         plainSearch: true,
         itemNoun: 'room',
-    },
-    {
-        id: 'notifications',
-        name: 'hrseMsg™',
-        icon: 'notifications',
-        live: true,
-        // The derived-events surface (PROJECT_PLAN, Arrival and Attention: the follow-edge
-        // rule): things people you follow did that point at you, folded locally from chains
-        // this node already syncs - today, published relationship edges. Not a documents app
-        // and not the inbox: strangers' knocks are the future envelope path, not this list.
-        itemNoun: 'notification',
     },
     {
         id: 'lost-found',

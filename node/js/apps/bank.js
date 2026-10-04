@@ -35,6 +35,7 @@ const KINDS = {
     bond_matured: () => t('apps.bank.kind-bond-matured', 'hrseBonds matured'),
     bond_sold: () => t('apps.bank.kind-bond-sold', 'hrseBonds sold'),
     debt_interest: () => t('apps.bank.kind-debt-interest', 'interest on debt'),
+    magic_words: () => t('apps.bank.kind-magic-words', 'the magic words'),
 };
 
 /// A line's amount with its own sign: earnings rise, purchases and debt fall.
@@ -111,6 +112,8 @@ const RowWords = ({ row, current }) => {
                 : t('apps.bank.sold-a-hrsebond', 'sold a hrseBond');
         case 'debt_interest':
             return t('apps.bank.interest-on-debt', 'interest on your debt, at 2% a day');
+        case 'magic_words':
+            return t('apps.bank.used-the-magic-words', 'used the magic words');
         default:
             return row.kind;
     }

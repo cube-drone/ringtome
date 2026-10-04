@@ -584,7 +584,7 @@ export const DocsApp = ({
     const { resizer, colStyle } = useColWidths(
         root,
         app.id,
-        ['tags', 'list', 'tree', 'publish', 'links'],
+        ['list', 'tags', 'tree', 'links', 'publish'],
         {},
         app.everything ? ['list'] : [],
     );
@@ -652,17 +652,6 @@ export const DocsApp = ({
     return html`
         <div class="notes">
             <div class="notes-columns panes" style=${colStyle}>
-                ${
-                    feat.tagColumn &&
-                    (tagsTucked
-                        ? html`<${Rail} icon=${Icons.tag} label=${t('apps.notes.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
-                        : html`${tab('tags', Icons.tag, t('apps.notes.tags', 'tags'))}<${TagColumn}
-                          cloud=${tagCloud}
-                          active=${tagFilter}
-                          onToggleTag=${toggleTag}
-                          onTuck=${() => toggleTuck('tags')}
-                      />${resizer('tags')}`)
-                }
                 ${
                     tucked.has('list')
                         ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
@@ -754,6 +743,21 @@ export const DocsApp = ({
                 </aside>${resizer('list')}`
                 }
                 ${
+                    /* The tags come after the list (Curtis, 2026-10-04): the thing-selector
+                    stands leftmost in every app, and the filters beside it. */ ''
+                }
+                ${
+                    feat.tagColumn &&
+                    (tagsTucked
+                        ? html`<${Rail} icon=${Icons.tag} label=${t('apps.notes.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
+                        : html`${tab('tags', Icons.tag, t('apps.notes.tags', 'tags'))}<${TagColumn}
+                          cloud=${tagCloud}
+                          active=${tagFilter}
+                          onToggleTag=${toggleTag}
+                          onTuck=${() => toggleTuck('tags')}
+                      />${resizer('tags')}`)
+                }
+                ${
                     feat.tree &&
                     (treeTucked
                         ? html`<${Rail} icon=${Icons.tree} label=${t('apps.notes.tree', 'tree')} onClick=${() => toggleTuck('tree')} />`
@@ -779,6 +783,13 @@ export const DocsApp = ({
                           itemNoun=${noun}
                       />${resizer('tree')}`)
                 }
+                ${/* What links to the open note, and what it links to (2026-09-30). */ ''}
+                ${
+                    feat.linkColumn &&
+                    (linksTucked
+                        ? html`<${Rail} icon=${Icons.link} label=${t('apps.notes.links', 'links')} onClick=${() => toggleTuck('links')} />`
+                        : html`${tab('links', Icons.link, t('apps.notes.links', 'links'))}<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)
+                }
                 ${
                     feat.bookColumn &&
                     (publishTucked
@@ -792,13 +803,6 @@ export const DocsApp = ({
                           onTuck=${() => toggleTuck('publish')}
                           onSelect=${select}
                       />${resizer('publish')}`)
-                }
-                ${/* What links to the open note, and what it links to (2026-09-30). */ ''}
-                ${
-                    feat.linkColumn &&
-                    (linksTucked
-                        ? html`<${Rail} icon=${Icons.link} label=${t('apps.notes.links', 'links')} onClick=${() => toggleTuck('links')} />`
-                        : html`${tab('links', Icons.link, t('apps.notes.links', 'links'))}<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)
                 }
                 <${RightColumn}
                     root=${root}

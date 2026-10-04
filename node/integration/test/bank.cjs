@@ -110,6 +110,34 @@ describe('HorseBucks: the ledger', function () {
         const again = await bank();
         assert.equal(again.balance, b.balance, 'asking again pays nothing twice');
     });
+
+    it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {
+        const bea = await makeUserFetch({ prefix: 'bankbea' });
+        const beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const publish = async (title, body) => {
+            const made = await (
+                await j(bea, `api/identity/${beaRoot}/docs`, { title, body, format: 'marquee' })
+            ).json();
+            const pub = await j(bea, `api/identity/${beaRoot}/docs/${made.doc_id}/publish`, {});
+            assert.equal(pub.status, 200, await pub.text());
+        };
+        const magic = async () =>
+            (await (await bea(`api/identity/${beaRoot}/bank`)).json()).lines.filter(
+                (l) => l.kind === 'magic_words',
+            );
+        await publish('plain', 'nothing to see here');
+        assert.deepEqual(await magic(), [], 'a post without them pays nothing of the kind');
+        await publish('loud', 'Well then: Show Me The Money!');
+        const once = await magic();
+        assert.deepEqual(
+            once.map((l) => Number(l.pennies)),
+            [1000000],
+            'H$ 10,000 in horsepennies',
+        );
+        assert.equal(once[0].detail.said, 'show me the money', 'and the line says which words');
+        await publish('again', 'rosebud');
+        assert.equal((await magic()).length, 1, 'once per persona - never a press for money');
+    });
 });
 
 /*

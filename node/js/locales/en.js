@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1418 phrases across 88 files.
+// 1420 phrases across 88 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -30,6 +30,7 @@ export default {
     'apps.bank.kind-bond-matured': 'hrseBonds matured',
     'apps.bank.kind-bond-sold': 'hrseBonds sold',
     'apps.bank.kind-debt-interest': 'interest on debt',
+    'apps.bank.kind-magic-words': 'the magic words',
     'apps.bank.untitled': 'something untitled',
     'apps.bank.wrote-n-words-in': 'wrote {n} new words in',
     'apps.bank.over-n-saves': ' · {count} saves',
@@ -57,6 +58,7 @@ export default {
     'apps.bank.sold-n-hrsebonds': 'sold {count} hrseBonds',
     'apps.bank.sold-a-hrsebond': 'sold a hrseBond',
     'apps.bank.interest-on-debt': 'interest on your debt, at 2% a day',
+    'apps.bank.used-the-magic-words': 'used the magic words',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
     'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
@@ -314,15 +316,15 @@ export default {
     'apps.notes.unfiled': 'unfiled',
     'apps.notes.tagged': 'tagged',
     'apps.notes.couldnt-make-a-new-one': "couldn't make a new one: {message}",
-    'apps.notes.tags': 'tags',
     'apps.notes.nothing-here-yet': 'nothing here yet.',
     'apps.notes.nothing-matches': 'nothing matches.',
     'apps.notes.storage-foot-title': 'what moving this persona to another computer carries: every file, each version, and its own records',
     'apps.notes.storage-foot': '{size} in all',
     'apps.notes.remove-filter': 'remove filter',
+    'apps.notes.tags': 'tags',
     'apps.notes.tree': 'tree',
-    'apps.notes.publish': 'publish',
     'apps.notes.links': 'links',
+    'apps.notes.publish': 'publish',
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.a-room': 'a room',
