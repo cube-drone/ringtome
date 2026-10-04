@@ -5,7 +5,7 @@
 // contract, never a key built from the id (STYLE: never assemble a name at runtime) - the strings
 // tool reads them. A contract the node knows and this table doesn't yet wears the node's English.
 import { t } from './i18n.js';
-import { appHref } from './links.js';
+import { appHref, personaPageHref } from './links.js';
 
 const NAMES = {
     'draw-a-horse': () => t('contracts.draw-a-horse', 'Draw a horse in hrseDrawing™'),
@@ -13,6 +13,8 @@ const NAMES = {
     'follow-a-stranger': () => t('contracts.follow-a-stranger', 'Follow a stranger'),
     'get-a-follower': () => t('contracts.get-a-follower', 'Get a follower'),
     'write-a-note': () => t('contracts.write-a-note', 'Create a private note in hrseWriter™'),
+    'upload-an-image': () => t('contracts.upload-an-image', 'Upload an image to hrseFiles™'),
+    'set-a-profile-picture': () => t('contracts.set-a-profile-picture', 'Set your profile picture'),
 };
 
 /// The fine print (Curtis, 2026-10-04): exactly what reaching the goal takes, said on hover over a
@@ -52,6 +54,20 @@ const FINE_PRINT = {
             'Open the hrseWriter™ application and make a new note. It stays private - only you can see it.',
         ),
         href: appHref('notes'),
+    }),
+    'upload-an-image': () => ({
+        text: t(
+            'contracts.upload-an-image-fine-print',
+            "Open the hrseFiles™ application and upload a picture of your own - a photo, a GIF, anything. A copy of one of your drawings doesn't count.",
+        ),
+        href: appHref('lost-found'),
+    }),
+    'set-a-profile-picture': () => ({
+        text: t(
+            'contracts.set-a-profile-picture-fine-print',
+            'Open your profile and choose a picture of yourself - upload one, or use one of your drawings.',
+        ),
+        href: personaPageHref('profile'),
     }),
 };
 

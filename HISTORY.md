@@ -17036,3 +17036,25 @@ nothing. An empty, just-made note counts - the contract is the making. The
 notebooks are read only once a private text document exists. `bank.cjs` claims
 an unfiled note and a Feed draft don't, a note in `default` does, 250,000
 horsepennies once; the rule's table is a unit test. `just ci` green.
+
+**2026-10-04 - the sixth contract: upload an image.** "Upload an image to
+hrseFiles™", H$ 5,000. A private document whose current head is a picture - a
+still (AVIF, APNG) or a silent loop - that isn't a drawing's flattened copy
+(`uploaded_an_image`; the image picker makes those itself and marks them
+`flattened_from`). Avatars and banners are public media, never in this view; a
+sound or a film isn't an image. The annotations are read only once a candidate
+picture exists. One edge, left: the picker uploads a copy and marks it a moment
+after, so a bank pass landing in between would count the copy - a narrow window,
+for one contract. The ledger's first claim uploads a picture, so it now also
+expects this contract's 500,000 horsepennies in its exact balance; the new claim
+has a marked copy not count and a picture of one's own count. `just ci` green.
+
+**2026-10-04 - the seventh contract: set your profile picture.** "Set your
+profile picture", H$ 2,500 (the reward wasn't named; this one's the size of the
+private note's, a quick task). Done when the persona's public profile carries an
+avatar - the `avatar` field non-empty, off the profile fold the bank already
+reads. Nothing sets an avatar but the person (the avatar door; a new persona has
+none), so there's no automatic one to tell apart. The avatar is public media, so
+it never also counts as "Upload an image". The fine print's link goes to the
+persona's profile page. `bank.cjs` claims a new persona isn't done, an avatar
+uploaded is, 250,000 horsepennies once. `just ci` green.

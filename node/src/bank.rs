@@ -71,7 +71,7 @@ pub struct Contract {
 }
 
 /// Every contract, in the order the column lists them.
-pub const CONTRACTS: [Contract; 5] = [
+pub const CONTRACTS: [Contract; 7] = [
     Contract {
         id: "draw-a-horse",
         name: "Draw a horse in hrseDrawing™",
@@ -89,7 +89,53 @@ pub const CONTRACTS: [Contract; 5] = [
         name: "Create a private note in hrseWriter™",
         pennies: 2_500 * HORSEBUCK,
     },
+    Contract {
+        id: "upload-an-image",
+        name: "Upload an image to hrseFiles™",
+        pennies: 5_000 * HORSEBUCK,
+    },
+    Contract {
+        id: "set-a-profile-picture",
+        name: "Set your profile picture",
+        pennies: 2_500 * HORSEBUCK,
+    },
 ];
+
+/// Has this persona uploaded an image? A private document whose current head is a picture - a
+/// still (AVIF, APNG) or a silent loop - that isn't a drawing's flattened copy (the image picker
+/// makes those itself; `FLAT_FROM`). Avatars and banners are public, so never in view here; a
+/// sound or a film isn't an image. The annotations are read only once a candidate exists.
+async fn uploaded_an_image(
+    data: &Store,
+    view: &crate::record::documents::DocumentsView,
+) -> Result<bool> {
+    let pictures: Vec<[u8; 16]> = view
+        .docs
+        .iter()
+        .filter(|(_, d)| d.lane == "private")
+        .filter(|(_, d)| {
+            d.display_head().is_some_and(|h| match Format::from_wire(h.header.format) {
+                Format::Avif | Format::Apng => true,
+                Format::WebmAv1 => h.header.animation,
+                _ => false,
+            })
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    if pictures.is_empty() {
+        return Ok(false);
+    }
+    let copies: HashSet<[u8; 16]> = data
+        .annotations()
+        .all()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .into_iter()
+        .filter(|r| r.fields.contains_key(FLAT_FROM))
+        .filter_map(|r| hex::decode(&r.doc_id).ok()?.try_into().ok())
+        .collect();
+    Ok(pictures.iter().any(|id| !copies.contains(id)))
+}
 
 /// Is this notebook hrseWriter's? The client's `appTypeOf` (js/pure/apps.js), restated: the
 /// reserved notebooks (`chat`, `files`) are nobody's; a notebook named for an app's style is that
@@ -688,6 +734,17 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // "Create a private note": one, in a Writer notebook.
     if !done.contains_key("write-a-note") && wrote_a_private_note(data, &view).await? {
         complete_contract(state, data, root_hex, "write-a-note", &mut done).await?;
+    }
+    // "Upload an image": a picture of the person's own, not a drawing's copy.
+    if !done.contains_key("upload-an-image") && uploaded_an_image(data, &view).await? {
+        complete_contract(state, data, root_hex, "upload-an-image", &mut done).await?;
+    }
+    // "Set your profile picture": an avatar chosen - nothing sets one but the person.
+    if !done.contains_key("set-a-profile-picture") {
+        let profile = data.profile().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        if profile.iter().any(|f| f.field == "avatar" && !f.value.trim().is_empty()) {
+            complete_contract(state, data, root_hex, "set-a-profile-picture", &mut done).await?;
+        }
     }
     // "Get a follower": the same, turned round.
     if !done.contains_key("get-a-follower") && got_a_follower(state, root_hex).await? {

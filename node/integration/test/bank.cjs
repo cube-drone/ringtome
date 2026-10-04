@@ -86,9 +86,11 @@ describe('HorseBucks: the ledger', function () {
             [3750 + 1200],
             'the words again, plus the size bonus',
         );
+        // The upload is also the "Upload an image" contract (2026-10-04): H$ 5,000, once.
+        assert.deepEqual(paid(b, 'contract'), [500000], 'the picture completes a contract');
         assert.equal(
             b.balance,
-            String(3700 + 50 + 1000 + 1000 + 4950),
+            String(3700 + 50 + 1000 + 1000 + 4950 + 500000),
             "the balance is the lines' sum, exactly",
         );
         const pubLine = b.lines.find((l) => l.kind === 'publication');
@@ -413,6 +415,73 @@ describe('HorseBucks: the ledger', function () {
             "a note in Writer's notebook is",
         );
         assert.deepEqual(await wrote(), { done: true, paid: [250000] }, 'and it pays once');
+    });
+
+    it("a contract: upload an image - your own, never a drawing's flattened copy (2026-10-04)", async () => {
+        const lee = await makeUserFetch({ prefix: 'banklee' });
+        const root = (await (await lee('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const uploaded = async () => {
+            const b = await (await lee(`api/identity/${root}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'upload-an-image');
+            return !!(c && c.completed_ms);
+        };
+        const upload = async () => {
+            const pic = await (
+                await lee(`api/identity/${root}/docs/binary?title=a picture`, {
+                    method: 'POST',
+                    body: makePng(20, 20),
+                    file: true,
+                })
+            ).json();
+            for (let i = 0; i < 60; i++) {
+                if ((await lee(`api/identity/${root}/docs/${pic.doc_id}/body`)).status === 200)
+                    break;
+                await wait(250);
+            }
+            return pic.doc_id;
+        };
+        // A drawing's flattened copy, as the image picker makes one: marked before the bank looks.
+        const drawing = await (
+            await j(lee, `api/identity/${root}/docs`, {
+                title: 'pony',
+                body: '{"strokes":[]}',
+                format: 'drawing',
+            })
+        ).json();
+        const copy = await upload();
+        await j(
+            lee,
+            `api/identity/${root}/docs/${copy}/annotations/fields/flattened_from`,
+            { value: drawing.doc_id },
+            'PUT',
+        );
+        assert.equal(await uploaded(), false, "a drawing's copy is not an upload of your own");
+        await upload();
+        assert.equal(await uploaded(), true, 'a picture of your own is');
+    });
+
+    it('a contract: set your profile picture - pays H$ 2,500 once (2026-10-04)', async () => {
+        const mo = await makeUserFetch({ prefix: 'bankmo' });
+        const root = (await (await mo('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const pictured = async () => {
+            const b = await (await mo(`api/identity/${root}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'set-a-profile-picture');
+            const paid = b.lines.filter(
+                (l) => l.kind === 'contract' && l.source === 'set-a-profile-picture',
+            );
+            return { done: !!(c && c.completed_ms), paid: paid.map((l) => Number(l.pennies)) };
+        };
+        assert.equal((await pictured()).done, false, 'a new persona has no picture');
+        const form = new FormData();
+        form.append('image', new Blob([makePng(64, 64)], { type: 'image/png' }), 'me.png');
+        const set = await mo(`api/identity/${root}/avatar`, {
+            method: 'POST',
+            body: form,
+            file: true,
+        });
+        assert.equal(set.status, 200, await set.text());
+        assert.deepEqual(await pictured(), { done: true, paid: [250000] }, 'an avatar chosen is');
+        assert.deepEqual(await pictured(), { done: true, paid: [250000] }, 'and it pays once');
     });
 
     it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {
