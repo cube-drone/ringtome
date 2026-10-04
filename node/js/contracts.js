@@ -10,6 +10,9 @@ import { appHref } from './links.js';
 const NAMES = {
     'draw-a-horse': () => t('contracts.draw-a-horse', 'Draw a horse in hrseDrawing™'),
     'post-a-horse': () => t('contracts.post-a-horse', 'Post your horse to the hrseFeed™'),
+    'follow-a-stranger': () => t('contracts.follow-a-stranger', 'Follow a stranger'),
+    'get-a-follower': () => t('contracts.get-a-follower', 'Get a follower'),
+    'write-a-note': () => t('contracts.write-a-note', 'Create a private note in hrseWriter™'),
 };
 
 /// The fine print (Curtis, 2026-10-04): exactly what reaching the goal takes, said on hover over a
@@ -28,6 +31,27 @@ const FINE_PRINT = {
             'Open the hrseFeed™ application, and create and share a post containing any drawing.',
         ),
         href: appHref('feed'),
+    }),
+    'follow-a-stranger': () => ({
+        text: t(
+            'contracts.follow-a-stranger-fine-print',
+            "Use the hrsePeople™ application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
+        ),
+        href: appHref('people'),
+    }),
+    'get-a-follower': () => ({
+        text: t(
+            'contracts.get-a-follower-fine-print',
+            "Get someone else who plays Horse Drawing Tycoon 2 to set some interest in you. The people who were following you from the start don't count, and neither do your own other personas.",
+        ),
+        href: appHref('people'),
+    }),
+    'write-a-note': () => ({
+        text: t(
+            'contracts.write-a-note-fine-print',
+            'Open the hrseWriter™ application and make a new note. It stays private - only you can see it.',
+        ),
+        href: appHref('notes'),
     }),
 };
 

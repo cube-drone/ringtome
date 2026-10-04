@@ -16990,3 +16990,49 @@ the one message). The name and fine print sit in js/contracts.js, the fine
 print's link going to hrseFeed. `bank.cjs` claims a photo post doesn't, a
 drawing's copy in a post does, a drawing published does, each pays 1,000,000
 horsepennies once, with one message. `just ci` green.
+
+**2026-10-04 - the third contract: follow a stranger.** "Follow a stranger" -
+use the hrsePeople™ application to find someone else who plays and set some
+interest in them - never the default, automatic follows, only someone you've
+never followed before. H$ 5,000 (Curtis confirmed the amount). The node's own
+follows and the person's look alike on the private chain - the same registers,
+the same key - so the node's are marked from now on: Starter Friends
+(`starters::seed`) and group mode (`groups::befriend`, only where the group
+itself set the interest) write `auto` = `starter` / `group` into the contact's
+register; private, never published (only the three dials publish). And for
+follows made before the mark: a contact on this node's built-in starters, its
+operator's auto-follow list, or the group this persona joined
+(`groups::paired_with`) doesn't count either. The contract completes on interest
+set (and not "none") in anybody else (`followed_a_stranger`): one read of the
+contact ledger, and the node's small lists only once a candidate exists. A note
+for operators: an older follow from the auto-follow list, made before the mark,
+counts as the person's own if its target leaves the list. The name and fine
+print sit in js/contracts.js, the link going to hrsePeople. `bank.cjs` claims a
+marked follow doesn't, a listed one doesn't, "none" doesn't, and a stranger
+does, once. `just ci` green.
+
+**2026-10-04 - the fourth contract: get a follower.** "Follow a stranger" turned
+round: someone else sets interest in you - H$ 5,000 (confirmed, like the last).
+Whether someone else's follow was automatic is on THEIR private chain, so it
+can't be read from here; what this node holds is their published edge naming
+you, the same rows the bank's `followed` line already pays on
+(`edgegraph::edges_naming`). A follower counts when that edge carries an
+interest band (a trust alone is no follow), unless they're the group this
+persona joined - the one automatic follow that runs both ways; Starter Friends
+only goes from the newcomer - or one of this account's own other personas, or
+following yourself would pay (`got_a_follower`). `bank.cjs` claims your own
+second persona's follow doesn't (with the exclusion removed, that claim fails -
+the alternate persona's edge does reach the graph in the window) and somebody
+else's does, once. `just ci` green.
+
+**2026-10-04 - the fifth contract: create a private note in hrseWriter.**
+"Create a private note in hrseWriter™", H$ 2,500. A private text document
+(Marquee or plain) filed in a Writer notebook (`wrote_a_private_note`) - so not
+a Feed draft (filed in `feed`), a room's, a picture or a drawing. Which
+notebooks are Writer's is the client's `appTypeOf` restated in Rust
+(`is_writer_notebook`): never the reserved `chat` / `files` or the styles `feed`
+/ `drawing`; `default`; and any other notebook registered to `default` or to
+nothing. An empty, just-made note counts - the contract is the making. The
+notebooks are read only once a private text document exists. `bank.cjs` claims
+an unfiled note and a Feed draft don't, a note in `default` does, 250,000
+horsepennies once; the rule's table is a unit test. `just ci` green.

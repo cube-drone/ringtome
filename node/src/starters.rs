@@ -81,6 +81,10 @@ pub fn configured(env: Option<&str>, prod: bool, local_test: bool) -> Result<Vec
 /// Give a newborn persona its starters: the three dials on each (never the persona itself), folded at
 /// once so the follow and its public statement are in place before the first feed, then each fetched
 /// through its hints, detached - a starter's node being slow or dark never delays a sign-up.
+/// The contact-register key that marks a follow as the node's own doing - a starter's or a group's
+/// (groups.rs) - rather than the person's: `starter` or `group`.
+pub const AUTO_KEY: &str = "auto";
+
 pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
     // The built-in (or environment's) starters, then the operator's own list - which wins for a
     // person on both, its dials being this node's word (2026-10-02).
@@ -112,10 +116,14 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
         }
         let collection = format!("contact:{them}");
         let register = data.private_registers(&collection);
+        // `auto`: this follow was the node's, not the person's (2026-10-04) - the "Follow a
+        // stranger" contract (bank.rs) never counts it. Private, never published.
+        let auto = "starter".to_string();
         for (key, value) in [
             ("trust", &s.trust),
             ("interest", &s.interest),
             ("interest_rebroadcasts", &s.rebroadcasts),
+            (AUTO_KEY, &auto),
         ] {
             if let Err(e) = register.set(key, value).await {
                 tracing::warn!(error = ?e, starter = %them, key, "a starter's dial did not take");

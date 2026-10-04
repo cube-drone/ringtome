@@ -89,6 +89,20 @@ async fn enroll_inner(state: &AppState, account: &Uuid, root: &str) -> Result<()
     Ok(())
 }
 
+/// Whom this persona was paired with by joining a group - nobody, if it joined none. The bank's
+/// "Follow a stranger" contract never counts them (for pairings made before the `auto` mark).
+pub async fn paired_with(state: &AppState, root: &str) -> Result<Vec<String>, AppError> {
+    let row: Option<(String,)> = state
+        .node_db
+        .fetch_optional("SELECT group_name FROM group_members WHERE root_pubkey = ?1", (root,))
+        .await
+        .map_err(AppError::Internal)?;
+    match row {
+        Some((group,)) => peers_of(state, &group, root).await,
+        None => Ok(Vec::new()),
+    }
+}
+
 /// Whom a joiner of `group` is paired with: its other members' first personas, and every node
 /// administrator's first persona - each once, never the joiner itself.
 async fn peers_of(state: &AppState, group: &str, joiner: &str) -> Result<Vec<String>, AppError> {
@@ -126,6 +140,9 @@ async fn befriend(state: &AppState, me: &str, them: &str, group: &str) -> Result
     }
     if !has("interest") {
         register.set("interest", GROUP_INTEREST).await?;
+        // The group's follow, not the person's (2026-10-04): the "Follow a stranger" contract
+        // never counts it. Only where the group set the interest - a follow already theirs stays.
+        register.set(crate::starters::AUTO_KEY, "group").await?;
     }
     let tag = normalise_tag(group);
     let mut tags: Vec<String> = held

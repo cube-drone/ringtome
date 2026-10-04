@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1433 phrases across 89 files.
+// 1439 phrases across 89 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -478,8 +478,14 @@ export default {
     // --- node/js/contracts.js ---
     'contracts.draw-a-horse': 'Draw a horse in hrseDrawing™',
     'contracts.post-a-horse': 'Post your horse to the hrseFeed™',
+    'contracts.follow-a-stranger': 'Follow a stranger',
+    'contracts.get-a-follower': 'Get a follower',
+    'contracts.write-a-note': 'Create a private note in hrseWriter™',
     'contracts.draw-a-horse-fine-print': 'Please open the hrseDrawing™ application and draw anything you like. It must contain at least three brush-strokes to qualify.',
     'contracts.post-a-horse-fine-print': 'Open the hrseFeed™ application, and create and share a post containing any drawing.',
+    'contracts.follow-a-stranger-fine-print': "Use the hrsePeople™ application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
+    'contracts.get-a-follower-fine-print': "Get someone else who plays Horse Drawing Tycoon 2 to set some interest in you. The people who were following you from the start don't count, and neither do your own other personas.",
+    'contracts.write-a-note-fine-print': 'Open the hrseWriter™ application and make a new note. It stays private - only you can see it.',
 
     // --- node/js/copyinto.js ---
     'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',

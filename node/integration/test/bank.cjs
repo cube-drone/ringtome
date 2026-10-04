@@ -9,6 +9,7 @@ const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch, makePng } = require('./helpers.cjs');
+const { sql } = require('./fetch.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -267,6 +268,151 @@ describe('HorseBucks: the ledger', function () {
             (await (await dan.who(`api/identity/${dan.root}/notifications`)).json()).items || []
         ).filter((n) => n.kind === 'contract' && n.doc_id === 'post-a-horse');
         assert.equal(told.length, 1, 'one message');
+    });
+
+    it('a contract: follow a stranger - interest of your own accord, never the automatic follows - pays once (2026-10-04)', async () => {
+        const persona = async (prefix) => {
+            const who = await makeUserFetch({ prefix });
+            const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+            return { who, root };
+        };
+        const gus = await persona('bankgus');
+        const [marked, listed, stranger] = [
+            await persona('bankmarked'),
+            await persona('banklisted'),
+            await persona('bankstranger'),
+        ];
+        const setDial = (them, key, value) =>
+            j(
+                gus.who,
+                `api/identity/${gus.root}/private/kv/contact:${them.root}/${key}`,
+                { value },
+                'PUT',
+            );
+        const followed = async () => {
+            const b = await (await gus.who(`api/identity/${gus.root}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'follow-a-stranger');
+            return {
+                done: !!(c && c.completed_ms),
+                paid: b.lines.filter(
+                    (l) => l.kind === 'contract' && l.source === 'follow-a-stranger',
+                ).length,
+            };
+        };
+        // A follow the node made for them (starters.rs, groups.rs mark it `auto`): not theirs.
+        await setDial(marked, 'interest', 'low');
+        await setDial(marked, 'auto', 'starter');
+        assert.equal(
+            (await followed()).done,
+            false,
+            'a marked, automatic follow is not a stranger',
+        );
+        // On the operator's auto-follow list - how a follow from before the mark looks: not theirs.
+        const admin = await makeUserFetch({ prefix: 'bankadm' });
+        await sql(
+            `INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES ('${admin.account.id}', 'node_admin')`,
+        );
+        await j(admin, 'api/admin/auto-follow', { address: listed.root });
+        try {
+            await setDial(listed, 'interest', 'medium');
+            assert.equal(
+                (await followed()).done,
+                false,
+                'someone on the auto-follow list is not a stranger',
+            );
+        } finally {
+            // Cleared before the list lets them go: off the list, an unmarked follow from before the
+            // mark would read as the person's own.
+            await setDial(listed, 'interest', '');
+            await admin(`api/admin/auto-follow/${listed.root}`, { method: 'DELETE' });
+        }
+        // "none" is no interest.
+        await setDial(stranger, 'interest', 'none');
+        assert.equal((await followed()).done, false, 'interest "none" is not following');
+        // A stranger, followed of their own accord.
+        await setDial(stranger, 'interest', 'low');
+        assert.deepEqual(await followed(), { done: true, paid: 1 }, 'a stranger followed is');
+        assert.deepEqual(await followed(), { done: true, paid: 1 }, 'and it pays once');
+    });
+
+    it('a contract: get a follower - someone else, never your own other personas - pays once (2026-10-04)', async () => {
+        const hal = await makeUserFetch({ prefix: 'bankhal' });
+        const halRoot = (await (await hal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const contract = async () => {
+            const b = await (await hal(`api/identity/${halRoot}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'get-a-follower');
+            return {
+                done: !!(c && c.completed_ms),
+                paid: b.lines.filter((l) => l.kind === 'contract' && l.source === 'get-a-follower')
+                    .length,
+            };
+        };
+        const follow = (who, whoRoot) =>
+            j(
+                who,
+                `api/identity/${whoRoot}/private/kv/contact:${halRoot}/interest`,
+                { value: 'low' },
+                'PUT',
+            );
+        // Hal's own second persona follows hal: not someone else.
+        const alt = (await (await hal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await follow(hal, alt);
+        for (let i = 0; i < 12; i++) {
+            await wait(250);
+            assert.equal(
+                (await contract()).done,
+                false,
+                'your own other persona is not a follower',
+            );
+        }
+        // Somebody else does.
+        const ivy = await makeUserFetch({ prefix: 'bankivy' });
+        const ivyRoot = (await (await ivy('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await follow(ivy, ivyRoot);
+        let got = await contract();
+        for (let i = 0; i < 80 && !got.done; i++) {
+            await wait(250);
+            got = await contract();
+        }
+        assert.deepEqual(got, { done: true, paid: 1 }, 'someone else following is');
+        assert.deepEqual(await contract(), { done: true, paid: 1 }, 'and it pays once');
+    });
+
+    it('a contract: create a private note in hrseWriter - filed in a Writer notebook - pays H$ 2,500 once (2026-10-04)', async () => {
+        const kit = await makeUserFetch({ prefix: 'bankkit' });
+        const root = (await (await kit('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const wrote = async () => {
+            const b = await (await kit(`api/identity/${root}/bank`)).json();
+            const c = (b.contracts || []).find((x) => x.id === 'write-a-note');
+            const paid = b.lines.filter(
+                (l) => l.kind === 'contract' && l.source === 'write-a-note',
+            );
+            return { done: !!(c && c.completed_ms), paid: paid.map((l) => Number(l.pennies)) };
+        };
+        const note = async (bucket) => {
+            const made = await (
+                await j(kit, `api/identity/${root}/docs`, {
+                    title: 'untitled',
+                    body: '',
+                    format: 'marquee',
+                })
+            ).json();
+            if (bucket)
+                await kit(`api/identity/${root}/docs/${made.doc_id}/buckets/${bucket}`, {
+                    method: 'PUT',
+                });
+        };
+        await note(null);
+        assert.equal((await wrote()).done, false, 'an unfiled note is in no Writer notebook');
+        await note('feed');
+        assert.equal((await wrote()).done, false, "a Feed draft is Feed's, not Writer's");
+        await note('default');
+        assert.deepEqual(
+            await wrote(),
+            { done: true, paid: [250000] },
+            "a note in Writer's notebook is",
+        );
+        assert.deepEqual(await wrote(), { done: true, paid: [250000] }, 'and it pays once');
     });
 
     it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {

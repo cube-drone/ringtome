@@ -71,7 +71,7 @@ pub struct Contract {
 }
 
 /// Every contract, in the order the column lists them.
-pub const CONTRACTS: [Contract; 2] = [
+pub const CONTRACTS: [Contract; 5] = [
     Contract {
         id: "draw-a-horse",
         name: "Draw a horse in hrseDrawing™",
@@ -82,7 +82,132 @@ pub const CONTRACTS: [Contract; 2] = [
         name: "Post your horse to the hrseFeed™",
         pennies: 10_000 * HORSEBUCK,
     },
+    Contract { id: "follow-a-stranger", name: "Follow a stranger", pennies: 5_000 * HORSEBUCK },
+    Contract { id: "get-a-follower", name: "Get a follower", pennies: 5_000 * HORSEBUCK },
+    Contract {
+        id: "write-a-note",
+        name: "Create a private note in hrseWriter™",
+        pennies: 2_500 * HORSEBUCK,
+    },
 ];
+
+/// Is this notebook hrseWriter's? The client's `appTypeOf` (js/pure/apps.js), restated: the
+/// reserved notebooks (`chat`, `files`) are nobody's; a notebook named for an app's style is that
+/// app's (`default` is Writer's, `feed` and `drawing` aren't); any other is the app it's registered
+/// to, and Writer's when it's registered to none.
+fn is_writer_notebook(name: &str, registered: &HashMap<String, String>) -> bool {
+    match name {
+        "chat" | "files" | "feed" | "drawing" => false,
+        "default" => true,
+        _ => registered.get(name).is_none_or(|app| app.is_empty() || app == "default"),
+    }
+}
+
+/// Has this persona a private note in hrseWriter? A private text document (Marquee or plain)
+/// filed in a Writer notebook - not a Feed draft, a room's, or a picture. The notebooks are read
+/// only once a private text document exists at all.
+async fn wrote_a_private_note(
+    data: &Store,
+    view: &crate::record::documents::DocumentsView,
+) -> Result<bool> {
+    let notes: Vec<&[u8; 16]> = view
+        .docs
+        .iter()
+        .filter(|(_, d)| d.lane == "private")
+        .filter(|(_, d)| {
+            d.display_head().is_some_and(|h| {
+                matches!(Format::from_wire(h.header.format), Format::Marquee | Format::Plaintext)
+            })
+        })
+        .map(|(id, _)| id)
+        .collect();
+    if notes.is_empty() {
+        return Ok(false);
+    }
+    let filed = data.buckets().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let registered: HashMap<String, String> = data
+        .buckets()
+        .roster()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .into_iter()
+        .map(|b| (b.name, b.app))
+        .collect();
+    Ok(notes.into_iter().any(|id| {
+        filed.get(id).is_some_and(|names| names.iter().any(|n| is_writer_notebook(n, &registered)))
+    }))
+}
+
+/// Has somebody else set interest in this persona of their own accord? "Follow a stranger" turned
+/// round: a published edge naming this persona with an interest band (a trust alone is no follow).
+/// Never the node's doing - the group this persona joined follows it automatically, both ways
+/// (Starter Friends only ever goes from the newcomer) - and never this account's own other
+/// personas, or following yourself would pay.
+async fn got_a_follower(state: &AppState, root_hex: &str) -> Result<bool> {
+    let followers: Vec<String> = crate::edgegraph::edges_naming(&state.node_db, root_hex)
+        .await?
+        .into_iter()
+        .filter(|(_, _, interest)| {
+            interest.as_deref().is_some_and(|i| matches!(i, "low" | "medium" | "high" | "max"))
+        })
+        .map(|(author, _, _)| author)
+        .collect();
+    if followers.is_empty() {
+        return Ok(false);
+    }
+    let mut not_strangers: HashSet<String> = crate::groups::paired_with(state, root_hex)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .into_iter()
+        .collect();
+    if let Some(account) = crate::identity::account_of(&state.node_db, root_hex)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+    {
+        if let Ok(account) = account.parse::<uuid::Uuid>() {
+            for persona in crate::identity::list_for_account(&state.node_db, &account)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+            {
+                not_strangers.insert(persona.root_pubkey);
+            }
+        }
+    }
+    Ok(followers.iter().any(|f| f != root_hex && !not_strangers.contains(f)))
+}
+
+/// Has this persona set interest in somebody of its own accord? A contact with interest set (and
+/// not "none") that the node didn't follow for them: no `auto` mark (starters.rs, groups.rs), and -
+/// for follows made before the mark - not one of this node's starters, its operator's auto-follow
+/// list, or the group this persona joined. The node's lists are read only once a candidate exists.
+async fn followed_a_stranger(state: &AppState, data: &Store, root_hex: &str) -> Result<bool> {
+    let contacts = data.contacts().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let candidates: Vec<String> = contacts
+        .into_iter()
+        .filter(|(root, facts)| {
+            root != root_hex
+                && !facts.contains_key(crate::starters::AUTO_KEY)
+                && facts.get("interest").is_some_and(|i| !i.trim().is_empty() && i.trim() != "none")
+        })
+        .map(|(root, _)| root)
+        .collect();
+    if candidates.is_empty() {
+        return Ok(false);
+    }
+    let mut automatic: HashSet<String> =
+        state.config.starter_contacts.iter().map(|s| hex::encode(s.root)).collect();
+    for a in
+        crate::starters::auto_follow(&state.node_db).await.map_err(|e| anyhow::anyhow!("{e}"))?
+    {
+        automatic.insert(a.root);
+    }
+    for peer in
+        crate::groups::paired_with(state, root_hex).await.map_err(|e| anyhow::anyhow!("{e}"))?
+    {
+        automatic.insert(peer);
+    }
+    Ok(candidates.iter().any(|r| !automatic.contains(r)))
+}
 
 /// The private annotation a drawing's flattened copy carries - the drawing it is a picture of
 /// (js/pure/flatcopy.js `FLAT_FROM`): how a picture in a post is known to be a drawing.
@@ -554,6 +679,19 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // "Post your horse": a published post holding a drawing - posts from before the contract count.
     if !done.contains_key("post-a-horse") && posted_a_drawing(data, &view, &claimed).await? {
         complete_contract(state, data, root_hex, "post-a-horse", &mut done).await?;
+    }
+    // "Follow a stranger": interest set, of the person's own accord, in somebody.
+    if !done.contains_key("follow-a-stranger") && followed_a_stranger(state, data, root_hex).await?
+    {
+        complete_contract(state, data, root_hex, "follow-a-stranger", &mut done).await?;
+    }
+    // "Create a private note": one, in a Writer notebook.
+    if !done.contains_key("write-a-note") && wrote_a_private_note(data, &view).await? {
+        complete_contract(state, data, root_hex, "write-a-note", &mut done).await?;
+    }
+    // "Get a follower": the same, turned round.
+    if !done.contains_key("get-a-follower") && got_a_follower(state, root_hex).await? {
+        complete_contract(state, data, root_hex, "get-a-follower", &mut done).await?;
     }
     for c in &CONTRACTS {
         if let Some(at) = done.get(c.id).filter(|_| is_new("contract", c.id)) {
@@ -1114,6 +1252,31 @@ mod tests {
             3
         );
         assert_eq!(marks_in(b"not a drawing"), 0);
+    }
+
+    /// Writer's notebooks, as the client reckons them: `default`, and any notebook registered to it
+    /// or to nothing; never a reserved one, Feed's or Drawing's.
+    #[test]
+    fn a_notebook_is_writers_as_the_client_reckons_it() {
+        let registered: HashMap<String, String> = [
+            ("recipes".to_string(), "default".to_string()),
+            ("sketches".to_string(), "drawing".to_string()),
+            ("loose".to_string(), String::new()),
+        ]
+        .into();
+        for (name, writers) in [
+            ("default", true),
+            ("recipes", true),
+            ("loose", true),
+            ("never-registered", true),
+            ("sketches", false),
+            ("feed", false),
+            ("drawing", false),
+            ("chat", false),
+            ("files", false),
+        ] {
+            assert_eq!(is_writer_notebook(name, &registered), writers, "{name}");
+        }
     }
 
     /// The magic words are found in any case, inside other words' company, and the first one said
