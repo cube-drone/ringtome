@@ -190,6 +190,13 @@ pub async fn read_public(state: &AppState, root_hex: &str) -> Result<PublicView,
 }
 
 impl Store {
+    /// Whose store this is: the identity's root key.
+    pub fn root(&self) -> [u8; 32] {
+        self.root
+    }
+}
+
+impl Store {
     /// The leaf this store writes with, hex - the device's name on a scheduled publish.
     pub fn leaf_hex(&self) -> String {
         hex::encode(self.authorship.signer.verifying_key().to_bytes())
@@ -1018,6 +1025,20 @@ impl Documents<'_> {
             &self.store.db,
             &self.store.authorship.epoch_keys,
             &deleted,
+        )
+        .await
+    }
+
+    /// The document as an editor opens it, without its history, when the memo can vouch for it
+    /// (`documents::materialize_current`); `None` means "take the whole way" (`one`).
+    pub async fn current(
+        &self,
+        doc_id: &[u8; 16],
+    ) -> Result<Option<crate::record::documents::Doc>, AppError> {
+        crate::record::documents::materialize_current(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            doc_id,
         )
         .await
     }

@@ -7064,12 +7064,18 @@ async fn docs_get_handler(
             deleted: false,
         }));
     }
-    let doc = data.documents().one(&doc_id).await?.ok_or_else(|| {
-        AppError::NotFound(crate::msg!(
-            "identity.routes.document-not-found-4",
-            "document not found"
-        ))
-    })?;
+    // The current head alone when the memo vouches for it (one logical head, true heads known):
+    // an editor's load no longer rebuilds the document's whole history (2026-10-03). Otherwise,
+    // and always for a diverged document, the whole way.
+    let doc = match data.documents().current(&doc_id).await? {
+        Some(doc) => doc,
+        None => data.documents().one(&doc_id).await?.ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "identity.routes.document-not-found-4",
+                "document not found"
+            ))
+        })?,
+    };
 
     // Media facts for the display head. Its presence also decides body inlining: a media body is
     // opaque bytes served via `/body`, never UTF-8-mangled into this JSON (a webp is not a string).
@@ -8109,16 +8115,9 @@ fn ship_kind<T: Serialize>(
     rows: Vec<T>,
     key_of: impl Fn(&T) -> String,
 ) -> Result<KindShip<T>, AppError> {
-    let mut next = std::collections::BTreeMap::new();
-    let mut keyed: Vec<(String, [u8; 32], T)> = Vec::with_capacity(rows.len());
-    for row in rows {
-        let bytes = serde_json::to_vec(&row)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("fingerprinting a stream row: {e}")))?;
-        let hash = *blake3::hash(&bytes).as_bytes();
-        let key = key_of(&row);
-        next.insert(key.clone(), hash);
-        keyed.push((key, hash, row));
-    }
+    let keyed = keyed_rows(rows, key_of)?;
+    let next: std::collections::BTreeMap<String, [u8; 32]> =
+        keyed.iter().map(|(key, hash, _)| (key.clone(), *hash)).collect();
     let ship = match baseline.take() {
         None => KindShip::Whole(keyed.into_iter().map(|(_, _, row)| row).collect()),
         Some(prev) => {
@@ -8136,6 +8135,120 @@ fn ship_kind<T: Serialize>(
     Ok(ship)
 }
 
+/// Rows with their keys and fingerprints: what a baseline is diffed against.
+type Keyed<T> = Vec<(String, [u8; 32], T)>;
+
+fn keyed_rows<T: Serialize>(
+    rows: Vec<T>,
+    key_of: impl Fn(&T) -> String,
+) -> Result<Keyed<T>, AppError> {
+    rows.into_iter()
+        .map(|row| {
+            let bytes = serde_json::to_vec(&row).map_err(|e| {
+                AppError::Internal(anyhow::anyhow!("fingerprinting a stream row: {e}"))
+            })?;
+            Ok((key_of(&row), *blake3::hash(&bytes).as_bytes(), row))
+        })
+        .collect()
+}
+
+/// [`ship_kind`]'s diff, over rows already keyed and fingerprinted - which every socket of a
+/// persona can share ([`shared_documents`]); only the rows this socket ships are cloned.
+fn ship_keyed<T: Clone>(
+    baseline: &mut Option<std::collections::BTreeMap<String, [u8; 32]>>,
+    keyed: &Keyed<T>,
+) -> KindShip<T> {
+    let next: std::collections::BTreeMap<String, [u8; 32]> =
+        keyed.iter().map(|(key, hash, _)| (key.clone(), *hash)).collect();
+    let ship = match baseline.take() {
+        None => KindShip::Whole(keyed.iter().map(|(_, _, row)| row.clone()).collect()),
+        Some(prev) => {
+            let removed: Vec<String> =
+                prev.keys().filter(|key| !next.contains_key(*key)).cloned().collect();
+            let changed: Vec<T> = keyed
+                .iter()
+                .filter(|(key, hash, _)| prev.get(key) != Some(hash))
+                .map(|(_, _, row)| row.clone())
+                .collect();
+            KindShip::Delta { changed, removed }
+        }
+    };
+    *baseline = Some(next);
+    ship
+}
+
+/// One persona's documents and search rows at one documents stamp, keyed and fingerprinted.
+struct DocumentRows {
+    docs: Keyed<DocSummary>,
+    search: Keyed<crate::record::documents::SearchRow>,
+}
+
+type DocumentsCell = tokio::sync::OnceCell<std::sync::Arc<DocumentRows>>;
+type DocumentsSlot = std::sync::Arc<DocumentsCell>;
+/// Per persona: the stamp its slot was built for, and the slot.
+type DocumentSlots = std::collections::HashMap<String, ([u8; 32], std::sync::Weak<DocumentsCell>)>;
+
+/// Per persona, the latest stamp's slot - held weakly, so the rows live only while a socket is
+/// shipping them.
+static DOCUMENT_ROWS: std::sync::LazyLock<std::sync::Mutex<DocumentSlots>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// The documents part of a gather, built ONCE per persona per documents stamp and shared by every
+/// socket that wants it (2026-10-03: with five tabs open, one save cost each tab its own whole
+/// rebuild of the document list and search rows - ~300 ms apiece, queued on the persona's one
+/// connection, ~1.5 s of it per save). The first socket to ask builds; the rest await that build;
+/// each then diffs against its own baseline. A failed build is not remembered.
+async fn shared_documents(
+    data: &store::Store,
+    root: &str,
+    stamp: [u8; 32],
+) -> Result<std::sync::Arc<DocumentRows>, AppError> {
+    let slot: DocumentsSlot = {
+        let mut slots = DOCUMENT_ROWS.lock().unwrap_or_else(|e| e.into_inner());
+        match slots
+            .get(root)
+            .and_then(|(at, weak)| (*at == stamp).then(|| weak.upgrade()).flatten())
+        {
+            Some(live) => live,
+            None => {
+                let fresh: DocumentsSlot = Default::default();
+                slots.insert(root.to_string(), (stamp, std::sync::Arc::downgrade(&fresh)));
+                slots.retain(|_, (_, weak)| weak.strong_count() > 0);
+                fresh
+            }
+        }
+    };
+    slot.get_or_try_init(|| async {
+        let started = std::time::Instant::now();
+        // The search index refreshed ONCE (2026-10-03): `implicit_tags` used to refresh it to
+        // read its word counts, and the search rows refreshed it again - two passes over every
+        // document per update. The rows refreshed here are the ones shipped.
+        let search = data.documents().search_rows().await?;
+        let search_ms = started.elapsed().as_millis() as u64;
+        let (rows, _undecryptable) = data.documents().summaries().await?;
+        let annots = annotation_map(data).await?;
+        let buckets = bucket_map(data).await?;
+        let pinned = data.documents().pinned().await?;
+        let implicit = data.documents().implicit_tags_as_indexed().await?;
+        let docs: Vec<DocSummary> =
+            rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
+        let docs = with_builtins(docs, &annots, &buckets, &pinned);
+        let built = DocumentRows {
+            docs: keyed_rows(docs, |d| d.doc_id.clone())?,
+            search: keyed_rows(search, |s| s.doc_id.clone())?,
+        };
+        // The stream runs outside any request, so the request tally never sees it: say its
+        // cost here when it is worth reading - once per stamp now, however many tabs share it.
+        let total_ms = started.elapsed().as_millis() as u64;
+        if total_ms >= 250 {
+            tracing::info!(total_ms, search_ms, "stream documents gather");
+        }
+        Ok::<_, AppError>(std::sync::Arc::new(built))
+    })
+    .await
+    .cloned()
+}
+
 /// Gather the moved kinds into one payload. `baselines` is this socket's memory of what it
 /// last shipped (fingerprints, per row) for the kinds big enough to earn diffs - the roster
 /// scales with popularity, docs and search with account lifetime, and re-shipping either
@@ -8146,6 +8259,7 @@ async fn gather(
     kind: &'static str,
     cursor: String,
     moved: Moved,
+    documents_stamp: [u8; 32],
     baselines: &mut Baselines,
 ) -> Result<StreamMessage, AppError> {
     let mut msg = StreamMessage::quiet(kind, cursor);
@@ -8158,39 +8272,20 @@ async fn gather(
         msg.profile = Some(data.profile().all().await?);
     }
     if moved.documents {
-        let started = std::time::Instant::now();
-        // The search index refreshed ONCE (2026-10-03): `implicit_tags` used to refresh it to
-        // read its word counts, and the search rows below refreshed it again - two passes over
-        // every document per update, per open tab. The rows refreshed here are the ones shipped.
-        let search = data.documents().search_rows().await?;
-        let search_ms = started.elapsed().as_millis() as u64;
-        let (rows, _undecryptable) = data.documents().summaries().await?;
-        let annots = annotation_map(data).await?;
-        let buckets = bucket_map(data).await?;
-        let pinned = data.documents().pinned().await?;
-        let implicit = data.documents().implicit_tags_as_indexed().await?;
-        let docs: Vec<DocSummary> =
-            rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned, &implicit)).collect();
-        let docs = with_builtins(docs, &annots, &buckets, &pinned);
-        match ship_kind(&mut baselines.docs, docs, |d| d.doc_id.clone())? {
+        let rows = shared_documents(data, &hex::encode(data.root()), documents_stamp).await?;
+        match ship_keyed(&mut baselines.docs, &rows.docs) {
             KindShip::Whole(rows) => msg.docs = Some(rows),
             KindShip::Delta { changed, removed } => {
                 msg.docs_changed = (!changed.is_empty()).then_some(changed);
                 msg.docs_removed = (!removed.is_empty()).then_some(removed);
             }
         }
-        match ship_kind(&mut baselines.search, search, |s| s.doc_id.clone())? {
+        match ship_keyed(&mut baselines.search, &rows.search) {
             KindShip::Whole(rows) => msg.search = Some(rows),
             KindShip::Delta { changed, removed } => {
                 msg.search_changed = (!changed.is_empty()).then_some(changed);
                 msg.search_removed = (!removed.is_empty()).then_some(removed);
             }
-        }
-        // The stream runs outside any request, so the request tally never sees it: say its cost
-        // here when it is worth reading.
-        let total_ms = started.elapsed().as_millis() as u64;
-        if total_ms >= 250 {
-            tracing::info!(total_ms, search_ms, "stream documents gather");
         }
     }
     if moved.organizers {
@@ -8278,9 +8373,17 @@ async fn serve_stream(
     let mut first = if client_cursor.as_deref() == Some(stamp.token().as_str()) {
         StreamMessage::quiet("live", stamp.token())
     } else {
-        gather(&state, &data, "snapshot", stamp.token(), Moved::all(), &mut baselines)
-            .await
-            .map_err(anyhow::Error::new)?
+        gather(
+            &state,
+            &data,
+            "snapshot",
+            stamp.token(),
+            Moved::all(),
+            stamp.documents,
+            &mut baselines,
+        )
+        .await
+        .map_err(anyhow::Error::new)?
     };
     // The badge's number rides the first frame whatever its kind: a reconnect whose
     // cursor still holds has no snapshot, but its badge may be stale.
@@ -8345,9 +8448,17 @@ async fn serve_stream(
         if now != stamp {
             let moved = Moved::since(&stamp, &now);
             stamp = now;
-            let mut update = gather(&state, &data, "update", stamp.token(), moved, &mut baselines)
-                .await
-                .map_err(anyhow::Error::new)?;
+            let mut update = gather(
+                &state,
+                &data,
+                "update",
+                stamp.token(),
+                moved,
+                stamp.documents,
+                &mut baselines,
+            )
+            .await
+            .map_err(anyhow::Error::new)?;
             if unread_changed {
                 update.unread = Some(unread);
             }

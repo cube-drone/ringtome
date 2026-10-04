@@ -16844,3 +16844,66 @@ heads, and the memo keeps only the logical count (two devices saving the same
 words leave two true heads folded into one logical one), so doing it safely
 wants the true head set memoized: a migration rung, not taken today. `just ci`
 green.
+
+**2026-10-03 - every open tab no longer rebuilds the whole document list after
+each save.** The burndown's second item. Measured with 1,500 notes and one save:
+one open stream had its update ~120 ms later; five open streams each took ~340
+ms - every socket rebuilt the full document list and search rows itself
+(summaries, annotations, buckets, pins, implicit tags, the search index),
+serialized and hashed every row to diff its own baseline, all queued on the
+persona's one connection: ~1.5 s of it per save with five tabs. Now the
+documents part of a gather is built once per persona per documents stamp and
+shared (`shared_documents`): the first socket to ask builds the rows already
+keyed and fingerprinted, the others await that build (`tokio::sync::OnceCell`),
+and each diffs its own baseline against the ready fingerprints (`ship_keyed`),
+cloning only what it ships. The slot is keyed by persona - never by stamp alone,
+which two empty personas could share - and held weakly, so the rows live only
+while a socket is shipping them; a failed build isn't remembered. After: five
+tabs ~120 ms each, the same as one. The `stream documents gather` cost line now
+prints once per stamp, however many tabs share it. Still whole-list per change
+(one rebuild instead of N): a dirty-document fold that touches only what moved
+is the larger, later version of this. `just ci` green.
+
+**2026-10-03 - opening a document for editing reads its head, not its history.**
+The burndown's next item, the other half of the save path: `GET /docs/{id}` -
+what the editor loads - built the document's whole version history, so an
+often-saved note opened slower the longer it lived (17 ms at 1,500 versions
+locally, against 5 for a fresh note). What it needs is the display head and the
+TRUE heads the next save must parent on - and the memo kept only the logical
+count, which two devices saving the same words make differ (two true heads,
+folded into one logical). So user rung 0030 adds `doc_heads.true_heads` (sorted,
+concatenated), which `refresh_doc_heads` now fills; NULL means "not memoized
+yet" - no backfill, no refold: such a document takes the whole way, and its row
+fills on its next change, which is exactly when a document's history grows.
+`materialize_current` builds a `Doc` of the head's one version plus the memoized
+true heads when the memo shows one logical head, and declines otherwise (a real
+divergence still needs the history); the handler runs its existing code on it
+unchanged. Pinned by
+`the_current_head_alone_answers_as_the_whole_document_does` - a chain, folded
+twins, a divergence; with the memo given only the display head as "true heads",
+the twins claim fails - and by
+`rung_30_keeps_the_memo_and_leaves_the_true_heads_unknown`. After: the editor's
+load at 1,501 versions 5.1 ms, a fresh note's 5.2. The same column is what a
+safe save fast-forward (`refresh_doc_heads` without the re-threading) needs, now
+within reach. `just ci` green.
+
+**2026-10-03 - a save no longer re-threads the document's history.** The save
+path's second half, now that the memo keeps the true heads (rung 0030).
+`refresh_doc_heads` re-memoized every changed document by loading and threading
+its whole history. Now `catch_up` hands it the versions it folded this pass, and
+the common case - one new version whose parents are exactly the memo's true
+heads, the memo showing one logical head: an ordinary save - is written from
+that version alone (`fast_forward`): it becomes the only head, true and logical,
+and the display head, and the genesis stays as the memo has it. Everything
+else - a sync merge, a twin, a fork or the merge that ends it, a memo whose true
+heads aren't known yet, a public post - is rebuilt the whole way, as before.
+Both paths write through one function (`memoize_doc`), so they cannot disagree
+about a column. `the_save_fast_forward_writes_what_the_whole_rebuild_would`
+compares every column of the fast row against a forced whole rebuild after every
+step - a chain, two devices saving the same words, the save that heals them
+(fast, on two true heads), a fork and its merge (the whole way) - and a
+thread-local count proves which path wrote each; with the genesis taken from the
+new version instead of the memo, it fails. Writing it caught its own first draft
+comparing the row from before each save (a save's version folds on the next
+catch-up). Measured, a note saved 1,500 times: a save 14.9 ms, a fresh note's
+13.9 - from 36.3 this morning. `just ci` green.

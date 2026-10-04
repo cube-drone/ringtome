@@ -1766,6 +1766,8 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
 
     let mut undecryptable = 0usize;
     let mut changed: BTreeSet<[u8; 16]> = BTreeSet::new();
+    // Each document's versions folded THIS pass, for the save fast-forward (`refresh_doc_heads`).
+    let mut fresh: BTreeMap<[u8; 16], Vec<Version>> = BTreeMap::new();
     let mut advances: Vec<(String, u64)> = Vec::new();
     for (author_hex, chain) in by_author {
         let mut advance_to: Option<u64> = None;
@@ -1790,6 +1792,12 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
                 Opened::Plain(header) => {
                     changed.insert(header.doc_id);
                     fold_header(db, &signed, &header, "private").await?;
+                    fresh.entry(header.doc_id).or_default().push(Version {
+                        hash: *signed.hash(),
+                        header: header.clone(),
+                        timestamp_ms: signed.entry().timestamp_ms,
+                        author: signed.entry().chain.author,
+                    });
                     if !stalled {
                         advance_to = Some(seq);
                     }
@@ -1826,7 +1834,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
     // Re-memoize doc_heads for exactly the documents whose inputs changed this pass, BEFORE the
     // watermarks advance: a crash between the two re-runs the fold (idempotent) and re-derives
     // the memo, so doc_heads can lag the log only transiently, never permanently.
-    refresh_doc_heads(db, &changed).await?;
+    refresh_doc_heads(db, &changed, &fresh).await?;
     for (author_hex, folded_seq) in advances {
         crate::record::imaol::advance_watermark(
             db,
@@ -1901,7 +1909,7 @@ pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, 
             advances.push((author_hex, folded_seq));
         }
     }
-    refresh_doc_heads(db, &changed).await?;
+    refresh_doc_heads(db, &changed, &BTreeMap::new()).await?;
     for (author_hex, folded_seq) in advances {
         crate::record::imaol::advance_watermark(db, &author_hex, service::POSTS, folded_seq)
             .await?;
@@ -2264,25 +2272,102 @@ async fn fold_retraction(
 /// value written here is the output of the same Rust resolver every keyed read runs
 /// (`Doc::thread` + `display_head`) - this is that resolution *memoized*, recomputed only for
 /// documents whose `doc_versions` inputs changed, and disposable like every view.
-async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), AppError> {
+async fn refresh_doc_heads(
+    db: &Db,
+    changed: &BTreeSet<[u8; 16]>,
+    fresh: &BTreeMap<[u8; 16], Vec<Version>>,
+) -> Result<(), AppError> {
     for doc_id in changed {
+        // The save fast-forward (2026-10-03): one new version, on exactly the document's true
+        // heads, while it showed one logical head - an ordinary save. The new version is then
+        // the only head, true and logical, and the display head; nothing else about the row
+        // moves but what the version carries and its genesis, which stays. So the row is
+        // written from the version alone, never rebuilt from the whole history - which made an
+        // often-saved note save slower the longer it lived. Anything else - a merge, a twin, a
+        // fork, a memo without its true heads, a public post - is rebuilt the whole way.
+        if let Some(genesis_ms) = fast_forward(db, doc_id, fresh.get(doc_id)).await? {
+            #[cfg(test)]
+            FAST_FORWARDS.with(|n| n.set(n.get() + 1));
+            let version = fresh[doc_id][0].clone();
+            let hash = version.hash;
+            let mut doc = Doc {
+                lane: "private".to_string(),
+                heads: vec![hash],
+                logical_heads: vec![hash],
+                ..Doc::default()
+            };
+            doc.versions.insert(hash, version);
+            memoize_doc(db, doc_id, &doc, Some(genesis_ms)).await?;
+            continue;
+        }
         let doc = load_doc(db, doc_id).await?;
+        memoize_doc(db, doc_id, &doc, None).await?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many memo rows the save fast-forward wrote on this thread - a test's proof that the
+    /// row it compared came from the fast path, not the whole way.
+    static FAST_FORWARDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether this pass's change to a document is an ordinary save on its only head - one new
+/// version whose parents are exactly the memo's true heads, the memo showing one logical head -
+/// and if so the genesis the memo holds, which a save never moves.
+async fn fast_forward(
+    db: &Db,
+    doc_id: &[u8; 16],
+    fresh: Option<&Vec<Version>>,
+) -> Result<Option<i64>, AppError> {
+    let Some([version]) = fresh.map(Vec::as_slice) else { return Ok(None) };
+    /// The memo's lane, logical-head count, true heads and genesis.
+    type Memo = (String, i64, Option<Vec<u8>>, i64);
+    let memo: Option<Memo> = db
+        .fetch_optional(
+            "SELECT lane, logical_heads, true_heads, genesis_ms FROM doc_heads WHERE doc_id = ?1",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading a document's head memo")
+        .map_err(AppError::Internal)?;
+    let Some((lane, logical, Some(true_heads), genesis_ms)) = memo else { return Ok(None) };
+    if lane != "private" || logical != 1 || true_heads.is_empty() || true_heads.len() % 32 != 0 {
+        return Ok(None);
+    }
+    let was: BTreeSet<[u8; 32]> =
+        true_heads.chunks(32).filter_map(|c| <[u8; 32]>::try_from(c).ok()).collect();
+    let on: BTreeSet<[u8; 32]> = version.header.parents.iter().copied().collect();
+    Ok((was == on).then_some(genesis_ms))
+}
+
+/// Write one document's `doc_heads` row from its threaded `Doc` - the whole document, or (the
+/// save fast-forward) its one new head with `genesis_ms` carried over from the memo.
+async fn memoize_doc(
+    db: &Db,
+    doc_id: &[u8; 16],
+    doc: &Doc,
+    genesis: Option<i64>,
+) -> Result<(), AppError> {
+    {
         // No display head (nothing decrypted for this doc yet): nothing to memoize.
         let Some(head) = doc.display_head() else {
-            continue;
+            return Ok(());
         };
         // The claimed stamp of the document's genesis: its parentless version(s) - earliest
         // wins if retention/criss-cross left several - falling back to the earliest version we
         // hold when the true genesis is outside retention.
         let earliest =
             doc.versions.values().map(|v| v.timestamp_ms).min().unwrap_or(head.timestamp_ms);
-        let genesis_ms = doc
-            .versions
-            .values()
-            .filter(|v| v.header.parents.is_empty())
-            .map(|v| v.timestamp_ms)
-            .min()
-            .unwrap_or(earliest);
+        let genesis_ms = genesis.unwrap_or_else(|| {
+            doc.versions
+                .values()
+                .filter(|v| v.header.parents.is_empty())
+                .map(|v| v.timestamp_ms)
+                .min()
+                .unwrap_or(earliest)
+        });
         // The logical-head SET, as one comparable value plus its bodies' hashes - the search
         // index's staleness inputs, computed here where the set is already in hand. Sorted:
         // the set has no inherent order and the fingerprint must not invent one.
@@ -2298,16 +2383,21 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
         }
         head_bodies.sort();
         let head_bodies: Vec<u8> = head_bodies.into_iter().flatten().collect();
+        // The TRUE heads beside the logical count (0030): what a save must parent on, so the
+        // editor's load can learn them without rebuilding the history.
+        let mut true_heads = doc.heads.clone();
+        true_heads.sort();
+        let true_heads: Vec<u8> = true_heads.into_iter().flatten().collect();
         db.execute(
             "INSERT INTO doc_heads
                (doc_id, lane, entry_hash, title, format, file_hash, width, height, duration_ms,
                 thumb_hash, preview_hash, animation, part_of, logical_heads, diverged, genesis_ms, head_ms,
-                heads_fp, head_bodies,
+                heads_fp, head_bodies, true_heads,
                 reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
                 trusted_only, onward, dated_ms)
              VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
                      :duration_ms, :thumb_hash, :preview_hash, :animation, :part_of, :logical_heads, :diverged,
-                     :genesis_ms, :head_ms, :heads_fp, :head_bodies,
+                     :genesis_ms, :head_ms, :heads_fp, :head_bodies, :true_heads,
                      :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
                      :trusted_only, :onward, :dated_ms)
              ON CONFLICT(doc_id) DO UPDATE SET
@@ -2329,6 +2419,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                head_ms = excluded.head_ms,
                heads_fp = excluded.heads_fp,
                head_bodies = excluded.head_bodies,
+               true_heads = excluded.true_heads,
                reply_to_root = excluded.reply_to_root,
                reply_to_doc = excluded.reply_to_doc,
                thread_root_root = excluded.thread_root_root,
@@ -2340,6 +2431,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
             turso::named_params! {
                 ":heads_fp": heads_hasher.finalize().as_bytes().to_vec(),
                 ":head_bodies": head_bodies,
+                ":true_heads": true_heads,
                 ":reply_to_root": head.header.reply_to.map(|(r, _)| hex::encode(r)),
                 ":reply_to_doc": head.header.reply_to.map(|(_, d)| hex::encode(d)),
                 ":thread_root_root": head.header.thread_root.map(|(r, _)| hex::encode(r)),
@@ -2502,6 +2594,56 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
 
 /// Load ONE document's DAG from the persisted fold and thread it - the memoizer's input,
 /// identical to `materialize`'s slice for that doc (same rows, same resolver).
+/// The document as an editor opens it, WITHOUT its history (2026-10-03), when the memo can vouch
+/// for it: one logical head, its true heads memoized (0030). The `Doc` holds only that head's
+/// version, with the true heads beside it - every answer an editor's load asks of a whole `Doc`
+/// (the display head, divergence, what a save must parent on, the resolved words) comes out the
+/// same, because a document with one logical head resolves from that head alone. `None` sends
+/// the caller the whole way (`materialize_one`): a diverged document, one whose true heads
+/// aren't memoized yet, or nothing held.
+pub async fn materialize_current(
+    db: &Db,
+    keys: &EpochKeys,
+    doc_id: &[u8; 16],
+) -> Result<Option<Doc>, AppError> {
+    catch_up(db, keys).await?;
+    /// The memo's display head, lane, logical-head count and true heads.
+    type HeadMemo = (Vec<u8>, String, i64, Option<Vec<u8>>);
+    let memo: Option<HeadMemo> = db
+        .fetch_optional(
+            "SELECT entry_hash, lane, logical_heads, true_heads FROM doc_heads WHERE doc_id = ?1",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading a document's head memo")
+        .map_err(AppError::Internal)?;
+    let Some((head, lane, logical, Some(true_heads))) = memo else {
+        return Ok(None);
+    };
+    if logical != 1 || true_heads.is_empty() || true_heads.len() % 32 != 0 {
+        return Ok(None);
+    }
+    let row: Option<VersionRow> = db
+        .fetch_optional(
+            "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
+                    height, duration_ms, thumb_hash, preview_hash, animation, part_of, refs, timestamp_ms, seq,
+                    author_pubkey,
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, onward, dated_ms, part_of
+             FROM doc_versions WHERE entry_hash = ?1 AND doc_id = ?2",
+            (head, doc_id.to_vec()),
+        )
+        .await
+        .context("reading a document's display head")
+        .map_err(AppError::Internal)?;
+    let Some(row) = row else { return Ok(None) };
+    let (_, version) = version_from_row(row)?;
+    let heads: Vec<[u8; 32]> =
+        true_heads.chunks(32).filter_map(|c| <[u8; 32]>::try_from(c).ok()).collect();
+    let mut doc = Doc { lane, heads, logical_heads: vec![version.hash], ..Doc::default() };
+    doc.versions.insert(version.hash, version);
+    Ok(Some(doc))
+}
+
 async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
     let rows: Vec<VersionRow> = db
         .fetch_all(
@@ -4096,6 +4238,170 @@ mod tests {
             let v = doc.versions.get(h).unwrap();
             assert!(read_body(&files, &keys, v).await.unwrap().is_some());
         }
+    }
+
+    /// Rung 30 (the true head set): a database on 29 with a document's memo row climbs, keeps the
+    /// row, and leaves its true heads NULL - "not memoized yet", which sends that document's
+    /// editor load the whole way until its next change fills it.
+    #[tokio::test]
+    async fn rung_30_keeps_the_memo_and_leaves_the_true_heads_unknown() {
+        let db = crate::db::test_memory_db().await;
+        let at_29 = crate::migrations::USER.iter().position(|r| r.version == 30).unwrap();
+        crate::migrations::climb(&db, &crate::migrations::USER[..at_29], "user").await.unwrap();
+        db.execute(
+            "INSERT INTO doc_heads (doc_id, entry_hash, title, file_hash, logical_heads, diverged,
+                                    genesis_ms, head_ms, heads_fp, head_bodies)
+             VALUES (x'01', x'02', 'kept', x'03', 1, 0, 1, 1, x'04', x'05')",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, crate::migrations::USER, "user").await.unwrap();
+        let (title, true_heads): (String, Option<Vec<u8>>) =
+            db.fetch_one("SELECT title, true_heads FROM doc_heads", ()).await.unwrap();
+        assert_eq!(title, "kept");
+        assert_eq!(true_heads, None);
+    }
+
+    /// The save fast-forward writes exactly the row the whole-history rebuild would (2026-10-03):
+    /// every column, after every step - a chain of saves (fast), two devices saving the same words
+    /// (the second takes the whole way), the save that heals them (fast again, on two true heads),
+    /// and a real fork and its merge (the whole way: the memo shows two logical heads). The
+    /// thread's counter proves which path wrote each row.
+    #[tokio::test]
+    async fn the_save_fast_forward_writes_what_the_whole_rebuild_would() {
+        let db = test_db().await;
+        let (one, two) = (signer(1), signer(2));
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let doc_id = new_doc_id();
+        let row = |db: Db| async move {
+            let (_, rows) = db
+                .query_drained("SELECT * FROM doc_heads WHERE doc_id = ?1", (doc_id.to_vec(),))
+                .await
+                .unwrap();
+            format!("{rows:?}")
+        };
+        // Save, then: the row as written, and the row the whole rebuild writes, must be one.
+        let fast = || FAST_FORWARDS.with(|n| n.get());
+        // A save's version is folded by the NEXT catch-up (the one the next save or read runs), so
+        // fold it here first - otherwise this compares the row from before the save.
+        let check = |db: Db, label: &'static str| async move {
+            catch_up(&db, &EpochKeys::single(0, [5u8; 32])).await.unwrap();
+            let written = row(db.clone()).await;
+            refresh_doc_heads(&db, &BTreeSet::from([doc_id]), &BTreeMap::new()).await.unwrap();
+            assert_eq!(written, row(db).await, "{label}: the fast row and the whole row differ");
+        };
+
+        let mut head = save(&db, &one, &keys, &files, doc_id, vec![], "t", b"v0").await;
+        check(db.clone(), "genesis").await;
+        let before = fast();
+        for i in 1..6 {
+            head =
+                save(&db, &one, &keys, &files, doc_id, vec![head], "t", format!("v{i}").as_bytes())
+                    .await;
+            check(db.clone(), "a chain save").await;
+        }
+        assert_eq!(fast() - before, 5, "every chain save took the fast path");
+
+        let base = head;
+        let t1 = save(&db, &one, &keys, &files, doc_id, vec![base], "t", b"twin words").await;
+        check(db.clone(), "the first twin").await;
+        let before = fast();
+        let t2 = save(&db, &two, &keys, &files, doc_id, vec![base], "t", b"twin words").await;
+        check(db.clone(), "the second twin").await;
+        assert_eq!(
+            fast(),
+            before,
+            "a twin is not a fast-forward - its parent isn't the true heads"
+        );
+
+        let before = fast();
+        let healed = save(&db, &one, &keys, &files, doc_id, vec![t1, t2], "t", b"healed").await;
+        check(db.clone(), "the healing save").await;
+        assert_eq!(fast() - before, 1, "saving on both twins IS a fast-forward");
+
+        let f1 = save(&db, &one, &keys, &files, doc_id, vec![healed], "t", b"one way").await;
+        check(db.clone(), "a fork's first side").await;
+        let before = fast();
+        let f2 = save(&db, &two, &keys, &files, doc_id, vec![healed], "t", b"another way").await;
+        check(db.clone(), "a fork's second side").await;
+        save(&db, &one, &keys, &files, doc_id, vec![f1, f2], "t", b"merged").await;
+        check(db.clone(), "the merge").await;
+        assert_eq!(
+            fast(),
+            before,
+            "a real fork shows two logical heads, so it and the merge that ends it take the whole way"
+        );
+    }
+
+    /// The editor's load without the history (`materialize_current`, 2026-10-03) answers exactly
+    /// what the whole document does - display head, logical heads, the TRUE heads a save must
+    /// parent on, lane, and the resolved title and words - for a plain chain and for two devices
+    /// that saved the same words (two true heads, one logical); and declines a real divergence.
+    #[tokio::test]
+    async fn the_current_head_alone_answers_as_the_whole_document_does() {
+        let db = test_db().await;
+        let (one, two) = (signer(1), signer(2));
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        async fn same(
+            db: &Db,
+            keys: &EpochKeys,
+            files: &FileStore,
+            doc_id: [u8; 16],
+        ) -> Option<usize> {
+            let current = materialize_current(db, keys, &doc_id).await.unwrap()?;
+            let whole = materialize_one(db, keys, &doc_id).await.unwrap().unwrap();
+            let mut a = current.heads.clone();
+            a.sort();
+            let mut b = whole.heads.clone();
+            b.sort();
+            assert_eq!(a, b, "the true heads a save parents on");
+            assert_eq!(current.logical_heads, whole.logical_heads);
+            assert_eq!(current.lane, whole.lane);
+            assert_eq!(
+                current.display_head().map(|v| v.hash),
+                whole.display_head().map(|v| v.hash)
+            );
+            let names = BTreeMap::new();
+            let r1 = resolve(files, keys, &current, &names).await.unwrap();
+            let r2 = resolve(files, keys, &whole, &names).await.unwrap();
+            assert_eq!((r1.title, r1.body), (r2.title, r2.body));
+            Some(whole.heads.len())
+        }
+
+        // A plain chain, saved many times.
+        let chain = new_doc_id();
+        let mut head = save(&db, &one, &keys, &files, chain, vec![], "t", b"v0").await;
+        for i in 1..20 {
+            head =
+                save(&db, &one, &keys, &files, chain, vec![head], "t", format!("v{i}").as_bytes())
+                    .await;
+        }
+        assert_eq!(
+            same(&db, &keys, &files, chain).await,
+            Some(1),
+            "a chain: one true head, answered alike"
+        );
+
+        // Two devices saving the same words on the same parent: two true heads, one logical.
+        let twins = new_doc_id();
+        let base = save(&db, &one, &keys, &files, twins, vec![], "t", b"base").await;
+        save(&db, &one, &keys, &files, twins, vec![base], "t", b"the same words").await;
+        save(&db, &two, &keys, &files, twins, vec![base], "t", b"the same words").await;
+        assert_eq!(
+            same(&db, &keys, &files, twins).await,
+            Some(2),
+            "folded twins: BOTH true heads come back for the next save to parent on"
+        );
+
+        // A real divergence: the history is needed, and the shortcut declines.
+        let forked = new_doc_id();
+        let root = save(&db, &one, &keys, &files, forked, vec![], "t", b"base").await;
+        save(&db, &one, &keys, &files, forked, vec![root], "t", b"one way").await;
+        save(&db, &two, &keys, &files, forked, vec![root], "t", b"another way").await;
+        assert!(materialize_current(&db, &keys, &forked).await.unwrap().is_none());
     }
 
     #[tokio::test]
