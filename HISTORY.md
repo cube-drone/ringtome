@@ -17058,3 +17058,16 @@ none), so there's no automatic one to tell apart. The avatar is public media, so
 it never also counts as "Upload an image". The fine print's link goes to the
 persona's profile page. `bank.cjs` claims a new persona isn't done, an avatar
 uploaded is, 250,000 horsepennies once. `just ci` green.
+
+**2026-10-04 - a persona that never chose a colourway wears the default.**
+Curtis, switching personas on one account: from a persona with witchlight, or
+with horse-relax set, to one that never chose a colourway, the app kept the last
+one worn. Yesterday's fix to the colourway flash taught `useOwnColorway` that
+`undefined` means "not known yet - keep what's worn", and index.js passed
+`undefined` whenever the persona's profile had no colourway row - so "never
+chose one" read as "not known yet". Now the query answers three ways: the
+colourway chosen; none chosen (the profile has arrived - it holds other fields,
+and every active persona's daily heartbeat is one - but no colourway), which
+wears the default; or not known (no profile here at all yet), which keeps what's
+worn. A brand-new persona with nothing on its profile yet keeps the previous
+colourway until its first heartbeat. `just ui-check` green.

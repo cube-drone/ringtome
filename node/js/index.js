@@ -280,12 +280,18 @@ const Inside = ({ session }) => {
     // their picture and colour rather than a generic person glyph.
     const me = faceOf(usePerson(root, { current: persona.current }));
     // Your colourway (colorway.js), live off your profile: the app wears it, but on another person's page.
-    const colorwayRow = useLive(
-        () => (root ? openMirror(root).profile.get('colorway') : null),
-        [root],
-    );
-    // No row yet - still reading, or the profile not yet here - is not "none" (colorway.js).
-    useOwnColorway(colorwayRow ? colorwayRow.value : undefined);
+    // Three answers, not two (2026-10-04: switching to a persona that never chose a colourway kept
+    // the last persona's): the colourway chosen; none chosen - the profile has arrived, holding
+    // other fields (every active persona's daily heartbeat is one) but no colourway, so the
+    // default; or not known yet - no profile here at all - which keeps what's worn (colorway.js).
+    const ownColorway = useLive(() => {
+        if (!root) return null;
+        const profile = openMirror(root).profile;
+        return Promise.all([profile.get('colorway'), profile.count()]).then(([row, held]) =>
+            row && row.value ? { value: row.value } : { value: held > 0 ? null : undefined },
+        );
+    }, [root]);
+    useOwnColorway(ownColorway ? ownColorway.value : undefined);
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
