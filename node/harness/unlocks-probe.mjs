@@ -49,14 +49,16 @@ const bank = await s.boot('/ringtome/bank');
 const bdoc = bank.window.document;
 await waitFor(bdoc, () => bdoc.querySelectorAll('.bank-unlock').length > 0, 'the Market');
 console.log(
-    'RESULT the Market sells fourteen:',
-    bdoc.querySelectorAll('.bank-unlock').length === 14,
+    'RESULT the Market sells fifteen, video last:',
+    bdoc.querySelectorAll('.bank-unlock').length === 15 &&
+        bdoc.querySelector('.bank-unlock:last-of-type').textContent.includes('Video'),
 );
+console.log('RESULT no hrseBond before Horse Financial:', !bdoc.querySelector('.bank-instrument'));
 
 await fetch(`${base}/test/credit`, {
     method: 'POST',
     headers: J,
-    body: JSON.stringify({ root, pennies: 250000 }),
+    body: JSON.stringify({ root, pennies: 350000 }), // Writer now, Friends below: one credit
 });
 const bought = await api(`/api/identity/${root}/bank/unlocks`, 'POST', { id: 'private-notes' });
 console.log('RESULT bought:', bought.id === 'private-notes');
@@ -72,14 +74,9 @@ await sleep(1500);
 console.log('RESULT and its address opens it:', !n2.querySelector('.unlock-locked-card'));
 
 // Bought from the Market itself: the card's button, and the dock grows hrsePeople at once.
-await fetch(`${base}/test/credit`, {
-    method: 'POST',
-    headers: J,
-    body: JSON.stringify({ root, pennies: 100000 }),
-});
 const market = await s.boot('/ringtome/bank');
 const mdoc = market.window.document;
-await waitFor(mdoc, () => mdoc.querySelectorAll('.bank-unlock').length === 13, 'the Market');
+await waitFor(mdoc, () => mdoc.querySelectorAll('.bank-unlock').length === 14, 'the Market');
 const card = [...mdoc.querySelectorAll('.bank-unlock')].find((c) =>
     c.textContent.includes('Friends'),
 );
@@ -100,5 +97,17 @@ const ownedNames = [...mdoc.querySelectorAll('.bank-owned-name')].map((n) => n.t
 console.log(
     'RESULT the Market lists what is owned:',
     ownedNames.length === 2 && ownedNames.some((n) => n.includes('Friends')),
+);
+// A day's purchases fold into one ledger row, which names them all.
+const ledger = await s.boot('/ringtome/bank');
+const ldoc = ledger.window.document;
+await waitFor(ldoc, () => ldoc.querySelectorAll('.bank-line').length > 0, 'the ledger');
+const bought2 = [...ldoc.querySelectorAll('.bank-line-what')].find((l) =>
+    l.textContent.startsWith('unlocked'),
+);
+console.log(
+    'RESULT one row names both purchases:',
+    !!bought2 && /Friends/.test(bought2.textContent) && /Private notes/.test(bought2.textContent),
+    bought2 && bought2.textContent,
 );
 process.exit(0);

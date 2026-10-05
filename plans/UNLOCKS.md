@@ -47,6 +47,14 @@ prerequisites are Claude's proposal**:
 | Chats for two            | H$ 2,500  | a private chat with one person                     | Chat, Friends   |
 | Sealed posts & audiences | H$ 10,000 | trusted only, and choosing who a post is meant for | Social, Friends |
 
+A third (Curtis, 2026-10-05): **Horse Financial**, H$ 500, opens hrseBonds "and
+other financial instruments" - second to last in the Market, with **Video upload
+last**. A bond already held stays in the portfolio, and sells there in debt: the
+way out of debt is never for sale.
+
+Pins need both Private notes and Social (Curtis, 2026-10-05): a note and a post
+are the two things a pin pins.
+
 ## Rulings (Curtis, 2026-10-05)
 
 1. **Everyone starts locked** - existing personas included, Curtis's own. He's
@@ -280,7 +288,7 @@ done - it just never showed.
 | Draw a horse in hrseDrawing™         | -                                |
 | Set your profile picture             | -                                |
 | Customize your Colorway              | -                                |
-| Buy a hrseBond                       | -                                |
+| Buy a hrseBond                       | Horse Financial                  |
 | Post your horse to the hrseFeed™     | Social                           |
 | Follow a stranger                    | Friends                          |
 | Get a follower                       | Friends                          |
@@ -319,11 +327,11 @@ two".
 ## The first hour
 
 A new persona earns, with nothing unlocked: H$ 5,000 (draw a horse), 2,500
-(profile picture, from that drawing), 2,500 (colorway), 2,500 (buy a bond - and
-the bond itself pays 1% a day). H$ 12,500 - enough for Friends, Social and
-Private notes with some over, each of which reveals contracts that pay for the
-next. The loop is the tutorial: unlock, a contract teaches it, it pays for the
-next unlock.
+(profile picture, from that drawing), 2,500 (colorway) - H$ 10,000. Horse
+Financial (H$ 500) and a first hrseBond (H$ 2,000) bring H$ 2,500 more, and the
+bond pays 1% a day. Enough for Friends, Social and Private notes with some over,
+each of which reveals contracts that pay for the next. The loop is the tutorial:
+unlock, a contract teaches it, it pays for the next unlock.
 
 ## The Market column
 

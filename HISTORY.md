@@ -17168,3 +17168,24 @@ under its wares, each with the day bought. `bank.cjs` claims each contract on
 its act and not on its neighbours (an open post seals nothing, an IM isn't a
 room), the adoption one across two nodes; `harness/unlocks-probe.mjs` the owned
 list. `just ci` green.
+
+**2026-10-05 - Horse Financial, and video last.** Curtis: Video upload goes last
+in the Market, and second to last a new unlock, Horse Financial (H$ 500), which
+opens hrseBonds and the financial instruments to come. Without it the Market
+shows no hrseBond, and "Buy a hrseBond" waits on it like any other contract's
+unlock. The portfolio stays open whatever is owned: a bond already held
+(Curtis's own, from before unlocks) is shown and, in debt, sells - the way out
+of debt is never for sale. The node doesn't refuse a bond without it; the gates
+are the client's. `just ci` green.
+
+**2026-10-05 - Pins need notes and posts.** Pins had no prerequisite, so a new
+player could buy it before owning anything a pin pins; it now needs both Private
+notes and Social (Curtis). Its words are unchanged.
+
+**2026-10-05 - a folded ledger row names every contract and unlock.** The ledger
+folds a day's run of one kind into one row (pure/ledger.js), and a row of
+contracts said only "completed the contract" and the first one's name - so did a
+row of unlocks (Curtis). The row now names each line, comma-separated:
+"completed the contracts X, Y, Z", "unlocked Friends, Private notes".
+`harness/unlocks-probe.mjs` claims a day's two purchases read as one row naming
+both. `just ui-check` green.

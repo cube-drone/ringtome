@@ -174,34 +174,40 @@ const NAMES = {
     sharing: () => t('unlocks.sharing', 'Sharing'),
     links: () => t('unlocks.links', 'Links'),
     'chats-for-two': () => t('unlocks.chats-for-two', 'Chats for two'),
-    sealing: () => t('unlocks.sealing', 'Sealed posts & audiences'),
+    sealing: () => t('unlocks.sealing', 'Trusted only posts & post audiences'),
+    'horse-financial': () => t('unlocks.horse-financial', 'Horse Financial'),
 };
 
 const ABOUT = {
+    'horse-financial': () =>
+        t(
+            'unlocks.horse-financial-about',
+            "Unlocks hrseBank™'s market to financial instruments like hrseBonds.",
+        ),
     friends: () =>
         t(
             'unlocks.friends-about',
-            'Opens hrsePeople™: look people up by their address, follow them, and keep track of everyone you know - and who you trust.',
+            'Unlocks hrsePeople™: look people up by their address, follow them, and keep track of everyone you know.',
         ),
     social: () =>
         t(
             'unlocks.social-about',
-            'Opens hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you, and reply to theirs.',
+            'Unlocks hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you.',
         ),
     'private-notes': () =>
         t(
             'unlocks.private-notes-about',
-            'Opens hrseWriter™: notebooks of private notes, kept on your own computers and nowhere else until you choose to publish one.',
+            'Unlocks hrseWriter™: private notebooks, which you can choose to publish if you like.',
         ),
     chat: () =>
         t(
             'unlocks.chat-about',
-            'Opens hrseChat™: rooms of your own, and the rooms of the people you follow, live.',
+            'Unlocks hrseChat™: chatrooms of your own, and the chatrooms of the people you follow.',
         ),
     taxonomy: () =>
         t(
             'unlocks.taxonomy-about',
-            'Gives hrseWriter™ its tree - sections and pages, a notebook with a shape - and lets you publish a whole notebook as a book.',
+            "Unlocks hrseWriter™'s tree - sections and pages, allowing you to structure your notebook like a book, and publish the whole thing as one.",
         ),
     tags: () =>
         t(
@@ -211,7 +217,7 @@ const ABOUT = {
     'file-upload': () =>
         t(
             'unlocks.file-upload-about',
-            'Opens hrseFiles™, and the upload button everywhere: pictures and sounds from your computer, into notes, posts and rooms.',
+            'Unlocks hrseFiles™, and the upload button everywhere: pictures and sounds from your computer, into notes, posts and rooms.',
         ),
     pins: () =>
         t(
@@ -224,13 +230,13 @@ const ABOUT = {
             'Change a post after it is published: everyone who has it gets the new version, and its history shows what changed.',
         ),
     'video-upload': () =>
-        t('unlocks.video-upload-about', 'Upload video, as well as pictures and sounds.'),
+        t('unlocks.video-upload-about', 'Upload video, maybe. It might not work.'),
     sharing: () =>
         t('unlocks.sharing-about', "Share someone else's post with the people who follow you."),
     links: () =>
         t(
             'unlocks.links-about',
-            'Gives hrseWriter™ its links column: every note that links to the one open, and every note it links to.',
+            "Unlocks hrseWriter™'s links column: every note that links in, and every note that links out.",
         ),
     'chats-for-two': () =>
         t(
@@ -240,7 +246,7 @@ const ABOUT = {
     sealing: () =>
         t(
             'unlocks.sealing-about',
-            'Seal a post so only the people you trust can read it - everyone else sees that it exists, and not what it says - or address it to a group of your contacts.',
+            'Set a post so only the people you trust can read it - or address it to a group of your contacts.',
         ),
 };
 
@@ -268,6 +274,7 @@ const ICONS = {
     links: Icons.link,
     'chats-for-two': Icons.room,
     sealing: Icons.lock,
+    'horse-financial': Icons.bond,
 };
 
 /// The unlock's name as the reader reads it: this table's, else the node's `fallback`.

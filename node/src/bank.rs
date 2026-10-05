@@ -98,7 +98,7 @@ pub const CONTRACTS: [Contract; 21] = [
     contract("link-two-notes", "Link one private note to another", 2_500, &["links"]),
     contract("organize-a-note", "Organize a note into a tree section", 2_500, &["taxonomy"]),
     contract("start-a-room", "Start a chat room", 2_500, &["chat"]),
-    contract("buy-a-horsebond", "Buy a hrseBond", 2_500, &[]),
+    contract("buy-a-horsebond", "Buy a hrseBond", 2_500, &["horse-financial"]),
     // The safety contracts (Curtis, 2026-10-05): what keeps a person safe is never sold, so it is
     // taught - and paid - instead (UNLOCKS.md, "Never gated").
     contract("make-a-second-persona", "Make a second persona", 2_500, &[]),
@@ -139,7 +139,7 @@ const fn unlock(
 }
 
 /// Every unlock, in the order the Market lists them.
-pub const UNLOCKS: [Unlock; 14] = [
+pub const UNLOCKS: [Unlock; 15] = [
     unlock("friends", "Friends", 1_000, &[]),
     unlock("social", "Social", 1_000, &[]),
     unlock("private-notes", "Private notes", 2_500, &[]),
@@ -147,13 +147,17 @@ pub const UNLOCKS: [Unlock; 14] = [
     unlock("taxonomy", "Taxonomy & tree publication", 2_500, &["private-notes"]),
     unlock("tags", "Reactions, tags & filters", 2_500, &[]),
     unlock("file-upload", "File upload", 5_000, &[]),
-    unlock("pins", "Pins", 2_500, &[]),
+    // Notes and posts both (Curtis, 2026-10-05): a pin with nothing to pin is no purchase.
+    unlock("pins", "Pins", 2_500, &["private-notes", "social"]),
     unlock("post-editing", "Public post editing", 5_000, &["social"]),
-    unlock("video-upload", "Video upload", 10_000, &["file-upload"]),
     unlock("sharing", "Sharing", 2_500, &["social"]),
     unlock("links", "Links", 2_500, &["private-notes"]),
     unlock("chats-for-two", "Chats for two", 2_500, &["chat", "friends"]),
-    unlock("sealing", "Sealed posts & audiences", 10_000, &["social", "friends"]),
+    unlock("sealing", "Trusted only posts & post audiences", 10_000, &["social", "friends"]),
+    // hrseBonds, and the financial instruments to come (Curtis, 2026-10-05).
+    unlock("horse-financial", "Horse Financial", 500, &[]),
+    // Last, and dearest: experimental, and said so (Curtis, 2026-10-05).
+    unlock("video-upload", "Video upload", 10_000, &["file-upload"]),
 ];
 
 /// The unlocks owned, as the private chain records them: id -> when bought.

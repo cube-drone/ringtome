@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1514 phrases across 90 files.
+// 1517 phrases across 90 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -66,6 +66,7 @@ export default {
     'apps.bank.sold-a-hrsebond': 'sold a hrseBond',
     'apps.bank.interest-on-debt': 'interest on your debt, at 2% a day',
     'apps.bank.used-the-magic-words': 'used the magic words',
+    'apps.bank.completed-the-contracts': 'completed the contracts',
     'apps.bank.completed-the-contract': 'completed the contract',
     'apps.bank.unlocked': 'unlocked',
     'apps.bank.n-lines': '{n} lines',
@@ -1304,21 +1305,23 @@ export default {
     'unlocks.sharing': 'Sharing',
     'unlocks.links': 'Links',
     'unlocks.chats-for-two': 'Chats for two',
-    'unlocks.sealing': 'Sealed posts & audiences',
-    'unlocks.friends-about': 'Opens hrsePeople™: look people up by their address, follow them, and keep track of everyone you know - and who you trust.',
-    'unlocks.social-about': 'Opens hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you, and reply to theirs.',
-    'unlocks.private-notes-about': 'Opens hrseWriter™: notebooks of private notes, kept on your own computers and nowhere else until you choose to publish one.',
-    'unlocks.chat-about': 'Opens hrseChat™: rooms of your own, and the rooms of the people you follow, live.',
-    'unlocks.taxonomy-about': 'Gives hrseWriter™ its tree - sections and pages, a notebook with a shape - and lets you publish a whole notebook as a book.',
+    'unlocks.sealing': 'Trusted only posts & post audiences',
+    'unlocks.horse-financial': 'Horse Financial',
+    'unlocks.horse-financial-about': "Unlocks hrseBank™'s market to financial instruments like hrseBonds.",
+    'unlocks.friends-about': 'Unlocks hrsePeople™: look people up by their address, follow them, and keep track of everyone you know.',
+    'unlocks.social-about': 'Unlocks hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you.',
+    'unlocks.private-notes-about': 'Unlocks hrseWriter™: private notebooks, which you can choose to publish if you like.',
+    'unlocks.chat-about': 'Unlocks hrseChat™: chatrooms of your own, and the chatrooms of the people you follow.',
+    'unlocks.taxonomy-about': "Unlocks hrseWriter™'s tree - sections and pages, allowing you to structure your notebook like a book, and publish the whole thing as one.",
     'unlocks.tags-about': 'Tag your notes and your posts, react to posts and chat lines with an emoji, and filter every list by its tags.',
-    'unlocks.file-upload-about': 'Opens hrseFiles™, and the upload button everywhere: pictures and sounds from your computer, into notes, posts and rooms.',
+    'unlocks.file-upload-about': 'Unlocks hrseFiles™, and the upload button everywhere: pictures and sounds from your computer, into notes, posts and rooms.',
     'unlocks.pins-about': 'Pin a note to the top of its notebook, and a post to the top of your page.',
     'unlocks.post-editing-about': 'Change a post after it is published: everyone who has it gets the new version, and its history shows what changed.',
-    'unlocks.video-upload-about': 'Upload video, as well as pictures and sounds.',
+    'unlocks.video-upload-about': 'Upload video, maybe. It might not work.',
     'unlocks.sharing-about': "Share someone else's post with the people who follow you.",
-    'unlocks.links-about': 'Gives hrseWriter™ its links column: every note that links to the one open, and every note it links to.',
+    'unlocks.links-about': "Unlocks hrseWriter™'s links column: every note that links in, and every note that links out.",
     'unlocks.chats-for-two-about': 'Start a private chat with one person, from their page: only the two of you can read it.',
-    'unlocks.sealing-about': 'Seal a post so only the people you trust can read it - everyone else sees that it exists, and not what it says - or address it to a group of your contacts.',
+    'unlocks.sealing-about': 'Set a post so only the people you trust can read it - or address it to a group of your contacts.',
     'unlocks.video-upload-warning': "Experimental: video doesn't work in every browser or on every computer yet.",
     'unlocks.checking': 'checking…',
     'unlocks.for-sale-in-the-market': 'For sale in the {market}.',

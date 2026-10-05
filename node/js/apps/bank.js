@@ -107,6 +107,14 @@ const Contracts = ({ contracts, owns }) => {
 const signed = (pennies) =>
     String(pennies).startsWith('-') ? formatHorseBucks(pennies) : `+${formatHorseBucks(pennies)}`;
 
+/// The names of a row's lines, each in italics, comma-separated: `name(id, fallback)` is
+/// contractName or unlockName.
+const namesOf = (row, name) =>
+    row.lines.map(
+        (l, i) =>
+            html`${i > 0 ? ', ' : ''}<em key=${l.source}>${name(l.source, (l.detail || {}).title || '')}</em>`,
+    );
+
 /// One grouped row (pure/ledger.js), in words: a run's count, its document, its emoji, its people.
 const RowWords = ({ row, current }) => {
     const title = row.title
@@ -179,10 +187,11 @@ const RowWords = ({ row, current }) => {
             return t('apps.bank.interest-on-debt', 'interest on your debt, at 2% a day');
         case 'magic_words':
             return t('apps.bank.used-the-magic-words', 'used the magic words');
+        // A day's contracts, or unlocks, fold into one row (pure/ledger.js): every one is named.
         case 'contract':
-            return html`${t('apps.bank.completed-the-contract', 'completed the contract')} <em>${contractName(row.source, row.title)}</em>`;
+            return html`${many ? t('apps.bank.completed-the-contracts', 'completed the contracts') : t('apps.bank.completed-the-contract', 'completed the contract')} ${namesOf(row, contractName)}`;
         case 'unlock':
-            return html`${t('apps.bank.unlocked', 'unlocked')} <em>${unlockName(row.source, row.title)}</em>`;
+            return html`${t('apps.bank.unlocked', 'unlocked')} ${namesOf(row, unlockName)}`;
         default:
             return row.kind;
     }
@@ -275,6 +284,7 @@ const Market = ({ root, balance, unlocks, everything, onBought }) => {
     const owned = new Set(unlocks.filter((u) => u.bought_ms).map((u) => u.id));
     // The test rig owns everything already, so it sells nothing (bank.rs `everything_unlocked`).
     const forSale = everything ? [] : unlocks.filter((u) => !u.bought_ms);
+    const financial = everything || owned.has('horse-financial');
     return html`<div class="bank-market-body">
         ${forSale.map(
             (u) => html`<${UnlockCard}
@@ -286,8 +296,16 @@ const Market = ({ root, balance, unlocks, everything, onBought }) => {
                 onBought=${onBought}
             />`,
         )}
-        ${forSale.length > 0 && html`<hr class="bank-rule" />`}
-        <${Bond} root=${root} balance=${balance} onBought=${onBought} />
+        ${
+            /* The hrseBond is Horse Financial's (Curtis, 2026-10-05): the instruments are bought
+            into like any other piece. A bond held stays in the portfolio either way, and sells
+            there in debt - the way out is never for sale. */ ''
+        }
+        ${
+            financial &&
+            html`${forSale.length > 0 && html`<hr class="bank-rule" />`}
+            <${Bond} root=${root} balance=${balance} onBought=${onBought} />`
+        }
         ${
             /* What's owned (plans/UNLOCKS.md): after the Market's wares, a short list of what's
             been bought and when - a returning player's answer to "what do I have?". */ ''
