@@ -17189,3 +17189,20 @@ row of unlocks (Curtis). The row now names each line, comma-separated:
 "completed the contracts X, Y, Z", "unlocked Friends, Private notes".
 `harness/unlocks-probe.mjs` claims a day's two purchases read as one row naming
 both. `just ui-check` green.
+
+**2026-10-05 - colorways for sale, and four new terminals.** Curtis: every
+colorway but horse-relax and witchlight is sold, alone, for H$ 25,000 -
+terminal-gold, new, for H$ 500,000 - as cosmetic enticements, not meant to be
+reachable on contract money. Four new palettes in tokens.css, on terminal's
+shape with another phosphor each: terminal-white (the monochrome monitor),
+terminal-cyan, terminal-orange (amber) and terminal-gold; their swatches, the
+picker's classes, and index.html's first-paint list (the pure test holds it to
+colorway.js's). The unlocks are `colorway-<name>` in `bank.rs` `UNLOCKS`; the
+Market gives them a section of their own after the hrseBond, each card wearing
+its swatch. The colourway names and swatch classes moved from persona.js to
+colorway.js, shared by the picker and the Market. The profile's picker offers
+the free colourways, the owned ones, and the one worn - a colourway chosen
+before it was for sale stays on until something else is picked - and points to
+the Market for the rest. `harness/unlocks-probe.mjs` claims fifteen features
+with video last, eight colourways apart, and a fresh persona's picker offering
+horse-relax and witchlight.

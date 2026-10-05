@@ -55,6 +55,15 @@ way out of debt is never for sale.
 Pins need both Private notes and Social (Curtis, 2026-10-05): a note and a post
 are the two things a pin pins.
 
+**Colorways** (Curtis, 2026-10-05), each sold alone, cosmetic only and not meant
+to be reachable on contract money - "an enticement for the user to keep engaging
+with the game's systems": horse-relax and witchlight stay free; doors-xp, bosc,
+micross, terminal and three new phosphors - terminal-white, terminal-cyan,
+terminal-orange - are H$ 25,000 each, and a fourth, terminal-gold, H$ 500,000.
+The Market shows them in a section of their own after the hrseBond (unlock ids
+`colorway-<name>`); the profile's picker offers the free ones, the owned ones,
+and the one worn - a colourway chosen before it was for sale stays on.
+
 ## Rulings (Curtis, 2026-10-05)
 
 1. **Everyone starts locked** - existing personas included, Curtis's own. He's

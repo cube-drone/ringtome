@@ -26,10 +26,17 @@ import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { Version } from './version.js';
 import { RELEASES_URL } from './pure/releasename.js';
-import { COLORWAYS, DEFAULT_COLORWAY } from './colorway.js';
+import {
+    COLORWAYS,
+    COLORWAY_CLASS,
+    COLORWAY_WORDS,
+    DEFAULT_COLORWAY,
+    colorwayUnlock,
+} from './colorway.js';
+import { useLedger, unlockedIn } from './unlocks.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
-import { personHref, personaPageHref, LAUNCHER } from './links.js';
+import { appHref, personHref, personaPageHref, LAUNCHER } from './links.js';
 import { formatWhen } from './pure/when.js';
 
 const html = htm.bind(h);
@@ -1164,26 +1171,16 @@ export const Profile = ({ current }) => {
 /// Your colourway for the whole app (Curtis, 2026-09-30), a profile field like your name - but saved
 /// the moment you pick it, since trying one on IS picking it. Public: your page wears it for anyone
 /// who visits (colorway.js).
-const COLORWAY_WORDS = {
-    'horse-relax': () => t('persona.colorway-horse-relax', 'horse-relax'),
-    witchlight: () => t('persona.colorway-witchlight', 'witchlight'),
-    'doors-xp': () => t('persona.colorway-doors-xp', 'doors-xp'),
-    bosc: () => t('persona.colorway-bosc', 'bosc'),
-    micross: () => t('persona.colorway-micross', 'micross'),
-    terminal: () => t('persona.colorway-terminal', 'terminal'),
-};
-const COLORWAY_CLASS = {
-    'horse-relax': 'colorway-swatch colorway-horse-relax',
-    witchlight: 'colorway-swatch colorway-witchlight',
-    'doors-xp': 'colorway-swatch colorway-doors-xp',
-    bosc: 'colorway-swatch colorway-bosc',
-    micross: 'colorway-swatch colorway-micross',
-    terminal: 'colorway-swatch colorway-terminal',
-};
-
+///
+/// Two are free; the rest are sold in hrseBank's Market (2026-10-05). The picker offers the free
+/// ones, the ones owned, and the one worn - a colourway chosen before it was for sale stays on, and
+/// stays picked, until something else is - and says where the rest are.
 const ColorwayPicker = ({ root }) => {
     const row = useLive(() => openMirror(root).profile.get('colorway'), [root]);
     const current = (row && COLORWAYS.includes(row.value) && row.value) || DEFAULT_COLORWAY;
+    const ledger = useLedger(root);
+    const offered = COLORWAYS.filter((c) => c === current || unlockedIn(ledger, colorwayUnlock(c)));
+    const more = offered.length < COLORWAYS.length;
     const [error, setError] = useState(null);
     const pick = async (colorway) => {
         setError(null);
@@ -1199,7 +1196,7 @@ const ColorwayPicker = ({ root }) => {
     return html`<div class="profile-field">
         <span class="profile-field-label">${t('persona.colorway', 'colorway')}</span>
         <div class="colorway-options" role="radiogroup">
-            ${COLORWAYS.map(
+            ${offered.map(
                 (c) => html`<button
                     key=${c}
                     type="button"
@@ -1210,6 +1207,10 @@ const ColorwayPicker = ({ root }) => {
                 ><span class=${COLORWAY_CLASS[c]}><span></span><span></span><span></span></span>${COLORWAY_WORDS[c]()}</button>`,
             )}
         </div>
+        ${
+            more &&
+            html`<p class="null-sub">${tNodes('persona.more-colorways-in-the-market', 'More colorways are for sale in the {market}.', { market: html`<a href=${appHref('bank')}>${t('persona.hrsebank-market', 'hrseBank™ market')}</a>` })}</p>`
+        }
         ${error && html`<p class="form-error">${error}</p>`}
     </div>`;
 };

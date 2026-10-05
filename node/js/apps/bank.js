@@ -19,6 +19,7 @@ import {
     unlockName,
     unlockWarning,
 } from '../unlocks.js';
+import { COLORWAY_CLASS, colorwayOf } from '../colorway.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
 import { formatWhen } from '../pure/when.js';
@@ -248,6 +249,8 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
     const affordable = BigInt(balance || '0') >= BigInt(unlock.pennies);
     const warning = unlockWarning(unlock.id);
     const Icon = unlockIcon(unlock.id);
+    // A colourway's card shows the colourway (2026-10-05): its swatch, not an icon.
+    const colorway = colorwayOf(unlock.id);
     const buy = async () => {
         setBusy(true);
         setError(null);
@@ -265,7 +268,11 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
         }
     };
     return html`<section class=${affordable && needs.length === 0 ? 'bank-unlock' : 'bank-unlock unaffordable'}>
-        <h3 class="bank-unlock-name"><${Icon} /> ${unlockName(unlock.id, unlock.name)}</h3>
+        <h3 class="bank-unlock-name">${
+            colorway
+                ? html`<span class=${COLORWAY_CLASS[colorway] || 'colorway-swatch'}><span></span><span></span><span></span></span>`
+                : html`<${Icon} />`
+        } ${unlockName(unlock.id, unlock.name)}</h3>
         <p class="bank-unlock-about">${unlockAbout(unlock.id)}</p>
         ${warning && html`<p class="bank-unlock-warning"><${Icons.warn} /> ${warning}</p>`}
         ${
@@ -285,17 +292,20 @@ const Market = ({ root, balance, unlocks, everything, onBought }) => {
     // The test rig owns everything already, so it sells nothing (bank.rs `everything_unlocked`).
     const forSale = everything ? [] : unlocks.filter((u) => !u.bought_ms);
     const financial = everything || owned.has('horse-financial');
+    // The colourways (2026-10-05) have a section of their own, after the instruments: cosmetic,
+    // and dear, so they don't crowd the pieces of the game.
+    const features = forSale.filter((u) => !colorwayOf(u.id));
+    const colorways = forSale.filter((u) => colorwayOf(u.id));
+    const card = (u) => html`<${UnlockCard}
+        key=${u.id}
+        root=${root}
+        unlock=${u}
+        balance=${balance}
+        owned=${owned}
+        onBought=${onBought}
+    />`;
     return html`<div class="bank-market-body">
-        ${forSale.map(
-            (u) => html`<${UnlockCard}
-                key=${u.id}
-                root=${root}
-                unlock=${u}
-                balance=${balance}
-                owned=${owned}
-                onBought=${onBought}
-            />`,
-        )}
+        ${features.map(card)}
         ${
             /* The hrseBond is Horse Financial's (Curtis, 2026-10-05): the instruments are bought
             into like any other piece. A bond held stays in the portfolio either way, and sells
@@ -303,8 +313,14 @@ const Market = ({ root, balance, unlocks, everything, onBought }) => {
         }
         ${
             financial &&
-            html`${forSale.length > 0 && html`<hr class="bank-rule" />`}
+            html`${features.length > 0 && html`<hr class="bank-rule" />`}
             <${Bond} root=${root} balance=${balance} onBought=${onBought} />`
+        }
+        ${
+            colorways.length > 0 &&
+            html`<hr class="bank-rule" />
+            <p class="bank-contracts-head">${t('apps.bank.colorways-heading', 'Colorways')}</p>
+            <div class="bank-colorways">${colorways.map(card)}</div>`
         }
         ${
             /* What's owned (plans/UNLOCKS.md): after the Market's wares, a short list of what's

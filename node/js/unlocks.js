@@ -20,6 +20,7 @@ import { t, tNodes } from './i18n.js';
 import { openMirror, useLive } from './mirror.js';
 import { Icons } from './icons.js';
 import { appHref } from './links.js';
+import { COLORWAY_WORDS, colorwayOf } from './colorway.js';
 
 const html = htm.bind(h);
 
@@ -277,11 +278,24 @@ const ICONS = {
     'horse-financial': Icons.bond,
 };
 
-/// The unlock's name as the reader reads it: this table's, else the node's `fallback`.
-export const unlockName = (id, fallback = '') => (NAMES[id] ? NAMES[id]() : fallback);
+/// The unlock's name as the reader reads it: this table's, a colourway's own, else the node's
+/// `fallback`.
+export const unlockName = (id, fallback = '') => {
+    const colorway = colorwayOf(id);
+    if (colorway && COLORWAY_WORDS[colorway]) return COLORWAY_WORDS[colorway]();
+    return NAMES[id] ? NAMES[id]() : fallback;
+};
 
 /// What the unlock opens, in a sentence or two; '' for one this table doesn't know.
-export const unlockAbout = (id) => (ABOUT[id] ? ABOUT[id]() : '');
+export const unlockAbout = (id) =>
+    colorwayOf(id)
+        ? t(
+              'unlocks.colorway-about',
+              'A colorway for the whole app - and for your page, which everyone who visits sees in it.',
+          )
+        : ABOUT[id]
+          ? ABOUT[id]()
+          : '';
 
 /// The unlock's warning, or null.
 export const unlockWarning = (id) => (WARNINGS[id] ? WARNINGS[id]() : null);

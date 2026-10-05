@@ -139,7 +139,7 @@ const fn unlock(
 }
 
 /// Every unlock, in the order the Market lists them.
-pub const UNLOCKS: [Unlock; 15] = [
+pub const UNLOCKS: [Unlock; 23] = [
     unlock("friends", "Friends", 1_000, &[]),
     unlock("social", "Social", 1_000, &[]),
     unlock("private-notes", "Private notes", 2_500, &[]),
@@ -158,6 +158,17 @@ pub const UNLOCKS: [Unlock; 15] = [
     unlock("horse-financial", "Horse Financial", 500, &[]),
     // Last, and dearest: experimental, and said so (Curtis, 2026-10-05).
     unlock("video-upload", "Video upload", 10_000, &["file-upload"]),
+    // The colourways (Curtis, 2026-10-05): cosmetic, each sold alone - horse-relax and witchlight
+    // stay free - and not meant to be reachable on contract money: something to keep playing for.
+    // The Market shows them in a section of their own (`colorway-` is the client's word for it).
+    unlock("colorway-doors-xp", "doors-xp", 25_000, &[]),
+    unlock("colorway-bosc", "bosc", 25_000, &[]),
+    unlock("colorway-micross", "micross", 25_000, &[]),
+    unlock("colorway-terminal", "terminal", 25_000, &[]),
+    unlock("colorway-terminal-white", "terminal-white", 25_000, &[]),
+    unlock("colorway-terminal-cyan", "terminal-cyan", 25_000, &[]),
+    unlock("colorway-terminal-orange", "terminal-orange", 25_000, &[]),
+    unlock("colorway-terminal-gold", "terminal-gold", 500_000, &[]),
 ];
 
 /// The unlocks owned, as the private chain records them: id -> when bought.

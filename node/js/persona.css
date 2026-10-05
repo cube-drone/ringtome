@@ -2314,6 +2314,30 @@ article:has(.label-emoji-strip) {
     --s3: var(--swatch-terminal-3);
 }
 
+.colorway-terminal-white {
+    --s1: var(--swatch-terminal-white-1);
+    --s2: var(--swatch-terminal-white-2);
+    --s3: var(--swatch-terminal-white-3);
+}
+
+.colorway-terminal-cyan {
+    --s1: var(--swatch-terminal-cyan-1);
+    --s2: var(--swatch-terminal-cyan-2);
+    --s3: var(--swatch-terminal-cyan-3);
+}
+
+.colorway-terminal-orange {
+    --s1: var(--swatch-terminal-orange-1);
+    --s2: var(--swatch-terminal-orange-2);
+    --s3: var(--swatch-terminal-orange-3);
+}
+
+.colorway-terminal-gold {
+    --s1: var(--swatch-terminal-gold-1);
+    --s2: var(--swatch-terminal-gold-2);
+    --s3: var(--swatch-terminal-gold-3);
+}
+
 /* API keys (persona.js, 2026-09-30): a heading, what a key is, the keys - trash first, the name, when -
    and a field to make another. A new key shows once, in a box of its own. */
 .settings-keys {

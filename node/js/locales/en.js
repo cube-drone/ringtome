@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1517 phrases across 90 files.
+// 1525 phrases across 91 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -73,6 +73,7 @@ export default {
     'apps.bank.counting': 'counting…',
     'apps.bank.unlock-first': 'first: {unlocks}',
     'apps.bank.unlock': 'unlock',
+    'apps.bank.colorways-heading': 'Colorways',
     'apps.bank.unlocked-heading': 'Unlocked',
     'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
     'apps.bank.hrsebond': 'hrseBond',
@@ -437,6 +438,18 @@ export default {
     'census.graph': 'daily active users, by day',
     'census.readout-today': 'today so far: {n} active',
     'census.readout-day': '{date}: {n} active',
+
+    // --- node/js/colorway.js ---
+    'persona.colorway-horse-relax': 'horse-relax',
+    'persona.colorway-witchlight': 'witchlight',
+    'persona.colorway-doors-xp': 'doors-xp',
+    'persona.colorway-bosc': 'bosc',
+    'persona.colorway-micross': 'micross',
+    'persona.colorway-terminal': 'terminal',
+    'persona.colorway-terminal-white': 'terminal-white',
+    'persona.colorway-terminal-cyan': 'terminal-cyan',
+    'persona.colorway-terminal-orange': 'terminal-orange',
+    'persona.colorway-terminal-gold': 'terminal-gold',
 
     // --- node/js/computers.js ---
     'computers.this-computers-key': "this computer's key: {p0}",
@@ -1107,13 +1120,9 @@ export default {
     'persona.bio': 'bio',
     'persona.a-line-or-two-about': 'a line or two about you (optional)',
     'persona.save': 'Save',
-    'persona.colorway-horse-relax': 'horse-relax',
-    'persona.colorway-witchlight': 'witchlight',
-    'persona.colorway-doors-xp': 'doors-xp',
-    'persona.colorway-bosc': 'bosc',
-    'persona.colorway-micross': 'micross',
-    'persona.colorway-terminal': 'terminal',
     'persona.colorway': 'colorway',
+    'persona.more-colorways-in-the-market': 'More colorways are for sale in the {market}.',
+    'persona.hrsebank-market': 'hrseBank™ market',
     'persona.this-node-knows-you-as': 'this node knows you as @{slug}',
     'persona.name-given-up': 'name given up',
     'persona.that-name-did-not-take': 'that name did not take',
@@ -1323,6 +1332,7 @@ export default {
     'unlocks.chats-for-two-about': 'Start a private chat with one person, from their page: only the two of you can read it.',
     'unlocks.sealing-about': 'Set a post so only the people you trust can read it - or address it to a group of your contacts.',
     'unlocks.video-upload-warning': "Experimental: video doesn't work in every browser or on every computer yet.",
+    'unlocks.colorway-about': 'A colorway for the whole app - and for your page, which everyone who visits sees in it.',
     'unlocks.checking': 'checking…',
     'unlocks.for-sale-in-the-market': 'For sale in the {market}.',
     'unlocks.hrsebank-market': 'hrseBank™ market',

@@ -47,11 +47,21 @@ console.log(
 
 const bank = await s.boot('/ringtome/bank');
 const bdoc = bank.window.document;
-await waitFor(bdoc, () => bdoc.querySelectorAll('.bank-unlock').length > 0, 'the Market');
+await waitFor(
+    bdoc,
+    () => bdoc.querySelectorAll('.bank-market-body > .bank-unlock').length > 0,
+    'the Market',
+);
 console.log(
     'RESULT the Market sells fifteen, video last:',
-    bdoc.querySelectorAll('.bank-unlock').length === 15 &&
-        bdoc.querySelector('.bank-unlock:last-of-type').textContent.includes('Video'),
+    bdoc.querySelectorAll('.bank-market-body > .bank-unlock').length === 15 &&
+        bdoc
+            .querySelector('.bank-market-body > .bank-unlock:last-of-type')
+            .textContent.includes('Video'),
+);
+console.log(
+    'RESULT eight colorways, apart:',
+    bdoc.querySelectorAll('.bank-colorways .bank-unlock').length === 8,
 );
 console.log('RESULT no hrseBond before Horse Financial:', !bdoc.querySelector('.bank-instrument'));
 
@@ -73,11 +83,26 @@ const n2 = notes2.window.document;
 await sleep(1500);
 console.log('RESULT and its address opens it:', !n2.querySelector('.unlock-locked-card'));
 
+// The profile's picker offers the free colourways, and says where the rest are.
+const profile = await s.boot('/ringtome/persona/profile');
+const pdoc = profile.window.document;
+await waitFor(pdoc, () => pdoc.querySelectorAll('.colorway-option').length > 0, 'the picker');
+await sleep(500);
+console.log(
+    'RESULT the picker offers horse-relax and witchlight:',
+    [...pdoc.querySelectorAll('.colorway-option')].map((b) => b.textContent.trim()).join(',') ===
+        'horse-relax,witchlight',
+);
+
 // Bought from the Market itself: the card's button, and the dock grows hrsePeople at once.
 const market = await s.boot('/ringtome/bank');
 const mdoc = market.window.document;
-await waitFor(mdoc, () => mdoc.querySelectorAll('.bank-unlock').length === 14, 'the Market');
-const card = [...mdoc.querySelectorAll('.bank-unlock')].find((c) =>
+await waitFor(
+    mdoc,
+    () => mdoc.querySelectorAll('.bank-market-body > .bank-unlock').length === 14,
+    'the Market',
+);
+const card = [...mdoc.querySelectorAll('.bank-market-body > .bank-unlock')].find((c) =>
     c.textContent.includes('Friends'),
 );
 console.log('RESULT Friends is affordable:', !card.classList.contains('unaffordable'));

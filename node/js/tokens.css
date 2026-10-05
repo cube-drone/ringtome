@@ -159,6 +159,18 @@
     --swatch-terminal-1: #000000;
     --swatch-terminal-2: #0d1a0d;
     --swatch-terminal-3: #39ff14;
+    --swatch-terminal-white-1: #000000;
+    --swatch-terminal-white-2: #1a1a1a;
+    --swatch-terminal-white-3: #ffffff;
+    --swatch-terminal-cyan-1: #000000;
+    --swatch-terminal-cyan-2: #0a2229;
+    --swatch-terminal-cyan-3: #14e1ff;
+    --swatch-terminal-orange-1: #000000;
+    --swatch-terminal-orange-2: #2a1606;
+    --swatch-terminal-orange-3: #ff8c1a;
+    --swatch-terminal-gold-1: #000000;
+    --swatch-terminal-gold-2: #241c06;
+    --swatch-terminal-gold-3: #ffd700;
 }
 
 :root[data-colorway='witchlight'] {
@@ -379,6 +391,182 @@
     --hex-border-light: #173a18;
 
     --marker: #2f7a26;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* terminal-white (Curtis, 2026-10-05): black and white, the old monochrome monitor - terminal's shape, another phosphor. */
+:root[data-colorway='terminal-white'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #1a1a1a;
+    --surface-2: #2b2b2b;
+    --paper: #0d0d0d;
+    --field: #070707;
+    --ink: #f2f2f2;
+    --ink-soft: #d9d9d9;
+    --muted: #bdbdbd;
+    --faint: #8c8c8c;
+    --border: #6b6b6b;
+    --border-strong: #a8a8a8;
+    --frame: #151515;
+
+    --teal: #ffffff;
+    --teal-deep: #333333;
+    --sea: #ffffff;
+    --pink: #e0e0e0;
+    --peach: #ffc53d;
+    --coral: #ff4d4d;
+    --react-good: #1f3a1f;
+    --react-bad: #4a1a1a;
+
+    --glow: rgba(255, 255, 255, 0.35);
+    --dock-text: #ffffff;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 255, 255, 0.1);
+    --row-veil: rgba(26, 26, 26, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #ffffff;
+    --hex-border-light: #2b2b2b;
+
+    --marker: #5a5a5a;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* terminal-cyan (Curtis, 2026-10-05): black and cyan - terminal's shape, another phosphor. */
+:root[data-colorway='terminal-cyan'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #0a2229;
+    --surface-2: #12363f;
+    --paper: #061518;
+    --field: #030d0f;
+    --ink: #8af4ff;
+    --ink-soft: #6be4f2;
+    --muted: #5bcfdc;
+    --faint: #3f9fab;
+    --border: #237f8a;
+    --border-strong: #3dbccb;
+    --frame: #082a30;
+
+    --teal: #14e1ff;
+    --teal-deep: #0a333a;
+    --sea: #14e1ff;
+    --pink: #5cffe4;
+    --peach: #ffc53d;
+    --coral: #ff4d4d;
+    --react-good: #0f3a40;
+    --react-bad: #4a1a1a;
+
+    --glow: rgba(20, 225, 255, 0.45);
+    --dock-text: #14e1ff;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(20, 225, 255, 0.1);
+    --row-veil: rgba(10, 34, 41, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #14e1ff;
+    --hex-border-light: #12363f;
+
+    --marker: #1f6f7a;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* terminal-orange (Curtis, 2026-10-05): black and amber - terminal's shape, another phosphor. */
+:root[data-colorway='terminal-orange'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #2a1606;
+    --surface-2: #3f220b;
+    --paper: #170c03;
+    --field: #0f0802;
+    --ink: #ffb870;
+    --ink-soft: #f5a04f;
+    --muted: #e08f3f;
+    --faint: #a8682b;
+    --border: #8a4f1a;
+    --border-strong: #cc7a2a;
+    --frame: #2e1705;
+
+    --teal: #ff8c1a;
+    --teal-deep: #3a2008;
+    --sea: #ff8c1a;
+    --pink: #ffd27a;
+    --peach: #ffe14d;
+    --coral: #ff4d4d;
+    --react-good: #3a2a0a;
+    --react-bad: #4a1a1a;
+
+    --glow: rgba(255, 140, 26, 0.45);
+    --dock-text: #ff8c1a;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 140, 26, 0.1);
+    --row-veil: rgba(42, 22, 6, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #ff8c1a;
+    --hex-border-light: #3f220b;
+
+    --marker: #7a4a1a;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* terminal-gold (Curtis, 2026-10-05): black and gold, for the very rich - terminal's shape, another phosphor. */
+:root[data-colorway='terminal-gold'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #241c06;
+    --surface-2: #3a2e0b;
+    --paper: #140f03;
+    --field: #0c0902;
+    --ink: #ffe58a;
+    --ink-soft: #f5d66b;
+    --muted: #e0c055;
+    --faint: #a88d36;
+    --border: #8a7020;
+    --border-strong: #ccaa33;
+    --frame: #2a2005;
+
+    --teal: #ffd700;
+    --teal-deep: #3a3008;
+    --sea: #ffd700;
+    --pink: #fff1a8;
+    --peach: #ffb347;
+    --coral: #ff4d4d;
+    --react-good: #3a3410;
+    --react-bad: #4a1a1a;
+
+    --glow: rgba(255, 215, 0, 0.5);
+    --dock-text: #ffd700;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 215, 0, 0.1);
+    --row-veil: rgba(36, 28, 6, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #ffd700;
+    --hex-border-light: #3a2e0b;
+
+    --marker: #7a6420;
     --scrim: rgba(0, 0, 0, 0.7);
     --shadow-drop: rgba(0, 0, 0, 0.7);
     --shadow-punch: rgba(0, 0, 0, 0.5);

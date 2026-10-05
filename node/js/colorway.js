@@ -11,7 +11,59 @@
 // server names it in their page's head (`page-colorway`). This module starts from the same place.
 import { useEffect } from 'preact/hooks';
 
-export const COLORWAYS = ['horse-relax', 'witchlight', 'doors-xp', 'bosc', 'micross', 'terminal'];
+import { t } from './i18n.js';
+
+export const COLORWAYS = [
+    'horse-relax',
+    'witchlight',
+    'doors-xp',
+    'bosc',
+    'micross',
+    'terminal',
+    'terminal-white',
+    'terminal-cyan',
+    'terminal-orange',
+    'terminal-gold',
+];
+
+/// The colourways everyone has (Curtis, 2026-10-05); every other one is sold in hrseBank's Market,
+/// alone, as the unlock `colorway-<name>` (bank.rs `UNLOCKS`, plans/UNLOCKS.md).
+const FREE = ['horse-relax', 'witchlight'];
+
+/// The unlock that sells a colourway, or null for a free one.
+export const colorwayUnlock = (c) => (FREE.includes(c) ? null : `colorway-${c}`);
+
+/// The colourway an unlock sells, or null for an unlock that isn't one.
+export const colorwayOf = (unlockId) =>
+    unlockId && unlockId.startsWith('colorway-') ? unlockId.slice('colorway-'.length) : null;
+
+/// A colourway's name, in the reader's words.
+export const COLORWAY_WORDS = {
+    'horse-relax': () => t('persona.colorway-horse-relax', 'horse-relax'),
+    witchlight: () => t('persona.colorway-witchlight', 'witchlight'),
+    'doors-xp': () => t('persona.colorway-doors-xp', 'doors-xp'),
+    bosc: () => t('persona.colorway-bosc', 'bosc'),
+    micross: () => t('persona.colorway-micross', 'micross'),
+    terminal: () => t('persona.colorway-terminal', 'terminal'),
+    'terminal-white': () => t('persona.colorway-terminal-white', 'terminal-white'),
+    'terminal-cyan': () => t('persona.colorway-terminal-cyan', 'terminal-cyan'),
+    'terminal-orange': () => t('persona.colorway-terminal-orange', 'terminal-orange'),
+    'terminal-gold': () => t('persona.colorway-terminal-gold', 'terminal-gold'),
+};
+
+/// A colourway's swatch: three stripes of its own colours (persona.css, tokens.css).
+export const COLORWAY_CLASS = {
+    'horse-relax': 'colorway-swatch colorway-horse-relax',
+    witchlight: 'colorway-swatch colorway-witchlight',
+    'doors-xp': 'colorway-swatch colorway-doors-xp',
+    bosc: 'colorway-swatch colorway-bosc',
+    micross: 'colorway-swatch colorway-micross',
+    terminal: 'colorway-swatch colorway-terminal',
+    'terminal-white': 'colorway-swatch colorway-terminal-white',
+    'terminal-cyan': 'colorway-swatch colorway-terminal-cyan',
+    'terminal-orange': 'colorway-swatch colorway-terminal-orange',
+    'terminal-gold': 'colorway-swatch colorway-terminal-gold',
+};
 export const DEFAULT_COLORWAY = 'horse-relax';
 const KEPT = 'colorway';
 
