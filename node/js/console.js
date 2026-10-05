@@ -5,6 +5,7 @@ import { h } from 'preact';
 import htm from 'htm';
 
 import { consoleCellsFor, appLabel } from './pure/apps.js';
+import { useOwnership } from './unlocks.js';
 import { tileLabel } from './pure/tilelabel.js';
 import { iconFor } from './icons.js';
 import { isDevice } from './net.js';
@@ -123,7 +124,9 @@ function Hex(app, key, onLaunch, personaName, me) {
 
 export const Console = ({ onLaunch, personaName, me, admin }) => {
     const columns = useNarrow() ? NARROW_COLUMNS : COLUMNS;
-    const rows = chunk(consoleCellsFor(admin, columns), columns);
+    // Read here, not handed down: the router keeps a matched route's first props (unlocks.js).
+    const owns = useOwnership();
+    const rows = chunk(consoleCellsFor(admin, columns, owns), columns);
     return html`
         <div class="console">
             <div class="hex-comb">

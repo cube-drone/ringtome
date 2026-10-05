@@ -15,12 +15,15 @@ import { publishedState } from '../pure/feed.js';
 import { lineDiff, sameWords } from '../pure/wordsdiff.js';
 import { publishWithBaking, BakeModal } from './publish.js';
 import { postHref, docHref } from '../links.js';
+import { useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
 
 export const DiffPage = ({ doc, current }) => {
     const loc = useLocation();
     const root = current && current.root;
+    // Making the changes public is Public post editing's (plans/UNLOCKS.md); the diff reads freely.
+    const ownsEditing = useUnlocked(root, 'post-editing');
     const row = useLive(() => (root ? openMirror(root).docs.get(doc) : null), [root, doc]);
     const postId = row ? publishedState(row).postId : '';
     const [words, setWords] = useState(null); // { privateTitle, privateBody, publicTitle, publicBody }
@@ -91,6 +94,7 @@ export const DiffPage = ({ doc, current }) => {
                 <a class="publish-bar-view jag-line" href=${postHref(root, postId)}><${Icons.docPublic} /> ${t('doc.diffpage.view-public', 'view public')}</a>
                 ${
                     !same &&
+                    ownsEditing &&
                     html`<button class="publish-bar-update jag-line" disabled=${publishing} onClick=${update}>
                     <${Icons.update} /> ${publishing ? t('doc.diffpage.publishing', 'publishing…') : t('doc.diffpage.make-your-changes-public', 'make your changes public')}
                 </button>`

@@ -798,6 +798,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             "/api/identity/{root}/bank/instruments/{id}/sell",
             axum::routing::post(bank::sell_handler),
         )
+        .route(
+            "/api/identity/{root}/bank/unlocks",
+            get(bank::unlocks_handler).post(bank::unlock_handler),
+        )
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/front", get(frontdoor::front_handler))
         .route("/api/admin/front", axum::routing::put(frontdoor::set_handler))

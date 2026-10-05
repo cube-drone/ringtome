@@ -794,3 +794,55 @@ describe('HorseBucks: bonds and debt', function () {
         assert.equal((await bank()).balance, '-104037', 'the debt compounds');
     });
 });
+
+/*
+    Unlocks (plans/UNLOCKS.md, 2026-10-05): the Market sells the app's features a piece at a time.
+    A purchase is a private register and a spend; the gates themselves are the client's, so what
+    the node owes is the sale - priced, in order, never on credit, never twice. The rig's nodes
+    hand every persona everything (`everything`), which a sale doesn't change.
+*/
+describe('HorseBucks: unlocks', function () {
+    this.timeout(60000);
+
+    const rig = makeFetch();
+
+    it('an unlock is bought once, in order, out of the balance, and the corner hears of it', async () => {
+        const who = await makeUserFetch({ prefix: 'unlockuma' });
+        const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const bank = async () => (await who(`api/identity/${root}/bank`)).json();
+        const buy = (id) => j(who, `api/identity/${root}/bank/unlocks`, { id });
+
+        const before = await bank();
+        assert.equal(before.everything, true, "the rig's nodes unlock everything");
+        assert.deepEqual(
+            before.unlocks.slice(0, 3).map((u) => [u.id, u.pennies, u.bought_ms]),
+            [
+                ['friends', '100000', null],
+                ['social', '100000', null],
+                ['private-notes', '250000', null],
+            ],
+        );
+        assert.deepEqual(before.contracts.find((c) => c.id === 'tag-a-public-post').requires, [
+            'social',
+            'tags',
+        ]);
+
+        assert.equal((await buy('a-pony')).status, 400, 'no such unlock');
+        assert.equal((await buy('chats-for-two')).status, 400, 'Chat and Friends come first');
+        assert.equal((await buy('friends')).status, 400, 'no overdraft');
+
+        const start = BigInt(before.balance);
+        await j(rig, 'test/credit', { root, pennies: 100000 });
+        const bought = await buy('friends');
+        assert.equal(bought.status, 200, await bought.text());
+        assert.equal((await buy('friends')).status, 400, 'and once only');
+
+        const after = await bank();
+        assert.equal(after.balance, String(start), 'H$ 1,000 in, H$ 1,000 spent');
+        const line = after.lines.find((l) => l.kind === 'unlock');
+        assert.deepEqual([line.source, line.pennies], ['friends', '-100000']);
+        assert.ok(after.unlocks.find((u) => u.id === 'friends').bought_ms, 'owned, with when');
+        const corner = await (await who(`api/identity/${root}/bank?lines=0`)).json();
+        assert.deepEqual(corner.unlocked, ['friends'], 'the corner poll carries the gates');
+    });
+});

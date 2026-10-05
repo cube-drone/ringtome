@@ -7,51 +7,23 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
-import { api } from './net.js';
 import { t } from './i18n.js';
-import { openMirror, useLive } from './mirror.js';
+import { useLedger } from './unlocks.js';
 import { appHref } from './links.js';
 import { formatHorseBucks } from './pure/horsebucks.js';
 
 const html = htm.bind(h);
 
-/// How often the corner asks the node while the tab is visible.
-const ASK_MS = 10_000;
 /// How long a rise takes to roll up.
 const ROLL_MS = 900;
 
 export const CornerBank = ({ root }) => {
     const loc = useLocation();
-    const [target, setTarget] = useState(null); // BigInt horsepennies, from the node
+    // BigInt horsepennies, from the node: the shell's one poll (unlocks.js `useLedgerPoll`) asks,
+    // since the same answer carries what's unlocked.
+    const target = useLedger(root).balance;
     const [shown, setShown] = useState(null);
     const from = useRef(null);
-    // The persona's own documents moving is the commonest earning - a new version is a new
-    // newest edit - so ask again when they do.
-    const docsMoved = useLive(
-        () =>
-            root
-                ? openMirror(root)
-                      .docs.toArray()
-                      .then((rows) => rows.reduce((m, d) => Math.max(m, d.updated_ms || 0), 0))
-                : 0,
-        [root],
-    );
-    useEffect(() => {
-        if (!root) return undefined;
-        let live = true;
-        const ask = () => {
-            if (document.hidden) return;
-            api(`/api/identity/${root}/bank?lines=0`)
-                .then((b) => live && setTarget(BigInt(b.balance)))
-                .catch(() => {});
-        };
-        ask();
-        const timer = setInterval(ask, ASK_MS);
-        return () => {
-            live = false;
-            clearInterval(timer);
-        };
-    }, [root, docsMoved]);
     // Roll from what's shown to the new figure (BigInt steps, so a squidjillion rolls too).
     useEffect(() => {
         if (target === null) return undefined;

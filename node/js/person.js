@@ -44,6 +44,7 @@ import {
     TAG_MAX,
 } from './pure/contacttags.js';
 import { personHref, roomHref } from './links.js';
+import { useUnlocked } from './unlocks.js';
 
 const html = htm.bind(h);
 
@@ -375,7 +376,12 @@ export const PersonRow = ({ root, current, profile, aside, storage }) => {
 /// a room sealed to the two of you and nobody else. One chat per pair - the node answers
 /// with the one already going when there is one - so this never makes a second window on
 /// the same conversation, whichever of you opened the first.
-const ChatWithButton = ({ myRoot, root, name }) => {
+/// Starting a chat for two is bought (plans/UNLOCKS.md, "Chats for two"); one somebody else
+/// started with you opens whatever you own.
+const ChatWithButton = (props) =>
+    useUnlocked(props.myRoot, 'chats-for-two') ? html`<${ChatWithOpen} ...${props} />` : null;
+
+const ChatWithOpen = ({ myRoot, root, name }) => {
     const loc = useLocation();
     const [going, setGoing] = useState(false);
     const [error, setError] = useState(null);

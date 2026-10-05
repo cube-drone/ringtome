@@ -86,6 +86,11 @@ lightly federated, unapologetically Old Internet.
   to Marquee (never rendered as HTML), images through the node, a merged
   newest-first view, and a rebroadcast that carries its source. A design draft
   (2026-09-30); nothing built.
+- [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
+  starts with Drawing, the Bank and hrseMsg and buys the rest from the Market
+  with HorseBucks; unlocks on the private chain as ledger spends, gates in the
+  client only, contracts hidden until their unlock is owned. A design draft
+  (2026-10-05); nothing built.
 - **The delivery-shape trio** — what kind of application this is, one document
   per candidate surface. Their relationship to canon differs and each says which
   at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,

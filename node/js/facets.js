@@ -10,6 +10,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
+import { useOwns } from './unlocks.js';
 import {
     cycleMe,
     cyclePick,
@@ -217,11 +218,17 @@ export const FacetRow = ({
     </div>`;
 };
 
+/// A row of tags to narrow by - a `FacetRow`, shown once tags are owned (plans/UNLOCKS.md).
+export const TagFacetRow = (props) => (useOwns('tags') ? html`<${FacetRow} ...${props} />` : null);
+
 /// The strip: `labels` from `useLabels`, `picks` as `{ kinds, buckets, tags }` (each row's "only"
 /// values) with `notKinds`, `notBuckets`, `notTags` (its left-out ones) and `me`, and `onPicks`
 /// with the next picks. Every chip cycles the same way (Curtis, 2026-10-01): left alone, only,
 /// left out - "only" picks in one row widen to either, the rows narrow together.
 export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = null }) => {
+    // Filters are bought with tags (plans/UNLOCKS.md, "Reactions, tags & filters").
+    const owned = useOwns('tags');
+    if (!owned) return null;
     if (
         !meChip &&
         (!labels ||
@@ -306,7 +313,9 @@ export function usePicks(key) {
         setPicksState(next);
         if (key) writePicks(key, next);
     };
-    return [picks, setPicks];
+    // No filters owned, no filter in force: a pick kept from before can't narrow a list unseen.
+    const owned = useOwns('tags');
+    return [owned ? picks : NO_PICKS, setPicks];
 }
 export const anyPicks = (picks) =>
     !!(

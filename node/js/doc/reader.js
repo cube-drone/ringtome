@@ -27,6 +27,7 @@ import { t } from '../i18n.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { DrawingSurface } from './drawing.js';
 import { useStorage } from '../storage.js';
+import { useGatedFeatures } from '../unlocks.js';
 import { sizeLabel } from '../pure/backups.js';
 
 const html = htm.bind(h);
@@ -35,6 +36,7 @@ const html = htm.bind(h);
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
 const Reader = ({ root, docId, onDeleted, nav, features }) => {
+    const feat = useGatedFeatures(root, features || featuresOf());
     const [copying, setCopying] = useState(false); // copy into private notes (2026-09-08)
     // The shared read-only loader (doc/detail.js). Write failures below get their own state; the
     // header shows whichever error is live.
@@ -270,7 +272,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         onClick=${() => setShowMeta((v) => !v)}
                     />
                     ${
-                        (features || featuresOf()).pin &&
+                        feat.pin &&
                         html`<${Chip}
                         icon=${Icons.pin}
                         modifier=${pinned ? 'chip-pinned' : null}

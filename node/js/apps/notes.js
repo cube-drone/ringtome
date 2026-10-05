@@ -38,9 +38,10 @@ import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding, titlePageOf } from '../pure/books.js';
 import { docHref } from '../links.js';
-import { FacetRow, narrowTitle } from '../facets.js';
+import { FacetRow, TagFacetRow, narrowTitle } from '../facets.js';
 import { togglePick } from '../pure/facets.js';
 import { useStorage } from '../storage.js';
+import { useGatedFeatures } from '../unlocks.js';
 import { sizeLabel } from '../pure/backups.js';
 import { formatWhen } from '../pure/when.js';
 
@@ -425,7 +426,7 @@ const FileBrowser = ({
     }
     ${
         browse.cloud.length > 0 &&
-        html`<${FacetRow}
+        html`<${TagFacetRow}
         label=${t('apps.notes.tagged', 'tagged')}
         items=${browse.cloud.map(([value, count]) => ({ value, count }))}
         picked=${tags}
@@ -469,7 +470,7 @@ export const DocsApp = ({
     missing = false,
 }) => {
     const root = current.root;
-    const feat = featuresOf(app);
+    const feat = useGatedFeatures(root, featuresOf(app));
     const noun = itemNoun(app); // what this app calls one of its things, and many of them
     const nouns = itemPlural(app);
     const [busy, setBusy] = useState(false);

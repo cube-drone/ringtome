@@ -17105,3 +17105,45 @@ horsepenny, now sees its first bond complete "Buy a hrseBond" once and has the
 rig take the H$ 2,500 back. One full run also failed `peek_footprint.cjs` ("the
 refusal has the word") - it passed alone twice on the same tree and in the next
 full run, so it reads as load-dependent; noted, not chased. `just ci` green.
+
+**2026-10-05 - unlocks: the paywall as tutorial (plans/UNLOCKS.md, steps 1-4).**
+A new persona starts with hrsePersona, hrseMsg, hrseDrawing and hrseBank (and
+hrseServer for an administrator); the other fourteen pieces are bought in the
+Market, above the hrseBond, each card saying what it opens - video with its
+"experimental" warning. Everyone starts locked, Curtis's personas included
+(Ruling 1). **Node:** `bank.rs` `UNLOCKS` (id, name, price, prerequisites) and
+the private register `unlocks` (id -> when bought); a purchase is a ledger line
+`unlock` / id for the negative price, folded with the bonds' spends.
+`POST /bank/unlocks` refuses an unknown id, one owned already, one whose
+prerequisites aren't owned, and an overdraft. The bank's answer lists every
+unlock and each contract's `requires`; the corner poll (`?lines=0`) and a new
+`GET /bank/unlocks` - one register read, so a deep link isn't held behind the
+ledger's catch-up - carry the owned ids and `everything`, which LOCAL_TEST nodes
+answer true unless `RINGTOME_TEST_LOCKS` is set. A unit test holds every
+`requires` to a real unlock that comes earlier in the Market. **Client:**
+`js/unlocks.js` holds the gate's store, fed by the shell's one ledger poll
+(moved out of `cornerbank.js`, which now reads the balance from it), the names
+and explanations, and the locked-app card. The registry's apps carry `unlock`
+(`appsFor`, `consoleCellsFor`, `mayOpen`); a locked app's address shows the
+card; a room reached by address opens alone without Chat, since a chat for two
+someone started with you is a room. The feature gates: the publish bar (publish
+is Social's, update Public post editing's, "trusted only" Sealing's - a copied
+sealed draft keeps its seal, ticked and fixed - unpublish and cancel never);
+Writer's tree, Publish, links and tag columns, and pins (`useGatedFeatures`);
+tag editing in the annotations panel; the filter strips, and a kept pick stops
+narrowing while they're hidden; Chat's tag column, a new room's tags and
+audience, chat-line reactions; post cards' share, pin, edit, labels and
+reactions; replies; the feed's audience chooser and pencil on a published post;
+the diff page's update; the chat-for-two button; and every upload - the capture
+hook refuses a dropped or pasted file and hides its hosts' buttons, the image
+picker hides "upload from this computer", and the upload flow refuses video
+without Video upload. Contracts not yet offerable stay off the Active list
+(Ruling 2). One thing found on the way: the router keeps a matched route's first
+props, so the launcher reads the gate itself (`useOwnership`) - its tiles didn't
+change after a purchase until it did. `bank.cjs` claims the sale (order,
+overdraft, once, the line, the corner's ids); `pure/apps.cjs` the starting set;
+`harness/unlocks-probe.mjs`, against a scratch node with the locks on, claims
+the launcher, the locked card, fourteen cards in the Market, an API purchase
+opening Writer, and a click on Friends' card bringing hrsePeople into the dock.
+Not yet built: the safety contracts, the second batch's contracts, and a list of
+what's owned. `just ci` green.

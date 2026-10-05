@@ -52,6 +52,7 @@ import { ImagePickModal } from './imagepick.js';
 import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
 import { CopyLinkChip, docHref } from '../links.js';
+import { useGatedFeatures } from '../unlocks.js';
 
 const html = htm.bind(h);
 
@@ -97,7 +98,7 @@ export const Editor = ({
     book,
     uploadBucket = FILES_BUCKET,
 }) => {
-    const feat = features || featuresOf();
+    const feat = useGatedFeatures(root, features || featuresOf());
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
     const {
@@ -198,6 +199,7 @@ export const Editor = ({
         pickFiles,
         insertText,
         extras: uploadExtras,
+        canUpload,
     } = useUploadCapture({
         placeCursor,
         root,
@@ -545,11 +547,14 @@ export const Editor = ({
                         }}
                     />`
                     }
-                    <${Chip}
+                    ${
+                        canUpload &&
+                        html`<${Chip}
                         icon=${Icons.upload}
                         title="Upload — attach a file to this document (drop or paste works too)"
                         onClick=${pickFiles}
-                    />
+                    />`
+                    }
                     <${Chip}
                         icon=${Icons.addImage}
                         title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}

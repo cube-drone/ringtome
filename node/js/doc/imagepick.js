@@ -13,7 +13,8 @@ import { openMirror, useLive } from '../mirror.js';
 import { pickPictures, isPicture } from '../pure/imagepick.js';
 import { api } from '../net.js';
 import { togglePick } from '../pure/facets.js';
-import { FacetRow, narrowTitle } from '../facets.js';
+import { TagFacetRow, narrowTitle } from '../facets.js';
+import { useUnlocked } from '../unlocks.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { FILES_BUCKET, uploadBinary } from './upload.js';
@@ -123,6 +124,8 @@ export const ImagePickModal = ({
         return () => clearInterval(id);
     }, [upload, root]);
 
+    // A new upload is bought (plans/UNLOCKS.md); your own drawings and pictures are always here.
+    const canUpload = useUnlocked(root, 'file-upload');
     const uploadNote = !upload
         ? null
         : upload.phase === 'sending'
@@ -133,12 +136,15 @@ export const ImagePickModal = ({
     return html`<${Modal} wide=${true} title=${heading || t('doc.imagepick.add-an-image', 'add an image')} onClose=${onClose}>
         <div class="imagepick">
             <div class="imagepick-filters">
-                <button
+                ${
+                    canUpload &&
+                    html`<button
                     class="imagepick-upload"
                     type="button"
                     disabled=${upload && upload.phase !== 'failed'}
                     onClick=${() => fileRef.current && fileRef.current.click()}
-                ><${Icons.upload} /> ${t('doc.imagepick.upload-from-this-computer', 'upload from this computer')}</button>
+                ><${Icons.upload} /> ${t('doc.imagepick.upload-from-this-computer', 'upload from this computer')}</button>`
+                }
                 <input
                     ref=${fileRef}
                     type="file"
@@ -187,7 +193,7 @@ export const ImagePickModal = ({
             }
             ${
                 cloud.length > 0 &&
-                html`<${FacetRow}
+                html`<${TagFacetRow}
                 label=${t('doc.imagepick.tagged', 'tagged')}
                 items=${cloud.map(([value, count]) => ({ value, count }))}
                 picked=${tags}

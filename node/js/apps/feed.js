@@ -34,6 +34,7 @@ import htm from 'htm';
 
 import { openMirror, useLive } from '../mirror.js';
 import { Icons } from '../icons.js';
+import { useUnlocked } from '../unlocks.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { createdMs, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
 import {
@@ -143,6 +144,8 @@ const PostBody = ({ doc }) => {
 const StackItem = ({ root, row, onPost, posting }) => {
     const [open, setOpen] = useState(false);
     const state = publishedState(row);
+    // A draft opens freely; a post once published is Public post editing's (plans/UNLOCKS.md).
+    const ownsEditing = useUnlocked(root, 'post-editing');
     // The body read, hoisted from PostBody so the stack can judge emptiness (Curtis,
     // 2026-08-28): an unposted draft with no title and no words is a blank page - most
     // often a reply box opened and walked away from - and listing it is noise. Hidden
@@ -203,12 +206,15 @@ const StackItem = ({ root, row, onPost, posting }) => {
                         onClick=${discard}
                     ><${Icons.trash} /></button>`
                     }
-                    <button
+                    ${
+                        (!state.published || ownsEditing) &&
+                        html`<button
                         class="chip chip-button"
                         title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                         aria-label=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                         onClick=${() => setOpen(true)}
                     ><${Icons.rename} /></button>`
+                    }`
                 }
             </header>
             ${
@@ -780,6 +786,9 @@ export const FeedApp = ({ current, searchQuery }) => {
     // trust (the seal's default list), 'tag:<tag>' is a contact tag - "family" - narrower
     // than trust (Curtis, 2026-09-12: one control, "people I trust" as the default list).
     const [audienceNext, setAudienceNext] = useState('');
+    // Choosing who a post is for is Sealed posts & audiences' (plans/UNLOCKS.md); a copy of a
+    // sealed post keeps its own seal wish either way (below).
+    const sealing = useUnlocked(root, 'sealing');
     const trustNext = audienceNext !== '';
     // 'mentioned' is the post's own room (Contact tags, ruling 5): the people its user
     // cards name; the node refuses it when the words name nobody. 'onward' (ruling 7) is
@@ -988,7 +997,9 @@ export const FeedApp = ({ current, searchQuery }) => {
                                         />
                                         ${t('apps.feed.settled-no-replies-no', 'turn off comments')}
                                     </label>
-                                    <label
+                                    ${
+                                        sealing &&
+                                        html`<label
                                         class="feed-settle"
                                         title=${t('apps.feed.trusted-only-means', 'only the people you choose can read it')}
                                     >
@@ -1005,6 +1016,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                             ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
                                         </select>
                                     </label>`
+                                    }`
                                       : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`
                               }
                               ${

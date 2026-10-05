@@ -301,6 +301,28 @@ describe('app registry', () => {
 
     // The settings app is for the people who look after the place (apps/device.js); the node
     // refuses everyone else at every door, and these keep the tile out of their way.
+    // The Market's apps (plans/UNLOCKS.md, 2026-10-05): a new player starts with their persona,
+    // hrseDrawing, hrseMsg and hrseBank, and every other app shows once its unlock is bought.
+    describe('apps the Market sells', () => {
+        it('starts with the starting set, and adds an app as its unlock is owned', () => {
+            const none = () => false;
+            assert.deepEqual(
+                appsFor(false, none).map((a) => a.id),
+                ['persona', 'notifications', 'drawing', 'bank'],
+            );
+            const friends = (id) => id === 'friends';
+            assert.ok(appsFor(false, friends).some((a) => a.id === 'people'));
+            assert.ok(!appsFor(false, friends).some((a) => a.id === 'notes'));
+            assert.deepEqual(
+                appsFor(true, none).map((a) => a.id),
+                ['persona', 'notifications', 'drawing', 'bank', 'device'],
+                'an administrator also has the server',
+            );
+            const cells = consoleCellsFor(false, 4, none);
+            assert.equal(cells.length % 4, 0, 'the comb stays whole');
+        });
+    });
+
     describe('administrator-only apps', () => {
         it('shows the settings app to an administrator and nobody else', () => {
             assert.ok(appsFor(true).some((a) => a.id === 'device'));

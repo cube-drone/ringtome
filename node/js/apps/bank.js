@@ -11,6 +11,14 @@ import { PersonChip } from '../person.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { contractName, contractFinePrint } from '../contracts.js';
+import {
+    noteBank,
+    refreshUnlocks,
+    unlockAbout,
+    unlockIcon,
+    unlockName,
+    unlockWarning,
+} from '../unlocks.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
 import { formatWhen } from '../pure/when.js';
@@ -38,6 +46,7 @@ const KINDS = {
     debt_interest: () => t('apps.bank.kind-debt-interest', 'interest on debt'),
     magic_words: () => t('apps.bank.kind-magic-words', 'the magic words'),
     contract: () => t('apps.bank.kind-contract', 'contracts completed'),
+    unlock: () => t('apps.bank.kind-unlock', 'unlocks bought'),
 };
 
 /// The Contracts column (Curtis, 2026-10-04): goals that pay once - the ones still open, then the
@@ -55,8 +64,10 @@ const FinePrint = ({ id }) => {
     </a>`;
 };
 
-const Contracts = ({ contracts }) => {
-    const active = contracts.filter((c) => !c.completed_ms);
+const Contracts = ({ contracts, owns }) => {
+    // An open contract shows once what it needs is owned (UNLOCKS.md, Ruling 2): the column only
+    // offers what the player can do. A done one shows whatever is owned - it was done.
+    const active = contracts.filter((c) => !c.completed_ms && (c.requires || []).every(owns));
     const done = contracts.filter((c) => c.completed_ms);
     const [top, ...rest] = active;
     const item = (
@@ -170,6 +181,8 @@ const RowWords = ({ row, current }) => {
             return t('apps.bank.used-the-magic-words', 'used the magic words');
         case 'contract':
             return html`${t('apps.bank.completed-the-contract', 'completed the contract')} <em>${contractName(row.source, row.title)}</em>`;
+        case 'unlock':
+            return html`${t('apps.bank.unlocked', 'unlocked')} <em>${unlockName(row.source, row.title)}</em>`;
         default:
             return row.kind;
     }
@@ -215,7 +228,70 @@ const Month = ({ month, lines, open, onToggle, current }) => html`<li class="ban
 const BOND_MIN = 2000; // whole H$ (bank.rs BOND_MIN)
 const BOND_MAX = 1000000; // whole H$ (bank.rs BOND_MAX)
 
-const Market = ({ root, balance, onBought }) => {
+/// The unlocks for sale (plans/UNLOCKS.md; Curtis, 2026-10-05), above the hrseBond: one card per
+/// unlock not owned yet, in the node's order - what it opens, its price, a buy button greyed when
+/// the balance can't pay or another unlock must come first. Bought, a card leaves the Market, and
+/// what it opened appears at once (unlocks.js `refreshUnlocks`).
+const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const needs = (unlock.requires || []).filter((r) => !owned.has(r));
+    const affordable = BigInt(balance || '0') >= BigInt(unlock.pennies);
+    const warning = unlockWarning(unlock.id);
+    const Icon = unlockIcon(unlock.id);
+    const buy = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/bank/unlocks`, {
+                method: 'POST',
+                body: JSON.stringify({ id: unlock.id }),
+            });
+            await refreshUnlocks(root);
+            onBought();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<section class=${affordable && needs.length === 0 ? 'bank-unlock' : 'bank-unlock unaffordable'}>
+        <h3 class="bank-unlock-name"><${Icon} /> ${unlockName(unlock.id, unlock.name)}</h3>
+        <p class="bank-unlock-about">${unlockAbout(unlock.id)}</p>
+        ${warning && html`<p class="bank-unlock-warning"><${Icons.warn} /> ${warning}</p>`}
+        ${
+            needs.length > 0 &&
+            html`<p class="bank-unlock-needs">${t('apps.bank.unlock-first', 'first: {unlocks}', {
+                unlocks: needs.map((id) => unlockName(id, id)).join(', '),
+            })}</p>`
+        }
+        <span class="bank-unlock-price">${formatHorseBucks(unlock.pennies)}</span>
+        <button class="bank-buy" type="button" disabled=${busy || !affordable || needs.length > 0} onClick=${buy}>${busy ? '…' : t('apps.bank.unlock', 'unlock')}</button>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </section>`;
+};
+
+const Market = ({ root, balance, unlocks, everything, onBought }) => {
+    const owned = new Set(unlocks.filter((u) => u.bought_ms).map((u) => u.id));
+    // The test rig owns everything already, so it sells nothing (bank.rs `everything_unlocked`).
+    const forSale = everything ? [] : unlocks.filter((u) => !u.bought_ms);
+    return html`<div class="bank-market-body">
+        ${forSale.map(
+            (u) => html`<${UnlockCard}
+                key=${u.id}
+                root=${root}
+                unlock=${u}
+                balance=${balance}
+                owned=${owned}
+                onBought=${onBought}
+            />`,
+        )}
+        ${forSale.length > 0 && html`<hr class="bank-rule" />`}
+        <${Bond} root=${root} balance=${balance} onBought=${onBought} />
+    </div>`;
+};
+
+const Bond = ({ root, balance, onBought }) => {
     const [bucks, setBucks] = useState(BOND_MIN);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
@@ -241,8 +317,7 @@ const Market = ({ root, balance, onBought }) => {
             setBusy(false);
         }
     };
-    return html`<div class="bank-market-body">
-        <section
+    return html`<section
             class=${affordable ? 'bank-instrument' : 'bank-instrument unaffordable'}
             title=${t('apps.bank.hrsebond-terms', 'pays 1% interest every day for 100 days')}
         >
@@ -261,8 +336,7 @@ const Market = ({ root, balance, onBought }) => {
             </label>
             <button class="bank-buy" type="button" disabled=${busy || !affordable} onClick=${buy}>${busy ? '…' : t('apps.bank.buy', 'buy')}</button>
             ${error && html`<p class="form-error">${error}</p>`}
-        </section>
-    </div>`;
+        </section>`;
 };
 
 /// The portfolio column (Curtis, 2026-09-29: "tuck our purchased HorseBonds in a new column"):
@@ -333,6 +407,7 @@ export const BankApp = ({ current }) => {
             .then((b) => {
                 if (!live) return;
                 setBank(b);
+                noteBank(root, b); // the gates hear the full answer too
                 if (b.month) {
                     setLines((l) => ({ ...l, [b.month]: b.lines }));
                     setOpen((o) => (o.size ? o : new Set([b.month])));
@@ -368,7 +443,7 @@ export const BankApp = ({ current }) => {
                 ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
                 : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
                   <${PaneHead} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
-                  <${Market} root=${root} balance=${bank.balance} onBought=${() => {
+                  <${Market} root=${root} balance=${bank.balance} unlocks=${bank.unlocks || []} everything=${bank.everything} onBought=${() => {
                       setAsked((n) => n + 1);
                       // Bought: on a phone the market closes onto the balance it moved. On success
                       // only - a refusal is said in the market column.
@@ -394,7 +469,7 @@ export const BankApp = ({ current }) => {
                 ? html`<${Rail} icon=${Icons.contract} label=${t('apps.bank.contracts', 'contracts')} onClick=${() => toggleTuck('contracts')} />`
                 : html`${tab('contracts', Icons.contract, t('apps.bank.contracts', 'contracts'))}<aside class="bank-contracts-column">
                   <${PaneHead} icon=${Icons.contract} label=${t('apps.bank.contracts', 'contracts')} onTuck=${() => toggleTuck('contracts')} />
-                  <${Contracts} contracts=${bank.contracts || []} />
+                  <${Contracts} contracts=${bank.contracts || []} owns=${(id) => bank.everything || (bank.unlocks || []).some((u) => u.id === id && u.bought_ms)} />
               </aside>${resizer('contracts')}`
         }
         <div class="bank">

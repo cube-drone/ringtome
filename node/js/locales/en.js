@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1461 phrases across 89 files.
+// 1503 phrases across 90 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -32,6 +32,7 @@ export default {
     'apps.bank.kind-debt-interest': 'interest on debt',
     'apps.bank.kind-magic-words': 'the magic words',
     'apps.bank.kind-contract': 'contracts completed',
+    'apps.bank.kind-unlock': 'unlocks bought',
     'apps.bank.fine-print': 'fine print',
     'apps.bank.active-contracts': 'Active Contracts',
     'apps.bank.every-contract-done': 'every contract is done - more to come.',
@@ -66,8 +67,11 @@ export default {
     'apps.bank.interest-on-debt': 'interest on your debt, at 2% a day',
     'apps.bank.used-the-magic-words': 'used the magic words',
     'apps.bank.completed-the-contract': 'completed the contract',
+    'apps.bank.unlocked': 'unlocked',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
+    'apps.bank.unlock-first': 'first: {unlocks}',
+    'apps.bank.unlock': 'unlock',
     'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
     'apps.bank.hrsebond': 'hrseBond',
     'apps.bank.buy': 'buy',
@@ -838,6 +842,8 @@ export default {
     'doc.turbolinks.untitled': 'untitled',
 
     // --- node/js/doc/upload.js ---
+    'doc.upload.video-is-in-the-market': 'uploading video is unlocked in the hrseBank™ market',
+    'doc.upload.uploading-is-in-the-market': 'uploading files is unlocked in the hrseBank™ market',
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
     'doc.upload.drag-a-file-here-or': 'drag a file here, or',
     'doc.upload.upload-a-file': 'upload a file',
@@ -1273,6 +1279,40 @@ export default {
     'slugpage.nobody-here-by-that-name': 'nobody on this node goes by that name',
     'slugpage.a-name-is-this-nodes': 'short names only work on this site. A real address starts with /ringtome/user/.',
 
+    // --- node/js/unlocks.js ---
+    'unlocks.friends': 'Friends',
+    'unlocks.social': 'Social',
+    'unlocks.private-notes': 'Private notes',
+    'unlocks.chat': 'Chat',
+    'unlocks.taxonomy': 'Taxonomy & tree publication',
+    'unlocks.tags': 'Reactions, tags & filters',
+    'unlocks.file-upload': 'File upload',
+    'unlocks.pins': 'Pins',
+    'unlocks.post-editing': 'Public post editing',
+    'unlocks.video-upload': 'Video upload',
+    'unlocks.sharing': 'Sharing',
+    'unlocks.links': 'Links',
+    'unlocks.chats-for-two': 'Chats for two',
+    'unlocks.sealing': 'Sealed posts & audiences',
+    'unlocks.friends-about': 'Opens hrsePeople™: look people up by their address, follow them, and keep track of everyone you know - and who you trust.',
+    'unlocks.social-about': 'Opens hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you, and reply to theirs.',
+    'unlocks.private-notes-about': 'Opens hrseWriter™: notebooks of private notes, kept on your own computers and nowhere else until you choose to publish one.',
+    'unlocks.chat-about': 'Opens hrseChat™: rooms of your own, and the rooms of the people you follow, live.',
+    'unlocks.taxonomy-about': 'Gives hrseWriter™ its tree - sections and pages, a notebook with a shape - and lets you publish a whole notebook as a book.',
+    'unlocks.tags-about': 'Tag your notes and your posts, react to posts and chat lines with an emoji, and filter every list by its tags.',
+    'unlocks.file-upload-about': 'Opens hrseFiles™, and the upload button everywhere: pictures and sounds from your computer, into notes, posts and rooms.',
+    'unlocks.pins-about': 'Pin a note to the top of its notebook, and a post to the top of your page.',
+    'unlocks.post-editing-about': 'Change a post after it is published: everyone who has it gets the new version, and its history shows what changed.',
+    'unlocks.video-upload-about': 'Upload video, as well as pictures and sounds.',
+    'unlocks.sharing-about': "Share someone else's post with the people who follow you.",
+    'unlocks.links-about': 'Gives hrseWriter™ its links column: every note that links to the one open, and every note it links to.',
+    'unlocks.chats-for-two-about': 'Start a private chat with one person, from their page: only the two of you can read it.',
+    'unlocks.sealing-about': 'Seal a post so only the people you trust can read it - everyone else sees that it exists, and not what it says - or address it to a group of your contacts.',
+    'unlocks.video-upload-warning': "Experimental: video doesn't work in every browser or on every computer yet.",
+    'unlocks.checking': 'checking…',
+    'unlocks.for-sale-in-the-market': 'For sale in the {market}.',
+    'unlocks.hrsebank-market': 'hrseBank™ market',
+
     // --- node/js/version.js ---
     'version.dev-build': 'a development build of {branch}, on {version}',
     'version.release-notes': 'the release notes for this version',
@@ -1363,6 +1403,10 @@ export default {
     'bank.sell-only-in-debt': 'a hrseBond can be sold only to get out of debt',
     'bank.no-such-bond': 'no such hrseBond',
     'bank.nothing-to-sell': 'that hrseBond has nothing left to sell',
+    'bank.no-such-unlock': 'no such unlock',
+    'bank.you-own-that-already': "that's yours already",
+    'bank.unlock-the-others-first': 'that one needs another unlock first',
+    'bank.you-cant-afford-that-2': "you can't afford that",
 
     // --- node/src/builtin.rs ---
     'builtin.not-in-this-build': 'that picture no longer comes with the app',

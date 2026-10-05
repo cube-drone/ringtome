@@ -26,6 +26,8 @@ export const APPS = [
         name: 'hrsePeople™',
         icon: 'people',
         live: true,
+        // Bought in the Market (plans/UNLOCKS.md): the id of the unlock that opens the app.
+        unlock: 'friends',
         // The rolodex (PROJECT_PLAN, Addressing: the console's people surface): look up an
         // address, and browse everyone your ledger holds a relationship with - identity-free
         // at the list level, navigating OUT to /id/<root> pages. Not a documents app: no
@@ -40,6 +42,7 @@ export const APPS = [
         name: 'hrseFeed™',
         icon: 'feed',
         live: true,
+        unlock: 'social',
         // The app that writes in PUBLIC (apps/feed.js). Its drafts are ordinary private
         // notes in one eponymous bucket; posting mints their public form.
         style: 'feed',
@@ -113,6 +116,7 @@ export const APPS = [
         icon: 'notes',
         style: 'default',
         live: true,
+        unlock: 'private-notes',
         bucketNoun: 'Notebook',
         itemNoun: 'note',
         // The everything-app, and now the ONLY notebook app. Recipes and Wikibook lived here
@@ -132,6 +136,7 @@ export const APPS = [
         name: 'hrseChat™',
         icon: 'chat',
         live: true,
+        unlock: 'chat',
         // Real-time rooms (CHAT.md): a room is a post, and this app lists the rooms a
         // persona may see - its own, the ones its feed carries, the ones it entered by
         // link - and opens them. Not a documents app: rooms are minted here, in one form,
@@ -148,6 +153,7 @@ export const APPS = [
         name: 'hrseFiles™',
         icon: 'lostFound',
         live: true,
+        unlock: 'file-upload',
         // Every PRIVATE document, from every notebook, plus the unbucketed - the one surface
         // where nothing can be orphaned out of sight (a repudiation striking a bucket's
         // definition relocates its documents; this is where they remain findable).
@@ -243,14 +249,18 @@ export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.featu
 /// The launchable apps, in registry order (the console tiles).
 export const liveApps = APPS.filter((a) => a.live);
 
-/// The launchable apps THIS person sees: an administrator-only app (`admin`) only for someone
-/// who administers the place. The dock's list.
-export const appsFor = (admin) => liveApps.filter((a) => !a.admin || admin);
+/// May this person open this app? An administrator-only app (`admin`) only for someone who
+/// administers the place; an app the Market sells (`unlock`) only once `owns` says it's bought.
+export const mayOpen = (app, admin, owns = () => true) =>
+    !!app && (!app.admin || admin) && (!app.unlock || owns(app.unlock));
+
+/// The launchable apps THIS person sees (`mayOpen`), in registry order. The dock's list.
+export const appsFor = (admin, owns) => liveApps.filter((a) => mayOpen(a, admin, owns));
 
 /// The console's honeycomb for this person: the apps they may open, in registry order, padded with
 /// blank cells to whole rows of `columns` - so the comb stays whole however many apps there are.
-export const consoleCellsFor = (admin, columns = 4) => {
-    const apps = APPS.filter((a) => a.live && (!a.admin || admin));
+export const consoleCellsFor = (admin, columns = 4, owns) => {
+    const apps = APPS.filter((a) => a.live && mayOpen(a, admin, owns));
     const blanks = (columns - (apps.length % columns)) % columns;
     return [...apps, ...Array.from({ length: blanks }, () => ({ blank: true }))];
 };

@@ -30,6 +30,7 @@ import { ingestVideo } from '../../../video-ingest/src/index.js';
 import { bodyUrlFor, crushedReference } from '../pure/mediakind.js';
 import { caretThroughSwap } from '../pure/caret.js';
 import { FILES_BUCKET } from '../pure/apps.js';
+import { useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
 
@@ -73,6 +74,8 @@ const queueLabel = (r) =>
         : QUEUE_WORD[r.queueStatus] || 'processing…';
 
 const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onIngested }) => {
+    // Video is bought apart from pictures and sounds (plans/UNLOCKS.md: experimental, and said so).
+    const video = useUnlocked(root, 'video-upload');
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
         files.map((f) => ({
@@ -142,6 +145,17 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
         if (started.current) return;
         started.current = true;
         files.forEach(async (file, i) => {
+            if (/^video\//.test(file.type || '') && !video) {
+                patchRow(i, {
+                    phase: 'failed',
+                    error: t(
+                        'doc.upload.video-is-in-the-market',
+                        'uploading video is unlocked in the hrseBank™ market',
+                    ),
+                });
+                onFailed && onFailed(i);
+                return;
+            }
             if (!accepted(file)) {
                 patchRow(i, {
                     phase: 'failed',
@@ -472,12 +486,26 @@ export function useUploadCapture({
 }) {
     const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
     const filePickRef = useRef(null);
+    // Uploading is bought (plans/UNLOCKS.md, "File upload"): without it a file dropped or pasted
+    // is refused where it landed, and `canUpload` tells the host to hide its upload buttons.
+    // Crosslink drops - a note dragged in - are links, not uploads, and still land.
+    const canUpload = useUnlocked(root, 'file-upload');
     const bodyNow = useRef('');
     bodyNow.current = body;
     const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
     const insertedRefs = useRef([]); // the reference each placeholder became, for the respell
     const captureFiles = (files) => {
         if (!files.length) return;
+        if (!canUpload) {
+            onRefused &&
+                onRefused(
+                    t(
+                        'doc.upload.uploading-is-in-the-market',
+                        'uploading files is unlocked in the hrseBank™ market',
+                    ),
+                );
+            return;
+        }
         // The embed cap, met at the GESTURE - the only place stopping costs nothing. Every
         // file here becomes a fresh embedded document, so the arithmetic is current distinct
         // embeds plus the handful in hand; refusing now means no upload, no placeholder, and
@@ -660,6 +688,7 @@ export function useUploadCapture({
         pickFiles: () => filePickRef.current && filePickRef.current.click(),
         insertText,
         extras,
+        canUpload,
     };
 }
 

@@ -17,6 +17,7 @@ import { openMirror, optimisticDoc, useLive } from '../mirror.js';
 import { withTagOps, tagOpsSettled } from '../pure/optimistic.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 import { t } from '../i18n.js';
+import { useUnlocked } from '../unlocks.js';
 import { isEmojiTag } from '../pure/annotations.js';
 
 const html = htm.bind(h);
@@ -70,6 +71,9 @@ export const Annotations = ({ root, docId, features }) => {
     // The title, only where asked (a book's title page, in the Publish column): elsewhere the
     // editor holds it, since a title is a header field and changing it mints a version.
     const showTitle = !!(features && features.title);
+    // Tagging is bought (plans/UNLOCKS.md, "Reactions, tags & filters"): without it the tags
+    // already there show, and none can be added or taken off.
+    const tagging = useUnlocked(root, 'tags');
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const mirrorTags = (row && row.tags) || [];
     // "image", "video", "audio": the doc carries them for what it holds, not because anyone
@@ -276,14 +280,19 @@ export const Annotations = ({ root, docId, features }) => {
                           >${tag}</span>`
                         : html`<span class="annot-tag jag-line" key=${tag}>
                         ${tag}
-                        <button
+                        ${
+                            tagging &&
+                            html`<button
                             class="annot-tag-x"
                             title=${t('doc.annotations.remove-tag', 'remove tag')}
                             onClick=${() => removeTag(tag)}
-                        >×</button>
+                        >×</button>`
+                        }
                     </span>`,
                 )}
-                <input
+                ${
+                    tagging &&
+                    html`<input
                     class="annot-tag-input"
                     maxlength="32"
                     placeholder=${t('doc.annotations.tag', '+ tag')}
@@ -299,7 +308,8 @@ export const Annotations = ({ root, docId, features }) => {
                         }
                     }}
                     onBlur=${() => addTag(tagInput)}
-                />
+                />`
+                }
                 ${tagRefused && html`<span class="annot-tag-refused">${tagRefused}</span>`}
             </div>
             ${

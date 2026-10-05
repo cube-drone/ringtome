@@ -43,6 +43,7 @@ import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
 import { postHref } from './links.js';
+import { useUnlocked } from './unlocks.js';
 
 const html = htm.bind(h);
 
@@ -535,7 +536,11 @@ const HeldReplyBody = ({ author, doc }) => {
 /// permalink visit would mint an empty document per view, and a mint behind a click is
 /// ref-guarded so a double-click cannot mint two. An abandoned draft lands in the feed
 /// app's own "older drafts" stack, editable like any other.
-const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
+/// A reply is publication, and publishing is Social's (plans/UNLOCKS.md).
+const ReplyBox = (props) =>
+    useUnlocked(props.current.root, 'social') ? html`<${ReplyBoxOpen} ...${props} />` : null;
+
+const ReplyBoxOpen = ({ current, parent, onReplied, sealed = false }) => {
     const [draftId, setDraftId] = useState(null);
     const [posting, setPosting] = useState(false);
     const [baking, setBaking] = useState(null);

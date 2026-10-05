@@ -29,6 +29,7 @@ import { descriptionOf, excerpt } from './pure/excerpt.js';
 // position, then the whole gemoji table - shared with the room's reaction picker
 // (emoji.js). One click says the emoji as a tag.
 import { EmojiStrip, toneOf } from './emoji.js';
+import { useUnlocked } from './unlocks.js';
 import {
     groupLabels,
     isEmojiTag,
@@ -681,6 +682,13 @@ const RoomLinkCard = ({ target }) => {
 registerRoomCard(RoomLinkCard);
 
 export const PostEntry = ({ item, current, interest, editing, quote, standalone = false }) => {
+    // What the Market sells on a card (plans/UNLOCKS.md): sharing, pinning, editing a published
+    // post, and labels and reactions. Taking a post down, and taking your own label back, never.
+    const me = current && current.root;
+    const ownsSharing = useUnlocked(me, 'sharing');
+    const ownsPins = useUnlocked(me, 'pins');
+    const ownsEditing = useUnlocked(me, 'post-editing');
+    const ownsTags = useUnlocked(me, 'tags');
     const [body, setBody] = useState(undefined);
     const [sealedWords, setSealedWords] = useState('');
     const [wholeThing, setWholeThing] = useState(false);
@@ -1134,7 +1142,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         never the key, and that is not what the button promises - unless the
                         author asked for the hop (Contact tags, ruling 7). */ ''
                     }
-                    ${!item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
+                    ${ownsSharing && !item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
                     ${
                         /* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
@@ -1145,6 +1153,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         confusing, and posts edit forever). */ ''
                     }
                     ${
+                        ownsEditing &&
                         editing &&
                         !open &&
                         (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
@@ -1159,7 +1168,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                   href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
                               ><${Icons.notes} /></a>`
-                            : editing &&
+                            : ownsEditing &&
+                              editing &&
                               !open &&
                               html`<button
                               class="chip chip-button"
@@ -1173,6 +1183,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         - and any post you pass along (2026-09-29). */ ''
                     }
                     ${
+                        ownsPins &&
                         !open &&
                         !item.private_doc &&
                         !!current &&
@@ -1339,6 +1350,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     const mine =
                         current && g.contributors.find((c) => c.annotator === current.root);
                     const canAgree =
+                        ownsTags &&
                         !!current &&
                         g.key === 'tag' &&
                         !mine &&
@@ -1417,6 +1429,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                     everywhere it travels. */ ''
                 }
                 ${
+                    ownsTags &&
                     !!current &&
                     (tagging ||
                         tagsLeft(shownLabels, { author: item.author, me: current.root }) > 0) &&

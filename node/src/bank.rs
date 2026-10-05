@@ -63,70 +63,106 @@ const MAGIC_WORDS: [&str; 9] = [
 /// The private register completions are recorded in.
 const CONTRACTS_KV: &str = "contracts";
 
-/// One contract: its id (stable - the key everywhere), its name as the player reads it, its reward.
+/// One contract: its id (stable - the key everywhere), its name as the player reads it, its reward,
+/// and the unlocks it needs before the column offers it (UNLOCKS.md, "Contracts").
 pub struct Contract {
     pub id: &'static str,
     pub name: &'static str,
     pub pennies: i64,
+    pub requires: &'static [&'static str],
+}
+
+const fn contract(
+    id: &'static str,
+    name: &'static str,
+    horsebucks: i64,
+    requires: &'static [&'static str],
+) -> Contract {
+    Contract { id, name, pennies: horsebucks * HORSEBUCK, requires }
 }
 
 /// Every contract, in the order the column lists them.
 pub const CONTRACTS: [Contract; 16] = [
-    Contract {
-        id: "draw-a-horse",
-        name: "Draw a horse in hrseDrawing™",
-        pennies: 5_000 * HORSEBUCK,
-    },
-    Contract {
-        id: "post-a-horse",
-        name: "Post your horse to the hrseFeed™",
-        pennies: 10_000 * HORSEBUCK,
-    },
-    Contract { id: "follow-a-stranger", name: "Follow a stranger", pennies: 5_000 * HORSEBUCK },
-    Contract { id: "get-a-follower", name: "Get a follower", pennies: 5_000 * HORSEBUCK },
-    Contract {
-        id: "write-a-note",
-        name: "Create a private note in hrseWriter™",
-        pennies: 2_500 * HORSEBUCK,
-    },
-    Contract {
-        id: "upload-an-image",
-        name: "Upload an image to hrseFiles™",
-        pennies: 5_000 * HORSEBUCK,
-    },
-    Contract {
-        id: "set-a-profile-picture",
-        name: "Set your profile picture",
-        pennies: 2_500 * HORSEBUCK,
-    },
-    Contract {
-        id: "choose-a-colorway",
-        name: "Customize your Colorway",
-        pennies: 2_500 * HORSEBUCK,
-    },
-    Contract {
-        id: "say-hello", name: "Say hello in a hrseChat™ room", pennies: 2_500 * HORSEBUCK
-    },
-    Contract { id: "tag-a-public-post", name: "Tag a public post", pennies: 2_500 * HORSEBUCK },
-    Contract { id: "tag-a-private-note", name: "Tag a private note", pennies: 2_500 * HORSEBUCK },
-    Contract {
-        id: "react-to-a-post",
-        name: "React to someone else's post",
-        pennies: 2_500 * HORSEBUCK,
-    },
-    Contract {
-        id: "link-two-notes",
-        name: "Link one private note to another",
-        pennies: 2_500 * HORSEBUCK,
-    },
-    Contract {
-        id: "organize-a-note",
-        name: "Organize a note into a tree section",
-        pennies: 2_500 * HORSEBUCK,
-    },
-    Contract { id: "start-a-room", name: "Start a chat room", pennies: 2_500 * HORSEBUCK },
-    Contract { id: "buy-a-horsebond", name: "Buy a hrseBond", pennies: 2_500 * HORSEBUCK },
+    contract("draw-a-horse", "Draw a horse in hrseDrawing™", 5_000, &[]),
+    contract("post-a-horse", "Post your horse to the hrseFeed™", 10_000, &["social"]),
+    contract("follow-a-stranger", "Follow a stranger", 5_000, &["friends"]),
+    contract("get-a-follower", "Get a follower", 5_000, &["friends"]),
+    contract("write-a-note", "Create a private note in hrseWriter™", 2_500, &["private-notes"]),
+    contract("upload-an-image", "Upload an image to hrseFiles™", 5_000, &["file-upload"]),
+    contract("set-a-profile-picture", "Set your profile picture", 2_500, &[]),
+    contract("choose-a-colorway", "Customize your Colorway", 2_500, &[]),
+    contract("say-hello", "Say hello in a hrseChat™ room", 2_500, &["chat"]),
+    contract("tag-a-public-post", "Tag a public post", 2_500, &["social", "tags"]),
+    contract("tag-a-private-note", "Tag a private note", 2_500, &["private-notes", "tags"]),
+    contract("react-to-a-post", "React to someone else's post", 2_500, &["social", "tags"]),
+    contract("link-two-notes", "Link one private note to another", 2_500, &["links"]),
+    contract("organize-a-note", "Organize a note into a tree section", 2_500, &["taxonomy"]),
+    contract("start-a-room", "Start a chat room", 2_500, &["chat"]),
+    contract("buy-a-horsebond", "Buy a hrseBond", 2_500, &[]),
 ];
+
+// ---- unlocks (Curtis, 2026-10-05; plans/UNLOCKS.md) ----
+//
+// The paywall as tutorial: a new player has their persona, hrseDrawing, hrseBank and hrseMsg, and
+// buys the rest from the Market. A purchase is a fact on the PRIVATE chain (`unlocks`: id -> the
+// moment it was bought), so every computer of the persona owns it, and a spend in the ledger
+// (`unlock` / id), paid once. The gates are the client's: this is a tutorial, not a lock - the
+// node serves every feature to anyone who asks.
+
+/// The private register purchases are recorded in.
+const UNLOCKS_KV: &str = "unlocks";
+
+/// One unlock: its id (stable - the client's gates name it), its name, its price, and the unlocks
+/// it needs first.
+pub struct Unlock {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub pennies: i64,
+    pub requires: &'static [&'static str],
+}
+
+const fn unlock(
+    id: &'static str,
+    name: &'static str,
+    horsebucks: i64,
+    requires: &'static [&'static str],
+) -> Unlock {
+    Unlock { id, name, pennies: horsebucks * HORSEBUCK, requires }
+}
+
+/// Every unlock, in the order the Market lists them.
+pub const UNLOCKS: [Unlock; 14] = [
+    unlock("friends", "Friends", 1_000, &[]),
+    unlock("social", "Social", 1_000, &[]),
+    unlock("private-notes", "Private notes", 2_500, &[]),
+    unlock("chat", "Chat", 5_000, &[]),
+    unlock("taxonomy", "Taxonomy & tree publication", 2_500, &["private-notes"]),
+    unlock("tags", "Reactions, tags & filters", 2_500, &[]),
+    unlock("file-upload", "File upload", 5_000, &[]),
+    unlock("pins", "Pins", 2_500, &[]),
+    unlock("post-editing", "Public post editing", 5_000, &["social"]),
+    unlock("video-upload", "Video upload", 10_000, &["file-upload"]),
+    unlock("sharing", "Sharing", 2_500, &["social"]),
+    unlock("links", "Links", 2_500, &["private-notes"]),
+    unlock("chats-for-two", "Chats for two", 2_500, &["chat", "friends"]),
+    unlock("sealing", "Sealed posts & audiences", 10_000, &["social", "friends"]),
+];
+
+/// The unlocks owned, as the private chain records them: id -> when bought.
+pub async fn unlocks_owned(data: &Store) -> Result<HashMap<String, i64>> {
+    let (recorded, _) = data.private_registers(UNLOCKS_KV).all().await?;
+    Ok(recorded
+        .into_iter()
+        .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|at| (r.key, at)))
+        .collect())
+}
+
+/// Does this node hand every persona every unlock? The test rig does (LOCAL_TEST), so the harness
+/// probes reach Writer and Chat without buying their way in - unless `RINGTOME_TEST_LOCKS` asks
+/// for the locks, to test the gates themselves.
+fn everything_unlocked(state: &AppState) -> bool {
+    state.config.local_test && std::env::var("RINGTOME_TEST_LOCKS").is_err()
+}
 
 /// Has this persona uploaded an image? A private document whose current head is a picture - a
 /// still (AVIF, APNG) or a silent loop - that isn't a drawing's flattened copy (the image picker
@@ -1075,6 +1111,19 @@ async fn instruments(data: &Store) -> Result<()> {
     let day_ms =
         |date: &str| i64::from(crate::heartbeat::day_of_date(date).unwrap_or(0)) * 86_400_000;
     let mut lines: Vec<Line> = Vec::new();
+    // Unlocks: each purchase's price out, once, at the moment it was bought.
+    let owned = unlocks_owned(data).await?;
+    for u in &UNLOCKS {
+        if let Some(at) = owned.get(u.id).filter(|_| is_new("unlock", u.id)) {
+            lines.push(Line {
+                kind: "unlock",
+                source: u.id.to_string(),
+                pennies: -u.pennies,
+                at_ms: *at,
+                detail: json!({ "title": u.name }),
+            });
+        }
+    }
     for bond in bonds(data).await? {
         if is_new("bond", &bond.id) {
             lines.push(Line {
@@ -1269,6 +1318,67 @@ pub async fn sell_handler(
     Ok(axum::Json(json!({ "sold": id })))
 }
 
+/// GET `/api/identity/{root}/bank/unlocks` - what's owned, and nothing else: the client's gates
+/// at page load, before the corner's poll (which catches the ledger up first, and on a large
+/// persona's first ask of the day that can take a while) has answered. One register read.
+pub async fn unlocks_handler(
+    session: crate::auth::Session,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(root): axum::extract::Path<String>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    let owned = unlocks_owned(&data).await.map_err(crate::error::AppError::Internal)?;
+    Ok(axum::Json(json!({
+        "unlocked": owned.keys().collect::<Vec<_>>(),
+        "everything": everything_unlocked(&state),
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct UnlockRequest {
+    id: String,
+}
+
+/// POST `/api/identity/{root}/bank/unlocks` - buy an unlock, if it's for sale to this persona: not
+/// owned already, its prerequisites owned, and the balance pays it (the bonds' no-overdraft rule).
+/// Two computers buying the same unlock at once record it twice in one register and pay once.
+pub async fn unlock_handler(
+    session: crate::auth::Session,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(root): axum::extract::Path<String>,
+    axum::Json(req): axum::Json<UnlockRequest>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    use crate::error::AppError;
+    let Some(u) = UNLOCKS.iter().find(|u| u.id == req.id) else {
+        return Err(AppError::BadRequest(crate::msg!("bank.no-such-unlock", "no such unlock")));
+    };
+    let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    let owned = unlocks_owned(&data).await.map_err(AppError::Internal)?;
+    if owned.contains_key(u.id) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.you-own-that-already",
+            "that's yours already"
+        )));
+    }
+    if u.requires.iter().any(|r| !owned.contains_key(*r)) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.unlock-the-others-first",
+            "that one needs another unlock first"
+        )));
+    }
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    if balance(&data).await.map_err(AppError::Internal)? < i128::from(u.pennies) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.you-cant-afford-that-2",
+            "you can't afford that"
+        )));
+    }
+    let at = crate::clock::now_ms();
+    data.private_registers(UNLOCKS_KV).set(u.id, &at.to_string()).await?;
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    Ok(axum::Json(json!({ "id": u.id, "bought_ms": at })))
+}
+
 /// A line put straight into the ledger, for the test rig only (`/test/credit`): funding a persona,
 /// or sinking one into debt, without the months of earning either would take.
 pub async fn credit_for_test(data: &Store, pennies: i64) -> Result<()> {
@@ -1330,7 +1440,13 @@ pub async fn bank_handler(
             .await
             .map_err(crate::error::AppError::Internal)?;
         let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
-        return Ok(axum::Json(json!({ "balance": total.to_string() })));
+        // The client's gates ride this poll (UNLOCKS.md, "The gate"): one register read.
+        let owned = unlocks_owned(&data).await.map_err(crate::error::AppError::Internal)?;
+        return Ok(axum::Json(json!({
+            "balance": total.to_string(),
+            "unlocked": owned.keys().collect::<Vec<_>>(),
+            "everything": everything_unlocked(&state),
+        })));
     }
     catch_up(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
     let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
@@ -1408,16 +1524,50 @@ pub async fn bank_handler(
     let done = contracts_done(&data).await.map_err(crate::error::AppError::Internal)?;
     let contracts: Vec<serde_json::Value> = CONTRACTS
         .iter()
-        .map(|c| json!({ "id": c.id, "name": c.name, "pennies": c.pennies.to_string(), "completed_ms": done.get(c.id) }))
+        .map(|c| json!({ "id": c.id, "name": c.name, "pennies": c.pennies.to_string(), "requires": c.requires, "completed_ms": done.get(c.id) }))
         .collect();
-    Ok(axum::Json(
-        json!({ "balance": total.to_string(), "by_kind": by_kind, "instruments": instruments, "months": months, "month": month, "lines": lines, "contracts": contracts }),
-    ))
+    // The Market's unlocks (2026-10-05): every one, with when it was bought, if it was.
+    let owned = unlocks_owned(&data).await.map_err(crate::error::AppError::Internal)?;
+    let unlocks: Vec<serde_json::Value> = UNLOCKS
+        .iter()
+        .map(|u| json!({ "id": u.id, "name": u.name, "pennies": u.pennies.to_string(), "requires": u.requires, "bought_ms": owned.get(u.id) }))
+        .collect();
+    Ok(axum::Json(json!({
+        "balance": total.to_string(),
+        "by_kind": by_kind,
+        "instruments": instruments,
+        "months": months,
+        "month": month,
+        "lines": lines,
+        "contracts": contracts,
+        "unlocks": unlocks,
+        "everything": everything_unlocked(&state),
+    })))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every unlock a contract or an unlock names exists, comes earlier in the Market than what
+    /// needs it, and no two unlocks share an id: a typo would hide a contract forever.
+    #[test]
+    fn every_required_unlock_exists_and_comes_first() {
+        let ids: Vec<&str> = UNLOCKS.iter().map(|u| u.id).collect();
+        let unique: HashSet<&str> = ids.iter().copied().collect();
+        assert_eq!(unique.len(), ids.len());
+        for (n, u) in UNLOCKS.iter().enumerate() {
+            for r in u.requires {
+                let at = ids.iter().position(|i| i == r);
+                assert!(at.is_some_and(|at| at < n), "{} needs {r}", u.id);
+            }
+        }
+        for c in &CONTRACTS {
+            for r in c.requires {
+                assert!(unique.contains(r), "{} needs {r}", c.id);
+            }
+        }
+    }
 
     /// "Draw" counts marks: a brush stroke is one, and a move, copy, crop, transform or eraser
     /// stroke isn't - three marks is a horse, as far as the contract is concerned.

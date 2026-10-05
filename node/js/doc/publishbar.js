@@ -13,6 +13,10 @@
 //   `differs`                   - whether the private version has changed since the public one,
 //                                 which is what offers "update" (and "diff", given `diffHref`)
 //   `onPublished()`             - told after every publish, to re-read whatever `differs` reads
+//
+// Bought in the Market (plans/UNLOCKS.md): publishing is Social's, an update to a published post
+// is Public post editing's, and "trusted only" is Sealed posts & audiences'. Taking a post down,
+// or cancelling a schedule, is never for sale - so a published post's bar shows whatever is owned.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
@@ -38,6 +42,7 @@ import { api } from '../net.js';
 import { Icons } from '../icons.js';
 import { postHref } from '../links.js';
 import { formatWhen } from '../pure/when.js';
+import { useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
 
@@ -54,6 +59,9 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
     const [publishNote, setPublishNote] = useState(null); // { kind: 'published' | 'scheduled' | 'unpublished' | 'unscheduled', at }
     const [publishError, setPublishError] = useState(null);
     const [askingTakedown, setAskingTakedown] = useState(false);
+    const social = useUnlocked(root, 'social');
+    const editing = useUnlocked(root, 'post-editing');
+    const sealing = useUnlocked(root, 'sealing');
     const standing = docStatus(row);
     const postId = publishedState(row).postId;
     const scheduledAt = (() => {
@@ -160,6 +168,8 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 ? t('doc.editor.schedule-cancelled', 'schedule cancelled')
                 : t('doc.editor.published', 'published');
 
+    // Nothing published and nothing to publish with: no bar at all.
+    if (standing === 'private' && !social) return null;
     return html`<div
         class=${
             standing === 'scheduled'
@@ -184,14 +194,22 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 />
                 ${t('doc.editor.turn-off-rebroadcast-and-comment', 'turn off comments')}
             </label>
-            <label class="publish-bar-wish" title=${t('doc.editor.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}>
+            ${
+                /* A copy of a sealed post keeps its seal without the unlock (UNLOCKS.md): ticked,
+                and fixed - its words were never meant to go out in the open. */ ''
+            }
+            ${
+                (sealing || wishedSeal) &&
+                html`<label class="publish-bar-wish" title=${t('doc.editor.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}>
                 <input
                     type="checkbox"
                     checked=${wishes.trusted_only}
+                    disabled=${!sealing}
                     onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))}
                 />
                 ${t('doc.editor.trusted-only', 'trusted only')}
             </label>`
+            }`
         }
             ${
                 standing === 'private' &&
@@ -212,6 +230,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             }
             ${
                 standing === 'public' &&
+                editing &&
                 differs &&
                 diffHref &&
                 html`<a
@@ -222,6 +241,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             }
             ${
                 standing === 'public' &&
+                editing &&
                 differs &&
                 html`<button
                 class="publish-bar-update jag-line"
@@ -241,12 +261,15 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             }
             ${
                 standing === 'scheduled' &&
-                html`<button
+                html`${
+                    social &&
+                    html`<button
                     class="publish-bar-update jag-line"
                     disabled=${publishing}
                     title=${t('doc.editor.re-read-the-date-and', 'publish, or reschedule')}
                     onClick=${publishNow}
-                ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>
+                ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>`
+                }
                 <button
                     class="publish-bar-unpublish jag-line"
                     disabled=${publishing}

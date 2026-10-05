@@ -26,6 +26,7 @@ import { isEmojiTag, MAX_TAG_CHARS } from '../pure/annotations.js';
 import { veilsMedia } from '../pure/chatveil.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
+import { useUnlocked } from '../unlocks.js';
 import { tagCounts as roomTagCounts } from '../pure/doclist.js';
 import { Modal } from '../modal.js';
 import { usePref, OPEN_ROOM_KEY } from '../mirror/prefs.js';
@@ -240,6 +241,10 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
 // The new-chat form (fills the right side when "new chat" is chosen)
 
 const NewRoom = ({ root, onMade }) => {
+    // A room's tags are Tags', and a room for some people only is Sealed posts & audiences'
+    // (plans/UNLOCKS.md).
+    const tagging = useUnlocked(root, 'tags');
+    const sealing = useUnlocked(root, 'sealing');
     const [name, setName] = useState('');
     const [words, setWords] = useState('');
     const [audience, setAudience] = useState('');
@@ -368,7 +373,9 @@ const NewRoom = ({ root, onMade }) => {
                 value=${name}
                 onInput=${(e) => setName(e.currentTarget.value)}
             />
-            <div class="chat-new-tags">
+            ${
+                tagging &&
+                html`<div class="chat-new-tags">
                 ${roomTags.map(
                     (value) => html`<span class="label-chip" key=${value}>
                         ${value}
@@ -394,7 +401,8 @@ const NewRoom = ({ root, onMade }) => {
                     }}
                     onBlur=${(e) => addRoomTag(e.currentTarget.value)}
                 />
-            </div>
+            </div>`
+            }
             <textarea
                 class="chat-new-words"
                 placeholder=${t('apps.chat.what-is-it-for', 'what is it for? (optional)')}
@@ -407,7 +415,9 @@ const NewRoom = ({ root, onMade }) => {
                 html`<p class="chat-new-count">${words.length} / ${MAX_ROOM_WORDS}</p>`
             }
             <div class="chat-new-foot">
-                <label class="feed-settle">
+                ${
+                    sealing &&
+                    html`<label class="feed-settle">
                     ${t('apps.chat.only-show-to', 'only show to')}
                     <select class="feed-audience jag-field" value=${audience} onChange=${(e) => setAudience(e.currentTarget.value)}>
                         <option value="">${t('apps.chat.everyone', 'everyone')}</option>
@@ -415,7 +425,8 @@ const NewRoom = ({ root, onMade }) => {
                         <option value="trusted">${t('apps.chat.people-i-trust', 'people I trust')}</option>
                         ${tags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
                     </select>
-                </label>
+                </label>`
+                }
                 <button class="chat-new-go" type="submit" disabled=${busy || !name.trim()}>
                     ${busy ? t('apps.chat.opening', 'opening…') : t('apps.chat.open-a-room', 'open a room')}
                 </button>
@@ -635,6 +646,8 @@ const Line = ({
     const profile = useTurbolinks(m.words || '', 'marquee');
     const [picking, setPicking] = useState(false);
     const [stickering, setStickering] = useState(false);
+    // Reacting is bought with tags (plans/UNLOCKS.md): without it the pills show, and say nothing.
+    const reacting = useUnlocked(current && current.root, 'tags');
     // Today the time, an older line its day too (pure/when.js) - a room has no day breaks.
     const when = formatWhen(m.said_ms);
     const mine = !!current && current.root === m.speaker;
@@ -688,7 +701,9 @@ const Line = ({
             !!onReact &&
             !hushed &&
             html`<span class="chat-line-menu">
-            <button class="chat-line-act" type="button" title=${t('apps.chat.react-with-an-emoji', 'react with an emoji')} onClick=${() => setPicking((p) => !p)}>
+            ${
+                reacting &&
+                html`<button class="chat-line-act" type="button" title=${t('apps.chat.react-with-an-emoji', 'react with an emoji')} onClick=${() => setPicking((p) => !p)}>
                 <${Icons.smiley} />
             </button>
             <button
@@ -699,7 +714,8 @@ const Line = ({
                     setPicking(false);
                     setStickering((p) => !p);
                 }}
-            ><${Icons.sticker} /></button>
+            ><${Icons.sticker} /></button>`
+            }
             ${
                 /* This line's address (2026-09-28): pasted in the app it unfolds for the room's
                 members, and for nobody else. */ ''
@@ -781,7 +797,7 @@ const Line = ({
                         r=${r}
                         mine=${mine}
                         title=${mine ? t('apps.chat.who-said-click-to-take-yours-back', '{who} - click to take yours back', { who: whoSaid(r) }) : whoSaid(r)}
-                        onClick=${() => onReact && onReact(m.hash, r.emoji, mine)}
+                        onClick=${() => reacting && onReact && onReact(m.hash, r.emoji, mine)}
                     />`;
                 })}
             </span>`
@@ -948,7 +964,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     const [directBody, setDirectBody] = useState('');
     const [landing, setLanding] = useState([]); // [{ docId, since }] uploaded, not yet processed
     const sentLanded = useRef(new Set());
-    const { pickFiles: pickAndSend, extras: sendExtras } = useUploadCapture({
+    const {
+        pickFiles: pickAndSend,
+        extras: sendExtras,
+        canUpload,
+    } = useUploadCapture({
         root,
         bucket: CHAT_BUCKET,
         format: 'marquee',
@@ -1969,14 +1989,17 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                           title=${t('apps.chat.bytes-of-this-message', 'message length')}
                       >${draftBytes} / ${MAX_MESSAGE_BYTES}</span>`
                       }
-                      <button
+                      ${
+                          canUpload &&
+                          html`<button
                           class="chat-composer-attach"
                           type="button"
                           title=${t('apps.chat.send-a-file', 'send a picture, a sound or a video - it goes in once it is ready (drop or paste into the message to add it there instead)')}
                           onClick=${pickAndSend}
                       >
                           <${Icons.upload} />
-                      </button>
+                      </button>`
+                      }
                       <button
                           class="chat-composer-attach"
                           type="button"
@@ -2082,6 +2105,11 @@ const SearchResults = ({ current, needle, hits, onOpen }) => {
 
 export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, onSearch }) => {
     const root = current && current.root;
+    // Chat is bought (plans/UNLOCKS.md): without it a room reached by its address still opens -
+    // it was addressed or handed to you - but alone, with no list of rooms and no way to start
+    // one. The tag column is bought with tags.
+    const ownsChat = useUnlocked(root, 'chat');
+    const tagging = useUnlocked(root, 'tags') && ownsChat;
     const loc = useLocation();
     const [page, setPage] = useState(null);
     // Where this browser was (Curtis, 2026-09-20): the room last opened here, remembered
@@ -2170,10 +2198,13 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
             ? all.filter((r) => tagFilter.every((tag) => (r.tags || []).includes(tag)))
             : all;
     const selected = author && doc ? { author, doc } : null;
+    const roomsTucked = tucked.has('rooms');
+    const tagsTucked = tucked.has('tags');
     return html`<div class="chat">
         <div class="chat-columns panes" style=${colStyle}>
             ${
-                tucked.has('rooms')
+                ownsChat &&
+                (roomsTucked
                     ? html`<${Rail} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onClick=${() => toggleTuck('rooms')} />`
                     : html`${tab('rooms', Icons.chat, t('apps.chat.chats', 'chats'))}<${RoomsColumn}
                       current=${current}
@@ -2181,14 +2212,15 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                       selected=${selected}
                       filtered=${tagFilter.length > 0}
                       onTuck=${() => toggleTuck('rooms')}
-                  />${resizer('rooms')}`
+                  />${resizer('rooms')}`)
             }
             ${
                 /* The tags come after the chats (Curtis, 2026-10-04): the thing-selector stands
                 leftmost in every app, and the filters beside it. */ ''
             }
             ${
-                tucked.has('tags')
+                tagging &&
+                (tagsTucked
                     ? html`<${Rail} icon=${Icons.tag} label=${t('apps.chat.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
                     : html`${tab('tags', Icons.tag, t('apps.chat.tags', 'tags'))}<${TagColumn}
                       cloud=${cloud}
@@ -2196,7 +2228,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                       label=${t('apps.chat.tags', 'tags')}
                       onToggleTag=${(tag) => setTagFilter((have) => (have.includes(tag) ? have.filter((x) => x !== tag) : [...have, tag]))}
                       onTuck=${() => toggleTuck('tags')}
-                  />${resizer('tags')}`
+                  />${resizer('tags')}`)
             }
             <section class="chat-main">
                 ${

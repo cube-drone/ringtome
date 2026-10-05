@@ -48,6 +48,7 @@ import { nextSearchKind } from './pure/doclist.js';
 import { BucketShelf, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { CornerBank } from './cornerbank.js';
+import { LockedApp, useLedger, useLedgerPoll, unlockedIn } from './unlocks.js';
 import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
@@ -228,6 +229,11 @@ const Inside = ({ session }) => {
     // may be a BUCKET's slug - a cozy address at rest (pure/naming.js) - resolved off the live roster:
     // the app is the bucket's rail, and the URL itself names the bucket.
     const root = persona.current && persona.current.root;
+    // What's unlocked (plans/UNLOCKS.md): the shell's one poll of the ledger feeds the corner's
+    // balance and every gate, and the dock, launcher and app routes ask `owns` here.
+    useLedgerPoll(root);
+    const ledger = useLedger(root);
+    const owns = (id) => unlockedIn(ledger, id);
     // The house tooltips follow this persona's "disable tooltips" (the profile's application
     // settings); signed out, or before a persona opens, they are on.
     // Room cards are read as the persona that is open (doc/turbolinks.js).
@@ -267,6 +273,13 @@ const Inside = ({ session }) => {
           ? (roster || []).find((b) => b.name === placed.bucket) || { name: placed.bucket }
           : null;
     const appHere = placed ? placed.app : appDirect;
+    // An app not owned yet shows what opens it instead (LockedApp). A room reached by its address
+    // opens whatever is owned: it was addressed to you, or handed to you, and reading what's
+    // addressed to you is never for sale (UNLOCKS.md, "Never gated").
+    const lockedBy =
+        appHere && appHere.unlock && !(ref && ref.kind === 'room') && !owns(appHere.unlock)
+            ? appHere.unlock
+            : null;
     const inDoc = !!(
         appHere &&
         (ownDoc || (underApps && pathParts[3] && pathParts[3] !== 'notebook'))
@@ -391,7 +404,7 @@ const Inside = ({ session }) => {
                         onClick=${() => loc.route(LAUNCHER)}
                     ><span class="quickbar-hex-face"><${Icons.home} /></span></button>
                 </span>
-                ${narrowSlot(CHAT_APP_ID, unreadChat)}`
+                ${owns('chat') && narrowSlot(CHAT_APP_ID, unreadChat)}`
             }
         </span>
     </footer>`;
@@ -402,7 +415,7 @@ const Inside = ({ session }) => {
             <span class="quickbar-apps">
                 ${
                     open &&
-                    appsFor(nodeAdmin).map((app) => {
+                    appsFor(nodeAdmin, owns).map((app) => {
                         // Your own /id page is the persona app's home now: the lead tile lights there.
                         const isActive =
                             app.id === PERSONA_APP_ID
@@ -597,6 +610,7 @@ const Inside = ({ session }) => {
     // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
     const keptFeed =
         keepFeed &&
+        owns('social') &&
         html`<div class=${onFeed ? 'feed-kept' : 'feed-kept feed-kept-under'} inert=${!onFeed} aria-hidden=${onFeed ? undefined : 'true'}>
             <${FeedApp} current=${persona.current} searchQuery=${query} />
         </div>`;
@@ -650,7 +664,7 @@ const Inside = ({ session }) => {
     // A node administrator on a server may super-pin posts to its front page (frontdoor.js).
     // The notebook shelf, for the switcher heading an app's list column (buckets.js).
     return html`<${SuperPinner.Provider} value=${nodeAdmin && !isDevice()}><${BucketShelf.Provider} value=${{ roster, onSwitch: switchBucket }}
-        >${inApp ? shell(routed) : stage(routed)}</${BucketShelf.Provider}
+        >${inApp ? shell(lockedBy ? html`<${LockedApp} id=${lockedBy} known=${ledger.known} />` : routed) : stage(routed)}</${BucketShelf.Provider}
     ></${SuperPinner.Provider}>`;
 };
 

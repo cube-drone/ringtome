@@ -395,3 +395,81 @@
     height: 100%;
     background: var(--sea);
 }
+
+/* The unlocks for sale (plans/UNLOCKS.md, 2026-10-05): the hrseBond's square, lighter - a name, a
+   sentence on what it opens, its price, a buy button. */
+.bank-unlock {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.8rem 1rem;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+}
+
+.bank-unlock.unaffordable {
+    opacity: 0.45;
+    filter: grayscale(1);
+}
+
+.bank-unlock-name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 1rem;
+    color: var(--ink);
+}
+
+.bank-unlock-name svg {
+    font-size: 1.3rem;
+}
+
+.bank-unlock-about,
+.bank-unlock-needs {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.bank-unlock-needs {
+    font-style: italic;
+    color: var(--muted);
+}
+
+/* Video's caution (Curtis, 2026-10-05): experimental, and said so before the money goes. */
+.bank-unlock-warning {
+    display: flex;
+    gap: 0.3rem;
+    align-items: baseline;
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--coral);
+}
+
+.bank-unlock-price {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    text-align: center;
+}
+
+/* An app's address while the app isn't owned (unlocks.js LockedApp): the Market's card, centred. */
+.unlock-locked {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.unlock-locked-card {
+    max-width: 28rem;
+    padding: 1rem 1.2rem;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+}
+
+.unlock-locked-name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    color: var(--ink);
+}
