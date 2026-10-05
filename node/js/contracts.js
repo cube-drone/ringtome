@@ -24,6 +24,12 @@ const NAMES = {
     'organize-a-note': () => t('contracts.organize-a-note', 'Organize a note into a tree section'),
     'start-a-room': () => t('contracts.start-a-room', 'Start a chat room'),
     'buy-a-horsebond': () => t('contracts.buy-a-horsebond', 'Buy a hrseBond'),
+    'make-a-second-persona': () => t('contracts.make-a-second-persona', 'Make a second persona'),
+    'bring-your-persona': () =>
+        t('contracts.bring-your-persona', 'Bring your persona to another computer'),
+    'seal-a-post': () => t('contracts.seal-a-post', 'Seal a post'),
+    'share-a-post': () => t('contracts.share-a-post', "Share someone else's post"),
+    'start-a-chat-for-two': () => t('contracts.start-a-chat-for-two', 'Start a chat for two'),
 };
 
 /// The fine print (Curtis, 2026-10-04): exactly what reaching the goal takes, said on hover over a
@@ -140,6 +146,41 @@ const FINE_PRINT = {
             'Open the market in hrseBank™ and buy a hrseBond.',
         ),
         href: appHref('bank'),
+    }),
+    'make-a-second-persona': () => ({
+        text: t(
+            'contracts.make-a-second-persona-fine-print',
+            'Open your personas and make another: a second you, with a name, friends and posts of its own, on this same account.',
+        ),
+        href: personaPageHref('personas'),
+    }),
+    'bring-your-persona': () => ({
+        text: t(
+            'contracts.bring-your-persona-fine-print',
+            "Open your computers and bring this persona to a second one. A persona on two computers survives losing either - it's the best backup there is.",
+        ),
+        href: personaPageHref('computers'),
+    }),
+    'seal-a-post': () => ({
+        text: t(
+            'contracts.seal-a-post-fine-print',
+            'Publish a post only the people you choose can read: tick "trusted only" when you publish, or pick who it\'s for in hrseFeed™.',
+        ),
+        href: appHref('feed'),
+    }),
+    'share-a-post': () => ({
+        text: t(
+            'contracts.share-a-post-fine-print',
+            'Find a post by somebody else in hrseFeed™ and share it with the people who follow you.',
+        ),
+        href: appHref('feed'),
+    }),
+    'start-a-chat-for-two': () => ({
+        text: t(
+            'contracts.start-a-chat-for-two-fine-print',
+            "Open somebody's page in hrsePeople™ and start a private chat with them.",
+        ),
+        href: appHref('people'),
     }),
 };
 

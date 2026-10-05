@@ -82,7 +82,7 @@ const fn contract(
 }
 
 /// Every contract, in the order the column lists them.
-pub const CONTRACTS: [Contract; 16] = [
+pub const CONTRACTS: [Contract; 21] = [
     contract("draw-a-horse", "Draw a horse in hrseDrawing™", 5_000, &[]),
     contract("post-a-horse", "Post your horse to the hrseFeed™", 10_000, &["social"]),
     contract("follow-a-stranger", "Follow a stranger", 5_000, &["friends"]),
@@ -99,6 +99,14 @@ pub const CONTRACTS: [Contract; 16] = [
     contract("organize-a-note", "Organize a note into a tree section", 2_500, &["taxonomy"]),
     contract("start-a-room", "Start a chat room", 2_500, &["chat"]),
     contract("buy-a-horsebond", "Buy a hrseBond", 2_500, &[]),
+    // The safety contracts (Curtis, 2026-10-05): what keeps a person safe is never sold, so it is
+    // taught - and paid - instead (UNLOCKS.md, "Never gated").
+    contract("make-a-second-persona", "Make a second persona", 2_500, &[]),
+    contract("bring-your-persona", "Bring your persona to another computer", 5_000, &[]),
+    // The second batch's (UNLOCKS.md): each shown once its unlock is owned.
+    contract("seal-a-post", "Seal a post", 2_500, &["sealing"]),
+    contract("share-a-post", "Share someone else's post", 2_500, &["sharing"]),
+    contract("start-a-chat-for-two", "Start a chat for two", 2_500, &["chats-for-two"]),
 ];
 
 // ---- unlocks (Curtis, 2026-10-05; plans/UNLOCKS.md) ----
@@ -412,6 +420,38 @@ async fn organized_a_note(data: &Store) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+/// Does this persona's account hold another persona? Every persona of an account that has made
+/// a second is done (Curtis, 2026-10-05): the new one starts with it achieved, or a completionist
+/// would make personas forever, each one's contract waiting on the next.
+async fn made_a_second_persona(state: &AppState, root_hex: &str) -> Result<bool> {
+    let Some(account) = crate::identity::account_of(&state.node_db, root_hex)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+    else {
+        return Ok(false);
+    };
+    let Ok(account) = uuid::Uuid::parse_str(&account) else { return Ok(false) };
+    let personas = crate::identity::list_for_account(&state.node_db, &account)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(personas.iter().any(|p| p.root_pubkey != root_hex))
+}
+
+/// Is this persona on a second computer? Its key tree holds an Active key besides the root and
+/// the recovery key - every persona is born with those two, on the root and the all-zeros spine
+/// (identity.rs `designated_recovery`); an adopted computer's key is anywhere else.
+async fn on_another_computer(data: &Store, root_hex: &str) -> Result<bool> {
+    use ringtome_proto::crown::KeyStatus;
+    let tree = crate::record::imaol::load_key_tree(data.db(), root_hex)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let adopted = tree.members().any(|(pk, status)| {
+        status == KeyStatus::Active
+            && tree.rank_path(pk).is_some_and(|p| !p.is_empty() && !p.iter().all(|&r| r == 0))
+    });
+    Ok(adopted)
 }
 
 /// A contract reached: recorded on the private chain first, then said in hrseMsg - by this
@@ -1013,14 +1053,61 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     if !done.contains_key("react-to-a-post") && said("post_reaction") {
         complete_contract(state, data, root_hex, "react-to-a-post", &mut done).await?;
     }
-    if !done.contains_key("start-a-room")
+    // A room of the persona's own - and a chat for two is a room too, with a contract of its own.
+    // Which kind is the signed header's word (`chat::is_im`): the documents view is folded from
+    // a memo that doesn't keep it. Read only while either contract is open, one header a room.
+    if !done.contains_key("start-a-room") || !done.contains_key("start-a-chat-for-two") {
+        let (mut room, mut im) = (false, false);
+        for (doc_id, d) in &view.docs {
+            let is_room = d.lane == "public"
+                && d.display_head()
+                    .is_some_and(|h| Format::from_wire(h.header.format) == Format::Room);
+            if !is_room {
+                continue;
+            }
+            if crate::chat::is_im(state, root_hex, doc_id).await {
+                im = true;
+            } else {
+                room = true;
+            }
+        }
+        if !done.contains_key("start-a-room") && room {
+            complete_contract(state, data, root_hex, "start-a-room", &mut done).await?;
+        }
+        if !done.contains_key("start-a-chat-for-two") && im {
+            complete_contract(state, data, root_hex, "start-a-chat-for-two", &mut done).await?;
+        }
+    }
+    // "Seal a post": a post of the persona's own, trusted only - a room isn't a post here (every
+    // chat for two is sealed without anyone choosing to seal it).
+    if !done.contains_key("seal-a-post")
         && view.docs.values().any(|d| {
             d.lane == "public"
-                && d.display_head()
-                    .is_some_and(|h| Format::from_wire(h.header.format) == Format::Room)
+                && d.display_head().is_some_and(|h| {
+                    h.header.trusted_only && Format::from_wire(h.header.format) != Format::Room
+                })
         })
     {
-        complete_contract(state, data, root_hex, "start-a-room", &mut done).await?;
+        complete_contract(state, data, root_hex, "seal-a-post", &mut done).await?;
+    }
+    // "Share someone else's post": a share standing - the door refuses a share of one's own.
+    if !done.contains_key("share-a-post")
+        && data
+            .rebroadcasts()
+            .all()
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .iter()
+            .any(|r| !r.is_retracted())
+    {
+        complete_contract(state, data, root_hex, "share-a-post", &mut done).await?;
+    }
+    if !done.contains_key("make-a-second-persona") && made_a_second_persona(state, root_hex).await?
+    {
+        complete_contract(state, data, root_hex, "make-a-second-persona", &mut done).await?;
+    }
+    if !done.contains_key("bring-your-persona") && on_another_computer(data, root_hex).await? {
+        complete_contract(state, data, root_hex, "bring-your-persona", &mut done).await?;
     }
     if !done.contains_key("buy-a-horsebond") && !bonds(data).await?.is_empty() {
         complete_contract(state, data, root_hex, "buy-a-horsebond", &mut done).await?;

@@ -17147,3 +17147,24 @@ the launcher, the locked card, fourteen cards in the Market, an API purchase
 opening Writer, and a click on Friends' card bringing hrsePeople into the dock.
 Not yet built: the safety contracts, the second batch's contracts, and a list of
 what's owned. `just ci` green.
+
+**2026-10-05 - the unlocks' follow-ups: five contracts and what's owned.** The
+safety contracts (Curtis's picks; plans/UNLOCKS.md, Ruling 4): "Make a second
+persona" (H$ 2,500) completes for every persona of an account holding more than
+one - the new persona starts with it done (Curtis: otherwise a completionist
+makes personas forever, each one's contract waiting on the next). "Bring your
+persona to another computer" (H$ 5,000) completes once the persona's key tree
+holds an Active key besides the root and the recovery key on the all-zeros
+spine - an adopted computer's - read off `imaol::load_key_tree`. The second
+batch, each hidden until its unlock: "Seal a post" (a trusted-only post that
+isn't a room - every chat for two is sealed without anyone choosing to seal it),
+"Share someone else's post" (a standing rebroadcast), "Start a chat for two" (an
+IM room). One finding on the way: the documents view is folded from the
+`doc_versions` memo, which doesn't keep a header's `im`, so every IM read as an
+ordinary room - and completed "Start a chat room". The room checks now ask the
+signed header (`chat::is_im`), one per own room while either contract is open;
+an IM no longer counts as a room of your own. The Market lists what's owned
+under its wares, each with the day bought. `bank.cjs` claims each contract on
+its act and not on its neighbours (an open post seals nothing, an IM isn't a
+room), the adoption one across two nodes; `harness/unlocks-probe.mjs` the owned
+list. `just ci` green.

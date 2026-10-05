@@ -303,10 +303,10 @@ To teach what Ruling 4 keeps open; neither needs an unlock, so both show from
 day one. The two contracts are Curtis's picks (2026-10-05); the rewards are
 placeholders.
 
-| Contract                               | Reward   | Counts when                                       |
-| -------------------------------------- | -------- | ------------------------------------------------- |
-| Make a second persona                  | H$ 2,500 | the node holds another persona of the same person |
-| Bring your persona to another computer | H$ 5,000 | the persona's key tree gains a second device key  |
+| Contract                               | Reward   | Counts when                                         |
+| -------------------------------------- | -------- | --------------------------------------------------- |
+| Make a second persona                  | H$ 2,500 | the account holds another persona - the new one too |
+| Bring your persona to another computer | H$ 5,000 | the persona's key tree gains a second device key    |
 
 No backup contract (Curtis, 2026-10-05): the backups on hrseDevice are too
 loosely defined yet, and the best backup a persona has is being on more than one
@@ -335,9 +335,9 @@ at once, and the app it opens appears in the dock.
 
 ## Building it
 
-Steps 1-4 built 2026-10-05 (HISTORY has the details). Not yet: the safety
-contracts, the contracts for the second batch ("Seal a post", "Share someone's
-post", "Start a chat for two"), and a list of what's owned.
+Steps 1-4 built 2026-10-05, and the follow-ups the same day: the safety
+contracts, the second batch's three, and an "Unlocked" list under the Market
+(HISTORY has the details).
 
 1. **The data:** `UNLOCKS` and `requires` in bank.rs, the `unlocks` register,
    the `unlock` line, the buy door, `unlocks` and contract availability in the
@@ -352,9 +352,6 @@ post", "Start a chat for two"), and a list of what's owned.
 
 ## Open questions
 
-- **Owned unlocks, shown where?** Off the Market once bought - but a list of
-  what you own somewhere (the Bank, or the persona page) helps a returning
-  player.
 - **Admins.** A node administrator gets hrseServer from the start; should they
   also get everything (they run the place), or play the tutorial like anyone?
   Proposed: they play it, with hrseServer.

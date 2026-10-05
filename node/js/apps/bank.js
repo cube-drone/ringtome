@@ -288,6 +288,26 @@ const Market = ({ root, balance, unlocks, everything, onBought }) => {
         )}
         ${forSale.length > 0 && html`<hr class="bank-rule" />`}
         <${Bond} root=${root} balance=${balance} onBought=${onBought} />
+        ${
+            /* What's owned (plans/UNLOCKS.md): after the Market's wares, a short list of what's
+            been bought and when - a returning player's answer to "what do I have?". */ ''
+        }
+        ${
+            owned.size > 0 &&
+            html`<hr class="bank-rule" />
+            <p class="bank-contracts-head">${t('apps.bank.unlocked-heading', 'Unlocked')}</p>
+            <ul class="bank-owned">
+                ${unlocks
+                    .filter((u) => u.bought_ms)
+                    .map((u) => {
+                        const Icon = unlockIcon(u.id);
+                        return html`<li class="bank-owned-item" key=${u.id} title=${unlockAbout(u.id)}>
+                            <span class="bank-owned-name"><${Icon} /> ${unlockName(u.id, u.name)}</span>
+                            <span class="bank-owned-when">${formatWhen(u.bought_ms, undefined, { time: false })}</span>
+                        </li>`;
+                    })}
+            </ul>`
+        }
     </div>`;
 };
 

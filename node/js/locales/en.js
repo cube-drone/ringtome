@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1503 phrases across 90 files.
+// 1514 phrases across 90 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -72,6 +72,7 @@ export default {
     'apps.bank.counting': 'counting…',
     'apps.bank.unlock-first': 'first: {unlocks}',
     'apps.bank.unlock': 'unlock',
+    'apps.bank.unlocked-heading': 'Unlocked',
     'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
     'apps.bank.hrsebond': 'hrseBond',
     'apps.bank.buy': 'buy',
@@ -496,6 +497,11 @@ export default {
     'contracts.organize-a-note': 'Organize a note into a tree section',
     'contracts.start-a-room': 'Start a chat room',
     'contracts.buy-a-horsebond': 'Buy a hrseBond',
+    'contracts.make-a-second-persona': 'Make a second persona',
+    'contracts.bring-your-persona': 'Bring your persona to another computer',
+    'contracts.seal-a-post': 'Seal a post',
+    'contracts.share-a-post': "Share someone else's post",
+    'contracts.start-a-chat-for-two': 'Start a chat for two',
     'contracts.draw-a-horse-fine-print': 'Please open the hrseDrawing™ application and draw anything you like. It must contain at least three brush-strokes to qualify.',
     'contracts.post-a-horse-fine-print': 'Open the hrseFeed™ application, and create and share a post containing any drawing.',
     'contracts.follow-a-stranger-fine-print': "Use the hrsePeople™ application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
@@ -512,6 +518,11 @@ export default {
     'contracts.organize-a-note-fine-print': "In hrseWriter™, open a notebook's tree, make a section, and put a note in it.",
     'contracts.start-a-room-fine-print': 'Open the hrseChat™ application and start a room of your own.',
     'contracts.buy-a-horsebond-fine-print': 'Open the market in hrseBank™ and buy a hrseBond.',
+    'contracts.make-a-second-persona-fine-print': 'Open your personas and make another: a second you, with a name, friends and posts of its own, on this same account.',
+    'contracts.bring-your-persona-fine-print': "Open your computers and bring this persona to a second one. A persona on two computers survives losing either - it's the best backup there is.",
+    'contracts.seal-a-post-fine-print': "Publish a post only the people you choose can read: tick \"trusted only\" when you publish, or pick who it's for in hrseFeed™.",
+    'contracts.share-a-post-fine-print': 'Find a post by somebody else in hrseFeed™ and share it with the people who follow you.',
+    'contracts.start-a-chat-for-two-fine-print': "Open somebody's page in hrsePeople™ and start a private chat with them.",
 
     // --- node/js/copyinto.js ---
     'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',

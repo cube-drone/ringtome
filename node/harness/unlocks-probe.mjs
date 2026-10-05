@@ -96,4 +96,9 @@ console.log(
     'RESULT bought, the card leaves the Market:',
     ![...mdoc.querySelectorAll('.bank-unlock')].some((c) => c.textContent.includes('Friends')),
 );
+const ownedNames = [...mdoc.querySelectorAll('.bank-owned-name')].map((n) => n.textContent.trim());
+console.log(
+    'RESULT the Market lists what is owned:',
+    ownedNames.length === 2 && ownedNames.some((n) => n.includes('Friends')),
+);
 process.exit(0);

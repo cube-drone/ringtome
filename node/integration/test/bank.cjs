@@ -846,3 +846,118 @@ describe('HorseBucks: unlocks', function () {
         assert.deepEqual(corner.unlocked, ['friends'], 'the corner poll carries the gates');
     });
 });
+
+/*
+    The safety contracts and the second batch's (plans/UNLOCKS.md, 2026-10-05): a second persona,
+    a second computer, a sealed post, a share, a chat for two. Each completes on the act and on
+    nothing near it - a chat for two isn't "a sealed post" nor "a room". Every persona of an
+    account that has made a second is done, the new one included.
+*/
+describe('HorseBucks: the safety contracts, and sealing, sharing and chats for two', function () {
+    this.timeout(120000);
+
+    const { HOST_B } = require('./fetch.cjs');
+    const { decodeCode } = require('./helpers.cjs');
+    const done = async (who, root) =>
+        Object.fromEntries(
+            ((await (await who(`api/identity/${root}/bank`)).json()).contracts || []).map((c) => [
+                c.id,
+                !!c.completed_ms,
+            ]),
+        );
+    const NEW = [
+        'make-a-second-persona',
+        'bring-your-persona',
+        'seal-a-post',
+        'share-a-post',
+        'start-a-chat-for-two',
+    ];
+    const post = async (who, root, extra = {}) => {
+        const d = await (
+            await j(who, `api/identity/${root}/docs`, {
+                title: 'words',
+                body: 'some words for a post',
+                format: 'marquee',
+            })
+        ).json();
+        const pub = await j(who, `api/identity/${root}/docs/${d.doc_id}/publish`, extra);
+        const said = await pub.text();
+        assert.equal(pub.status, 200, said);
+        return JSON.parse(said).post_id;
+    };
+
+    it('a sealed post, a second persona, a chat for two and a share each complete theirs', async () => {
+        const { speakable } = await import('../../js/speakable.js');
+        const ada = await makeUserFetch({ prefix: 'safeada' });
+        const root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const fresh = await done(ada, root);
+        assert.deepEqual(
+            NEW.filter((id) => fresh[id]),
+            [],
+            'a new persona on one computer has none of them',
+        );
+
+        await post(ada, root);
+        assert.equal((await done(ada, root))['seal-a-post'], false, 'an open post is no seal');
+        await post(ada, root, { trusted_only: true });
+        assert.equal((await done(ada, root))['seal-a-post'], true, 'a trusted-only post is');
+
+        const second = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        assert.equal((await done(ada, root))['make-a-second-persona'], true, 'the first is paid');
+        assert.equal(
+            (await done(ada, second))['make-a-second-persona'],
+            true,
+            'and the second starts with it done - no persona waits on the next',
+        );
+
+        const im = await (
+            await j(ada, `api/identity/${root}/docs`, {
+                title: 'a chat',
+                body: `[user id=/id/${speakable(second)}]them[/user]`,
+                format: 'marquee',
+            })
+        ).json();
+        await ada(`api/identity/${root}/docs/${im.doc_id}/buckets/chat`, { method: 'PUT' });
+        const opened = await j(ada, `api/identity/${root}/docs/${im.doc_id}/publish`, {
+            room: true,
+            im: true,
+            trusted_only: true,
+            audience: '@mentioned',
+        });
+        assert.equal(opened.status, 200, await opened.text());
+        const after = await done(ada, root);
+        assert.equal(after['start-a-chat-for-two'], true, 'a chat for two');
+        assert.equal(after['start-a-room'], false, 'is not a room of your own');
+
+        const bo = await makeUserFetch({ prefix: 'safebo' });
+        const boRoot = (await (await bo('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const theirs = await post(bo, boRoot);
+        const shared = await j(ada, `api/identity/${root}/rebroadcasts`, {
+            author: boRoot,
+            doc_id: theirs,
+        });
+        assert.equal(shared.status, 200, await shared.text());
+        assert.equal((await done(ada, root))['share-a-post'], true, 'a share of somebody else');
+    });
+
+    (HOST_B ? it : it.skip)(
+        'a persona brought to a second computer completes its contract',
+        async () => {
+            const ada = await makeUserFetch({ prefix: 'safetwo' });
+            const root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+            assert.equal((await done(ada, root))['bring-your-persona'], false);
+            const adaOnB = await makeUserFetch({ prefix: 'safetwob', host: HOST_B });
+            const request = await (
+                await adaOnB('api/identity/adopt/begin', { method: 'POST' })
+            ).json();
+            assert.ok(decodeCode(request.code).leaf_pubkey, 'a request names its new key');
+            const grant = await j(ada, `api/identity/${root}/nodes`, { code: request.code });
+            assert.equal(grant.status, 200, await grant.text());
+            assert.equal(
+                (await done(ada, root))['bring-your-persona'],
+                true,
+                'granted: the tree holds a key besides the root and the recovery key',
+            );
+        },
+    );
+});

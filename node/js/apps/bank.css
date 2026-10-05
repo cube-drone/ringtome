@@ -473,3 +473,31 @@
     margin: 0 0 0.5rem;
     color: var(--ink);
 }
+
+/* What's owned (2026-10-05), under the Market's wares: a name and the day it was bought. */
+.bank-owned {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.bank-owned-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.bank-owned-name {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--ink);
+}
+
+.bank-owned-when {
+    color: var(--muted);
+}
