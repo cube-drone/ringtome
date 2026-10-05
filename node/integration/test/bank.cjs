@@ -727,6 +727,14 @@ describe('HorseBucks: bonds and debt', function () {
             const bought = await buy('200000');
             assert.equal(bought.status, 200, await bought.text());
         }
+        // A bond bought also completes the "Buy a hrseBond" contract (2026-10-04): it pays once, and
+        // the rig takes its H$ 2,500 back so the arithmetic below stays the bonds' own.
+        const contracted = (await bank()).lines.filter((l) => l.kind === 'contract');
+        assert.deepEqual(
+            contracted.map((l) => [l.source, Number(l.pennies)]),
+            [['buy-a-horsebond', 250000]],
+        );
+        await j(rig, 'test/credit', { root, pennies: -250000 });
         assert.equal((await bank()).balance, '0', 'two bonds spend H$ 4,000 exactly');
         assert.equal((await buy('200000')).status, 400, 'and a third is more than the balance');
         const [sold, kept] = (await bank()).instruments;

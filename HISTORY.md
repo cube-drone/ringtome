@@ -17100,4 +17100,8 @@ persona's private notes; a section is a taxonomy inside a notebook's tree
 print in js/contracts.js, each link to where the act is done. `bank.cjs` walks
 one persona through all eight and, after each act, claims exactly the expected
 contracts done - an emoji on someone's post completes the reaction and not the
-tag; a word completes the tag. `just ci` green.
+tag; a word completes the tag. The bonds claim, whose arithmetic is to the
+horsepenny, now sees its first bond complete "Buy a hrseBond" once and has the
+rig take the H$ 2,500 back. One full run also failed `peek_footprint.cjs` ("the
+refusal has the word") - it passed alone twice on the same tree and in the next
+full run, so it reads as load-dependent; noted, not chased. `just ci` green.
