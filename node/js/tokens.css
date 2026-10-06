@@ -141,6 +141,13 @@
    the page root - your own, or on a person's page, theirs. The swatches are the picker's (persona.js),
    the same in every colourway, since they show the others. */
 :root {
+    /* The CRT experiment (crt.css, 2026-10-06), the same over every colourway: scanlines, the
+       vignette and bezel shadow, the glass's glare, and the bezel the screen's corners are cut by. */
+    --crt-scanline: rgba(0, 0, 0, 0.06);
+    --crt-vignette: rgba(0, 0, 0, 0.18);
+    --crt-edge: rgba(0, 0, 0, 0.3);
+    --crt-glare: rgba(255, 255, 255, 0.07);
+    --crt-bezel: #141414;
     --swatch-horse-relax-1: #e7dbc3;
     --swatch-horse-relax-2: #f6efe0;
     --swatch-horse-relax-3: #1f9e90;

@@ -34,6 +34,7 @@ import {
     colorwayUnlock,
 } from './colorway.js';
 import { useLedger, unlockedIn } from './unlocks.js';
+import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
 import { appHref, personHref, personaPageHref, LAUNCHER } from './links.js';
@@ -1156,6 +1157,7 @@ export const Profile = ({ current }) => {
                 ></textarea>
             </label>
             <${ColorwayPicker} root=${root} />
+            <${CrtToggle} root=${root} />
             <div class="profile-save-row">
                 <button
                     class="profile-save"

@@ -43,6 +43,7 @@
 @import "./apps/bank.css";    /* hrseBank: horse capital, and the ledger that shows its working */
 @import "./modal.css";        /* the house modal */
 @import "./doc/upload.css";   /* the upload flow inside it */
+@import "./crt.css";          /* the CRT screen over everything: an experiment (2026-10-06) */
 
 /* The post permalink (postpage.js): one entry under its author's byline. */
 .postpage {

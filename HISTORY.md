@@ -17299,3 +17299,29 @@ test-data actions (`react-positively`, `react-negatively`), comments and CSS
 notes, PROJECT_PLAN, README and the commodities plan. Left alone where the word
 is just a word: the speakable word list, the sourdough search tests, a bread tag
 in test data, and HISTORY's past entries.
+
+**2026-10-06 - a CRT screen over everything (an experiment).** Curtis, to get a
+feel for it: js/crt.css lays two fixed layers over the whole app, above every
+modal and tooltip and `pointer-events: none` - the glass (scanlines every 3px, a
+faint glare, a slow flicker that `prefers-reduced-motion` stills) and the tube
+(a vignette, an inner shadow along the bezel, and rounded screen corners cut by
+a bezel-coloured shadow spilling outward). The bulge is faked: CSS transforms
+can't bend lines, and an SVG displacement filter would blur text, redraw the
+page on every scroll, and move what's drawn away from where it's clicked. On for
+everyone, no setting yet; its colours are `--crt-*` in tokens.css. The first cut
+darkened the edges too much to read (Curtis); the scanlines are now half as
+dark, the vignette reaches only the outer corners, and the bezel's shadow is a
+thin rim. Looked at in headless Chrome over horse-relax and terminal.
+`just ui-check` green.
+
+**2026-10-06 - "disable CRT".** Curtis: a switch under the colourway on the
+profile, kept on the persona's private chain, so turning the CRT screen off on
+one computer turns it off on all of them. `js/crtpref.js` reads the register
+(`appearance` / `crt`, 'on' or 'off') once per page load into a shared store, as
+warnings.js reads the content warnings; the shell wears it as `data-crt` on the
+page root, which crt.css reads; signed out, it's on. The last answer is kept in
+this browser too and put on by index.html's first script, so a persona who
+turned it off doesn't see it flash on at every reload. Another computer already
+open picks the change up on its next load. `harness/crt-probe.mjs` claims it's
+on by default, the switch turns it off at once, the register says 'off', and a
+fresh browser comes up with it off. `just ui-check` green.

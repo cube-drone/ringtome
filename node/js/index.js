@@ -78,6 +78,7 @@ import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
 import { useOwnColorway } from './colorway.js';
+import { useWornCrt } from './crtpref.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
 
 const html = htm.bind(h);
@@ -305,6 +306,8 @@ const Inside = ({ session }) => {
         );
     }, [root]);
     useOwnColorway(ownColorway ? ownColorway.value : undefined);
+    // The CRT screen (crt.css), on unless the persona turned it off - on any of its computers.
+    useWornCrt(root);
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
@@ -918,6 +921,8 @@ const Outside = ({ session }) => {
     const loc = useLocation();
     // Nobody's in: the house colourway, but on a person's page, theirs (colorway.js).
     useOwnColorway(null);
+    // ...and the CRT screen on, the default: the choice to turn it off is a persona's.
+    useWornCrt(null);
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
     // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed. The

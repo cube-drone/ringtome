@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1569 phrases across 93 files.
+// 1571 phrases across 94 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -587,6 +587,10 @@ export default {
 
     // --- node/js/cornerbank.js ---
     'cornerbank.open-hrsebank': 'your HorseBucks - open hrseBank',
+
+    // --- node/js/crtpref.js ---
+    'crtpref.disable-crt': 'disable CRT',
+    'crtpref.enable-crt': 'enable CRT',
 
     // --- node/js/doc/annotations.js ---
     'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",

@@ -13,6 +13,9 @@
             var named = document.querySelector('meta[name="page-colorway"]');
             var colorway = named ? named.content : localStorage.getItem('colorway');
             if (colorways.indexOf(colorway) >= 0) document.documentElement.dataset.colorway = colorway;
+            // ...and the CRT screen, off if this browser last heard the persona turn it off
+            // (crtpref.js keeps it), so it doesn't flash on before the setting arrives.
+            if (localStorage.getItem('crt') === 'off') document.documentElement.dataset.crt = 'off';
         } catch (e) {
             /* no storage: the default until a profile says otherwise */
         }

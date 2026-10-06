@@ -2248,6 +2248,22 @@ article:has(.label-emoji-strip) {
     cursor: pointer;
 }
 
+.crt-toggle {
+    align-self: flex-start;
+    padding: 0.35rem 0.7rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: var(--surface);
+    --line: var(--border);
+    --j: 3px;
+    cursor: pointer;
+}
+
+.crt-toggle:hover {
+    --line: var(--border-strong);
+}
+
 .colorway-option:hover {
     --line: var(--border-strong);
 }

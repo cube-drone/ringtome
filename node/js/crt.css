@@ -1,0 +1,66 @@
+/* A CRT screen over the whole application (Curtis, 2026-10-06: "just a UI experiment"). Two fixed
+   layers above everything, `pointer-events: none`, so nothing is ever covered for the mouse:
+   `body::before` is the glass - scanlines, a faint glare, a slow flicker - and `body::after` the
+   tube - a vignette darkening toward the corners, an inner shadow along the bezel, and the screen's
+   rounded corners, cut by a bezel-coloured shadow spilling outward. The bulge is faked: CSS can't
+   bend lines, and an SVG displacement filter would blur text, redraw the page on every scroll, and
+   move what's drawn away from where it's clicked. No setting yet: on for everyone, to see how it
+   feels. Its colours are tokens.css's (`--crt-*`). */
+body::before,
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2147483000;
+}
+
+body::before {
+    background:
+        radial-gradient(ellipse at 28% 18%, var(--crt-glare), transparent 45%),
+        repeating-linear-gradient(to bottom, transparent 0 2px, var(--crt-scanline) 2px 3px);
+    animation: crt-flicker 7s infinite steps(1, end);
+}
+
+body::after {
+    border-radius: 2.2rem / 1.8rem;
+    /* Readability first (Curtis, 2026-10-06: the first cut darkened the edges too much): the
+       vignette only reaches the outer corners, and the bezel's shadow is a thin rim. */
+    background: radial-gradient(ellipse at center, transparent 78%, var(--crt-vignette) 100%);
+    box-shadow:
+        inset 0 0 0.9rem var(--crt-edge),
+        0 0 0 3rem var(--crt-bezel);
+}
+
+/* A tube's brightness isn't steady: every few seconds, a frame a shade dimmer. */
+@keyframes crt-flicker {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    37% {
+        opacity: 0.85;
+    }
+    38% {
+        opacity: 1;
+    }
+    81% {
+        opacity: 0.9;
+    }
+    82% {
+        opacity: 1;
+    }
+}
+
+/* Off, by the persona's own choice (crtpref.js, on its private chain) - put on before anything
+   draws by index.html's first script, from this browser's last answer. */
+:root[data-crt="off"] body::before,
+:root[data-crt="off"] body::after {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body::before {
+        animation: none;
+    }
+}
