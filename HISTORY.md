@@ -17336,3 +17336,38 @@ need a filter over the whole app, which redraws the page on every change and
 breaks fixed positioning beneath it (modals, tooltips, the dock). "disable CRT"
 turns the glow off with the rest. Looked at in headless Chrome over terminal and
 witchlight. `just ui-check` green.
+
+**2026-10-06 - MCP, Slice 0: `/mcp` answers.** Curtis: "If I want to make that
+possible for the general public, do I publish thorough API documentation?
+OpenAPI spec? Do I implement a 'MCP'?" The answer became
+[plans/MCP.md](plans/MCP.md), with six rulings: unlocks bind the agent, posts
+made with a key carry a provenance tag that sticks until a person removes it, no
+read-only keys, one connection reaches every persona, and image upload waits.
+Then "let's get baking", and its first slice:
+
+- **`mcp.rs`** serves the Model Context Protocol at `/mcp` on `rmcp` 3.5, the
+  official Rust SDK. It is stateless (`NeverSessionManager`, plain JSON
+  answers), and it's mounted on the finished router, which every tool dispatches
+  to in-process with the caller's key, so a rule a door enforces holds for the
+  agent without being written twice. The SDK won over a hand-written loop
+  because the protocol moved while this was being planned: its 2026-07-28
+  revision dropped the `initialize` handshake for metadata on every request.
+  Both lifecycles work.
+- **The door (`by_key`)** removes the `Cookie` header, refuses a request with no
+  `Authorization`, and runs the ordinary `Session` extractor. The SDK's `Host`
+  guard is off: it allows only loopback, which would refuse a public node's own
+  name, and DNS rebinding can't use a secret the browser doesn't hold. The plan
+  had said `/mcp` would check `Origin`; it now says why it doesn't.
+- **One tool, `whoami`**: the username, and each persona's root, profile fields
+  and standing. Server title "Horse Drawing Tycoon 2", name `ringtome`.
+
+Claims in `mcp.cjs` (6): no key, a cookie alone and an unknown key are refused;
+the handshake comes back as plain JSON with no session id and the right title;
+the tool list marks `whoami` read-only; `whoami` returns the account and its
+persona; a 2026-07-28 call with no handshake is answered; a revoked key stops at
+once. The cookie claim was checked by planting the violation: with the key check
+removed, it went red. The first full gate caught one more: the key check went on
+with `layer`, which also wraps a router's fallback, so every unknown path asked
+for a key instead of answering 404 (config.cjs); it is a `route_layer` now. To
+connect a real Claude Code to a dev node:
+`claude mcp add --transport http horses http://localhost:<port>/mcp --header "Authorization: Bearer rtk_..."`.

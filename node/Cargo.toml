@@ -190,6 +190,12 @@ tar = "0.4"
 blake3 = "1.8.5"
 iroh-gossip = "0.101"
 bytes = "1.12.1"
+# The Model Context Protocol, served at /mcp (mcp.rs, plans/MCP.md): the official SDK, because
+# the protocol is still moving - 2026-07-28 replaced the initialize handshake - and the SDK
+# answers both lifecycles.
+rmcp = { version = "3.5.1", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
+# `oneshot`: an MCP tool is a request to the node's own router, in-process (mcp.rs).
+tower = { version = "0.5", features = ["util"] }
 
 # (sha2 is a regular dependency now - Web Push's HKDF - and the released-migrations pin in
 # tests/conventions.rs uses it from there: sha256, because the release script that writes the pin

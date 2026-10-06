@@ -55,6 +55,7 @@ pub mod inspect;
 pub mod keyprefetch;
 pub mod keystore;
 pub mod loops;
+pub mod mcp;
 pub mod media;
 pub mod message;
 pub mod migrations;
@@ -890,7 +891,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .layer(axum::middleware::from_fn_with_state(state.clone(), auth::renew_cookie))
         // Each request's time in the database, waiting and working (db.rs, 2026-10-03).
         .layer(axum::middleware::from_fn(db::tally_requests))
-        .with_state(state)
+        .with_state(state.clone());
+    // The Model Context Protocol (mcp.rs): mounted on the finished router, which its tools
+    // dispatch to, so it sits outside the layers above and inside the trace below.
+    let app = mcp::mount(app, state)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &axum::http::Request<_>| {
