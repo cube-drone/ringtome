@@ -1488,6 +1488,14 @@ pub struct ChatMessage {
     /// sentence beside it, so a reader that does not know the kind still reads what
     /// happened; a reader that does says it in its own words.
     pub notice: Option<(u64, [u8; 32])>,
+    /// What the line was made with, when its speaker's node knows it was not a person at a
+    /// browser (plans/MCP.md, _Provenance_; Curtis, 2026-10-06): `"ai-agent"` or `"api-key"`,
+    /// the words a post's reserved tag says. Text rather than a number so that a reader that
+    /// has never heard of a value still shows something true. Signed into the line, so it is
+    /// the speaker's claim and sticks to the line; absent on the wire for a line a person
+    /// typed, which encodes exactly as every line said before it existed - and a node that
+    /// predates it skips the key, as it skips any it does not know.
+    pub made_with: Option<String>,
 }
 
 impl ChatMessage {
@@ -1505,6 +1513,8 @@ impl ChatMessage {
     pub const NOTICE_DEPUTIZED: u64 = 2;
     /// ...and this, that the creator took the badge back.
     pub const NOTICE_UNDEPUTIZED: u64 = 3;
+    /// A `made_with`'s length, at most: a word, not a sentence.
+    pub const MAX_MADE_WITH_BYTES: usize = 32;
 
     fn well_formed(&self) -> Result<(), ProtoError> {
         if self.body.is_empty() {
@@ -1519,6 +1529,11 @@ impl ChatMessage {
         if self.mentions.len() > Self::MAX_MENTIONS {
             return Err(ProtoError::BadEntry("a chat message names too many people"));
         }
+        if let Some(made_with) = &self.made_with {
+            if made_with.is_empty() || made_with.len() > Self::MAX_MADE_WITH_BYTES {
+                return Err(ProtoError::BadEntry("a chat message's made-with is one short word"));
+            }
+        }
         Ok(())
     }
 
@@ -1531,7 +1546,8 @@ impl ChatMessage {
                 + u64::from(self.reacts_to.is_some())
                 + u64::from(self.retracts.is_some())
                 + u64::from(self.edits.is_some())
-                + u64::from(self.notice.is_some()),
+                + u64::from(self.notice.is_some())
+                + u64::from(self.made_with.is_some()),
         );
         w.uint(0);
         w.bytes(&self.room_author);
@@ -1571,6 +1587,10 @@ impl ChatMessage {
             w.uint(*kind);
             w.bytes(subject);
         }
+        if let Some(made_with) = &self.made_with {
+            w.uint(9);
+            w.text(made_with);
+        }
         Ok(w.into_bytes())
     }
 
@@ -1586,6 +1606,7 @@ impl ChatMessage {
         let mut retracts: Option<[u8; 32]> = None;
         let mut edits: Option<[u8; 32]> = None;
         let mut notice: Option<(u64, [u8; 32])> = None;
+        let mut made_with: Option<String> = None;
         while let Some(k) = map.next_key()? {
             match k {
                 0 => room_author = Some(map.bytes_fixed::<32>()?),
@@ -1620,6 +1641,7 @@ impl ChatMessage {
                     }
                     notice = Some((map.uint()?, map.bytes_fixed::<32>()?));
                 }
+                9 => made_with = Some(map.text()?.to_string()),
                 _ => map.skip_value()?,
             }
         }
@@ -1635,6 +1657,7 @@ impl ChatMessage {
             retracts,
             edits,
             notice,
+            made_with,
         };
         out.well_formed()?;
         Ok(out)
@@ -1657,6 +1680,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         assert_eq!(ChatMessage::decode(&m.encode().unwrap()).unwrap(), m);
         let sealed = ChatMessage {
@@ -1669,6 +1693,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         assert_eq!(ChatMessage::decode(&sealed.encode().unwrap()).unwrap(), sealed);
         let silent = ChatMessage {
@@ -1681,6 +1706,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         assert!(silent.encode().is_err());
         let long = ChatMessage {
@@ -1693,8 +1719,45 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         assert!(long.encode().is_err());
+    }
+
+    /// What a line was made with (plans/MCP.md, _Provenance_): it round-trips; a line without one is
+    /// byte-equal to a line said before the field existed; and it is one short word or nothing.
+    #[test]
+    fn a_chat_message_says_what_it_was_made_with() {
+        let line = |made_with: Option<&str>| ChatMessage {
+            room_author: [7u8; 32],
+            body: b"neigh".to_vec(),
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+            made_with: made_with.map(str::to_string),
+        };
+        let marked = line(Some("ai-agent"));
+        let bytes = marked.encode().unwrap();
+        assert_eq!(ChatMessage::decode(&bytes).unwrap(), marked);
+
+        // A person's line: the three fields every line has always had, and nothing else.
+        let mut old = Writer::new();
+        old.map(3);
+        old.uint(0);
+        old.bytes(&[7u8; 32]);
+        old.uint(1);
+        old.bytes(b"neigh");
+        old.uint(2);
+        old.uint(0);
+        assert_eq!(line(None).encode().unwrap(), old.into_bytes());
+
+        assert!(line(Some("")).encode().is_err(), "empty");
+        let long = "x".repeat(ChatMessage::MAX_MADE_WITH_BYTES + 1);
+        assert!(line(Some(&long)).encode().is_err(), "a sentence, not a word");
     }
 
     /// CHAT.md ruling 11: a message's refs round-trip, no refs is wire-absence (byte-equal to
@@ -1712,6 +1775,7 @@ mod tests {
             retracts: Some([5u8; 32]),
             edits: Some([6u8; 32]),
             notice: Some((ChatMessage::NOTICE_MUTED, [7u8; 32])),
+            made_with: Some("ai-agent".into()),
         };
         assert_eq!(ChatMessage::decode(&with.encode().unwrap()).unwrap(), with);
         let without = ChatMessage {
@@ -1724,6 +1788,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         let mut old = Writer::new();
         old.map(3);
@@ -1744,6 +1809,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         assert!(over.encode().is_err());
         let mut forged = Writer::new();

@@ -54,7 +54,17 @@ A persona's own things, private until posted:
 - **drawings** - made in the drawing app
 - **files** - uploaded pictures, films and sounds
 
-`list_documents` and `read_document` read them.
+`list_documents` and `read_document` read them, and `write_document` writes a
+note. Drawings are made, seen and posted in the app: an agent reads that one
+exists, no more.
+
+## Chat
+
+**Rooms** are chats: one person starts one, and anyone who can read it can talk
+in it. `list_rooms` shows the persona's (needs Chat), `read_room` reads one by
+its address, and `send_message` says something there - in public, in the
+person's name, so ask first. A line you say carries **ai-agent** too, for good:
+a person can delete it, not unmark it.
 
 ## HorseBucks, the Bank and unlocks
 
@@ -67,6 +77,14 @@ an **unlock**, bought in the Market: Social (the feed and posting), Friends,
 Private notes, Chat, Reactions, tags & filters, and more. The tools respect
 this: if one says the persona hasn't unlocked something, tell the person what it
 would take, and let them decide.
+
+`bank` shows the balance, what earned it, the contracts still open and what the
+persona holds. `market` shows what's for sale; `buy` and `sell` trade - unlocks
+and colourways, commodities (hay, oats, saddles... priced fresh each day,
+sellable two days after buying) and **hrseBonds** (they pay a little each day;
+sold only to get out of debt). Commodities and bonds need Horse Financial.
+Nothing here is real money, so a bad trade costs nobody anything - but it's
+still the person's game: buy what they ask for.
 
 ## Posting, and what it says
 

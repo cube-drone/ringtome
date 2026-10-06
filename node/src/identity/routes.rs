@@ -1752,6 +1752,7 @@ async fn say_label(
         None,
         None,
         Some((notice, subject)),
+        None,
     )
     .await?;
     let _ = doc;
@@ -2008,6 +2009,8 @@ async fn room_say_handler(
         edits,
         deletes,
         None,
+        // What the line is made with (made_with.rs): an agent's, a key's, or a person's.
+        session.made_with(),
     )
     .await?;
     Ok(Json(serde_json::json!({ "seq": seq, "said_ms": said_ms })))

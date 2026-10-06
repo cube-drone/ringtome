@@ -1,7 +1,8 @@
 # MCP - Horse Drawing Tycoon 2 for AI agents
 
-A design draft (2026-10-06). Slices 0-2 built (2026-10-06): `/mcp` answers, with
-the reading and writing tools, the guide, and provenance.
+A design draft (2026-10-06). Slices 0-2 and 4 built (2026-10-06), Slice 3
+struck: `/mcp` answers, with the reading and writing tools, chat and the bank,
+the guide, and provenance.
 
 Anyone with an API key can already drive their account from an AI agent: Curtis
 has done it, from inside this repository. This plan is about making that work
@@ -43,6 +44,13 @@ and what they keep private, not their balance.
    'if an AI did significant work on it, it's AI-provenance' rule. Maybe we let
    users remove the AI or API tags if they feel like they're not warranted."
    Removing one takes a signed-in browser, never a key (_Provenance_).
+7. **No drawing tools** (2026-10-06). Slice 3 turned out to need a second
+   painter on the node - the browser paints drawings, and flattens the picture a
+   publication carries - and Curtis struck it before any of it was built: "We're
+   pulling in a lot of libraries and doing a lot of work for a capability that
+   I'm not sure if I'm interested in even supporting. Let's... scratch 'draw'
+   from the set of MCP capabilities entirely." An agent reads that a drawing
+   exists; drawing, viewing and posting one stay the app's.
 
 ## What MCP is, and why not just a spec
 
@@ -130,8 +138,8 @@ the handlers check. Going through the router has three advantages:
 - **The cost is one extra parse.** Next to signing an entry, that's nothing.
 - **Testing is easy**: a tool can be checked against the HTTP response it wraps.
 
-A tool can take a different route when it has a reason to: drawing (below)
-converts a format first, and some tools combine two doors in one call.
+A tool can take a different route when it has a reason to: some tools combine
+two doors in one call.
 
 ### Personas
 
@@ -236,7 +244,7 @@ _As built (Slice 2, `mcp/write.rs`):_
   a reply that is then refused is deleted, so an agent's failed attempt doesn't
   linger as a note nobody wrote. Posting a note that was posted before updates
   its post, which needs Public post editing. Drawings and files are posted from
-  the app until Slice 3.
+  the app (ruling 7).
 - **`reply` asks about the post first.** A chat room is refused before anything
   is written. Cards say `closed` when the author asked for no replies or shares,
   so an agent learns that before the door refuses. Whether the thread shows the
@@ -253,22 +261,21 @@ _As built (Slice 2, `mcp/write.rs`):_
   `contact:<root>`, as the person card does. They need Friends, whose app is
   where people are followed.
 
-**Drawing**, the one this game is named for:
-
-- `draw`: create a drawing, or add strokes to one. The argument is **absolute
-  points**, not the body's delta-coding, plus tool, colour and size per stroke.
-  The tool delta-codes the points, mints each stroke's `id` and `t`, and saves
-  through the ordinary drawing door, so the drawing merges like any other
-  (DRAWING.md). No layers to begin with; strokes go on the top layer.
-- `view_drawing`: **returns the rendered picture as MCP image content** (from
-  the `thumb`/`preview` door), so the model can see what it drew and correct it.
-  Drawing blind and drawing with your eyes open are different games, and this
-  tool is the difference.
-- `publish_drawing`: through `/publish/drawing`. Destructive.
+**Drawing**: struck (ruling 7). `draw`, `view_drawing` and `publish_drawing`
+were planned here; an agent reads that a drawing exists, and the rest stays the
+app's.
 
 **Chat**
 
 - `list_rooms`, `read_room`, `send_message`: the last one is destructive.
+
+_As built (Slice 4, `mcp/chat.rs`):_ `list_rooms` needs Chat, the list being
+hrseChat's; a room by its address reads and takes words without it, as the app
+opens one (UNLOCKS.md, _Chat_: "reading what's addressed to you is never for
+sale"). Lines come back fenced, with a `next` that pages back by time. Reading a
+room enters it, as opening it in the app does. Chat lines carry what they were
+made with too (Curtis, 2026-10-06), as a field signed into the line rather than
+a tag: CHAT.md, _What a line was made with_.
 
 **The Bank and the Market**
 
@@ -276,6 +283,18 @@ _As built (Slice 2, `mcp/write.rs`):_
 - `market`: what's for sale, at what price (commodities, unlocks, colorways).
 - `buy`, `sell`: **not** marked destructive. Horsebucks are imaginary, and an
   agent that plays the market badly costs nobody anything.
+
+_As built (Slice 4, `mcp/bank.rs`):_ `bank` is the balance, earnings by kind,
+open contracts with their rewards, recent ledger lines, and holdings (bonds,
+commodity lots with what each is worth today). `market` is the unlocks and
+colourways still for sale and, with Horse Financial, today's commodity prices
+beside a month ago's and the bonds' limits. `buy` takes one of an unlock (by id
+or name), a commodity with whole units, or a bond for an amount in HorseBucks
+("2,500.50", turned into exact pennies); `sell` a lot (all of it unless told) or
+a bond. Commodities and bonds need Horse Financial, as the app's Market shows
+them; unlocks are for sale to anyone. The doors' rules - no overdraft, two days'
+hold, bonds sold only from debt - answer in their own words. One trap found:
+`bank?lines=0` is the corner's poll and leaves the unlocks out.
 
 **Left out, on purpose:** keys, nodes, adoption, backups, admin and everything
 under `/test`. A key can't reach most of these, and an MCP tool should never be
@@ -290,8 +309,6 @@ the only door to something.
   private. It should be short enough to read whole, because a client may load it
   into context on connect. The same page is served at `/mcp/guide.md` for people
   and for agents that have a shell.
-- **`drawing-format`**: the `draw` tool's point format, the canvas size and how
-  pressure works, so the model can plan a picture before it starts.
 
 ### Server instructions
 
@@ -393,10 +410,10 @@ A post made with a key says so, as a tag the reader can see and filter by:
    _Provenance_). One residual: the app's tag editor sits behind Reactions, tags
    & filters, so a person without that unlock has no way to vouch a label away
    yet.
-3. **Drawing.** `draw` with absolute points, `view_drawing` returning an image,
-   `publish_drawing`. The point conversion is pure and gets its own unit test
-   against the shared drawing vectors.
-4. **Chat, Bank and Market.**
+3. **Drawing.** Struck (ruling 7): it needed a renderer on the node, a second
+   copy of the browser's painter, for a capability Curtis isn't sure he wants.
+4. **Chat, Bank and Market.** _Built 2026-10-06_ (_As built_ under _Chat_ and
+   _The Bank and the Market_).
 5. **OAuth.** Needed for claude.ai's and ChatGPT's connectors, which won't take
    a pasted bearer key. The node becomes its own authorization server: discovery
    metadata, `/authorize` (a consent page in the signed-in browser, "Let Claude
@@ -419,11 +436,10 @@ through a bridge such as `mcp-remote`.
 ## Open questions
 
 1. **Image upload** (ruling 5: it waits). MCP lets a server hand a client
-   pictures, which is how `view_drawing` works, but has no way for a client to
-   hand a server a file. The model would have to type the image out as base64 in
-   a tool argument, and it usually can't, because it never holds the bytes of a
-   photo it was shown. One workaround to weigh when this comes back: an
-   `upload_link` tool that returns a short-lived, single-use upload URL. An
-   agent with a shell `curl`s the file to it, and a person in a chat client
-   opens it in a browser. Another is a tool that takes a URL and has the node
-   fetch it, as it already does for unfurls.
+   pictures, but has no way for a client to hand a server a file. The model
+   would have to type the image out as base64 in a tool argument, and it usually
+   can't, because it never holds the bytes of a photo it was shown. One
+   workaround to weigh when this comes back: an `upload_link` tool that returns
+   a short-lived, single-use upload URL. An agent with a shell `curl`s the file
+   to it, and a person in a chat client opens it in a browser. Another is a tool
+   that takes a URL and has the node fetch it, as it already does for unfurls.

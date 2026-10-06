@@ -533,6 +533,30 @@ is where "all of it" lives.
     hushed too), no sync, no join - until it is accepted by the button or by
     answering, which the say door treats as the same act. Suite: `ims.cjs`.
 
+## What a line was made with (2026-10-06)
+
+Curtis: "In the same way as we mark posts as "ai-agent" or "api-key", can we do
+the same with chat messages?" - and, choosing between a field on the line, a
+companion reaction, and a mark on the speaker, the field. A line said through an
+API key carries **`ChatMessage.made_with`, key 9**: `"ai-agent"` through `/mcp`,
+`"api-key"` for any other key (made_with.rs, plans/MCP.md _Provenance_). Text,
+not a number, so a reader that does not know a value shows it as it stands;
+absent for a line a person typed, which then encodes exactly as every line
+before it did, and a node that predates the key skips it as it skips any key it
+does not know. An edit carries it too; reactions and take-backs never do.
+
+- **It sticks by construction.** The mark is signed into the line, and the memo
+  (`room_messages.made_with`, node rung 69) is set by the line or by any edit
+  that carries one and never cleared - so an agent's line edited by hand stays
+  marked, and a person's line edited by a script becomes marked. The archive's
+  pages mark the same way.
+- **Unlike a post's tag, no person can vouch it away**: a line is one signed
+  entry, not a statement beside it. The remedy is the one a line already has -
+  delete it and say it again.
+- **On the floor**, the post tag's icon (pure/tagicons.js) sits in the gutter of
+  every marked line, not only a run's first, with "said by an AI agent" / "said
+  with an API key" on hover.
+
 ## Settled questions and residuals
 
 - **Settled 2026-09-20: an onward room answers to the key, not to the creator's

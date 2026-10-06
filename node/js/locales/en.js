@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1575 phrases across 96 files.
+// 1577 phrases across 96 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -135,6 +135,8 @@ export default {
     'apps.chat.unmuted': 'unmuted',
     'apps.chat.deputized': 'deputized',
     'apps.chat.undeputized': 'took the badge back from',
+    'apps.chat.said-by-an-ai-agent': 'said by an AI agent',
+    'apps.chat.said-with-an-api-key': 'said with an API key',
     'apps.chat.someone-you-dont-trust': "someone you don't trust",
     'apps.chat.edited': '(edited)',
     'apps.chat.react-with-an-emoji': 'react with an emoji',

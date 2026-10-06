@@ -708,6 +708,16 @@
     cursor: pointer;
 }
 
+/* What the line was made with (made_with.rs): the robot or the terminal, in the line's gutter. */
+.chat-line-made {
+    position: absolute;
+    left: 0.6rem;
+    top: 0.15em;
+    color: var(--muted);
+    font-size: 1.05em;
+    line-height: 1;
+}
+
 .chat-line-edited {
     font-size: 0.75em;
     color: var(--muted);
@@ -768,6 +778,7 @@
 .chat-line-body {
     color: var(--ink);
     padding-left: 2.4rem;
+    position: relative;
     /* The line's lean (2026-09-28): its reactions, positive and negative, make it bigger or smaller. */
     font-size: calc(1em * var(--lean, 1));
 }

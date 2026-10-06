@@ -439,6 +439,10 @@ pub struct Message {
     pub notice: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notice_subject: Option<String>,
+    /// What the line was made with, when not a person at a browser (made_with.rs): `"ai-agent"` or
+    /// `"api-key"`, the line's own or any edit's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub made_with: Option<String>,
 }
 
 /// One stack of emoji under a line: the shortcode, how many said it, and who.
@@ -916,6 +920,8 @@ pub async fn say(
     edits: Option<[u8; 32]>,
     deletes: Option<[u8; 32]>,
     notice: Option<(u64, [u8; 32])>,
+    // What the line was made with, when not a person at a browser (made_with.rs): signed into it.
+    made_with: Option<&str>,
 ) -> Result<(u64, i64), AppError> {
     let words = words.trim();
     if words.is_empty() && deletes.is_none() {
@@ -986,6 +992,7 @@ pub async fn say(
                     retracts: Some(earlier),
                     edits: None,
                     notice: None,
+                    made_with: None,
                 }
                 .encode()
                 .map_err(|e| AppError::Internal(anyhow!("encoding a take-back: {e}")))?;
@@ -1137,6 +1144,10 @@ pub async fn say(
         retracts,
         edits,
         notice,
+        // A line or an edit carries it; a reaction and a take-back are no line of talk.
+        made_with: made_with
+            .filter(|_| reacts_to.is_none() && retracts.is_none())
+            .map(str::to_string),
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow!("encoding a chat message: {e}")))?;
@@ -1914,7 +1925,19 @@ pub async fn history(
     let closed = closed_at(state, author_hex, doc).await;
     let limit = limit.clamp(1, HISTORY_PAGE);
     let behind = if at_ms.is_some() { (limit + 1) / 2 } else { limit };
-    type Row = (String, String, i64, i64, Vec<u8>, Vec<u8>, i64, i64, Option<i64>, Option<String>);
+    type Row = (
+        String,
+        String,
+        i64,
+        i64,
+        Vec<u8>,
+        Vec<u8>,
+        i64,
+        i64,
+        Option<i64>,
+        Option<String>,
+        Option<String>,
+    );
     let before = before_ms.unwrap_or(i64::MAX);
     let ceiling = closed.map_or(before, |c| c.min(before));
     let mut rows: Vec<Row> = state
@@ -1922,7 +1945,7 @@ pub async fn history(
         .fetch_all(
             "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash,
                     COALESCE(edit_body, body), CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END,
-                    edit_hash IS NOT NULL, notice_kind, notice_subject
+                    edit_hash IS NOT NULL, notice_kind, notice_subject, made_with
              FROM room_messages
              WHERE room_author = ?1 AND room_doc = ?2 AND said_ms < ?3 AND deleted = 0
              ORDER BY said_ms DESC, seq DESC LIMIT ?4",
@@ -1938,7 +1961,7 @@ pub async fn history(
             .fetch_all(
                 "SELECT speaker_root, speaker_leaf, seq, said_ms, entry_hash,
                         COALESCE(edit_body, body), CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END,
-                        edit_hash IS NOT NULL, notice_kind, notice_subject
+                        edit_hash IS NOT NULL, notice_kind, notice_subject, made_with
                  FROM room_messages
                  WHERE room_author = ?1 AND room_doc = ?2 AND said_ms >= ?3 AND deleted = 0
                  ORDER BY said_ms ASC, seq ASC LIMIT ?4",
@@ -1983,6 +2006,8 @@ pub async fn history(
         let mut lines_from_archive = 0i64;
         // An archived line's edits arrive beside it (slice 8): the newest stands in.
         let mut archived_edits: HashMap<Vec<u8>, (i64, Vec<u8>, i64)> = HashMap::new();
+        // ...and what any edit was made with marks its line, as the fold's does (made_with.rs).
+        let mut archived_marks: HashMap<Vec<u8>, String> = HashMap::new();
         for (root, signed) in archived {
             if held.contains(signed.hash().as_slice()) {
                 continue;
@@ -2002,6 +2027,9 @@ pub async fn history(
                 continue;
             }
             if let Some(target) = msg.edits {
+                if let Some(made_with) = &msg.made_with {
+                    archived_marks.entry(target.to_vec()).or_insert_with(|| made_with.clone());
+                }
                 let slot = archived_edits.entry(target.to_vec()).or_insert((0, Vec::new(), 0));
                 if entry.timestamp_ms > slot.0 {
                     *slot = (entry.timestamp_ms, msg.body, i64::from(msg.sealed));
@@ -2023,6 +2051,7 @@ pub async fn history(
                 0,
                 msg.notice.map(|(kind, _)| kind as i64),
                 msg.notice.map(|(_, who)| hex::encode(who)),
+                msg.made_with,
             ));
         }
         for row in rows.iter_mut() {
@@ -2030,6 +2059,9 @@ pub async fn history(
                 row.5 = body;
                 row.6 = sealed;
                 row.7 = 1;
+            }
+            if row.10.is_none() {
+                row.10 = archived_marks.remove(&row.4);
             }
         }
         more = lines_from_archive >= want;
@@ -2066,6 +2098,7 @@ pub async fn history(
                 edited,
                 notice_kind,
                 notice_subject,
+                made_with,
             )| {
                 let words = if sealed != 0 {
                     key.and_then(|k| crate::record::private::open_post_body(&body, &k))
@@ -2094,6 +2127,7 @@ pub async fn history(
                         _ => None,
                     }),
                     notice_subject,
+                    made_with,
                 }
             },
         )
@@ -2456,6 +2490,19 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                 )
                 .await
                 .context("editing a line")?;
+            // What it was made with sticks (made_with.rs): an edit made with a key marks the line
+            // whichever edit is newest, and an edit by hand never unmarks it.
+            if let Some(made_with) = &msg.made_with {
+                state
+                    .node_db
+                    .execute(
+                        "UPDATE room_messages SET made_with = COALESCE(made_with, ?3)
+                         WHERE speaker_root = ?1 AND entry_hash = ?2",
+                        (root, earlier.to_vec(), made_with.as_str()),
+                    )
+                    .await
+                    .context("marking an edited line")?;
+            }
             continue;
         }
         if let Some(target) = msg.reacts_to {
@@ -2493,8 +2540,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             .execute(
                 "INSERT OR IGNORE INTO room_messages
                    (room_author, room_doc, speaker_root, speaker_leaf, seq, said_ms, entry_hash, body, sealed, noted_ms,
-                    notice_kind, notice_subject)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    notice_kind, notice_subject, made_with)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 (
                     room_author.as_str(),
                     room_doc.as_str(),
@@ -2508,6 +2555,7 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                     now,
                     msg.notice.map(|(kind, _)| kind as i64),
                     msg.notice.map(|(_, who)| hex::encode(who)),
+                    msg.made_with.clone(),
                 ),
             )
             .await
@@ -3393,6 +3441,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         let back = ChatMessage::decode(&msg.encode().unwrap()).unwrap();
         assert_eq!(

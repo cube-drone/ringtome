@@ -3030,6 +3030,7 @@ mod tests {
             retracts: None,
             edits: None,
             notice: None,
+            made_with: None,
         };
         crate::record::imaol::append_on(
             &db,

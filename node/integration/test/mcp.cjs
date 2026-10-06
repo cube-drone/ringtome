@@ -567,3 +567,132 @@ describe('MCP: writing, and what it was made with', function () {
         );
     });
 });
+
+describe('MCP: chat, the Bank and the Market', function () {
+    this.timeout(120000);
+
+    let me, root, key, agent, room;
+
+    before(async () => {
+        ({ me, root, key, agent } = await keyed('mcpplayer'));
+        // A room of her own, made as the app makes one: a note in the chat bucket, posted as a room.
+        const d = await (
+            await j(me, `api/identity/${root}/docs`, {
+                title: 'the barn',
+                body: 'hay talk',
+                format: 'marquee',
+            })
+        ).json();
+        await me(`api/identity/${root}/docs/${d.doc_id}/buckets/chat`, { method: 'PUT' });
+        const p = await j(me, `api/identity/${root}/docs/${d.doc_id}/publish`, { room: true });
+        assert.equal(p.status, 200, await p.clone().text());
+        room = `${root}/${(await p.json()).post_id}`;
+        // Something to spend: the rig writes the ledger directly (bank.cjs).
+        await j(makeFetch(), 'test/credit', { root, pennies: 1000000 });
+    });
+
+    it('lists its tools: reading looks, saying in a room asks first, money never does', async () => {
+        const { tools } = await request(agent, 'tools/list');
+        const hints = Object.fromEntries(tools.map((t) => [t.name, t.annotations]));
+        for (const name of ['list_rooms', 'read_room', 'bank', 'market']) {
+            assert.equal(hints[name].readOnlyHint, true, `${name} only looks`);
+        }
+        assert.equal(hints.send_message.destructiveHint, true, 'said in a room, in her name');
+        for (const name of ['buy', 'sell']) {
+            assert.equal(hints[name].destructiveHint, false, `${name}: HorseBucks are imaginary`);
+        }
+    });
+
+    it('lists the room, says something in it, and reads it back, fenced', async () => {
+        const rooms = await tool(agent, 'list_rooms');
+        assert.ok(
+            rooms.rooms.some((r) => r.room === room),
+            JSON.stringify(rooms),
+        );
+
+        const said = await tool(agent, 'send_message', { room, words: 'neigh, from the agent' });
+        assert.ok(!said.stopped, said.stopped);
+        const read = await tool(agent, 'read_room', { room, limit: 5 });
+        assert.equal(read.title.text, 'the barn');
+        const line = read.lines.find((l) => l.words.text === 'neigh, from the agent');
+        assert.ok(line, JSON.stringify(read.lines));
+        assert.equal(line.speaker.root, root);
+        assert.match(line.said, /^\d{4}-\d\d-\d\dT/);
+        assert.match((await tool(agent, 'read_room', { room: 'nowhere' })).stopped, /address/);
+        assert.match((await tool(agent, 'send_message', { room, words: '  ' })).stopped, /nothing/);
+    });
+
+    it('a line says what it was made with, and an edit never takes it away', async () => {
+        const [, doc] = room.split('/');
+        const door = `api/identity/${root}/rooms/${root}/${doc}/messages`;
+        const say = (as, body) => j(as, door, body);
+        await say(me, { words: 'typed by hand' });
+        await say(program(key), { words: 'from a script' });
+        await tool(agent, 'send_message', { room, words: 'from the agent' });
+        const lines = async () => (await (await me(door)).json()).items;
+        const by = (all, words) => all.find((l) => l.words === words);
+
+        let all = await lines();
+        assert.equal(by(all, 'typed by hand').made_with, undefined, 'a person: nothing');
+        assert.equal(by(all, 'from a script').made_with, 'api-key');
+        assert.equal(by(all, 'from the agent').made_with, 'ai-agent');
+        const read = await tool(agent, 'read_room', { room });
+        assert.equal(
+            read.lines.find((l) => l.words.text === 'from the agent').made_with,
+            'ai-agent',
+        );
+
+        // A person's edit of the agent's line keeps the mark; a script's edit of a person's adds one.
+        await say(me, { words: 'the agent, fixed by hand', edits: by(all, 'from the agent').hash });
+        await say(program(key), {
+            words: 'by hand, tidied by a script',
+            edits: by(all, 'typed by hand').hash,
+        });
+        all = await lines();
+        assert.equal(by(all, 'the agent, fixed by hand').made_with, 'ai-agent', 'sticks');
+        assert.equal(
+            by(all, 'by hand, tidied by a script').made_with,
+            'api-key',
+            'marked by its edit',
+        );
+    });
+
+    it('the Bank: the balance in HorseBucks, and what it was earned from', async () => {
+        const bank = await tool(agent, 'bank');
+        assert.match(bank.balance, /^H\$ -?[\d,]+\.\d\d$/);
+        assert.ok(Array.isArray(bank.open_contracts) && Array.isArray(bank.recent));
+    });
+
+    it("the Market's prices, and buying and selling hay, a lot at a time", async () => {
+        const market = await tool(agent, 'market');
+        const hay = market.commodities.find((c) => c.commodity === 'hay');
+        assert.match(hay.price_today, /^H\$ [\d,]+\.\d\d$/);
+
+        const bought = await tool(agent, 'buy', { commodity: 'hay', units: '2' });
+        assert.ok(bought.lot, JSON.stringify(bought));
+        const lot = (await tool(agent, 'bank')).commodity_lots.find((l) => l.lot === bought.lot);
+        assert.equal(lot.units, '2');
+        assert.equal(lot.sellable, false, 'held two days first');
+        assert.match((await tool(agent, 'sell', { lot: bought.lot })).stopped, /two days/);
+
+        await j(makeFetch(), 'test/age-lot', { root, lot: bought.lot, days: 3 });
+        const sold = await tool(agent, 'sell', { lot: bought.lot });
+        assert.ok(!sold.stopped, sold.stopped);
+        assert.ok(
+            !(await tool(agent, 'bank')).commodity_lots.some((l) => l.lot === bought.lot),
+            'sold whole: no longer held',
+        );
+    });
+
+    it('a hrseBond for an amount, and the door keeps its own rules', async () => {
+        const bought = await tool(agent, 'buy', { bond: '2,000' });
+        assert.match(bought.bought, /H\$ 2,000\.00/);
+        const bond = (await tool(agent, 'bank')).bonds[0];
+        assert.equal(bond.price, 'H$ 2,000.00');
+        assert.match((await tool(agent, 'sell', { bond: bond.bond })).stopped, /debt/);
+        assert.match((await tool(agent, 'buy', { bond: '5' })).stopped, /at least/);
+        assert.match((await tool(agent, 'buy', { bond: 'lots' })).stopped, /isn't an amount/);
+        assert.match((await tool(agent, 'buy', { unlock: 'unicorns' })).stopped, /no unlock/);
+        assert.match((await tool(agent, 'buy', {})).stopped, /one thing at a time/);
+    });
+});

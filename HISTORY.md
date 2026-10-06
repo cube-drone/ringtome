@@ -17478,3 +17478,64 @@ warning from anyone. `pure/tagicons.cjs` pins it from both ends: every kind,
 size, medium and default warning has a role, and every role is one icons.js
 draws (a planted typo went red). Seen in headless Chrome over a seeded scratch
 network. `just strings-check` and `just ui-check` green.
+
+**2026-10-06 - MCP Slice 3, drawing, struck.** Looking into it showed the node
+has never painted a drawing: the browser paints every one (doc/drawing.js,
+Canvas 2D - strokes with pressure, the eraser per layer, moves, transforms and
+crops, shapes, pours, text in the app's faces, placed pictures) and flattens the
+picture a publication carries. `view_drawing` and `publish_drawing` would have
+needed a second painter on the node - tiny-skia, with the history walk and the
+pour ported and held to shared vectors. Curtis chose it, then, before any of it
+was written: "We're pulling in a lot of libraries and doing a lot of work for a
+capability that I'm not sure if I'm interested in even supporting. Let's...
+scratch 'draw' from the set of MCP capabilities entirely." Nothing to roll back
+in code; plans/MCP.md gains ruling 7 and strikes the slice, its tools and the
+`drawing-format` resource, and README and NEXT_STEPS follow.
+
+**2026-10-06 - MCP, Slice 4: chat, the Bank and the Market.** Curtis, after
+striking drawing: "move on to the next slice." `mcp/chat.rs` adds `list_rooms`
+(needs Chat - the list is hrseChat's), `read_room` and `send_message` (a room by
+its address opens without Chat, as the app opens one; saying something is
+destructive). `mcp/bank.rs` adds `bank` (balance, earnings by kind, open
+contracts, recent lines, bonds and commodity lots), `market` (unlocks and
+colourways still for sale; with Horse Financial, commodity prices against a
+month ago and the bonds' limits), and `buy` / `sell` (an unlock by id or name,
+commodity units, a bond for an amount in HorseBucks - `pennies_of` turns
+"2,500.50" into exact pennies) - never marked destructive, the money being
+pretend. The doors' rules answer in their own words ("a lot sells two days after
+it was bought, at the earliest", "a hrseBond can be sold only to get out of
+debt"). The guide gains Chat and the Market.
+
+Found on a scratch node keeping its locks: `market` listed no unlocks at all -
+`bank?lines=0` is the corner balance's poll and answers the balance alone - so
+it asks for one line. Also seen there: Chat refused until bought, then the
+rooms; hay refused until Horse Financial, then sold. And one that looked like a
+bug and wasn't: the balance fell by the hay but not the bond, because "Buy a
+hrseBond" is a contract that pays its price straight back.
+
+Claims (`mcp.cjs`, a fourth `describe`, 5): the hints; a room listed, spoken in
+and read back fenced; the Bank in HorseBucks; hay bought, refused before two
+days, aged by the rig and sold whole; a bond bought and refused for sale out of
+debt, with the amount and one-at-a-time refusals. A planted unfenced chat line
+turned the room claim red.
+
+**2026-10-06 - chat lines say what they were made with.** Curtis: "In the same
+way as we mark posts as "ai-agent" or "api-key", can we do the same with chat
+messages? Chat annotations are a lot less flexible and powerful than post
+annotations, so we might need to think creatively." Three shapes weighed - a
+field on the line, a companion reaction from the speaker, a mark on the speaker
+per room - and the field chosen: `ChatMessage.made_with`, key 9, text, absent
+for a person's line, which encodes as every line ever has (a proto test holds
+the bytes); old nodes skip the key as they skip any they don't know. The say
+door signs `Session::made_with` into a line or an edit (never a reaction or a
+take-back); the fold writes `room_messages.made_with` (node rung 69, no
+backfill - no older line could carry it) from the line, and from any edit with
+`COALESCE`, so the mark sticks whatever order edits fold in; the archive path
+marks the same way; history and `read_room` answer it. On the floor, the post
+tag's icon sits in the gutter of every marked line, "said by an AI agent" on
+hover. Unlike a post's tag it can't be vouched away - a line is one signed
+entry - and CHAT.md says so (_What a line was made with_). Seen in headless
+Chrome: a script's two lines with the terminal, the agent's with the robot after
+a hand edit, the hand lines bare. Claim in mcp.cjs: each kind's mark, a hand
+edit keeping one and a script's edit adding one; a planted edit that clears the
+mark turned it red.

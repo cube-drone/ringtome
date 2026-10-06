@@ -38,6 +38,8 @@
 //! the protocol is still moving: 2026-07-28 replaced the `initialize` handshake with per-request
 //! metadata and added required headers, and the SDK answers both lifecycles.
 
+mod bank;
+mod chat;
 mod read;
 mod write;
 
@@ -140,7 +142,8 @@ async fn by_key(
 }
 
 /// The tools, one per thing a person asks an agent to do (plans/MCP.md, _The tools_): the
-/// account's here, the reading ones in read.rs, the writing ones in write.rs.
+/// account's here, the reading ones in read.rs, the writing ones in write.rs, chat in chat.rs,
+/// the Bank and the Market in bank.rs.
 #[derive(Clone)]
 pub struct Tools {
     /// The node's router, without `/mcp` (module doc).
@@ -499,9 +502,13 @@ impl Tools {
 }
 
 impl Tools {
-    /// Every tool there is: the account's, read.rs's and write.rs's.
+    /// Every tool there is: the account's, and read.rs's, write.rs's, chat.rs's and bank.rs's.
     fn every_tool() -> rmcp::handler::server::router::tool::ToolRouter<Self> {
-        Self::account_tools() + Self::read_tools() + Self::write_tools()
+        Self::account_tools()
+            + Self::read_tools()
+            + Self::write_tools()
+            + Self::chat_tools()
+            + Self::bank_tools()
     }
 }
 

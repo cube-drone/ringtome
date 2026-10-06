@@ -50,6 +50,7 @@ const onlyEmoji = (words) => {
 };
 import { EmojiStrip, shortcodeOf, glyphOf, toneOf } from '../emoji.js';
 import { leanScale } from '../pure/lean.js';
+import { tagIconRole } from '../pure/tagicons.js';
 import { useShared, markShared } from '../shares.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -627,6 +628,12 @@ const NoticeLine = ({ m, current }) => html`<li class="chat-line chat-line-notic
     <${PersonChip} root=${m.notice_subject} current=${current} />
 </li>`;
 
+// What a marked line says on hover (made_with.rs), by its protocol value.
+const MADE_WITH_SAID = {
+    'ai-agent': () => t('apps.chat.said-by-an-ai-agent', 'said by an AI agent'),
+    'api-key': () => t('apps.chat.said-with-an-api-key', 'said with an API key'),
+};
+
 const Line = ({
     m,
     current,
@@ -644,6 +651,8 @@ const Line = ({
     onDiscard,
 }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
+    // The line's own claim (ChatMessage `made_with`), its icon the post tag's (pure/tagicons.js).
+    const madeWith = m.made_with ? Icons[tagIconRole(m.made_with)] : null;
     const [picking, setPicking] = useState(false);
     const [stickering, setStickering] = useState(false);
     // Reacting is bought with tags (plans/UNLOCKS.md): without it the pills show, and say nothing.
@@ -772,6 +781,15 @@ const Line = ({
         </span>`
         }
         <div class="chat-line-body" title=${cont ? when : undefined}>
+            ${
+                /* What the line was made with (made_with.rs, 2026-10-06): the post tags' icon, in the
+                gutter of every line it marks - not only a run's first, since a person and their agent
+                speak as one speaker, and a run can hold both. */ ''
+            }
+            ${
+                madeWith &&
+                html`<span class="chat-line-made" title=${MADE_WITH_SAID[m.made_with] ? MADE_WITH_SAID[m.made_with]() : m.made_with}><${madeWith} /></span>`
+            }
             ${
                 m.words === null
                     ? html`<span class="chat-msg-sealed"><${Icons.trustPrivate} /> ${t('apps.chat.sealed-words-you-cannot-open', 'sealed words this computer cannot open')}</span>`
