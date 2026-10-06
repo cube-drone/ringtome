@@ -187,7 +187,15 @@ const RowWords = ({ row, current }) => {
         case 'debt_interest':
             return t('apps.bank.interest-on-debt', 'interest on your debt, at 2% a day');
         case 'magic_words':
-            return t('apps.bank.used-the-magic-words', 'used the magic words');
+            return many
+                ? t(
+                      'apps.bank.used-the-magic-words-n-times',
+                      'used the magic words {count} times',
+                      {
+                          count: row.count,
+                      },
+                  )
+                : t('apps.bank.used-the-magic-words', 'used the magic words');
         // A day's contracts, or unlocks, fold into one row (pure/ledger.js): every one is named.
         case 'contract':
             return html`${many ? t('apps.bank.completed-the-contracts', 'completed the contracts') : t('apps.bank.completed-the-contract', 'completed the contract')} ${namesOf(row, contractName)}`;

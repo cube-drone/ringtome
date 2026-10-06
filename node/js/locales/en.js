@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1525 phrases across 91 files.
+// 1527 phrases across 91 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -65,6 +65,7 @@ export default {
     'apps.bank.sold-n-hrsebonds': 'sold {count} hrseBonds',
     'apps.bank.sold-a-hrsebond': 'sold a hrseBond',
     'apps.bank.interest-on-debt': 'interest on your debt, at 2% a day',
+    'apps.bank.used-the-magic-words-n-times': 'used the magic words {count} times',
     'apps.bank.used-the-magic-words': 'used the magic words',
     'apps.bank.completed-the-contracts': 'completed the contracts',
     'apps.bank.completed-the-contract': 'completed the contract',
@@ -1701,6 +1702,7 @@ export default {
 
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',
+    'test_endpoints.pennies-is-a-whole-number': 'pennies is a whole number',
     'test_endpoints.not-a-date': 'not a date',
     'test_endpoints.sql-error-e': 'sql error: {e}',
     'test_endpoints.unplug-unknown-alpn': 'no such protocol {name}; this node speaks {known}',

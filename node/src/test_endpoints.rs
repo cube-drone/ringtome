@@ -215,8 +215,9 @@ pub async fn beat(
 #[derive(serde::Deserialize)]
 pub struct CreditRequest {
     pub root: String,
-    /// Horsepennies; negative to sink the persona into debt.
-    pub pennies: i64,
+    /// Horsepennies; negative to sink the persona into debt. A number, or a decimal string for an
+    /// amount past what a JSON number holds exactly (the ledger is bigints, 2026-10-06).
+    pub pennies: Value,
 }
 
 /// Credit (or debit) a persona's HorseBucks ledger directly (bank.rs `credit_for_test`): no overdraft
@@ -225,10 +226,21 @@ pub async fn credit(
     State(state): State<AppState>,
     Json(req): Json<CreditRequest>,
 ) -> Result<Json<Value>, AppError> {
+    let pennies: num_bigint::BigInt = match &req.pennies {
+        Value::String(s) => s.parse().ok(),
+        Value::Number(n) => n.as_i64().map(num_bigint::BigInt::from),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "test_endpoints.pennies-is-a-whole-number",
+            "pennies is a whole number"
+        ))
+    })?;
     let data = crate::record::store::open_agented(&state, &req.root).await?;
     crate::bank::catch_up(&state, &data, &req.root).await.map_err(AppError::Internal)?;
-    crate::bank::credit_for_test(&data, req.pennies).await.map_err(AppError::Internal)?;
-    Ok(Json(serde_json::json!({ "pennies": req.pennies })))
+    crate::bank::credit_for_test(&data, pennies.clone()).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "pennies": pennies.to_string() })))
 }
 
 #[derive(serde::Deserialize)]

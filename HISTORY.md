@@ -17206,3 +17206,35 @@ before it was for sale stays on until something else is picked - and points to
 the Market for the rest. `harness/unlocks-probe.mjs` claims fifteen features
 with video last, eight colourways apart, and a fresh persona's picker offering
 horse-relax and witchlight.
+
+**2026-10-05 - the magic words, every time.** Curtis: "for users who don't want
+to play our weird games, they can just cheat their way to a full unlock (so long
+as they admit it to the network by saying the magic words out loud)". The magic
+words now pay H$ 10,000 for every post that says them, keyed by the post, where
+they paid once per persona. A persona already paid under the old rule keeps its
+`once` line, and the post that line names isn't paid again. Still read only from
+posts the publication pass hasn't banked yet - a post's first version, words not
+drawings - so the check costs nothing new and old posts aren't paid back. A
+ledger row of several reads "used the magic words N times". `bank.cjs` claims a
+second post pays again and a plain one doesn't. `just ci` green.
+
+**2026-10-06 - HorseBucks are bigints, and debt has a ceiling.**
+HORSE_BASED_CURRENCIES.md settled an exact bigint balance on 2026-09-29, and the
+ledger kept each line as a 64-bit INTEGER and the balance as an i128 anyway -
+"the bigint the design settled on, until interest makes one necessary", in the
+module's own words, with debt interest clamped at 64 bits. Curtis expected
+bigints, and the commodities plan's arbitrage could compound past both widths
+within years. Now: user rung 0031 rebuilds `bank_lines` with `pennies` as a
+decimal string (SQLite has no wider integer, and an INTEGER column handed a
+bigger number keeps it as a float); bank.rs reads, adds and compares every
+amount as a `num-bigint` BigInt - lines, the balance, the per-kind and per-month
+totals (out of SQL's 64-bit SUM and into Rust), bond interest, the no-overdraft
+checks. The API already sent amounts as decimal strings and the client already
+held them as BigInt, so nothing changed on the page. The debt clamp is gone, and
+in its place Curtis's ceiling: debt interest stops at i64::MIN horsepennies, the
+last charge going only the way there (`debt_charge`). The rig's `/test/credit`
+takes a decimal string too. Unit tests: the ceiling, amounts past 10^700
+round-tripping exactly, and the rung keeping rows and widening the column (turso
+0.7 handles the rename). `bank.cjs` claims a balance of 10^30 horsepennies reads
+back to the penny, and a debt past the ceiling charges no interest. `just ci`
+green.

@@ -312,7 +312,8 @@ done - it just never showed.
 | Organize a note into a tree section  | Private notes, Taxonomy & tree   |
 
 The magic words need Social (they're said in a public post) but aren't a
-contract.
+contract. Since 2026-10-05 they pay H$ 10,000 for every post that says them: the
+player who won't play our games cheats to a full unlock, out loud.
 
 ### Safety contracts
 

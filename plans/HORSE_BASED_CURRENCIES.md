@@ -231,9 +231,11 @@ job: sweep the payouts into the next HorseBond.
 ## Later: markets without other players (sketch)
 
 Curtis floated a stock market on content tags ("put 2,000 H$ into _nsfw_") and
-commodities (hay futures). Neither is designed yet. The constraint is that a
-price must come out the same on every node without anyone agreeing on it. Two
-ways that stay non-transferable and deterministic:
+commodities (hay futures). The tag market is designed in [`STOCK.md`](STOCK.md)
+(2026-10-05), then parked; commodities, network-nudged, are in
+[`COMMODITIES.md`](COMMODITIES.md) (2026-10-06). The constraint is that a price
+must come out the same on every node without anyone agreeing on it. Two ways
+that stay non-transferable and deterministic:
 
 - **Tag stocks:** a tag's price derived from how often the tag appears in public
   posts. But every node sees a different slice of the network, so a portfolio
@@ -279,6 +281,15 @@ _shown_, never how it's kept.
 - **What could still explode it:** only ticks arriving faster than daily, which
   the guard forbids. A bug there shows up as numbers growing without bound,
   which a test can watch for.
+- **As built** (2026-10-06): the first ledger kept each line as a 64-bit integer
+  and the balance as a 128-bit one, deferring this ruling; a trader compounding
+  the commodities' arbitrage would have outgrown both within a few years. Every
+  line is now a decimal string in `bank_lines` (rung 0031) and every sum an
+  exact bigint in Rust (`num-bigint`), so the ruling holds.
+- **A debt ceiling** (Curtis, 2026-10-06: "eleventy horsejillion dollars of
+  horsedebt just sounds mean"): debt interest stops at the most negative 64-bit
+  number of horsepennies, about -9.2 x 10^16 H$. The last charge goes only the
+  way there; a debt at or past it is charged nothing. Wealth has no ceiling.
 
 ## Many currencies
 

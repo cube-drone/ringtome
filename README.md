@@ -70,6 +70,12 @@ lightly federated, unapologetically Old Internet.
   the same entries, history is recent everywhere and whole at the creator's.
   Rulings settled 2026-09-18; the chain key's third element comes first as its
   own arc, then five slices.
+- [`COMMODITIES.md`](plans/COMMODITIES.md) — seven horse commodities in
+  hrseBank's Market: a price walk derived from the date, the same on every
+  computer, drifting a little faster than bonds pay, and nudged at most 5% by
+  what the node sees the network doing - drawings, words, reactions glad and
+  sour, follows, chat, posts. Horse Financial's second instrument. A design
+  draft (2026-10-06); nothing built.
 - [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a
   versioned document whose body is its strokes, undo is a recorded removal, and
   two histories merge by putting both sets of strokes together (on the node,
@@ -86,11 +92,15 @@ lightly federated, unapologetically Old Internet.
   to Marquee (never rendered as HTML), images through the node, a merged
   newest-first view, and a rebroadcast that carries its source. A design draft
   (2026-09-30); nothing built.
+- [`STOCK.md`](plans/STOCK.md) — hrseStock, a stock market in tags: a tag's
+  price is its posts over 30 days, published daily by an exchange so every
+  computer trades on the same numbers; lots on the private chain like hrseBonds,
+  a two-day hold, and exchanges of your own for H$ 100,000,000. Parked
+  (2026-10-06): sparse networks, centralisation, a protocol change.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
   starts with Drawing, the Bank and hrseMsg and buys the rest from the Market
   with HorseBucks; unlocks on the private chain as ledger spends, gates in the
-  client only, contracts hidden until their unlock is owned. A design draft
-  (2026-10-05); nothing built.
+  client only, contracts hidden until their unlock is owned. Built 2026-10-05.
 - **The delivery-shape trio** — what kind of application this is, one document
   per candidate surface. Their relationship to canon differs and each says which
   at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,

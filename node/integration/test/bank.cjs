@@ -650,7 +650,7 @@ describe('HorseBucks: the ledger', function () {
         await expect(quick, 'and a bond bought: every one');
     });
 
-    it('the magic words, said in public, pay H$ 10,000 - once (2026-10-04)', async () => {
+    it('the magic words, said in public, pay H$ 10,000 - for every post that says them (2026-10-05)', async () => {
         const bea = await makeUserFetch({ prefix: 'bankbea' });
         const beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
         const publish = async (title, body) => {
@@ -675,7 +675,9 @@ describe('HorseBucks: the ledger', function () {
         );
         assert.equal(once[0].detail.said, 'show me the money', 'and the line says which words');
         await publish('again', 'rosebud');
-        assert.equal((await magic()).length, 1, 'once per persona - never a press for money');
+        assert.equal((await magic()).length, 2, 'and again: a cheat said out loud is a cheat paid');
+        await publish('quiet', 'nothing magic about this one');
+        assert.equal((await magic()).length, 2, 'a post without them still pays nothing');
     });
 });
 
@@ -792,6 +794,23 @@ describe('HorseBucks: bonds and debt', function () {
         // Today ends at -99,000 and pays -1,980; each later day adds 1,000 for the heartbeat, then
         // charges 2% of what's left, toward zero: -1,999, -2,019, -2,039.
         assert.equal((await bank()).balance, '-104037', 'the debt compounds');
+    });
+
+    // HorseBucks are bigints (2026-10-06): a balance past every machine integer is exact, and debt
+    // stops growing at the ceiling, the most negative 64-bit number of horsepennies.
+    it('a balance past 64 bits is exact, and debt past the ceiling charges nothing', async () => {
+        const rich = await persona('bigrich');
+        const fortune = 10n ** 30n;
+        await j(rig, 'test/credit', { root: rich.root, pennies: fortune.toString() });
+        assert.equal((await rich.bank()).balance, String(1000n + fortune), 'to the penny');
+
+        const poor = await persona('bigpoor');
+        const sunk = 2n ** 63n + 1000000n; // past the ceiling, already
+        await j(rig, 'test/credit', { root: poor.root, pennies: (-sunk).toString() });
+        await j(rig, 'test/heartbeat', { root: poor.root, date: dayAfter(1) });
+        const b = await poor.bank();
+        assert.equal(b.balance, String(2000n - sunk), 'two days of use, and no interest at all');
+        assert.ok(!b.lines.some((l) => l.kind === 'debt_interest'), 'not a penny of it');
     });
 });
 

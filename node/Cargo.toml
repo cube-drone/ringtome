@@ -64,6 +64,12 @@ regex = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# HorseBucks are exact bigints (bank.rs; HORSE_BASED_CURRENCIES.md, "Stinkingly broken numbers"):
+# a balance may outgrow every machine integer, and is never rounded. Already in the tree beneath
+# other crates.
+num-bigint = "0.4"
+num-traits = "0.2"
+
 # ids
 uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
 

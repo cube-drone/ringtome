@@ -10,8 +10,8 @@
 //! a key from an era it doesn't hold) simply isn't paid until a later pass can.
 //!
 //! **Horsepennies.** A hundredth of a HorseBuck, so every rate is an exact integer: 5 H$ per 20
-//! words is 25 pennies a word. A line fits an `i64`; the balance is summed exactly in `i128`
-//! (the bigint the design settled on, until interest makes one necessary).
+//! words is 25 pennies a word. Every line and every sum is an exact bigint (2026-10-06, as
+//! HORSE_BASED_CURRENCIES.md settled it): kept as a decimal string, never rounded, never clamped.
 //!
 //! **What's new, not what's there.** Words are distinct three-word shingles, strokes are distinct
 //! shapes, and a document version pays only for what it added over its parents - so pasting a
@@ -21,6 +21,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use anyhow::Result;
+use num_bigint::BigInt;
+use num_traits::{Signed, Zero};
 use serde_json::json;
 
 use crate::record::documents::{Format, Version};
@@ -39,7 +41,10 @@ const PER_CHAT_LINE: i64 = 5 * HORSEBUCK;
 const PER_REACTION_GIVEN: i64 = HORSEBUCK;
 const PER_REACTION_RECEIVED: i64 = 5 * HORSEBUCK;
 const PER_HEARTBEAT: i64 = 10 * HORSEBUCK;
-/// The magic words (Curtis, 2026-10-04): the old cheat codes, said in public, pay once.
+/// The magic words (Curtis, 2026-10-04): the old cheat codes, said in public, pay - once per post
+/// that says them (2026-10-05: "for users who don't want to play our weird games, they can just
+/// cheat their way to a full unlock, so long as they admit it to the network by saying the magic
+/// words out loud"). They paid once per persona until then.
 const PER_MAGIC_WORDS: i64 = 10_000 * HORSEBUCK;
 const MAGIC_WORDS: [&str; 9] = [
     "glittering prizes",
@@ -516,6 +521,21 @@ fn marks_in(body: &[u8]) -> usize {
 static DRAWINGS_LOOKED_AT: LazyLock<Mutex<HashSet<[u8; 32]>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
+/// The post the magic words paid for under the once-per-persona rule (until 2026-10-05), if they
+/// did: its line keeps standing, and that post isn't paid again under the per-post rule.
+async fn magic_paid_once(data: &Store) -> Result<Option<String>> {
+    let row: Option<(String,)> = data
+        .db()
+        .fetch_optional(
+            "SELECT detail FROM bank_lines WHERE kind = 'magic_words' AND source = 'once'",
+            (),
+        )
+        .await?;
+    Ok(row.and_then(|(detail,)| {
+        serde_json::from_str::<serde_json::Value>(&detail).ok()?["post"].as_str().map(String::from)
+    }))
+}
+
 /// The first of the magic words a post says, any case. Run on words the publication pass has
 /// already read - nine substring checks, never a read of its own.
 fn magic_words_in(body: &[u8]) -> Option<&'static str> {
@@ -527,6 +547,17 @@ fn magic_words_in(body: &[u8]) -> Option<&'static str> {
 /// Where purchases live: the persona's private registers, one key per purchase, synced to their
 /// own computers - two computers buying at once make two bonds, and both stand.
 pub const INSTRUMENTS: &str = "horse_instruments";
+/// The debt ceiling (Curtis, 2026-10-06): debt interest stops at the most negative 64-bit number of
+/// horsepennies, about -9.2 x 10^16 H$ - "eleventy horsejillion dollars of horsedebt just sounds
+/// mean". The ledger itself has no floor; this only stops interest growing a debt past it.
+const DEBT_CEILING: i64 = i64::MIN;
+/// A day's charge on a balance below zero: 2% of it, toward zero (BigInt's division truncates), and
+/// never past the ceiling - a charge that would carry the debt beyond it charges only the way
+/// there, and a debt at or past it, nothing.
+fn debt_charge(balance: &BigInt, ceiling: &BigInt) -> BigInt {
+    (balance * DEBT_RATE.0 / DEBT_RATE.1).max(ceiling - balance).min(BigInt::zero())
+}
+
 /// A HorseBond's smallest price, and how many heartbeat days it pays before it returns its price.
 pub const BOND_MIN: i64 = 2000 * HORSEBUCK;
 /// And at most a million (Curtis, 2026-09-30: "past that users will require a better financial
@@ -617,7 +648,7 @@ pub fn publication_bonus(size: i64) -> i64 {
 struct Line {
     kind: &'static str,
     source: String,
-    pennies: i64,
+    pennies: BigInt,
     at_ms: i64,
     detail: serde_json::Value,
 }
@@ -633,7 +664,7 @@ async fn bank(data: &Store, lines: Vec<Line>) -> Result<()> {
         data.db()
             .execute(
                 "INSERT OR IGNORE INTO bank_lines (kind, source, pennies, at_ms, detail) VALUES (?1, ?2, ?3, ?4, ?5)",
-                (l.kind, l.source, l.pennies, l.at_ms, l.detail.to_string()),
+                (l.kind, l.source, l.pennies.to_string(), l.at_ms, l.detail.to_string()),
             )
             .await?;
     }
@@ -753,7 +784,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                         lines.push(Line {
                             kind: "image",
                             source,
-                            pennies: PER_IMAGE,
+                            pennies: BigInt::from(PER_IMAGE),
                             at_ms: v.timestamp_ms,
                             detail: json!({ "title": title }),
                         });
@@ -795,7 +826,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                     lines.push(Line {
                         kind,
                         source,
-                        pennies: added * rate,
+                        pennies: BigInt::from(added * rate),
                         at_ms: v.timestamp_ms,
                         detail: json!({ "title": title, "count": added }),
                     });
@@ -808,8 +839,9 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // Publications: once per note, the private amounts again plus the size bonus. Who claims
     // each post, read once for them all (a fold per post was minutes at 700 posts, 2026-10-01).
     let claimed = data.annotations().notes_claiming().await.unwrap_or_default();
-    // The magic words pay once per persona, ever - per post, they'd be a press for money.
-    let mut magic_pending = is_new("magic_words", "once");
+    // The magic words pay once per post that says them (2026-10-05). A persona paid under the old
+    // once-ever rule keeps that line, and the post it named isn't paid a second time.
+    let paid_once = magic_paid_once(data).await?;
     for (post_id, doc) in &view.docs {
         if doc.lane != "public" {
             continue;
@@ -840,13 +872,16 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             None => None,
         };
         let Some(body) = body else { continue };
-        if magic_pending && note_format != Some(Format::Drawing) {
+        let post_hex = hex::encode(post_id);
+        if note_format != Some(Format::Drawing)
+            && is_new("magic_words", &post_hex)
+            && paid_once.as_deref() != Some(post_hex.as_str())
+        {
             if let Some(said) = magic_words_in(&body) {
-                magic_pending = false;
                 lines.push(Line {
                     kind: "magic_words",
-                    source: "once".to_string(),
-                    pennies: PER_MAGIC_WORDS,
+                    source: post_hex.clone(),
+                    pennies: BigInt::from(PER_MAGIC_WORDS),
                     at_ms: v.timestamp_ms,
                     detail: json!({ "title": v.header.title, "post": hex::encode(post_id), "said": said }),
                 });
@@ -860,7 +895,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         lines.push(Line {
             kind: "publication",
             source,
-            pennies: again + bonus,
+            pennies: BigInt::from(again + bonus),
             at_ms: v.timestamp_ms,
             detail: json!({ "title": v.header.title, "post": hex::encode(post_id), "words": words, "strokes": strokes, "images": images, "bonus": bonus, "rules": PUBLICATION_RULES }),
         });
@@ -887,7 +922,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                 lines.push(Line {
                     kind: "heartbeat",
                     source: ps.value,
-                    pennies: PER_HEARTBEAT,
+                    pennies: BigInt::from(PER_HEARTBEAT),
                     at_ms: i64::from(day) * 86_400_000,
                     detail: json!({}),
                 });
@@ -901,7 +936,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "chat",
                 source: hash,
-                pennies: PER_CHAT_LINE,
+                pennies: BigInt::from(PER_CHAT_LINE),
                 at_ms: at,
                 detail: json!({}),
             });
@@ -913,7 +948,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "reaction",
                 source: hash,
-                pennies: PER_REACTION_GIVEN,
+                pennies: BigInt::from(PER_REACTION_GIVEN),
                 at_ms: at,
                 detail: json!({}),
             });
@@ -926,7 +961,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "reacted",
                 source: hash,
-                pennies: PER_REACTION_RECEIVED,
+                pennies: BigInt::from(PER_REACTION_RECEIVED),
                 at_ms: at,
                 detail: json!({ "by": who }),
             });
@@ -947,7 +982,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "post_reaction",
                 source,
-                pennies: PER_REACTION_GIVEN,
+                pennies: BigInt::from(PER_REACTION_GIVEN),
                 at_ms: a.received_at_ms,
                 detail: json!({ "emoji": a.value }),
             });
@@ -961,7 +996,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "post_reacted",
                 source,
-                pennies: PER_REACTION_RECEIVED,
+                pennies: BigInt::from(PER_REACTION_RECEIVED),
                 at_ms: at,
                 detail: json!({ "by": who, "emoji": emoji }),
             });
@@ -974,7 +1009,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "follow",
                 source: subject.clone(),
-                pennies: PER_FOLLOW,
+                pennies: BigInt::from(PER_FOLLOW),
                 at_ms: row.received_at_ms,
                 detail: json!({ "of": subject }),
             });
@@ -987,7 +1022,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "followed",
                 source: author.clone(),
-                pennies: PER_FOLLOW,
+                pennies: BigInt::from(PER_FOLLOW),
                 at_ms: crate::clock::now_ms(),
                 detail: json!({ "by": author }),
             });
@@ -1152,7 +1187,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             lines.push(Line {
                 kind: "contract",
                 source: c.id.to_string(),
-                pennies: c.pennies,
+                pennies: BigInt::from(c.pennies),
                 at_ms: *at, // the recorded moment: the same line on every computer
                 detail: json!({ "title": c.name }),
             });
@@ -1220,7 +1255,7 @@ async fn instruments(data: &Store) -> Result<()> {
             lines.push(Line {
                 kind: "unlock",
                 source: u.id.to_string(),
-                pennies: -u.pennies,
+                pennies: BigInt::from(-u.pennies),
                 at_ms: *at,
                 detail: json!({ "title": u.name }),
             });
@@ -1231,7 +1266,7 @@ async fn instruments(data: &Store) -> Result<()> {
             lines.push(Line {
                 kind: "bond",
                 source: bond.id.clone(),
-                pennies: -bond.pennies,
+                pennies: BigInt::from(-bond.pennies),
                 at_ms: bond.bought_ms,
                 detail: json!({ "price": bond.pennies.to_string() }),
             });
@@ -1249,7 +1284,7 @@ async fn instruments(data: &Store) -> Result<()> {
                 lines.push(Line {
                     kind: "bond_sold",
                     source: bond.id.clone(),
-                    pennies: bond.pennies,
+                    pennies: BigInt::from(bond.pennies),
                     at_ms: sold,
                     detail: json!({ "bond": bond.id }),
                 });
@@ -1261,7 +1296,7 @@ async fn instruments(data: &Store) -> Result<()> {
                 lines.push(Line {
                     kind: "bond_interest",
                     source,
-                    pennies: bond.pennies / 100,
+                    pennies: BigInt::from(bond.pennies / 100),
                     at_ms: day_ms(date),
                     detail: json!({ "bond": bond.id, "day": n + 1 }),
                 });
@@ -1271,7 +1306,7 @@ async fn instruments(data: &Store) -> Result<()> {
             lines.push(Line {
                 kind: "bond_matured",
                 source: bond.id.clone(),
-                pennies: bond.pennies,
+                pennies: BigInt::from(bond.pennies),
                 at_ms: day_ms(paying[BOND_DAYS - 1]),
                 detail: json!({ "bond": bond.id }),
             });
@@ -1280,32 +1315,30 @@ async fn instruments(data: &Store) -> Result<()> {
     bank(data, lines).await?;
 
     // Debt, day by day in order, each day's charge on the balance its predecessors left.
-    let mut ledger: Vec<(i64, i128)> = data
+    let mut ledger: Vec<(i64, BigInt)> = data
         .db()
-        .fetch_all::<(i64, i64)>("SELECT at_ms, pennies FROM bank_lines", ())
+        .fetch_all::<(i64, String)>("SELECT at_ms, pennies FROM bank_lines", ())
         .await?
         .into_iter()
-        .map(|(at, p)| (at, i128::from(p)))
+        .map(|(at, p)| (at, amount(&p)))
         .collect();
+    let ceiling = BigInt::from(DEBT_CEILING);
     let mut charges: Vec<Line> = Vec::new();
     for date in &days {
         if !is_new("debt_interest", date) {
             continue;
         }
         let end = day_ms(date) + 86_400_000;
-        let balance: i128 = ledger.iter().filter(|(at, _)| *at < end).map(|(_, p)| p).sum();
-        if balance >= 0 {
+        let balance: BigInt = ledger.iter().filter(|(at, _)| *at < end).map(|(_, p)| p).sum();
+        if !balance.is_negative() {
             continue;
         }
-        // Toward zero, then held to what one line can carry (debt past 9.2 x 10^16 H$ saturates
-        // until the ledger keeps true bigints).
-        let charge = (balance * i128::from(DEBT_RATE.0) / i128::from(DEBT_RATE.1))
-            .clamp(i128::from(i64::MIN), 0) as i64;
-        if charge == 0 {
+        let charge = debt_charge(&balance, &ceiling);
+        if !charge.is_negative() {
             continue;
         }
         let at = end - 1;
-        ledger.push((at, i128::from(charge)));
+        ledger.push((at, charge.clone()));
         charges.push(Line {
             kind: "debt_interest",
             source: date.clone(),
@@ -1359,7 +1392,7 @@ pub async fn buy_handler(
     // money than the user has: overdraft is for special cases, not the average case"). Debt still
     // happens - two computers buying at once, each affording it alone - and is still charged.
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
-    if balance(&data).await.map_err(AppError::Internal)? < i128::from(pennies) {
+    if balance(&data).await.map_err(AppError::Internal)? < BigInt::from(pennies) {
         return Err(AppError::BadRequest(crate::msg!(
             "bank.you-cant-afford-that",
             "you can't afford that"
@@ -1389,7 +1422,7 @@ pub async fn sell_handler(
     use crate::error::AppError;
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
-    if balance(&data).await.map_err(AppError::Internal)? >= 0 {
+    if !balance(&data).await.map_err(AppError::Internal)?.is_negative() {
         return Err(AppError::BadRequest(crate::msg!(
             "bank.sell-only-in-debt",
             "a hrseBond can be sold only to get out of debt"
@@ -1469,7 +1502,7 @@ pub async fn unlock_handler(
         )));
     }
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
-    if balance(&data).await.map_err(AppError::Internal)? < i128::from(u.pennies) {
+    if balance(&data).await.map_err(AppError::Internal)? < BigInt::from(u.pennies) {
         return Err(AppError::BadRequest(crate::msg!(
             "bank.you-cant-afford-that-2",
             "you can't afford that"
@@ -1483,7 +1516,7 @@ pub async fn unlock_handler(
 
 /// A line put straight into the ledger, for the test rig only (`/test/credit`): funding a persona,
 /// or sinking one into debt, without the months of earning either would take.
-pub async fn credit_for_test(data: &Store, pennies: i64) -> Result<()> {
+pub async fn credit_for_test(data: &Store, pennies: BigInt) -> Result<()> {
     let source = format!("{}", crate::clock::now_ms());
     bank(
         data,
@@ -1499,9 +1532,18 @@ pub async fn credit_for_test(data: &Store, pennies: i64) -> Result<()> {
 }
 
 /// The balance, in horsepennies, summed exactly.
-pub async fn balance(data: &Store) -> Result<i128> {
-    let rows: Vec<(i64,)> = data.db().fetch_all("SELECT pennies FROM bank_lines", ()).await?;
-    Ok(rows.into_iter().map(|(p,)| i128::from(p)).sum())
+pub async fn balance(data: &Store) -> Result<BigInt> {
+    let rows: Vec<(String,)> = data.db().fetch_all("SELECT pennies FROM bank_lines", ()).await?;
+    Ok(rows.iter().map(|(p,)| amount(p)).sum())
+}
+
+/// A line's stored amount: a decimal string (0031_bank_lines_bigint.sql). Only ever written by
+/// `bank`, so a string that doesn't parse is a corrupt row - read as nothing, and said so.
+fn amount(text: &str) -> BigInt {
+    text.parse().unwrap_or_else(|_| {
+        tracing::warn!(text, "a ledger line's amount isn't a number");
+        BigInt::zero()
+    })
 }
 
 #[derive(serde::Deserialize)]
@@ -1553,16 +1595,23 @@ pub async fn bank_handler(
     catch_up(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
     let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
     // Every month's count and total, off the lines' own times.
-    let stamps: Vec<(i64, i64)> = data
+    // And each kind's total: summed here, as bigints, never by SQL (whose SUM is 64-bit).
+    let every: Vec<(String, i64, String)> = data
         .db()
-        .fetch_all("SELECT at_ms, pennies FROM bank_lines WHERE pennies <> 0", ())
+        .fetch_all("SELECT kind, at_ms, pennies FROM bank_lines", ())
         .await
         .map_err(crate::error::AppError::Internal)?;
-    let mut months: BTreeMap<String, (i64, i128)> = BTreeMap::new();
-    for (at, p) in stamps {
-        let slot = months.entry(crate::heartbeat::utc_date(at)[..7].to_string()).or_insert((0, 0));
+    let mut months: BTreeMap<String, (i64, BigInt)> = BTreeMap::new();
+    let mut kinds: BTreeMap<String, BigInt> = BTreeMap::new();
+    for (kind, at, p) in &every {
+        let p = amount(p);
+        *kinds.entry(kind.clone()).or_default() += &p;
+        if p.is_zero() {
+            continue;
+        }
+        let slot = months.entry(crate::heartbeat::utc_date(*at)[..7].to_string()).or_default();
         slot.0 += 1;
-        slot.1 += i128::from(p);
+        slot.1 += p;
     }
     let month = q
         .month
@@ -1570,18 +1619,13 @@ pub async fn bank_handler(
         .filter(|m| months.contains_key(m))
         .or_else(|| months.keys().next_back().cloned());
     let (from, to) = month.as_deref().and_then(month_bounds).unwrap_or((0, 0));
-    let rows: Vec<(String, String, i64, i64, String)> = data
+    let rows: Vec<(String, String, String, i64, String)> = data
         .db()
         .fetch_all(
             "SELECT kind, source, pennies, at_ms, detail FROM bank_lines
-             WHERE pennies <> 0 AND at_ms >= ?1 AND at_ms < ?2 ORDER BY at_ms DESC, kind, source LIMIT ?3",
+             WHERE pennies <> '0' AND at_ms >= ?1 AND at_ms < ?2 ORDER BY at_ms DESC, kind, source LIMIT ?3",
             (from, to, q.lines.unwrap_or(5000).clamp(0, 20_000)),
         )
-        .await
-        .map_err(crate::error::AppError::Internal)?;
-    let kinds: Vec<(String, i64)> = data
-        .db()
-        .fetch_all("SELECT kind, SUM(pennies) FROM bank_lines GROUP BY kind", ())
         .await
         .map_err(crate::error::AppError::Internal)?;
     let by_kind: BTreeMap<String, String> =
@@ -1592,14 +1636,14 @@ pub async fn bank_handler(
             json!({
                 "kind": kind,
                 "source": source,
-                "pennies": pennies.to_string(),
+                "pennies": amount(&pennies).to_string(),
                 "at_ms": at_ms,
                 "detail": serde_json::from_str::<serde_json::Value>(&detail).unwrap_or_default(),
             })
         })
         .collect();
     // Each bond's progress, off its own lines.
-    let paid: Vec<(String, String, i64)> = data
+    let paid: Vec<(String, String, String)> = data
         .db()
         .fetch_all("SELECT kind, source, pennies FROM bank_lines WHERE kind IN ('bond_interest', 'bond_matured')", ())
         .await
@@ -1612,7 +1656,7 @@ pub async fn bank_handler(
         .map(|b| {
             let prefix = format!("{}:", b.id);
             let days = paid.iter().filter(|(k, s, _)| k == "bond_interest" && s.starts_with(&prefix)).count();
-            let earned: i128 = paid.iter().filter(|(k, s, _)| k == "bond_interest" && s.starts_with(&prefix)).map(|(_, _, p)| i128::from(*p)).sum();
+            let earned: BigInt = paid.iter().filter(|(k, s, _)| k == "bond_interest" && s.starts_with(&prefix)).map(|(_, _, p)| amount(p)).sum();
             let matured = paid.iter().any(|(k, s, _)| k == "bond_matured" && *s == b.id);
             json!({ "id": b.id, "kind": "horsebond", "pennies": b.pennies.to_string(), "bought_ms": b.bought_ms, "days": days, "of_days": BOND_DAYS, "paid": earned.to_string(), "matured": matured, "sold": b.sold_ms.is_some() })
         })
@@ -1650,6 +1694,69 @@ pub async fn bank_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Debt charges 2% a day toward zero, and stops at the ceiling: the last charge only goes the
+    /// way there, and a debt at or past it is charged nothing (Curtis, 2026-10-06).
+    #[test]
+    fn debt_charges_two_percent_and_stops_at_the_ceiling() {
+        let ceiling = BigInt::from(DEBT_CEILING);
+        let charge = |b: BigInt| debt_charge(&b, &ceiling);
+        assert_eq!(charge(BigInt::from(-100_000)), BigInt::from(-2_000));
+        assert_eq!(charge(BigInt::from(-49)), BigInt::zero(), "toward zero: under a penny is none");
+        let near = &ceiling + 100;
+        assert_eq!(charge(near), BigInt::from(-100), "only the way to the ceiling");
+        assert_eq!(charge(ceiling.clone()), BigInt::zero(), "at it, nothing");
+        assert_eq!(charge(&ceiling - 500), BigInt::zero(), "past it, nothing - and never a credit");
+    }
+
+    /// A balance is exact however big (HORSE_BASED_CURRENCIES.md, "Stinkingly broken numbers"):
+    /// lines past every machine integer round-trip through their stored text and sum to the penny.
+    #[test]
+    fn amounts_past_every_machine_integer_stay_exact() {
+        let huge: BigInt = BigInt::from(10).pow(700u32) + 1;
+        let stored = huge.to_string();
+        assert_eq!(amount(&stored), huge);
+        let sum: BigInt = [stored.as_str(), "-1", "250000"].iter().map(|p| amount(p)).sum();
+        assert_eq!(sum, BigInt::from(10).pow(700u32) + 250_000);
+        assert_eq!(amount("not a number"), BigInt::zero());
+    }
+
+    /// The bigint rung keeps every line, its amount now text - and a line past 64 bits, written
+    /// after it, comes back to the penny (0031_bank_lines_bigint.sql).
+    #[tokio::test]
+    async fn the_bigint_rung_keeps_the_ledger_and_widens_it() {
+        let db = crate::db::test_memory_db().await;
+        let ladder = crate::migrations::USER;
+        crate::migrations::climb(&db, &ladder[..ladder.len() - 1], "user").await.unwrap();
+        db.execute(
+            "INSERT INTO bank_lines (kind, source, pennies, at_ms) VALUES ('heartbeat', 'a', -12345, 1), ('words', 'b', 9223372036854775807, 2)",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, ladder, "user").await.unwrap();
+        let kept: Vec<(String, String)> = db
+            .fetch_all("SELECT source, pennies FROM bank_lines ORDER BY source", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            kept,
+            vec![
+                ("a".to_string(), "-12345".to_string()),
+                ("b".to_string(), "9223372036854775807".to_string())
+            ]
+        );
+        let past = (BigInt::from(i64::MAX) * 1000u32).to_string();
+        db.execute(
+            "INSERT INTO bank_lines (kind, source, pennies, at_ms) VALUES ('words', 'c', ?1, 3)",
+            (past.clone(),),
+        )
+        .await
+        .unwrap();
+        let (back,): (String,) =
+            db.fetch_one("SELECT pennies FROM bank_lines WHERE source = 'c'", ()).await.unwrap();
+        assert_eq!(back, past);
+    }
 
     /// Every unlock a contract or an unlock names exists, comes earlier in the Market than what
     /// needs it, and no two unlocks share an id: a typo would hide a contract forever.
