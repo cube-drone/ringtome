@@ -148,6 +148,9 @@
     --crt-edge: rgba(0, 0, 0, 0.3);
     --crt-glare: rgba(255, 255, 255, 0.07);
     --crt-bezel: #141414;
+    /* Phosphor glow on text, while the CRT is on (crt.css): a halo in the text's own colour, on
+       the light-on-dark colourways only - around dark text on a light page a halo is just blur. */
+    --crt-text-glow: none;
     --swatch-horse-relax-1: #e7dbc3;
     --swatch-horse-relax-2: #f6efe0;
     --swatch-horse-relax-3: #1f9e90;
@@ -206,6 +209,7 @@
     --react-bad: #3d2628;
 
     --glow: rgba(242, 193, 78, 0.5);
+    --crt-text-glow: 0 0 3px rgba(238, 231, 247, 0.35);
     --dock-text: #f4eefb;
     --on-accent: #120d18;
     --on-danger: #120d18;
@@ -385,6 +389,7 @@
     --react-bad: #4a1a1a;
 
     --glow: rgba(57, 255, 20, 0.45);
+    --crt-text-glow: 0 0 4px rgba(57, 255, 20, 0.45);
     --dock-text: #39ff14;
     --on-accent: #000000;
     --on-danger: #000000;
@@ -429,6 +434,7 @@
     --react-bad: #4a1a1a;
 
     --glow: rgba(255, 255, 255, 0.35);
+    --crt-text-glow: 0 0 4px rgba(255, 255, 255, 0.35);
     --dock-text: #ffffff;
     --on-accent: #000000;
     --on-danger: #000000;
@@ -473,6 +479,7 @@
     --react-bad: #4a1a1a;
 
     --glow: rgba(20, 225, 255, 0.45);
+    --crt-text-glow: 0 0 4px rgba(20, 225, 255, 0.45);
     --dock-text: #14e1ff;
     --on-accent: #000000;
     --on-danger: #000000;
@@ -517,6 +524,7 @@
     --react-bad: #4a1a1a;
 
     --glow: rgba(255, 140, 26, 0.45);
+    --crt-text-glow: 0 0 4px rgba(255, 140, 26, 0.45);
     --dock-text: #ff8c1a;
     --on-accent: #000000;
     --on-danger: #000000;
@@ -561,6 +569,7 @@
     --react-bad: #4a1a1a;
 
     --glow: rgba(255, 215, 0, 0.5);
+    --crt-text-glow: 0 0 4px rgba(255, 215, 0, 0.45);
     --dock-text: #ffd700;
     --on-accent: #000000;
     --on-danger: #000000;

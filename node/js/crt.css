@@ -52,6 +52,15 @@ body::after {
     }
 }
 
+/* Phosphor glow (2026-10-06): every piece of text haloed in its own colour, by one inherited
+   `text-shadow` - cheap, drawn with the text. Only where the colourway is light on dark
+   (`--crt-text-glow`, tokens.css; `none` elsewhere), and only while the CRT is on. Glow on borders
+   and lines would need a filter over the app, which redraws the page and breaks fixed positioning
+   beneath it. */
+:root:not([data-crt="off"]) body {
+    text-shadow: var(--crt-text-glow);
+}
+
 /* Off, by the persona's own choice (crtpref.js, on its private chain) - put on before anything
    draws by index.html's first script, from this browser's last answer. */
 :root[data-crt="off"] body::before,

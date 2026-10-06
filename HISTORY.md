@@ -17325,3 +17325,14 @@ turned it off doesn't see it flash on at every reload. Another computer already
 open picks the change up on its next load. `harness/crt-probe.mjs` claims it's
 on by default, the switch turns it off at once, the register says 'off', and a
 fresh browser comes up with it off. `just ui-check` green.
+
+**2026-10-06 - phosphor glow.** While the CRT is on, every piece of text on a
+light-on-dark colourway wears a halo in its own colour: one inherited
+`text-shadow` on `body` (crt.css), drawn with the text and cheap. The halo is
+`--crt-text-glow` (tokens.css) - 3px of lilac on witchlight, 4px in each
+terminal's phosphor - and `none` on the light colourways, where a halo around
+dark text is only blur. Glow on borders, lines and icons is left out: it would
+need a filter over the whole app, which redraws the page on every change and
+breaks fixed positioning beneath it (modals, tooltips, the dock). "disable CRT"
+turns the glow off with the rest. Looked at in headless Chrome over terminal and
+witchlight. `just ui-check` green.
